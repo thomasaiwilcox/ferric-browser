@@ -5147,48 +5147,11 @@ ApplicationWindow {
     }
 
     function editorApplyScript(original, updated) {
-        return "(function(){var e=document.activeElement;if(!e)return {error:'no focused control'};"
-            + "if(e.matches('input[type=password],textarea[data-password],*[aria-multiline=true][data-password]'))"
-            + "return {error:'password fields are not editable externally'};"
-            + "var current=e.matches('textarea,input[type=text],input[type=search],input[type=email],input[type=url]')?String(e.value||''):e.isContentEditable&&e.contentEditable==='plaintext-only'?String(e.innerText||e.textContent||''):null;"
-            + "if(current===null)return {error:'focused control is not a supported plain-text editor'};"
-            + "if(current!==" + JSON.stringify(original) + ")return {error:'field changed while editor was open'};"
-            + "var next=" + JSON.stringify(updated) + ";if(e.matches('textarea,input[type=text],input[type=search],input[type=email],input[type=url]'))e.value=next;else e.textContent=next;"
-            + "e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));return {ok:true};})()"
+        return BrowserScripts.editorApply(original, updated)
     }
 
     function caretScript(operation, selecting) {
-        var fields = operation.split("\t")
-        if (fields[0] === "select") {
-            var next = fields[1] === "toggle" ? !selecting : fields[1] === "on"
-            return "(function(){return {ok:true,selecting:" + (next ? "true" : "false") + "};})()"
-        }
-        if (fields.length !== 3 || fields[0] !== "move") {
-            return "(function(){return {error:'invalid caret operation'};})()"
-        }
-        var direction = fields[1]
-        var count = Number(fields[2])
-        var directionMap = {
-            left: { direction: "backward", granularity: "character" },
-            right: { direction: "forward", granularity: "character" },
-            up: { direction: "backward", granularity: "line" },
-            down: { direction: "forward", granularity: "line" },
-            "word-prev": { direction: "backward", granularity: "word" },
-            "word-next": { direction: "forward", granularity: "word" },
-            "line-start": { direction: "backward", granularity: "lineboundary" },
-            "line-end": { direction: "forward", granularity: "lineboundary" }
-        }
-        var movement = directionMap[direction]
-        if (!movement || !Number.isInteger(count) || count < 1 || count > 9999) {
-            return "(function(){return {error:'invalid caret movement'};})()"
-        }
-        return "(function(){var s=window.getSelection();if(!s)return {error:'selection API unavailable'};"
-            + "if(typeof s.modify!=='function')return {error:'caret movement API unavailable'};"
-            + "if(s.rangeCount===0){var w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT),n=w.nextNode();"
-            + "if(!n)return {error:'document has no text'};var r=document.createRange();r.setStart(n,0);r.collapse(true);s.removeAllRanges();s.addRange(r);}"
-            + "for(var i=0;i<" + count + ";i++)s.modify(" + (selecting ? "'extend'" : "'move'") + ","
-            + JSON.stringify(movement.direction) + "," + JSON.stringify(movement.granularity) + ");"
-            + "return {ok:true};})()"
+        return BrowserScripts.caret(operation, selecting)
     }
 
     function hintFreshScript(candidate) {

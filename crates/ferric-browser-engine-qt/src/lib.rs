@@ -35564,7 +35564,11 @@ mod tests {
 
     #[test]
     fn external_editor_rejects_rich_contenteditable_controls() {
-        let qml = include_str!("../qml/Main.qml");
+        let qml = [
+            include_str!("../qml/Main.qml"),
+            include_str!("../qml/scripts/BrowserScripts.js"),
+        ]
+        .concat();
         assert!(qml.contains("e.contentEditable==='plaintext-only'"));
         assert!(
             qml.contains("return {error:'focused control is not a supported plain-text editor'}")
@@ -38134,11 +38138,15 @@ executable = "/bin/true"
         assert!(qml.contains("return BrowserScripts.scroll(kind, direction, half, count)"));
         assert!(qml.contains("return BrowserScripts.selection()"));
         assert!(qml.contains("return BrowserScripts.editor()"));
+        assert!(qml.contains("return BrowserScripts.editorApply(original, updated)"));
+        assert!(qml.contains("return BrowserScripts.caret(operation, selecting)"));
         assert!(script.contains("var VERSION = \"1\""));
         assert!(script.contains("function boundedCount(value)"));
         assert!(script.contains("Math.max(1, Math.min(9999"));
         assert!(script.contains("password fields are not copied"));
         assert!(script.contains("password fields are not editable externally"));
+        assert!(script.contains("field changed while editor was open"));
+        assert!(script.contains("invalid caret movement"));
     }
 
     #[test]
