@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -ne 1 ]; then
+  printf '%s\n' 'usage: ferric-browser-omarchy-activate-tab TAB_ID' >&2
+  exit 2
+fi
+case "$1" in
+  ''|*[![:alnum:]_.:-]*)
+    printf '%s\n' 'ferric-browser tab ID contains unsupported characters' >&2
+    exit 2
+    ;;
+esac
+exec ferric-browser activate tab "$1"

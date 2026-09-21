@@ -1,0 +1,22 @@
+[package]
+name = "ferric-browser"
+version = "0.1.0"
+description = "Ferric Browser application bootstrap"
+license.workspace = true
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+ferric-browser-core = { path = "../ferric-browser-core" }
+ferric-browser-config = { path = "../ferric-browser-config" }
+ferric-browser-ipc = { path = "../ferric-browser-ipc" }
+ferric-browser-storage = { path = "../ferric-browser-storage" }
+ferric-browser-engine-qt = { path = "../ferric-browser-engine-qt" }
+cxx-qt.workspace = true
+cxx-qt-lib.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+
+[lints]
+workspace = true

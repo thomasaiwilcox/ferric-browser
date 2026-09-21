@@ -1,6 +1,6 @@
 #![no_main]
 
-use browser_core::{ApplicationState, Event, Mode, PrivacyKind, SearchCase, ValidatedUrl, reduce};
+use ferric_browser_core::{ApplicationState, Event, Mode, PrivacyKind, SearchCase, ValidatedUrl, reduce};
 use libfuzzer_sys::fuzz_target;
 
 fn url(value: &str) -> ValidatedUrl {
@@ -16,14 +16,14 @@ fuzz_target!(|data: &[u8]| {
             privacy: PrivacyKind::Normal,
         },
     );
-    let profile = *state.profiles.keys().next().expect("profile created");
+    let profile = *state.profiles().keys().next().expect("profile created");
     let _ = reduce(&mut state, Event::CreateWindow { profile });
 
     for (index, byte) in data.iter().take(256).enumerate() {
-        let Some(window) = state.windows.keys().next().copied() else {
+        let Some(window) = state.windows().keys().next().copied() else {
             break;
         };
-        let Some(tab) = state.windows[&window].active_tab else {
+        let Some(tab) = state.windows()[&window].active_tab else {
             let _ = reduce(&mut state, Event::OpenTab { window });
             let _ = state.validate();
             continue;

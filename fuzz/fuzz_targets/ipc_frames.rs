@@ -2,7 +2,7 @@
 
 use std::io::Cursor;
 
-use browser_ipc::{Response, parse_request, read_frame, serialize_response, write_frame};
+use ferric_browser_ipc::{Response, parse_request, read_frame, serialize_response, write_frame};
 use libfuzzer_sys::fuzz_target;
 use serde_json::Value;
 

@@ -1,12 +1,12 @@
 # Maintainer recipe for the system-Qt Arch package.
-# Release automation must provide rustbrowser-${pkgver}.tar.gz beside this file
+# Release automation must provide ferric-browser-${pkgver}.tar.gz beside this file
 # and replace the source checksum before publishing a release.
-pkgname=rustbrowser
+pkgname=ferric-browser
 pkgver=0.1.0
 pkgrel=1
 pkgdesc='Keyboard-first Qt WebEngine browser implemented in Rust'
 arch=('x86_64')
-license=('MIT' 'Apache-2.0')
+license=('GPL-3.0-or-later')
 # The generated CXX-Qt static bridge archive is linked by Rust; GCC LTO
 # objects cannot be consumed reliably by that mixed-language final link.
 options=('!lto' 'debug')
@@ -51,21 +51,22 @@ build() {
 
 check() {
   cd "${srcdir}/${pkgname}-${pkgver}"
- LDFLAGS="${LDFLAGS:+${LDFLAGS} }-Wl,--no-as-needed" cargo test --workspace --locked
- cargo xtask package artifacts
- LDFLAGS="${LDFLAGS:+${LDFLAGS} }-Wl,--no-as-needed" cargo xtask test wayland
+  LDFLAGS="${LDFLAGS:+${LDFLAGS} }-Wl,--no-as-needed" cargo test --workspace --locked
+  cargo xtask package artifacts
+  LDFLAGS="${LDFLAGS:+${LDFLAGS} }-Wl,--no-as-needed" cargo xtask test wayland
   LDFLAGS="${LDFLAGS:+${LDFLAGS} }-Wl,--no-as-needed" cargo xtask test blocking
- desktop-file-validate packaging/io.github.rustbrowser.RustBrowser.desktop
+  desktop-file-validate packaging/io.github.ferricbrowser.FerricBrowser.desktop
 }
 
 package() {
   cd "${srcdir}/${pkgname}-${pkgver}"
-  install -Dm755 "target/release/rustbrowser" "${pkgdir}/usr/bin/rustbrowser"
-  install -Dm644 "packaging/io.github.rustbrowser.RustBrowser.desktop" \
-    "${pkgdir}/usr/share/applications/io.github.rustbrowser.RustBrowser.desktop"
-  install -Dm644 "packaging/io.github.rustbrowser.RustBrowser.svg" \
-    "${pkgdir}/usr/share/icons/hicolor/scalable/apps/io.github.rustbrowser.RustBrowser.svg"
+  install -Dm755 "target/release/ferric-browser" "${pkgdir}/usr/bin/ferric-browser"
+  install -Dm644 "packaging/io.github.ferricbrowser.FerricBrowser.desktop" \
+    "${pkgdir}/usr/share/applications/io.github.ferricbrowser.FerricBrowser.desktop"
+  install -Dm644 "packaging/io.github.ferricbrowser.FerricBrowser.svg" \
+    "${pkgdir}/usr/share/icons/hicolor/scalable/apps/io.github.ferricbrowser.FerricBrowser.svg"
   install -Dm644 README.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"
+  install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
   install -Dm644 docs/DEVELOPMENT_SPEC.md \
     "${pkgdir}/usr/share/doc/${pkgname}/DEVELOPMENT_SPEC.md"
   install -Dm644 docs/user/commands.md \

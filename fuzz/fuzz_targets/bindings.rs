@@ -1,6 +1,6 @@
 #![no_main]
 
-use browser_core::{BindingResolver, BindingTrie, CommandRegistry, Mode};
+use ferric_browser_core::{BindingResolver, BindingTrie, CommandRegistry, Mode};
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {

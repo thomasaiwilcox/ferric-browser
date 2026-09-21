@@ -1,6 +1,6 @@
 #![no_main]
 
-use browser_config::ActionTargetConfig;
+use ferric_browser_config::ActionTargetConfig;
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {

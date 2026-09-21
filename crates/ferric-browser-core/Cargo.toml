@@ -1,0 +1,11 @@
+[package]
+name = "ferric-browser-core"
+version = "0.1.0"
+description = "Qt-independent Ferric Browser state, identity, and reducer model"
+license.workspace = true
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true

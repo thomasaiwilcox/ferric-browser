@@ -1,0 +1,14 @@
+[package]
+name = "ferric-browser-runtime"
+version = "0.1.0"
+description = "Qt-independent orchestration runtime for Ferric Browser"
+license.workspace = true
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+ferric-browser-core = { path = "../ferric-browser-core" }
+
+[lints]
+workspace = true

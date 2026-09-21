@@ -1,6 +1,6 @@
 #![no_main]
 
-use browser_core::{switcher_rank, tokenize_switcher_query};
+use ferric_browser_core::{switcher_rank, tokenize_switcher_query};
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {

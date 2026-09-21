@@ -1,26 +1,26 @@
 # Desktop integration assets
 
-The stable desktop identity is io.github.rustbrowser.RustBrowser, matching
+The stable desktop identity is io.github.ferricbrowser.FerricBrowser, matching
 the Qt QML module identity used by the application. Install the desktop entry
 as:
 
-    /usr/share/applications/io.github.rustbrowser.RustBrowser.desktop
+    /usr/share/applications/io.github.ferricbrowser.FerricBrowser.desktop
 
 and the icon under the matching hicolor application-icon name:
 
-    /usr/share/icons/hicolor/scalable/apps/io.github.rustbrowser.RustBrowser.svg
+    /usr/share/icons/hicolor/scalable/apps/io.github.ferricbrowser.FerricBrowser.svg
 
 The desktop entry registers HTTP(S), HTML/XHTML, and PDF associations without
 claiming default-browser ownership. Its explicit actions open a new normal or
 private window through the typed CLI target.
 
-Default-browser ownership is an explicit user operation: `rustbrowser
-default-browser status` reports the current XDG handler and `rustbrowser
+Default-browser ownership is an explicit user operation: `ferric-browser
+default-browser status` reports the current XDG handler and `ferric-browser
 default-browser set` opts in after setting and verifying the stable desktop
 entry. Installation and first launch never change the handler.
 
 `PKGBUILD` is the primary system-Qt recipe. It expects a release source archive
-named `rustbrowser-${pkgver}.tar.gz`; release automation must replace its
+named `ferric-browser-${pkgver}.tar.gz`; release automation must replace its
 placeholder checksum before publishing. `dependencies.toml` records the Qt,
 QML, portal, PipeWire, and optional feature inputs without claiming that every
 optional service is present.

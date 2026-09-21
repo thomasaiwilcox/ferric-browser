@@ -1,18 +1,19 @@
 [workspace]
 resolver = "3"
 members = [
-    "crates/browser-core",
-    "crates/browser-config",
-    "crates/browser-ipc",
-    "crates/browser-storage",
-    "crates/browser-engine-qt",
-    "crates/rustbrowser",
+    "crates/ferric-browser-core",
+    "crates/ferric-browser-config",
+    "crates/ferric-browser-ipc",
+    "crates/ferric-browser-storage",
+    "crates/ferric-browser-engine-qt",
+    "crates/ferric-browser-runtime",
+    "crates/ferric-browser",
     "crates/xtask",
 ]
 
 [workspace.package]
 edition = "2024"
-license = "MIT OR Apache-2.0"
+license = "GPL-3.0-or-later"
 rust-version = "1.85"
 
 [workspace.dependencies]

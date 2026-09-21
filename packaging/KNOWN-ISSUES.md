@@ -8,3 +8,8 @@
   package probe, so diagnostics do not claim a patch level.
 - Source archives, checksums, signatures, and installed-file manifests are
   generated and reviewed by release automation.
+- Cross-origin frame hint collection and activation remain incomplete.
+- Screen-reader, keyboard-only dialog, and high-scaling accessibility
+  qualification is incomplete.
+- Linux on native Wayland is the only supported pre-alpha platform. X11,
+  XWayland, macOS, Windows, and non-Arch packaging are unsupported.

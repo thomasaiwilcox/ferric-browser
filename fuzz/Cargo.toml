@@ -1,6 +1,7 @@
 [package]
-name = "rustbrowser-fuzz"
+name = "ferric-browser-fuzz"
 version = "0.0.0"
+license = "GPL-3.0-or-later"
 publish = false
 edition = "2024"
 
@@ -8,11 +9,11 @@ edition = "2024"
 cargo-fuzz = true
 
 [dependencies]
-browser-config = { path = "../crates/browser-config" }
-browser-core = { path = "../crates/browser-core" }
-browser-engine-qt = { path = "../crates/browser-engine-qt" }
-browser-ipc = { path = "../crates/browser-ipc" }
-browser-storage = { path = "../crates/browser-storage" }
+ferric-browser-config = { path = "../crates/ferric-browser-config" }
+ferric-browser-core = { path = "../crates/ferric-browser-core" }
+ferric-browser-engine-qt = { path = "../crates/ferric-browser-engine-qt" }
+ferric-browser-ipc = { path = "../crates/ferric-browser-ipc" }
+ferric-browser-storage = { path = "../crates/ferric-browser-storage" }
 libfuzzer-sys = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

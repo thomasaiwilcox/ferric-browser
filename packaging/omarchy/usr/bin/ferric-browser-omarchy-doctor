@@ -1,0 +1,24 @@
+#!/bin/sh
+set -eu
+
+ok=0
+warn=0
+check() {
+  label=$1
+  shift
+  if "$@" >/dev/null 2>&1; then
+    printf 'ok: %s\n' "$label"
+    ok=$((ok + 1))
+  else
+    printf 'unavailable: %s\n' "$label"
+    warn=$((warn + 1))
+  fi
+}
+
+check 'ferric-browser executable' command -v ferric-browser
+check 'ferric-browser version' ferric-browser --version
+check 'Omarchy palette' test -r "${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/current/theme/colors.toml"
+check 'Hyprland IPC' command -v hyprctl
+check 'normal-profile tab query' ferric-browser query switcher --scope tabs --limit 1 --format json
+
+printf 'summary: %s available, %s unavailable; no files were changed\n' "$ok" "$warn"

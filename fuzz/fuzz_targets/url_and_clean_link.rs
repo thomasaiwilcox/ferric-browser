@@ -1,6 +1,6 @@
 #![no_main]
 
-use browser_core::{ValidatedUrl, builtin_rules, clean_link};
+use ferric_browser_core::{ValidatedUrl, builtin_rules, clean_link};
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {

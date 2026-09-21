@@ -1,4 +1,4 @@
-# RustBrowser fuzz corpus
+# FerricBrowser fuzz corpus
 
 These seeds exercise the parser and validation boundaries described by
 TEST-006. Keep minimized, non-sensitive reproductions here; never add real

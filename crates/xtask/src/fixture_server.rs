@@ -104,7 +104,7 @@ fn run_http_listener(
         .local_addr()
         .map_err(|error| format!("could not read fixture {scheme} address: {error}"))?;
     if announce {
-        println!("RUSTBROWSER_FIXTURE_READY {scheme}://{address}");
+        println!("FERRIC_BROWSER_FIXTURE_READY {scheme}://{address}");
         io::stdout()
             .flush()
             .map_err(|error| format!("could not flush fixture address: {error}"))?;
@@ -122,7 +122,7 @@ fn run_http_listener(
                 };
                 if exit_on_path.is_some() && request_path.is_some() {
                     println!(
-                        "RUSTBROWSER_FIXTURE_EVENT path={}",
+                        "FERRIC_BROWSER_FIXTURE_EVENT path={}",
                         request_path.as_deref().unwrap_or_default()
                     );
                     io::stdout()
@@ -169,7 +169,7 @@ fn run_https(bind: &str, once: bool) -> Result<(), String> {
     }
 
     let directory = std::env::temp_dir().join(format!(
-        "rustbrowser-fixture-{}-{}",
+        "ferric-browser-fixture-{}-{}",
         std::process::id(),
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -193,7 +193,7 @@ fn run_https(bind: &str, once: bool) -> Result<(), String> {
             "-days",
             "1",
             "-subj",
-            "/CN=RustBrowser fixture",
+            "/CN=Ferric Browser fixture",
             "-addext",
             "subjectAltName=DNS:localhost,IP:127.0.0.1",
         ])
@@ -231,7 +231,7 @@ fn run_https(bind: &str, once: bool) -> Result<(), String> {
             return Err(format!("could not start HTTPS fixture proxy: {error}"));
         }
     };
-    println!("RUSTBROWSER_FIXTURE_READY https://{address}");
+    println!("FERRIC_BROWSER_FIXTURE_READY https://{address}");
     io::stdout()
         .flush()
         .map_err(|error| format!("could not flush fixture address: {error}"))?;
@@ -367,7 +367,7 @@ fn write_response(stream: &mut TcpStream, response: &FixtureResponse) -> Result<
         .as_ref()
         .map_or(String::new(), |value| format!("Location: {value}\r\n"));
     let auth = if response.www_authenticate {
-        "WWW-Authenticate: Basic realm=\"RustBrowser fixture\"\r\n"
+        "WWW-Authenticate: Basic realm=\"Ferric Browser fixture\"\r\n"
     } else {
         ""
     };
@@ -411,8 +411,8 @@ fn route_request(request: &FixtureRequest) -> FixtureResponse {
     }
     match (request.method.as_str(), path) {
         ("GET", "/") => html_response(
-            "RustBrowser local fixture",
-            r#"<h1>RustBrowser fixture</h1>
+            "Ferric Browser local fixture",
+            r#"<h1>Ferric Browser fixture</h1>
                <a href="/redirect">redirect</a>
                <a href="/post">post form</a>
                <a href="/post-307">post 307</a>
@@ -429,9 +429,9 @@ fn route_request(request: &FixtureRequest) -> FixtureResponse {
                <a href="/cross-origin">cross origin</a>"#,
         ),
         ("GET", "/blocking") => html_response(
-            "RustBrowser blocking fixture",
-            r#"<img alt="blocked resource" src="http://127.0.0.1:18774/__rustbrowser_blocked__">
-               <script src="http://127.0.0.1:18774/__rustbrowser_excepted__"></script>"#,
+            "Ferric Browser blocking fixture",
+            r#"<img alt="blocked resource" src="http://127.0.0.1:18774/__ferric_browser_blocked__">
+               <script src="http://127.0.0.1:18774/__ferric_browser_excepted__"></script>"#,
         ),
         ("GET", "/redirect") => redirect_response(302, "/final?from=redirect"),
         ("GET", "/final") => html_response(
@@ -470,7 +470,7 @@ fn route_request(request: &FixtureRequest) -> FixtureResponse {
             status: 200,
             reason: "OK",
             content_type: "application/octet-stream",
-            body: b"RustBrowser fixture download\n".to_vec(),
+            body: b"Ferric Browser fixture download\n".to_vec(),
             location: None,
             websocket_accept: None,
             www_authenticate: false,
@@ -892,9 +892,9 @@ mod tests {
         );
         let blocking = String::from_utf8(route_request(&request("GET", "/blocking", &[])).body)
             .expect("blocking fixture HTML");
-        assert!(blocking.contains("127.0.0.1:18774/__rustbrowser_blocked__"));
-        assert!(blocking.contains("127.0.0.1:18774/__rustbrowser_excepted__"));
-        assert!(blocking.contains("__rustbrowser_excepted__"));
+        assert!(blocking.contains("127.0.0.1:18774/__ferric_browser_blocked__"));
+        assert!(blocking.contains("127.0.0.1:18774/__ferric_browser_excepted__"));
+        assert!(blocking.contains("__ferric_browser_excepted__"));
     }
 
     #[test]

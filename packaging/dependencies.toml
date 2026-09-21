@@ -1,5 +1,5 @@
 schema = 1
-package = "rustbrowser"
+package = "ferric-browser"
 support_status = "development"
 
 [qt]

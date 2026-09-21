@@ -1,33 +1,33 @@
-# Optional, community-maintained Omarchy integration resources for RustBrowser.
+# Optional, community-maintained Omarchy integration resources for Ferric Browser.
 # Build this recipe from the same release archive as the primary package.
-pkgname=rustbrowser-omarchy
+pkgname=ferric-browser-omarchy
 pkgver=0.1.0
 pkgrel=1
-pkgdesc='Community-maintained Omarchy integration resources for RustBrowser'
+pkgdesc='Community-maintained Omarchy integration resources for Ferric Browser'
 arch=('any')
-license=('MIT' 'Apache-2.0')
-depends=('rustbrowser')
+license=('GPL-3.0-or-later')
+depends=('ferric-browser')
 optdepends=('hyprland: compositor used by the versioned example rules'
             'walker: optional launcher integration')
-source=("rustbrowser-${pkgver}.tar.gz")
+source=("ferric-browser-${pkgver}.tar.gz")
 sha256sums=('SKIP')
 
 package() {
-  cd "${srcdir}/rustbrowser-${pkgver}"
-  install -Dm755 packaging/omarchy/usr/bin/rustbrowser-omarchy-doctor \
-    "${pkgdir}/usr/bin/rustbrowser-omarchy-doctor"
-  install -Dm755 packaging/omarchy/usr/bin/rustbrowser-omarchy-query-tabs \
-    "${pkgdir}/usr/bin/rustbrowser-omarchy-query-tabs"
-  install -Dm755 packaging/omarchy/usr/bin/rustbrowser-omarchy-activate-tab \
-    "${pkgdir}/usr/bin/rustbrowser-omarchy-activate-tab"
-  install -Dm644 packaging/omarchy/share/rustbrowser-omarchy/launcher-actions.toml \
-    "${pkgdir}/usr/share/rustbrowser-omarchy/launcher-actions.toml"
-  install -Dm644 packaging/omarchy/share/rustbrowser-omarchy/templates/theme.toml \
-    "${pkgdir}/usr/share/rustbrowser-omarchy/templates/theme.toml"
-  install -Dm644 packaging/omarchy/share/rustbrowser-omarchy/examples/hyprland/rustbrowser-0.51.conf \
-    "${pkgdir}/usr/share/rustbrowser-omarchy/examples/hyprland/rustbrowser-0.51.conf"
-  install -Dm644 packaging/omarchy/share/rustbrowser-omarchy/examples/hyprland/rustbrowser-0.55.lua \
-    "${pkgdir}/usr/share/rustbrowser-omarchy/examples/hyprland/rustbrowser-0.55.lua"
+  cd "${srcdir}/ferric-browser-${pkgver}"
+  install -Dm755 packaging/omarchy/usr/bin/ferric-browser-omarchy-doctor \
+    "${pkgdir}/usr/bin/ferric-browser-omarchy-doctor"
+  install -Dm755 packaging/omarchy/usr/bin/ferric-browser-omarchy-query-tabs \
+    "${pkgdir}/usr/bin/ferric-browser-omarchy-query-tabs"
+  install -Dm755 packaging/omarchy/usr/bin/ferric-browser-omarchy-activate-tab \
+    "${pkgdir}/usr/bin/ferric-browser-omarchy-activate-tab"
+  install -Dm644 packaging/omarchy/share/ferric-browser-omarchy/launcher-actions.toml \
+    "${pkgdir}/usr/share/ferric-browser-omarchy/launcher-actions.toml"
+  install -Dm644 packaging/omarchy/share/ferric-browser-omarchy/templates/theme.toml \
+    "${pkgdir}/usr/share/ferric-browser-omarchy/templates/theme.toml"
+  install -Dm644 packaging/omarchy/share/ferric-browser-omarchy/examples/hyprland/ferric-browser-0.51.conf \
+    "${pkgdir}/usr/share/ferric-browser-omarchy/examples/hyprland/ferric-browser-0.51.conf"
+  install -Dm644 packaging/omarchy/share/ferric-browser-omarchy/examples/hyprland/ferric-browser-0.55.lua \
+    "${pkgdir}/usr/share/ferric-browser-omarchy/examples/hyprland/ferric-browser-0.55.lua"
   install -Dm644 packaging/omarchy/README.md \
     "${pkgdir}/usr/share/doc/${pkgname}/README.md"
 }

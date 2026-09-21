@@ -1,6 +1,6 @@
 #![no_main]
 
-use browser_config::{SiteRule, validate_site_rule};
+use ferric_browser_config::{SiteRule, validate_site_rule};
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {

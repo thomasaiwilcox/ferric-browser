@@ -86,7 +86,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "browser-config"
+name = "ferric-browser-config"
 version = "0.1.0"
 dependencies = [
  "serde",
@@ -94,18 +94,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "browser-core"
+name = "ferric-browser-core"
 version = "0.1.0"
 
 [[package]]
-name = "browser-engine-qt"
+name = "ferric-browser-engine-qt"
 version = "0.1.0"
 dependencies = [
  "adblock",
- "browser-config",
- "browser-core",
- "browser-ipc",
- "browser-storage",
+ "ferric-browser-config",
+ "ferric-browser-core",
+ "ferric-browser-ipc",
+ "ferric-browser-storage",
  "cxx",
  "cxx-qt",
  "cxx-qt-build",
@@ -118,7 +118,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "browser-ipc"
+name = "ferric-browser-ipc"
 version = "0.1.0"
 dependencies = [
  "libc",
@@ -128,7 +128,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "browser-storage"
+name = "ferric-browser-storage"
 version = "0.1.0"
 dependencies = [
  "rusqlite",
@@ -842,14 +842,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustbrowser-fuzz"
+name = "ferric-browser-fuzz"
 version = "0.0.0"
 dependencies = [
- "browser-config",
- "browser-core",
- "browser-engine-qt",
- "browser-ipc",
- "browser-storage",
+ "ferric-browser-config",
+ "ferric-browser-core",
+ "ferric-browser-engine-qt",
+ "ferric-browser-ipc",
+ "ferric-browser-storage",
  "libfuzzer-sys",
  "serde",
  "serde_json",

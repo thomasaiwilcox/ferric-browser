@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
+  <title>Ferric Browser</title>
+  <rect x="8" y="12" width="112" height="104" rx="18" fill="#202124"/>
+  <path d="M22 45h84v52a9 9 0 0 1-9 9H31a9 9 0 0 1-9-9V45Z" fill="#8ab4f8"/>
+  <path d="M22 45h84V31a9 9 0 0 0-9-9H31a9 9 0 0 0-9 9v14Z" fill="#3c4043"/>
+  <circle cx="35" cy="34" r="4" fill="#f28b82"/>
+  <circle cx="49" cy="34" r="4" fill="#fdd663"/>
+  <circle cx="63" cy="34" r="4" fill="#81c995"/>
+  <path d="m64 58 22 14-9 3 7 16-8 3-7-16-7 6 2-26Z" fill="#202124"/>
+  <path d="M37 83c8 7 17 10 27 10" fill="none" stroke="#fff" stroke-linecap="round" stroke-width="5" opacity=".9"/>
+</svg>

@@ -1,6 +1,6 @@
 #![no_main]
 
-use browser_core::{HintCandidate, HintGeometry, HintKind, assign_labels};
+use ferric_browser_core::{HintCandidate, HintGeometry, HintKind, assign_labels};
 use libfuzzer_sys::fuzz_target;
 
 fn candidate(bytes: &[u8], index: usize) -> HintCandidate {

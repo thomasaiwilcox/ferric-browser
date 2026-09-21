@@ -1,14 +1,15 @@
 [package]
 name = "xtask"
 version = "0.1.0"
-description = "RustBrowser development and release checks"
+description = "Ferric Browser development and release checks"
+license.workspace = true
 publish = false
 edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-browser-core = { path = "../browser-core" }
-browser-config = { path = "../browser-config" }
+ferric-browser-core = { path = "../ferric-browser-core" }
+ferric-browser-config = { path = "../ferric-browser-config" }
 serde_json.workspace = true
 toml.workspace = true
 

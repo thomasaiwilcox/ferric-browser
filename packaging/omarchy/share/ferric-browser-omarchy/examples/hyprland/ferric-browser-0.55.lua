@@ -1,0 +1,15 @@
+-- FerricBrowser community example for Hyprland 0.55+.
+-- Review the installed compositor version and choose a workspace before use.
+-- Copy/include this file explicitly; the package never edits hyprland.conf.
+--
+-- Example stable app identity rule (intentionally commented out):
+-- hl.window_rule({
+--     match = { class = "io.github.ferricbrowser.FerricBrowser" },
+--     workspace = "3",
+-- })
+--
+-- Example launcher keybinding (intentionally commented out):
+-- hl.bind("SUPER + B", hl.dsp.exec_cmd("ferric-browser open --target window"))
+--
+-- FerricBrowser remains usable without this rule. Focus and workspace routing
+-- are requested through the public adapter and remain failure-tolerant.

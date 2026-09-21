@@ -17,7 +17,8 @@ the exact locked graph and installed package metadata before publication.
 | libc | bounded Unix process, filesystem, and socket integration | MIT OR Apache-2.0 crate notice |
 | CXX-Qt build/runtime crates | generated Qt bridge and Qt type support | MIT OR Apache-2.0 crate notices |
 
-RustBrowser's current workspace license declaration is `MIT OR Apache-2.0`.
+Ferric Browser's workspace license declaration is `GPL-3.0-or-later`; the
+complete application license text is shipped as `LICENSE`.
 This file is an inventory boundary, not a substitute for shipping the license
 texts required by the selected distribution and dependency packages.
 packaging/license-policy.toml is the bounded machine-readable companion:

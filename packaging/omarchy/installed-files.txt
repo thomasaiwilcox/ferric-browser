@@ -1,9 +1,9 @@
 # Optional Omarchy integration package installed-file manifest
-/usr/bin/rustbrowser-omarchy-doctor
-/usr/bin/rustbrowser-omarchy-query-tabs
-/usr/bin/rustbrowser-omarchy-activate-tab
-/usr/share/rustbrowser-omarchy/launcher-actions.toml
-/usr/share/rustbrowser-omarchy/templates/theme.toml
-/usr/share/rustbrowser-omarchy/examples/hyprland/rustbrowser-0.51.conf
-/usr/share/rustbrowser-omarchy/examples/hyprland/rustbrowser-0.55.lua
-/usr/share/doc/rustbrowser-omarchy/README.md
+/usr/bin/ferric-browser-omarchy-doctor
+/usr/bin/ferric-browser-omarchy-query-tabs
+/usr/bin/ferric-browser-omarchy-activate-tab
+/usr/share/ferric-browser-omarchy/launcher-actions.toml
+/usr/share/ferric-browser-omarchy/templates/theme.toml
+/usr/share/ferric-browser-omarchy/examples/hyprland/ferric-browser-0.51.conf
+/usr/share/ferric-browser-omarchy/examples/hyprland/ferric-browser-0.55.lua
+/usr/share/doc/ferric-browser-omarchy/README.md

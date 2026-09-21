@@ -1,4 +1,4 @@
-use browser_core::{
+use ferric_browser_core::{
     CommandRegistry, CompletionCandidate, CompletionCategory, ParseInput, complete, parse_chain,
     switcher_rank, tokenize_switcher_query,
 };
@@ -217,10 +217,10 @@ fn collect_ui_report(samples: usize) -> Result<Value, String> {
     let browser = harness
         .parent()
         .ok_or_else(|| "performance harness has no executable directory".to_owned())?
-        .join("rustbrowser");
+        .join("ferric-browser");
     if !browser.is_file() {
         return Err(format!(
-            "UI performance suite requires {}; build it with `cargo build --release -p rustbrowser -p xtask --locked`",
+            "UI performance suite requires {}; build it with `cargo build --release -p ferric-browser -p xtask --locked`",
             browser.display()
         ));
     }
@@ -260,10 +260,10 @@ fn start_ui_run(browser: &Path) -> Result<(UiRun, f64), String> {
         if let Some(status) = run
             .child
             .try_wait()
-            .map_err(|error| format!("could not inspect RustBrowser startup: {error}"))?
+            .map_err(|error| format!("could not inspect Ferric Browser startup: {error}"))?
         {
             return Err(format!(
-                "RustBrowser exited before UI measurement with {status}"
+                "Ferric Browser exited before UI measurement with {status}"
             ));
         }
         let error = match browser_json(
@@ -279,7 +279,7 @@ fn start_ui_run(browser: &Path) -> Result<(UiRun, f64), String> {
         };
         if started.elapsed() >= UI_STARTUP_TIMEOUT {
             return Err(format!(
-                "RustBrowser UI startup exceeded {} seconds: {error}",
+                "Ferric Browser UI startup exceeded {} seconds: {error}",
                 UI_STARTUP_TIMEOUT.as_secs(),
             ));
         }
@@ -327,10 +327,10 @@ fn shutdown_ui_run(browser: &Path, run: &mut UiRun) -> Result<(), String> {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
-        .map_err(|error| format!("could not request RustBrowser shutdown: {error}"))?;
+        .map_err(|error| format!("could not request Ferric Browser shutdown: {error}"))?;
     if !quit.success() {
         return Err(format!(
-            "RustBrowser rejected the UI-suite shutdown request with {quit}"
+            "Ferric Browser rejected the UI-suite shutdown request with {quit}"
         ));
     }
     let started = Instant::now();
@@ -338,14 +338,14 @@ fn shutdown_ui_run(browser: &Path, run: &mut UiRun) -> Result<(), String> {
         if run
             .child
             .try_wait()
-            .map_err(|error| format!("could not inspect RustBrowser shutdown: {error}"))?
+            .map_err(|error| format!("could not inspect Ferric Browser shutdown: {error}"))?
             .is_some()
         {
             return Ok(());
         }
         if started.elapsed() >= UI_SHUTDOWN_TIMEOUT {
             return Err(format!(
-                "RustBrowser did not exit within {} seconds",
+                "Ferric Browser did not exit within {} seconds",
                 UI_SHUTDOWN_TIMEOUT.as_secs()
             ));
         }
@@ -377,7 +377,7 @@ fn ui_report(browser: &Path, samples: usize, measurements: &UiMeasurements) -> V
             "os": std::env::consts::OS,
             "parallelism": thread::available_parallelism()
                 .map_or(1, std::num::NonZeroUsize::get),
-            "browser": browser.file_name().and_then(|name| name.to_str()).unwrap_or("rustbrowser"),
+            "browser": browser.file_name().and_then(|name| name.to_str()).unwrap_or("ferric-browser"),
         },
         "reference_environment": reference_environment(),
         "method": {
@@ -423,7 +423,7 @@ fn create_ui_basedir() -> Result<PathBuf, String> {
         .map_or(0, |duration| duration.as_nanos());
     for attempt in 0..32_u8 {
         let path = std::env::temp_dir().join(format!(
-            "rustbrowser-ui-perf-{}-{nonce}-{attempt}",
+            "ferric-browser-ui-perf-{}-{nonce}-{attempt}",
             std::process::id()
         ));
         match fs::create_dir(&path) {
@@ -465,7 +465,7 @@ fn browser_json(browser: &Path, basedir: &Path, arguments: &[&str]) -> Result<Va
         ));
     }
     serde_json::from_slice(&output.stdout)
-        .map_err(|error| format!("RustBrowser returned invalid JSON: {error}"))
+        .map_err(|error| format!("Ferric Browser returned invalid JSON: {error}"))
 }
 
 fn process_cpu_ticks(pid: u32) -> Result<u64, String> {
