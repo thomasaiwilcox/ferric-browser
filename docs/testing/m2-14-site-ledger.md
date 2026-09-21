@@ -6,8 +6,8 @@ Status: in-progress
 ## Task card
 
 - Requirements: DIAG-004 and SITE-001.
-- Files: `crates/browser-engine-qt/src/lib.rs` and
-  `crates/browser-storage/src/permissions.rs`.
+- Files: `crates/ferric-browser-engine-qt/src/lib.rs` and
+  `crates/ferric-browser-storage/src/permissions.rs`.
 - Observable result: read-only `site.status` returns a bounded, privacy-safe
   ledger for the active tab and document, and the interactive `site-status`
   command opens the same snapshot in native browser chrome.
@@ -42,9 +42,9 @@ Status: in-progress
 - Compatibility facts use the compiled reviewed registry and expose only
   bounded, scoped active IDs; the current empty registry cannot invent a
   workaround for an unqualified site.
-- `cargo test -p browser-storage -p browser-engine-qt --locked --offline`
+- `cargo test -p ferric-browser-storage -p ferric-browser-engine-qt --locked --offline`
   passes, including origin-redaction and IPv6 normalization assertions.
-- A fresh `QT_QPA_PLATFORM=wayland timeout 8s target/debug/rustbrowser
+- A fresh `QT_QPA_PLATFORM=wayland timeout 8s target/debug/ferric-browser
   --temp-basedir` startup reached the timeout without QML/runtime errors,
   confirming the native panel resource loads on the Wayland path.
 - The registered `site-doctor blocking-bypass` experiment adds a current-site

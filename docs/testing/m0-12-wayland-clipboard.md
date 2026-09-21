@@ -33,10 +33,10 @@ tab by default.
 ## Verification
 
 ```text
-cargo test -p browser-engine-qt --locked --offline
+cargo test -p ferric-browser-engine-qt --locked --offline
 cargo fmt --all -- --check
 cargo xtask check
-cargo build -p rustbrowser --locked --offline
+cargo build -p ferric-browser --locked --offline
 ```
 
 Automated coverage includes typed primary-selection command encoding, the

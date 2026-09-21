@@ -24,6 +24,6 @@ context has no live owner.
 
 ## Verification
 
-Commands: `cargo fmt --all -- --check`; `cargo test -p browser-engine-qt
+Commands: `cargo fmt --all -- --check`; `cargo test -p ferric-browser-engine-qt
 --locked`; `cargo xtask check`; and
-`QT_QPA_PLATFORM=wayland timeout 10s target/debug/rustbrowser --temp-basedir`.
+`QT_QPA_PLATFORM=wayland timeout 10s target/debug/ferric-browser --temp-basedir`.

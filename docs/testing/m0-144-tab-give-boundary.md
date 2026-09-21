@@ -12,9 +12,9 @@ cases where live transfer cannot be completed.
 Verification:
 
 - `cargo fmt --all -- --check`
-- `cargo test -p browser-core --locked --offline` (57 passed)
-- `cargo test -p rustbrowser --locked --offline` (38 passed)
-- `cargo test -p browser-engine-qt --locked --offline` (109 passed)
+- `cargo test -p ferric-browser-core --locked --offline` (57 passed)
+- `cargo test -p ferric-browser --locked --offline` (38 passed)
+- `cargo test -p ferric-browser-engine-qt --locked --offline` (109 passed)
 - `cargo xtask check --locked`
 - native Wayland startup smoke with `--temp-basedir`
 

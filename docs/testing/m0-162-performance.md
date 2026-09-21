@@ -20,7 +20,7 @@ file.
 Example:
 
 ```text
-cargo run --release -p xtask -- perf --samples 30 --output /tmp/rustbrowser-perf.json
+cargo run --release -p xtask -- perf --samples 30 --output /tmp/ferric-browser-perf.json
 cargo run --release -p xtask -- perf --suite ui --samples 30
 ```
 
@@ -83,7 +83,7 @@ cargo test -p xtask --locked --offline
 cargo clippy -p xtask --all-targets --locked --offline -- -D warnings
 cargo build --release -p xtask --locked --offline
 cargo run --release -p xtask -- perf --samples 30
-cargo run --release -p xtask -- perf --samples 30 --output /tmp/rustbrowser-perf.json
-cargo build --release -p rustbrowser --locked
+cargo run --release -p xtask -- perf --samples 30 --output /tmp/ferric-browser-perf.json
+cargo build --release -p ferric-browser --locked
 cargo run --release -p xtask -- perf --suite ui --samples 30
 ```

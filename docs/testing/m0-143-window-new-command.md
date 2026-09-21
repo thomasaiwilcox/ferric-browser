@@ -18,8 +18,8 @@ a blank secondary Wayland toplevel with the requested profile and privacy mode.
 Verification:
 
 - `cargo fmt --all -- --check`
-- `cargo test -p browser-core --locked --offline` (57 passed)
-- `cargo test -p rustbrowser --locked --offline` (37 passed)
-- `cargo test -p browser-engine-qt --locked --offline` (108 passed)
+- `cargo test -p ferric-browser-core --locked --offline` (57 passed)
+- `cargo test -p ferric-browser --locked --offline` (37 passed)
+- `cargo test -p ferric-browser-engine-qt --locked --offline` (108 passed)
 - `cargo xtask check --locked`
 - native Wayland startup smoke with `--temp-basedir`

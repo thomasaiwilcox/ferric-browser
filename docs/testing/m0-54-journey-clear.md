@@ -8,7 +8,7 @@ journey committed timestamp and safe URL; bookmarks do not exempt nodes.
 Evidence:
 
 ```text
-cargo test -p browser-storage --locked
+cargo test -p ferric-browser-storage --locked
 ```
 
 The storage regression test verifies that clearing one origin removes its

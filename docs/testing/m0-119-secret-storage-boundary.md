@@ -6,7 +6,7 @@ Status: in-progress
 ## Task card
 
 - Requirement: SEC-005.
-- Files: `crates/browser-engine-qt/src/diagnostics.rs`.
+- Files: `crates/ferric-browser-engine-qt/src/diagnostics.rs`.
 - Observable result: diagnostics state that V1 has no built-in password vault,
   no configured external password-manager adapter, no persistent secret fields,
   and no credential-handler capability for userscripts.
@@ -21,9 +21,9 @@ checks.
 ## Verification
 
 ```text
-cargo test -p browser-engine-qt diagnostics --locked --offline
+cargo test -p ferric-browser-engine-qt diagnostics --locked --offline
 cargo xtask check --locked
-rustbrowser diagnostics --format json
+ferric-browser diagnostics --format json
 ```
 
 The diagnostic object is a policy boundary, not a claim that an external

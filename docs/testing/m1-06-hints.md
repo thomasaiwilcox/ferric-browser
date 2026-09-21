@@ -7,9 +7,9 @@ Status: in-progress
 
 - Requirements: HINT-001, HINT-002, HINT-003, the link/input portion of
   HINT-004, and the yank portion of HINT-005.
-- Files: `crates/browser-core/src/hints.rs`, `crates/browser-core/src/id.rs`,
-  `crates/browser-engine-qt/src/lib.rs`,
-  `crates/browser-engine-qt/qml/Main.qml`, and `docs/requirements.csv`.
+- Files: `crates/ferric-browser-core/src/hints.rs`, `crates/ferric-browser-core/src/id.rs`,
+  `crates/ferric-browser-engine-qt/src/lib.rs`,
+  `crates/ferric-browser-engine-qt/qml/Main.qml`, and `docs/requirements.csv`.
 - Observable result: `f` maps to qutebrowser's baseline `hint all` behavior.
   The Qt adapter asks the current WebEngineView for a bounded
   visible-interactive-element snapshot, including links, images, summaries,
@@ -30,8 +30,8 @@ Status: in-progress
   `hint --target userscript --script NAME` validates the selected link, passes
   its sanitized URL as the manifest-declared `hint_url` context, and starts
   the bounded userscript operation.
-- Evidence: `cargo test -p browser-core --locked` (42 tests),
-  `cargo test -p browser-engine-qt --locked` (7 tests), workspace clippy with
+- Evidence: `cargo test -p ferric-browser-core --locked` (42 tests),
+  `cargo test -p ferric-browser-engine-qt --locked` (7 tests), workspace clippy with
   warnings denied, and a live offscreen smoke using
   `docs/testing/fixtures/hints.html`: IPC `command.execute` with `hint` was
   accepted and `windows.query` reported `mode: hint`, proving the DOM collector

@@ -49,7 +49,7 @@ cannot clear `https://example.test.evil`.
 
 - `cargo test --workspace --locked --offline`
 - `cargo clippy --workspace --all-targets --locked --offline -- -D warnings`
-- `cargo build -p rustbrowser --locked --offline`
+- `cargo build -p ferric-browser --locked --offline`
 - Live owner smoke: quickmark and bookmark creation were forwarded to the
   running owner, `switcher.query --scope marks` returned the bookmark, and an
   unconfirmed `history-clear` was rejected.

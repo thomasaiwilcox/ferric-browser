@@ -22,7 +22,7 @@ still under implementation.
 
 ```text
 cargo xtask check
-QT_QPA_PLATFORM=wayland timeout 10s target/debug/rustbrowser --temp-basedir
+QT_QPA_PLATFORM=wayland timeout 10s target/debug/ferric-browser --temp-basedir
 ```
 
 The runtime smoke is expected to end with timeout status 124 after staying

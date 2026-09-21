@@ -1,6 +1,6 @@
 # Support and issue triage
 
-RustBrowser reports must be reproducible and privacy-safe. Do not attach a
+Ferric Browser reports must be reproducible and privacy-safe. Do not attach a
 profile directory, cookies, authentication headers, browsing-history database,
 clipboard contents, unredacted logs, or page dumps.
 
@@ -22,7 +22,7 @@ Use exactly one primary category and add secondary labels only when justified:
 - `core`: command parsing, reducer state, storage-independent behavior;
 - `qt-adapter`: Qt/QML bridge, lifecycle, focus, or browser-owned UI;
 - `upstream-engine`: QtWebEngine/Chromium behavior reproducible outside the
-  RustBrowser adapter;
+  Ferric Browser adapter;
 - `desktop-portal`: Wayland, compositor, portal, PipeWire, or desktop launch;
 - `graphics-driver`: GPU, rendering, or compositor-driver failures;
 - `packaging`: package recipe, installed files, dependencies, or launchers;

@@ -11,8 +11,8 @@ URLs.
 Evidence:
 
 * `cargo xtask check`
-* `cargo build -p rustbrowser --locked`
-* `QT_QPA_PLATFORM=wayland timeout 10s target/debug/rustbrowser --temp-basedir`
+* `cargo build -p ferric-browser --locked`
+* `QT_QPA_PLATFORM=wayland timeout 10s target/debug/ferric-browser --temp-basedir`
 
 The Wayland check is a bounded startup smoke; timeout exit is expected while
 the GUI remains open. Full interactive screenshot and assistive-technology

@@ -27,6 +27,6 @@ without creating storage or a window.
 ## Verification
 
 - `cargo fmt --all -- --check`
-- `cargo test -p browser-core --locked --offline` — 57 tests
-- `cargo test -p rustbrowser --locked --offline` — 34 tests
-- `cargo test -p browser-engine-qt --locked --offline` — 105 tests
+- `cargo test -p ferric-browser-core --locked --offline` — 57 tests
+- `cargo test -p ferric-browser --locked --offline` — 34 tests
+- `cargo test -p ferric-browser-engine-qt --locked --offline` — 105 tests

@@ -29,9 +29,9 @@ neighborhoods and safe reopen actions are separate UI/action slices.
 ## Evidence
 
 ```text
-cargo test -p browser-core --locked
-cargo test -p browser-storage --locked
-cargo test -p browser-engine-qt --locked
+cargo test -p ferric-browser-core --locked
+cargo test -p ferric-browser-storage --locked
+cargo test -p ferric-browser-engine-qt --locked
 ```
 
 The storage tests cover typed edge linking, newest-first node queries, clear,

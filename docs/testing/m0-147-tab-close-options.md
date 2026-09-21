@@ -18,9 +18,9 @@ reports how many tabs were actually closed.
 Evidence:
 
 - `cargo fmt --all -- --check`
-- `cargo test -p browser-core --locked --offline` — 58 passed
-- `cargo test -p rustbrowser --locked --offline` — 41 passed
-- `cargo test -p browser-engine-qt --locked --offline` — 112 passed
+- `cargo test -p ferric-browser-core --locked --offline` — 58 passed
+- `cargo test -p ferric-browser --locked --offline` — 41 passed
+- `cargo test -p ferric-browser-engine-qt --locked --offline` — 112 passed
 - `cargo xtask check --locked`
 - Wayland startup smoke with `--temp-basedir` — expected timeout, no error,
   panic, failed, or assert diagnostics

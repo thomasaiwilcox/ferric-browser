@@ -21,7 +21,7 @@ ownership is released before the profile store and profile lock are torn down.
 
 Evidence:
 
-- `cargo test -p browser-storage -p browser-engine-qt --locked --offline`
+- `cargo test -p ferric-browser-storage -p ferric-browser-engine-qt --locked --offline`
   (64 storage tests, 167 Qt-engine tests)
 - `cargo fmt --all`
 - Storage worker unit tests verify off-thread reads, session-name enumeration,

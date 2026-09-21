@@ -8,7 +8,7 @@
 
 ## Decision
 
-RustBrowser keeps permission authority in the browser-owned Rust/Qt adapter.
+Ferric Browser keeps permission authority in the browser-owned Rust/Qt adapter.
 Engine requests enter a per-window bounded prompt queue, are grouped by exact
 origin and capability, and are cancelled on navigation, tab/window teardown,
 or expiry. Durable rules and session grants use the profile/session identity
@@ -26,9 +26,9 @@ This preserves Chromium and compositor security boundaries while giving the
 user an inspectable prompt lifecycle. Real portal consent, device switching,
 and Google Meet qualification remain release evidence gates.
 
-- `crates/browser-engine-qt/src/lib.rs`
-- `crates/browser-engine-qt/qml/Main.qml`
-- `crates/browser-storage/src/permissions.rs`
+- `crates/ferric-browser-engine-qt/src/lib.rs`
+- `crates/ferric-browser-engine-qt/qml/Main.qml`
+- `crates/ferric-browser-storage/src/permissions.rs`
 - `docs/testing/m3-01-permissions.md`
 - `docs/testing/m0-15-portal-probes.md`
 - `docs/testing/m0-36-media-capture.md`

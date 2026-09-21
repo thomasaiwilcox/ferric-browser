@@ -6,10 +6,10 @@ Status: in-progress
 ## Task cards
 
 - Requirement: the direct-process portion of SCRIPT-001.
-- Files: `crates/browser-core/src/command.rs`,
-  `crates/browser-engine-qt/src/lib.rs`,
-  `crates/browser-engine-qt/qml/Main.qml`, and
-  `crates/rustbrowser/src/main.rs`.
+- Files: `crates/ferric-browser-core/src/command.rs`,
+  `crates/ferric-browser-engine-qt/src/lib.rs`,
+  `crates/ferric-browser-engine-qt/qml/Main.qml`, and
+  `crates/ferric-browser/src/main.rs`.
 - Observable result: `spawn -- PROGRAM [ARG...]` accepts a direct argv vector
   through the command, CLI, and typed IPC paths. `{url}` and `{title}` resolve
   as data, `{selection}` requests the current target-aware document selection
@@ -35,7 +35,7 @@ executables/page sources. Relative executable and page-source assets are copied
 under a script-specific directory with private permissions; installation is
 create-only, and the generated action registry is immediately queryable.
 Manifest installation, inventory reads, and enable-state replacements are
-performed by the bounded `rustbrowser-userscript-manager` worker; QML receives
+performed by the bounded `ferric-browser-userscript-manager` worker; QML receives
 only asynchronous completion through the existing poll handoff.
 The same worker owns confirmation-gated removal, staging the manifest before
 deleting only its private copied assets and restoring it if cleanup fails.
@@ -93,10 +93,10 @@ that requires a hint capture.
 
 ## Evidence
 
-- `cargo test -p browser-core -p browser-engine-qt -p rustbrowser --locked
+- `cargo test -p ferric-browser-core -p ferric-browser-engine-qt -p ferric-browser --locked
   --offline` passes, including typed argv and CLI forwarding tests.
 - `cargo clippy --workspace --all-targets --locked --offline -- -D warnings`
-  and `cargo build -p rustbrowser --locked --offline` pass.
+  and `cargo build -p ferric-browser --locked --offline` pass.
 - On the active Wayland backend, a direct `/usr/bin/touch` spawn created an
   isolated marker file. A second spawn explicitly selected `/usr/bin/sh` and
   wrote the complete selected-text fixture value received through `{selection}`

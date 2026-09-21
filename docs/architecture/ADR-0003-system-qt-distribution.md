@@ -5,7 +5,7 @@ Date: 2026-09-18
 
 ## Decision
 
-RustBrowser uses the distribution's dynamically linked Qt 6/WebEngine stack as
+Ferric Browser uses the distribution's dynamically linked Qt 6/WebEngine stack as
 the V1 package baseline. The Arch recipe declares the supported Qt family and
 minimum version, installs the browser executable and desktop resources in the
 standard filesystem layout, and keeps portals, PipeWire, dictionaries, and

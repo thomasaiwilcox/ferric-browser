@@ -9,7 +9,7 @@
 ## Decision
 
 Hyprland and Omarchy integration remains an optional adapter outside
-`browser-core`. The adapter uses bounded public compositor IPC/JSON facts and
+`ferric-browser-core`. The adapter uses bounded public compositor IPC/JSON facts and
 the browser's exact window owner token to identify, focus, and request
 workspace intent. Context workspace/accent metadata is presentation intent;
 denial, absence, or version drift leaves the browser usable and is surfaced as
@@ -25,8 +25,8 @@ Exact activation can be qualified on Hyprland without making Sway, Plasma, or
 GNOME claim the same integration promise. Live multi-window routing,
 workspace placement, and versioned Omarchy layouts remain platform evidence.
 
-- `crates/browser-engine-qt/src/hyprland.rs`
-- `crates/browser-engine-qt/src/lib.rs`
+- `crates/ferric-browser-engine-qt/src/hyprland.rs`
+- `crates/ferric-browser-engine-qt/src/lib.rs`
 - `docs/architecture/capabilities.md`
 - `docs/testing/m0-44-context-visibility-workspace.md`
 - `docs/testing/m4-03-hyprland.md`

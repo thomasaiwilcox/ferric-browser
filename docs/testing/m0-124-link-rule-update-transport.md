@@ -6,12 +6,12 @@ Status: in-progress
 ## Task card
 
 - Requirement: LINK-005; transport portion of NET-002.
-- Files: `crates/browser-config/src/lib.rs`,
-  `crates/browser-core/src/command.rs`,
-  `crates/browser-engine-qt/src/link_rule_updater.h`,
-  `crates/browser-engine-qt/src/link_rule_updater.cpp`,
-  `crates/browser-engine-qt/src/lib.rs`, and
-  `crates/browser-engine-qt/qml/Main.qml`.
+- Files: `crates/ferric-browser-config/src/lib.rs`,
+  `crates/ferric-browser-core/src/command.rs`,
+  `crates/ferric-browser-engine-qt/src/link_rule_updater.h`,
+  `crates/ferric-browser-engine-qt/src/link_rule_updater.cpp`,
+  `crates/ferric-browser-engine-qt/src/lib.rs`, and
+  `crates/ferric-browser-engine-qt/qml/Main.qml`.
 - Observable result: a normal profile can explicitly run
   `link-cleaning-update` when `[links.cleaning]` contains a paired HTTPS
   `update_source` and lowercase `update_sha256` pin. The fetch is bounded to
@@ -28,9 +28,9 @@ and failures retain the last accepted or compiled-reviewed rules.
 ## Verification
 
 ```text
-cargo test -p browser-config --locked --offline
-cargo test -p browser-engine-qt --locked --offline
+cargo test -p ferric-browser-config --locked --offline
+cargo test -p ferric-browser-engine-qt --locked --offline
 cargo xtask check --locked
-target/debug/rustbrowser diagnostics --format json
-QT_QPA_PLATFORM=wayland timeout 8s target/debug/rustbrowser --temp-basedir
+target/debug/ferric-browser diagnostics --format json
+QT_QPA_PLATFORM=wayland timeout 8s target/debug/ferric-browser --temp-basedir
 ```

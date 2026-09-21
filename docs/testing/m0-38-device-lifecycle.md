@@ -6,8 +6,8 @@ Status: in-progress
 ## Task card
 
 - Requirement: MEDIA-003.
-- Files: `crates/browser-engine-qt/qml/Main.qml` and
-  `crates/browser-engine-qt/src/lib.rs`.
+- Files: `crates/ferric-browser-engine-qt/qml/Main.qml` and
+  `crates/ferric-browser-engine-qt/src/lib.rs`.
 - Observable result: exact-origin `permission-reset` now cancels matching
   queued requests and reloads every registered matching primary/secondary view,
   together with tracked active screen/window capture views. A failed request
@@ -23,10 +23,10 @@ the owning view's reload boundary and reports that boundary explicitly.
 
 ```text
 cargo fmt --all -- --check
-cargo test -p browser-engine-qt --locked
+cargo test -p ferric-browser-engine-qt --locked
 cargo xtask check
-cargo build -p rustbrowser --locked
-QT_QPA_PLATFORM=wayland timeout 10s target/debug/rustbrowser --temp-basedir
+cargo build -p ferric-browser --locked
+QT_QPA_PLATFORM=wayland timeout 10s target/debug/ferric-browser --temp-basedir
 ```
 
 Live unplug/replug, device switching, portal restart, call termination, and

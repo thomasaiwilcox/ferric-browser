@@ -28,7 +28,7 @@ family.
 Evidence:
 
 - `cargo fmt --all -- --check`
-- `cargo test -p browser-engine-qt --locked --offline` (167 tests)
+- `cargo test -p ferric-browser-engine-qt --locked --offline` (167 tests)
 - `cargo xtask check --locked` (all workspace test suites pass)
 
 The next storage slices cover worker-backed writes, permission queries, and

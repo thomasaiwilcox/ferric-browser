@@ -10,14 +10,14 @@ and a fresh `dbus-run-session`:
 cargo xtask test wayland
 ```
 
-The harness waits for the nested compositor socket, keeps RustBrowser alive for
+The harness waits for the nested compositor socket, keeps Ferric Browser alive for
 the bounded 10-second smoke window, reports any early exit with captured output,
 and cleans up both child processes and the private runtime directory.
 
 GUI startup now checks Qt's selected QPA after `QGuiApplication` creation. The
 `xcb` and `xwayland` backends fail closed with an explicit unsupported-platform
 error; `offscreen` remains available for the headless adapter smoke. An
-explicit `RUSTBROWSER_ALLOW_NON_WAYLAND=1` override is accepted only for
+explicit `FERRIC_BROWSER_ALLOW_NON_WAYLAND=1` override is accepted only for
 development diagnostics and emits a warning; it never qualifies native
 Wayland behavior.
 
@@ -39,7 +39,7 @@ On the current machine (`2026-09-20`), `weston` is available at
 cargo xtask test wayland
 ```
 
-completed successfully. The run built RustBrowser, launched the repository's
+completed successfully. The run built Ferric Browser, launched the repository's
 bounded loopback fixture server, opened its `/editable` page, then launched a
 disposable headless Weston compositor with a private runtime directory and
 D-Bus session. The fixture is one-request bounded, and the harness requires
@@ -57,7 +57,7 @@ therefore qualifies native Wayland startup, fixture-backed launch, and clean
 process teardown only; interactive input, focus, and portal interaction remain
 open. A fresh direct-session run on
 2026-09-19 used the live Hyprland session with
-`QT_QPA_PLATFORM=wayland timeout 10s target/debug/rustbrowser --temp-basedir`;
+`QT_QPA_PLATFORM=wayland timeout 10s target/debug/ferric-browser --temp-basedir`;
 it reached the timeout (`124`) with no startup or QML error output.
 
 On 2026-09-20, the direct-session smoke also exposed and then verified a

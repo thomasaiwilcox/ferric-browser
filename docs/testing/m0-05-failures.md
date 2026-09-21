@@ -35,7 +35,7 @@ failure surface; the renderer failure count remains bounded state on the view.
 ```text
 cargo xtask check
 cargo fmt --all -- --check
-QT_QPA_PLATFORM=wayland timeout 10s target/debug/rustbrowser --temp-basedir
+QT_QPA_PLATFORM=wayland timeout 10s target/debug/ferric-browser --temp-basedir
 ```
 
 The workspace test suite, reducer regression, generated Qt/QML build, and

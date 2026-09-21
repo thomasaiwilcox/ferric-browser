@@ -4,11 +4,11 @@ Status: in progress, implementation slice recorded 2026-09-20.
 
 ## Scope
 
-`packaging/PKGBUILD` is a system-Qt Arch recipe for the RustBrowser release
+`packaging/PKGBUILD` is a system-Qt Arch recipe for the Ferric Browser release
 archive. It builds with the locked Cargo dependency graph, runs the workspace
 tests and desktop-file validation, then installs:
 
-- `/usr/bin/rustbrowser`;
+- `/usr/bin/ferric-browser`;
 - the stable desktop entry under `/usr/share/applications`;
 - the scalable hicolor icon; and
 - the README, specification, generated user documentation, dependency and
@@ -38,7 +38,7 @@ without shell evaluation or directory creation.
 (cargo xtask package arch)
 (cargo xtask package artifacts)
 (cd packaging && makepkg --printsrcinfo -p PKGBUILD)
-desktop-file-validate packaging/io.github.rustbrowser.RustBrowser.desktop
+desktop-file-validate packaging/io.github.ferricbrowser.FerricBrowser.desktop
 ```
 
 The `xtask` package check also verifies the locked release build command and
@@ -63,7 +63,7 @@ third issue where `package()` referenced `SUPPORT.md` at the repository root
 even though the checked-in file is `docs/SUPPORT.md`. The recipe now installs
 the correct path. On 2026-09-20, a fakeroot repackage using the existing
 release binary passed package issue checks and produced
-`rustbrowser-0.1.0-1-x86_64.pkg.tar.zst` plus its debug package. Inspection
+`ferric-browser-0.1.0-1-x86_64.pkg.tar.zst` plus its debug package. Inspection
 confirmed the executable, desktop entry, icon, and all declared documentation
 files, including `SUPPORT.md`. Neither artifact was installed or published.
 Weston was present as a check dependency and was not the cause of the earlier
@@ -71,7 +71,7 @@ failures.
 
 The same corrected package was unpacked into an isolated temporary root on
 2026-09-20, with the build tree absent from the runtime path. The installed
-`usr/bin/rustbrowser`, desktop entry, scalable icon, and documentation manifest
+`usr/bin/ferric-browser`, desktop entry, scalable icon, and documentation manifest
 were present; the installed binary's `--help` and JSON diagnostics commands
 also completed successfully. This validates the package layout and CLI/runtime
 resource boundary without installing into the host system. Dependency,
@@ -81,7 +81,7 @@ gates.
 The release profile now enables DWARF level 2 and the Arch recipe enables its
 `debug` option. A 2026-09-20 optimized release rebuild contained `.debug_info`,
 `.debug_line`, and `.debug_str`; a subsequent fakeroot package assembly
-produced a 63 MiB split debug package whose `usr/bin/rustbrowser.debug`
+produced a 63 MiB split debug package whose `usr/bin/ferric-browser.debug`
 contains the same DWARF sections. This satisfies the available packaging
 debug-symbol requirement while keeping the installed runtime package stripped.
 
@@ -89,7 +89,7 @@ On 2026-09-20, two locally built revisions (`pkgrel` 1 and 2) were installed
 and upgraded inside a mapped-root temporary pacman database. The database was
 seeded from a read-only copy of the host's installed-package records, so normal
 dependency resolution ran without touching the host database or filesystem.
-Pacman completed both transactions and reported `rustbrowser 0.1.0-2`; the
+Pacman completed both transactions and reported `ferric-browser 0.1.0-2`; the
 executable, desktop entry, and `SUPPORT.md` were still present afterward. This
 is isolated package transaction evidence, not a substitute for a clean Arch
 image installation from repository metadata.

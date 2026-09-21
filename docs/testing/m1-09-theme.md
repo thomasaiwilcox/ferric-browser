@@ -6,8 +6,8 @@ Status: in-progress
 ## Task card
 
 - Requirement: THEME-001.
-- Files: `crates/browser-config/src/lib.rs` and
-  `crates/browser-engine-qt/qml/Main.qml`.
+- Files: `crates/ferric-browser-config/src/lib.rs` and
+  `crates/ferric-browser-engine-qt/qml/Main.qml`.
 - Observable result: browser-owned chrome consumes semantic theme tokens with
   deterministic fallbacks; page content is not styled by the browser theme.
 
@@ -25,7 +25,7 @@ Status: in-progress
 - Browser-owned panels, overlays, status bars, borders, selections, and
   decision indicators use semantic bindings. No page CSS or document content
   is modified by theme loading.
-- `cargo test -p browser-config -p browser-engine-qt --locked`, strict
+- `cargo test -p ferric-browser-config -p ferric-browser-engine-qt --locked`, strict
   workspace Clippy, `cargo xtask check`, and native Wayland startup smoke pass.
 
 ## Limitations

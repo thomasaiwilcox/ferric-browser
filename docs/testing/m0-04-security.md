@@ -6,9 +6,9 @@ Status: in-progress
 ## Task card
 
 - Requirement: ENGINE-004.
-- Files: `crates/rustbrowser/src/main.rs`,
-  `crates/browser-engine-qt/src/diagnostics.rs`, and
-  `crates/browser-engine-qt/qml/Main.qml`.
+- Files: `crates/ferric-browser/src/main.rs`,
+  `crates/ferric-browser-engine-qt/src/diagnostics.rs`, and
+  `crates/ferric-browser-engine-qt/qml/Main.qml`.
 - Observable result: production GUI startup refuses UID 0 and refuses known
   Chromium-disabling flags from `QTWEBENGINE_CHROMIUM_FLAGS` or
   `QTWEBENGINE_FLAGS`: `--no-sandbox`, `--single-process`, and

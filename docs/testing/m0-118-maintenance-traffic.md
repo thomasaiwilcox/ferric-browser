@@ -17,10 +17,10 @@ URLs, accounts, history, or request contents.
 
 Evidence:
 
-- `cargo test -p browser-config remote_suggestions --locked --offline`
-- `cargo test -p browser-engine-qt maintenance --locked --offline`
-- `cargo test -p browser-engine-qt diagnostics --locked --offline`
+- `cargo test -p ferric-browser-config remote_suggestions --locked --offline`
+- `cargo test -p ferric-browser-engine-qt maintenance --locked --offline`
+- `cargo test -p ferric-browser-engine-qt diagnostics --locked --offline`
 - `cargo xtask check --locked`
-- `cargo build -p rustbrowser --locked --offline`
-- `QT_QPA_PLATFORM=wayland timeout 8s target/debug/rustbrowser --temp-basedir`
+- `cargo build -p ferric-browser --locked --offline`
+- `QT_QPA_PLATFORM=wayland timeout 8s target/debug/ferric-browser --temp-basedir`
   (expected timeout, no lingering process)

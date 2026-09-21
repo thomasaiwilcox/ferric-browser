@@ -7,7 +7,7 @@ Status: in-progress
 
 - Requirement: MEDIA-004.
 - Files: `packaging/media-capabilities.toml` and
-  `crates/browser-engine-qt/src/diagnostics.rs`.
+  `crates/ferric-browser-engine-qt/src/diagnostics.rs`.
 - Observable result: the diagnostics report includes a versioned media
   manifest with candidate codec MIME strings, package-input provenance, DRM
   entries, and an explicit local-playback qualification status.
@@ -22,9 +22,9 @@ or bundled by this project.
 
 ```text
 cargo fmt --all -- --check
-cargo test -p browser-engine-qt --locked
+cargo test -p ferric-browser-engine-qt --locked
 cargo xtask check
-rustbrowser diagnostics --format json
+ferric-browser diagnostics --format json
 ```
 
 The manifest/report boundary is automated. Actual H.264/VP8/VP9/AV1/Opus

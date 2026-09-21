@@ -6,9 +6,9 @@ Status: in-progress
 ## Task card
 
 - Requirement: MEDIA-005.
-- Files: `crates/browser-engine-qt/qml/Main.qml`,
-  `crates/browser-engine-qt/src/lib.rs`, and the scoped
-  `crates/browser-engine-qt/src/mpris_controller.{h,cpp}` bridge.
+- Files: `crates/ferric-browser-engine-qt/qml/Main.qml`,
+  `crates/ferric-browser-engine-qt/src/lib.rs`, and the scoped
+  `crates/ferric-browser-engine-qt/src/mpris_controller.{h,cpp}` bridge.
 - Observable result: when `desktop.media_keys` is enabled, the supported
   hardware play/pause-toggle key is forwarded to the active WebEngine view's
   `ToggleMediaPlayPause` action. When a session D-Bus is available, one
@@ -25,11 +25,11 @@ desktop-client quit operation or claim seek/track-list support.
 
 ```text
 cargo fmt --all -- --check
-cargo test -p browser-engine-qt --locked
+cargo test -p ferric-browser-engine-qt --locked
 cargo xtask check
-cargo build -p rustbrowser --locked
+cargo build -p ferric-browser --locked
 cargo xtask test mpris
-QT_QPA_PLATFORM=wayland timeout 10s target/debug/rustbrowser --temp-basedir
+QT_QPA_PLATFORM=wayland timeout 10s target/debug/ferric-browser --temp-basedir
 ```
 
 Session-bus availability, desktop-player discovery, hardware key delivery, and
@@ -47,9 +47,9 @@ remains intentionally empty and is covered by the separate privacy policy path.
 
 ## Session-bus smoke
 
-With a rebuilt `target/debug/rustbrowser` running in the current desktop
+With a rebuilt `target/debug/ferric-browser` running in the current desktop
 session, `gdbus introspect` showed one per-process
-`org.mpris.MediaPlayer2.rustbrowser.instance<PID>` service at
+`org.mpris.MediaPlayer2.ferric-browser.instance<PID>` service at
 `/org/mpris/MediaPlayer2`. The player interface exposed `PlayPause`, metadata,
 and the bounded capability properties while omitting next/previous controls.
 A live `gdbus ... org.mpris.MediaPlayer2.Player.PlayPause` call returned

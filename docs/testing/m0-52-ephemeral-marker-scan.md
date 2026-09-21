@@ -7,7 +7,7 @@ bounded read-only marker scan for release verification and diagnostics.
 
 ## Evidence
 
-- `browser_storage::transient_marker_scan` checks browser-owned config, data,
+- `ferric_browser_storage::transient_marker_scan` checks browser-owned config, data,
   state, cache, runtime, and managed temporary roots by entry name only.
 - The scan reports clean, marker matches, or incomplete status without
   exporting paths, file contents, URLs, or credentials.

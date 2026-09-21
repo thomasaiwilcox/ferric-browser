@@ -7,12 +7,12 @@ Status: in-progress
 
 - Requirements: HYPR-001, HYPR-002, and the workspace-routing portion of
   HYPR-003.
-- Files: `crates/browser-engine-qt/src/hyprland.rs`,
-  `crates/browser-engine-qt/src/lib.rs`, and
-  `crates/browser-engine-qt/qml/Main.qml`.
+- Files: `crates/ferric-browser-engine-qt/src/hyprland.rs`,
+  `crates/ferric-browser-engine-qt/src/lib.rs`, and
+  `crates/ferric-browser-engine-qt/qml/Main.qml`.
 - Observable result: the browser discovers the current Hyprland instance from
   the runtime environment, keeps request and event sockets separate, exposes a
-  stable RustBrowser desktop-ID client query, and routes a validated context
+  stable Ferric Browser desktop-ID client query, and routes a validated context
   workspace only when `hyprland.enabled` is `on` or `auto` with
   `workspace_routing = true`.
 
@@ -43,7 +43,7 @@ result, so compositor socket timeouts and restart backoff cannot block the UI.
 Window movement adds a compositor-side identity guard: after Qt requests the
 captured window's activation, it queries `j/activewindow` and refuses the move
 unless the mapped active client has a valid opaque address and the stable
-RustBrowser class/initial-class identity. This avoids moving an unrelated app
+Ferric Browser class/initial-class identity. This avoids moving an unrelated app
 when activation is denied or the target disappears. The public Qt 6 Wayland
 API still does not expose a per-window Hyprland address directly, so exact
 multi-window movement remains dependent on the compositor accepting the Qt
@@ -51,15 +51,15 @@ activation handoff.
 
 The optional Omarchy package carries a version-qualified, commented example
 rule and keybinding. Users must explicitly copy/include and review them;
-RustBrowser never edits `hyprland.conf` or installs global bindings.
+Ferric Browser never edits `hyprland.conf` or installs global bindings.
 
 ## Verification
 
 - `cargo fmt --all -- --check`
-- `cargo test -p browser-engine-qt --locked --offline`
+- `cargo test -p ferric-browser-engine-qt --locked --offline`
 - `cargo build --locked`
 - `cargo xtask check`
-- `QT_QPA_PLATFORM=wayland timeout 10s target/debug/rustbrowser --temp-basedir`
+- `QT_QPA_PLATFORM=wayland timeout 10s target/debug/ferric-browser --temp-basedir`
 
 The focused adapter suite covers disabled mode, selector validation, request
 socket behavior, and stable desktop-ID filtering. Live compositor routing and

@@ -1,37 +1,77 @@
-# RustBrowser
+# Ferric Browser
 
-A proposed keyboard-driven browser with a Rust application core, QtWebEngine,
-and native Wayland integration, designed primarily for Hyprland and Omarchy.
-It treats profiles, task contexts, browser windows, and Wayland workspaces as
-one commandable system, with unusually strong built-in explainability when a
-site or desktop integration misbehaves.
+> **Public pre-alpha:** Ferric is not ready for daily or security-sensitive
+> browsing. Expect incomplete accessibility, cross-origin hint limitations,
+> platform gaps, storage changes, and unqualified native interactions.
 
-The project is being implemented incrementally. The current build contains a
-Qt-independent Rust core, typed reducer/effect model, command parser and
-registry foundation, deterministic navigation resolver, and a graphical
-QtWebEngine prototype with reducer-backed navigation callbacks. It is not
-qualified for daily use.
+Ferric Browser is a keyboard-first, qutebrowser-inspired browser built with
+Rust, Qt 6, and QtWebEngine. It keeps navigation, tabs, modes, commands,
+profiles, sessions, and desktop workflows behind typed Rust boundaries while
+using Qt for WebEngine and native Linux integration.
 
-Start with the [development specification](docs/DEVELOPMENT_SPEC.md). It defines
-the product, architecture, behavioral contracts, implementation sequence,
-compatibility gates, and evidence required before release. Commands and file
-layouts described there are implemented as their corresponding slices land.
+Ferric currently targets Linux on native Wayland, with Arch Linux and Omarchy
+as the first packaging environments. It deliberately follows qutebrowser's
+command names and keyboard ergonomics where practical, then documents Ferric
+extensions rather than silently repurposing familiar behavior.
 
-Current development checks:
+## Build and run
+
+Install Rust 1.85 or newer, Qt 6.11 with QtWebEngine, Qt Declarative, and Qt
+Wayland, plus a C++ toolchain. Then run:
 
 ```sh
 cargo build --locked
-cargo test --workspace --locked
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --locked -- -D warnings
-cargo xtask check
-cargo xtask test engine
-cargo xtask test wayland
-cargo xtask package arch
+cargo run --locked -p ferric-browser -- open https://example.org
 ```
 
-See [M0/M1 evidence](docs/testing/m0-01-m1-01.md),
-[command/mode evidence](docs/testing/m1-02-m1-03.md),
-[navigation/CLI evidence](docs/testing/m1-05-m1-09.md), and the
-[capability matrix](docs/architecture/capabilities.md) for the exact current
-scope and known gates.
+Useful development checks:
+
+```sh
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test --workspace --locked
+cargo xtask check
+cargo xtask test engine
+```
+
+Existing pre-alpha data is never moved automatically. To copy and validate the
+retired RustBrowser XDG roots into empty Ferric roots, run:
+
+```sh
+ferric-browser migrate --from-rustbrowser
+```
+
+The source remains untouched, and populated Ferric destinations are refused.
+
+## Architecture
+
+Input follows one direction:
+
+```text
+QML / Qt callback
+  → typed bridge request
+  → ferric-browser-runtime
+  → core reducer and subsystem orchestration
+  → typed runtime effects
+  → Qt, WebEngine, desktop, or storage adapter
+```
+
+`ferric-browser-core` owns application invariants and exposes read-only state;
+`ferric-browser-runtime` owns Qt-independent orchestration; the Qt crate owns
+platform integration and effect execution. Command, action, binding, and
+setting registries generate the user references under `docs/user/`.
+
+See [architecture](docs/ARCHITECTURE.md), [security model](SECURITY.md),
+[testing guide](docs/TESTING.md), [roadmap](docs/ROADMAP.md), and the full
+[development specification](docs/DEVELOPMENT_SPEC.md).
+
+## Security and support
+
+QtWebEngine supplies the rendering engine, so Ferric's browser security also
+depends on timely Qt/Chromium packages from the distribution. Use GitHub's
+private vulnerability reporting rather than a public issue for suspected
+security defects. See [SECURITY.md](SECURITY.md) and [support](docs/SUPPORT.md).
+
+Ferric Browser is licensed under
+[GPL-3.0-or-later](LICENSE). It is an independent project inspired by
+qutebrowser; see [provenance](docs/PROVENANCE.md).

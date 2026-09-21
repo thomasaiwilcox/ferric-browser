@@ -34,7 +34,7 @@ deleted to emulate per-origin support.
   non-private normalized origin and requires a review checkbox.
 - The QML action reports the exact supported categories and deliberately omits
   a profile-wide cache-clear control.
-- `cargo test -p browser-core -p browser-engine-qt --locked` and the full
+- `cargo test -p ferric-browser-core -p ferric-browser-engine-qt --locked` and the full
   `cargo xtask check` gate cover the command/parser and generated Qt surface.
 
 ## Limitations

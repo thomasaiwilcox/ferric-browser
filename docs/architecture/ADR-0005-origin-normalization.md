@@ -24,10 +24,10 @@ Different Qt/Rust representations cannot silently grant a rule to another
 site. URL display may redact or visually mark unsafe text, but display
 redaction is never used as a policy key.
 
-- `crates/browser-core/src/url.rs`
-- `crates/browser-engine-qt/src/lib.rs`
-- `crates/browser-engine-qt/src/request_interceptor.cpp`
-- `crates/browser-storage/src/permissions.rs`
+- `crates/ferric-browser-core/src/url.rs`
+- `crates/ferric-browser-engine-qt/src/lib.rs`
+- `crates/ferric-browser-engine-qt/src/request_interceptor.cpp`
+- `crates/ferric-browser-storage/src/permissions.rs`
 - `docs/testing/m0-33-tls.md`
 - `docs/testing/m0-127-network-request-context.md`
 

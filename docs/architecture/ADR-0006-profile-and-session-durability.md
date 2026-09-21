@@ -24,10 +24,10 @@ Crash recovery can restore only validated safe GET descriptors; forms,
 credentials, private tabs, and page data are not serialized. Disk-full,
 process-kill, and installed-runtime qualification remain explicit gates.
 
-- `crates/browser-storage/src/lib.rs`
-- `crates/browser-storage/src/sessions.rs`
-- `crates/browser-storage/src/worker.rs`
-- `crates/browser-engine-qt/src/lib.rs`
+- `crates/ferric-browser-storage/src/lib.rs`
+- `crates/ferric-browser-storage/src/sessions.rs`
+- `crates/ferric-browser-storage/src/worker.rs`
+- `crates/ferric-browser-engine-qt/src/lib.rs`
 - `docs/testing/m2-01-storage.md`
 - `docs/testing/m2-03-sessions.md`
 

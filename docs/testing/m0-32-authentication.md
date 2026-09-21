@@ -6,8 +6,8 @@ Status: in-progress
 ## Task card
 
 - Requirement: AUTH-002.
-- Files: `crates/browser-engine-qt/qml/Main.qml` and
-  `crates/browser-engine-qt/src/lib.rs`.
+- Files: `crates/ferric-browser-engine-qt/qml/Main.qml` and
+  `crates/ferric-browser-engine-qt/src/lib.rs`.
 - Observable result: HTTP and proxy authentication requests use a native
   browser-owned surface labeled with the requesting host/proxy and bounded
   realm text. Username and password fields are transient QML values passed
@@ -30,10 +30,10 @@ browser-owned focus stack after cancellation or selection.
 
 ```text
 cargo fmt --all -- --check
-cargo test -p browser-engine-qt --locked
+cargo test -p ferric-browser-engine-qt --locked
 cargo xtask check
-cargo build -p rustbrowser --locked
-QT_QPA_PLATFORM=wayland timeout 10s target/debug/rustbrowser --temp-basedir
+cargo build -p ferric-browser --locked
+QT_QPA_PLATFORM=wayland timeout 10s target/debug/ferric-browser --temp-basedir
 ```
 
 The smoke is expected to end with timeout status 124 after remaining alive

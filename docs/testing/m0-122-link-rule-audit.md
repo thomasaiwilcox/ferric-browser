@@ -8,7 +8,7 @@ Status: in-progress
 - Requirements: LINK-002 and LINK-005.
 - Files: `packaging/link-cleaning-rules.toml`,
   `packaging/link-cleaning-rules.sha256`, and
-  `crates/browser-engine-qt/src/link_cleaning_policy.rs`.
+  `crates/ferric-browser-engine-qt/src/link_cleaning_policy.rs`.
 - Observable result: clean-link callers use a checksummed, versioned reviewed
   bundle rather than an untracked code-only rule set; every shipped revision
   carries corpus cases and a human-readable changelog.
@@ -31,7 +31,7 @@ enable remote clean-link rule traffic.
 ## Verification
 
 ```text
-cargo test -p browser-engine-qt link_cleaning_policy --locked --offline
+cargo test -p ferric-browser-engine-qt link_cleaning_policy --locked --offline
 cargo xtask check --locked
-target/debug/rustbrowser diagnostics --format json
+target/debug/ferric-browser diagnostics --format json
 ```

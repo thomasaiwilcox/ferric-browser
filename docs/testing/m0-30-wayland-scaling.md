@@ -6,7 +6,7 @@ Status: in-progress
 ## Task card
 
 - Requirement: WL-002.
-- Files: `crates/browser-engine-qt/qml/Main.qml`.
+- Files: `crates/ferric-browser-engine-qt/qml/Main.qml`.
 - Observable result: the browser uses Qt Quick logical coordinates and reads
   the attached screen's `Screen.devicePixelRatio` and
   `Screen.logicalPixelDensity` for diagnostics only. Browser-owned overlay
@@ -23,8 +23,8 @@ same root font is inherited by secondary and popup windows.
 ```text
 cargo fmt --all -- --check
 cargo xtask check
-cargo build -p rustbrowser --locked
-QT_QPA_PLATFORM=wayland timeout 10s target/debug/rustbrowser --temp-basedir
+cargo build -p ferric-browser --locked
+QT_QPA_PLATFORM=wayland timeout 10s target/debug/ferric-browser --temp-basedir
 ```
 
 The smoke is expected to end with timeout status 124 after staying alive with

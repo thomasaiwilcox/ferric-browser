@@ -3,7 +3,7 @@
 Requirements: SESSION-001, SESSION-003
 
 Normal profile windows no longer overwrite one shared `current.json` during a
-checkpoint. Each RustBrowser window receives a UUID-backed session identity and
+checkpoint. Each Ferric Browser window receives a UUID-backed session identity and
 writes its current safe descriptor set to
 `current-<session-id>.json` in the profile's session directory. The existing
 `current.json` file remains a legacy compatibility input when no window-scoped

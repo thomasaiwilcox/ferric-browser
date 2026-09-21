@@ -8,10 +8,10 @@ Status: in-progress
 - Requirements: the filename and lifecycle portions of FILE-002 and FILE-003,
   the explicit open/reveal portion of FILE-004, and the initial PDF portion of
   FILE-005.
-- Files: `crates/browser-storage/src/downloads.rs`,
-  `crates/browser-storage/src/lib.rs`,
-  `crates/browser-engine-qt/src/lib.rs`, and
-  `crates/browser-engine-qt/qml/Main.qml`.
+- Files: `crates/ferric-browser-storage/src/downloads.rs`,
+  `crates/ferric-browser-storage/src/lib.rs`,
+  `crates/ferric-browser-engine-qt/src/lib.rs`, and
+  `crates/ferric-browser-engine-qt/qml/Main.qml`.
 - Observable result: QtWebEngine download requests are explicitly accepted
   only after Rust sanitizes the suggested basename and selects a destination
   under the user Downloads directory. Path separators, controls, empty/dot
@@ -69,8 +69,8 @@ Status: in-progress
   downloads before exit. Pending print staging files are also removed during
   profile replacement or transient-profile teardown, and the desktop `lp`
   submission process is bounded to 30 seconds with process-group cleanup.
-- Evidence: 24 `browser-storage` tests, workspace clippy with `-D warnings`,
-  `cargo build -p rustbrowser --locked --offline`, a timed native Wayland launch
+- Evidence: 24 `ferric-browser-storage` tests, workspace clippy with `-D warnings`,
+  `cargo build -p ferric-browser --locked --offline`, a timed native Wayland launch
   with `--temp-basedir`, a live local-fixture PDF smoke producing a valid
   one-page A4 PDF, and typed save-page/IPC contract tests.
 

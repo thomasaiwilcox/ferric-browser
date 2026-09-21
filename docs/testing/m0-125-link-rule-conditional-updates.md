@@ -6,11 +6,11 @@ Status: in-progress
 ## Task card
 
 - Requirements: LINK-005 and the conditional-request portion of NET-002.
-- Files: `crates/browser-engine-qt/src/link_rule_updater.h`,
-  `crates/browser-engine-qt/src/link_rule_updater.cpp`,
-  `crates/browser-engine-qt/src/link_cleaning_policy.rs`,
-  `crates/browser-engine-qt/src/lib.rs`, and
-  `crates/browser-engine-qt/qml/Main.qml`.
+- Files: `crates/ferric-browser-engine-qt/src/link_rule_updater.h`,
+  `crates/ferric-browser-engine-qt/src/link_rule_updater.cpp`,
+  `crates/ferric-browser-engine-qt/src/link_cleaning_policy.rs`,
+  `crates/ferric-browser-engine-qt/src/lib.rs`, and
+  `crates/ferric-browser-engine-qt/qml/Main.qml`.
 - Observable result: an explicit clean-link update reads private validator
   metadata from `cache/link-cleaning/accepted.meta`, sends bounded
   `If-None-Match` and `If-Modified-Since` headers when present, and accepts a
@@ -27,8 +27,8 @@ evidence in `m0-126-link-rule-scheduler.md`.
 ## Verification
 
 ```text
-cargo test -p browser-engine-qt link_cleaning_policy --locked --offline
+cargo test -p ferric-browser-engine-qt link_cleaning_policy --locked --offline
 cargo xtask check --locked
-target/debug/rustbrowser diagnostics --format json
-QT_QPA_PLATFORM=wayland timeout 8s target/debug/rustbrowser --temp-basedir
+target/debug/ferric-browser diagnostics --format json
+QT_QPA_PLATFORM=wayland timeout 8s target/debug/ferric-browser --temp-basedir
 ```

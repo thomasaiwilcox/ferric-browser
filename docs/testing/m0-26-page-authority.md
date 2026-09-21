@@ -6,9 +6,9 @@ Status: in-progress
 ## Task card
 
 - Requirement: SEC-002.
-- Files: `crates/browser-engine-qt/qml/Main.qml`,
-  `crates/browser-engine-qt/src/lib.rs`,
-  `crates/rustbrowser/src/main.rs`, and `crates/browser-ipc/src/lib.rs`.
+- Files: `crates/ferric-browser-engine-qt/qml/Main.qml`,
+  `crates/ferric-browser-engine-qt/src/lib.rs`,
+  `crates/ferric-browser/src/main.rs`, and `crates/ferric-browser-ipc/src/lib.rs`.
 - Observable result: ordinary page JavaScript has no browser-owned native
   authority object or WebChannel route.
 
@@ -39,9 +39,9 @@ a sandbox or as a source of trusted DOM data.
 ## Verification
 
 ```text
-cargo test -p browser-engine-qt --locked
-cargo test -p browser-ipc --locked
+cargo test -p ferric-browser-engine-qt --locked
+cargo test -p ferric-browser-ipc --locked
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo xtask check
-QT_QPA_PLATFORM=wayland timeout 10s target/debug/rustbrowser --temp-basedir
+QT_QPA_PLATFORM=wayland timeout 10s target/debug/ferric-browser --temp-basedir
 ```

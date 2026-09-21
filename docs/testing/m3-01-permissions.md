@@ -60,13 +60,13 @@ configuration decision and a bounded grouped browser-chrome prompt queue.
 cargo fmt --all -- --check
 cargo test --workspace --locked --offline
 cargo clippy --workspace --all-targets --locked --offline -- -D warnings
-cargo build -p rustbrowser --locked --offline
-QT_QPA_PLATFORM=wayland timeout 8s target/debug/rustbrowser \
+cargo build -p ferric-browser --locked --offline
+QT_QPA_PLATFORM=wayland timeout 8s target/debug/ferric-browser \
   --basedir <temporary-directory> \
-  -- file:///home/tom/Projects/RustBrowser/docs/testing/fixtures/hints.html
+  -- file:///home/tom/Projects/Ferric Browser/docs/testing/fixtures/hints.html
 # With a running instance:
-rustbrowser query permissions --format json
-rustbrowser command -- "permission-reset https://example.test notifications"
+ferric-browser query permissions --format json
+ferric-browser command -- "permission-reset https://example.test notifications"
 ```
 
 The clean Wayland startup exited only because of the intentional timeout and

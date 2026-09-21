@@ -15,6 +15,6 @@ WebEngine view.
 Evidence:
 
 - cargo fmt --all -- --check
-- cargo test -p browser-engine-qt --locked --offline
+- cargo test -p ferric-browser-engine-qt --locked --offline
 - cargo xtask check --locked
 - Wayland startup smoke with --temp-basedir

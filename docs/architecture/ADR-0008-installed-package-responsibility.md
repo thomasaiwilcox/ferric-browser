@@ -6,9 +6,9 @@
 
 ## Decision
 
-The Arch system package owns RustBrowser's executable, QML/resource files,
+The Arch system package owns Ferric Browser's executable, QML/resource files,
 desktop metadata, icon, and documented optional integrations. The system Qt 6
-distribution owns QtWebEngine and Chromium security updates. RustBrowser
+distribution owns QtWebEngine and Chromium security updates. Ferric Browser
 reports the exact runtime Qt/engine package facts and qualified/unqualified or
 blocked state, but never runs a package manager, changes repositories, or
 pretends that an application update includes an engine security patch.
@@ -21,7 +21,7 @@ reported independently and do not become hidden compile-time assumptions.
 
 - `packaging/PKGBUILD`
 - `packaging/dependencies.toml`
-- `crates/browser-engine-qt/src/diagnostics.rs`
+- `crates/ferric-browser-engine-qt/src/diagnostics.rs`
 - `docs/RELEASE_POLICY.md`
 - `docs/testing/m0-21-arch-packaging.md`
 

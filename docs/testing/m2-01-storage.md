@@ -6,10 +6,10 @@ Status: in-progress
 ## Task card
 
 - Requirements: STORE-001 through STORE-005 (initial storage boundary).
-- Files: `crates/browser-storage/Cargo.toml`,
-  `crates/browser-storage/src/lib.rs`, `roots.rs`, `profiles.rs`,
-  `crates/browser-engine-qt/src/lib.rs`, its QML surface, the CLI bootstrap,
-  workspace `Cargo.toml`/`Cargo.lock`, `crates/browser-storage/src/downloads.rs`,
+- Files: `crates/ferric-browser-storage/Cargo.toml`,
+  `crates/ferric-browser-storage/src/lib.rs`, `roots.rs`, `profiles.rs`,
+  `crates/ferric-browser-engine-qt/src/lib.rs`, its QML surface, the CLI bootstrap,
+  workspace `Cargo.toml`/`Cargo.lock`, `crates/ferric-browser-storage/src/downloads.rs`,
   and `docs/requirements.csv`.
 - Observable result: `ProfileStore::open` creates a normal profile-local
   SQLite database, enables foreign keys/WAL/FULL synchronous mode, applies a
@@ -35,10 +35,10 @@ Status: in-progress
   migration metadata is checksum-validated before writes; private profiles
   never open the store. `--basedir` and `--temp-basedir` are passed through to
   the same root selection and temporary roots are cleaned after the GUI exits.
-- Evidence: `cargo test -p browser-storage --locked` (55 tests),
-  `cargo test -p browser-engine-qt --locked`, `cargo test -p rustbrowser
-  --locked`, and `cargo clippy -p browser-storage -p browser-engine-qt
-  -p rustbrowser --all-targets --locked -- -D warnings`.
+- Evidence: `cargo test -p ferric-browser-storage --locked` (55 tests),
+  `cargo test -p ferric-browser-engine-qt --locked`, `cargo test -p ferric-browser
+  --locked`, and `cargo clippy -p ferric-browser-storage -p ferric-browser-engine-qt
+  -p ferric-browser --all-targets --locked -- -D warnings`.
 
 ## Limitations
 

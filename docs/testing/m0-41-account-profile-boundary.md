@@ -6,8 +6,8 @@ Status: in-progress
 ## Task card
 
 - Requirement: AUTH-001.
-- Files: `crates/browser-engine-qt/qml/Main.qml` and
-  `crates/browser-engine-qt/src/lib.rs`.
+- Files: `crates/ferric-browser-engine-qt/qml/Main.qml` and
+  `crates/ferric-browser-engine-qt/src/lib.rs`.
 - Observable result: all tabs in a browser window use that window's one
   `WebEngineProfile`; engine-created popups inherit the opener's profile and
   private-mode state. Normal and private profiles use distinct storage
@@ -21,10 +21,10 @@ hostname rule to switch a popup's profile during an auth redirect.
 
 ```text
 cargo fmt --all -- --check
-cargo test -p browser-engine-qt --locked
+cargo test -p ferric-browser-engine-qt --locked
 cargo xtask check
-cargo build -p rustbrowser --locked
-QT_QPA_PLATFORM=wayland timeout 10s target/debug/rustbrowser --temp-basedir
+cargo build -p ferric-browser --locked
+QT_QPA_PLATFORM=wayland timeout 10s target/debug/ferric-browser --temp-basedir
 ```
 
 Same-profile local popup/redirect and authenticated restart behavior, plus

@@ -6,7 +6,7 @@ native Qt/Wayland callback and lifecycle qualification remains pending.
 Latest local verification: 2026-09-19 — `cargo xtask test adapter` passed the
 bounded 10-second offscreen run.
 
-`cargo xtask test adapter` builds `rustbrowser` with the locked workspace and
+`cargo xtask test adapter` builds `ferric-browser` with the locked workspace and
 starts it with `QT_QPA_PLATFORM=offscreen` and `--temp-basedir`. The child must
 remain alive for ten seconds. Early exit is reported with captured stdout and
 stderr; QML application-load failures and missing QML modules are rejected.
@@ -22,6 +22,6 @@ native Wayland and later interactive qualification environments.
 
 ```text
 cargo xtask test adapter
-cargo test -p browser-engine-qt --locked --offline
+cargo test -p ferric-browser-engine-qt --locked --offline
 cargo clippy --workspace --all-targets --locked --offline -- -D warnings
 ```

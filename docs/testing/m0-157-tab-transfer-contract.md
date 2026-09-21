@@ -21,8 +21,8 @@ fallback) without leaving a half-completed source state.
 
 Evidence:
 
-- `cargo test -p browser-core transfer_` — passed (2 tests)
-- `cargo check -p browser-engine-qt` — passed
-- `cargo clippy -p browser-engine-qt --all-targets --locked --offline -- -D warnings` — passed
+- `cargo test -p ferric-browser-core transfer_` — passed (2 tests)
+- `cargo check -p ferric-browser-engine-qt` — passed
+- `cargo clippy -p ferric-browser-engine-qt --all-targets --locked --offline -- -D warnings` — passed
 - `cargo xtask test adapter` — passed (bounded offscreen Qt/QML smoke)
 - Qt compiler emitted the existing upstream header warnings; no new errors.

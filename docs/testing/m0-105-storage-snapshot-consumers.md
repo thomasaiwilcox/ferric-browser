@@ -21,9 +21,9 @@ snapshot entirely.
 
 Evidence:
 
-- `cargo test -p browser-storage -p browser-engine-qt --locked --offline`
+- `cargo test -p ferric-browser-storage -p ferric-browser-engine-qt --locked --offline`
 - `cargo xtask check --locked`
-- `cargo build -p rustbrowser --locked`
+- `cargo build -p ferric-browser --locked`
 - Native Wayland startup smoke reached the event loop for eight seconds with
   no application-owned QML warnings.
 

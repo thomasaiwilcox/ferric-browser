@@ -6,8 +6,8 @@ Status: in-progress
 ## Task card
 
 - Requirement: AUTH-004.
-- Files: `crates/browser-engine-qt/qml/Main.qml` and
-  `crates/browser-engine-qt/src/lib.rs`.
+- Files: `crates/ferric-browser-engine-qt/qml/Main.qml` and
+  `crates/ferric-browser-engine-qt/src/lib.rs`.
 - Observable result: Qt WebEngine certificate errors are blocking by default.
   Non-overridable errors, subresource errors, and Google-host errors are
   rejected without a bypass surface. An engine-marked overridable main-frame
@@ -28,10 +28,10 @@ character sanitized before entering the native surface.
 
 ```text
 cargo fmt --all -- --check
-cargo test -p browser-engine-qt --locked
+cargo test -p ferric-browser-engine-qt --locked
 cargo xtask check
-cargo build -p rustbrowser --locked
-QT_QPA_PLATFORM=wayland timeout 10s target/debug/rustbrowser --temp-basedir
+cargo build -p ferric-browser --locked
+QT_QPA_PLATFORM=wayland timeout 10s target/debug/ferric-browser --temp-basedir
 ```
 
 The smoke is expected to end with timeout status 124 after remaining alive

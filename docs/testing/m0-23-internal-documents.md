@@ -6,17 +6,17 @@ Status: in-progress
 ## Task card
 
 - Requirement: SEC-003.
-- Files: `crates/browser-engine-qt/src/url_display.cpp`,
-  `crates/browser-engine-qt/src/url_display.h`,
-  `crates/browser-engine-qt/src/lib.rs`,
-  `crates/rustbrowser/src/main.rs`, and `crates/browser-core/src/url.rs`.
+- Files: `crates/ferric-browser-engine-qt/src/url_display.cpp`,
+  `crates/ferric-browser-engine-qt/src/url_display.h`,
+  `crates/ferric-browser-engine-qt/src/lib.rs`,
+  `crates/ferric-browser/src/main.rs`, and `crates/ferric-browser-core/src/url.rs`.
 - Observable result: the internal-document namespace is reserved before Qt
   application and WebEngine object creation, while browser URL policy keeps
   it unreachable from normal page navigation.
 
 ## Evidence
 
-- `rustbrowser_register_internal_scheme()` is called at the start of
+- `ferric_browser_register_internal_scheme()` is called at the start of
   `run_gui()`, before `QGuiApplication::new()`, WebEngine profiles, or views
   are created.
 - Qt registers `rb` with `HostAndPort` syntax and only the `SecureScheme`
@@ -37,9 +37,9 @@ privileged document renderer.
 ## Verification
 
 ```text
-cargo test -p browser-core --locked
-cargo test -p browser-engine-qt --locked
+cargo test -p ferric-browser-core --locked
+cargo test -p ferric-browser-engine-qt --locked
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo xtask check
-QT_QPA_PLATFORM=wayland timeout 10s target/debug/rustbrowser --temp-basedir
+QT_QPA_PLATFORM=wayland timeout 10s target/debug/ferric-browser --temp-basedir
 ```

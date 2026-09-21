@@ -6,9 +6,9 @@ Status: in-progress
 ## Task card
 
 - Requirement: PAGE-004.
-- Files: `crates/browser-engine-qt/src/userscript.rs`,
-  `crates/browser-engine-qt/src/lib.rs`, and
-  `crates/browser-engine-qt/qml/Main.qml`.
+- Files: `crates/ferric-browser-engine-qt/src/userscript.rs`,
+  `crates/ferric-browser-engine-qt/src/lib.rs`, and
+  `crates/ferric-browser-engine-qt/qml/Main.qml`.
 - Observable result: a local manifest can opt into page-world execution with
   bounded `matches`/`excludes`, `run_at`, `frames`, `source`, and
   `allow_private` fields. Rust loads only matching local sources and QML
@@ -42,7 +42,7 @@ handle, shell method, or IPC capability is exposed to the page script.
   the live namespace, removes only its private asset directory, and refreshes
   the inventory after completion.
 - Inventory reads and enabled-state replacements run on the bounded
-  `rustbrowser-userscript-manager` worker; GUI properties are updated only from
+  `ferric-browser-userscript-manager` worker; GUI properties are updated only from
   the existing poll handoff. The worker contract is covered by a dedicated
   read/toggle regression test.
 - Removal regression tests cover successful manifest/asset deletion and refusal
@@ -53,8 +53,8 @@ handle, shell method, or IPC capability is exposed to the page script.
   `fixtures/page-all.js`, and `fixtures/page-frame.html` exercise the
   configured source paths through the QML injection path; the live Wayland
   smoke observed both same-origin marker requests
-  `GET /__rustbrowser_userscript_hit__` and
-  `GET /__rustbrowser_userscript_subframe_hit__`.
+  `GET /__ferric_browser_userscript_hit__` and
+  `GET /__ferric_browser_userscript_subframe_hit__`.
 - The same smoke completed the owner IPC query and coordinated quit with no
   QML/runtime diagnostics.
 

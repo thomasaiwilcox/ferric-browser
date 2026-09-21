@@ -6,8 +6,8 @@ Status: in-progress
 ## Task card
 
 - Requirements: MEDIA-001 and MEDIA-002.
-- Files: `crates/browser-engine-qt/qml/Main.qml` and
-  `crates/browser-engine-qt/src/lib.rs`.
+- Files: `crates/ferric-browser-engine-qt/qml/Main.qml` and
+  `crates/ferric-browser-engine-qt/src/lib.rs`.
 - Observable result: Qt WebEngine desktop-media requests remain on the
   engine-owned source-selection path. The browser presents a bounded,
   host-scoped capture indicator after a screen or window is selected, showing
@@ -23,10 +23,10 @@ PipeWire stream or browser-side capture pipeline is created.
 
 ```text
 cargo fmt --all -- --check
-cargo test -p browser-engine-qt --locked
+cargo test -p ferric-browser-engine-qt --locked
 cargo xtask check
-cargo build -p rustbrowser --locked
-QT_QPA_PLATFORM=wayland timeout 10s target/debug/rustbrowser --temp-basedir
+cargo build -p ferric-browser --locked
+QT_QPA_PLATFORM=wayland timeout 10s target/debug/ferric-browser --temp-basedir
 ```
 
 The automated checks cover the QML ownership and lifecycle boundary. Live

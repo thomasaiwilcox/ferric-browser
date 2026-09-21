@@ -16,10 +16,10 @@ window.
 Evidence:
 
 - `cargo fmt --all`
-- `cargo test -p browser-engine-qt tab_give_command_preserves_target_and_queues_live_transfer -- --nocapture` — passed
+- `cargo test -p ferric-browser-engine-qt tab_give_command_preserves_target_and_queues_live_transfer -- --nocapture` — passed
 - `cargo xtask check --locked` — passed (all workspace unit and doc tests)
-- `cargo build -p rustbrowser --locked` — passed
-- Native Wayland run with `--basedir /tmp/rustbrowser-m0-160-verify2.2BYMFE`:
+- `cargo build -p ferric-browser --locked` — passed
+- Native Wayland run with `--basedir /tmp/ferric-browser-m0-160-verify2.2BYMFE`:
   - Created a same-profile secondary window.
   - `tab-detach` created a new window from the focused secondary source.
   - `tab-give <primary-owner-token>` moved the live source view into the

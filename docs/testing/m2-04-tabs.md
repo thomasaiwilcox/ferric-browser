@@ -6,11 +6,11 @@ Status: in-progress
 ## Task card
 
 - Requirements: the tab ordering/movement portions of TAB-002 and TAB-003.
-- Files: `crates/browser-core/src/model.rs`,
-  `crates/browser-core/src/reducer.rs`,
-  `crates/browser-engine-qt/src/lib.rs`,
-  `crates/browser-engine-qt/qml/Main.qml`, and
-  `crates/browser-storage/src/sessions.rs`.
+- Files: `crates/ferric-browser-core/src/model.rs`,
+  `crates/ferric-browser-core/src/reducer.rs`,
+  `crates/ferric-browser-engine-qt/src/lib.rs`,
+  `crates/ferric-browser-engine-qt/qml/Main.qml`, and
+  `crates/ferric-browser-storage/src/sessions.rs`.
 - Observable result: live tabs carry pinned, muted, and bounded zoom state;
   pinning preserves a pinned-first order, movement stays within the pinned or
   unpinned group, same-profile movement remains reducer-owned, and the QML tab
@@ -22,7 +22,7 @@ Status: in-progress
   model.
 - Evidence: `cargo test --workspace --locked --offline` (39 core tests and
   15 storage tests), `cargo clippy --workspace --all-targets --locked
-  --offline -- -D warnings`, `cargo build -p rustbrowser --locked --offline`,
+  --offline -- -D warnings`, `cargo build -p ferric-browser --locked --offline`,
   and a timed native Wayland launch with `--temp-basedir`.
 
 ## Limitations

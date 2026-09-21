@@ -6,12 +6,12 @@ Status: in-progress
 ## Task card
 
 - Requirements: ENGINE-003 and the adapter portion of NET-001/NET-003.
-- Files: `crates/browser-engine-qt/src/request_interceptor.h`,
-  `crates/browser-engine-qt/src/request_interceptor.cpp`,
-  `crates/browser-engine-qt/src/network_policy.rs`,
-  `crates/browser-engine-qt/src/blocklist_updater.h`,
-  `crates/browser-engine-qt/src/blocklist_updater.cpp`,
-  `crates/browser-engine-qt/build.rs`, and `crates/browser-engine-qt/qml/Main.qml`.
+- Files: `crates/ferric-browser-engine-qt/src/request_interceptor.h`,
+  `crates/ferric-browser-engine-qt/src/request_interceptor.cpp`,
+  `crates/ferric-browser-engine-qt/src/network_policy.rs`,
+  `crates/ferric-browser-engine-qt/src/blocklist_updater.h`,
+  `crates/ferric-browser-engine-qt/src/blocklist_updater.cpp`,
+  `crates/ferric-browser-engine-qt/build.rs`, and `crates/ferric-browser-engine-qt/qml/Main.qml`.
 - Observable result: every live Qt WebEngine profile can be attached to a
   public `QWebEngineUrlRequestInterceptor` whose callback consults only a
   bounded in-memory policy snapshot.
@@ -88,9 +88,9 @@ detaches them during destruction.
   list is validated and bounded to 64 entries, saved atomically with the
   existing runtime-override path, and reloaded into every profile interceptor;
   permissions and TLS are unaffected.
-- `QT_QPA_PLATFORM=wayland timeout 8s target/debug/rustbrowser --temp-basedir`
+- `QT_QPA_PLATFORM=wayland timeout 8s target/debug/ferric-browser --temp-basedir`
   reached the event loop with no QML/runtime diagnostics.
-- `cargo build -p rustbrowser --locked --offline` passes.
+- `cargo build -p ferric-browser --locked --offline` passes.
 
 ## Limitations
 

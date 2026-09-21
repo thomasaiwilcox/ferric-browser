@@ -6,7 +6,7 @@ Status: in-progress
 ## Task card
 
 - Requirement: CTX-005.
-- Files: `crates/browser-engine-qt/src/lib.rs`.
+- Files: `crates/ferric-browser-engine-qt/src/lib.rs`.
 - Observable result: an IPC `open` routed to a context validates the target
   window, context existence, and profile affinity before changing window
   membership. A rejected cross-profile route therefore cannot leave a durable
@@ -20,7 +20,7 @@ permission request, or other authentication-chain tab between contexts.
 
 ```text
 cargo fmt --all -- --check
-cargo test -p browser-engine-qt --locked
+cargo test -p ferric-browser-engine-qt --locked
 cargo xtask check
 ```
 

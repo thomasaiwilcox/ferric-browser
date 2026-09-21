@@ -26,7 +26,7 @@ recorded twice; same-document changes do not create duplicate journey nodes.
 Evidence:
 
 - `cargo fmt --all -- --check`
-- `cargo test -p browser-storage -p browser-engine-qt --locked --offline`
+- `cargo test -p ferric-browser-storage -p ferric-browser-engine-qt --locked --offline`
   (39 storage tests, 83 Qt-engine tests)
 - The storage worker test exercises the bounded atomic batch and its explicit
   shutdown wait/acknowledgement path.

@@ -11,7 +11,7 @@ it does not perform process execution or shell expansion while loading.
 
 ## Implemented behavior
 
-- `browser-config::Config` deserializes `action_targets` with unknown fields
+- `ferric-browser-config::Config` deserializes `action_targets` with unknown fields
   rejected and a maximum of 64 entries.
 - Names, subject types, executable values, argv count/size, duplicate subject
   types, and control characters are validated before a configuration becomes
@@ -46,7 +46,7 @@ it does not perform process execution or shell expansion while loading.
 Automated evidence:
 
 ```text
-cargo test -p browser-config -p browser-core -p browser-engine-qt --locked --offline
+cargo test -p ferric-browser-config -p ferric-browser-core -p ferric-browser-engine-qt --locked --offline
 cargo fmt --all -- --check
 ```
 

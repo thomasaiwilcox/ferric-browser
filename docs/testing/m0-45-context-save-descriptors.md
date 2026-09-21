@@ -55,6 +55,6 @@ saved windows or engine storage across profiles.
 
 ## Verification
 
-Commands: `cargo fmt --all -- --check`; `cargo test -p browser-engine-qt -p
-browser-storage --locked`; `cargo xtask check`; and
-`QT_QPA_PLATFORM=wayland timeout 10s target/debug/rustbrowser --temp-basedir`.
+Commands: `cargo fmt --all -- --check`; `cargo test -p ferric-browser-engine-qt -p
+ferric-browser-storage --locked`; `cargo xtask check`; and
+`QT_QPA_PLATFORM=wayland timeout 10s target/debug/ferric-browser --temp-basedir`.

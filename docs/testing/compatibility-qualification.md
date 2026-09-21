@@ -15,7 +15,7 @@ Application commit/package: not recorded
 
 Qt build and Chromium security-patch level: Qt 6.11.2; Chromium base
 140.0.7339.225; Chromium security-patch API value 151.0.7922.71; runtime
-values recorded by `rustbrowser diagnostics --format json` on 2026-09-19.
+values recorded by `ferric-browser diagnostics --format json` on 2026-09-19.
 These values do not replace the advisory review.
 
 Distribution/compositor/GPU baseline: not recorded

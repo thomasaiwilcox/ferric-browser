@@ -6,9 +6,9 @@ Status: in-progress
 ## Task card
 
 - Requirement: SEC-001.
-- Files: `crates/browser-engine-qt/src/lib.rs`,
-  `crates/browser-storage/src/lib.rs`, `crates/browser-core/src/url.rs`, and
-  `crates/browser-ipc/src/lib.rs`.
+- Files: `crates/ferric-browser-engine-qt/src/lib.rs`,
+  `crates/ferric-browser-storage/src/lib.rs`, `crates/ferric-browser-core/src/url.rs`, and
+  `crates/ferric-browser-ipc/src/lib.rs`.
 - Observable result: browser/page/IPC-derived data is bounded and validated
   before it enters reducer state, durable metadata, or native effects.
 
@@ -37,11 +37,11 @@ validation and OS-permission caveats described by the specification.
 ## Verification
 
 ```text
-cargo test -p browser-core --locked
-cargo test -p browser-engine-qt --locked
-cargo test -p browser-storage --locked
-cargo test -p browser-ipc --locked
+cargo test -p ferric-browser-core --locked
+cargo test -p ferric-browser-engine-qt --locked
+cargo test -p ferric-browser-storage --locked
+cargo test -p ferric-browser-ipc --locked
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo xtask check
-QT_QPA_PLATFORM=wayland timeout 10s target/debug/rustbrowser --temp-basedir
+QT_QPA_PLATFORM=wayland timeout 10s target/debug/ferric-browser --temp-basedir
 ```

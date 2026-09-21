@@ -5,7 +5,7 @@ Status: in-progress
 
 ## FAIL-004 recovery mode
 
-`rustbrowser --safe-mode` is a GUI-only diagnostic startup mode. It rejects
+`ferric-browser --safe-mode` is a GUI-only diagnostic startup mode. It rejects
 `--basedir`, `--config`, `--profile`, `--context`, and `--set` so a normal
 profile cannot be accidentally selected or modified. The mode uses the same
 disposable storage-root path as temporary startup, loads built-in
@@ -19,11 +19,11 @@ identifies the session as `SAFE MODE (temporary; userscripts off)`.
 ## Verification
 
 ```text
-cargo test -p rustbrowser --locked --offline
+cargo test -p ferric-browser --locked --offline
 cargo xtask check
 cargo fmt --all -- --check
-QT_QPA_PLATFORM=wayland timeout 10s target/debug/rustbrowser --safe-mode
-QT_QPA_PLATFORM=wayland timeout 10s target/debug/rustbrowser --userscripts-off --temp-basedir
+QT_QPA_PLATFORM=wayland timeout 10s target/debug/ferric-browser --safe-mode
+QT_QPA_PLATFORM=wayland timeout 10s target/debug/ferric-browser --userscripts-off --temp-basedir
 ```
 
 The CLI unit tests cover safe-mode parsing and built-in configuration

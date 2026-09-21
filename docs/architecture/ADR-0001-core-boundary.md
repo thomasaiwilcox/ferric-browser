@@ -5,7 +5,7 @@ Date: 2026-09-15
 
 ## Decision
 
-RustBrowser starts with a Qt-independent `browser-core` crate. Application
+Ferric Browser starts with a Qt-independent `ferric-browser-core` crate. Application
 state is changed only by typed events through a reducer, which returns typed
 engine, persistence, and diagnostic effects. GUI and desktop adapters will
 consume this boundary; they do not own browser policy or identity.

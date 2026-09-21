@@ -17,6 +17,6 @@ separate capability boundary and is still reported honestly as unavailable.
 Evidence:
 
 - `cargo fmt --all`
-- `cargo test -p browser-engine-qt --lib ipc_hint_commands_use_a_bounded_kind_selector`
+- `cargo test -p ferric-browser-engine-qt --lib ipc_hint_commands_use_a_bounded_kind_selector`
   — passed
 - Full workspace gate and native smoke verification completed after the slice.

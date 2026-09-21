@@ -1,0 +1,4 @@
+* @ferricbrowser/maintainers
+/SECURITY.md @ferricbrowser/security
+/.github/workflows/ @ferricbrowser/maintainers
+/packaging/ @ferricbrowser/maintainers

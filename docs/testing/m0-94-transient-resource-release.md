@@ -25,6 +25,6 @@ download routing remain acceptance work.
 
 ## Verification
 
-`cargo test -p browser-engine-qt --locked --offline` passes, including static
+`cargo test -p ferric-browser-engine-qt --locked --offline` passes, including static
 coverage that both primary and secondary destruction paths call the release
 boundary. The full workspace verifier remains the integration gate.

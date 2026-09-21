@@ -25,7 +25,7 @@ failure path.
 ## Verification
 
 ```text
-cargo test -p browser-engine-qt clipboard_navigation_input_is_bounded_and_rejects_failures --locked --offline
+cargo test -p ferric-browser-engine-qt clipboard_navigation_input_is_bounded_and_rejects_failures --locked --offline
 cargo fmt --all -- --check
 cargo xtask check
 ```

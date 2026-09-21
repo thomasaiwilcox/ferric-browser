@@ -18,9 +18,9 @@ falling back to the browser mode escape transition.
 ## Verification
 
 - `cargo fmt --all -- --check`
-- `cargo test -p browser-core --locked --offline` — 57 tests
-- `cargo test -p rustbrowser --locked --offline` — 36 tests
-- `cargo test -p browser-engine-qt --locked --offline` — 107 tests
+- `cargo test -p ferric-browser-core --locked --offline` — 57 tests
+- `cargo test -p ferric-browser --locked --offline` — 36 tests
+- `cargo test -p ferric-browser-engine-qt --locked --offline` — 107 tests
 - `cargo xtask check --locked`
 - Native Wayland startup smoke reached the event loop without diagnostics
   errors

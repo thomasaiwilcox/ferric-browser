@@ -24,7 +24,7 @@ unavailable.
 Evidence:
 
 - `cargo fmt --all -- --check`
-- `cargo test -p browser-storage -p browser-engine-qt --locked --offline`
+- `cargo test -p ferric-browser-storage -p ferric-browser-engine-qt --locked --offline`
   (64 storage tests, 167 Qt tests)
 
 The later worker-backed write and journey/session query families remain.

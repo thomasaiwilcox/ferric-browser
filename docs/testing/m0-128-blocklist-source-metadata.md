@@ -16,7 +16,7 @@ Verification:
 
 ```text
 cargo fmt --all -- --check
-cargo test -p browser-engine-qt network_policy --locked --offline
+cargo test -p ferric-browser-engine-qt network_policy --locked --offline
 cargo xtask check --locked
 ```
 

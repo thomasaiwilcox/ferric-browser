@@ -21,10 +21,10 @@ ephemeral, and temporary windows keep their memory-only override behavior.
 ## Verification
 
 - `cargo fmt --all -- --check`
-- `cargo test -p browser-config --locked --offline` — 30 tests
-- `cargo test -p browser-engine-qt --locked --offline` — 104 tests
-- `cargo test -p rustbrowser --locked --offline` — 33 tests
+- `cargo test -p ferric-browser-config --locked --offline` — 30 tests
+- `cargo test -p ferric-browser-engine-qt --locked --offline` — 104 tests
+- `cargo test -p ferric-browser --locked --offline` — 33 tests
 - `cargo xtask check --locked`
-- `QT_QPA_PLATFORM=wayland timeout 8s target/debug/rustbrowser --temp-basedir`
+- `QT_QPA_PLATFORM=wayland timeout 8s target/debug/ferric-browser --temp-basedir`
   — expected timeout after reaching the event loop; no error, panic, failed,
   or assertion diagnostics were emitted

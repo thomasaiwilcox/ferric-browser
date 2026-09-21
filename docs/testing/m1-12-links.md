@@ -6,9 +6,9 @@ Status: in-progress
 ## Task card
 
 - Requirements: LINK-001 through LINK-004 (core portion).
-- Files: `crates/browser-core/src/link_cleaning.rs`,
-  `crates/browser-core/src/lib.rs`, `crates/browser-engine-qt/src/lib.rs`,
-  `crates/browser-engine-qt/qml/Main.qml`, and `crates/rustbrowser/src/main.rs`.
+- Files: `crates/ferric-browser-core/src/link_cleaning.rs`,
+  `crates/ferric-browser-core/src/lib.rs`, `crates/ferric-browser-engine-qt/src/lib.rs`,
+  `crates/ferric-browser-engine-qt/qml/Main.qml`, and `crates/ferric-browser/src/main.rs`.
 - Observable result: `clean_link` is an explicit caller-controlled operation
   over a captured URL. Reviewed rules have stable IDs, source and revision
   metadata, bounded host/parameter data, and duplicate validation. The builtin
@@ -18,7 +18,7 @@ Status: in-progress
   rules, removed/retained parameter names, and an explanation. Unsupported
   schemes, malformed authority shapes, encoded parameter names, and no-op
   cases retain the original URL.
-- Evidence: `cargo test -p browser-core --locked` (42 tests), including four
+- Evidence: `cargo test -p ferric-browser-core --locked` (42 tests), including four
   clean-link tests; the engine exposes `url-clean`, `url-explain`, and
   `open --clean-link` through interactive, typed command/action IPC, and the
   CLI. Changed opens create a target-aware pending navigation, keep the live

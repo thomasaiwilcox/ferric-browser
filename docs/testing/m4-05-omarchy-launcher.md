@@ -5,9 +5,9 @@ browser's public CLI/IPC surface.
 
 ## Delivered
 
-- `rustbrowser query switcher --scope tabs --format json` returns normal-profile
+- `ferric-browser query switcher --scope tabs --format json` returns normal-profile
   tab rows with stable tab IDs and sanitized display fields.
-- `rustbrowser activate tab TAB_ID` sends `switcher.activate` to the running
+- `ferric-browser activate tab TAB_ID` sends `switcher.activate` to the running
   instance and focuses the exact tab represented by that ID.
 - Private tabs are excluded from the default query and rejected by the public
   activation method.
@@ -26,13 +26,13 @@ interface with direct argv.
 
 ```text
 cargo fmt --all -- --check
-cargo test -p rustbrowser --locked --offline
-cargo test -p browser-engine-qt --locked --offline
-cargo build -p rustbrowser --locked
-desktop-file-validate packaging/io.github.rustbrowser.RustBrowser.desktop
-sh -n packaging/omarchy/usr/bin/rustbrowser-omarchy-doctor
-sh -n packaging/omarchy/usr/bin/rustbrowser-omarchy-query-tabs
-sh -n packaging/omarchy/usr/bin/rustbrowser-omarchy-activate-tab
+cargo test -p ferric-browser --locked --offline
+cargo test -p ferric-browser-engine-qt --locked --offline
+cargo build -p ferric-browser --locked
+desktop-file-validate packaging/io.github.ferricbrowser.FerricBrowser.desktop
+sh -n packaging/omarchy/usr/bin/ferric-browser-omarchy-doctor
+sh -n packaging/omarchy/usr/bin/ferric-browser-omarchy-query-tabs
+sh -n packaging/omarchy/usr/bin/ferric-browser-omarchy-activate-tab
 ```
 
 Clean Arch package build/install, a real launcher selection, and live
@@ -42,7 +42,7 @@ On 2026-09-20, the optional recipe was assembled from the release archive,
 all three installed wrapper scripts passed `sh -n`, and revisions `0.1.0-1`
 and `0.1.0-2` were installed/upgraded in an isolated pacman database seeded
 from a copy of the host package records. Normal dependency resolution accepted
-the `rustbrowser` dependency, and the final package contained every declared
+the `ferric-browser` dependency, and the final package contained every declared
 wrapper, launcher contract, theme template, both Hyprland examples, and README
 path.
 No host configuration or user-owned file was modified. This closes the local
@@ -52,8 +52,8 @@ and checksum/publication review remain open.
 The source wrapper files were also corrected to executable mode (`0755`) after
 a direct live smoke caught that source-tree invocation otherwise failed even
 though the package recipe installed them correctly. In the disposable native
-Wayland session on 2026-09-20, `rustbrowser-omarchy-query-tabs` returned the
-real normal-profile tab, `rustbrowser-omarchy-activate-tab tabid-3` returned a
+Wayland session on 2026-09-20, `ferric-browser-omarchy-query-tabs` returned the
+real normal-profile tab, `ferric-browser-omarchy-activate-tab tabid-3` returned a
 typed `status: accepted` response, and an invalid `bad/id` value was rejected
 locally with exit 2. The doctor reported four available capabilities and one
 unavailable Omarchy-palette capability, with the promised no-files-changed

@@ -18,6 +18,6 @@ Verification:
 
 ```text
 cargo fmt --all -- --check
-cargo test -p browser-config --locked --offline
+cargo test -p ferric-browser-config --locked --offline
 cargo xtask check --locked
 ```

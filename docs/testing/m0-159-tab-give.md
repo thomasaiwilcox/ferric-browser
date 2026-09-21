@@ -13,9 +13,9 @@ rejected or stale target restores the source view to its original pool.
 Evidence:
 
 - `cargo fmt --all`
-- `cargo test -p browser-engine-qt tab_give_command_preserves_target_and_queues_live_transfer -- --nocapture` — passed
-- `cargo build -p rustbrowser --locked` — passed
-- Native Wayland run with `--basedir /tmp/rustbrowser-m0-159-registry.5cGdR4`:
+- `cargo test -p ferric-browser-engine-qt tab_give_command_preserves_target_and_queues_live_transfer -- --nocapture` — passed
+- `cargo build -p ferric-browser --locked` — passed
+- Native Wayland run with `--basedir /tmp/ferric-browser-m0-159-registry.5cGdR4`:
   - `query windows --format json` exposed two live registry entries with
     distinct owner tokens.
   - `command -- tab-give <secondary-owner-token>` was accepted.

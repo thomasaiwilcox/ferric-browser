@@ -7,9 +7,9 @@ Status: in-progress
 
 - Requirements: SWITCH-002 search/ranking, SWITCH-003 stored-result actions and
   the activation portion of M2-13, plus SWITCH-006 accessibility and scale.
-- Files: `crates/browser-engine-qt/src/lib.rs` and
-  `crates/browser-engine-qt/qml/Main.qml`.
-- Observable result: shared `browser-core::switcher` primitives tokenize plain
+- Files: `crates/ferric-browser-engine-qt/src/lib.rs` and
+  `crates/ferric-browser-engine-qt/qml/Main.qml`.
+- Observable result: shared `ferric-browser-core::switcher` primitives tokenize plain
   text with bounded Unicode-aware lowercasing and assign deterministic match
   classes; every switcher row exposes an allowlisted action button.
   Live tabs and windows focus through the reducer; closed tabs reopen through
@@ -42,11 +42,11 @@ the durable history safety policy and strict URL parser.
 ## Verification
 
 - `cargo fmt --all -- --check`
-- `cargo test -p browser-engine-qt --locked`
-- `cargo check -p browser-engine-qt --locked`
+- `cargo test -p ferric-browser-engine-qt --locked`
+- `cargo check -p ferric-browser-engine-qt --locked`
 - `cargo xtask check`
 - `cargo build --locked`
-- `QT_QPA_PLATFORM=wayland timeout 10s target/debug/rustbrowser --temp-basedir`
+- `QT_QPA_PLATFORM=wayland timeout 10s target/debug/ferric-browser --temp-basedir`
 
 The focused native crate suite includes an allowlist/default-action regression
 test. A live owner smoke confirms switcher rows expose an opaque owner token.
@@ -71,7 +71,7 @@ publish partial results; query, scope, close, and replacement-generation
 guards prevent an older batch from replacing newer input. A revisioned Rust
 result cache also avoids rebuilding unchanged source snapshots. Normal profile
 durable rows are now copied into a revisioned query index on the
-`rustbrowser-switcher-index` worker thread; the Qt path rejects stale profile
+`ferric-browser-switcher-index` worker thread; the Qt path rejects stale profile
 or storage revisions and falls back to the immutable storage snapshot until a
 matching index is ready. The focused regression
 `switcher_library_index_is_profile_scoped_and_query_ready` covers the index

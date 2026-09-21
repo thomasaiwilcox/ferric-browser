@@ -7,9 +7,9 @@ Status: in-progress
 
 - Requirements: CONFIG-001, CONFIG-002, CONFIG-003, CONFIG-005, CONFIG-006, and
   the include portion of CONFIG-004.
-- Files: `crates/browser-config/Cargo.toml`,
-  `crates/browser-config/src/lib.rs`, `crates/browser-engine-qt/src/lib.rs`,
-  `crates/browser-engine-qt/qml/Main.qml`, workspace `Cargo.toml`/`Cargo.lock`,
+- Files: `crates/ferric-browser-config/Cargo.toml`,
+  `crates/ferric-browser-config/src/lib.rs`, `crates/ferric-browser-engine-qt/src/lib.rs`,
+  `crates/ferric-browser-engine-qt/qml/Main.qml`, workspace `Cargo.toml`/`Cargo.lock`,
   and `docs/requirements.csv`.
 - Observable result: a Qt-independent TOML configuration model exposes typed
   starter sections and defaults. Unknown fields, unsupported enum values,
@@ -74,9 +74,9 @@ Status: in-progress
   the effective configuration and base snapshot without reloading pages. An
   invalid or partial candidate leaves the previous live configuration intact
   and reports the rejection.
-- Evidence: `cargo test -p browser-config --locked --offline` (36 tests),
-  `cargo test -p browser-engine-qt --locked --offline` (238 tests),
-  `cargo test -p rustbrowser --locked --offline` (84 tests),
+- Evidence: `cargo test -p ferric-browser-config --locked --offline` (36 tests),
+  `cargo test -p ferric-browser-engine-qt --locked --offline` (238 tests),
+  `cargo test -p ferric-browser --locked --offline` (84 tests),
   `cargo clippy --workspace --all-targets --locked --offline -- -D warnings`,
   the workspace `cargo xtask check`, and
   `cargo xtask test config` (disposable nested-Wayland atomic-reload smoke).

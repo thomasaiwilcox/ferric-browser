@@ -31,11 +31,11 @@ retrieval path today.
 ## Verification
 
 ```text
-cargo test -p browser-engine-qt --locked --offline
-cargo clippy -p browser-engine-qt --all-targets --locked --offline -- -D warnings
+cargo test -p ferric-browser-engine-qt --locked --offline
+cargo clippy -p ferric-browser-engine-qt --all-targets --locked --offline -- -D warnings
 cargo fmt --all -- --check
 cargo xtask check
-cargo build -p rustbrowser --locked --offline
+cargo build -p ferric-browser --locked --offline
 ```
 
 Unit coverage starts bounded `/bin/sleep` and shell-descendant fixtures and

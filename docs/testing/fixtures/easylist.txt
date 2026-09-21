@@ -1,3 +1,3 @@
-! Minimal host-only fixture for the RustBrowser interception smoke.
+! Minimal host-only fixture for the FerricBrowser interception smoke.
 ||127.0.0.2^
 @@||127.0.0.3^

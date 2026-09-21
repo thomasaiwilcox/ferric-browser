@@ -6,10 +6,10 @@ Status: in-progress
 ## Task card
 
 - Requirement: A11Y-003.
-- Files: `crates/browser-config/src/lib.rs`,
-  `crates/browser-engine-qt/src/diagnostics.rs`,
-  `crates/browser-engine-qt/src/lib.rs`, and
-  `crates/browser-engine-qt/qml/Main.qml`.
+- Files: `crates/ferric-browser-config/src/lib.rs`,
+  `crates/ferric-browser-engine-qt/src/diagnostics.rs`,
+  `crates/ferric-browser-engine-qt/src/lib.rs`, and
+  `crates/ferric-browser-engine-qt/qml/Main.qml`.
 - Observable result: semantic theme colors are assessed as rendered pairs
   against the WCAG AA 4.5:1 normal-text threshold. Builtin colors pass; an
   imported theme remains usable but exposes failing pair names and a warning
@@ -34,10 +34,10 @@ System font scaling uses a second bounded worker-backed `gsettings` probe for
 
 ```text
 cargo fmt --all -- --check
-cargo test -p browser-config -p browser-engine-qt --locked
+cargo test -p ferric-browser-config -p ferric-browser-engine-qt --locked
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo xtask check
-QT_QPA_PLATFORM=wayland timeout 10s target/debug/rustbrowser --temp-basedir
+QT_QPA_PLATFORM=wayland timeout 10s target/debug/ferric-browser --temp-basedir
 ```
 
 The focused unit tests cover the builtin pass case, an imperfect user theme,

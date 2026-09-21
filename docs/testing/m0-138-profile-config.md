@@ -25,9 +25,9 @@ when either the authored config or profile layer is invalid.
 ## Verification
 
 - `cargo fmt --all -- --check`
-- `cargo test -p browser-config --locked --offline` — 30 tests
-- `cargo test -p browser-engine-qt --locked --offline` — 104 tests
-- `cargo test -p rustbrowser --locked --offline` — 33 tests
+- `cargo test -p ferric-browser-config --locked --offline` — 30 tests
+- `cargo test -p ferric-browser-engine-qt --locked --offline` — 104 tests
+- `cargo test -p ferric-browser --locked --offline` — 33 tests
 
 The full workspace gate and native startup smoke remain the release-level
 checks for this slice.

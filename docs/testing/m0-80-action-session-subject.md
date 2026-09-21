@@ -28,9 +28,9 @@ typed `actions.query` metadata.
 
 ## Verification
 
-- `cargo test -p browser-core -p browser-engine-qt --locked --offline`
+- `cargo test -p ferric-browser-core -p ferric-browser-engine-qt --locked --offline`
 - `cargo xtask check --locked`
-- `cargo build -p rustbrowser --locked`
+- `cargo build -p ferric-browser --locked`
 - `cargo fmt --all -- --check`
 
 The focused tests cover registry resolution, command argument typing, action

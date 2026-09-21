@@ -8,9 +8,9 @@ completion path now creates only the corresponding fallback `WebEngineView`.
 Evidence:
 
 - `cargo fmt --all`
-- `cargo test -p browser-engine-qt --lib tab_give_command_preserves_target_and_queues_live_transfer --locked` — passed
-- `cargo build -p rustbrowser --locked` — passed
-- Native Wayland run with `--basedir /tmp/rustbrowser-m0-161-registry.QfGADs`:
+- `cargo test -p ferric-browser-engine-qt --lib tab_give_command_preserves_target_and_queues_live_transfer --locked` — passed
+- `cargo build -p ferric-browser --locked` — passed
+- Native Wayland run with `--basedir /tmp/ferric-browser-m0-161-registry.QfGADs`:
   - Created a same-profile secondary, detached its live view, and gave the
     secondary-origin view to the primary by owner token.
   - `query windows --format json` reported registry counts of `2`, `1`, and

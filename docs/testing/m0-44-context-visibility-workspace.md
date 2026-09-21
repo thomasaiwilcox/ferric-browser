@@ -21,9 +21,9 @@ content.
 
 ## Verification
 
-Commands: cargo fmt --all -- --check; cargo test -p browser-engine-qt --locked;
+Commands: cargo fmt --all -- --check; cargo test -p ferric-browser-engine-qt --locked;
 cargo xtask check; QT_QPA_PLATFORM=wayland timeout 10s
-target/debug/rustbrowser --temp-basedir.
+target/debug/ferric-browser --temp-basedir.
 
 Context entry now prefers an existing live member in another browser window,
 emitting the exact stable window-focus action before falling back to safe saved

@@ -6,8 +6,8 @@ Status: in-progress
 ## Task card
 
 - Requirements: SESSION-001 through SESSION-004 (storage/session slice).
-- Files: `crates/browser-storage/src/sessions.rs`,
-  `crates/browser-storage/src/lib.rs`, `crates/browser-engine-qt/src/lib.rs`,
+- Files: `crates/ferric-browser-storage/src/sessions.rs`,
+  `crates/ferric-browser-storage/src/lib.rs`, `crates/ferric-browser-engine-qt/src/lib.rs`,
   its QML lifecycle, workspace `Cargo.toml`/`Cargo.lock`, and
   `docs/requirements.csv`.
 - Observable result: `SessionSnapshot` serializes bounded, schema-versioned
@@ -59,7 +59,7 @@ Status: in-progress
   generation rename, current-generation rename, and directory fsync are
   checked for cleanup, recoverability, and generation selection.
 - Evidence: `cargo xtask test storage` (64 storage tests), `cargo test
-  -p browser-storage -p browser-engine-qt --locked
+  -p ferric-browser-storage -p ferric-browser-engine-qt --locked
   --offline` (64 storage tests and 167 Qt-engine tests), `cargo test
   --workspace --locked`, and
   `cargo clippy --workspace --all-targets --locked -- -D warnings`.

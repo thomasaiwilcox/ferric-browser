@@ -16,7 +16,7 @@ Primary category (`core`, `qt-adapter`, `upstream-engine`, `desktop-portal`,
 
 ## Environment
 
-- RustBrowser version or commit:
+- Ferric Browser version or commit:
 - Qt / QtWebEngine version:
 - OS and compositor:
 - GPU and driver:
@@ -29,7 +29,7 @@ Primary category (`core`, `qt-adapter`, `upstream-engine`, `desktop-portal`,
 2.
 3.
 
-Does it reproduce with `rustbrowser --temp-basedir`?
+Does it reproduce with `ferric-browser --temp-basedir`?
 
 ## Expected behavior
 

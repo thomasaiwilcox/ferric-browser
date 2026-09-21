@@ -9,9 +9,9 @@ GUI-thread store fallback; private profiles do not write durable metadata.
 
 Evidence:
 
-- `cargo test -p browser-storage worker_commits_download_destination_before_acknowledging --locked --offline`
-- `cargo check -p browser-engine-qt --locked --offline`
+- `cargo test -p ferric-browser-storage worker_commits_download_destination_before_acknowledging --locked --offline`
+- `cargo check -p ferric-browser-engine-qt --locked --offline`
 - `cargo xtask check --locked`
-- `cargo build -p rustbrowser --locked --offline`
-- `QT_QPA_PLATFORM=wayland timeout 8s target/debug/rustbrowser --temp-basedir`
+- `cargo build -p ferric-browser --locked --offline`
+- `QT_QPA_PLATFORM=wayland timeout 8s target/debug/ferric-browser --temp-basedir`
   (expected timeout, no lingering process)

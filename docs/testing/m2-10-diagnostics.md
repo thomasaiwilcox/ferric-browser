@@ -6,8 +6,8 @@ Status: in-progress
 ## Task card
 
 - Requirements: ENGINE-005, DIAG-001, and DIAG-002.
-- Files: `crates/browser-engine-qt/src/diagnostics.rs`,
-  `crates/browser-engine-qt/src/lib.rs`, and `crates/rustbrowser/src/main.rs`.
+- Files: `crates/ferric-browser-engine-qt/src/diagnostics.rs`,
+  `crates/ferric-browser-engine-qt/src/lib.rs`, and `crates/ferric-browser/src/main.rs`.
 - Observable result: the display-free CLI, `diagnostics.get` IPC method, and
   in-app `diagnostics` command use the same versioned, privacy-safe report
   with explicit capability states.
@@ -44,7 +44,7 @@ Status: in-progress
   sanitized dictionary identifiers independently. Dictionary paths are never
   emitted; a missing executable or empty inventory is reported as unavailable
   rather than inferred.
-- `target/debug/rustbrowser diagnostics --format json` uses the running
+- `target/debug/ferric-browser diagnostics --format json` uses the running
   instance's shared `diagnostics.get` report when available and otherwise works
   without starting a GUI. Both paths emit no browsing URL, file URL, credential
   path, cookie, account, private-session, or page-console data.
@@ -65,7 +65,7 @@ Status: in-progress
   loaded/skipped-list and compiled-rule counts. It does not expose list bodies,
   source URLs, or request data; standalone diagnostics remains explicitly
   unprobed because it has no profile owner.
-- `cargo test -p browser-engine-qt -p rustbrowser --locked --offline` passes,
+- `cargo test -p ferric-browser-engine-qt -p ferric-browser --locked --offline` passes,
   including schema/status and privacy assertions.
 - The native diagnostics surface requires an explicit visible preview before
   enabling Save. Exports are private, atomic, local-only JSON writes that

@@ -15,8 +15,8 @@ Implemented the V1 tab-open [--background] [--] <input...> contract.
 Evidence:
 
 - cargo fmt --all -- --check
-- cargo test -p browser-core --locked --offline: 59 passed
-- cargo test -p rustbrowser --locked --offline: 42 passed
-- cargo test -p browser-engine-qt --locked --offline: 113 passed
+- cargo test -p ferric-browser-core --locked --offline: 59 passed
+- cargo test -p ferric-browser --locked --offline: 42 passed
+- cargo test -p ferric-browser-engine-qt --locked --offline: 113 passed
 - cargo xtask check --locked
 - Wayland startup smoke with --temp-basedir

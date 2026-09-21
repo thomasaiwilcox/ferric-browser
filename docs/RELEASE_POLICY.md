@@ -1,7 +1,7 @@
 # Release freshness and maintenance policy
 
 This document defines the review evidence required before publishing a
-RustBrowser release. It is a project process, not a claim that this
+Ferric Browser release. It is a project process, not a claim that this
 unstaffed development tree provides an operational security SLA.
 
 ## Freshness review

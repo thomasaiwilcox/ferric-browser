@@ -7,7 +7,7 @@
 
 ## Context
 
-RustBrowser needs contexts, profiles, windows, tabs, and stored browser
+Ferric Browser needs contexts, profiles, windows, tabs, and stored browser
 objects to remain distinguishable across asynchronous UI, IPC, switcher, hint,
 and userscript paths. A label or current selection is not a sufficient target:
 it can become stale while an operation is queued, and a context must not
@@ -44,10 +44,10 @@ they cannot weaken the identity checks.
 
 ## Evidence
 
-- `crates/browser-core/src/action.rs`
-- `crates/browser-core/src/model.rs`
-- `crates/browser-core/src/reducer.rs`
-- `crates/browser-engine-qt/src/lib.rs`
+- `crates/ferric-browser-core/src/action.rs`
+- `crates/ferric-browser-core/src/model.rs`
+- `crates/ferric-browser-core/src/reducer.rs`
+- `crates/ferric-browser-engine-qt/src/lib.rs`
 - `docs/testing/m0-170-switcher-action-activation.md`
 - `docs/testing/m0-44-context-visibility-workspace.md`
 - `docs/testing/m0-69-action-audit-errors.md`

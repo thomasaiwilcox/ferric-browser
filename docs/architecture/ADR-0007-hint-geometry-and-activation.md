@@ -24,9 +24,9 @@ between page-provided text/geometry and browser-owned effects. Zoom, device
 scale, viewport movement, and native accessibility still require live
 qualification.
 
-- `crates/browser-core/src/hints.rs`
-- `crates/browser-engine-qt/src/lib.rs`
-- `crates/browser-engine-qt/qml/Main.qml`
+- `crates/ferric-browser-core/src/hints.rs`
+- `crates/ferric-browser-engine-qt/src/lib.rs`
+- `crates/ferric-browser-engine-qt/qml/Main.qml`
 - `docs/testing/m0-27-untrusted-inputs.md`
 - `docs/testing/m0-163-ui-automation-boundary.md`
 

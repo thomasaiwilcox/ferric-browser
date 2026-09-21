@@ -1,10 +1,10 @@
-# RustBrowser development specification
+# Ferric Browser development specification
 
 Document version: 1.1.0  
 Prepared: 2026-09-14  
 Last updated: 2026-09-15  
 Status: implementation specification; feasibility and product qualification pending  
-Working product name: RustBrowser  
+Working product name: Ferric Browser
 Primary target: Linux x86_64, native Wayland, Arch Linux, Hyprland, Omarchy  
 Implementation language: Rust application logic, with Qt Quick/QML presentation,
 minimal C++ interoperability, and JavaScript for page interaction  
@@ -105,7 +105,7 @@ corresponding milestone is implemented.
 
 ## 2. Product contract and scope
 
-RustBrowser is a browser for people who prefer commands, keyboard navigation,
+Ferric Browser is a browser for people who prefer commands, keyboard navigation,
 tiling compositors, plain configuration files, and small external tools. It
 must also support ordinary mouse interactions and complex web applications.
 Its value is predictable control over everyday browsing with reliable modern
@@ -157,7 +157,7 @@ predictable and testable. It does not make Chromium pages inherently small or
 guarantee faster page rendering than qutebrowser. Performance claims require
 measurements that include renderer and GPU subprocesses.
 
-**PROD-009 — Signature promise.** RustBrowser is a keyboard-driven browser that
+**PROD-009 — Signature promise.** Ferric Browser is a keyboard-driven browser that
 understands profiles, tasks, windows, and Wayland workspaces as one commandable
 system—and explains exactly what it is doing when the modern web misbehaves.
 The product must make this promise concrete through contexts, a universal
@@ -310,13 +310,13 @@ rust-toolchain.toml
 README.md
 LICENSE                         # added after project license selection
 crates/
-  browser-core/                 # state, modes, commands/actions, contexts, switcher, URL/policy models
-  browser-config/               # typed schema, layers, validation
-  browser-storage/              # SQLite, migrations, sessions, journey graph
-  browser-engine-qt/            # Qt adapter, C++ shim, bridge contracts
+  ferric-browser-core/                 # state, modes, commands/actions, contexts, switcher, URL/policy models
+  ferric-browser-config/               # typed schema, layers, validation
+  ferric-browser-storage/              # SQLite, migrations, sessions, journey graph
+  ferric-browser-engine-qt/            # Qt adapter, C++ shim, bridge contracts
   browser-desktop/              # portals, D-Bus, Hyprland, theme provider
-  browser-ipc/                  # framing, protocol, local client/server
-  rustbrowser/                  # executable, orchestration, QML models
+  ferric-browser-ipc/                  # framing, protocol, local client/server
+  ferric-browser/                  # executable, orchestration, QML models
   xtask/                        # developer and release tooling
 qml/                            # Qt Quick views and accessible controls
 assets/
@@ -347,14 +347,14 @@ commands must work from the repository root:
 
 ```sh
 cargo build --locked
-cargo test --locked -p browser-core -p browser-config -p browser-ipc
+cargo test --locked -p ferric-browser-core -p ferric-browser-config -p ferric-browser-ipc
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo xtask check
 cargo xtask test engine
 cargo xtask test wayland
 cargo xtask package arch
-cargo run -p rustbrowser -- --temp-basedir
+cargo run -p ferric-browser -- --temp-basedir
 ```
 
 `xtask check` performs deterministic local checks; online dependency advisory
@@ -731,10 +731,10 @@ specified in section 10. Each help entry must show applicable modes and counts.
 Comma-prefixed bindings are reserved for user customization. Super-modified
 bindings are left to the compositor. Normal mode has no single-key quit binding.
 The normal-mode baseline follows qutebrowser's generated default binding map.
-RustBrowser enhancements use otherwise-unclaimed keys and must not repurpose a
+Ferric Browser enhancements use otherwise-unclaimed keys and must not repurpose a
 qutebrowser default. A qutebrowser command family that is not implemented yet
 remains unbound (with its prefix reserved where practical) rather than receiving
-an unrelated RustBrowser action; in particular, `t` remains available for the
+an unrelated Ferric Browser action; in particular, `t` remains available for the
 site-setting toggle family. `ga`, `g0`/`g^`, F5/Ctrl-F5/F11, and the standard
 Ctrl-based tab/window chords retain their qutebrowser meanings where the V1
 command model supports them.
@@ -1143,7 +1143,7 @@ state, cache, and runtime locations into that base for isolated testing.
 exact cleanup target. It does not read normal config unless explicitly given.
 
 ```text
-$XDG_CONFIG_HOME/rustbrowser/
+$XDG_CONFIG_HOME/ferric-browser/
   config.toml                   # user-maintained, never automatically rewritten
   bindings.toml                 # optional user binding layer
   theme.toml                    # optional user appearance layer
@@ -1151,21 +1151,21 @@ $XDG_CONFIG_HOME/rustbrowser/
   contexts.toml                 # optional task contexts and routing rules
   userscripts/                  # trusted executable scripts/manifests
   greasemonkey/                  # installed local page scripts
-$XDG_DATA_HOME/rustbrowser/
+$XDG_DATA_HOME/ferric-browser/
   profiles/<uuid>/browser.sqlite # Rust-owned metadata
   profiles/<uuid>/webengine/     # engine-owned storage, opaque to Rust
   blocklists/                   # source metadata and validated lists
-$XDG_STATE_HOME/rustbrowser/
+$XDG_STATE_HOME/ferric-browser/
   runtime-overrides.toml         # generated :set/:bind layer, not dotfiles config
   profiles.json                 # durable profile registry, names/UUIDs only
   contexts.json                 # stable context IDs and saved membership only
   sessions/<uuid>/               # named and recovery snapshots
   logs/                         # bounded redacted logs
   migrations/                   # migration manifests, no credential copies
-$XDG_CACHE_HOME/rustbrowser/
+$XDG_CACHE_HOME/ferric-browser/
   profiles/<uuid>/webengine/     # engine cache
   blocklists/                   # compiled filter cache, rebuildable
-$XDG_RUNTIME_DIR/rustbrowser/
+$XDG_RUNTIME_DIR/ferric-browser/
   <instance-key>/control.sock
   <instance-key>/lock
   <instance-key>/editor/
@@ -1400,7 +1400,7 @@ rules = "builtin"
 confirm_navigation = true
 # Optional update source; both fields are required together. When configured,
 # explicit updates and at-most-daily normal-profile refreshes are allowed.
-# update_source = "https://updates.example.test/rustbrowser-links.toml"
+# update_source = "https://updates.example.test/ferric-browser-links.toml"
 # update_sha256 = "<64 lowercase hexadecimal characters>"
 
 [search_engines]
@@ -2096,20 +2096,20 @@ generated from stable command definitions. `open`'s arguments are data, even
 when they begin with a colon.
 
 ```sh
-rustbrowser
-rustbrowser open --target tab-bg -- https://example.com
-rustbrowser open --target window --profile work -- https://mail.google.com
-rustbrowser open --context work -- https://calendar.google.com
-rustbrowser open --target private-window -- https://example.com
-rustbrowser command --window last-focused -- 'hint links'
-rustbrowser command --window last-focused -- 'action url copy --clean'
-rustbrowser query tabs --format json
-rustbrowser query active-tab --window last-focused --format json
-rustbrowser config check
-rustbrowser diagnostics --format json
-rustbrowser --version
-rustbrowser --temp-basedir open -- https://example.com
-rustbrowser --basedir /absolute/test-profile open -- https://example.com
+ferric-browser
+ferric-browser open --target tab-bg -- https://example.com
+ferric-browser open --target window --profile work -- https://mail.google.com
+ferric-browser open --context work -- https://calendar.google.com
+ferric-browser open --target private-window -- https://example.com
+ferric-browser command --window last-focused -- 'hint links'
+ferric-browser command --window last-focused -- 'action url copy --clean'
+ferric-browser query tabs --format json
+ferric-browser query active-tab --window last-focused --format json
+ferric-browser config check
+ferric-browser diagnostics --format json
+ferric-browser --version
+ferric-browser --temp-basedir open -- https://example.com
+ferric-browser --basedir /absolute/test-profile open -- https://example.com
 ```
 
 Supported global options include `--basedir PATH`, `--temp-basedir`,
@@ -2157,7 +2157,7 @@ Handshake request and response:
 {
   "id": "hello-1",
   "method": "hello",
-  "params": {"protocol_major": 1, "protocol_minor": 0, "client": "rustbrowser-cli"}
+  "params": {"protocol_major": 1, "protocol_minor": 0, "client": "ferric-browser-cli"}
 }
 ```
 
@@ -2436,7 +2436,7 @@ Hyprland publishes separate request and event sockets.
 [Hyprland IPC](https://wiki.hypr.land/IPC/)
 
 **HYPR-002 — Window identification.** Use the provisional development desktop
-ID `io.github.rustbrowser.RustBrowser` consistently in executable metadata and
+ID `io.github.ferricbrowser.FerricBrowser` consistently in executable metadata and
 packaging. Confirm the final owned namespace before public release. Map browser
 windows to compositor windows using stable supported identifiers where
 available, not page title matching or a process PID alone. Multiple browser
@@ -2485,7 +2485,7 @@ test. The default implementation can parse a supported palette schema in Rust.
 **OMA-003 — Theme changes.** Watch the current theme's parent directory and
 re-establish watches after replacement/symlink changes. Reload atomically and
 keep the prior palette while a transition is incomplete. Optional integration
-hooks invoke `rustbrowser command -- theme-reload` using the installed Omarchy
+hooks invoke `ferric-browser command -- theme-reload` using the installed Omarchy
 hook contract; do not assume every version executes hooks by their shebang.
 No per-frame polling. Theme reload must not reload pages, reset modes, restart
 Meet, or rewrite the user's browser config.
@@ -2497,7 +2497,7 @@ search returns normal-profile results with stable IDs; selecting a result
 activates that exact tab. Never require Walker, Waybar, or a particular shell
 implementation as a core dependency because Omarchy components can change.
 
-**OMA-005 — Integration package.** The optional `rustbrowser-omarchy` package
+**OMA-005 — Integration package.** The optional `ferric-browser-omarchy` package
 contains declarative themes/templates, versioned example Hyprland rules,
 launcher actions, and a doctor procedure. Install vendor resources into
 package-owned locations. User activation copies/includes narrowly scoped
@@ -2986,8 +2986,8 @@ extensions demonstrate an unmet need that subprocesses cannot address.
 
 ### 28.1 Distribution model
 
-**PKG-001 — Primary package.** Provide an Arch PKGBUILD for `rustbrowser` and an
-optional `rustbrowser-omarchy` integration package. A `-git` development package
+**PKG-001 — Primary package.** Provide an Arch PKGBUILD for `ferric-browser` and an
+optional `ferric-browser-omarchy` integration package. A `-git` development package
 may follow. Use system Qt dynamically linked as the primary model, with an
 explicit supported Qt family and minimum patched build. Build in a clean Arch
 environment and test the package after installation. System dependencies are
@@ -3108,7 +3108,7 @@ feature flags without owners. Track the actual maintainers and support window
 before promising users a durable release cadence.
 
 **OSS-005 — Provenance and branding.** Keep a source-inspiration note for
-qutebrowser and any reused snippets/assets. RustBrowser is a working name;
+qutebrowser and any reused snippets/assets. Ferric Browser is a working name;
 check final namespace/name availability before release and choose owned
 desktop/repository identifiers. Do not represent the project as an official
 qutebrowser, Google, Hyprland, or Omarchy product without authorization.
@@ -3299,7 +3299,7 @@ the core tests ran. Scope implementation claims to the evidence collected.
 
 ## 32. Signature product direction
 
-This section defines the product-specific layer that should make RustBrowser
+This section defines the product-specific layer that should make Ferric Browser
 more than a Rust reimplementation of qutebrowser. The earlier sections remain
 authoritative for engine, storage, security, and desktop behavior. Terms here
 must reuse those boundaries rather than create parallel implementations.
@@ -3641,7 +3641,7 @@ outside this guarantee.
 ### 32.7 Deliberate product limits and release placement
 
 **DIR-001 — Compositor-native composition.** Browser-owned split view is not a
-signature feature. RustBrowser invests in exact window identity, cross-window
+signature feature. Ferric Browser invests in exact window identity, cross-window
 search, context/workspace intent, focus, movement, and restoration so Hyprland
 can remain the tiling system. This avoids two overlapping window managers and
 keeps page viewport, focus, capture, and permission ownership intelligible.

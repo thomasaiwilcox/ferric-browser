@@ -21,7 +21,7 @@ surface being visible.
 Evidence:
 
 - `cargo fmt --all -- --check`
-- `cargo test -p browser-engine-qt --locked --offline` (83 tests)
+- `cargo test -p ferric-browser-engine-qt --locked --offline` (83 tests)
 - Existing workspace `cargo xtask check --locked` evidence remains valid for
   the preceding snapshot-consumer slice.
 

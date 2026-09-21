@@ -6,8 +6,8 @@ Status: in-progress
 ## Task card
 
 - Requirement: LINK-005.
-- Files: `crates/browser-engine-qt/src/link_cleaning_policy.rs` and
-  `crates/browser-engine-qt/src/lib.rs`.
+- Files: `crates/ferric-browser-engine-qt/src/link_cleaning_policy.rs` and
+  `crates/ferric-browser-engine-qt/src/lib.rs`.
 - Observable result: a validated downloaded rule candidate can be accepted
   atomically, becomes active for normal profiles, and cannot displace the last
   accepted snapshot when parsing, corpus, size, UTF-8, or checksum validation
@@ -30,8 +30,8 @@ NET-002 HTTPS, conditional-request, timeout, size, and last-known-good rules.
 ## Verification
 
 ```text
-cargo test -p browser-engine-qt link_cleaning_policy --locked --offline
+cargo test -p ferric-browser-engine-qt link_cleaning_policy --locked --offline
 cargo xtask check --locked
-target/debug/rustbrowser diagnostics --format json
-QT_QPA_PLATFORM=wayland timeout 8s target/debug/rustbrowser --temp-basedir
+target/debug/ferric-browser diagnostics --format json
+QT_QPA_PLATFORM=wayland timeout 8s target/debug/ferric-browser --temp-basedir
 ```

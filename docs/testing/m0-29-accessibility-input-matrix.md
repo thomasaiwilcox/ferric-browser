@@ -6,8 +6,8 @@ Status: in-progress
 ## Task card
 
 - Requirement: A11Y-004.
-- Files: `crates/browser-engine-qt/qml/Main.qml`,
-  `crates/browser-engine-qt/src/lib.rs`, and `crates/browser-core/src`.
+- Files: `crates/ferric-browser-engine-qt/qml/Main.qml`,
+  `crates/ferric-browser-engine-qt/src/lib.rs`, and `crates/ferric-browser-core/src`.
 - Observable result: normal-mode browser commands consume a bounded logical
   key string only when Ctrl, Alt, and Meta are absent. Shift-produced logical
   bindings remain available, while modified combinations—including AltGr's
@@ -19,10 +19,10 @@ Status: in-progress
 
 ```text
 cargo fmt --all -- --check
-cargo test -p browser-engine-qt -p browser-core --locked
+cargo test -p ferric-browser-engine-qt -p ferric-browser-core --locked
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo xtask check
-QT_QPA_PLATFORM=wayland timeout 10s target/debug/rustbrowser --temp-basedir
+QT_QPA_PLATFORM=wayland timeout 10s target/debug/ferric-browser --temp-basedir
 ```
 
 The static QML test covers the logical-key boundary and editable-text role;

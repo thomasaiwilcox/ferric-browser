@@ -6,9 +6,9 @@ Status: in-progress
 ## Task card
 
 - Requirements: OMA-001 through OMA-003.
-- Files: `crates/browser-config/src/lib.rs`,
-  `crates/browser-engine-qt/src/lib.rs`, and
-  `crates/browser-engine-qt/qml/Main.qml`.
+- Files: `crates/ferric-browser-config/src/lib.rs`,
+  `crates/ferric-browser-engine-qt/src/lib.rs`, and
+  `crates/ferric-browser-engine-qt/qml/Main.qml`.
 - Observable result: `theme.source = auto` prefers a valid active Omarchy
   `colors.toml` under the current state layout, falls back to the older
   configuration layout, and otherwise uses the builtin palette. A nonempty
@@ -34,11 +34,11 @@ and do not reload pages.
 ## Verification
 
 - `cargo fmt --all -- --check`
-- `cargo test -p browser-config --locked --offline`
-- `cargo test -p browser-engine-qt --locked --offline`
-- `cargo build -p rustbrowser --locked`
+- `cargo test -p ferric-browser-config --locked --offline`
+- `cargo test -p ferric-browser-engine-qt --locked --offline`
+- `cargo build -p ferric-browser --locked`
 - `cargo xtask check`
-- `QT_QPA_PLATFORM=wayland timeout 10s target/debug/rustbrowser --temp-basedir`
+- `QT_QPA_PLATFORM=wayland timeout 10s target/debug/ferric-browser --temp-basedir`
 
 The focused suites cover current-layout precedence, explicit-path precedence,
 missing-token fallbacks, invalid-color rejection, and the shared Linux inotify

@@ -6,7 +6,7 @@ Status: in-progress
 ## Scope
 
 The repository now contains a stable freedesktop desktop entry and scalable
-hicolor icon using the application identity io.github.rustbrowser.RustBrowser.
+hicolor icon using the application identity io.github.ferricbrowser.FerricBrowser.
 The Qt bootstrap sets the same desktop-file basename and display name before
 creating QML windows, so native Wayland app identity does not depend on the
 window title.
@@ -16,8 +16,8 @@ default-browser ownership.
 
 Default-browser ownership is opt-in through the CLI only:
 
-    rustbrowser default-browser status
-    rustbrowser default-browser set
+    ferric-browser default-browser status
+    ferric-browser default-browser set
 
 `set` invokes `xdg-settings` without a shell and verifies the resulting
 desktop entry. Installation and normal GUI startup do not claim ownership.
@@ -28,7 +28,7 @@ continues to be treated as one search/navigation input.
 
 ## Verification
 
-    desktop-file-validate packaging/io.github.rustbrowser.RustBrowser.desktop
+    desktop-file-validate packaging/io.github.ferricbrowser.FerricBrowser.desktop
 
 The validator is optional on minimal development images. Arch installation,
 icon-cache refresh, package dependency qualification, and live handler

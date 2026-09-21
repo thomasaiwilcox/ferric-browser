@@ -14,5 +14,5 @@ must not be reported as live detach.
 
 Evidence:
 
-- `cargo test -p browser-engine-qt --locked --offline`
+- `cargo test -p ferric-browser-engine-qt --locked --offline`
 - `cargo fmt --all -- --check`

@@ -1,7 +1,7 @@
 # M0-168: profile registry mutation worker
 
 Confirmed durable profile creation, label renaming, and deletion now run
-through a bounded `rustbrowser-profile-mutator` worker. The worker reopens the
+through a bounded `ferric-browser-profile-mutator` worker. The worker reopens the
 registry for each request; deletion additionally revalidates the active/held
 profile lock, removes the exact profile data root, and removes the registry
 record before reporting completion. Qt invokables only queue operations;

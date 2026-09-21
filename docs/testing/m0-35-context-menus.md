@@ -6,8 +6,8 @@ Status: in-progress
 ## Task card
 
 - Requirement: FILE-006.
-- Files: `crates/browser-engine-qt/qml/Main.qml` and
-  `crates/browser-engine-qt/src/lib.rs`.
+- Files: `crates/ferric-browser-engine-qt/qml/Main.qml` and
+  `crates/ferric-browser-engine-qt/src/lib.rs`.
 - Observable result: Qt WebEngine context-menu requests are accepted by the
   browser and represented by one native, accessible menu surface. The menu
   exposes supported link, media, selection, editing, spelling, and inspect
@@ -40,10 +40,10 @@ downloads dictionaries as a side effect of configuration.
 
 ```text
 cargo fmt --all -- --check
-cargo test -p browser-engine-qt --locked
+cargo test -p ferric-browser-engine-qt --locked
 cargo xtask check
-cargo build -p rustbrowser --locked
-QT_QPA_PLATFORM=wayland timeout 10s target/debug/rustbrowser --temp-basedir
+cargo build -p ferric-browser --locked
+QT_QPA_PLATFORM=wayland timeout 10s target/debug/ferric-browser --temp-basedir
 ```
 
 The smoke is expected to end with timeout status 124 after remaining alive

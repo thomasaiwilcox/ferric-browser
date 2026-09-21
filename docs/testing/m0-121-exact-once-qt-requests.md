@@ -6,8 +6,8 @@ Status: in-progress
 ## Task card
 
 - Requirement: STATE-007.
-- Files: `crates/browser-engine-qt/qml/Main.qml` and
-  `crates/browser-engine-qt/src/lib.rs`.
+- Files: `crates/ferric-browser-engine-qt/qml/Main.qml` and
+  `crates/ferric-browser-engine-qt/src/lib.rs`.
 - Observable result: terminal Qt request outcomes pass through one bounded
   resolver, and duplicate, stale, and error outcomes are visible in runtime
   diagnostics.
@@ -29,8 +29,8 @@ coverage.
 ## Verification
 
 ```text
-cargo test -p browser-engine-qt --locked --offline
+cargo test -p ferric-browser-engine-qt --locked --offline
 cargo xtask check --locked
-QT_QPA_PLATFORM=wayland timeout 8s target/debug/rustbrowser --temp-basedir
-target/debug/rustbrowser diagnostics --format json
+QT_QPA_PLATFORM=wayland timeout 8s target/debug/ferric-browser --temp-basedir
+target/debug/ferric-browser diagnostics --format json
 ```

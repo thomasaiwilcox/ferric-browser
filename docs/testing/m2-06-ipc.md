@@ -7,10 +7,10 @@ Status: in-progress
 
 - Requirements: the transport, framing, and initial live method/query subset
   in IPC-001 through IPC-004, plus the retry primitives in IPC-006.
-- Files: `crates/browser-ipc/Cargo.toml`, `crates/browser-ipc/src/lib.rs`,
-  `crates/rustbrowser/src/main.rs`,
-  `crates/browser-engine-qt/src/lib.rs`,
-  `crates/browser-engine-qt/qml/Main.qml`, and the workspace manifest/lockfile.
+- Files: `crates/ferric-browser-ipc/Cargo.toml`, `crates/ferric-browser-ipc/src/lib.rs`,
+  `crates/ferric-browser/src/main.rs`,
+  `crates/ferric-browser-engine-qt/src/lib.rs`,
+  `crates/ferric-browser-engine-qt/qml/Main.qml`, and the workspace manifest/lockfile.
 - Observable result: the shared IPC crate provides a local AF_UNIX listener
   rooted in a stable digest-based instance directory, private directory/socket
   modes, Linux peer-UID inspection, create-new instance ownership, dead-PID
@@ -88,14 +88,14 @@ Status: in-progress
   existing owner. The owner resolves its last-focused (or active) window,
   queues the same browser-owned activation action used by switcher/window
   focus, and returns a bounded acknowledgement without opening a new tab.
-- Evidence: `cargo test -p browser-ipc --locked --offline` (11 tests,
+- Evidence: `cargo test -p ferric-browser-ipc --locked --offline` (11 tests,
   including persistent backpressure disconnect),
   `cargo test --workspace --locked --offline`, workspace clippy with
-  `-D warnings`, and `cargo build -p rustbrowser --locked --offline` all pass.
+  `-D warnings`, and `cargo build -p ferric-browser --locked --offline` all pass.
   A two-process smoke using the same disposable `--basedir` also passes: the
   owner starts with `https://first.example.test`, the second process submits
   `https://second.example.test`, completes the hello handshake, and exits with
-  `Forwarded startup input to the running RustBrowser instance`. A timed
+  `Forwarded startup input to the running Ferric Browser instance`. A timed
   native Wayland launch with `--temp-basedir` remains display-startup
   verified. A live AF_UNIX smoke returns the stable action IDs from
   `actions.query`; `action.execute` for `browser.url.explain` returns the same

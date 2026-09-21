@@ -37,10 +37,10 @@ including unsupported, I/O, engine, and cancellation failures.
 ## Verification
 
 ```text
-cargo test -p browser-ipc -p rustbrowser --locked --offline
+cargo test -p ferric-browser-ipc -p ferric-browser --locked --offline
 cargo xtask check
 cargo fmt --all -- --check
-target/debug/rustbrowser --software-rendering diagnostics --format json
+target/debug/ferric-browser --software-rendering diagnostics --format json
 ```
 
 Unit tests cover legacy-code canonicalization, guidance fields, correlation ID

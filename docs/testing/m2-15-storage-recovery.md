@@ -6,10 +6,10 @@ Status: in-progress
 ## Task card
 
 - Requirement: STORE-006.
-- Files: `crates/browser-storage/src/lib.rs`,
-  `crates/browser-engine-qt/src/diagnostics.rs`,
-  `crates/browser-engine-qt/src/lib.rs`, and
-  `crates/rustbrowser/src/main.rs`.
+- Files: `crates/ferric-browser-storage/src/lib.rs`,
+  `crates/ferric-browser-engine-qt/src/diagnostics.rs`,
+  `crates/ferric-browser-engine-qt/src/lib.rs`, and
+  `crates/ferric-browser/src/main.rs`.
 - Observable result: opening an existing nonempty profile database performs a
   read-only SQLite integrity check and rejects corruption or a schema newer
   than the application before enabling WAL or running migrations. The original
@@ -24,12 +24,12 @@ Status: in-progress
 
 ## Evidence
 
-- `cargo test -p browser-storage --locked` passes 65 tests, including byte-for-
+- `cargo test -p ferric-browser-storage --locked` passes 65 tests, including byte-for-
   byte preservation of a corrupt file, refusal of a future schema version, a
   deterministic `SQLITE_FULL`-to-`DiskFull` mapping, and a missing-file
   inspection that performs no write.
-- `cargo test -p browser-engine-qt --locked` and
-  `cargo test -p rustbrowser --locked` pass after integrating the diagnostics
+- `cargo test -p ferric-browser-engine-qt --locked` and
+  `cargo test -p ferric-browser --locked` pass after integrating the diagnostics
   health fact.
 - The recovery error explicitly preserves the original and points to
   read-only inspection or a clearly named new profile. A failed open does not

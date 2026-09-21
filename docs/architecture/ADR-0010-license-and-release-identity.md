@@ -1,6 +1,6 @@
 # ADR-0010: License and release identity
 
-- Status: proposed, owner decision required before public publication
+- Status: accepted
 - Date: 2026-09-18
 - Scope: application source license, public name, application ID, and release
   signing identity
@@ -8,34 +8,30 @@
 ## Context
 
 The development specification recommends GPL-3.0-or-later for the initial
-application license, while the current Cargo metadata remains the provisional
-`MIT OR Apache-2.0` declaration. The repository has not selected a final
-license or established a maintainer signing identity. Publishing either by
-assumption would create an inaccurate legal or provenance claim.
+application license. The project is adopting that license for its public
+pre-alpha source and binary distributions.
 
-RustBrowser is an independent implementation. It may learn from documented
+Ferric Browser is an independent implementation. It may learn from documented
 qutebrowser behavior, but must not copy qutebrowser source or branding without
 preserving compatible notices and obligations. QtWebEngine/Chromium, fonts,
 icons, dictionaries, blocklists, and scripts have separate notice and
 redistribution obligations.
 
-## Options
+## Decision
 
-1. Select GPL-3.0-or-later, as recommended by the specification.
-2. Select another compatible application license after owner/legal review.
-3. Do not publish until the owner has recorded the choice and checked the
-   final project namespace and desktop identifiers.
+Use `GPL-3.0-or-later` for all workspace crates and distribution artifacts.
+Ship the complete license text as `LICENSE`. Keep dependency and asset notices
+in the release inventory.
 
 ## Decision gate
 
-The owner must choose one application license, record it here, add the real
-license text and notices, reconcile `[workspace.package].license`, and verify
-dependency/asset obligations before public V1. The owner must also record the
-owned public name, application ID, repository identity, and any managed
-signature key. No invented maintainer key or signature is permitted.
+The public identity is Ferric Browser, repository `ferric-browser`, executable
+`ferric-browser`, and desktop ID `io.github.ferricbrowser.FerricBrowser`.
+Publication remains blocked until the `ferricbrowser` namespace and final name
+review are complete. No maintainer signature key is claimed by this ADR.
 
 ## Consequences
 
-Until the gate is closed, this tree may be built and tested but must not claim
-to be a stable public release. The release artifact inventory and provenance
-documents remain explicit about the pending choice.
+The project is copyleft and may be distributed as a public pre-alpha once the
+remaining namespace, security, qualification, and packaging gates pass. This
+decision is not trademark clearance.

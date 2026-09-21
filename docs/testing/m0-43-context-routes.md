@@ -57,9 +57,9 @@ preflighted navigation.
 
 ```text
 cargo fmt --all -- --check
-cargo test -p browser-config -p browser-core -p browser-engine-qt -p rustbrowser --locked
+cargo test -p ferric-browser-config -p ferric-browser-core -p ferric-browser-engine-qt -p ferric-browser --locked
 cargo xtask check
-QT_QPA_PLATFORM=wayland target/debug/rustbrowser --temp-basedir
+QT_QPA_PLATFORM=wayland target/debug/ferric-browser --temp-basedir
 ```
 
 The Wayland smoke run is bounded by the local test harness timeout and should

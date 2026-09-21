@@ -7,10 +7,10 @@ Status: in-progress
 
 - Requirements: the ordinary-DOM caret movement and selection-copy portions of
   PAGE-002, plus the selection subject in ACTION-002/ACTION-003.
-- Files: `crates/browser-core/src/action.rs`,
-  `crates/browser-core/src/input.rs`, `crates/browser-engine-qt/src/lib.rs`,
-  `crates/browser-engine-qt/qml/Main.qml`, `crates/browser-config/src/lib.rs`,
-  and `crates/rustbrowser/src/main.rs`.
+- Files: `crates/ferric-browser-core/src/action.rs`,
+  `crates/ferric-browser-core/src/input.rs`, `crates/ferric-browser-engine-qt/src/lib.rs`,
+  `crates/ferric-browser-engine-qt/qml/Main.qml`, `crates/ferric-browser-config/src/lib.rs`,
+  and `crates/ferric-browser/src/main.rs`.
 - Observable result: `v`/`mode-enter caret` enters caret mode; `h/j/k/l`, `w`,
   `b`, `0`, `$`, `caret-move`, and `caret-select` use browser selection APIs
   with character, word, and line granularities. `yank selection`,
@@ -23,10 +23,10 @@ Status: in-progress
 
 ## Evidence
 
-- `cargo test -p browser-core -p browser-engine-qt -p rustbrowser --locked
+- `cargo test -p ferric-browser-core -p ferric-browser-engine-qt -p ferric-browser --locked
   --offline` passes, including typed selection action and IPC mapping tests.
 - `cargo clippy --workspace --all-targets --locked --offline -- -D warnings`
-  and `cargo build -p rustbrowser --locked --offline` pass.
+  and `cargo build -p ferric-browser --locked --offline` pass.
 - Browser-owned one-shot DOM scripts are dispatched through the immutable QML
   resource in `WebEngineScript.ApplicationWorld`; the bundle exposes an
   explicit version marker and never receives page-facing native objects. The
@@ -41,7 +41,7 @@ Status: in-progress
 - On the active Wayland backend, the selected-text fixture loaded with a
   healthy renderer. A live `action selection copy` request completed through
   the IPC owner, and `wl-paste --no-newline` returned:
-  `Visible selected text for the RustBrowser caret copy smoke.`
+  `Visible selected text for the Ferric Browser caret copy smoke.`
 - The same smoke reports `qt_surface: available`, `display: wayland`, and no
   owner-side runtime diagnostics.
 - On the active Wayland backend, the Unicode caret fixture accepted

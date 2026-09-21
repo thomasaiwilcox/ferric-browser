@@ -9,7 +9,7 @@ Date: 2026-09-15
 - `Qt6Core`, `Qt6Gui`, `Qt6Quick`, `Qt6WebEngineQuick`,
   `Qt6WebEngineCore`, and `Qt6DBus` are discoverable through pkg-config.
 - An active Wayland session is present (`WAYLAND_DISPLAY=wayland-1`,
-  `XDG_SESSION_TYPE=wayland`). The actual Qt QPA selected by a RustBrowser
+  `XDG_SESSION_TYPE=wayland`). The actual Qt QPA selected by a Ferric Browser
   window is not yet verified.
 - An initial offline probe could not resolve the CXX-Qt registry packages. A
   later dependency-resolution probe succeeded, and CXX-Qt 0.10.0 is now pinned

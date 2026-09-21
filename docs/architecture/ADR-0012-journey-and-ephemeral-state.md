@@ -43,11 +43,11 @@ than being inferred from unit tests.
 
 ## Evidence
 
-- `crates/browser-core/src/journey.rs`
-- `crates/browser-storage/src/lib.rs`
-- `crates/browser-storage/src/sessions.rs`
-- `crates/browser-storage/src/lifecycle.rs`
-- `crates/browser-engine-qt/src/lib.rs`
+- `crates/ferric-browser-core/src/journey.rs`
+- `crates/ferric-browser-storage/src/lib.rs`
+- `crates/ferric-browser-storage/src/sessions.rs`
+- `crates/ferric-browser-storage/src/lifecycle.rs`
+- `crates/ferric-browser-engine-qt/src/lib.rs`
 - `docs/testing/m0-53-journey-storage.md`
 - `docs/testing/m0-56-journey-retention.md`
 - `docs/testing/m0-57-journey-private-memory.md`

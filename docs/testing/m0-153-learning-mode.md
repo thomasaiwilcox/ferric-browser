@@ -13,6 +13,6 @@ Completed the documented learning-mode command surface.
 Evidence:
 
 - `cargo fmt --all`
-- `cargo test -p browser-core --locked --offline`: 59 passed
-- `cargo test -p rustbrowser --locked --offline cli_binding_commands_use_typed_mode_and_keychain_fields`: passed
-- `cargo test -p browser-engine-qt --locked --offline binding_commands_use_typed_mode_and_keychain_arguments`: passed
+- `cargo test -p ferric-browser-core --locked --offline`: 59 passed
+- `cargo test -p ferric-browser --locked --offline cli_binding_commands_use_typed_mode_and_keychain_fields`: passed
+- `cargo test -p ferric-browser-engine-qt --locked --offline binding_commands_use_typed_mode_and_keychain_arguments`: passed

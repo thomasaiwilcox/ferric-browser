@@ -9,6 +9,6 @@ already-published Qt snapshots and do not open the registry.
 
 Evidence:
 
-- `cargo test -p browser-engine-qt profile_ --locked --offline`
+- `cargo test -p ferric-browser-engine-qt profile_ --locked --offline`
 - `cargo xtask check --locked --offline`
 - `cargo fmt --all -- --check`

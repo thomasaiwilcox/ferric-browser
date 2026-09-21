@@ -21,7 +21,7 @@ cosmetic rules, scriptlets, and page-world behavior are ignored.
 ## Verification
 
 ```text
-cargo test -p browser-engine-qt --locked --offline
+cargo test -p ferric-browser-engine-qt --locked --offline
 cargo fmt --all -- --check
 cargo xtask check
 ```

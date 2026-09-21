@@ -25,8 +25,8 @@ and native multiwindow flush-latency qualification remain open.
 
 Evidence for this slice:
 
-- `cargo test -p browser-storage --locked --offline`
-- `cargo test -p browser-engine-qt --locked --offline`
-- `cargo build -p rustbrowser --locked`
+- `cargo test -p ferric-browser-storage --locked --offline`
+- `cargo test -p ferric-browser-engine-qt --locked --offline`
+- `cargo build -p ferric-browser --locked`
 - `cargo fmt --all -- --check`
 - native Wayland startup smoke with `QT_QPA_PLATFORM=wayland`

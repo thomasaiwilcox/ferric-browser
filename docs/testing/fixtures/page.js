@@ -1,2 +1,2 @@
 document.title = "page-userscript-ok";
-fetch("/__rustbrowser_userscript_hit__").catch(function() {});
+fetch("/__ferric_browser_userscript_hit__").catch(function() {});

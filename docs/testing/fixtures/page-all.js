@@ -1,3 +1,3 @@
 if (window.top !== window) {
-    fetch("/__rustbrowser_userscript_subframe_hit__").catch(function() {});
+    fetch("/__ferric_browser_userscript_subframe_hit__").catch(function() {});
 }

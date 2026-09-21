@@ -19,6 +19,6 @@ then clears the corresponding per-window core state.
 
 ## Verification
 
-`cargo test -p browser-engine-qt --locked --offline` and `cargo xtask check
+`cargo test -p ferric-browser-engine-qt --locked --offline` and `cargo xtask check
 --locked` pass. Native multi-window lifetime and download-routing qualification
 remain release acceptance evidence.

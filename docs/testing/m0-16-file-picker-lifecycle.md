@@ -21,10 +21,10 @@ opener.
 ## Verification
 
 ```text
-cargo build -p rustbrowser --locked --offline
+cargo build -p ferric-browser --locked --offline
 cargo fmt --all -- --check
 cargo xtask check
-QT_QPA_PLATFORM=wayland timeout 8s target/debug/rustbrowser --temp-basedir
+QT_QPA_PLATFORM=wayland timeout 8s target/debug/ferric-browser --temp-basedir
 ```
 
 The native Wayland smoke stayed alive for the timeout without QML loading

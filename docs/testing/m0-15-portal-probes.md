@@ -42,9 +42,9 @@ This output is environment evidence, not live consent or device qualification.
 ## Verification
 
 ```text
-cargo test -p browser-engine-qt --locked --offline
-cargo clippy -p browser-engine-qt --all-targets --locked --offline -- -D warnings
+cargo test -p ferric-browser-engine-qt --locked --offline
+cargo clippy -p ferric-browser-engine-qt --all-targets --locked --offline -- -D warnings
 cargo fmt --all -- --check
 cargo xtask check
-cargo run -p rustbrowser --locked --offline -- diagnostics --format json
+cargo run -p ferric-browser --locked --offline -- diagnostics --format json
 ```

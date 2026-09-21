@@ -19,10 +19,10 @@ bounded scope. The native graph layout is covered by
 
 Evidence:
 
-* `cargo test -p browser-storage -p browser-engine-qt -p rustbrowser --locked --offline`
+* `cargo test -p ferric-browser-storage -p ferric-browser-engine-qt -p ferric-browser --locked --offline`
 * `cargo xtask check`
-* `cargo build -p rustbrowser --locked`
-* `QT_QPA_PLATFORM=wayland timeout 10s target/debug/rustbrowser --temp-basedir`
+* `cargo build -p ferric-browser --locked`
+* `QT_QPA_PLATFORM=wayland timeout 10s target/debug/ferric-browser --temp-basedir`
 
 The native UI check is a bounded startup smoke; timeout exit is expected while
 the GUI remains open.

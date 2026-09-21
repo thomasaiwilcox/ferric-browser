@@ -6,10 +6,10 @@ Status: in-progress
 ## Task card
 
 - Requirement: NET-003.
-- Files: `crates/browser-engine-qt/src/request_interceptor.h`,
-  `crates/browser-engine-qt/src/request_interceptor.cpp`,
-  `crates/browser-engine-qt/src/lib.rs`, and
-  `crates/browser-engine-qt/qml/Main.qml`.
+- Files: `crates/ferric-browser-engine-qt/src/request_interceptor.h`,
+  `crates/ferric-browser-engine-qt/src/request_interceptor.cpp`,
+  `crates/ferric-browser-engine-qt/src/lib.rs`, and
+  `crates/ferric-browser-engine-qt/qml/Main.qml`.
 - Observable result: the synchronous interceptor consumes Qt's engine-provided
   resource type, navigation type, first-party URL, and initiator URL. It
   labels top-level, subframe, redirect, and resource requests without exposing
@@ -28,9 +28,9 @@ a security allow or guessed from focused-tab state.
 ## Verification
 
 ```text
-cargo test -p browser-engine-qt --locked --offline
+cargo test -p ferric-browser-engine-qt --locked --offline
 cargo xtask check --locked
-cargo build -p rustbrowser --locked --offline
-target/debug/rustbrowser diagnostics --format json
-QT_QPA_PLATFORM=wayland timeout 8s target/debug/rustbrowser --temp-basedir
+cargo build -p ferric-browser --locked --offline
+target/debug/ferric-browser diagnostics --format json
+QT_QPA_PLATFORM=wayland timeout 8s target/debug/ferric-browser --temp-basedir
 ```

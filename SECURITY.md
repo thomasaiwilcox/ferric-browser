@@ -3,8 +3,11 @@
 Do not report vulnerabilities in public issues, pull requests, or the bug
 template. Do not upload profiles, cookies, credentials, or unredacted logs.
 
-A private security reporting route is a prerequisite for public V1 and is not
-claimed by this development tree yet. Until the project owner publishes that
-route, retain sensitive details locally and use the owner’s separately managed
-private contact channel. The public issue process is for sanitized,
-non-sensitive behavior reports only.
+Use GitHub Security Advisories for private vulnerability reporting:
+`https://github.com/ferricbrowser/ferric-browser/security/advisories/new`.
+The public issue process is only for sanitized, non-sensitive behavior reports.
+
+QtWebEngine supplies Chromium and the rendering sandbox. Ferric Browser's
+security therefore depends on timely, supported Qt/Chromium packages from the
+distribution; a passing Rust dependency audit does not establish browser-engine
+patch status. Releases are blocked by known applicable critical engine issues.

@@ -19,8 +19,8 @@ leaves its process group is outside this bounded guarantee.
 ## Verification
 
 ```text
-cargo test -p browser-engine-qt --locked --offline
-cargo clippy -p browser-engine-qt --all-targets --locked --offline -- -D warnings
+cargo test -p ferric-browser-engine-qt --locked --offline
+cargo clippy -p ferric-browser-engine-qt --all-targets --locked --offline -- -D warnings
 cargo fmt --all -- --check
 ```
 

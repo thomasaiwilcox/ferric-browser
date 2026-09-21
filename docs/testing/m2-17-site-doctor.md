@@ -6,8 +6,8 @@ Status: in-progress
 ## Task card
 
 - Requirement: SEC-007.
-- Files: `crates/browser-engine-qt/src/lib.rs` and
-  `crates/browser-engine-qt/qml/Main.qml`.
+- Files: `crates/ferric-browser-engine-qt/src/lib.rs` and
+  `crates/ferric-browser-engine-qt/qml/Main.qml`.
 - Observable result: Site Doctor experiments are explicit, visible, scoped to
   one captured tab/document, automatically expire, and can be individually
   undone without weakening unrelated security boundaries.

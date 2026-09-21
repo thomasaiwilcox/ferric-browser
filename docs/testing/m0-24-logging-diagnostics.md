@@ -6,10 +6,10 @@ Status: in-progress
 ## Task card
 
 - Requirement: SEC-004.
-- Files: `crates/browser-ipc/src/lib.rs`,
-  `crates/browser-engine-qt/src/diagnostics.rs`,
-  `crates/browser-engine-qt/qml/Main.qml`, and
-  `crates/browser-storage/src/lifecycle.rs`.
+- Files: `crates/ferric-browser-ipc/src/lib.rs`,
+  `crates/ferric-browser-engine-qt/src/diagnostics.rs`,
+  `crates/ferric-browser-engine-qt/qml/Main.qml`, and
+  `crates/ferric-browser-storage/src/lifecycle.rs`.
 - Observable result: serialized IPC failures and the diagnostics preview do
   not expose common credential, form, or URL-secret data.
 
@@ -53,10 +53,10 @@ outcome categories and is never uploaded automatically.
 ## Verification
 
 ```text
-cargo test -p browser-ipc --locked
-cargo test -p browser-engine-qt --locked
-cargo test -p browser-storage --locked
+cargo test -p ferric-browser-ipc --locked
+cargo test -p ferric-browser-engine-qt --locked
+cargo test -p ferric-browser-storage --locked
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo xtask check
-QT_QPA_PLATFORM=wayland timeout 10s target/debug/rustbrowser --temp-basedir
+QT_QPA_PLATFORM=wayland timeout 10s target/debug/ferric-browser --temp-basedir
 ```

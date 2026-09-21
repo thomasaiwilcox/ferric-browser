@@ -14,9 +14,9 @@ is introduced.
 
 Evidence:
 
-- `cargo test -p browser-engine-qt network_policy --locked --offline`
-- `cargo check -p browser-engine-qt --locked --offline`
+- `cargo test -p ferric-browser-engine-qt network_policy --locked --offline`
+- `cargo check -p ferric-browser-engine-qt --locked --offline`
 - `cargo xtask check --locked`
-- `cargo build -p rustbrowser --locked --offline`
-- `QT_QPA_PLATFORM=wayland timeout 8s target/debug/rustbrowser --temp-basedir`
+- `cargo build -p ferric-browser --locked --offline`
+- `QT_QPA_PLATFORM=wayland timeout 8s target/debug/ferric-browser --temp-basedir`
   (expected timeout, no lingering process)

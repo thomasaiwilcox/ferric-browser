@@ -20,7 +20,7 @@ core dumps are not collected or exported automatically, because Linux core
 dumps can contain page and credential memory. It also reports debug-symbol
 availability as unprobed unless release packaging supplies that evidence.
 
-The design correlates the RustBrowser browser process through its marker and
+The design correlates the Ferric Browser browser process through its marker and
 structured events, but makes no claim that this prevents or fully attributes a
 Qt helper-process or GPU-driver crash. Native crash attribution and release
 package symbol publication remain deployment qualification work.
@@ -28,10 +28,10 @@ package symbol publication remain deployment qualification work.
 ## Verification
 
 ```text
-cargo test -p browser-storage -p browser-engine-qt -p rustbrowser
+cargo test -p ferric-browser-storage -p ferric-browser-engine-qt -p ferric-browser
 cargo fmt --all -- --check
 cargo xtask check
-target/debug/rustbrowser diagnostics --format json
+target/debug/ferric-browser diagnostics --format json
 ```
 
 The storage unit test verifies bounded retention, clean marker removal, and

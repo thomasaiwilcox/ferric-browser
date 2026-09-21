@@ -6,8 +6,8 @@ Status: in-progress
 ## Task card
 
 - Requirement: MEDIA-006.
-- Files: `crates/browser-engine-qt/qml/Main.qml` and
-  `crates/browser-engine-qt/src/lib.rs`.
+- Files: `crates/ferric-browser-engine-qt/qml/Main.qml` and
+  `crates/ferric-browser-engine-qt/src/lib.rs`.
 - Observable result: normal and private Qt WebEngine profiles route
   `presentNotification` through a browser-owned consent/configuration gate and
   then use Qt's native notification presenter. Unconsented, opaque-origin, or
@@ -33,10 +33,10 @@ after browser exit because there is no background service in this slice.
 
 ```text
 cargo fmt --all -- --check
-cargo test -p browser-engine-qt --locked
+cargo test -p ferric-browser-engine-qt --locked
 cargo xtask check
-cargo build -p rustbrowser --locked
-QT_QPA_PLATFORM=wayland timeout 10s target/debug/rustbrowser --temp-basedir
+cargo build -p ferric-browser --locked
+QT_QPA_PLATFORM=wayland timeout 10s target/debug/ferric-browser --temp-basedir
 ```
 
 Static and startup checks cover the ownership boundary. Live notification

@@ -6,7 +6,7 @@ Status: in-progress
 ## Task card
 
 - Requirements: LINK-005 and the normal-profile scheduling portion of NET-002.
-- Files: `crates/browser-engine-qt/qml/Main.qml` and
+- Files: `crates/ferric-browser-engine-qt/qml/Main.qml` and
   `docs/DEVELOPMENT_SPEC.md`.
 - Observable result: when both clean-link update fields are configured, a
   normal profile starts a bounded 24-hour timer that invokes the same updater
@@ -24,7 +24,7 @@ maintenance traffic.
 
 ```text
 cargo xtask check --locked
-cargo build -p rustbrowser --locked --offline
-target/debug/rustbrowser diagnostics --format json
-QT_QPA_PLATFORM=wayland timeout 8s target/debug/rustbrowser --temp-basedir
+cargo build -p ferric-browser --locked --offline
+target/debug/ferric-browser diagnostics --format json
+QT_QPA_PLATFORM=wayland timeout 8s target/debug/ferric-browser --temp-basedir
 ```

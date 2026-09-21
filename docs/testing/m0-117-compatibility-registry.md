@@ -1,6 +1,6 @@
 # M0-117: reviewed compatibility registry
 
-RustBrowser now ships a compiled, data-only compatibility registry. Each entry
+Ferric Browser now ships a compiled, data-only compatibility registry. Each entry
 has a stable ID, host pattern, engine-version range, symptom, supported change,
 upstream issue, regression fixture, date added, review/removal condition, and
 enabled state. Registry validation bounds the entry count, rejects duplicate or
@@ -15,9 +15,9 @@ site reports carry the same scoped active-ID information.
 
 Evidence:
 
-- `cargo test -p browser-engine-qt compatibility --locked --offline`
-- `cargo test -p browser-engine-qt diagnostics --locked --offline`
+- `cargo test -p ferric-browser-engine-qt compatibility --locked --offline`
+- `cargo test -p ferric-browser-engine-qt diagnostics --locked --offline`
 - `cargo xtask check --locked`
-- `cargo build -p rustbrowser --locked --offline`
-- `QT_QPA_PLATFORM=wayland timeout 8s target/debug/rustbrowser --temp-basedir`
+- `cargo build -p ferric-browser --locked --offline`
+- `QT_QPA_PLATFORM=wayland timeout 8s target/debug/ferric-browser --temp-basedir`
   (expected timeout, no lingering process)

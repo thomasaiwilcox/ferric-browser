@@ -12,6 +12,6 @@ Completed the documented binding discovery command surface.
 Evidence:
 
 - `cargo fmt --all`
-- `cargo test -p browser-core --locked --offline`: 59 passed
-- `cargo test -p rustbrowser --locked --offline`: 43 passed
-- `cargo test -p browser-engine-qt --locked --offline binding_commands_use_typed_mode_and_keychain_arguments`: 1 passed
+- `cargo test -p ferric-browser-core --locked --offline`: 59 passed
+- `cargo test -p ferric-browser --locked --offline`: 43 passed
+- `cargo test -p ferric-browser-engine-qt --locked --offline binding_commands_use_typed_mode_and_keychain_arguments`: 1 passed

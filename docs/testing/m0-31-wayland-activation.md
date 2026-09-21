@@ -6,7 +6,7 @@ Status: in-progress
 ## Task card
 
 - Requirement: WL-004.
-- Files: `crates/browser-engine-qt/qml/Main.qml`.
+- Files: `crates/ferric-browser-engine-qt/qml/Main.qml`.
 - Observable result: switcher activation calls `show`, `raise`, and Qt's
   `requestActivate()` once for the exact owning window. If the window is not
   active immediately, the browser performs one bounded 250 ms observation and
@@ -21,10 +21,10 @@ window only after Qt reports it active.
 
 ```text
 cargo fmt --all -- --check
-cargo test -p browser-engine-qt -p browser-core --locked
+cargo test -p ferric-browser-engine-qt -p ferric-browser-core --locked
 cargo xtask check
-cargo build -p rustbrowser --locked
-QT_QPA_PLATFORM=wayland timeout 10s target/debug/rustbrowser --temp-basedir
+cargo build -p ferric-browser --locked
+QT_QPA_PLATFORM=wayland timeout 10s target/debug/ferric-browser --temp-basedir
 ```
 
 The smoke is expected to end with timeout status 124 after remaining alive

@@ -9,7 +9,7 @@ not written to the normal profile database.
 Evidence:
 
 ```text
-cargo test -p browser-storage -p browser-engine-qt --locked
+cargo test -p ferric-browser-storage -p ferric-browser-engine-qt --locked
 ```
 
 The storage regression test verifies that inserting a current node with a

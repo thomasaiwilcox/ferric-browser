@@ -11,6 +11,6 @@ Completed the documented `tab-next` and `tab-prev` count contract.
 Evidence:
 
 - cargo fmt --all -- --check
-- cargo test -p browser-core --locked --offline: 59 passed
-- cargo test -p rustbrowser --locked --offline: 43 passed
-- cargo test -p browser-engine-qt --locked --offline history_commands_use_typed_bounded_counts
+- cargo test -p ferric-browser-core --locked --offline: 59 passed
+- cargo test -p ferric-browser --locked --offline: 43 passed
+- cargo test -p ferric-browser-engine-qt --locked --offline history_commands_use_typed_bounded_counts

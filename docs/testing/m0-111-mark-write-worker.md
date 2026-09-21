@@ -19,9 +19,9 @@ target row was updated.
 
 Evidence:
 
-- `cargo test -p browser-storage mark --locked --offline` (5 focused tests)
-- `cargo check -p browser-engine-qt --locked --offline`
+- `cargo test -p ferric-browser-storage mark --locked --offline` (5 focused tests)
+- `cargo check -p ferric-browser-engine-qt --locked --offline`
 - `cargo xtask check --locked`
-- `cargo build -p rustbrowser --locked --offline`
-- `QT_QPA_PLATFORM=wayland timeout 8s target/debug/rustbrowser --temp-basedir`
+- `cargo build -p ferric-browser --locked --offline`
+- `QT_QPA_PLATFORM=wayland timeout 8s target/debug/ferric-browser --temp-basedir`
   (expected timeout, no lingering process)

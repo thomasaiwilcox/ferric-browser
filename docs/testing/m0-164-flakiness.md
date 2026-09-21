@@ -3,8 +3,8 @@
 Date: 2026-09-18  
 Status: in-progress
 
-The repeat entry point runs the Qt-independent browser-core and
-browser-storage suites three times in fresh Cargo test processes. It uses the
+The repeat entry point runs the Qt-independent ferric-browser-core and
+ferric-browser-storage suites three times in fresh Cargo test processes. It uses the
 normal test scheduler, so reducer ordering, SQLite worker handoffs, bounded
 queues, and transactional storage tests are exercised repeatedly without
 turning the check into an unbounded stress job.

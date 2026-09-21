@@ -6,8 +6,8 @@ Status: in-progress
 ## Task card
 
 - Requirement: CONFIG-007.
-- Files: `crates/browser-config/src/lib.rs` and
-  `crates/browser-engine-qt/src/lib.rs`.
+- Files: `crates/ferric-browser-config/src/lib.rs` and
+  `crates/ferric-browser-engine-qt/src/lib.rs`.
 - Observable result: the validated site-rule key set is centralized, and
   `config.get --url` rejects a profile/global-only setting instead of making
   it appear per-site.

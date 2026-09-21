@@ -16,10 +16,10 @@ updates for retry and the profile worker is recreated from the profile path.
 
 Evidence:
 
-- `cargo test -p browser-storage download --locked --offline` (6 tests,
+- `cargo test -p ferric-browser-storage download --locked --offline` (6 tests,
   including worker commit and rollback coverage)
-- `cargo check -p browser-engine-qt --locked --offline`
+- `cargo check -p ferric-browser-engine-qt --locked --offline`
 - `cargo xtask check --locked`
-- `cargo build -p rustbrowser --locked --offline`
-- `QT_QPA_PLATFORM=wayland timeout 8s target/debug/rustbrowser --temp-basedir`
+- `cargo build -p ferric-browser --locked --offline`
+- `QT_QPA_PLATFORM=wayland timeout 8s target/debug/ferric-browser --temp-basedir`
   (expected timeout, no lingering process)

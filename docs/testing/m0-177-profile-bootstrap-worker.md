@@ -1,7 +1,7 @@
 # M0-177 profile bootstrap worker
 
 Initial profile storage bootstrap now runs on the named
-`rustbrowser-profile-bootstrap` worker. Profile registry discovery, profile
+`ferric-browser-profile-bootstrap` worker. Profile registry discovery, profile
 creation, lock acquisition, directory creation, SQLite store opening, and
 profile-layer and persistent runtime override loading are performed off the Qt
 thread. Configuration include/source discovery is also performed there and
@@ -22,8 +22,8 @@ Coverage:
 - Profile-local context registry opening and configured-definition application
   are included in the bootstrap result, preventing duplicate registry reads or
   synchronous definition writes during startup.
-- `cargo check -p browser-engine-qt --tests --locked --offline`
-- `cargo clippy -p browser-engine-qt --all-targets --locked --offline -- -D warnings`
+- `cargo check -p ferric-browser-engine-qt --tests --locked --offline`
+- `cargo clippy -p ferric-browser-engine-qt --all-targets --locked --offline -- -D warnings`
 
 Native Qt/WebEngine startup still requires the separately documented display
 and Wayland qualification environment.

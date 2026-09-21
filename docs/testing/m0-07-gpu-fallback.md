@@ -5,7 +5,7 @@ Status: in-progress
 
 ## FAIL-002 GPU fallback
 
-RustBrowser has an explicit `--software-rendering` startup mode and a
+Ferric Browser has an explicit `--software-rendering` startup mode and a
 `Restart software` action on the renderer recovery surface. The action starts
 a new process only after the current instance lock is released, then preserves
 the selected profile root (or the disposable/safe-mode selection) and passes
@@ -22,10 +22,10 @@ session as degraded and GPU decode as unavailable.
 ## Verification
 
 ```text
-cargo test -p rustbrowser -p browser-engine-qt --locked --offline
+cargo test -p ferric-browser -p ferric-browser-engine-qt --locked --offline
 cargo xtask check
 cargo fmt --all -- --check
-QT_QPA_PLATFORM=wayland timeout 10s target/debug/rustbrowser --software-rendering --temp-basedir
+QT_QPA_PLATFORM=wayland timeout 10s target/debug/ferric-browser --software-rendering --temp-basedir
 ```
 
 The explicit startup smoke remains alive until the intentional timeout without

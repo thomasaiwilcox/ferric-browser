@@ -7,7 +7,7 @@ Status: in-progress
 
 - Requirement: UPDATE-001.
 - Files: `packaging/engine-version-policy.toml` and
-  `crates/browser-engine-qt/src/diagnostics.rs`.
+  `crates/ferric-browser-engine-qt/src/diagnostics.rs`.
 - Observable result: diagnostics compare the runtime Qt version with the
   versioned qualified set and distinguish `qualified`, `unqualified`,
   `blocked`, and `unavailable` states.
@@ -29,7 +29,7 @@ qualification result.
 ## Verification
 
 ```text
-cargo test -p browser-engine-qt diagnostics --locked --offline
+cargo test -p ferric-browser-engine-qt diagnostics --locked --offline
 cargo xtask check --locked
-rustbrowser diagnostics --format json
+ferric-browser diagnostics --format json
 ```
