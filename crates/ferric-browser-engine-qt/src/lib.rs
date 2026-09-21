@@ -38140,6 +38140,8 @@ executable = "/bin/true"
         assert!(qml.contains("return BrowserScripts.editor()"));
         assert!(qml.contains("return BrowserScripts.editorApply(original, updated)"));
         assert!(qml.contains("return BrowserScripts.caret(operation, selecting)"));
+        assert!(qml.contains("return BrowserScripts.downloadLink(url)"));
+        assert!(qml.contains("return BrowserScripts.clearSiteData()"));
         assert!(script.contains("var VERSION = \"1\""));
         assert!(script.contains("function boundedCount(value)"));
         assert!(script.contains("Math.max(1, Math.min(9999"));
@@ -38147,6 +38149,8 @@ executable = "/bin/true"
         assert!(script.contains("password fields are not editable externally"));
         assert!(script.contains("field changed while editor was open"));
         assert!(script.contains("invalid caret movement"));
+        assert!(script.contains("a.rel='noreferrer'"));
+        assert!(script.contains("service_workers:'unavailable'"));
     }
 
     #[test]

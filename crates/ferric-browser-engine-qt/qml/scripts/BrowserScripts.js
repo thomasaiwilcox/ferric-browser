@@ -98,3 +98,35 @@ function caret(operation, selecting) {
         + JSON.stringify(movement.direction) + "," + JSON.stringify(movement.granularity) + ");"
         + "return {ok:true};})()"
 }
+
+function downloadLink(url) {
+    return "(function(){var a=document.createElement('a');a.href="
+        + JSON.stringify(String(url))
+        + ";a.download='';a.rel='noreferrer';document.body.appendChild(a);a.click();a.remove();return true;})()"
+}
+
+function clearSiteData() {
+    return "(function(){"
+        + "var result={pending:true,local_storage:'unavailable',cache_storage:'unavailable',"
+        + "service_workers:'unavailable',cookies:'page-visible-only',http_cache:'profile-wide-only'};"
+        + "try{localStorage.clear();result.local_storage='cleared';}catch(error){"
+        + "result.local_storage='unavailable';}"
+        + "try{var names=document.cookie?document.cookie.split(';'):[];"
+        + "for(var i=0;i<names.length;i++){var name=names[i].split('=')[0].trim();"
+        + "if(name)document.cookie=name+'=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/';}"
+        + "result.cookies='page-visible-only';}catch(error){result.cookies='unavailable';}"
+        + "var jobs=[];"
+        + "if(self.caches&&self.caches.keys){result.cache_storage='pending';"
+        + "jobs.push(self.caches.keys().then(function(keys){return Promise.all(keys.map(function(key){"
+        + "return self.caches.delete(key);}));}).then(function(){result.cache_storage='cleared';}"
+        + ").catch(function(){result.cache_storage='unavailable';}));}"
+        + "if(navigator.serviceWorker&&navigator.serviceWorker.getRegistrations){"
+        + "result.service_workers='pending';jobs.push(navigator.serviceWorker.getRegistrations().then("
+        + "function(registrations){return Promise.all(registrations.map(function(registration){"
+        + "return registration.unregister();}));}).then(function(){result.service_workers='cleared';}"
+        + ").catch(function(){result.service_workers='unavailable';}));}"
+        + "Promise.all(jobs).then(function(){result.pending=false;"
+        + "window.__ferric_browserSiteDataClearResult=JSON.stringify(result);});"
+        + "window.__ferric_browserSiteDataClearResult=JSON.stringify(result);"
+        + "return window.__ferric_browserSiteDataClearResult;})()"
+}
