@@ -130,3 +130,28 @@ function clearSiteData() {
         + "window.__ferric_browserSiteDataClearResult=JSON.stringify(result);"
         + "return window.__ferric_browserSiteDataClearResult;})()"
 }
+
+function focusProbe() {
+    return "(function(){var state=window.__ferric_browserFocusState;"
+        + "return state?{sequence:Number(state.sequence)||0,editable:!!state.editable,"
+        + "user_activated:!!state.user_activated,kind:String(state.kind||'unknown')}"
+        + ":{sequence:0,editable:false,user_activated:false,kind:'unknown'};})()"
+}
+
+function shutdownPageProbe() {
+    return "(function() {"
+        + "if (typeof window.onbeforeunload === 'function') return 'unknown';"
+        + "var elements = document.querySelectorAll('input,textarea,select,[contenteditable=\"true\"]');"
+        + "if (elements.length > 128) return 'unknown';"
+        + "for (var i = 0; i < elements.length; ++i) {"
+        + "var e = elements[i];"
+        + "if (e.isContentEditable) return 'unknown';"
+        + "if (e.tagName === 'INPUT' && (e.type === 'checkbox' || e.type === 'radio')"
+        + " && e.checked !== e.defaultChecked) return 'dirty';"
+        + "if (e.tagName === 'SELECT') {"
+        + "if (e.options.length > 512) return 'unknown';"
+        + "for (var j = 0; j < e.options.length; ++j)"
+        + " if (e.options[j].selected !== e.options[j].defaultSelected) return 'dirty';"
+        + "} else if (e.value !== e.defaultValue) return 'dirty';"
+        + "} return 'clean'; })()"
+}

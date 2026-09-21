@@ -38142,6 +38142,8 @@ executable = "/bin/true"
         assert!(qml.contains("return BrowserScripts.caret(operation, selecting)"));
         assert!(qml.contains("return BrowserScripts.downloadLink(url)"));
         assert!(qml.contains("return BrowserScripts.clearSiteData()"));
+        assert!(qml.contains("return BrowserScripts.focusProbe()"));
+        assert!(qml.contains("return BrowserScripts.shutdownPageProbe()"));
         assert!(script.contains("var VERSION = \"1\""));
         assert!(script.contains("function boundedCount(value)"));
         assert!(script.contains("Math.max(1, Math.min(9999"));
@@ -38151,6 +38153,8 @@ executable = "/bin/true"
         assert!(script.contains("invalid caret movement"));
         assert!(script.contains("a.rel='noreferrer'"));
         assert!(script.contains("service_workers:'unavailable'"));
+        assert!(script.contains("window.__ferric_browserFocusState"));
+        assert!(script.contains("elements.length > 128"));
     }
 
     #[test]
