@@ -9,32 +9,7 @@ use ferric_browser_core::{
     ApplicationState, Diagnostic, Effect, EngineEffect, Event, Mode, PersistEffect, ProfileId,
     ReduceError, ShutdownState, TabId, Target, ValidatedUrl, WindowId, reduce,
 };
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ErrorCode {
-    InvalidArgument,
-    NotFound,
-    StaleTarget,
-    Busy,
-    Storage,
-    Engine,
-    Internal,
-}
-
-impl ErrorCode {
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::InvalidArgument => "E_INVALID_ARGUMENT",
-            Self::NotFound => "E_NOT_FOUND",
-            Self::StaleTarget => "E_STALE_TARGET",
-            Self::Busy => "E_BUSY",
-            Self::Storage => "E_STORAGE",
-            Self::Engine => "E_ENGINE",
-            Self::Internal => "E_INTERNAL",
-        }
-    }
-}
+pub use ferric_browser_ipc::ErrorCode;
 
 #[derive(Debug)]
 pub struct RuntimeError {
