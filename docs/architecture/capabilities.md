@@ -1,0 +1,35 @@
+# RustBrowser capability matrix
+
+Last probed: 2026-09-19  
+Probe host: Linux x86_64, active Wayland session
+
+This is the initial M0 matrix. `available` means the development host exposes
+the package/module; it does not mean the user-facing feature is qualified.
+
+| Feature | Public API/module | Minimum | Compiled support | Runtime probe | Tested package | Status | Limitation/test |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Quick presentation | QtQuick | Qt 6 | yes | `qmake6 -query` | Qt 6.11.2 | available | CXX-Qt QML module now composes the surface |
+| Web content view | QtWebEngineQuick / `WebEngineView` | Qt 6 | yes | `pkg-config --modversion Qt6WebEngineQuick` | Qt 6.11.2 | in-progress | M0-02 smoke launch succeeds; reducer-backed engine adapter and local HTTPS fixture remain |
+| WebEngine profile | QtWebEngineCore / Quick profile APIs | Qt 6 | yes | `pkg-config --modversion Qt6WebEngineCore` | Qt 6.11.2 | in-progress | Primary and secondary durable windows derive storage namespaces from the selected validated profile name; multi-profile cookie isolation still requires live qualification |
+| D-Bus desktop services | QtDBus + freedesktop portal introspection | Qt 6 | yes | `pkg-config --modversion Qt6DBus`; `busctl --user introspect ...` | Qt 6.11.2; portal interfaces observed | in-progress | FileChooser, ScreenCast, OpenURI, and Notification interfaces are now version-probed; request chains are not yet exercised |
+| Native Wayland | Qt Wayland QPA | Qt 6 | installed/active session | `cargo xtask test wayland`; `QT_QPA_PLATFORM=wayland target/debug/rustbrowser --temp-basedir` | Qt 6.11.2 | in-progress | Nested Weston fixture-backed startup and teardown pass; interactive compositor-visible focus/window evidence remains |
+| Hyprland compositor identity | Hyprland IPC `j/version` | Hyprland runtime | runtime-dependent | `rustbrowser diagnostics --format json` | instance-dependent | in-progress | Bounded branch/tag/commit fields are reported when `HYPRLAND_INSTANCE_SIGNATURE` and the request socket are available; non-Hyprland and unavailable sessions remain explicit |
+| CXX-Qt bridge | CXX-Qt Cargo integration | 0.10.0 | yes | `cargo build --locked` | Qt 6.11.2 | in-progress | Reducer-backed callbacks build; typed effect execution and lifetime qualification remain |
+| WebAuthn transports | Qt WebAuth UX request | Qt 6 | yes | engine runtime probe | not tested | not-tested | Requires engine prototype and hardware/manual evidence |
+| Screen/window capture | Qt WebEngine capture + ScreenCast portal | Qt 6 + portal | interface available; engine path unqualified | diagnostics portal/PipeWire probe (ScreenCast v6; PipeWire 1.6.8) | ScreenCast v6; PipeWire 1.6.8 observed | in-progress | No unauthorized fallback is allowed; real consent/session/window-share chain remains |
+| System audio sharing | Qt WebEngine desktop-media request + PipeWire/ScreenCast portal | Qt 6 + portal | not-qualified | diagnostics portal/PipeWire probe | ScreenCast v6; PipeWire 1.6.8 observed | not-tested | System-audio selection is reported separately from screen/window capture; no silent monitor-source fallback |
+| Web notifications | `WebEngineProfile.presentNotification` + `QWebEngineNotification` | Qt 6.5 | yes | profile signal/runtime smoke | Qt 6.11.2 | in-progress | Consent/config gate, browser-owned profile-scope/origin/tag coalescing, permission-revocation cleanup, and teardown cleanup are covered; a QtDBus native presenter routes activation when the session notification service is available and falls back to Qt on asynchronous service failure without resurrecting coalesced stale entries; live desktop/presenter qualification remains |
+| Push service | `WebEngineProfile.isPushServiceEnabled` | Qt 6.5 | yes | profile property/runtime smoke | Qt 6.11.2 | in-progress | Disabled by default and private-profile forced off; explicit FCM connection and post-exit service behavior remain unqualified |
+| Media key/session | `WebEngineView.ToggleMediaPlayPause` + scoped MPRIS `PlayPause` | Qt 6 + session D-Bus | session-bus dependent | QML/static adapter check | Qt 6.11.2 | in-progress | One configured hardware toggle and MPRIS `PlayPause` share the engine action; non-private HTTP(S) metadata is bounded and conservatively redacted, private metadata is omitted; next/previous/stop/seek/track-list remain unsupported/unadvertised |
+| Page picture-in-picture | QtWebEngine page media/PiP support | Qt 6 | not-qualified | diagnostics capability fact | Qt 6.11.2 | not-tested | No browser-owned PiP surface is claimed; live page-media PiP support and close/visibility ownership remain to be qualified |
+| Document picture-in-picture | Chromium document PiP API + native window ownership | Qt 6/WebEngine | not-qualified | diagnostics capability fact | Qt 6.11.2 | not-tested | Document PiP is reported separately from page media PiP; no floating web window is labeled equivalent without engine and compositor evidence |
+| Hardware decode | Qt/Chromium GPU and media backend diagnostics | package-specific | unknown | runtime software-rendering and GPU diagnostics; decode fixture | Qt 6.11.2 | not-tested | GPU compositing must not be treated as decode proof; driver-specific decode and fallback behavior require a supported matrix |
+| Codecs/DRM | QtWebEngine package build + `packaging/media-capabilities.toml` | package-specific | manifest present; decode unknown | `rustbrowser diagnostics --format json`; local playback fixture | Qt 6.11.2; installed package version is reported when a supported package manager is present | in-progress | Candidate MIME/package inputs and explicit not-tested states are reported; actual decode matrix, exact Chromium patch attribution, and lawful CDM qualification remain |
+| PDF and printing | `QWebEngineView.printToPdf` / Qt print APIs | Qt 6 | yes | typed PDF/print command smoke | Qt 6.11.2 | in-progress | Safe destination and atomic handoff are implemented; printer-dialog, cancellation, and installed-backend qualification remain |
+| Spellcheck | Qt WebEngine spellcheck language APIs + Hunspell inventory | Qt 6 | package-dependent | bounded dictionary inventory probe | Qt 6.11.2 | in-progress | Missing dictionaries are reported explicitly; language selection and live editable-page qualification remain |
+| Primary selection | Qt clipboard/Wayland primary-selection boundary | Qt 6 + Wayland | yes on supported session | clipboard capability probe and native boundary | Qt 6.11.2 | in-progress | Availability is reported without fallback to ordinary clipboard; compositor-specific selection behavior remains qualification work |
+| Per-site settings | Qt WebEngine profile settings plus Rust origin policy | Qt 6 | bounded subset | typed site-status/policy inspection | Qt 6.11.2 | in-progress | Only settings with a public per-site boundary are exposed; profile-global engine settings are never presented as per-site controls |
+
+The matrix intentionally distinguishes installed modules from qualified
+browser behavior. `not-tested` and `in-progress` entries are release gates,
+not claims that the corresponding user-facing behavior is complete.

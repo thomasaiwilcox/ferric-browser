@@ -1,0 +1,9 @@
+schema_version = 1
+name = "page"
+executable = "/bin/true"
+matches = ["http://127.0.0.1:*/*"]
+run_at = "document_idle"
+frames = "top"
+page_world = true
+source = "page.js"
+allow_private = false

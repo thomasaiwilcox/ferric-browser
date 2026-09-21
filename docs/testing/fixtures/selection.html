@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8"><title>RustBrowser selection fixture</title></head>
+  <body>
+    <p id="selection">Visible selected text for the RustBrowser caret copy smoke.</p>
+    <script>
+      window.addEventListener("load", function () {
+        const node = document.getElementById("selection");
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+      });
+    </script>
+  </body>
+</html>

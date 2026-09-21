@@ -1,0 +1,7 @@
+schema_version = 1
+
+[[routes]]
+id = "seed-route"
+pattern = "https://*.example.test/*"
+context = "work"
+entry_points = ["new-tab"]

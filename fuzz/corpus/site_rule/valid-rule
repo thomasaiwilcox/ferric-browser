@@ -1,0 +1,6 @@
+id = "seed"
+pattern = "https://*.example.test/*"
+priority = 2
+
+[set]
+"content.blocking" = true

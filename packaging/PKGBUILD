@@ -1,0 +1,107 @@
+# Maintainer recipe for the system-Qt Arch package.
+# Release automation must provide rustbrowser-${pkgver}.tar.gz beside this file
+# and replace the source checksum before publishing a release.
+pkgname=rustbrowser
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Keyboard-first Qt WebEngine browser implemented in Rust'
+arch=('x86_64')
+license=('MIT' 'Apache-2.0')
+# The generated CXX-Qt static bridge archive is linked by Rust; GCC LTO
+# objects cannot be consumed reliably by that mixed-language final link.
+options=('!lto' 'debug')
+depends=(
+  'ca-certificates'
+  'hicolor-icon-theme'
+  'xdg-utils'
+  'qt6-base>=6.11'
+  'qt6-declarative>=6.11'
+  'qt6-wayland'
+  'qt6-webengine>=6.11'
+)
+makedepends=(
+  'desktop-file-utils'
+  'rust'
+)
+checkdepends=(
+  'dbus'
+  'weston'
+)
+optdepends=(
+  'xdg-desktop-portal: portal request broker'
+  'xdg-desktop-portal-gtk: file chooser portal backend'
+  'xdg-desktop-portal-hyprland: Hyprland screen/window capture backend'
+  'pipewire: screen and window capture transport'
+  'wireplumber: PipeWire session management'
+  'hunspell: spell checking when enabled by the engine'
+  'neovim: example external editor target'
+  'mpv: example external media target'
+)
+source=("${pkgname}-${pkgver}.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  # CXX-Qt emits generated static bridge archives.  Arch's default
+  # --as-needed can discard those archives before the Rust objects reference
+  # them; keep the distro hardening flags and disable only that elision for
+  # Cargo's final links.
+  LDFLAGS="${LDFLAGS:+${LDFLAGS} }-Wl,--no-as-needed" cargo build --release --locked
+}
+
+check() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+ LDFLAGS="${LDFLAGS:+${LDFLAGS} }-Wl,--no-as-needed" cargo test --workspace --locked
+ cargo xtask package artifacts
+ LDFLAGS="${LDFLAGS:+${LDFLAGS} }-Wl,--no-as-needed" cargo xtask test wayland
+  LDFLAGS="${LDFLAGS:+${LDFLAGS} }-Wl,--no-as-needed" cargo xtask test blocking
+ desktop-file-validate packaging/io.github.rustbrowser.RustBrowser.desktop
+}
+
+package() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  install -Dm755 "target/release/rustbrowser" "${pkgdir}/usr/bin/rustbrowser"
+  install -Dm644 "packaging/io.github.rustbrowser.RustBrowser.desktop" \
+    "${pkgdir}/usr/share/applications/io.github.rustbrowser.RustBrowser.desktop"
+  install -Dm644 "packaging/io.github.rustbrowser.RustBrowser.svg" \
+    "${pkgdir}/usr/share/icons/hicolor/scalable/apps/io.github.rustbrowser.RustBrowser.svg"
+  install -Dm644 README.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"
+  install -Dm644 docs/DEVELOPMENT_SPEC.md \
+    "${pkgdir}/usr/share/doc/${pkgname}/DEVELOPMENT_SPEC.md"
+  install -Dm644 docs/user/commands.md \
+    "${pkgdir}/usr/share/doc/${pkgname}/commands.md"
+  install -Dm644 docs/user/configuration.md \
+    "${pkgdir}/usr/share/doc/${pkgname}/configuration.md"
+  install -Dm644 docs/user/bindings.md \
+    "${pkgdir}/usr/share/doc/${pkgname}/bindings.md"
+  install -Dm644 docs/user/actions.md \
+    "${pkgdir}/usr/share/doc/${pkgname}/actions.md"
+  install -Dm644 packaging/dependencies.toml \
+    "${pkgdir}/usr/share/doc/${pkgname}/dependencies.toml"
+  install -Dm644 packaging/LICENSES.md \
+    "${pkgdir}/usr/share/doc/${pkgname}/LICENSES.md"
+  install -Dm644 packaging/license-policy.toml \
+    "${pkgdir}/usr/share/doc/${pkgname}/license-policy.toml"
+  install -Dm644 packaging/MIGRATIONS.md \
+    "${pkgdir}/usr/share/doc/${pkgname}/MIGRATIONS.md"
+  install -Dm644 packaging/KNOWN-ISSUES.md \
+    "${pkgdir}/usr/share/doc/${pkgname}/KNOWN-ISSUES.md"
+  install -Dm644 packaging/CHANGELOG.md \
+    "${pkgdir}/usr/share/doc/${pkgname}/CHANGELOG.md"
+  install -Dm644 docs/SUPPORT.md \
+    "${pkgdir}/usr/share/doc/${pkgname}/SUPPORT.md"
+  install -Dm644 SECURITY.md \
+    "${pkgdir}/usr/share/doc/${pkgname}/SECURITY.md"
+  install -Dm644 docs/RELEASE_POLICY.md \
+    "${pkgdir}/usr/share/doc/${pkgname}/RELEASE_POLICY.md"
+  install -Dm644 docs/PROVENANCE.md \
+    "${pkgdir}/usr/share/doc/${pkgname}/PROVENANCE.md"
+  install -Dm644 docs/MAINTENANCE.md \
+    "${pkgdir}/usr/share/doc/${pkgname}/MAINTENANCE.md"
+  install -Dm644 CONTRIBUTING.md \
+    "${pkgdir}/usr/share/doc/${pkgname}/CONTRIBUTING.md"
+  install -Dm644 CODE_OF_CONDUCT.md \
+    "${pkgdir}/usr/share/doc/${pkgname}/CODE_OF_CONDUCT.md"
+  install -Dm644 docs/architecture/ADR-0010-license-and-release-identity.md \
+    "${pkgdir}/usr/share/doc/${pkgname}/ADR-0010-license-and-release-identity.md"
+}

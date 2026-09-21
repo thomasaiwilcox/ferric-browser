@@ -1,0 +1,146 @@
+# Checked-in inputs required to assemble a stable release. Source archives,
+# detached signatures, and generated checksums are release outputs.
+
+[[artifact]]
+name = "cargo-lock"
+path = "Cargo.lock"
+
+[[artifact]]
+name = "workspace-manifest"
+path = "Cargo.toml"
+
+[[artifact]]
+name = "arch-recipe"
+path = "packaging/PKGBUILD"
+
+[[artifact]]
+name = "dependency-inventory"
+path = "packaging/dependencies.toml"
+
+[[artifact]]
+name = "license-inventory"
+path = "packaging/LICENSES.md"
+
+[[artifact]]
+name = "license-policy"
+path = "packaging/license-policy.toml"
+
+[[artifact]]
+name = "engine-policy"
+path = "packaging/engine-version-policy.toml"
+
+[[artifact]]
+name = "compatibility-report-input"
+path = "packaging/compatibility-quirks.toml"
+
+[[artifact]]
+name = "capability-report-input"
+path = "packaging/media-capabilities.toml"
+
+[[artifact]]
+name = "migration-notes"
+path = "packaging/MIGRATIONS.md"
+
+[[artifact]]
+name = "known-issues"
+path = "packaging/KNOWN-ISSUES.md"
+
+[[artifact]]
+name = "changelog"
+path = "packaging/CHANGELOG.md"
+
+[[artifact]]
+name = "user-developer-documentation"
+path = "packaging/README.md"
+
+[[artifact]]
+name = "generated-command-documentation"
+path = "docs/user/commands.md"
+
+[[artifact]]
+name = "generated-configuration-documentation"
+path = "docs/user/configuration.md"
+
+[[artifact]]
+name = "installed-file-manifest"
+path = "packaging/installed-files.txt"
+
+[[artifact]]
+name = "omarchy-installed-file-manifest"
+path = "packaging/omarchy/installed-files.txt"
+
+[[artifact]]
+name = "requirements-traceability"
+path = "docs/requirements.csv"
+
+[[artifact]]
+name = "support-policy"
+path = "docs/SUPPORT.md"
+
+[[artifact]]
+name = "security-policy"
+path = "SECURITY.md"
+
+[[artifact]]
+name = "release-freshness-policy"
+path = "docs/RELEASE_POLICY.md"
+
+[[artifact]]
+name = "contribution-process"
+path = "CONTRIBUTING.md"
+
+[[artifact]]
+name = "code-of-conduct"
+path = "CODE_OF_CONDUCT.md"
+
+[[artifact]]
+name = "provenance-and-branding"
+path = "docs/PROVENANCE.md"
+
+[[artifact]]
+name = "maintenance-discipline"
+path = "docs/MAINTENANCE.md"
+
+[[artifact]]
+name = "generated-action-documentation"
+path = "docs/user/actions.md"
+
+[[artifact]]
+name = "generated-binding-documentation"
+path = "docs/user/bindings.md"
+
+[[artifact]]
+name = "license-release-identity-decision"
+path = "docs/architecture/ADR-0010-license-and-release-identity.md"
+
+[[artifact]]
+name = "permission-capture-authority-decision"
+path = "docs/architecture/ADR-0004-permission-and-capture-authority.md"
+
+[[artifact]]
+name = "origin-normalization-decision"
+path = "docs/architecture/ADR-0005-origin-normalization.md"
+
+[[artifact]]
+name = "profile-session-durability-decision"
+path = "docs/architecture/ADR-0006-profile-and-session-durability.md"
+
+[[artifact]]
+name = "hint-activation-decision"
+path = "docs/architecture/ADR-0007-hint-geometry-and-activation.md"
+
+[[artifact]]
+name = "installed-package-responsibility-decision"
+path = "docs/architecture/ADR-0008-installed-package-responsibility.md"
+
+[[artifact]]
+name = "hyprland-window-identity-decision"
+path = "docs/architecture/ADR-0009-hyprland-window-identity.md"
+
+[[artifact]]
+name = "context-profile-action-decision"
+path = "docs/architecture/ADR-0011-context-profile-window-actions.md"
+
+[[artifact]]
+name = "journey-ephemeral-state-decision"
+path = "docs/architecture/ADR-0012-journey-and-ephemeral-state.md"

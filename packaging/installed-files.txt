@@ -1,0 +1,24 @@
+# Release package installed-file manifest
+/usr/bin/rustbrowser
+/usr/share/applications/io.github.rustbrowser.RustBrowser.desktop
+/usr/share/icons/hicolor/scalable/apps/io.github.rustbrowser.RustBrowser.svg
+/usr/share/doc/rustbrowser/README.md
+/usr/share/doc/rustbrowser/DEVELOPMENT_SPEC.md
+/usr/share/doc/rustbrowser/commands.md
+/usr/share/doc/rustbrowser/configuration.md
+/usr/share/doc/rustbrowser/bindings.md
+/usr/share/doc/rustbrowser/actions.md
+/usr/share/doc/rustbrowser/dependencies.toml
+/usr/share/doc/rustbrowser/LICENSES.md
+/usr/share/doc/rustbrowser/license-policy.toml
+/usr/share/doc/rustbrowser/MIGRATIONS.md
+/usr/share/doc/rustbrowser/KNOWN-ISSUES.md
+/usr/share/doc/rustbrowser/CHANGELOG.md
+/usr/share/doc/rustbrowser/SUPPORT.md
+/usr/share/doc/rustbrowser/SECURITY.md
+/usr/share/doc/rustbrowser/RELEASE_POLICY.md
+/usr/share/doc/rustbrowser/PROVENANCE.md
+/usr/share/doc/rustbrowser/MAINTENANCE.md
+/usr/share/doc/rustbrowser/CONTRIBUTING.md
+/usr/share/doc/rustbrowser/CODE_OF_CONDUCT.md
+/usr/share/doc/rustbrowser/ADR-0010-license-and-release-identity.md

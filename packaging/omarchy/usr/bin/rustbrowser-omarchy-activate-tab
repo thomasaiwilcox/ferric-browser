@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -ne 1 ]; then
+  printf '%s\n' 'usage: rustbrowser-omarchy-activate-tab TAB_ID' >&2
+  exit 2
+fi
+case "$1" in
+  ''|*[![:alnum:]_.:-]*)
+    printf '%s\n' 'rustbrowser tab ID contains unsupported characters' >&2
+    exit 2
+    ;;
+esac
+exec rustbrowser activate tab "$1"

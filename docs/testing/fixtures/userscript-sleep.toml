@@ -1,0 +1,9 @@
+schema_version = 1
+name = "sleep"
+executable = "/usr/bin/sh"
+argv = ["-c", "sleep 30"]
+context_fields = []
+allowed_results = ["message"]
+allowed_commands = []
+timeout_seconds = 60
+allow_private = false

@@ -1,0 +1,16 @@
+# Declarative launcher contract; launcher adapters may translate these entries.
+# No Walker, Waybar, or shell implementation is required by RustBrowser.
+schema = 1
+
+[query-tabs]
+label = "RustBrowser tabs"
+argv = ["rustbrowser", "query", "switcher", "--scope", "tabs", "--limit", "50", "--format", "json"]
+result_kind = "tab"
+id_field = "id"
+privacy = "normal-only"
+
+[activate-tab]
+label = "Activate RustBrowser tab"
+argv = ["rustbrowser", "activate", "tab", "{id}"]
+result_kind = "tab"
+id_field = "id"

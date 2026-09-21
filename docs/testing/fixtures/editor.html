@@ -1,0 +1,7 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>RustBrowser editor fixture</title>
+<textarea id="editor" autofocus>before external edit</textarea>
+<script>
+  editor.addEventListener("input", () => editor.select());
+</script>

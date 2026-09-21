@@ -1,0 +1,4 @@
+# Reviewed compatibility data. An empty registry is intentional until a
+# reproducible engine/site regression has a tested, reversible workaround.
+schema = 1
+registry_version = 1

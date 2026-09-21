@@ -1,0 +1,6 @@
+# Copy the [theme] block into a user-owned RustBrowser config file.
+# This selects the supported Omarchy colors.toml provider without executing
+# any Omarchy shell code.
+[theme]
+source = "omarchy"
+path = ""

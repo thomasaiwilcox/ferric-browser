@@ -1,0 +1,55 @@
+schema = 1
+package = "rustbrowser"
+engine = "QtWebEngine"
+
+[qualification]
+method = "local WebEngine playback fixture"
+status = "not-tested"
+reason = "Package dependencies do not prove that a codec decodes in this QtWebEngine build."
+
+[[codecs]]
+id = "h264"
+label = "H.264 / AVC"
+mime = "video/mp4; codecs=\"avc1.42E01E\""
+package_inputs = ["ffmpeg", "openh264"]
+status = "not-tested"
+
+[[codecs]]
+id = "vp8"
+label = "VP8"
+mime = "video/webm; codecs=\"vp8\""
+package_inputs = ["ffmpeg", "libvpx"]
+status = "not-tested"
+
+[[codecs]]
+id = "vp9"
+label = "VP9"
+mime = "video/webm; codecs=\"vp09.00.10.08\""
+package_inputs = ["ffmpeg", "libvpx"]
+status = "not-tested"
+
+[[codecs]]
+id = "av1"
+label = "AV1"
+mime = "video/mp4; codecs=\"av01.0.04M.08\""
+package_inputs = ["ffmpeg"]
+status = "not-tested"
+
+[[codecs]]
+id = "opus"
+label = "Opus"
+mime = "audio/ogg; codecs=\"opus\""
+package_inputs = ["opus", "ffmpeg"]
+status = "not-tested"
+
+[[drm]]
+id = "widevine"
+label = "Widevine"
+status = "not-tested"
+reason = "QtWebEngine DRM hooks do not provide redistribution rights or a CDM binary."
+
+[[drm]]
+id = "eme"
+label = "Encrypted Media Extensions"
+status = "not-tested"
+reason = "A lawful CDM/package and a live protected-media fixture are required."

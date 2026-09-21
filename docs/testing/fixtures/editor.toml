@@ -1,0 +1,5 @@
+schema_version = 1
+
+[editor]
+executable = "/usr/bin/sed"
+args = ["-i", "s/before external edit/after external edit/"]

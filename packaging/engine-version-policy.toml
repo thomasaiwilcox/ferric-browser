@@ -1,0 +1,6 @@
+schema = 1
+engine = "QtWebEngine"
+qualified_versions = ["6.11.2"]
+known_bad_versions = []
+security_patch_source = "installed system package metadata; not probed by the browser"
+update_authority = "system-package-manager"

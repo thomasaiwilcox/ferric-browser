@@ -1,0 +1,16 @@
+schema_version = 1
+name = "message"
+executable = "/usr/bin/sh"
+argv = ["-c", "read input; case \"$input\" in *protocol_version*) printf '{\"type\":\"message\",\"text\":\"userscript-ok\"}\\n';; esac"]
+context_fields = ["url", "title", "mode", "profile"]
+allowed_results = ["message"]
+allowed_commands = []
+timeout_seconds = 5
+allow_private = false
+
+[[actions]]
+id = "userscript.message.report"
+subject = "page"
+verb = "report"
+label = "Report page context"
+required_fields = ["url"]

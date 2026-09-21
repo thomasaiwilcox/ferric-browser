@@ -1,0 +1,18 @@
+[package]
+name = "browser-storage"
+version = "0.1.0"
+description = "Profile-local RustBrowser metadata storage"
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+fs2.workspace = true
+libc.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,16 @@
+schema_version = 1
+name = "hint-message"
+executable = "/usr/bin/sh"
+argv = ["-c", "read input; case "$input" in *hint_url*) printf '{"type":"message","text":"hint-userscript-ok"}\n';; esac"]
+context_fields = ["hint_url"]
+allowed_results = ["message"]
+allowed_commands = []
+timeout_seconds = 5
+allow_private = false
+
+[[actions]]
+id = "userscript.hint-message.send"
+subject = "link"
+verb = "send"
+label = "Send hinted link"
+required_fields = ["hint_url"]

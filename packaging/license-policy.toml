@@ -1,0 +1,58 @@
+schema = 1
+
+# Direct or distribution-facing dependencies whose license/provenance must be
+# reviewed when the locked graph or system package baseline changes.
+[[dependency]]
+name = "adblock"
+license = "MPL-2.0"
+provenance = "crates.io adblock 0.13.3; maintained Brave Rust implementation"
+
+[[dependency]]
+name = "cxx"
+license = "MIT OR Apache-2.0"
+provenance = "crates.io locked CXX bridge dependency"
+
+[[dependency]]
+name = "cxx-qt"
+license = "MIT OR Apache-2.0"
+provenance = "crates.io locked CXX-Qt bridge dependency"
+
+[[dependency]]
+name = "cxx-qt-build"
+license = "MIT OR Apache-2.0"
+provenance = "crates.io locked CXX-Qt build dependency"
+
+[[dependency]]
+name = "cxx-qt-lib"
+license = "MIT OR Apache-2.0"
+provenance = "crates.io locked CXX-Qt runtime type dependency"
+
+[[dependency]]
+name = "libc"
+license = "MIT OR Apache-2.0"
+provenance = "crates.io locked Unix platform dependency"
+
+[[dependency]]
+name = "rusqlite"
+license = "MIT"
+provenance = "crates.io locked SQLite binding; SQLite notices remain distribution inputs"
+
+[[dependency]]
+name = "serde"
+license = "MIT OR Apache-2.0"
+provenance = "crates.io locked serialization dependency"
+
+[[dependency]]
+name = "serde_json"
+license = "MIT OR Apache-2.0"
+provenance = "crates.io locked JSON dependency"
+
+[[dependency]]
+name = "toml"
+license = "MIT OR Apache-2.0"
+provenance = "crates.io locked configuration dependency"
+
+[[dependency]]
+name = "uuid"
+license = "MIT OR Apache-2.0"
+provenance = "crates.io locked identity dependency"

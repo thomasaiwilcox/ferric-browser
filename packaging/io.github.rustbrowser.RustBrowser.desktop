@@ -1,0 +1,23 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=RustBrowser
+GenericName=Web Browser
+Comment=Keyboard-first Qt WebEngine browser
+Exec=rustbrowser open %U
+Icon=io.github.rustbrowser.RustBrowser
+Terminal=false
+Categories=Network;WebBrowser;
+Keywords=browser;web;keyboard;privacy;
+MimeType=text/html;application/xhtml+xml;application/pdf;x-scheme-handler/http;x-scheme-handler/https;
+StartupNotify=true
+StartupWMClass=io.github.rustbrowser.RustBrowser
+Actions=new-window;private-window;
+
+[Desktop Action new-window]
+Name=New Window
+Exec=rustbrowser open --target window
+
+[Desktop Action private-window]
+Name=New Private Window
+Exec=rustbrowser open --target private-window

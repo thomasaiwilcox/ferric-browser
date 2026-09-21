@@ -1,0 +1,9 @@
+schema_version = 1
+name = "page-all"
+executable = "/bin/true"
+matches = ["http://127.0.0.1:*/*"]
+run_at = "document_start"
+frames = "all"
+page_world = true
+source = "page-all.js"
+allow_private = false

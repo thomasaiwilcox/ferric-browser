@@ -1,0 +1,16 @@
+[package]
+name = "xtask"
+version = "0.1.0"
+description = "RustBrowser development and release checks"
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+browser-core = { path = "../browser-core" }
+browser-config = { path = "../browser-config" }
+serde_json.workspace = true
+toml.workspace = true
+
+[lints]
+workspace = true

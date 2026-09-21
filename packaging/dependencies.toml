@@ -1,0 +1,69 @@
+schema = 1
+package = "rustbrowser"
+support_status = "development"
+
+[qt]
+family = "Qt 6"
+minimum_version = "6.11.2"
+model = "system-dynamic"
+qualification = "The development host is qualified against Qt 6.11.2; release qualification must be repeated for the installed Arch package."
+
+[required]
+arch_packages = [
+  "ca-certificates",
+  "hicolor-icon-theme",
+  "xdg-utils",
+  "qt6-base>=6.11",
+  "qt6-declarative>=6.11",
+  "qt6-wayland",
+  "qt6-webengine>=6.11",
+]
+
+qml_modules = [
+  "QtQuick",
+  "QtQuick.Controls",
+  "QtQuick.Dialogs",
+  "QtQuick.Layouts",
+  "QtWebEngine",
+]
+qt_modules = [
+  "Core",
+  "DBus",
+  "Gui",
+  "Network",
+  "Positioning",
+  "Quick",
+  "QuickControls2",
+  "WebChannel",
+  "WebEngineCore",
+  "WebEngineQuick",
+]
+
+[build]
+arch_packages = ["desktop-file-utils", "rust"]
+check_packages = ["dbus", "weston"]
+note = "desktop-file-utils is required by the package check phase; rust builds the locked application source; dbus and weston provide the disposable native-Wayland qualification harness."
+
+[optional.portals]
+arch_packages = [
+  "xdg-desktop-portal",
+  "xdg-desktop-portal-gtk",
+  "xdg-desktop-portal-hyprland",
+]
+interfaces = [
+  "org.freedesktop.portal.FileChooser",
+  "org.freedesktop.portal.OpenURI",
+  "org.freedesktop.portal.ScreenCast",
+  "org.freedesktop.portal.Notification",
+]
+note = "Select the backend matching the compositor and desktop environment; Hyprland capture does not provide a file chooser backend."
+
+[optional.media]
+arch_packages = ["pipewire", "wireplumber"]
+interfaces = ["PipeWire core"]
+note = "Required only for qualified WebRTC screen/window capture; absence is reported by diagnostics."
+
+[optional.features]
+arch_packages = ["hunspell"]
+external_tools = ["neovim", "mpv"]
+note = "Dictionaries and external tools are feature inputs, not browser compile-time requirements."

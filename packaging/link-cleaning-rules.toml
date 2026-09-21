@@ -1,0 +1,45 @@
+schema = 1
+revision = "builtin-2"
+source = "compiled-reviewed"
+changelog = "Add a reviewed tracking-parameter corpus with explicit high-value non-removal cases."
+
+[[rules]]
+id = "builtin-tracking-query"
+host = "*"
+parameters = [
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_term",
+  "utm_content",
+  "gclid",
+  "fbclid",
+]
+
+[[corpus]]
+id = "tracking-parameters-preserve-order"
+input = "https://example.test/p?a=1&utm_source=news&b=%2F&fbclid=abc#keep"
+expected = "https://example.test/p?a=1&b=%2F#keep"
+expected_changed = true
+expected_removed = ["utm_source", "fbclid"]
+
+[[corpus]]
+id = "unknown-token-is-retained"
+input = "https://example.test/p?signature=abc123&state=opaque"
+expected = "https://example.test/p?signature=abc123&state=opaque"
+expected_changed = false
+expected_removed = []
+
+[[corpus]]
+id = "encoded-name-is-retained"
+input = "https://example.test/p?%75tm_source=news&token=abc"
+expected = "https://example.test/p?%75tm_source=news&token=abc"
+expected_changed = false
+expected_removed = []
+
+[[corpus]]
+id = "unsupported-scheme-is-retained"
+input = "mailto:test@example.test?utm_source=news"
+expected = "mailto:test@example.test?utm_source=news"
+expected_changed = false
+expected_removed = []

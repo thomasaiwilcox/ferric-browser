@@ -1,0 +1,10 @@
+[package]
+name = "browser-core"
+version = "0.1.0"
+description = "Qt-independent RustBrowser state, identity, and reducer model"
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true

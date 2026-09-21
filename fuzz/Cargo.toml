@@ -1,0 +1,105 @@
+[package]
+name = "rustbrowser-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+browser-config = { path = "../crates/browser-config" }
+browser-core = { path = "../crates/browser-core" }
+browser-engine-qt = { path = "../crates/browser-engine-qt" }
+browser-ipc = { path = "../crates/browser-ipc" }
+browser-storage = { path = "../crates/browser-storage" }
+libfuzzer-sys = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.9"
+
+[[bin]]
+name = "command_parser"
+path = "fuzz_targets/command_parser.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ipc_frames"
+path = "fuzz_targets/ipc_frames.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "url_and_clean_link"
+path = "fuzz_targets/url_and_clean_link.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "switcher_matching"
+path = "fuzz_targets/switcher_matching.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "site_rule"
+path = "fuzz_targets/site_rule.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "contexts_routes"
+path = "fuzz_targets/contexts_routes.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "session_snapshot"
+path = "fuzz_targets/session_snapshot.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "action_target"
+path = "fuzz_targets/action_target.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "hints"
+path = "fuzz_targets/hints.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "bindings"
+path = "fuzz_targets/bindings.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "userscript_results"
+path = "fuzz_targets/userscript_results.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "state_sequences"
+path = "fuzz_targets/state_sequences.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]

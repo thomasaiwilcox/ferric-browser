@@ -1,0 +1,9 @@
+schema_version = 1
+name = "selection-message"
+executable = "/usr/bin/sh"
+argv = ["-c", "read input; case \"$input\" in *selection*) printf '{\"type\":\"message\",\"text\":\"selection-userscript-ok\"}\\n';; esac"]
+context_fields = ["selection"]
+allowed_results = ["message"]
+allowed_commands = []
+timeout_seconds = 5
+allow_private = false

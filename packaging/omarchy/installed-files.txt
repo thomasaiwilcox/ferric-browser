@@ -1,0 +1,9 @@
+# Optional Omarchy integration package installed-file manifest
+/usr/bin/rustbrowser-omarchy-doctor
+/usr/bin/rustbrowser-omarchy-query-tabs
+/usr/bin/rustbrowser-omarchy-activate-tab
+/usr/share/rustbrowser-omarchy/launcher-actions.toml
+/usr/share/rustbrowser-omarchy/templates/theme.toml
+/usr/share/rustbrowser-omarchy/examples/hyprland/rustbrowser-0.51.conf
+/usr/share/rustbrowser-omarchy/examples/hyprland/rustbrowser-0.55.lua
+/usr/share/doc/rustbrowser-omarchy/README.md
