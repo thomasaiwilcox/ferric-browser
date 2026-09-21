@@ -6120,9 +6120,9 @@ ApplicationWindow {
         window.pageDialogOrigin = ""
         window.pageDialogDefaultText = ""
         window.pageDialogSuppressChecked = false
-        pageDialogUsername.text = ""
-        pageDialogPassword.text = ""
-        pageDialogInput.text = ""
+        pageDialogPopup.usernameText = ""
+        pageDialogPopup.passwordText = ""
+        pageDialogPopup.inputText = ""
         pageDialogPopup.close()
         if (hadRequest) {
             window.restoreOverlayFocus()
@@ -6196,7 +6196,7 @@ ApplicationWindow {
                 : "opaque or unavailable origin"
         window.pageDialogDefaultText = window.boundedPageDialogText(request.defaultText)
         window.pageDialogSuppressChecked = false
-        pageDialogInput.text = window.pageDialogDefaultText
+        pageDialogPopup.inputText = window.pageDialogDefaultText
         pageDialogPopup.open()
         ui.status_text = privateProfile ? "Private page dialog" : "Page dialog"
     }
@@ -6239,8 +6239,8 @@ ApplicationWindow {
                 ? "Credentials requested for realm: " + realm
                 : "This site is requesting credentials"
         window.pageDialogSuppressChecked = false
-        pageDialogUsername.text = ""
-        pageDialogPassword.text = ""
+        pageDialogPopup.usernameText = ""
+        pageDialogPopup.passwordText = ""
         pageDialogPopup.open()
         ui.status_text = privateProfile ? "Private authentication prompt" : "Authentication prompt"
     }
@@ -6845,10 +6845,10 @@ ApplicationWindow {
             return
         }
         if (window.pendingAuthenticationRequest) {
-            var username = window.boundedPageDialogText(pageDialogUsername.text)
-            var password = window.boundedPageDialogText(pageDialogPassword.text)
-            pageDialogUsername.text = ""
-            pageDialogPassword.text = ""
+            var username = window.boundedPageDialogText(pageDialogPopup.usernameText)
+            var password = window.boundedPageDialogText(pageDialogPopup.passwordText)
+            pageDialogPopup.usernameText = ""
+            pageDialogPopup.passwordText = ""
             window.resolveQtRequest(
                 ui, request, authentication ? "authentication" : "page-dialog",
                 "dialogAccept", [username, password])
@@ -6857,7 +6857,7 @@ ApplicationWindow {
         } else if (window.pageDialogType(request) === "prompt") {
             window.resolveQtRequest(
                 ui, request, "page-dialog", "dialogAccept",
-                [window.boundedPageDialogText(pageDialogInput.text)])
+                [window.boundedPageDialogText(pageDialogPopup.inputText)])
         } else {
             window.resolveQtRequest(
                 ui, request, "page-dialog", "dialogAccept", [])
@@ -6880,8 +6880,8 @@ ApplicationWindow {
         window.resolveQtRequest(
             ui, request, kind === "authentication" ? "authentication" : "page-dialog",
             "dialogReject", [])
-        pageDialogUsername.text = ""
-        pageDialogPassword.text = ""
+        pageDialogPopup.usernameText = ""
+        pageDialogPopup.passwordText = ""
         if (view && window.pageDialogSuppressChecked) {
             view.pageDialogSuppressed = true
         }
@@ -7623,128 +7623,9 @@ ApplicationWindow {
         }
     }
 
-    Popup {
+    FerricPageDialog {
         id: pageDialogPopup
-        parent: Overlay.overlay
-        modal: true
-        focus: true
-        closePolicy: Popup.NoAutoClose
-        width: Math.min(620, window.width - 48)
-        padding: 14
-        x: Math.round((window.width - width) / 2)
-        y: Math.round((window.height - height) / 2)
-
-        background: Rectangle {
-            color: window.panelColor
-            border.color: window.accentColor
-            radius: 4
-        }
-
-        contentItem: ColumnLayout {
-            focus: true
-            Accessible.role: Accessible.Dialog
-            Accessible.name: "Page dialog"
-            spacing: 10
-
-            Keys.onPressed: function(event) {
-                if (event.key === Qt.Key_Escape) {
-                    window.rejectPageDialog()
-                    event.accepted = true
-                } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                    window.acceptPageDialog()
-                    event.accepted = true
-                }
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: window.pageDialogTitle
-                color: window.primaryTextColor
-                font.bold: true
-                elide: Text.ElideRight
-                Accessible.name: "Page dialog title"
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: "Origin: " + (window.pageDialogOrigin || "opaque or unavailable origin")
-                color: window.mutedTextColor
-                elide: Text.ElideMiddle
-                Accessible.name: "Page dialog origin"
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: window.pageDialogMessage
-                color: window.primaryTextColor
-                wrapMode: Text.WordWrap
-                maximumLineCount: 12
-                elide: Text.ElideRight
-                Accessible.name: "Page dialog message"
-            }
-
-            TextField {
-                id: pageDialogInput
-                Layout.fillWidth: true
-                visible: window.pageDialogKind() === "prompt"
-                Accessible.name: "Page dialog response"
-                Accessible.role: Accessible.EditableText
-                Accessible.editable: true
-                onVisibleChanged: if (visible) forceActiveFocus()
-            }
-
-            TextField {
-                id: pageDialogUsername
-                Layout.fillWidth: true
-                visible: window.pageDialogKind() === "authentication"
-                placeholderText: "Username"
-                Accessible.name: "Authentication username"
-                Accessible.role: Accessible.EditableText
-                Accessible.editable: true
-                onVisibleChanged: if (visible) forceActiveFocus()
-            }
-
-            TextField {
-                id: pageDialogPassword
-                Layout.fillWidth: true
-                visible: window.pageDialogKind() === "authentication"
-                placeholderText: "Password"
-                echoMode: TextInput.Password
-                Accessible.name: "Authentication password"
-                Accessible.role: Accessible.EditableText
-                Accessible.editable: true
-            }
-
-            CheckBox {
-                Layout.fillWidth: true
-                text: "Suppress future dialogs from this page"
-                checked: window.pageDialogSuppressChecked
-                visible: window.pendingPageDialogRequest !== null
-                onToggled: window.pageDialogSuppressChecked = checked
-                Accessible.name: text
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                Item { Layout.fillWidth: true }
-                Button {
-                    visible: window.pageDialogKind() !== "alert"
-                    text: window.pageDialogKind() === "beforeunload"
-                          ? "Stay"
-                          : "Cancel"
-                    Accessible.name: text
-                    onClicked: window.rejectPageDialog()
-                }
-                Button {
-                    text: window.pageDialogKind() === "beforeunload"
-                          ? "Leave page"
-                          : "OK"
-                    Accessible.name: text
-                    onClicked: window.acceptPageDialog()
-                }
-            }
-        }
-
+        browserWindow: window
     }
 
     Popup {
@@ -12008,161 +11889,15 @@ ApplicationWindow {
         }
     }
 
-    Popup {
+    FerricContextMoveDialog {
         id: contextMovePopup
-        parent: Overlay.overlay
-        modal: true
-        focus: true
-        closePolicy: Popup.NoAutoClose
-        visible: window.contextMoveVisible
-        width: Math.min(460, window.width - 48)
-        padding: 14
-        x: Math.round((window.width - width) / 2)
-        y: Math.round((window.height - height) / 2)
-
-        background: Rectangle {
-            color: window.panelColor
-            border.color: window.accentColor
-            radius: 4
-        }
-
-        contentItem: ColumnLayout {
-            focus: true
-            Accessible.role: Accessible.Dialog
-            Accessible.name: "Move tab to another context window"
-            spacing: 8
-
-            Label {
-                Layout.fillWidth: true
-                text: "Move tab to context"
-                color: window.primaryTextColor
-                font.bold: true
-            }
-            Label {
-                Layout.fillWidth: true
-                text: "Only another live window in the same profile can receive the tab."
-                color: window.secondaryTextColor
-                wrapMode: Text.WordWrap
-            }
-            Repeater {
-                model: window.contextMoveChoices
-                delegate: Button {
-                    Layout.fillWidth: true
-                    text: modelData.label + (modelData.available ? "" : " (open with context-enter first)")
-                    enabled: !!modelData.available
-                    Accessible.name: "Move tab to " + modelData.label
-                    onClicked: window.chooseContextMove(modelData.name)
-                }
-            }
-            Button {
-                Layout.alignment: Qt.AlignRight
-                text: "Cancel"
-                Accessible.name: "Cancel context tab move"
-                onClicked: {
-                    window.contextMoveVisible = false
-                    window.contextMoveTabId = ""
-                    window.contextMoveChoices = []
-                    window.restoreOverlayFocus()
-                }
-            }
-
-            Keys.onPressed: function(event) {
-                if (event.key === Qt.Key_Escape) {
-                    window.contextMoveVisible = false
-                    window.contextMoveTabId = ""
-                    window.contextMoveChoices = []
-                    window.restoreOverlayFocus()
-                    event.accepted = true
-                }
-            }
-        }
+        browserWindow: window
     }
 
-    Popup {
+    FerricExternalNavigationDialog {
         id: externalNavigationPopup
-        parent: Overlay.overlay
-        modal: true
-        focus: true
-        closePolicy: Popup.NoAutoClose
-        visible: browserUi.external_navigation_visible
-        width: Math.min(620, window.width - 48)
-        padding: 14
-        x: Math.round((window.width - width) / 2)
-        y: Math.round((window.height - height) / 2)
-
-        background: Rectangle {
-            color: window.panelColor
-            border.color: window.warningColor
-            radius: 4
-        }
-
-        contentItem: ColumnLayout {
-            focus: true
-            Accessible.role: Accessible.Dialog
-            Accessible.name: "External URI confirmation"
-            spacing: 10
-
-            Keys.onPressed: function(event) {
-                if (event.key === Qt.Key_Escape) {
-                    browserUi.cancel_external_navigation()
-                    event.accepted = true
-                } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                    if (browserUi.confirm_external_navigation()) {
-                        window.executePendingEngineAction()
-                    }
-                    event.accepted = true
-                }
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: "Open with system handler?"
-                color: window.primaryTextColor
-                font.bold: true
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: "This URI will leave Ferric Browser and may launch another application."
-                color: window.warningColor
-                wrapMode: Text.WordWrap
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: "Scheme: " + browserUi.external_navigation_scheme
-                color: window.mutedTextColor
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: browserUi.external_navigation_uri
-                color: window.primaryTextColor
-                wrapMode: Text.WrapAnywhere
-                maximumLineCount: 8
-                elide: Text.ElideRight
-                Accessible.name: "External URI"
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                Item { Layout.fillWidth: true }
-                Button {
-                    text: "Cancel"
-                    Accessible.name: "Cancel external URI"
-                    onClicked: browserUi.cancel_external_navigation()
-                }
-                Button {
-                    text: "Open with system handler"
-                    Accessible.name: "Confirm external URI"
-                    onClicked: {
-                        if (browserUi.confirm_external_navigation()) {
-                            window.executePendingEngineAction()
-                        }
-                    }
-                }
-            }
-        }
+        browserWindow: window
+        browserUi: browserUi
     }
 
     Popup {
@@ -12257,73 +11992,10 @@ ApplicationWindow {
 
     }
 
-    Rectangle {
+    FerricNavigationFailure {
         id: navigationFailureSurface
-        anchors.centerIn: parent
-        width: Math.min(720, parent.width - 64)
-        height: Math.min(360, parent.height - 120)
-        z: 65
-        visible: browserUi.navigation_failure_visible
-        focus: visible
-        Accessible.role: Accessible.Dialog
-        Accessible.name: "Navigation failure"
-        onVisibleChanged: if (visible) forceActiveFocus()
-        color: window.panelColor
-        border.color: window.errorColor
-
-        Keys.onPressed: function(event) {
-            if (event.key === Qt.Key_Escape) {
-                browserUi.clear_navigation_failure()
-                event.accepted = true
-            }
-        }
-
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 14
-            spacing: 8
-
-            RowLayout {
-                Layout.fillWidth: true
-                Label {
-                    Layout.fillWidth: true
-                    text: "Navigation failed · " + browserUi.navigation_failure_kind.toUpperCase()
-                    color: window.errorColor
-                    font.bold: true
-                }
-                Button {
-                    text: "Dismiss"
-                    Accessible.name: "Dismiss navigation failure"
-                    onClicked: browserUi.clear_navigation_failure()
-                }
-            }
-            Label {
-                Layout.fillWidth: true
-                text: "Requested: " + (browserUi.navigation_failure_requested_url || "unavailable")
-                color: window.mutedTextColor
-                wrapMode: Text.WrapAnywhere
-            }
-            Label {
-                Layout.fillWidth: true
-                text: "Failed URL: " + (browserUi.navigation_failure_url || "unavailable")
-                color: window.primaryTextColor
-                wrapMode: Text.WrapAnywhere
-            }
-            Label {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                text: browserUi.navigation_failure_detail || "The engine did not provide additional detail."
-                color: window.secondaryTextColor
-                wrapMode: Text.WordWrap
-                verticalAlignment: Text.AlignTop
-            }
-            Label {
-                Layout.fillWidth: true
-                text: "Retry is intentionally not offered here; submitted forms and authentication flows must not be replayed silently."
-                color: window.warningColor
-                wrapMode: Text.WordWrap
-            }
-        }
+        browserWindow: window
+        browserUi: browserUi
     }
 
     Rectangle {

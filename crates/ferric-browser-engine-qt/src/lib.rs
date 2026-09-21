@@ -36687,7 +36687,11 @@ executable = "/bin/true"
         assert!(source.contains("format!(\"tab-give\\t{window_id}\\t{operation_id}\")"));
         assert!(source.contains("format!(\"tab-detach\\t{operation_id}\")"));
         assert!(source.contains("fn complete_transfer_operation("));
-        let qml = include_str!("../qml/Main.qml");
+        let qml = [
+            include_str!("../qml/Main.qml"),
+            include_str!("../qml/components/FerricContextMoveDialog.qml"),
+        ]
+        .concat();
         assert!(qml.contains("windowTransferView"));
         assert!(qml.contains("completeDetachedSource"));
         assert!(qml.contains("rollback_tab_transfer(adoptedTabId)"));
@@ -37508,7 +37512,11 @@ executable = "/bin/true"
 
     #[test]
     fn navigation_failure_surface_keeps_safe_context_without_retry_action() {
-        let qml = include_str!("../qml/Main.qml");
+        let qml = [
+            include_str!("../qml/Main.qml"),
+            include_str!("../qml/components/FerricNavigationFailure.qml"),
+        ]
+        .concat();
         assert!(qml.contains("navigation_failure_requested_url"));
         assert!(qml.contains("navigation_failure_url"));
         assert!(qml.contains("navigation_failure_kind"));
@@ -37618,13 +37626,17 @@ executable = "/bin/true"
 
     #[test]
     fn authentication_and_client_certificates_stay_in_native_engine_prompts() {
-        let qml = include_str!("../qml/Main.qml");
+        let qml = [
+            include_str!("../qml/Main.qml"),
+            include_str!("../qml/components/FerricPageDialog.qml"),
+        ]
+        .concat();
         assert!(qml.contains("request.proxyHost"));
         assert!(qml.contains("HTTP authentication"));
         assert!(qml.contains("Proxy authentication"));
         assert!(qml.contains("authentication ? \"authentication\" : \"page-dialog\""));
         assert!(qml.contains("\"dialogAccept\", [username, password]"));
-        assert!(qml.contains("pageDialogPassword.text = \"\""));
+        assert!(qml.contains("pageDialogPopup.passwordText = \"\""));
         assert!(qml.contains("onSelectClientCertificate"));
         assert!(qml.contains("selection.certificates"));
         assert!(qml.contains("\"client-certificate\", \"select\", [index]"));

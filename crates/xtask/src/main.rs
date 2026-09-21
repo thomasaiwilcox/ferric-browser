@@ -327,15 +327,25 @@ fn run_qml_lint() -> Result<(), String> {
         .into_iter()
         .find(|candidate| command_available(candidate))
         .ok_or_else(|| "qmllint is required for `cargo xtask check`".to_owned())?;
-    run(
-        executable,
-        &[
-            "--silent",
-            "-I",
-            "/usr/lib/qt6/qml",
-            "crates/ferric-browser-engine-qt/qml/Main.qml",
-        ],
-    )
+    let mut qml_files = Vec::new();
+    visit_files(
+        Path::new("crates/ferric-browser-engine-qt/qml"),
+        &mut |path, _| {
+            if path.extension().is_some_and(|extension| extension == "qml") {
+                qml_files.push(path.to_owned());
+            }
+            Ok(())
+        },
+    )?;
+    qml_files.sort();
+    let mut arguments = vec![
+        "--silent".to_owned(),
+        "-I".to_owned(),
+        "/usr/lib/qt6/qml".to_owned(),
+    ];
+    arguments.extend(qml_files.into_iter().map(|path| path.display().to_string()));
+    let argument_refs = arguments.iter().map(String::as_str).collect::<Vec<_>>();
+    run(executable, &argument_refs)
 }
 
 fn check_architecture_boundaries() -> Result<(), String> {
@@ -531,9 +541,13 @@ fn check_ui_thread_contract() -> Result<(), String> {
 }
 
 fn check_accessibility_contract() -> Result<(), String> {
-    let path = Path::new("crates/ferric-browser-engine-qt/qml/Main.qml");
-    let source = fs::read_to_string(path)
-        .map_err(|error| format!("could not read {}: {error}", path.display()))?;
+    let root = Path::new("crates/ferric-browser-engine-qt/qml");
+    let mut source = String::new();
+    visit_files(root, &mut |_, contents| {
+        source.push_str(contents);
+        source.push('\n');
+        Ok(())
+    })?;
     let required = [
         "Accessible.name:",
         "Accessible.description:",
@@ -554,14 +568,14 @@ fn check_accessibility_contract() -> Result<(), String> {
             return Err(format!(
                 "accessibility contract violation: {} is missing from {}",
                 marker,
-                path.display()
+                root.display()
             ));
         }
     }
     if source.contains("Accessible.name: \"\"") {
         return Err(format!(
             "accessibility contract violation: an empty Accessible.name exists in {}",
-            path.display()
+            root.display()
         ));
     }
     Ok(())
