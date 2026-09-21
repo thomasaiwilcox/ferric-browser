@@ -11900,96 +11900,9 @@ ApplicationWindow {
         browserUi: browserUi
     }
 
-    Popup {
+    FerricContextRouteDialog {
         id: contextRoutePopup
-        parent: Overlay.overlay
-        modal: true
-        focus: true
-        closePolicy: Popup.NoAutoClose
-        visible: window.contextRouteVisible
-        width: Math.min(680 * window.chromeScale, window.width - 48)
-        padding: 14
-        x: Math.round((window.width - width) / 2)
-        y: Math.round((window.height - height) / 2)
-
-        background: Rectangle {
-            color: window.panelColor
-            border.color: window.accentColor
-            radius: 4
-        }
-
-        contentItem: ColumnLayout {
-            focus: true
-            Accessible.role: Accessible.Dialog
-            Accessible.name: "Context route confirmation"
-            spacing: 10
-
-            Keys.onPressed: function(event) {
-                if (event.key === Qt.Key_Escape) {
-                    window.dismissContextRoute()
-                    event.accepted = true
-                } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                    window.acceptContextRoute()
-                    event.accepted = true
-                }
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: "Use browsing context " + (window.contextRouteData.context || "") + "?"
-                color: window.primaryTextColor
-                font.bold: true
-                Accessible.name: "Context route title"
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: "Route " + (window.contextRouteData.route_id || "")
-                      + " (" + (window.contextRouteData.behavior || "prompt") + ")"
-                color: window.mutedTextColor
-                elide: Text.ElideRight
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: "Target profile: " + (window.contextRouteData.profile || "unavailable")
-                color: window.secondaryTextColor
-                elide: Text.ElideMiddle
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: "Address: " + (window.contextRouteData.url || "unavailable")
-                color: window.primaryTextColor
-                wrapMode: Text.WrapAnywhere
-                maximumLineCount: 6
-                elide: Text.ElideRight
-                Accessible.name: "Context route address"
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: "This choice applies before navigation. Existing redirects, popups, forms, permissions, and authentication chains are never moved automatically."
-                color: window.warningColor
-                wrapMode: Text.WordWrap
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                Item { Layout.fillWidth: true }
-                Button {
-                    text: "Open normally"
-                    Accessible.name: "Open without context route"
-                    onClicked: window.dismissContextRoute()
-                }
-                Button {
-                    text: "Use context"
-                    Accessible.name: "Accept context route"
-                    onClicked: window.acceptContextRoute()
-                }
-            }
-        }
-
+        browserWindow: window
     }
 
     FerricNavigationFailure {

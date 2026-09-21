@@ -37691,7 +37691,11 @@ executable = "/bin/true"
     #[test]
     fn context_routes_are_pre_navigation_and_browser_confirmed() {
         let source = include_str!("lib.rs");
-        let qml = include_str!("../qml/Main.qml");
+        let qml = [
+            include_str!("../qml/Main.qml"),
+            include_str!("../qml/components/FerricContextRouteDialog.qml"),
+        ]
+        .concat();
         assert!(source.contains("matching_context_routes"));
         assert!(source.contains("queue_context_route_for_input"));
         assert!(source.contains("execute_context_route_command"));
