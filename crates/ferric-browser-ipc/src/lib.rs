@@ -471,6 +471,92 @@ pub struct ProtocolError {
     pub details: Option<Value>,
 }
 
+/// A typed failure that is safe to expose through the CLI or local IPC.
+///
+/// The stable [`ErrorCode`] is selected where the failure occurs.  Adapters
+/// must not infer it from a formatted diagnostic message: messages are for
+/// people and diagnostics, while codes are the compatibility contract.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PublicError {
+    code: ErrorCode,
+    user_message: String,
+    diagnostic_context: String,
+}
+
+impl PublicError {
+    /// Creates a public failure with a stable code and safe user message.
+    #[must_use]
+    pub fn new(
+        code: ErrorCode,
+        user_message: impl Into<String>,
+        diagnostic_context: impl Into<String>,
+    ) -> Self {
+        Self {
+            code,
+            user_message: user_message.into(),
+            diagnostic_context: diagnostic_context.into(),
+        }
+    }
+
+    /// Wraps an internal failure that is not safe to classify more precisely.
+    #[must_use]
+    pub fn engine(error: impl Into<String>) -> Self {
+        let diagnostic_context = error.into();
+        Self::new(
+            ErrorCode::Engine,
+            "The browser could not complete that request.",
+            diagnostic_context,
+        )
+    }
+
+    #[must_use]
+    pub const fn code(&self) -> ErrorCode {
+        self.code
+    }
+
+    #[must_use]
+    pub fn user_message(&self) -> &str {
+        &self.user_message
+    }
+
+    #[must_use]
+    pub fn diagnostic_context(&self) -> &str {
+        &self.diagnostic_context
+    }
+
+    /// Converts this error into the public protocol envelope before response
+    /// redaction and correlation metadata are applied.
+    #[must_use]
+    pub fn into_protocol_error(self) -> ProtocolError {
+        ProtocolError {
+            code: self.code.as_str().into(),
+            message: self.user_message,
+            details: (!self.diagnostic_context.is_empty())
+                .then(|| json!({"diagnostic_context": self.diagnostic_context})),
+        }
+    }
+}
+
+impl std::fmt::Display for PublicError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.user_message)
+    }
+}
+
+impl std::error::Error for PublicError {}
+
+impl From<String> for PublicError {
+    fn from(error: String) -> Self {
+        Self::engine(error)
+    }
+}
+
+impl From<&str> for PublicError {
+    fn from(error: &str) -> Self {
+        Self::engine(error)
+    }
+}
+
 /// Stable public error vocabulary shared by the CLI and local IPC.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ErrorCode {
@@ -1490,6 +1576,22 @@ mod tests {
         assert_eq!(
             canonical_error_code("unknown-internal-code"),
             ErrorCode::Engine
+        );
+    }
+
+    #[test]
+    fn public_error_keeps_code_independent_of_diagnostic_wording() {
+        let public = PublicError::new(
+            ErrorCode::StaleTarget,
+            "The selected tab is no longer available.",
+            "tab target was removed while a command was queued",
+        );
+        let protocol = public.into_protocol_error();
+        assert_eq!(protocol.code, "E_STALE_TARGET");
+        assert_eq!(protocol.message, "The selected tab is no longer available.");
+        assert_eq!(
+            protocol.details.expect("diagnostic context")["diagnostic_context"],
+            "tab target was removed while a command was queued"
         );
     }
 

@@ -10,8 +10,8 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use ferric_browser_config::{Config, setting_metadata_all};
-use ferric_browser_core::{ActionRegistry, BindingTrie, CommandRegistry, Mode};
+use ferric_browser_config::{Config, SettingRegistry};
+use ferric_browser_core::{ActionRegistry, BindingRegistry, CommandRegistry, Mode};
 
 mod fixture_server;
 mod perf;
@@ -100,7 +100,7 @@ fn mode_name(mode: Mode) -> &'static str {
 }
 
 fn render_binding_docs() -> Result<String, String> {
-    let bindings = BindingTrie::default_v1(CommandRegistry::default_v1())
+    let bindings = BindingRegistry::default_v1(CommandRegistry::default_v1())
         .map_err(|error| format!("could not build default bindings: {error}"))?;
     let mut document = String::from(concat!(
         "# Keyboard bindings\n\n",
@@ -230,7 +230,7 @@ fn render_user_docs() -> Result<(String, String, String, String), String> {
         "| Key | Type | Default | Scopes | Apply time | Prerequisite | Sensitivity |\n",
         "| --- | --- | --- | --- | --- | --- | --- |\n",
     ));
-    for metadata in setting_metadata_all() {
+    for metadata in SettingRegistry::default_v1().definitions() {
         writeln!(
             configuration,
             "| `{}` | {} | `{}` | {} | {} | {} | {} |",
@@ -394,6 +394,21 @@ fn check_architecture_boundaries() -> Result<(), String> {
         if adapter.contains(marker) {
             return Err(format!(
                 "Qt adapter mutates application state outside the reducer: {marker}"
+            ));
+        }
+    }
+    for (path, marker) in [
+        ("crates/ferric-browser/src/main.rs", "fn classify_cli_error"),
+        (
+            "crates/ferric-browser-engine-qt/src/lib.rs",
+            "fn ipc_error_code",
+        ),
+    ] {
+        let source = fs::read_to_string(path)
+            .map_err(|error| format!("could not inspect public error boundary {path}: {error}"))?;
+        if source.contains(marker) {
+            return Err(format!(
+                "public error codes must be carried by typed errors, not inferred from prose: {path} contains {marker}"
             ));
         }
     }

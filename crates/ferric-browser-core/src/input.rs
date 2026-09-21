@@ -72,6 +72,40 @@ pub struct BindingTrie {
     registry: CommandRegistry,
 }
 
+/// The authoritative catalog of keyboard bindings.
+///
+/// A [`BindingTrie`] is the optimized runtime representation; this wrapper
+/// keeps the declarative catalog as the public boundary consumed by generated
+/// documentation and presentation code.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BindingRegistry {
+    trie: BindingTrie,
+}
+
+impl BindingRegistry {
+    /// Builds the qutebrowser-compatible default binding catalog.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BindingError`] when a built-in binding no longer resolves
+    /// through the supplied command registry.
+    pub fn default_v1(commands: CommandRegistry) -> Result<Self, BindingError> {
+        BindingTrie::default_v1(commands).map(|trie| Self { trie })
+    }
+
+    /// Returns the declarative bindings in deterministic mode/key order.
+    #[must_use]
+    pub fn definitions(&self) -> Vec<BindingDefinition> {
+        self.trie.definitions()
+    }
+
+    /// Creates an input resolver for one current browser mode.
+    #[must_use]
+    pub fn resolver(&self, mode: Mode) -> BindingResolver {
+        BindingResolver::new(self.trie.clone(), mode)
+    }
+}
+
 impl BindingTrie {
     /// Builds a binding trie after validating every command against the shared
     /// command registry and its declared mode.
@@ -429,6 +463,23 @@ fn binding(mode: Mode, keys: &[&str], command: &str) -> BindingDefinition {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn binding_registry_exposes_default_definitions_and_resolvers() {
+        let registry = BindingRegistry::default_v1(CommandRegistry::default_v1())
+            .expect("default bindings resolve through command registry");
+        assert!(
+            registry
+                .definitions()
+                .iter()
+                .any(|binding| binding.keys == vec!["o"] && binding.command == "open")
+        );
+        let mut resolver = registry.resolver(Mode::Normal);
+        assert!(matches!(
+            resolver.feed("o", 0),
+            BindingOutcome::Execute { command, count: 1 } if command == "open"
+        ));
+    }
 
     #[test]
     fn exact_leaf_executes_and_count_limits_are_applied() {

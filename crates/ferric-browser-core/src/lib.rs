@@ -43,7 +43,7 @@ pub use id::{
     RequestId, SessionId, TabId, WindowId,
 };
 pub use input::{
-    BindingDefinition, BindingError, BindingOutcome, BindingResolver, BindingTrie,
+    BindingDefinition, BindingError, BindingOutcome, BindingRegistry, BindingResolver, BindingTrie,
     DEFAULT_CHORD_TIMEOUT_MS,
 };
 pub use journey::{

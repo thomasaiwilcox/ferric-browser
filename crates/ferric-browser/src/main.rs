@@ -12,8 +12,8 @@ use ferric_browser_core::{
     CommandRegistry, ParseInput, ParsedCommand, canonical_origin, parse_chain, validate_open_target,
 };
 use ferric_browser_ipc::{
-    HelloResult, InstanceError, InstanceLock, InstancePaths, PROTOCOL_MAJOR, PROTOCOL_MINOR,
-    Request, Response, canonical_error_code, current_uid, instance_paths, read_frame, write_frame,
+    ErrorCode, HelloResult, InstanceError, InstanceLock, InstancePaths, PROTOCOL_MAJOR,
+    PROTOCOL_MINOR, Request, Response, current_uid, instance_paths, read_frame, write_frame,
 };
 use ferric_browser_storage::{
     CrashMarker, LEGACY_MIGRATION_FLAG, RootSpec, StorageRoots, crash_diagnostics, inspect_store,
@@ -108,22 +108,72 @@ const MAX_STARTUP_INPUTS: usize = 32;
 const MAX_DIAGNOSTIC_PROFILES: usize = 128;
 const MAX_STARTUP_SETTINGS: usize = 256;
 
+/// A CLI-visible failure with a stable public code.
+///
+/// The diagnostic context is intentionally kept separate from the message
+/// presented to users and IPC callers.  The CLI must not reconstruct a code
+/// by searching the diagnostic prose.
+#[derive(Debug)]
+struct CliError {
+    code: ErrorCode,
+    user_message: &'static str,
+    diagnostic_context: String,
+}
+
+impl CliError {
+    fn invalid(diagnostic_context: impl Into<String>) -> Self {
+        Self {
+            code: ErrorCode::InvalidArgument,
+            user_message: "The command-line request is invalid.",
+            diagnostic_context: diagnostic_context.into(),
+        }
+    }
+
+    fn engine(diagnostic_context: impl Into<String>) -> Self {
+        Self {
+            code: ErrorCode::Engine,
+            user_message: "Ferric Browser could not complete that request.",
+            diagnostic_context: diagnostic_context.into(),
+        }
+    }
+
+    const fn status(&self) -> i32 {
+        match self.code {
+            ErrorCode::InvalidArgument | ErrorCode::Config => 2,
+            ErrorCode::NotFound | ErrorCode::NoInstance | ErrorCode::StaleTarget => 3,
+            ErrorCode::Denied => 4,
+            ErrorCode::Unsupported => 5,
+            ErrorCode::Busy | ErrorCode::Timeout => 6,
+            ErrorCode::Protocol => 7,
+            ErrorCode::ConfirmationRequired
+            | ErrorCode::Io
+            | ErrorCode::Storage
+            | ErrorCode::Engine
+            | ErrorCode::Cancelled => 1,
+        }
+    }
+}
+
 fn main() {
     let arguments = std::env::args().skip(1).collect::<Vec<_>>();
     if let Err(error) = run(&arguments) {
-        let (code, status) = classify_cli_error(&error);
+        let code = error.code;
+        let status = error.status();
         let correlation_id = format!("err-{}", Uuid::new_v4());
         if wants_structured_error(&arguments) {
             eprintln!(
                 "{}",
-                structured_cli_error_with_id(code, status, &error, &correlation_id)
+                structured_cli_error_with_id(code, status, error.user_message, &correlation_id)
             );
         } else {
-            let (preserved, next_action) = canonical_error_code(code).guidance();
+            let (preserved, next_action) = code.guidance();
             eprintln!(
-                "ferric-browser: {code}: {error}. Preserved: {preserved}. Next action: {next_action}. [correlation {correlation_id}]"
+                "ferric-browser: {}: {} Preserved: {preserved}. Next action: {next_action}. [correlation {correlation_id}]",
+                code.as_str(),
+                error.user_message,
             );
         }
+        emit_structured_log(None, "error", &format!("cli.failure: {}", code.as_str()));
         std::process::exit(status);
     }
 }
@@ -135,15 +185,15 @@ fn wants_structured_error(arguments: &[String]) -> bool {
 }
 
 fn structured_cli_error_with_id(
-    code: &str,
+    code: ErrorCode,
     status: i32,
     message: &str,
     correlation_id: &str,
 ) -> String {
-    let (preserved, next_action) = canonical_error_code(code).guidance();
+    let (preserved, next_action) = code.guidance();
     serde_json::json!({
         "error": {
-            "code": code,
+            "code": code.as_str(),
             "status": status,
             "message": message,
             "correlation_id": correlation_id,
@@ -152,100 +202,6 @@ fn structured_cli_error_with_id(
         }
     })
     .to_string()
-}
-
-fn classify_cli_error(error: &str) -> (&'static str, i32) {
-    let lower = error.to_ascii_lowercase();
-    let explicit = lower.trim_start();
-    for (code, status) in [
-        ("e_invalid_argument", 2),
-        ("e_config", 2),
-        ("e_not_found", 3),
-        ("e_no_instance", 3),
-        ("e_stale_target", 3),
-        ("e_denied", 4),
-        ("e_confirmation_required", 1),
-        ("e_unsupported", 5),
-        ("e_busy", 6),
-        ("e_timeout", 6),
-        ("e_protocol", 7),
-        ("e_io", 1),
-        ("e_storage", 1),
-        ("e_engine", 1),
-        ("e_cancelled", 1),
-    ] {
-        let has_delimited_prefix = explicit.strip_prefix(code).is_some_and(|rest| {
-            rest.is_empty()
-                || rest
-                    .chars()
-                    .next()
-                    .is_some_and(|character| character == ':' || character.is_whitespace())
-        });
-        if has_delimited_prefix {
-            return (
-                match code {
-                    "e_invalid_argument" => "E_INVALID_ARGUMENT",
-                    "e_config" => "E_CONFIG",
-                    "e_not_found" => "E_NOT_FOUND",
-                    "e_no_instance" => "E_NO_INSTANCE",
-                    "e_stale_target" => "E_STALE_TARGET",
-                    "e_denied" => "E_DENIED",
-                    "e_confirmation_required" => "E_CONFIRMATION_REQUIRED",
-                    "e_unsupported" => "E_UNSUPPORTED",
-                    "e_busy" => "E_BUSY",
-                    "e_timeout" => "E_TIMEOUT",
-                    "e_protocol" => "E_PROTOCOL",
-                    "e_io" => "E_IO",
-                    "e_storage" => "E_STORAGE",
-                    "e_engine" => "E_ENGINE",
-                    "e_cancelled" => "E_CANCELLED",
-                    _ => unreachable!("stable CLI code list is exhaustive"),
-                },
-                status,
-            );
-        }
-    }
-    if lower.contains("configuration is invalid") {
-        ("E_CONFIG", 2)
-    } else if lower.contains("no such file") && !lower.contains("instance") {
-        ("E_IO", 1)
-    } else if lower.contains("no matching instance")
-        || lower.contains("could not connect to running instance")
-    {
-        ("E_NO_INSTANCE", 3)
-    } else if lower.contains("stale") {
-        ("E_STALE_TARGET", 3)
-    } else if lower.contains("not found") || lower.contains("no eligible") {
-        ("E_NOT_FOUND", 3)
-    } else if lower.contains("confirmation") {
-        ("E_CONFIRMATION_REQUIRED", 1)
-    } else if lower.contains("cancelled") || lower.contains("canceled") {
-        ("E_CANCELLED", 1)
-    } else if lower.contains("permission")
-        || lower.contains("not permitted")
-        || lower.contains("peer uid")
-    {
-        ("E_DENIED", 4)
-    } else if lower.contains("unsupported") || lower.contains("unavailable") {
-        ("E_UNSUPPORTED", 5)
-    } else if lower.contains("timed out") {
-        ("E_TIMEOUT", 6)
-    } else if lower.contains("busy") {
-        ("E_BUSY", 6)
-    } else if lower.contains("protocol") {
-        ("E_PROTOCOL", 7)
-    } else if lower.contains("storage") || lower.contains("database") {
-        ("E_STORAGE", 1)
-    } else if lower.contains("unknown option")
-        || lower.contains("unknown command")
-        || lower.contains("usage:")
-        || lower.contains("requires")
-        || lower.contains("invalid --")
-    {
-        ("E_INVALID_ARGUMENT", 2)
-    } else {
-        ("E_ENGINE", 1)
-    }
 }
 
 fn select_startup_profile(
@@ -306,8 +262,27 @@ fn select_startup_profile(
     ))
 }
 
+fn run(arguments: &[String]) -> Result<(), CliError> {
+    if arguments
+        .iter()
+        .any(|argument| argument == "--help" || argument == "-h")
+    {
+        print_help();
+        return Ok(());
+    }
+    if arguments
+        .iter()
+        .any(|argument| argument == "--version" || argument == "-V")
+    {
+        println!("ferric-browser {}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
+    parse_cli(arguments).map_err(|error| CliError::invalid(error))?;
+    run_untyped(arguments).map_err(CliError::engine)
+}
+
 #[allow(clippy::too_many_lines)]
-fn run(arguments: &[String]) -> Result<(), String> {
+fn run_untyped(arguments: &[String]) -> Result<(), String> {
     if arguments
         .iter()
         .any(|argument| argument == "--help" || argument == "-h")
@@ -6246,74 +6221,10 @@ mod tests {
 
     #[test]
     fn cli_errors_use_stable_codes() {
-        for (message, expected) in [
-            ("E_INVALID_ARGUMENT: bad input", ("E_INVALID_ARGUMENT", 2)),
-            ("E_CONFIG: bad TOML", ("E_CONFIG", 2)),
-            ("E_NOT_FOUND: missing profile", ("E_NOT_FOUND", 3)),
-            ("E_NO_INSTANCE: no owner", ("E_NO_INSTANCE", 3)),
-            ("E_STALE_TARGET: refresh", ("E_STALE_TARGET", 3)),
-            ("E_DENIED: policy", ("E_DENIED", 4)),
-            (
-                "E_CONFIRMATION_REQUIRED: confirm",
-                ("E_CONFIRMATION_REQUIRED", 1),
-            ),
-            ("E_UNSUPPORTED: capability", ("E_UNSUPPORTED", 5)),
-            ("E_BUSY: queue", ("E_BUSY", 6)),
-            ("E_TIMEOUT: deadline", ("E_TIMEOUT", 6)),
-            ("E_PROTOCOL: version", ("E_PROTOCOL", 7)),
-            ("E_IO: socket", ("E_IO", 1)),
-            ("E_STORAGE: database", ("E_STORAGE", 1)),
-            ("E_ENGINE: renderer", ("E_ENGINE", 1)),
-            ("E_CANCELLED: user", ("E_CANCELLED", 1)),
-        ] {
-            assert_eq!(classify_cli_error(message), expected, "{message}");
-        }
-        assert_eq!(
-            classify_cli_error("invalid --set value"),
-            ("E_INVALID_ARGUMENT", 2)
-        );
-        assert_eq!(
-            classify_cli_error("configuration is invalid: bad TOML"),
-            ("E_CONFIG", 2)
-        );
-        assert_eq!(
-            classify_cli_error("tab-detach is unavailable: live-window-reparent-unsupported"),
-            ("E_UNSUPPORTED", 5)
-        );
-        assert_eq!(
-            classify_cli_error("could not connect to running instance"),
-            ("E_NO_INSTANCE", 3)
-        );
-        assert_eq!(classify_cli_error("operation timed out"), ("E_TIMEOUT", 6));
-        assert_eq!(
-            classify_cli_error("database storage failure"),
-            ("E_STORAGE", 1)
-        );
-        assert_eq!(
-            classify_cli_error("unknown command: unknown"),
-            ("E_INVALID_ARGUMENT", 2)
-        );
-        assert_eq!(
-            classify_cli_error("tab target is stale"),
-            ("E_STALE_TARGET", 3)
-        );
-        assert_eq!(classify_cli_error("profile not found"), ("E_NOT_FOUND", 3));
-        assert_eq!(
-            classify_cli_error("confirmation is required"),
-            ("E_CONFIRMATION_REQUIRED", 1)
-        );
-        assert_eq!(
-            classify_cli_error("operation cancelled"),
-            ("E_CANCELLED", 1)
-        );
-        assert_eq!(
-            classify_cli_error("argument contains E_TIMEOUT"),
-            ("E_ENGINE", 1)
-        );
-        assert_eq!(
-            classify_cli_error("prefix E_TIMEOUT: user data"),
-            ("E_ENGINE", 1)
-        );
+        let error = run(&["--unknown".into()]).expect_err("unknown option is rejected");
+        assert_eq!(error.code, ErrorCode::InvalidArgument);
+        assert_eq!(error.status(), 2);
+        assert_eq!(error.user_message, "The command-line request is invalid.");
         assert!(wants_structured_error(&[
             "query".into(),
             "tabs".into(),
@@ -6322,7 +6233,7 @@ mod tests {
         ]));
         assert!(!wants_structured_error(&["query".into(), "tabs".into()]));
         let structured = serde_json::from_str::<serde_json::Value>(&structured_cli_error_with_id(
-            "E_TIMEOUT",
+            ErrorCode::Timeout,
             6,
             "slow",
             "err-test",

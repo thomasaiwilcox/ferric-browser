@@ -3,7 +3,8 @@
 Ferric remains pre-alpha until these gates are complete:
 
 - route every command and adapter callback through `BrowserRuntime`;
-- generate CLI/IPC decoding from the registries and remove prose-based error classification;
+- finish registry-generated CLI/IPC decoding; public CLI and IPC error codes
+  are now carried by typed error values rather than inferred from prose;
 - finish typed Qt presentation models and remove non-allowlisted JSON bridges;
 - split the Qt engine and QML composition root into bounded subsystems;
 - move all browser-owned JavaScript to versioned, adversarially tested assets;

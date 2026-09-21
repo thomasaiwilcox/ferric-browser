@@ -1192,6 +1192,46 @@ pub struct SettingMetadata {
     pub sensitivity: &'static str,
 }
 
+/// The authoritative typed catalog of supported configuration settings.
+///
+/// Parsing and validation remain owned by the configuration model, while this
+/// registry supplies the shared contract used by documentation, completion,
+/// IPC discovery, and presentation adapters.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct SettingRegistry;
+
+impl SettingRegistry {
+    /// Returns the current stable setting catalog.
+    #[must_use]
+    pub const fn default_v1() -> Self {
+        Self
+    }
+
+    /// Returns all static setting definitions in deterministic catalog order.
+    #[must_use]
+    pub const fn definitions(self) -> &'static [SettingMetadata] {
+        SETTING_METADATA
+    }
+
+    /// Resolves an exact setting or a supported dynamic setting namespace.
+    #[must_use]
+    pub fn resolve(self, key: &str) -> Option<&'static SettingMetadata> {
+        if let Some(metadata) = SETTING_METADATA.iter().find(|metadata| metadata.key == key) {
+            return Some(metadata);
+        }
+        if key.starts_with("search_engines.")
+            || key.starts_with("action_targets.")
+            || key.starts_with("bindings.")
+        {
+            return Some(&DYNAMIC_GLOBAL_PROFILE_METADATA);
+        }
+        if key.starts_with("site_rules.") || key.starts_with("permission_rules.") {
+            return Some(&DYNAMIC_GLOBAL_METADATA);
+        }
+        None
+    }
+}
+
 /// A configuration value that cannot affect the current process immediately.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PendingSettingChange {
@@ -1980,26 +2020,14 @@ const DYNAMIC_GLOBAL_METADATA: SettingMetadata = setting_metadata!(
 /// namespace such as `search_engines.<name>` or `bindings.<mode>.<key>`.
 #[must_use]
 pub fn setting_metadata(key: &str) -> Option<&'static SettingMetadata> {
-    if let Some(metadata) = SETTING_METADATA.iter().find(|metadata| metadata.key == key) {
-        return Some(metadata);
-    }
-    if key.starts_with("search_engines.")
-        || key.starts_with("action_targets.")
-        || key.starts_with("bindings.")
-    {
-        return Some(&DYNAMIC_GLOBAL_PROFILE_METADATA);
-    }
-    if key.starts_with("site_rules.") || key.starts_with("permission_rules.") {
-        return Some(&DYNAMIC_GLOBAL_METADATA);
-    }
-    None
+    SettingRegistry::default_v1().resolve(key)
 }
 
 /// Returns the static metadata rows used to generate user-facing setting
 /// documentation and registry-backed configuration surfaces.
 #[must_use]
 pub const fn setting_metadata_all() -> &'static [SettingMetadata] {
-    SETTING_METADATA
+    SettingRegistry::default_v1().definitions()
 }
 
 /// Returns the validated scopes for a setting. The returned scope names are
@@ -4834,6 +4862,30 @@ mod tests {
         config.site_rules[0].set =
             BTreeMap::from([("content.zoom".into(), toml::Value::Float(9.0))]);
         assert!(validate(&config).is_err());
+    }
+
+    #[test]
+    fn setting_registry_resolves_static_and_dynamic_settings() {
+        let registry = SettingRegistry::default_v1();
+        assert!(
+            registry
+                .definitions()
+                .iter()
+                .any(|setting| setting.key == "content.zoom")
+        );
+        assert_eq!(
+            registry
+                .resolve("content.zoom")
+                .map(|setting| setting.value_type),
+            Some("number")
+        );
+        assert_eq!(
+            registry
+                .resolve("search_engines.docs")
+                .map(|setting| setting.value_type),
+            Some("dynamic")
+        );
+        assert!(registry.resolve("unrecognized.setting").is_none());
     }
 
     #[test]

@@ -1097,10 +1097,10 @@ use ferric_browser_core::{
     validate_open_target,
 };
 use ferric_browser_ipc::{
-    CacheLookup, EventNotification, HelloParams, HelloResult, PendingRequest, ProtocolError,
-    Request, RequestCache, Response, current_uid, enqueue_request, has_pending_requests,
-    install_pending_request_waker, parse_request, peer_uid, publish_event, read_frame,
-    serialize_response, subscribe_event_stream, take_pending_request, write_frame,
+    CacheLookup, ErrorCode, EventNotification, HelloParams, HelloResult, PendingRequest,
+    ProtocolError, PublicError, Request, RequestCache, Response, current_uid, enqueue_request,
+    has_pending_requests, install_pending_request_waker, parse_request, peer_uid, publish_event,
+    read_frame, serialize_response, subscribe_event_stream, take_pending_request, write_frame,
 };
 use ferric_browser_runtime::{BrowserRuntime, RuntimeEffect, RuntimeInput};
 use ferric_browser_storage::{
@@ -6283,7 +6283,9 @@ fn interactive_open_command(
     if !route_context.is_empty() {
         params["context"] = Value::Object(route_context);
     }
-    typed_ipc_command(&params).map(Some)
+    typed_ipc_command(&params)
+        .map(Some)
+        .map_err(|error| error.to_string())
 }
 
 fn ipc_failure(id: &str, code: &str, message: impl Into<String>) -> Response {
@@ -6297,86 +6299,15 @@ fn ipc_failure(id: &str, code: &str, message: impl Into<String>) -> Response {
     )
 }
 
-fn ipc_error_code(message: &str) -> &'static str {
-    let lower = message.to_ascii_lowercase();
-    if lower.contains("configuration")
-        || lower.contains("config ")
-        || lower.contains("config:")
-        || lower.contains("invalid toml")
-    {
-        "E_CONFIG"
-    } else if lower.contains("storage")
-        || lower.contains("database")
-        || lower.contains("sqlite")
-        || lower.contains("migration")
-    {
-        "E_STORAGE"
-    } else if lower.contains("protocol") || lower.contains("ipc frame") {
-        "E_PROTOCOL"
-    } else if lower.contains("could not read")
-        || lower.contains("could not write")
-        || lower.contains("could not open")
-        || lower.contains("i/o")
-        || lower.contains("io error")
-    {
-        "E_IO"
-    } else if lower.contains("unknown action") || lower.contains("unknown action subject") {
-        "E_INVALID_ARGUMENT"
-    } else if lower.contains("not yet")
-        || lower.contains("not configured")
-        || lower.contains("unsupported")
-        || lower.contains("unavailable")
-    {
-        "E_UNSUPPORTED"
-    } else if lower.contains("not found")
-        || lower.contains("no eligible")
-        || lower.contains("does not exist")
-    {
-        "E_NOT_FOUND"
-    } else if lower.contains("timed out") || lower.contains("timeout") {
-        "E_TIMEOUT"
-    } else if lower.contains("busy") || lower.contains("queue is full") {
-        "E_BUSY"
-    } else if lower.contains("permission denied")
-        || lower.contains("access denied")
-        || lower.contains("not allowed")
-        || lower.contains("denied")
-    {
-        "E_DENIED"
-    } else if lower.contains("confirmation") || lower.contains("confirm") {
-        "E_CONFIRMATION_REQUIRED"
-    } else if lower.contains("stale") || lower.contains("no longer") {
-        "E_STALE_TARGET"
-    } else if lower.contains("cancel") {
-        "E_CANCELLED"
-    } else if lower.contains("requires")
-        || lower.contains("invalid")
-        || lower.contains("does not accept")
-        || lower.contains("must ")
-    {
-        "E_INVALID_ARGUMENT"
-    } else {
-        "E_ENGINE"
-    }
-}
-
-fn action_failure_category(code: &str, message: &str) -> &'static str {
-    let lower = message.to_ascii_lowercase();
+fn action_failure_category(code: ErrorCode) -> &'static str {
     match code {
-        "E_INVALID_ARGUMENT" => "invalid-subject-or-parameters",
-        "E_NOT_FOUND" => "not-found",
-        "E_STALE_TARGET" => "stale-target",
-        "E_CONFIRMATION_REQUIRED" => "confirmation-required",
-        "E_UNSUPPORTED" => "missing-capability",
-        "E_CANCELLED" => "cancelled",
-        _ if lower.contains("private")
-            || lower.contains("ephemeral")
-            || lower.contains("denied")
-            || lower.contains("not allowed") =>
-        {
-            "denied-source-or-privacy"
-        }
-        _ if lower.contains("userscript") || lower.contains("script") => "script-failure",
+        ErrorCode::InvalidArgument => "invalid-subject-or-parameters",
+        ErrorCode::NotFound => "not-found",
+        ErrorCode::StaleTarget => "stale-target",
+        ErrorCode::ConfirmationRequired => "confirmation-required",
+        ErrorCode::Unsupported => "missing-capability",
+        ErrorCode::Denied => "denied-source-or-privacy",
+        ErrorCode::Cancelled => "cancelled",
         _ => "executor-failure",
     }
 }
@@ -6385,21 +6316,22 @@ fn ipc_action_failure(
     id: &str,
     action_id: &str,
     operation_id: &str,
-    message: impl Into<String>,
+    error: impl Into<PublicError>,
 ) -> Response {
-    let message = message.into();
-    let code = ipc_error_code(&message);
-    let category = action_failure_category(code, &message);
+    let error = error.into();
+    let code = error.code();
+    let category = action_failure_category(code);
     Response::failure(
         id,
         ProtocolError {
-            code: code.into(),
-            message,
+            code: code.as_str().into(),
+            message: error.user_message().into(),
             details: Some(serde_json::json!({
                 "action_id": action_id,
                 "operation_id": operation_id,
                 "category": category,
-                "retry": matches!(code, "E_STALE_TARGET" | "E_BUSY" | "E_TIMEOUT"),
+                "retry": matches!(code, ErrorCode::StaleTarget | ErrorCode::Busy | ErrorCode::Timeout),
+                "diagnostic_context": error.diagnostic_context(),
             })),
         },
     )
@@ -6409,23 +6341,24 @@ fn ipc_action_failure_with_context(
     id: &str,
     action_id: &str,
     operation_id: &str,
-    message: impl Into<String>,
+    error: impl Into<PublicError>,
     command_context: Value,
 ) -> Response {
-    let message = message.into();
-    let code = ipc_error_code(&message);
-    let category = action_failure_category(code, &message);
+    let error = error.into();
+    let code = error.code();
+    let category = action_failure_category(code);
     Response::failure(
         id,
         ProtocolError {
-            code: code.into(),
-            message,
+            code: code.as_str().into(),
+            message: error.user_message().into(),
             details: Some(serde_json::json!({
                 "action_id": action_id,
                 "operation_id": operation_id,
                 "category": category,
-                "retry": matches!(code, "E_STALE_TARGET" | "E_BUSY" | "E_TIMEOUT"),
+                "retry": matches!(code, ErrorCode::StaleTarget | ErrorCode::Busy | ErrorCode::Timeout),
                 "command_context": command_context,
+                "diagnostic_context": error.diagnostic_context(),
             })),
         },
     )
@@ -6433,17 +6366,19 @@ fn ipc_action_failure_with_context(
 
 fn ipc_command_failure_with_context(
     id: &str,
-    message: impl Into<String>,
+    error: impl Into<PublicError>,
     command_context: Value,
 ) -> Response {
-    let message = message.into();
-    let code = ipc_error_code(&message);
+    let error = error.into();
     Response::failure(
         id,
         ProtocolError {
-            code: code.into(),
-            message,
-            details: Some(serde_json::json!({"command_context": command_context})),
+            code: error.code().as_str().into(),
+            message: error.user_message().into(),
+            details: Some(serde_json::json!({
+                "command_context": command_context,
+                "diagnostic_context": error.diagnostic_context(),
+            })),
         },
     )
 }
@@ -6464,6 +6399,49 @@ struct IpcRoute {
     context: Option<String>,
     external_open: bool,
     source: CommandSource,
+}
+
+/// Invalid local IPC command data.
+///
+/// JSON decoding is a presentation/protocol boundary: every failure here is
+/// an invalid argument, independent of the wording used for diagnostics.
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct IpcCommandError(String);
+
+impl IpcCommandError {
+    fn into_public(self) -> PublicError {
+        PublicError::new(
+            ErrorCode::InvalidArgument,
+            "The command request is invalid.",
+            self.0,
+        )
+    }
+}
+
+impl From<String> for IpcCommandError {
+    fn from(message: String) -> Self {
+        Self(message)
+    }
+}
+
+impl From<&str> for IpcCommandError {
+    fn from(message: &str) -> Self {
+        Self(message.into())
+    }
+}
+
+impl std::fmt::Display for IpcCommandError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for IpcCommandError {}
+
+impl From<IpcCommandError> for PublicError {
+    fn from(error: IpcCommandError) -> Self {
+        error.into_public()
+    }
 }
 
 fn ipc_command_context(
@@ -6537,7 +6515,7 @@ fn ipc_command_invocation(
 }
 
 #[allow(clippy::too_many_lines)]
-fn typed_ipc_command(params: &Value) -> Result<(ParsedCommand, IpcRoute), String> {
+fn typed_ipc_command(params: &Value) -> Result<(ParsedCommand, IpcRoute), IpcCommandError> {
     let object = params
         .as_object()
         .ok_or_else(|| "command.execute params must be an object".to_owned())?;
@@ -7224,7 +7202,7 @@ fn typed_ipc_command(params: &Value) -> Result<(ParsedCommand, IpcRoute), String
                     }
                 }
                 Some(other) => {
-                    return Err(format!("command argument send_subject is invalid: {other}"));
+                    return Err(format!("command argument send_subject is invalid: {other}").into());
                 }
                 None => {
                     if arguments
@@ -7746,7 +7724,7 @@ fn typed_ipc_command(params: &Value) -> Result<(ParsedCommand, IpcRoute), String
                     .get(key)
                     .is_some_and(|value| value.as_bool().is_none())
                 {
-                    return Err(format!("command argument {key} must be a boolean"));
+                    return Err(format!("command argument {key} must be a boolean").into());
                 }
             }
             if arguments
@@ -7845,7 +7823,7 @@ fn typed_ipc_command(params: &Value) -> Result<(ParsedCommand, IpcRoute), String
     ))
 }
 
-fn typed_ipc_action(params: &Value) -> Result<(ParsedCommand, IpcRoute, String), String> {
+fn typed_ipc_action(params: &Value) -> Result<(ParsedCommand, IpcRoute, String), IpcCommandError> {
     let object = params
         .as_object()
         .ok_or_else(|| "action.execute params must be an object".to_owned())?;
@@ -7907,7 +7885,7 @@ fn typed_ipc_action(params: &Value) -> Result<(ParsedCommand, IpcRoute, String),
                 }
             }
             "tab" | "selection" if url.is_some() => {
-                return Err(format!("external {subject} action does not accept a URL"));
+                return Err(format!("external {subject} action does not accept a URL").into());
             }
             "tab" | "selection" => {}
             _ => unreachable!("external action ID parser validated subject"),
@@ -7928,7 +7906,7 @@ fn typed_ipc_action(params: &Value) -> Result<(ParsedCommand, IpcRoute, String),
     } else if CommandRegistry::default_v1().resolve(action).is_ok() {
         (action.to_owned(), format!("legacy.command.{action}"))
     } else {
-        return Err(format!("unknown action: {action}"));
+        return Err(format!("unknown action: {action}").into());
     };
     let definition = action_registry.resolve(action);
     if let Some(definition) = definition {
@@ -19089,7 +19067,7 @@ impl qobject::BrowserUi {
                 serde_json::json!({"command": name, "arguments": arguments})
             }
         };
-        let (command, mut route) = typed_ipc_command(&params)?;
+        let (command, mut route) = typed_ipc_command(&params).map_err(|error| error.to_string())?;
         route.selector = DispatchTarget::Tab(target.tab);
         route.context = None;
         route.profile = None;
@@ -23077,8 +23055,8 @@ impl qobject::BrowserUi {
                 Response::success(request.id.clone(), result)
             }
             Err(error) => {
-                let code = ipc_error_code(&error);
-                let category = action_failure_category(code, &error);
+                let error = PublicError::engine(error);
+                let category = action_failure_category(error.code());
                 self.as_mut().record_action_audit(
                     action_id,
                     "unissued",
@@ -23103,7 +23081,12 @@ impl qobject::BrowserUi {
             "command.execute" => {
                 let (command, route) = match typed_ipc_command(&request.params) {
                     Ok(command) => command,
-                    Err(error) => return ipc_failure(&request.id, "E_INVALID_PARAMS", error),
+                    Err(error) => {
+                        return Response::failure(
+                            request.id.clone(),
+                            error.into_public().into_protocol_error(),
+                        );
+                    }
                 };
                 let operation_id = format!("op-{}", Uuid::new_v4());
                 let count = ipc_command_count(&command);
@@ -23157,8 +23140,8 @@ impl qobject::BrowserUi {
                 let (command, route, action_id) = match typed_ipc_action(&request.params) {
                     Ok(command) => command,
                     Err(error) => {
-                        let code = ipc_error_code(&error);
-                        let category = action_failure_category(code, &error);
+                        let error = error.into_public();
+                        let category = action_failure_category(error.code());
                         self.as_mut().record_action_audit(
                             &audit_action_id,
                             "unissued",
@@ -23185,8 +23168,8 @@ impl qobject::BrowserUi {
                     .as_ref()
                     .validate_action_availability(&action_id, route.source)
                 {
-                    let code = ipc_error_code(&error);
-                    let category = action_failure_category(code, &error);
+                    let error = PublicError::engine(error);
+                    let category = action_failure_category(error.code());
                     self.as_mut().record_action_audit(
                         &action_id,
                         &operation_id,
@@ -23225,8 +23208,8 @@ impl qobject::BrowserUi {
                         Response::success(request.id.clone(), result)
                     }
                     Err(error) => {
-                        let code = ipc_error_code(&error);
-                        let category = action_failure_category(code, &error);
+                        let error = PublicError::engine(error);
+                        let category = action_failure_category(error.code());
                         self.as_mut().record_action_audit(
                             &action_id,
                             &operation_id,
@@ -24481,7 +24464,8 @@ impl qobject::BrowserUi {
                 let (parsed, _) = typed_ipc_command(&serde_json::json!({
                     "command": definition.name,
                     "arguments": typed_arguments
-                }))?;
+                }))
+                .map_err(|error| error.to_string())?;
                 let mode = self.as_ref().rust().core_mode;
                 self.as_ref()
                     .rust()
@@ -30037,12 +30021,12 @@ impl qobject::BrowserUi {
                     true
                 }
                 Err(error) => {
-                    let code = ipc_error_code(&error);
+                    let error = PublicError::engine(error);
                     self.as_mut().record_action_audit(
                         &action_id,
                         &operation_id,
                         "failed",
-                        Some(action_failure_category(code, &error)),
+                        Some(action_failure_category(error.code())),
                     );
                     self.set_status_text(QString::from(format!("{action_id} failed: {error}")));
                     false
@@ -30063,12 +30047,12 @@ impl qobject::BrowserUi {
                     true
                 }
                 Err(error) => {
-                    let code = ipc_error_code(&error);
+                    let error = PublicError::engine(error);
                     self.as_mut().record_action_audit(
                         &action_id,
                         &operation_id,
                         "failed",
-                        Some(action_failure_category(code, &error)),
+                        Some(action_failure_category(error.code())),
                     );
                     self.set_status_text(QString::from(format!("{action_id} failed: {error}")));
                     false
@@ -30088,7 +30072,7 @@ impl qobject::BrowserUi {
         })) {
             Ok(value) => value,
             Err(error) => {
-                self.set_status_text(QString::from(error));
+                self.set_status_text(QString::from(error.to_string()));
                 return false;
             }
         };
@@ -30111,12 +30095,12 @@ impl qobject::BrowserUi {
                 true
             }
             Err(error) => {
-                let code = ipc_error_code(&error);
+                let error = PublicError::engine(error);
                 self.as_mut().record_action_audit(
                     &resolved_id,
                     &operation_id,
                     "failed",
-                    Some(action_failure_category(code, &error)),
+                    Some(action_failure_category(error.code())),
                 );
                 self.set_status_text(QString::from(format!("{resolved_id} failed: {error}")));
                 false
@@ -34240,7 +34224,11 @@ mod tests {
         };
         let error = interactive_open_command(&command)
             .expect_err("clean-link background open must be rejected");
-        assert!(error.contains("cannot be combined with --target tab-bg"));
+        assert!(
+            error
+                .to_string()
+                .contains("cannot be combined with --target tab-bg")
+        );
     }
 
     #[test]
@@ -35196,7 +35184,11 @@ mod tests {
             }
         }))
         .expect_err("typed clean-link background open must be rejected");
-        assert!(error.contains("cannot be combined with --target tab-bg"));
+        assert!(
+            error
+                .to_string()
+                .contains("cannot be combined with --target tab-bg")
+        );
     }
 
     #[test]
@@ -39832,52 +39824,30 @@ executable = "/bin/true"
     #[test]
     fn action_failures_have_structured_redacted_details() {
         assert_eq!(
-            ipc_error_code("unknown action: browser.tab.close"),
-            "E_INVALID_ARGUMENT"
+            action_failure_category(ErrorCode::InvalidArgument),
+            "invalid-subject-or-parameters"
         );
         assert_eq!(
-            ipc_error_code("the captured tab is stale or no longer available"),
-            "E_STALE_TARGET"
-        );
-        assert_eq!(ipc_error_code("profile not found"), "E_NOT_FOUND");
-        assert_eq!(ipc_error_code("operation timed out"), "E_TIMEOUT");
-        assert_eq!(ipc_error_code("permission denied"), "E_DENIED");
-        assert_eq!(
-            ipc_error_code(
-                "tab-detach is unavailable: live-window-reparent-unsupported; use reopen-in-window"
-            ),
-            "E_UNSUPPORTED"
+            action_failure_category(ErrorCode::StaleTarget),
+            "stale-target"
         );
         assert_eq!(
-            ipc_error_code("configuration candidate is invalid"),
-            "E_CONFIG"
-        );
-        assert_eq!(ipc_error_code("database migration failed"), "E_STORAGE");
-        assert_eq!(ipc_error_code("could not read downloaded file"), "E_IO");
-        assert_eq!(
-            ipc_error_code("IPC frame has an invalid version"),
-            "E_PROTOCOL"
-        );
-        assert_eq!(
-            action_failure_category("E_UNSUPPORTED", "capture capability is not configured"),
+            action_failure_category(ErrorCode::Unsupported),
             "missing-capability"
         );
         assert_eq!(
-            action_failure_category(
-                "E_UNSUPPORTED",
-                "tab-detach is unavailable: live-window-reparent-unsupported"
-            ),
-            "missing-capability"
-        );
-        assert_eq!(
-            action_failure_category("E_ENGINE", "ephemeral profile cannot save sessions"),
+            action_failure_category(ErrorCode::Denied),
             "denied-source-or-privacy"
         );
         let response = ipc_action_failure(
             "req-1",
             "browser.tab.close",
             "op-1",
-            "captured tab is stale",
+            PublicError::new(
+                ErrorCode::StaleTarget,
+                "The captured tab is no longer available.",
+                "tab id tab-1 no longer belongs to the selected window",
+            ),
         );
         let error = response.error.expect("structured action error");
         assert_eq!(error.code, "E_STALE_TARGET");
@@ -39968,7 +39938,15 @@ executable = "/bin/true"
             "count": 1,
             "privacy": "normal",
         });
-        let response = ipc_command_failure_with_context("req-1", "captured tab is stale", context);
+        let response = ipc_command_failure_with_context(
+            "req-1",
+            PublicError::new(
+                ErrorCode::StaleTarget,
+                "The captured tab is no longer available.",
+                "captured tab id tab-1 was removed before execution",
+            ),
+            context,
+        );
         let error = response.error.expect("structured command error");
         assert_eq!(error.code, "E_STALE_TARGET");
         let details = error.details.expect("command error details");
