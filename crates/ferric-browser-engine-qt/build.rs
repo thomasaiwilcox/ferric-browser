@@ -3,12 +3,13 @@ use std::{env, fmt::Write as _, fs, path::Path, path::PathBuf};
 use cxx_qt_build::{CxxQtBuilder, QmlModule};
 
 fn main() {
-    let resources = collect_qml_resources(Path::new("qml"));
+    let qml_files = collect_qml_files(Path::new("qml"));
+    let resources = collect_browser_resources(Path::new("qml"));
     let manifest_path = write_script_manifest(&resources);
     let qrc_path = manifest_path.with_file_name("browser_script_manifest.qrc");
-    write_manifest_qrc(&qrc_path, &manifest_path);
+    write_manifest_qrc(&qrc_path, &manifest_path, &resources);
 
-    CxxQtBuilder::new_qml_module(QmlModule::new("io.github.ferricbrowser").qml_files(resources))
+    CxxQtBuilder::new_qml_module(QmlModule::new("io.github.ferricbrowser").qml_files(qml_files))
         .files(["src/lib.rs"])
         .cpp_files([
             "src/browser_key_router.h",
@@ -37,7 +38,7 @@ fn main() {
         .export();
 }
 
-fn collect_qml_resources(root: &Path) -> Vec<PathBuf> {
+fn collect_browser_resources(root: &Path) -> Vec<PathBuf> {
     fn visit(path: &Path, resources: &mut Vec<PathBuf>) {
         let mut entries = fs::read_dir(path)
             .unwrap_or_else(|error| {
@@ -63,6 +64,13 @@ fn collect_qml_resources(root: &Path) -> Vec<PathBuf> {
     resources
 }
 
+fn collect_qml_files(root: &Path) -> Vec<PathBuf> {
+    collect_browser_resources(root)
+        .into_iter()
+        .filter(|path| path.extension().is_some_and(|extension| extension == "qml"))
+        .collect()
+}
+
 fn write_script_manifest(resources: &[PathBuf]) -> PathBuf {
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR is set for build scripts"));
     let mut entries = Vec::with_capacity(resources.len());
@@ -84,10 +92,27 @@ fn write_script_manifest(resources: &[PathBuf]) -> PathBuf {
     manifest_path
 }
 
-fn write_manifest_qrc(qrc_path: &Path, manifest_path: &Path) {
+fn write_manifest_qrc(qrc_path: &Path, manifest_path: &Path, resources: &[PathBuf]) {
+    let script_resources = resources
+        .iter()
+        .filter(|path| path.extension().is_some_and(|extension| extension == "js"))
+        .map(|path| {
+            let alias = path
+                .strip_prefix("qml")
+                .expect("browser resource is beneath qml")
+                .to_string_lossy()
+                .replace('\\', "/");
+            let source = path
+                .canonicalize()
+                .expect("browser resource is readable before resource compilation");
+            format!("    <file alias=\"{alias}\">{}</file>", source.display())
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
     let qrc = format!(
-        "<RCC>\n  <qresource prefix=\"/qt/qml/io/github/ferricbrowser\">\n    <file alias=\"browser-script-manifest.json\">{}</file>\n  </qresource>\n</RCC>\n",
-        manifest_path.display()
+        "<RCC>\n  <qresource prefix=\"/qt/qml/io/github/ferricbrowser\">\n    <file alias=\"browser-script-manifest.json\">{}</file>\n{}\n  </qresource>\n</RCC>\n",
+        manifest_path.display(),
+        script_resources
     );
     fs::write(qrc_path, qrc).expect("write the generated browser script resource file");
     println!("cargo::rerun-if-changed={}", qrc_path.display());

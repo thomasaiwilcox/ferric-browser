@@ -38127,6 +38127,21 @@ executable = "/bin/true"
     }
 
     #[test]
+    fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
+        let qml = include_str!("../qml/Main.qml");
+        let script = include_str!("../qml/scripts/BrowserScripts.js");
+        assert!(qml.contains("import \"scripts/BrowserScripts.js\" as BrowserScripts"));
+        assert!(qml.contains("return BrowserScripts.scroll(kind, direction, half, count)"));
+        assert!(qml.contains("return BrowserScripts.selection()"));
+        assert!(qml.contains("return BrowserScripts.editor()"));
+        assert!(script.contains("var VERSION = \"1\""));
+        assert!(script.contains("function boundedCount(value)"));
+        assert!(script.contains("Math.max(1, Math.min(9999"));
+        assert!(script.contains("password fields are not copied"));
+        assert!(script.contains("password fields are not editable externally"));
+    }
+
+    #[test]
     fn screen_capture_keeps_scoped_indicator_and_reload_stop_boundary() {
         let qml = include_str!("../qml/Main.qml");
         let source = include_str!("lib.rs");
