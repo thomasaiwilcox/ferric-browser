@@ -4,6 +4,7 @@
 //! projection is the single adapter from the authoritative setting registry
 //! and effective configuration to presentation rows.
 
+use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QStringList, QVariant};
 use ferric_browser_config::setting_metadata_all;
 use serde_json::Value;
 
@@ -39,6 +40,35 @@ pub(super) fn project(config: &Value) -> Vec<SettingsRow> {
             })
         })
         .collect()
+}
+
+#[must_use]
+pub(super) fn project_variant(config: &Value) -> QVariant {
+    let rows = project(config);
+    let mut values = QList::<QVariant>::default();
+    values.reserve(rows.len().try_into().unwrap_or(isize::MAX));
+    for row in rows {
+        let mut value = QMap::<QMapPair_QString_QVariant>::default();
+        insert_text(&mut value, "key", row.key);
+        insert_text(&mut value, "label", row.label);
+        insert_text(&mut value, "type", row.editor_type);
+        insert_text(&mut value, "scope", &row.scope);
+        insert_text(&mut value, "apply", row.apply_time);
+        insert_text(&mut value, "value", &row.value);
+        let options: QStringList = row
+            .options
+            .iter()
+            .map(|option| QString::from(*option))
+            .collect();
+        value.insert(QString::from("options"), QVariant::from(&options));
+        values.append(QVariant::from(&value));
+    }
+    QVariant::from(&values)
+}
+
+fn insert_text(map: &mut QMap<QMapPair_QString_QVariant>, key: &str, value: &str) {
+    let value = QString::from(value);
+    map.insert(QString::from(key), QVariant::from(&value));
 }
 
 struct SettingsSurfaceDefinition {
@@ -230,5 +260,12 @@ mod tests {
         assert_eq!(row.scope, "global/profile/site");
         assert_eq!(row.apply_time, "navigation");
         assert_eq!(row.value, "true");
+    }
+
+    #[test]
+    fn rows_cross_the_qml_boundary_as_structured_records() {
+        let config = serde_json::to_value(Config::default()).expect("default config serializes");
+        let rows = project_variant(&config);
+        assert_eq!(rows.type_id(), cxx_qt_lib::QMetaTypeType::QVariantList);
     }
 }

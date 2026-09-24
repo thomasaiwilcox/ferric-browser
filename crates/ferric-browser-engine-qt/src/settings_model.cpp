@@ -1,5 +1,10 @@
 #include "settings_model.h"
 
+#include <QtCore/QMetaType>
+#include <QtCore/QVariantMap>
+
+#include <utility>
+
 FerricBrowserSettingsModel::FerricBrowserSettingsModel(QObject *parent) : QAbstractListModel(parent) {}
 int FerricBrowserSettingsModel::rowCount(const QModelIndex &parent) const { return parent.isValid() ? 0 : rows_.size(); }
 QVariant FerricBrowserSettingsModel::data(const QModelIndex &index, int role) const {
@@ -12,18 +17,41 @@ QVariant FerricBrowserSettingsModel::data(const QModelIndex &index, int role) co
 QHash<int, QByteArray> FerricBrowserSettingsModel::roleNames() const {
     return {{KeyRole,"key"},{LabelRole,"label"},{TypeRole,"type"},{ScopeRole,"scope"},{ApplyRole,"apply"},{ValueRole,"value"},{OptionsRole,"options"}};
 }
-bool FerricBrowserSettingsModel::replaceRows(const QStringList &keys, const QStringList &labels,
-                                             const QStringList &types, const QStringList &scopes,
-                                             const QStringList &applies, const QStringList &values,
-                                             const QStringList &options) {
-    const auto count = keys.size();
-    if (count > 128 || labels.size() != count || types.size() != count ||
-        scopes.size() != count || applies.size() != count || values.size() != count ||
-        options.size() != count) {
+bool FerricBrowserSettingsModel::replaceRows(const QVariantList &values) {
+    if (values.size() > 128) {
         return false;
     }
-    beginResetModel(); rows_.clear(); rows_.reserve(count);
-    for (qsizetype i = 0; i < count; ++i) rows_.append({keys.at(i), labels.at(i), types.at(i), scopes.at(i), applies.at(i), values.at(i), options.at(i).split(QChar(0x1f), Qt::SkipEmptyParts)});
+    QList<Row> rows;
+    rows.reserve(values.size());
+    const QStringList fields = {"key", "label", "type", "scope", "apply", "value", "options"};
+    for (const QVariant &value : values) {
+        if (value.metaType().id() != QMetaType::QVariantMap) {
+            return false;
+        }
+        const QVariantMap row = value.toMap();
+        if (row.size() != fields.size()) {
+            return false;
+        }
+        for (const QString &field : fields) {
+            if (!row.contains(field)) {
+                return false;
+            }
+        }
+        if (row.value("key").metaType().id() != QMetaType::QString ||
+            row.value("label").metaType().id() != QMetaType::QString ||
+            row.value("type").metaType().id() != QMetaType::QString ||
+            row.value("scope").metaType().id() != QMetaType::QString ||
+            row.value("apply").metaType().id() != QMetaType::QString ||
+            row.value("value").metaType().id() != QMetaType::QString ||
+            row.value("options").metaType().id() != QMetaType::QStringList) {
+            return false;
+        }
+        rows.append({row.value("key").toString(), row.value("label").toString(),
+                     row.value("type").toString(), row.value("scope").toString(),
+                     row.value("apply").toString(), row.value("value").toString(),
+                     row.value("options").toStringList()});
+    }
+    beginResetModel(); rows_ = std::move(rows);
     endResetModel();
     return true;
 }

@@ -2,7 +2,7 @@
 #define FERRIC_BROWSER_SETTINGS_MODEL_H
 
 #include <QtCore/QAbstractListModel>
-#include <QtCore/QStringList>
+#include <QtCore/QVariantList>
 #include <QtQml/qqmlregistration.h>
 
 class FerricBrowserSettingsModel : public QAbstractListModel {
@@ -18,10 +18,7 @@ public:
     QVariant data(const QModelIndex &index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
 
-    Q_INVOKABLE bool replaceRows(const QStringList &keys, const QStringList &labels,
-                                 const QStringList &types, const QStringList &scopes,
-                                 const QStringList &applies, const QStringList &values,
-                                 const QStringList &options);
+    Q_INVOKABLE bool replaceRows(const QVariantList &rows);
 
 private:
     struct Row { QString key; QString label; QString type; QString scope; QString apply; QString value; QStringList options; };

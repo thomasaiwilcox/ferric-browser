@@ -8,6 +8,7 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+ferric-browser-core = { path = "../ferric-browser-core" }
 fs2.workspace = true
 libc.workspace = true
 serde.workspace = true

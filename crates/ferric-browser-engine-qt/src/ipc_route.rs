@@ -5,58 +5,22 @@
 //! envelope contract directly testable without the `QObject` bridge.
 
 use ferric_browser_core::{CommandSource, DispatchTarget, WindowId, validate_open_target};
-use serde_json::{Map, Value};
+use ferric_browser_ipc::CommandEnvelope;
+use serde_json::Value;
 
-use super::{IpcOpenTarget, IpcRoute, is_bounded_untrusted_text};
+use super::{IpcOpenTarget, IpcRoute};
 
-pub(super) fn typed_ipc_route(
-    object: &Map<String, Value>,
-    arguments: Option<&Map<String, Value>>,
-    command: &str,
-) -> Result<IpcRoute, String> {
-    if object
-        .keys()
-        .any(|key| !matches!(key.as_str(), "command" | "arguments" | "context"))
-    {
-        return Err("command request contains an unknown field".into());
-    }
-    let context = object
-        .get("context")
+pub(super) fn typed_ipc_route(envelope: &CommandEnvelope) -> Result<IpcRoute, String> {
+    let command = envelope.command.as_str();
+    let arguments = Some(&envelope.arguments);
+    let window = envelope.context.window.clone();
+    let profile = envelope.context.profile.clone();
+    let context_name = envelope.context.context.clone();
+    let source = envelope
+        .context
+        .source
+        .as_deref()
         .map(|value| {
-            value
-                .as_object()
-                .ok_or_else(|| "command context must be an object".to_owned())
-        })
-        .transpose()?;
-    if context.is_some_and(|context| {
-        context
-            .keys()
-            .any(|key| !matches!(key.as_str(), "window" | "profile" | "context" | "source"))
-    }) {
-        return Err("command context contains an unknown field".into());
-    }
-    let string_context = |key: &str| -> Result<Option<String>, String> {
-        context
-            .and_then(|context| context.get(key))
-            .map(|value| {
-                value
-                    .as_str()
-                    .filter(|value| is_bounded_untrusted_text(value))
-                    .map(ToOwned::to_owned)
-                    .ok_or_else(|| format!("command context {key} must be a nonempty string"))
-            })
-            .transpose()
-    };
-    let window = string_context("window")?;
-    let profile = string_context("profile")?;
-    let context_name = string_context("context")?;
-    let source = context
-        .and_then(|context| context.get("source"))
-        .map(|value| {
-            let value = value
-                .as_str()
-                .filter(|value| is_bounded_untrusted_text(value))
-                .ok_or_else(|| "command context source must be a nonempty string".to_owned())?;
             CommandSource::parse(value)
                 .ok_or_else(|| format!("command context source is unsupported: {value}"))
         })
@@ -141,23 +105,11 @@ mod tests {
             "arguments": {},
             "context": {"profile": "default"}
         });
-        assert!(
-            typed_ipc_route(
-                object.as_object().expect("object"),
-                object.get("arguments").and_then(Value::as_object),
-                "tab-open"
-            )
-            .is_err()
-        );
+        let envelope = ferric_browser_ipc::decode_command_envelope(&object).expect("envelope");
+        assert!(typed_ipc_route(&envelope).is_err());
 
         let object = json!({"command": "open", "arguments": {"target": "invalid"}});
-        assert!(
-            typed_ipc_route(
-                object.as_object().expect("object"),
-                object.get("arguments").and_then(Value::as_object),
-                "open"
-            )
-            .is_err()
-        );
+        let envelope = ferric_browser_ipc::decode_command_envelope(&object).expect("envelope");
+        assert!(typed_ipc_route(&envelope).is_err());
     }
 }

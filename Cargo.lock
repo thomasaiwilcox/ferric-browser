@@ -413,6 +413,7 @@ dependencies = [
 name = "ferric-browser-ipc"
 version = "0.1.0"
 dependencies = [
+ "ferric-browser-core",
  "fs2",
  "libc",
  "serde",

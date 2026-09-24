@@ -472,6 +472,9 @@ fn check_qt_adapter_root() -> Result<(), String> {
     // cover every extracted adapter module.
     let adapter = fs::read_to_string("crates/ferric-browser-engine-qt/src/lib.rs")
         .map_err(|error| format!("could not inspect Qt adapter root: {error}"))?;
+    if adapter.lines().count() > 3_500 {
+        return Err("Qt adapter root must remain a narrow bridge below 3,500 lines".to_owned());
+    }
     let production_adapter = adapter
         .split_once("\n#[cfg(test)]\nmod tests;")
         .map(|(production, _)| production)
@@ -541,6 +544,10 @@ fn check_qt_adapter_root() -> Result<(), String> {
     if !production_adapter.contains("state: Option<BrowserApplication>") {
         return Err("Qt adapter must keep browser ownership behind BrowserApplication".to_owned());
     }
+    check_shared_ui_contracts(production_adapter)
+}
+
+fn check_shared_ui_contracts(production_adapter: &str) -> Result<(), String> {
     let config_projection =
         fs::read_to_string("crates/ferric-browser-engine-qt/src/config_projection.rs")
             .map_err(|error| format!("could not inspect Qt config projection: {error}"))?;
@@ -556,15 +563,35 @@ fn check_qt_adapter_root() -> Result<(), String> {
             ));
         }
     }
-    let ipc_schema = fs::read_to_string("crates/ferric-browser-engine-qt/src/ipc_schema.rs")
-        .map_err(|error| format!("could not inspect the Qt IPC schema adapter: {error}"))?;
-    if !ipc_schema.contains("ferric_browser_ipc::validate_command_argument_fields") {
-        return Err("Qt command decoding must use the shared IPC command-field schema".to_owned());
+    let ipc_decoder =
+        fs::read_to_string("crates/ferric-browser-engine-qt/src/ipc_command_decoder.rs")
+            .map_err(|error| format!("could not inspect the Qt IPC command decoder: {error}"))?;
+    if !ipc_decoder.contains("ferric_browser_ipc::decode_command_envelope") {
+        return Err("Qt command decoding must use the shared typed IPC envelope".to_owned());
     }
     let cli = fs::read_to_string("crates/ferric-browser/src/main.rs")
         .map_err(|error| format!("could not inspect the CLI command encoder: {error}"))?;
-    if !cli.contains("ferric_browser_ipc::validate_command_argument_fields") {
-        return Err("CLI command encoding must use the shared IPC command-field schema".to_owned());
+    if !cli.contains("encode_command as command_params") {
+        return Err("CLI command encoding must use the shared IPC command codec".to_owned());
+    }
+    let ipc_codec = fs::read_to_string("crates/ferric-browser-ipc/src/command_codec.rs")
+        .map_err(|error| format!("could not inspect the shared IPC command codec: {error}"))?;
+    if !ipc_codec.contains("crate::CommandEnvelope::new") {
+        return Err("IPC command encoding must produce the shared typed envelope".to_owned());
+    }
+    if production_adapter.contains("settings_row_") {
+        return Err("Qt settings state must use structured rows, not parallel arrays".to_owned());
+    }
+    let qml_root = fs::read_to_string("crates/ferric-browser-engine-qt/qml/Main.qml")
+        .map_err(|error| format!("could not inspect the QML root: {error}"))?;
+    if qml_root.lines().count() > 10_500
+        || !qml_root.contains("FerricPopupWindow")
+        || !qml_root.contains("FerricBrowserWindow")
+    {
+        return Err(
+            "QML root must delegate popup and secondary-window responsibilities to components"
+                .to_owned(),
+        );
     }
 
     Ok(())
@@ -602,12 +629,12 @@ fn check_core_and_error_boundaries() -> Result<(), String> {
             ));
         }
     }
-    let adapter = fs::read_to_string("crates/ferric-browser-engine-qt/src/lib.rs")
-        .map_err(|error| format!("could not inspect Qt adapter root: {error}"))?;
-    let ipc_dispatch = adapter
+    let ipc_dispatch_source =
+        fs::read_to_string("crates/ferric-browser-engine-qt/src/browser_ui_ipc.rs")
+            .map_err(|error| format!("could not inspect Qt IPC dispatch: {error}"))?;
+    let ipc_dispatch = ipc_dispatch_source
         .split("fn handle_ipc_request")
         .nth(1)
-        .and_then(|source| source.split("fn poll_ipc").next())
         .ok_or_else(|| "could not locate Qt IPC dispatch boundary".to_owned())?;
     for marker in ["error.contains(", "error.starts_with("] {
         if ipc_dispatch.contains(marker) {

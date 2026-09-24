@@ -10,6 +10,16 @@ import "scripts/SpellcheckPresentation.js" as SpellcheckPresentation
 
 ApplicationWindow {
     id: window
+    readonly property alias primaryBrowserUi: browserUi
+    readonly property alias permissionPromptFactory: permissionPromptSurfaceComponent
+    readonly property alias captureIndicatorFactory: captureIndicatorComponent
+    readonly property alias desktopMediaFactory: desktopMediaSurfaceComponent
+    readonly property alias rendererFailureFactory: rendererFailureSurfaceComponent
+    readonly property alias primaryRequestInterceptor: requestInterceptor
+    readonly property alias browserWindowFactory: browserWindowComponent
+    readonly property alias popupWindowFactory: popupWindowComponent
+    readonly property alias devToolsWindowFactory: devToolsWindowComponent
+    readonly property alias webViewFactory: webViewComponent
     objectName: "ferric_browserWindow"
     width: 1280
     height: 800
@@ -3340,23 +3350,16 @@ ApplicationWindow {
 
     function refreshSettings() {
         var query = (window.settingsSearch || "").trim().toLowerCase()
-        var visibleIndexes = []
-        for (var index = 0; index < browserUi.settings_row_keys.length; ++index) {
-            var searchable = [browserUi.settings_row_keys[index], browserUi.settings_row_labels[index],
-                              browserUi.settings_row_scopes[index], browserUi.settings_row_applies[index]]
+        var visibleRows = []
+        for (var index = 0; index < browserUi.settings_rows.length; ++index) {
+            var row = browserUi.settings_rows[index]
+            var searchable = [row.key, row.label, row.scope, row.apply]
                              .join(" ").toLowerCase()
             if (!query || searchable.indexOf(query) >= 0) {
-                visibleIndexes.push(index)
+                visibleRows.push(row)
             }
         }
-        var replaced = settingsModel.replaceRows(
-                    visibleIndexes.map(function(index) { return browserUi.settings_row_keys[index] }),
-                    visibleIndexes.map(function(index) { return browserUi.settings_row_labels[index] }),
-                    visibleIndexes.map(function(index) { return browserUi.settings_row_types[index] }),
-                    visibleIndexes.map(function(index) { return browserUi.settings_row_scopes[index] }),
-                    visibleIndexes.map(function(index) { return browserUi.settings_row_applies[index] }),
-                    visibleIndexes.map(function(index) { return browserUi.settings_row_values[index] }),
-                    visibleIndexes.map(function(index) { return browserUi.settings_row_options[index] }))
+        var replaced = settingsModel.replaceRows(visibleRows)
         if (!replaced) {
             window.settingsNotice = "Settings could not be displayed because their row data was inconsistent"
         }
@@ -7088,3462 +7091,622 @@ ApplicationWindow {
     Component {
         id: popupWindowComponent
 
-        ApplicationWindow {
-            id: popupWindow
-            width: 1024
-            height: 720
-            visible: true
-            title: popupWindow.popupContextName.length > 0
-                   ? "Ferric Browser popup · context "
-                     + (popupWindow.popupContextLabel.length > 0
-                        ? popupWindow.popupContextLabel : popupWindow.popupContextName)
-                   : "Ferric Browser popup"
-            color: window.backgroundColor
-            font: window.font
-            palette: window.palette
-            property var popupRequest
-            property var popupProfile
-            property var popupRequestInterceptor
-            property var popupPermissionUi
-            property string popupJourneyToken: ""
-            property bool popupPrivateProfile: false
-            property bool popupEphemeralProfile: false
-            property string popupProfileName: "unknown"
-            property string popupContextName: ""
-            property string popupContextLabel: ""
-            property var popupPermissionPromptSurface: null
-            property var popupDesktopMediaSurface: null
-            property var popupCaptureIndicatorSurface: null
-            property var popupRendererFailureSurface: null
-            property var pendingFileDialogRequest: null
-            property var pendingFileDialogView: null
-            property bool pendingFileDialogWaitingForPortal: false
-            property double pendingFileDialogPortalDeadlineMs: 0
-            property bool windowShutdownApproved: false
-            property bool windowShutdownPromptVisible: false
-            property bool windowShutdownPagePromptVisible: false
-            property bool windowShutdownStoragePromptVisible: false
-            property string windowShutdownPagePromptReason: ""
-            property int windowShutdownPageProbeGeneration: 0
-            property var activeDownloads: ({})
-            property var pendingDownloadRequests: ({})
-            property string pendingDownloadId: ""
-            property string pendingDownloadSuggestedName: ""
-
-            Timer {
-                id: popupShutdownPageProbeTimer
-                interval: 2500
-                repeat: false
-                onTriggered: {
-                    popupWindow.windowShutdownPageProbeGeneration += 1
-                    popupWindow.windowShutdownPagePromptReason = "Page state check timed out."
-                    popupWindow.windowShutdownPagePromptVisible = true
-                    if (popupWindow.popupPermissionUi) {
-                        popupWindow.popupPermissionUi.status_text =
-                                "Page state check timed out; choose Close anyway"
-                    }
-                }
-            }
-
-            onClosing: function(close) {
-                if (popupWindow.windowShutdownApproved) {
-                    return
-                }
-                close.accepted = false
-                popupWindow.beginQuitRequest()
-            }
-
-            function hasActiveDownloads() {
-                if (popupWindow.pendingDownloadId.length > 0) {
-                    return true
-                }
-                for (var pendingKey in popupWindow.pendingDownloadRequests) {
-                    if (popupWindow.pendingDownloadRequests[pendingKey]) {
-                        return true
-                    }
-                }
-                for (var key in popupWindow.activeDownloads) {
-                    var download = popupWindow.activeDownloads[key]
-                    if (download && !download.isFinished) {
-                        return true
-                    }
-                }
-                return false
-            }
-
-            function checkPageStateBeforeQuit() {
-                var generation = ++popupWindow.windowShutdownPageProbeGeneration
-                if (!popupView || popupView.lifecycleState !== WebEngineView.LifecycleState.Active) {
-                    popupWindow.finalizeQuit()
-                    return
-                }
-                popupShutdownPageProbeTimer.restart()
-                popupView.runJavaScript(window.shutdownPageProbeScript(), function(result) {
-                    if (generation !== popupWindow.windowShutdownPageProbeGeneration) {
-                        return
-                    }
-                    popupShutdownPageProbeTimer.stop()
-                    if (result === "clean") {
-                        popupWindow.finalizeQuit()
-                        return
-                    }
-                    popupWindow.windowShutdownPagePromptReason = result === "dirty"
-                            ? "This page has unsaved form or editor state."
-                            : "Ferric Browser could not verify this page before closing."
-                    popupWindow.windowShutdownPagePromptVisible = true
-                })
-            }
-
-            function cancelPageStateProbe() {
-                popupWindow.windowShutdownPageProbeGeneration += 1
-                popupShutdownPageProbeTimer.stop()
-                popupWindow.windowShutdownPagePromptVisible = false
-            }
-
-            function beginQuitRequest() {
-                if (popupWindow.hasActiveDownloads()
-                        || window.hasActiveShutdownRequestsFor(
-                            popupWindow.popupPermissionUi || browserUi, popupWindow)) {
-                    popupWindow.windowShutdownPromptVisible = true
-                    return
-                }
-                popupWindow.checkPageStateBeforeQuit()
-            }
-
-            function finalizeQuit() {
-                if (popupWindow.popupPermissionUi
-                        && popupWindow.popupJourneyToken.length > 0
-                        && !popupWindow.popupPermissionUi.close_popup_tab(
-                            popupWindow.popupJourneyToken)) {
-                    return
-                }
-                popupWindow.cancelPageStateProbe()
-                popupWindow.windowShutdownPromptVisible = false
-                popupWindow.windowShutdownApproved = true
-                popupWindow.close()
-            }
-
-            function cancelDownloadsAndQuit() {
-                if (popupWindow.pendingDownloadId.length > 0) {
-                    popupWindow.cancelPendingDownload()
-                }
-                var ui = popupWindow.popupDownloadUi()
-                for (var pendingKey in popupWindow.pendingDownloadRequests) {
-                    var pendingDownload = popupWindow.pendingDownloadRequests[pendingKey]
-                    if (pendingDownload) {
-                        window.resolveQtRequest(ui, pendingDownload, "download", "cancel", [])
-                        ui.update_download(
-                            String(pendingKey), "cancelled", pendingDownload.receivedBytes, true)
-                    }
-                }
-                popupWindow.pendingDownloadRequests = ({})
-                for (var key in popupWindow.activeDownloads) {
-                    var download = popupWindow.activeDownloads[key]
-                    if (download && !download.isFinished) {
-                        window.resolveQtRequest(ui, download, "download", "cancel", [])
-                    }
-                }
-                popupWindow.activeDownloads = ({})
-                window.cancelShutdownRequestsFor(
-                            popupWindow.popupPermissionUi || browserUi, popupWindow)
-                popupWindow.beginQuitRequest()
-            }
-
-            Rectangle {
-                anchors.centerIn: parent
-                width: Math.min(560, popupWindow.width - 80)
-                height: Math.min(190 * window.chromeScale, popupWindow.height - 32)
-                z: 100
-                visible: popupWindow.windowShutdownPromptVisible
-                color: window.panelColor
-                border.color: window.warningColor
-                border.width: 2
-
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 16
-                    spacing: 12
-                    Label {
-                        Layout.fillWidth: true
-                        text: "Popup browser work is still running"
-                        color: window.primaryTextColor
-                        font.bold: true
-                    }
-                    Label {
-                        Layout.fillWidth: true
-                        text: "Finish or cancel active popup work before closing."
-                        color: window.secondaryTextColor
-                        wrapMode: Text.WordWrap
-                    }
-                    RowLayout {
-                        Layout.alignment: Qt.AlignRight
-                        Button {
-                            text: "Keep window open"
-                            Accessible.name: "Keep popup window open"
-                            onClicked: {
-                                popupWindow.windowShutdownPromptVisible = false
-                                window.abortApplicationShutdown()
-                                if (popupWindow.popupPermissionUi) {
-                                    popupWindow.popupPermissionUi.status_text = "Popup shutdown cancelled"
-                                }
-                            }
-                        }
-                        Button {
-                            text: "Cancel active work and close"
-                            Accessible.name: "Close popup window anyway"
-                            onClicked: popupWindow.cancelDownloadsAndQuit()
-                        }
-                    }
-                }
-            }
-
-            Rectangle {
-                anchors.centerIn: parent
-                width: Math.min(560, popupWindow.width - 80)
-                height: Math.min(220 * window.chromeScale, popupWindow.height - 32)
-                z: 100
-                visible: popupWindow.windowShutdownPagePromptVisible
-                color: window.panelColor
-                border.color: window.warningColor
-                border.width: 2
-
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 16
-                    spacing: 12
-                    Label {
-                        Layout.fillWidth: true
-                        text: "Popup page state may be lost"
-                        color: window.primaryTextColor
-                        font.bold: true
-                    }
-                    Label {
-                        Layout.fillWidth: true
-                        text: popupWindow.windowShutdownPagePromptReason
-                              + " Close anyway may lose that state."
-                        color: window.secondaryTextColor
-                        wrapMode: Text.WordWrap
-                    }
-                    RowLayout {
-                        Layout.alignment: Qt.AlignRight
-                        Button {
-                            text: "Keep window open"
-                            Accessible.name: "Keep popup window open"
-                            onClicked: {
-                                popupWindow.cancelPageStateProbe()
-                                window.abortApplicationShutdown()
-                                if (popupWindow.popupPermissionUi) {
-                                    popupWindow.popupPermissionUi.status_text = "Popup shutdown cancelled"
-                                }
-                            }
-                        }
-                        Button {
-                            text: "Close anyway"
-                            Accessible.name: "Close popup window despite page state"
-                            onClicked: popupWindow.finalizeQuit()
-                        }
-                    }
-                }
-            }
-
-            FileDialog {
-                id: popupFileChooser
-                title: "Choose file"
-                onAccepted: popupWindow.acceptFileDialog()
-                onRejected: popupWindow.rejectFileDialog()
-            }
-
-            FolderDialog {
-                id: popupFolderChooser
-                title: "Choose folder"
-                onAccepted: popupWindow.acceptFolderDialog()
-                onRejected: popupWindow.rejectFileDialog()
-            }
-
-            FileDialog {
-                id: popupDownloadChooser
-                title: "Choose download destination"
-                fileMode: FileDialog.SaveFile
-                nameFilters: ["All files (*)"]
-                onAccepted: popupWindow.acceptPendingDownload()
-                onRejected: popupWindow.cancelPendingDownload()
-            }
-
-            function popupDownloadUi() {
-                return popupWindow.popupPermissionUi || browserUi
-            }
-
-            function attachPopupDownloadStateUpdates(download, id) {
-                download.stateChanged.connect(function() {
-                    popupWindow.popupDownloadUi().update_download(
-                        id, window.downloadStateName(download), download.receivedBytes, false)
-                })
-                download.isPausedChanged.connect(function() {
-                    popupWindow.popupDownloadUi().update_download(
-                        id, window.downloadStateName(download), download.receivedBytes, false)
-                })
-            }
-
-            function acceptPendingDownload() {
-                var id = popupWindow.pendingDownloadId
-                var download = popupWindow.pendingDownloadRequests[id]
-                var ui = popupWindow.popupDownloadUi()
-                var selectedPath = popupDownloadChooser.selectedFile.toLocalFile()
-                if (!download) {
-                    popupWindow.pendingDownloadId = ""
-                    window.restoreOverlayFocus()
-                    return
-                }
-                var finalName = ui.accept_download_path(id, selectedPath)
-                if (finalName.length === 0) {
-                    window.resolveQtRequest(ui, download, "download", "cancel", [])
-                    ui.update_download(id, "cancelled", download.receivedBytes, true)
-                } else {
-                    var separator = selectedPath.lastIndexOf("/")
-                    var directory = separator > 0 ? selectedPath.slice(0, separator) : "/"
-                    var stagingDirectory = window.downloadStagingDirectory(ui, id)
-                    if (stagingDirectory.length === 0) {
-                        window.resolveQtRequest(ui, download, "download", "cancel", [])
-                        ui.update_download(id, "cancelled", download.receivedBytes, true)
-                        delete popupWindow.pendingDownloadRequests[id]
-                        popupWindow.pendingDownloadId = ""
-                        popupWindow.pendingDownloadSuggestedName = ""
-                        window.restoreOverlayFocus()
-                        return
-                    }
-                    download.downloadDirectory = stagingDirectory
-                    download.downloadFileName = finalName
-                    popupWindow.activeDownloads[id] = download
-                    popupWindow.attachPopupDownloadStateUpdates(download, id)
-                    window.resolveQtRequest(ui, download, "download", "accept", [])
-                    ui.update_download(id, "in-progress", 0, false)
-                }
-                delete popupWindow.pendingDownloadRequests[id]
-                popupWindow.pendingDownloadId = ""
-                popupWindow.pendingDownloadSuggestedName = ""
-                window.restoreOverlayFocus()
-            }
-
-            function cancelPendingDownload() {
-                var id = popupWindow.pendingDownloadId
-                var download = popupWindow.pendingDownloadRequests[id]
-                var ui = popupWindow.popupDownloadUi()
-                if (download) {
-                    window.resolveQtRequest(ui, download, "download", "cancel", [])
-                    ui.update_download(id, "cancelled", download.receivedBytes, true)
-                }
-                delete popupWindow.pendingDownloadRequests[id]
-                popupWindow.pendingDownloadId = ""
-                popupWindow.pendingDownloadSuggestedName = ""
-                window.restoreOverlayFocus()
-            }
-
-            function handleDownloadRequested(download) {
-                var id = String(download.id)
-                var ui = popupWindow.popupDownloadUi()
-                var safeName = ui.offer_download(
-                            id, download.url.toString(), download.suggestedFileName)
-                var requestedPath = download.savePageFormat === WebEngineDownloadRequest.MimeHtmlSaveFormat
-                        ? ui.take_save_page_path() : ""
-                if (requestedPath.length > 0) {
-                    var requestedName = ui.accept_download_path(id, requestedPath)
-                    if (requestedName.length === 0) {
-                        window.resolveQtRequest(ui, download, "download", "cancel", [])
-                        ui.update_download(id, "cancelled", download.receivedBytes, true)
-                        return
-                    }
-                    var requestedSeparator = requestedPath.lastIndexOf("/")
-                    var requestedDirectory = requestedSeparator > 0
-                            ? requestedPath.slice(0, requestedSeparator) : "/"
-                    var stagingDirectory = window.downloadStagingDirectory(ui, id)
-                    if (stagingDirectory.length === 0) {
-                        window.resolveQtRequest(ui, download, "download", "cancel", [])
-                        ui.update_download(id, "cancelled", download.receivedBytes, true)
-                        return
-                    }
-                    download.downloadDirectory = stagingDirectory
-                    download.downloadFileName = requestedName
-                    popupWindow.activeDownloads[id] = download
-                    popupWindow.attachPopupDownloadStateUpdates(download, id)
-                    window.resolveQtRequest(ui, download, "download", "accept", [])
-                    ui.update_download(id, "in-progress", 0, false)
-                    return
-                }
-                var directory = ui.default_download_directory()
-                if (!window.downloadsAskDestination()) {
-                    popupWindow.activeDownloads[id] = download
-                    var finalName = ui.accept_download(id, directory, safeName)
-                    if (finalName.length === 0) {
-                        delete popupWindow.activeDownloads[id]
-                        window.resolveQtRequest(ui, download, "download", "cancel", [])
-                        ui.update_download(id, "cancelled", download.receivedBytes, true)
-                        return
-                    }
-                    var stagingDirectory = window.downloadStagingDirectory(ui, id)
-                    if (stagingDirectory.length === 0) {
-                        delete popupWindow.activeDownloads[id]
-                        window.resolveQtRequest(ui, download, "download", "cancel", [])
-                        ui.update_download(id, "cancelled", download.receivedBytes, true)
-                        return
-                    }
-                    download.downloadDirectory = stagingDirectory
-                    download.downloadFileName = finalName
-                    popupWindow.attachPopupDownloadStateUpdates(download, id)
-                    window.resolveQtRequest(ui, download, "download", "accept", [])
-                    ui.update_download(id, "in-progress", 0, false)
-                    return
-                }
-                if (popupWindow.pendingDownloadId.length > 0) {
-                    window.resolveQtRequest(ui, download, "download", "cancel", [])
-                    ui.update_download(id, "cancelled", download.receivedBytes, true)
-                    return
-                }
-                popupWindow.pendingDownloadRequests[id] = download
-                popupWindow.pendingDownloadId = id
-                popupWindow.pendingDownloadSuggestedName = safeName
-                window.captureOverlayFocus(popupWindow, popupView)
-                ui.update_download(id, "selecting-destination", 0, false)
-                popupDownloadChooser.currentFile = window.fileUrlForPath(directory + "/" + safeName)
-                popupDownloadChooser.open()
-            }
-
-            function handleDownloadFinished(download) {
-                var id = String(download.id)
-                var ui = popupWindow.popupDownloadUi()
-                var state = window.downloadStateName(download)
-                if (state === "completed" && !ui.finalize_download(id)) {
-                    state = "interrupted"
-                } else if (state !== "completed") {
-                    ui.discard_download_staging(id)
-                }
-                ui.update_download(id, state, download.receivedBytes, true)
-                delete popupWindow.activeDownloads[id]
-                delete popupWindow.pendingDownloadRequests[id]
-                if (popupWindow.pendingDownloadId === id) {
-                    popupWindow.pendingDownloadId = ""
-                    popupWindow.pendingDownloadSuggestedName = ""
-                }
-            }
-
-            Timer {
-                id: popupFilePortalTimer
-                interval: 50
-                repeat: true
-                running: false
-                onTriggered: popupWindow.maybeOpenPendingFileDialog()
-            }
-
-            function popupFileDialogPaths() {
-                var paths = []
-                var urls = popupFileChooser.fileMode === FileDialog.OpenFiles
-                        ? popupFileChooser.selectedFiles
-                        : [popupFileChooser.selectedFile]
-                for (var i = 0; i < urls.length; ++i) {
-                    var path = urls[i].toLocalFile()
-                    if (!path || urls[i].scheme !== "file") {
-                        return []
-                    }
-                    paths.push(path)
-                }
-                return paths
-            }
-
-            function popupFolderDialogPaths() {
-                var url = popupFolderChooser.selectedFolder
-                var path = url && url.scheme === "file" ? url.toLocalFile() : ""
-                return path ? [path] : []
-            }
-
-            function clearPopupFileDialog(cancelRequest, message) {
-                var request = popupWindow.pendingFileDialogRequest
-                var hadRequest = !!request
-                var ui = popupWindow.popupPermissionUi || browserUi
-                popupWindow.pendingFileDialogRequest = null
-                popupWindow.pendingFileDialogView = null
-                popupWindow.pendingFileDialogWaitingForPortal = false
-                popupWindow.pendingFileDialogPortalDeadlineMs = 0
-                popupFilePortalTimer.stop()
-                if (popupFileChooser.visible) {
-                    popupFileChooser.close()
-                }
-                if (popupFolderChooser.visible) {
-                    popupFolderChooser.close()
-                }
-                if (hadRequest) {
-                    window.restoreOverlayFocus()
-                }
-                if (cancelRequest && request) {
-                    window.resolveQtRequest(ui, request, "file-dialog", "dialogReject", [])
-                }
-                if (message && ui) {
-                    ui.status_text = message
-                }
-            }
-
-            function acceptFileDialog() {
-                var request = popupWindow.pendingFileDialogRequest
-                var ui = popupWindow.popupPermissionUi || browserUi
-                var paths = popupWindow.popupFileDialogPaths()
-                popupWindow.pendingFileDialogRequest = null
-                popupWindow.pendingFileDialogView = null
-                if (!request || paths.length === 0) {
-                    if (request) {
-                        window.resolveQtRequest(ui, request, "file-dialog", "dialogReject", [])
-                    }
-                    if (request) {
-                        window.restoreOverlayFocus()
-                    }
-                    ui.status_text = "File selection returned no local paths"
-                    return
-                }
-                window.resolveQtRequest(ui, request, "file-dialog", "dialogAccept", [paths])
-                window.restoreOverlayFocus()
-                ui.status_text = paths.length === 1
-                        ? "File selected"
-                        : paths.length + " files selected"
-            }
-
-            function acceptFolderDialog() {
-                var request = popupWindow.pendingFileDialogRequest
-                var ui = popupWindow.popupPermissionUi || browserUi
-                var paths = popupWindow.popupFolderDialogPaths()
-                popupWindow.pendingFileDialogRequest = null
-                popupWindow.pendingFileDialogView = null
-                if (!request || paths.length === 0) {
-                    if (request) {
-                        window.resolveQtRequest(ui, request, "file-dialog", "dialogReject", [])
-                    }
-                    if (request) {
-                        window.restoreOverlayFocus()
-                    }
-                    ui.status_text = "Folder selection returned no local path"
-                    return
-                }
-                window.resolveQtRequest(ui, request, "file-dialog", "dialogAccept", [paths])
-                window.restoreOverlayFocus()
-                ui.status_text = "Folder selected"
-            }
-
-            function rejectFileDialog() {
-                var request = popupWindow.pendingFileDialogRequest
-                var ui = popupWindow.popupPermissionUi || browserUi
-                if (!request) {
-                    return
-                }
-                popupWindow.pendingFileDialogRequest = null
-                popupWindow.pendingFileDialogView = null
-                window.resolveQtRequest(ui, request, "file-dialog", "dialogReject", [])
-                window.restoreOverlayFocus()
-                ui.status_text = "File selection cancelled"
-            }
-
-            function handleFileDialogRequested(request) {
-                if (popupWindow.pendingFileDialogRequest) {
-                    popupWindow.clearPopupFileDialog(true,
-                            "Previous file selection cancelled")
-                    window.resolveQtRequest(
-                        popupWindow.popupPermissionUi || browserUi,
-                        request, "file-dialog", "dialogReject", [])
-                    (popupWindow.popupPermissionUi || browserUi).status_text =
-                            "Another file selection is already open"
-                    return
-                }
-                window.captureOverlayFocus(popupWindow, popupView)
-                popupWindow.pendingFileDialogRequest = request
-                popupWindow.pendingFileDialogView = popupView
-                var requestUi = popupWindow.popupPermissionUi || browserUi
-                if (window.desktopPortalMode(requestUi) === "required") {
-                    var status = window.desktopPortalCapabilityStatus(requestUi, "file_chooser")
-                    if (status === "not-probed") {
-                        browserUi.probe_desktop_portals()
-                        status = window.desktopPortalCapabilityStatus(requestUi, "file_chooser")
-                    }
-                    if (status === "pending" || status === "not-probed") {
-                        popupWindow.pendingFileDialogWaitingForPortal = true
-                        popupWindow.pendingFileDialogPortalDeadlineMs = Date.now() + 5000
-                        requestUi.status_text = "Checking required desktop portal…"
-                        popupFilePortalTimer.start()
-                        return
-                    }
-                    if (status !== "available") {
-                        popupWindow.clearPopupFileDialog(
-                            true, "Required desktop portal unavailable; file selection cancelled")
-                        return
-                    }
-                }
-                popupWindow.pendingFileDialogWaitingForPortal = false
-                popupFilePortalTimer.stop()
-                if (request.mode === FileDialogRequest.FileModeUploadFolder) {
-                    popupFolderChooser.open()
-                    return
-                }
-                popupFileChooser.fileMode = request.mode === FileDialogRequest.FileModeOpenMultiple
-                        ? FileDialog.OpenFiles
-                        : request.mode === FileDialogRequest.FileModeSave
-                            ? FileDialog.SaveFile
-                            : FileDialog.OpenFile
-                popupFileChooser.nameFilters = window.fileDialogNameFilters(request)
-                popupFileChooser.currentFile = request.defaultFileName.length > 0
-                        ? request.defaultFileName
-                        : ""
-                popupFileChooser.title = request.mode === FileDialogRequest.FileModeSave
-                        ? "Save file"
-                        : request.mode === FileDialogRequest.FileModeOpenMultiple
-                            ? "Choose files"
-                            : "Choose file"
-                popupFileChooser.open()
-            }
-
-            function maybeOpenPendingFileDialog() {
-                if (!popupWindow.pendingFileDialogWaitingForPortal
-                        || !popupWindow.pendingFileDialogRequest) {
-                    popupFilePortalTimer.stop()
-                    return
-                }
-                if (Date.now() >= popupWindow.pendingFileDialogPortalDeadlineMs) {
-                    popupWindow.clearPopupFileDialog(
-                        true, "Desktop portal check timed out; file selection cancelled")
-                    return
-                }
-                var ui = popupWindow.popupPermissionUi || browserUi
-                var status = window.desktopPortalCapabilityStatus(ui, "file_chooser")
-                if (status === "pending" || status === "not-probed") {
-                    return
-                }
-                if (status !== "available") {
-                    popupWindow.clearPopupFileDialog(
-                        true, "Required desktop portal unavailable; file selection cancelled")
-                    return
-                }
-                popupWindow.pendingFileDialogWaitingForPortal = false
-                popupFilePortalTimer.stop()
-                var request = popupWindow.pendingFileDialogRequest
-                if (request.mode === FileDialogRequest.FileModeUploadFolder) {
-                    popupFolderChooser.open()
-                    return
-                }
-                popupFileChooser.fileMode = request.mode === FileDialogRequest.FileModeOpenMultiple
-                        ? FileDialog.OpenFiles
-                        : request.mode === FileDialogRequest.FileModeSave
-                            ? FileDialog.SaveFile
-                            : FileDialog.OpenFile
-                popupFileChooser.nameFilters = window.fileDialogNameFilters(request)
-                popupFileChooser.currentFile = request.defaultFileName.length > 0
-                        ? request.defaultFileName : ""
-                popupFileChooser.title = request.mode === FileDialogRequest.FileModeSave
-                        ? "Save file"
-                        : request.mode === FileDialogRequest.FileModeOpenMultiple
-                            ? "Choose files"
-                            : "Choose file"
-                popupFileChooser.open()
-            }
-
-            function clearFileDialogForView(view) {
-                if (popupWindow.pendingFileDialogView === view) {
-                    popupWindow.clearPopupFileDialog(
-                        true, "File selection cancelled by navigation")
-                }
-            }
-
-            WebEngineView {
-                id: popupView
-                property var pageUserScriptNames: []
-                property string pageUserScriptReloadUrl: ""
-                property string pageDialogDocumentKey: ""
-                property int pageDialogCount: 0
-                property bool pageDialogSuppressed: false
-                property bool rendererFailed: false
-                property int rendererFailureCount: 0
-                property double rendererFailureAt: 0
-                property string rendererFailureSafeUrl: ""
-                property string rendererFailureReason: ""
-                property int rendererFailureExitCode: 0
-                // Navigation-scoped content settings are snapshotted per
-                // document. A configuration reload must not mutate the
-                // already-loaded page's engine policy.
-                property var effectiveSiteSettings: ({ values: {}, matched_rules: [] })
-                function refreshEffectiveSiteSettings() {
-                    effectiveSiteSettings = window.siteRuleSettingsFor(
-                        popupWindow.popupPermissionUi, popupView.url.toString())
-                }
-                Connections {
-                    target: popupWindow.popupPermissionUi || browserUi
-                    function onSite_experiment_kindChanged() {
-                        popupView.refreshEffectiveSiteSettings()
-                    }
-                }
-                anchors.fill: parent
-                anchors.bottomMargin: window.statusBarHeight
-                profile: popupWindow.popupProfile
-                url: "about:blank"
-                settings.javascriptEnabled: !!window.siteRuleValue(
-                    effectiveSiteSettings, "content.javascript", true)
-                settings.autoLoadImages: !!window.siteRuleValue(
-                    effectiveSiteSettings, "content.images", true)
-                settings.forceDarkMode: !!window.siteRuleValue(
-                    effectiveSiteSettings, "content.force_dark", false)
-                settings.playbackRequiresUserGesture:
-                    window.siteRuleValue(effectiveSiteSettings, "content.autoplay", "engine-default")
-                    === "require-gesture"
-                Accessible.name: "Popup web content"
-                onUrlChanged: {
-                    refreshEffectiveSiteSettings()
-                    if (popupWindow.popupJourneyToken.length > 0) {
-                        (popupWindow.popupPermissionUi || browserUi).popup_navigation_url_changed(
-                            popupWindow.popupJourneyToken, url.toString())
-                    }
-                }
-                onLoadingChanged: function(loadRequest) {
-                    if (loadRequest.status === WebEngineView.LoadStartedStatus) {
-                        window.clearPageDialogForView(popupView)
-                        window.clearClientCertificateForView(popupView)
-                        window.clearCertificateErrorForView(popupView)
-                        window.clearWebAuthForView(popupView)
-                        window.clearContextMenuForView(popupView)
-                        window.clearDesktopMediaForView(popupView)
-                        window.clearSiteDataClearForView(popupView)
-                        window.noteCaptureNavigation(popupView)
-                        popupWindow.clearFileDialogForView(popupView)
-                        window.clearRendererFailureForView(popupView)
-                        window.resetPageDialogBudget(popupView)
-                        if (popupWindow.popupRequestInterceptor) {
-                            popupWindow.popupRequestInterceptor.clearSiteEvidence(popupView.url.host)
-                        }
-                        window.cancelPermissionForUi(popupWindow.popupPermissionUi)
-                        window.installPageUserscripts(
-                            popupWindow.popupPermissionUi, popupView, popupView.url.toString(),
-                            popupWindow.popupPrivateProfile)
-                        window.injectPageUserscripts(
-                            popupWindow.popupPermissionUi, popupView, popupView.url.toString(),
-                            popupWindow.popupPrivateProfile, "document_start")
-                        window.injectCosmeticRules(popupWindow.popupPermissionUi, popupView)
-                        if (popupWindow.popupJourneyToken.length > 0) {
-                            (popupWindow.popupPermissionUi || browserUi).popup_navigation_started(
-                                popupWindow.popupJourneyToken, loadRequest.url.toString())
-                        }
-                    } else if (loadRequest.status === WebEngineView.LoadSucceededStatus) {
-                        if (popupWindow.popupJourneyToken.length > 0) {
-                            (popupWindow.popupPermissionUi || browserUi).popup_navigation_committed(
-                                popupWindow.popupJourneyToken, popupView.url.toString(), popupView.title)
-                            (popupWindow.popupPermissionUi || browserUi).popup_navigation_completed(
-                                popupWindow.popupJourneyToken)
-                        }
-                        window.injectPageUserscripts(
-                            popupWindow.popupPermissionUi, popupView, popupView.url.toString(),
-                            popupWindow.popupPrivateProfile, "document_end")
-                        window.injectCosmeticRules(popupWindow.popupPermissionUi, popupView)
-                        Qt.callLater(function() {
-                            window.injectPageUserscripts(
-                                popupWindow.popupPermissionUi, popupView, popupView.url.toString(),
-                                popupWindow.popupPrivateProfile, "document_idle")
-                        })
-                    } else if (loadRequest.status === WebEngineView.LoadFailedStatus) {
-                        if (popupWindow.popupJourneyToken.length > 0) {
-                            (popupWindow.popupPermissionUi || browserUi).popup_navigation_failed(
-                                popupWindow.popupJourneyToken)
-                        }
-                    }
-                }
-
-                onPermissionRequested: function(permissionRequest) {
-                    if (popupWindow.popupPermissionUi) {
-                        window.handleImmediatePermissionRequested(
-                            popupWindow.popupPermissionUi,
-                            permissionRequest,
-                            popupWindow.popupPrivateProfile,
-                            popupWindow)
-                    } else {
-                        window.resolveQtRequest(
-                            popupWindow.popupPermissionUi || browserUi,
-                            permissionRequest, "permission", "deny", [])
-                    }
-                }
-                onJavaScriptDialogRequested: function(request) {
-                    window.handleJavaScriptDialogRequested(
-                        popupWindow.popupPermissionUi || browserUi,
-                        popupView, request, popupWindow.popupPrivateProfile)
-                }
-                onAuthenticationDialogRequested: function(request) {
-                    window.handleAuthenticationDialogRequested(
-                        popupWindow.popupPermissionUi || browserUi,
-                        popupView, request, popupWindow.popupPrivateProfile)
-                }
-                onSelectClientCertificate: function(selection) {
-                    window.handleClientCertificateRequested(
-                        popupWindow.popupPermissionUi || browserUi,
-                        popupView, selection, popupWindow.popupPrivateProfile, popupWindow)
-                }
-                onCertificateError: function(error) {
-                    window.handleCertificateError(
-                        popupWindow.popupPermissionUi || browserUi,
-                        popupView, error, popupWindow)
-                }
-                onWebAuthUxRequested: function(request) {
-                    window.handleWebAuthRequested(
-                        popupWindow.popupPermissionUi || browserUi,
-                        popupView, request, popupWindow)
-                }
-                onContextMenuRequested: function(request) {
-                    window.handleContextMenuRequested(
-                        popupWindow.popupPermissionUi || browserUi,
-                        popupView, request, popupWindow)
-                }
-                onFileDialogRequested: function(request) {
-                    popupWindow.handleFileDialogRequested(request)
-                }
-                onDesktopMediaRequested: function(request) {
-                    window.handleDesktopMediaRequested(
-                        popupWindow.popupPermissionUi || browserUi,
-                        popupView, request, popupWindow)
-                }
-                onRenderProcessTerminated: function(terminationStatus, exitCode) {
-                    window.handleRendererProcessTerminated(
-                        popupWindow.popupPermissionUi || browserUi,
-                        popupView, popupWindow, -1, terminationStatus, exitCode)
-                }
-
-                Component.onCompleted: {
-                    refreshEffectiveSiteSettings()
-                    window.registerPopupWindow(
-                                popupWindow, popupWindow.popupPermissionUi || browserUi, popupView)
-                    if (!popupWindow.popupPermissionPromptSurface) {
-                        popupWindow.popupPermissionPromptSurface =
-                                permissionPromptSurfaceComponent.createObject(
-                                    popupWindow.contentItem, { hostWindow: popupWindow })
-                    }
-                    if (!popupWindow.popupDesktopMediaSurface) {
-                        popupWindow.popupDesktopMediaSurface =
-                                desktopMediaSurfaceComponent.createObject(
-                                    popupWindow.contentItem, { hostWindow: popupWindow })
-                    }
-                    if (!popupWindow.popupCaptureIndicatorSurface) {
-                        popupWindow.popupCaptureIndicatorSurface =
-                                captureIndicatorComponent.createObject(
-                                    popupWindow.contentItem, { hostWindow: popupWindow })
-                    }
-                    if (!popupWindow.popupRendererFailureSurface) {
-                        popupWindow.popupRendererFailureSurface =
-                                rendererFailureSurfaceComponent.createObject(
-                                    popupWindow.contentItem, { hostWindow: popupWindow })
-                    }
-                    window.installFocusObserver(popupView)
-                    if (popupWindow.popupRequest) {
-                        popupWindow.popupRequest.openIn(popupView)
-                    }
-                }
-                Component.onDestruction: {
-                    window.clearPageDialogForView(popupView)
-                    window.clearClientCertificateForView(popupView)
-                    window.clearCertificateErrorForView(popupView)
-                    window.clearWebAuthForView(popupView)
-                    window.clearContextMenuForView(popupView)
-                    window.clearDesktopMediaForView(popupView)
-                    window.clearCaptureSessionForView(popupView)
-                    popupWindow.clearFileDialogForView(popupView)
-                    window.clearSiteDataClearForView(popupView)
-                    window.cancelPermissionForUi(popupWindow.popupPermissionUi)
-                }
-            }
-
-            Rectangle {
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.bottom: parent.bottom
-                height: window.statusBarHeight
-                z: 10
-                visible: window.statusbarMode === "always"
-                color: window.surfaceColor
-                opacity: window.chromeOpacity
-
-                Label {
-                    anchors.fill: parent
-                    anchors.leftMargin: 10
-                    verticalAlignment: Text.AlignVCenter
-                    color: window.contextStatusColor(
-                               popupWindow.popupPermissionUi || browserUi,
-                               window.secondaryTextColor)
-                    text: (popupWindow.popupPermissionUi || browserUi).mode + " · "
-                          + (popupWindow.popupPermissionUi || browserUi).status_text
-                          + window.statusDetails(
-                              popupWindow.popupPermissionUi || browserUi,
-                              popupWindow, popupView,
-                              popupWindow.popupPrivateProfile,
-                              popupWindow.popupProfileName,
-                              popupWindow.popupEphemeralProfile)
-                    Accessible.name: "Browser status bar"
-                    Accessible.role: Accessible.StatusBar
-                }
-            }
-
-            Component.onDestruction: {
-                window.unregisterPopupWindow(popupWindow)
-                if (!popupWindow.windowShutdownApproved
-                        && popupWindow.popupPermissionUi
-                        && popupWindow.popupJourneyToken.length > 0) {
-                    popupWindow.popupPermissionUi.close_popup_tab(
-                        popupWindow.popupJourneyToken)
-                }
-                if (popupWindow.popupJourneyToken.length > 0) {
-                    (popupWindow.popupPermissionUi || browserUi).release_popup_journey_token(
-                        popupWindow.popupJourneyToken)
-                }
-                popupWindow.clearPopupFileDialog(true, "File selection cancelled")
-                window.cancelPermissionForUi(popupWindow.popupPermissionUi)
-                if (window.pendingDesktopMediaHost === popupWindow) {
-                    window.clearDesktopMediaRequest(true)
-                }
-                window.clearCaptureSessionsForHost(popupWindow)
-                if (popupWindow.popupPermissionPromptSurface) {
-                    popupWindow.popupPermissionPromptSurface.destroy()
-                    popupWindow.popupPermissionPromptSurface = null
-                }
-                if (popupWindow.popupDesktopMediaSurface) {
-                    popupWindow.popupDesktopMediaSurface.destroy()
-                    popupWindow.popupDesktopMediaSurface = null
-                }
-                if (popupWindow.popupCaptureIndicatorSurface) {
-                    popupWindow.popupCaptureIndicatorSurface.destroy()
-                    popupWindow.popupCaptureIndicatorSurface = null
-                }
-                if (popupWindow.popupRendererFailureSurface) {
-                    popupWindow.popupRendererFailureSurface.destroy()
-                    popupWindow.popupRendererFailureSurface = null
-                }
-            }
+        FerricPopupWindow {
+            rootWindow: window
         }
     }
-
     Component {
         id: browserWindowComponent
 
-        ApplicationWindow {
-            id: secondaryWindow
-            width: 1180
-            height: 760
-            visible: true
-            title: secondaryWindow.windowEphemeralProfile
-                   ? "Ferric Browser · " + secondaryWindow.windowProfileLabel
-                   : "Ferric Browser · " + secondaryWindow.windowProfileName
-            color: window.backgroundColor
-            font: window.font
-            palette: window.palette
-            property string windowStartupUrl: "about:blank"
-            property string windowBookmarkTransferUrl: ""
-            property string windowBookmarkTransferTitle: ""
-            property string windowProfileName: "secondary"
-            property string windowStartupContext: ""
-            property bool windowStartupContextRestore: false
-            property bool windowStartupRoutePreflighted: true
-            property string windowProfileLabel: "Secondary"
-            property string windowStorageBasePath: window.storageBasePath
-            property bool windowPrivateProfile: false
-            property bool windowEphemeralProfile: false
-            property string windowEphemeralInvocationToken: ""
-            property var windowSharedProfile: null
-            property var windowSharedRequestInterceptor: null
-            property var windowTransferView: null
-            property var windowTransferSourceUi: null
-            property var windowTransferSourceHost: null
-            property string windowTransferOperationId: ""
-            property string windowTransferPayload: ""
-            property var windowFallbackView: null
-            property var windowPreparedTransferFallback: null
-            property var windowDetachedView: null
-            property var devToolsWindow: null
-            property bool devToolsVisible: false
-            property var devToolsAttachedView: secondaryDevToolsLoader.item
-            property bool windowDetachedWasTransfer: false
-            readonly property bool windowTransferMode: windowTransferView !== null
-            readonly property var activeView: windowTransferMode
-                                                       ? windowTransferView
-                                                       : (windowFallbackView || secondaryView)
-            readonly property bool browserKeyFocusActive:
-                !window.browserChromeInputActive
-                && !windowShutdownPromptVisible
-                && !windowShutdownPagePromptVisible
-                && !windowShutdownStoragePromptVisible
-                && !secondaryUi.external_navigation_visible
-            readonly property bool windowTransientProfile:
-                windowPrivateProfile || windowEphemeralProfile
-            readonly property var windowWebEngineProfile:
-                windowSharedProfile || secondaryProfile
-            readonly property var windowRequestInterceptor:
-                windowSharedProfile
-                ? (windowSharedRequestInterceptor || requestInterceptor)
-                : secondaryRequestInterceptor
-            property var permissionPromptSurface: null
-            property var desktopMediaSurface: null
-            property var captureIndicatorSurface: null
-            property var rendererFailureSurface: null
-            property var pendingFileDialogRequest: null
-            property var pendingFileDialogView: null
-            property bool pendingFileDialogWaitingForPortal: false
-            property double pendingFileDialogPortalDeadlineMs: 0
-            property bool windowShutdownApproved: false
-            property bool windowShutdownPromptVisible: false
-            property bool windowShutdownPagePromptVisible: false
-            property string windowShutdownPagePromptReason: ""
-            property int windowShutdownPageProbeGeneration: 0
-            property var activeDownloads: ({})
-
-            BrowserKeyRouter {
-                id: secondaryKeyRouter
-                targetWindow: secondaryWindow
-                enabled: secondaryWindow.active
-                         && secondaryWindow.browserKeyFocusActive
-                         && (secondaryUi.mode === "normal"
-                             || secondaryUi.mode === "hint"
-                             || secondaryUi.mode === "caret"
-                             || secondaryUi.mode === "insert"
-                             || secondaryUi.mode === "pass-through")
-                onKeyPressed: function(text, key, modifiers) {
-                    var event = {
-                        text: text,
-                        key: key,
-                        modifiers: modifiers,
-                        accepted: false
-                    }
-                    if (window.handleBrowserKey(
-                                secondaryUi, secondaryWindow, event)) {
-                        secondaryKeyRouter.acceptCurrentEvent()
-                    }
-                }
-            }
-
-            Timer {
-                id: secondaryShutdownPageProbeTimer
-                interval: 2500
-                repeat: false
-                onTriggered: {
-                    secondaryWindow.windowShutdownPageProbeGeneration += 1
-                    secondaryWindow.windowShutdownPagePromptReason = "Page state check timed out."
-                    secondaryWindow.windowShutdownPagePromptVisible = true
-                    secondaryUi.status_text =
-                            "Page state check timed out; choose Close anyway"
-                }
-            }
-
-            onClosing: function(close) {
-                if (secondaryWindow.windowShutdownApproved) {
-                    return
-                }
-                close.accepted = false
-                secondaryWindow.beginQuitRequest()
-            }
-
-            function hasActiveDownloads() {
-                if (secondaryWindow.pendingDownloadId.length > 0) {
-                    return true
-                }
-                for (var pendingKey in secondaryWindow.pendingDownloadRequests) {
-                    if (secondaryWindow.pendingDownloadRequests[pendingKey]) {
-                        return true
-                    }
-                }
-                for (var key in secondaryWindow.activeDownloads) {
-                    var download = secondaryWindow.activeDownloads[key]
-                    if (download && !download.isFinished) {
-                        return true
-                    }
-                }
-                return false
-            }
-
-            function downloadOwnerFor(download) {
-                var view = download && download.view
-                if (!view) {
-                    return secondaryWindow
-                }
-                var popups = window.popupWindowRegistry || []
-                for (var i = 0; i < popups.length; ++i) {
-                    if (popups[i] && popups[i].view === view && popups[i].host) {
-                        return popups[i].host
-                    }
-                }
-                return secondaryWindow
-            }
-
-            function checkPageStateBeforeQuit() {
-                var generation = ++secondaryWindow.windowShutdownPageProbeGeneration
-                var view = secondaryWindow.activeView
-                if (!view || view.lifecycleState !== WebEngineView.LifecycleState.Active) {
-                    secondaryWindow.finalizeQuit()
-                    return
-                }
-                secondaryShutdownPageProbeTimer.restart()
-                view.runJavaScript(window.shutdownPageProbeScript(), function(result) {
-                    if (generation !== secondaryWindow.windowShutdownPageProbeGeneration) {
-                        return
-                    }
-                    secondaryShutdownPageProbeTimer.stop()
-                    if (result === "clean") {
-                        secondaryWindow.finalizeQuit()
-                        return
-                    }
-                    secondaryWindow.windowShutdownPagePromptReason = result === "dirty"
-                            ? "This page has unsaved form or editor state."
-                            : "Ferric Browser could not verify this page before closing."
-                    secondaryWindow.windowShutdownPagePromptVisible = true
-                })
-            }
-
-            function cancelPageStateProbe() {
-                secondaryWindow.windowShutdownPageProbeGeneration += 1
-                secondaryShutdownPageProbeTimer.stop()
-                secondaryWindow.windowShutdownPagePromptVisible = false
-            }
-
-            function beginQuitRequest() {
-                if (secondaryWindow.hasActiveDownloads()
-                        || window.hasActiveShutdownRequestsFor(secondaryUi, secondaryWindow)) {
-                    secondaryWindow.windowShutdownPromptVisible = true
-                    return
-                }
-                secondaryWindow.checkPageStateBeforeQuit()
-            }
-
-            function finalizeQuit() {
-                if (!secondaryUi.flush_durable_state()) {
-                    secondaryWindow.windowShutdownStoragePromptVisible = true
-                    return
-                }
-                if (!secondaryUi.request_shutdown()) {
-                    return
-                }
-                secondaryWindow.cancelPageStateProbe()
-                secondaryWindow.windowShutdownPromptVisible = false
-                secondaryWindow.windowShutdownStoragePromptVisible = false
-                secondaryWindow.windowShutdownApproved = true
-                secondaryWindow.close()
-            }
-
-            function cancelDownloadsAndQuit() {
-                if (secondaryWindow.pendingDownloadId.length > 0) {
-                    secondaryProfile.cancelPendingDownload()
-                }
-                for (var pendingKey in secondaryWindow.pendingDownloadRequests) {
-                    var pendingDownload = secondaryWindow.pendingDownloadRequests[pendingKey]
-                    if (pendingDownload) {
-                        window.resolveQtRequest(secondaryUi, pendingDownload, "download", "cancel", [])
-                        secondaryUi.update_download(
-                            String(pendingKey), "cancelled", pendingDownload.receivedBytes, true)
-                    }
-                }
-                secondaryWindow.pendingDownloadRequests = ({})
-                for (var key in secondaryWindow.activeDownloads) {
-                    var download = secondaryWindow.activeDownloads[key]
-                    if (download && !download.isFinished) {
-                        window.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
-                    }
-                }
-                secondaryWindow.activeDownloads = ({})
-                window.cancelShutdownRequestsFor(secondaryUi, secondaryWindow)
-                secondaryWindow.beginQuitRequest()
-            }
-
-            FerricFileDialogSurfaces {
-                id: secondaryDialogSurfaces
-                onEngineFileAccepted: secondaryWindow.acceptFileDialog()
-                onEngineFileRejected: secondaryWindow.rejectFileDialog()
-                onEngineFolderAccepted: secondaryWindow.acceptFolderDialog()
-                onEngineFolderRejected: secondaryWindow.rejectFileDialog()
-            }
-
-            Timer {
-                id: secondaryFilePortalTimer
-                interval: 50
-                repeat: true
-                onTriggered: secondaryWindow.maybeOpenPendingFileDialog()
-            }
-
-            FileDialog {
-                id: secondaryDownloadChooser
-                title: "Choose download destination"
-                fileMode: FileDialog.SaveFile
-                nameFilters: ["All files (*)"]
-                onAccepted: secondaryProfile.acceptPendingDownload()
-                onRejected: secondaryProfile.cancelPendingDownload()
-            }
-
-            WebEngineProfile {
-                id: secondaryProfile
-                offTheRecord: secondaryWindow.windowTransientProfile
-                storageName: secondaryWindow.windowTransientProfile ? "" : "ferric-browser-" + secondaryWindow.windowProfileName
-                persistentStoragePath: secondaryWindow.windowTransientProfile
-                        || secondaryWindow.windowStorageBasePath.length === 0
-                        ? ""
-                        : secondaryWindow.windowStorageBasePath + "/webengine/"
-                          + secondaryWindow.windowProfileName
-                cachePath: secondaryWindow.windowTransientProfile
-                        || secondaryWindow.windowStorageBasePath.length === 0
-                        ? ""
-                        : secondaryWindow.windowStorageBasePath + "/webengine-cache/"
-                          + secondaryWindow.windowProfileName
-                persistentPermissionsPolicy: WebEngineProfile.AskEveryTime
-                spellCheckEnabled: window.spellcheckEnabled(secondaryUi)
-                spellCheckLanguages: window.spellcheckLanguages(secondaryUi)
-                isPushServiceEnabled: window.pushServiceEnabled(
-                    secondaryUi, secondaryWindow.windowTransientProfile)
-
-                function acceptPendingDownload() {
-                    var id = secondaryWindow.pendingDownloadId
-                    var download = secondaryWindow.pendingDownloadRequests[id]
-                    var selectedPath = secondaryDownloadChooser.selectedFile.toLocalFile()
-                    if (!download) {
-                        secondaryWindow.pendingDownloadId = ""
-                        window.restoreOverlayFocus()
-                        return
-                    }
-                    var finalName = secondaryUi.accept_download_path(id, selectedPath)
-                    if (finalName.length === 0) {
-                        window.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
-                        secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
-                    } else {
-                        var separator = selectedPath.lastIndexOf("/")
-                        var directory = separator > 0 ? selectedPath.slice(0, separator) : "/"
-                        var stagingDirectory = window.downloadStagingDirectory(secondaryUi, id)
-                        if (stagingDirectory.length === 0) {
-                            window.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
-                            secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
-                            delete secondaryWindow.pendingDownloadRequests[id]
-                            secondaryWindow.pendingDownloadId = ""
-                            secondaryWindow.pendingDownloadSuggestedName = ""
-                            window.restoreOverlayFocus()
-                            return
-                        }
-                        download.downloadDirectory = stagingDirectory
-                        download.downloadFileName = finalName
-                        secondaryWindow.activeDownloads[id] = download
-                        download.stateChanged.connect(function() {
-                            secondaryUi.update_download(
-                                id, secondaryWindow.secondaryDownloadStateName(download),
-                                download.receivedBytes, false)
-                        })
-                        window.resolveQtRequest(secondaryUi, download, "download", "accept", [])
-                        secondaryUi.update_download(id, "in-progress", 0, false)
-                    }
-                    delete secondaryWindow.pendingDownloadRequests[id]
-                    secondaryWindow.pendingDownloadId = ""
-                    secondaryWindow.pendingDownloadSuggestedName = ""
-                    window.restoreOverlayFocus()
-                }
-
-                function cancelPendingDownload() {
-                    var id = secondaryWindow.pendingDownloadId
-                    var download = secondaryWindow.pendingDownloadRequests[id]
-                    if (download) {
-                        window.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
-                        secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
-                    }
-                    delete secondaryWindow.pendingDownloadRequests[id]
-                    secondaryWindow.pendingDownloadId = ""
-                    secondaryWindow.pendingDownloadSuggestedName = ""
-                    window.restoreOverlayFocus()
-                }
-
-                onDownloadRequested: function(download) {
-                    var owner = secondaryWindow.downloadOwnerFor(download)
-                    if (owner !== secondaryWindow && owner.handleDownloadRequested) {
-                        owner.handleDownloadRequested(download)
-                        return
-                    }
-                    var id = String(download.id)
-                    var safeName = secondaryUi.offer_download(id, download.url.toString(), download.suggestedFileName)
-                    var requestedPath = download.savePageFormat === WebEngineDownloadRequest.MimeHtmlSaveFormat
-                            ? secondaryUi.take_save_page_path() : ""
-                    if (requestedPath.length > 0) {
-                        var requestedName = secondaryUi.accept_download_path(id, requestedPath)
-                        if (requestedName.length === 0) {
-                            window.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
-                            secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
-                            return
-                        }
-                        var requestedSeparator = requestedPath.lastIndexOf("/")
-                        var requestedDirectory = requestedSeparator > 0
-                                ? requestedPath.slice(0, requestedSeparator) : "/"
-                        var stagingDirectory = window.downloadStagingDirectory(secondaryUi, id)
-                        if (stagingDirectory.length === 0) {
-                            window.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
-                            secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
-                            return
-                        }
-                        download.downloadDirectory = stagingDirectory
-                        download.downloadFileName = requestedName
-                        secondaryWindow.activeDownloads[id] = download
-                        download.stateChanged.connect(function() {
-                            secondaryUi.update_download(id, secondaryWindow.secondaryDownloadStateName(download), download.receivedBytes, false)
-                        })
-                        window.resolveQtRequest(secondaryUi, download, "download", "accept", [])
-                        secondaryUi.update_download(id, "in-progress", 0, false)
-                        return
-                    }
-                    var directory = secondaryUi.default_download_directory()
-                    if (window.downloadsAskDestination()) {
-                        if (secondaryWindow.pendingDownloadId.length > 0) {
-                            window.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
-                            secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
-                            return
-                        }
-                        secondaryWindow.pendingDownloadRequests[id] = download
-                        secondaryWindow.pendingDownloadId = id
-                        secondaryWindow.pendingDownloadSuggestedName = safeName
-                        window.captureOverlayFocus(secondaryWindow, secondaryWindow.activeView)
-                        secondaryUi.update_download(id, "selecting-destination", 0, false)
-                        secondaryDownloadChooser.currentFile = window.fileUrlForPath(
-                            directory + "/" + safeName)
-                        secondaryDownloadChooser.open()
-                        return
-                    }
-                    var finalName = secondaryUi.accept_download(id, directory, safeName)
-                    if (finalName.length === 0) {
-                        window.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
-                        return
-                    }
-                    var stagingDirectory = window.downloadStagingDirectory(secondaryUi, id)
-                    if (stagingDirectory.length === 0) {
-                        delete secondaryWindow.activeDownloads[id]
-                        window.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
-                        secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
-                        return
-                    }
-                    download.downloadDirectory = stagingDirectory
-                    download.downloadFileName = finalName
-                    download.stateChanged.connect(function() {
-                        secondaryUi.update_download(id, secondaryWindow.secondaryDownloadStateName(download), download.receivedBytes, false)
-                    })
-                    window.resolveQtRequest(secondaryUi, download, "download", "accept", [])
-                    secondaryWindow.activeDownloads[id] = download
-                    secondaryUi.update_download(id, "in-progress", 0, false)
-                }
-                onDownloadFinished: function(download) {
-                    var owner = secondaryWindow.downloadOwnerFor(download)
-                    if (owner !== secondaryWindow && owner.handleDownloadFinished) {
-                        owner.handleDownloadFinished(download)
-                        return
-                    }
-                    var id = String(download.id)
-                    var state = secondaryWindow.secondaryDownloadStateName(download)
-                    if (state === "completed" && !secondaryUi.finalize_download(id)) {
-                        state = "interrupted"
-                    } else if (state !== "completed") {
-                        secondaryUi.discard_download_staging(id)
-                    }
-                    delete secondaryWindow.activeDownloads[id]
-                    delete secondaryWindow.pendingDownloadRequests[id]
-                    if (secondaryWindow.pendingDownloadId === id) {
-                        secondaryWindow.pendingDownloadId = ""
-                        secondaryWindow.pendingDownloadSuggestedName = ""
-                    }
-                    secondaryUi.update_download(id, state, download.receivedBytes, true)
-                }
-                onPresentNotification: function(notification) {
-                    window.presentWebNotification(
-                        secondaryUi, notification, secondaryWindow.windowTransientProfile)
-                }
-            }
-
-            BrowserUi {
-                id: secondaryUi
-                status_text: "Ready"
-            }
-
-            FerricShutdownDecisionDialog {
-                hostWindow: secondaryWindow
-                promptVisible: secondaryWindow.windowShutdownPromptVisible
-                title: "Active browser work is still running"
-                message: "Cancel active work before closing, or keep this window open."
-                keepLabel: "Keep window open"
-                proceedLabel: "Cancel and close"
-                dialogHeight: 190 * window.chromeScale
-                onKeepRequested: {
-                    secondaryWindow.windowShutdownPromptVisible = false
-                    window.abortApplicationShutdown()
-                    secondaryUi.status_text = "Shutdown cancelled"
-                }
-                onProceedRequested: secondaryWindow.cancelDownloadsAndQuit()
-            }
-
-            FerricShutdownDecisionDialog {
-                hostWindow: secondaryWindow
-                promptVisible: secondaryWindow.windowShutdownPagePromptVisible
-                title: "Page state may be lost"
-                message: secondaryWindow.windowShutdownPagePromptReason
-                         + " Close anyway may lose that state."
-                keepLabel: "Keep window open"
-                proceedLabel: "Close anyway"
-                proceedAccessibleName: "Close anyway despite page state"
-                dialogHeight: 220 * window.chromeScale
-                onKeepRequested: {
-                    secondaryWindow.cancelPageStateProbe()
-                    window.abortApplicationShutdown()
-                    secondaryUi.status_text = "Shutdown cancelled"
-                }
-                onProceedRequested: secondaryWindow.finalizeQuit()
-            }
-
-            FerricShutdownDecisionDialog {
-                hostWindow: secondaryWindow
-                promptVisible: secondaryWindow.windowShutdownStoragePromptVisible
-                title: "Durable profile state could not be flushed"
-                message: "The window remains open so its session and profile data are not abandoned. Retry the close after checking storage availability, or keep it open."
-                keepLabel: "Keep window open"
-                proceedLabel: "Retry close"
-                keepAccessibleName: "Keep window open after storage flush failure"
-                dialogBorderColor: window.errorColor
-                dialogHeight: 220 * window.chromeScale
-                stackingOrder: 101
-                onKeepRequested: {
-                    secondaryWindow.windowShutdownStoragePromptVisible = false
-                    window.abortApplicationShutdown()
-                    secondaryUi.status_text = "Shutdown cancelled; durable state was retained"
-                }
-                onProceedRequested: secondaryWindow.finalizeQuit()
-            }
-
-            Connections {
-                target: browserUi
-                function onConfig_jsonChanged() {
-                    secondaryUi.set_startup_configuration(
-                                browserUi.config_json, browserUi.config_base_json,
-                                browserUi.cli_overrides_json,
-                                secondaryUi.profile_overrides_json,
-                                browserUi.config_path, secondaryUi.config_source)
-                }
-                function onConfig_base_jsonChanged() {
-                    secondaryUi.set_startup_configuration(
-                                secondaryUi.config_json, browserUi.config_base_json,
-                                secondaryUi.cli_overrides_json,
-                                secondaryUi.profile_overrides_json,
-                                secondaryUi.config_path, secondaryUi.config_source)
-                }
-                function onContexts_jsonChanged() {
-                    secondaryUi.set_contexts_configuration(browserUi.contexts_json)
-                }
-            }
-
-            Connections {
-                target: secondaryUi
-        function onContext_route_idChanged() {
-            window.showContextRoute(secondaryUi)
-        }
-        function onContext_workspaceChanged() {
-            window.routeContextWorkspace(secondaryUi)
-        }
-                function onExternal_navigation_visibleChanged() {
-                    if (secondaryUi.external_navigation_visible) {
-                        window.captureOverlayFocus(secondaryWindow, secondaryWindow.activeView)
-                    } else {
-                        window.restoreOverlayFocus()
-                    }
-                }
-            }
-
-            Popup {
-                id: secondaryExternalNavigationPopup
-                parent: Overlay.overlay
-                modal: true
-                focus: true
-                closePolicy: Popup.NoAutoClose
-                visible: secondaryUi.external_navigation_visible
-                width: Math.min(620, secondaryWindow.width - 48)
-                padding: 14
-                x: Math.round((secondaryWindow.width - width) / 2)
-                y: Math.round((secondaryWindow.height - height) / 2)
-
-                background: Rectangle {
-                    color: window.panelColor
-                    border.color: window.warningColor
-                    radius: 4
-                }
-
-                contentItem: ColumnLayout {
-                    focus: true
-                    Accessible.role: Accessible.Dialog
-                    Accessible.name: "External URI confirmation"
-                    spacing: 10
-
-                    Keys.onPressed: function(event) {
-                        if (event.key === Qt.Key_Escape) {
-                            secondaryUi.cancel_external_navigation()
-                            event.accepted = true
-                        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                            if (secondaryUi.confirm_external_navigation()) {
-                                secondaryWindow.applySwitcherEngineAction()
-                            }
-                            event.accepted = true
-                        }
-                    }
-
-                    Label {
-                        Layout.fillWidth: true
-                        text: "Open with system handler?"
-                        color: window.primaryTextColor
-                        font.bold: true
-                    }
-                    Label {
-                        Layout.fillWidth: true
-                        text: "This URI will leave Ferric Browser and may launch another application."
-                        color: window.warningColor
-                        wrapMode: Text.WordWrap
-                    }
-                    Label {
-                        Layout.fillWidth: true
-                        text: "Scheme: " + secondaryUi.external_navigation_scheme
-                        color: window.mutedTextColor
-                    }
-                    Label {
-                        Layout.fillWidth: true
-                        text: secondaryUi.external_navigation_uri
-                        color: window.primaryTextColor
-                        wrapMode: Text.WrapAnywhere
-                        maximumLineCount: 8
-                        elide: Text.ElideRight
-                        Accessible.name: "External URI"
-                    }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Item { Layout.fillWidth: true }
-                        Button {
-                            text: "Cancel"
-                            Accessible.name: "Cancel external URI"
-                            onClicked: secondaryUi.cancel_external_navigation()
-                        }
-                        Button {
-                            text: "Open with system handler"
-                            Accessible.name: "Confirm external URI"
-                            onClicked: {
-                                if (secondaryUi.confirm_external_navigation()) {
-                                    secondaryWindow.applySwitcherEngineAction()
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            RequestInterceptor {
-                id: secondaryRequestInterceptor
-                enabled: secondaryUi.blocking_enabled || securityDenyHosts.length > 0
-                blockedHosts: secondaryUi.blocking_hosts
-                exceptionHosts: secondaryUi.blocking_exceptions
-                blockedRuleHosts: secondaryUi.blocking_rule_hosts
-                blockedRuleListIds: secondaryUi.blocking_rule_list_ids
-                exceptionRuleHosts: secondaryUi.blocking_exception_rule_hosts
-                exceptionRuleListIds: secondaryUi.blocking_exception_rule_list_ids
-                adblockEngineHandle: secondaryUi.blocking_adblock_handle
-                bypassSites: secondaryUi.blocking_bypass_sites
-                securityDenyHosts: secondaryUi.blocking_security_deny_hosts
-            }
-
-            function secondaryDownloadStateName(download) {
-                if (download.state === WebEngineDownloadRequest.DownloadInProgress) {
-                    return "in-progress"
-                }
-                if (download.state === WebEngineDownloadRequest.DownloadCompleted) {
-                    return "completed"
-                }
-                if (download.state === WebEngineDownloadRequest.DownloadCancelled) {
-                    return "cancelled"
-                }
-                if (download.state === WebEngineDownloadRequest.DownloadInterrupted) {
-                    return "interrupted"
-                }
-                return "offered"
-            }
-
-            function secondaryFileDialogPaths() {
-                var paths = []
-                var urls = secondaryDialogSurfaces.engineFileMode === FileDialog.OpenFiles
-                        ? secondaryDialogSurfaces.engineFileSelectedFiles
-                        : [secondaryDialogSurfaces.engineFileSelectedFile]
-                for (var i = 0; i < urls.length; ++i) {
-                    var path = urls[i].toLocalFile()
-                    if (!path || urls[i].scheme !== "file") {
-                        return []
-                    }
-                    paths.push(path)
-                }
-                return paths
-            }
-
-            function secondaryFolderDialogPaths() {
-                var url = secondaryDialogSurfaces.engineFolderSelectedFolder
-                var path = url && url.scheme === "file" ? url.toLocalFile() : ""
-                return path ? [path] : []
-            }
-
-            function clearSecondaryFileDialog(cancelRequest, message) {
-                var request = secondaryWindow.pendingFileDialogRequest
-                var hadRequest = !!request
-                secondaryWindow.pendingFileDialogRequest = null
-                secondaryWindow.pendingFileDialogView = null
-                secondaryWindow.pendingFileDialogWaitingForPortal = false
-                secondaryWindow.pendingFileDialogPortalDeadlineMs = 0
-                secondaryFilePortalTimer.stop()
-                if (secondaryDialogSurfaces.engineFileVisible) {
-                    secondaryDialogSurfaces.closeEngineFile()
-                }
-                if (secondaryDialogSurfaces.engineFolderVisible) {
-                    secondaryDialogSurfaces.closeEngineFolder()
-                }
-                if (hadRequest) {
-                    window.restoreOverlayFocus()
-                }
-                if (cancelRequest && request) {
-                    window.resolveQtRequest(secondaryUi, request, "file-dialog", "dialogReject", [])
-                }
-                if (message) {
-                    secondaryUi.status_text = message
-                }
-            }
-
-            function acceptFileDialog() {
-                var request = secondaryWindow.pendingFileDialogRequest
-                var paths = secondaryWindow.secondaryFileDialogPaths()
-                secondaryWindow.pendingFileDialogRequest = null
-                secondaryWindow.pendingFileDialogView = null
-                if (!request || paths.length === 0) {
-                    if (request) {
-                        window.resolveQtRequest(secondaryUi, request, "file-dialog", "dialogReject", [])
-                    }
-                    if (request) {
-                        window.restoreOverlayFocus()
-                    }
-                    secondaryUi.status_text = "File selection returned no local paths"
-                    return
-                }
-                window.resolveQtRequest(secondaryUi, request, "file-dialog", "dialogAccept", [paths])
-                window.restoreOverlayFocus()
-                secondaryUi.status_text = paths.length === 1
-                        ? "File selected"
-                        : paths.length + " files selected"
-            }
-
-            function acceptFolderDialog() {
-                var request = secondaryWindow.pendingFileDialogRequest
-                var paths = secondaryWindow.secondaryFolderDialogPaths()
-                secondaryWindow.pendingFileDialogRequest = null
-                secondaryWindow.pendingFileDialogView = null
-                if (!request || paths.length === 0) {
-                    if (request) {
-                        window.resolveQtRequest(secondaryUi, request, "file-dialog", "dialogReject", [])
-                    }
-                    if (request) {
-                        window.restoreOverlayFocus()
-                    }
-                    secondaryUi.status_text = "Folder selection returned no local path"
-                    return
-                }
-                window.resolveQtRequest(secondaryUi, request, "file-dialog", "dialogAccept", [paths])
-                window.restoreOverlayFocus()
-                secondaryUi.status_text = "Folder selected"
-            }
-
-            function rejectFileDialog() {
-                var request = secondaryWindow.pendingFileDialogRequest
-                if (!request) {
-                    return
-                }
-                secondaryWindow.pendingFileDialogRequest = null
-                secondaryWindow.pendingFileDialogView = null
-                window.resolveQtRequest(secondaryUi, request, "file-dialog", "dialogReject", [])
-                window.restoreOverlayFocus()
-                secondaryUi.status_text = "File selection cancelled"
-            }
-
-            function handleFileDialogRequested(request) {
-                if (secondaryWindow.pendingFileDialogRequest) {
-                    secondaryWindow.clearSecondaryFileDialog(true,
-                            "Previous file selection cancelled")
-                    window.resolveQtRequest(
-                        secondaryUi, request, "file-dialog", "dialogReject", [])
-                    secondaryUi.status_text = "Another file selection is already open"
-                    return
-                }
-                window.captureOverlayFocus(secondaryWindow, secondaryWindow.activeView)
-                secondaryWindow.pendingFileDialogRequest = request
-                secondaryWindow.pendingFileDialogView = secondaryWindow.activeView
-                var requestUi = secondaryUi
-                if (window.desktopPortalMode(requestUi) === "required") {
-                    var status = window.desktopPortalCapabilityStatus(requestUi, "file_chooser")
-                    if (status === "not-probed") {
-                        browserUi.probe_desktop_portals()
-                        status = window.desktopPortalCapabilityStatus(requestUi, "file_chooser")
-                    }
-                    if (status === "pending" || status === "not-probed") {
-                        secondaryWindow.pendingFileDialogWaitingForPortal = true
-                        secondaryWindow.pendingFileDialogPortalDeadlineMs = Date.now() + 5000
-                        requestUi.status_text = "Checking required desktop portal…"
-                        secondaryFilePortalTimer.start()
-                        return
-                    }
-                    if (status !== "available") {
-                        secondaryWindow.clearSecondaryFileDialog(
-                            true, "Required desktop portal unavailable; file selection cancelled")
-                        return
-                    }
-                }
-                secondaryWindow.pendingFileDialogWaitingForPortal = false
-                secondaryFilePortalTimer.stop()
-                if (request.mode === FileDialogRequest.FileModeUploadFolder) {
-                    secondaryDialogSurfaces.openEngineFolder()
-                    return
-                }
-                secondaryDialogSurfaces.engineFileMode = request.mode === FileDialogRequest.FileModeOpenMultiple
-                        ? FileDialog.OpenFiles
-                        : request.mode === FileDialogRequest.FileModeSave
-                            ? FileDialog.SaveFile
-                            : FileDialog.OpenFile
-                secondaryDialogSurfaces.engineFileNameFilters = window.fileDialogNameFilters(request)
-                secondaryDialogSurfaces.engineFileCurrentFile = request.defaultFileName.length > 0
-                        ? request.defaultFileName
-                        : ""
-                secondaryDialogSurfaces.engineFileTitle = request.mode === FileDialogRequest.FileModeSave
-                        ? "Save file"
-                        : request.mode === FileDialogRequest.FileModeOpenMultiple
-                            ? "Choose files"
-                            : "Choose file"
-                secondaryDialogSurfaces.openEngineFile()
-            }
-
-            function maybeOpenPendingFileDialog() {
-                if (!secondaryWindow.pendingFileDialogWaitingForPortal
-                        || !secondaryWindow.pendingFileDialogRequest) {
-                    secondaryFilePortalTimer.stop()
-                    return
-                }
-                if (Date.now() >= secondaryWindow.pendingFileDialogPortalDeadlineMs) {
-                    secondaryWindow.clearSecondaryFileDialog(
-                        true, "Desktop portal check timed out; file selection cancelled")
-                    return
-                }
-                var ui = secondaryUi
-                var status = window.desktopPortalCapabilityStatus(ui, "file_chooser")
-                if (status === "pending" || status === "not-probed") {
-                    return
-                }
-                if (status !== "available") {
-                    secondaryWindow.clearSecondaryFileDialog(
-                        true, "Required desktop portal unavailable; file selection cancelled")
-                    return
-                }
-                secondaryWindow.pendingFileDialogWaitingForPortal = false
-                secondaryFilePortalTimer.stop()
-                var request = secondaryWindow.pendingFileDialogRequest
-                if (request.mode === FileDialogRequest.FileModeUploadFolder) {
-                    secondaryDialogSurfaces.openEngineFolder()
-                    return
-                }
-                secondaryDialogSurfaces.engineFileMode = request.mode === FileDialogRequest.FileModeOpenMultiple
-                        ? FileDialog.OpenFiles
-                        : request.mode === FileDialogRequest.FileModeSave
-                            ? FileDialog.SaveFile
-                            : FileDialog.OpenFile
-                secondaryDialogSurfaces.engineFileNameFilters = window.fileDialogNameFilters(request)
-                secondaryDialogSurfaces.engineFileCurrentFile = request.defaultFileName.length > 0
-                        ? request.defaultFileName : ""
-                secondaryDialogSurfaces.engineFileTitle = request.mode === FileDialogRequest.FileModeSave
-                        ? "Save file"
-                        : request.mode === FileDialogRequest.FileModeOpenMultiple
-                            ? "Choose files"
-                            : "Choose file"
-                secondaryDialogSurfaces.openEngineFile()
-            }
-
-            function clearFileDialogForView(view) {
-                if (secondaryWindow.pendingFileDialogView === view) {
-                    secondaryWindow.clearSecondaryFileDialog(
-                        true, "File selection cancelled by navigation")
-                }
-            }
-
-            function applySwitcherEngineAction() {
-                var action = secondaryUi.take_engine_action()
-                if (!action || action.length === 0) {
-                    secondaryWindow.activeView.forceActiveFocus()
-                    return
-                }
-                if (action.indexOf("command-prefill\t") === 0) {
-                    secondaryCommandLine.text = action.slice("command-prefill\t".length)
-                    secondaryCommandLine.cursorPosition = secondaryCommandLine.text.length
-                    secondaryCommandLine.forceActiveFocus()
-                    return
-                }
-                if (action === "quit-request") {
-                    window.beginQuitRequest()
-                    return
-                }
-                if (action === "window-close-request") {
-                    secondaryWindow.beginQuitRequest()
-                    return
-                }
-                if (action === "tab-detach" || action.indexOf("tab-detach\t") === 0
-                        || action.indexOf("tab-give\t") === 0) {
-                    window.executeBrowserTransferAction(secondaryUi, secondaryWindow, action)
-                    return
-                }
-                if (action.indexOf("tab-suspend-request\t") === 0) {
-                    secondaryUi.status_text = "Only hidden tabs can be suspended"
-                    return
-                }
-                if (action.indexOf("tab-discard-request\t") === 0) {
-                    secondaryUi.status_text = "Only hidden tabs can be discarded"
-                    return
-                }
-                if (action.indexOf("tab-resume\t") === 0) {
-                    secondaryWindow.activeView.lifecycleState = WebEngineView.LifecycleState.Active
-                    secondaryUi.status_text = "Tab resumed; page state is live"
-                    return
-                }
-                if (action.indexOf("tab-mute\t") === 0) {
-                    var secondaryMuteParts = action.split("\t")
-                    var secondaryTabId = secondaryUi.tab_id_for_index(0)
-                    var secondaryMuted = secondaryMuteParts.length >= 3
-                            && secondaryMuteParts[2] === "true"
-                    if (secondaryMuteParts.length < 2
-                            || secondaryMuteParts[1] !== secondaryTabId) {
-                        secondaryUi.status_text = "Tab mute target is stale"
-                        return
-                    }
-                    secondaryWindow.activeView.audioMuted = secondaryMuted
-                    secondaryUi.status_text = secondaryMuted ? "Tab muted" : "Tab unmuted"
-                    return
-                }
-                if (action.indexOf("navigate\t") === 0) {
-                    var navigation = action.split("\t")
-                    if (navigation.length >= 3) {
-                        secondaryWindow.activeView.url = navigation.slice(2).join("\t")
-                        secondaryWindow.activeView.forceActiveFocus()
-                        return
-                    }
-                }
-                if (action.indexOf("reload\t") === 0) {
-                    var secondaryReloadParts = action.split("\t")
-                    if (secondaryReloadParts[1] === "true") {
-                        secondaryWindow.activeView.reloadAndBypassCache()
-                    } else {
-                        secondaryWindow.activeView.reload()
-                    }
-                    secondaryWindow.activeView.forceActiveFocus()
-                    return
-                }
-                if (action.indexOf("reopen-window\t") === 0) {
-                    window.openReopenedWindow(secondaryUi, secondaryWindow, action)
-                    secondaryWindow.activeView.forceActiveFocus()
-                    return
-                }
-                if (action.indexOf("zoom\t") === 0) {
-                    var secondaryZoomParts = action.split("\t")
-                    if (secondaryZoomParts.length >= 3) {
-                        var secondaryZoomFactor = Number(secondaryZoomParts[2])
-                        if (Number.isFinite(secondaryZoomFactor)
-                                && secondaryZoomFactor >= 0.25
-                                && secondaryZoomFactor <= 5.0) {
-                            secondaryWindow.activeView.zoomFactor = secondaryZoomFactor
-                        }
-                    }
-                    secondaryWindow.activeView.forceActiveFocus()
-                    return
-                }
-                if (action.indexOf("find-next\t") === 0) {
-                    var secondaryFindParts = action.split("\t")
-                    var secondaryFindCount = Number(secondaryFindParts[1])
-                    var secondaryFindBackward = secondaryFindParts[2] === "true"
-                    if (Number.isFinite(secondaryFindCount)
-                            && secondaryFindCount >= 1 && secondaryFindCount <= 100) {
-                        var secondaryFindFlags = window.searchFindFlags(
-                            secondaryUi.search_text, secondaryFindParts[3], secondaryFindBackward)
-                        for (var secondaryFindIndex = 0;
-                             secondaryFindIndex < secondaryFindCount;
-                             ++secondaryFindIndex) {
-                            secondaryWindow.activeView.findText(secondaryUi.search_text, secondaryFindFlags)
-                        }
-                    }
-                    secondaryWindow.activeView.forceActiveFocus()
-                    return
-                }
-                if (action.indexOf("find\t") === 0) {
-                    var secondaryFindRequest = action.split("\t")
-                    var secondaryFindFlags = window.searchFindFlags(
-                        secondaryUi.search_text, secondaryFindRequest[2],
-                        secondaryFindRequest[1] === "true")
-                    secondaryWindow.activeView.findText(secondaryUi.search_text, secondaryFindFlags)
-                    secondaryWindow.activeView.forceActiveFocus()
-                    return
-                }
-                if (action.indexOf("scroll\t") === 0
-                        || action.indexOf("scroll-page\t") === 0
-                        || action.indexOf("scroll-to\t") === 0) {
-                    var secondaryScrollParts = action.split("\t")
-                    if (secondaryScrollParts[0] === "scroll" && secondaryScrollParts.length >= 3) {
-                        window.runBrowserScript(secondaryWindow.activeView, window.scrollScript(
-                            "scroll", secondaryScrollParts[1], false,
-                            Number(secondaryScrollParts[2])))
-                    } else if (secondaryScrollParts[0] === "scroll-page"
-                               && secondaryScrollParts.length >= 4) {
-                        window.runBrowserScript(secondaryWindow.activeView, window.scrollScript(
-                            "scroll-page", secondaryScrollParts[1],
-                            secondaryScrollParts[2] === "true",
-                            Number(secondaryScrollParts[3])))
-                    } else if (secondaryScrollParts[0] === "scroll-to"
-                               && secondaryScrollParts.length >= 2) {
-                        window.runBrowserScript(secondaryWindow.activeView, window.scrollScript(
-                            "scroll-to", secondaryScrollParts[1], false, 1))
-                    }
-                    secondaryWindow.activeView.forceActiveFocus()
-                    return
-                }
-                if (action.indexOf("download-open\t") === 0) {
-                    window.openExternalUri(secondaryUi,
-                                           action.split("\t").slice(1).join("\t"))
-                }
-                if (action.indexOf("save-page\t") === 0) {
-                    var secondarySaveParts = action.split("\t")
-                    if (secondarySaveParts.length >= 3) {
-                        var secondarySavePath = secondaryUi.prepare_save_page(
-                            secondarySaveParts.slice(2).join("\t"))
-                        if (secondarySavePath.length > 0) {
-                            secondaryWindow.activeView.save(
-                                secondarySavePath,
-                                WebEngineDownloadRequest.MimeHtmlSaveFormat)
-                            secondaryUi.status_text =
-                                    "Page save requested; completion is tracked in Downloads"
-                        } else {
-                            secondaryUi.take_save_page_path()
-                        }
-                    }
-                    secondaryWindow.activeView.forceActiveFocus()
-                    return
-                }
-                if (action.indexOf("view-source\t") === 0) {
-                    var secondarySourceParts = action.split("\t")
-                    if (secondarySourceParts.length >= 3) {
-                        var secondarySourceUrl = secondarySourceParts.slice(2).join("\t")
-                        secondaryWindow.activeView.url = "view-source:" + secondarySourceUrl
-                        secondaryUi.status_text = "Viewing page source"
-                    }
-                    secondaryWindow.activeView.forceActiveFocus()
-                    return
-                }
-                if (action === "jseval") {
-                    var secondaryEvalId = String(secondaryUi.jseval_tab_id)
-                    var secondaryEvalIndex = secondaryUi.tab_index_for_id(secondaryEvalId)
-                    var secondaryEvalView = secondaryEvalIndex >= 0
-                            && secondaryEvalIndex === secondaryUi.active_tab_index
-                            ? secondaryWindow.activeView : null
-                    var secondaryEvalScript = String(secondaryUi.jseval_script)
-                    var secondaryEvalWorld = secondaryUi.jseval_world === "page"
-                            ? WebEngineScript.MainWorld : window.browserScriptWorld
-                    if (!secondaryEvalView || secondaryEvalScript.length === 0
-                            || secondaryEvalScript.length > 65536) {
-                        secondaryUi.status_text =
-                                "JavaScript evaluation target is stale or invalid"
-                        return
-                    }
-                    window.runBrowserScript(secondaryEvalView, secondaryEvalScript,
-                        function() {
-                            secondaryUi.status_text = "JavaScript evaluation completed"
-                        }, secondaryEvalWorld)
-                    secondaryEvalView.forceActiveFocus()
-                    return
-                }
-                if (action.indexOf("devtools\t") === 0) {
-                    var secondaryDevtoolsParts = action.split("\t")
-                    var secondaryDetach = secondaryDevtoolsParts.length >= 2
-                            && secondaryDevtoolsParts[1] === "true"
-                    if (!secondaryDetach) {
-                        if (secondaryWindow.windowTransferMode) {
-                            secondaryUi.status_text =
-                                    "Use devtools --detach for a transferred view"
-                        } else {
-                            secondaryWindow.devToolsVisible =
-                                    !secondaryWindow.devToolsVisible
-                            secondaryUi.status_text = secondaryWindow.devToolsVisible
-                                    ? "DevTools attached" : "DevTools closed"
-                        }
-                    } else if (secondaryWindow.activeView) {
-                        if (secondaryWindow.devToolsWindow) {
-                            secondaryWindow.devToolsWindow.close()
-                            secondaryWindow.devToolsWindow = null
-                        }
-                        var secondaryDevtools = devToolsWindowComponent.createObject(null, {
-                            inspectView: secondaryWindow.activeView
-                        })
-                        if (secondaryDevtools) {
-                            secondaryWindow.devToolsWindow = secondaryDevtools
-                            secondaryWindow.activeView.devToolsView =
-                                    secondaryDevtools.inspectorView
-                            secondaryDevtools.show()
-                            secondaryUi.status_text = "DevTools detached"
-                        } else {
-                            secondaryUi.status_text = "DevTools window could not be created"
-                        }
-                    }
-                    secondaryWindow.activeView.forceActiveFocus()
-                    return
-                }
-                if (action.indexOf("print\t") === 0) {
-                    var secondaryPrintParts = action.split("\t")
-                    var secondaryPrintPath = secondaryUi.prepare_print_job()
-                    if (secondaryPrintPath.length > 0 && secondaryWindow.activeView) {
-                        secondaryWindow.activeView.printToPdf(function(success) {
-                            secondaryUi.finish_print_job(secondaryPrintPath, success)
-                        })
-                    } else {
-                        secondaryUi.finish_print_job(secondaryPrintPath, false)
-                    }
-                    secondaryWindow.activeView.forceActiveFocus()
-                    return
-                }
-                if (action.indexOf("external-open\t") === 0) {
-                    window.openExternalUri(secondaryUi,
-                                           action.split("\t").slice(1).join("\t"))
-                }
-                secondaryWindow.activeView.forceActiveFocus()
-            }
-
-            header: ToolBar {
-                height: 0
-                visible: false
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.margins: 8
-                    spacing: 8
-
-                    ToolButton {
-                        text: "‹"
-                        Accessible.name: "Back"
-                        onClicked: {
-                            if (secondaryWindow.activeView.canGoBack) {
-                                secondaryUi.back()
-                                secondaryWindow.activeView.goBack()
-                            } else {
-                                secondaryUi.status_text = "History boundary reached"
-                            }
-                        }
-                    }
-                    ToolButton {
-                        text: "›"
-                        Accessible.name: "Forward"
-                        onClicked: {
-                            if (secondaryWindow.activeView.canGoForward) {
-                                secondaryUi.forward()
-                                secondaryWindow.activeView.goForward()
-                            } else {
-                                secondaryUi.status_text = "History boundary reached"
-                            }
-                        }
-                    }
-                    TextField {
-                        id: secondaryAddress
-                        Layout.fillWidth: true
-                        property bool addressEditing: false
-                        function refreshAddressPresentation() {
-                            if (!addressEditing) {
-                                text = window.addressPresentation(
-                                    secondaryUi.display_url,
-                                    width / Math.max(1, font.pixelSize * 0.56))
-                            }
-                        }
-                        text: window.addressPresentation(
-                            secondaryUi.display_url,
-                            width / Math.max(1, font.pixelSize * 0.56))
-                        placeholderText: "Enter a URL"
-                        Accessible.name: "Address"
-                        Accessible.description: secondaryUi.display_url
-                        Accessible.role: Accessible.EditableText
-                        Accessible.editable: true
-                        selectByMouse: true
-                        onActiveFocusChanged: {
-                            addressEditing = activeFocus
-                            if (addressEditing) {
-                                text = secondaryUi.display_url
-                                cursorPosition = text.length
-                            } else {
-                                refreshAddressPresentation()
-                            }
-                        }
-                        onWidthChanged: refreshAddressPresentation()
-                        Connections {
-                            target: secondaryUi
-                            function onDisplay_urlChanged() {
-                                secondaryAddress.refreshAddressPresentation()
-                            }
-                        }
-                        onAccepted: {
-                            secondaryUi.navigate(text)
-                            secondaryWindow.activeView.url = secondaryUi.initial_url
-                        }
-                    }
-                    Label {
-                        text: secondaryWindow.windowEphemeralProfile
-                              ? secondaryWindow.windowProfileLabel
-                              : (secondaryWindow.windowPrivateProfile
-                                 ? "private" : secondaryWindow.windowProfileName)
-                        color: window.primaryTextColor
-                        Accessible.name: "Profile"
-                    }
-                    ToolButton {
-                        text: "−"
-                        Accessible.name: "Zoom out"
-                        onClicked: {
-                            if (secondaryUi.execute_ui_action("browser.tab.zoom", "out")) {
-                                secondaryWindow.applySwitcherEngineAction()
-                            }
-                        }
-                    }
-                    ToolButton {
-                        text: "100%"
-                        Accessible.name: "Reset page zoom"
-                        onClicked: {
-                            if (secondaryUi.execute_ui_action("browser.tab.zoom", "reset")) {
-                                secondaryWindow.applySwitcherEngineAction()
-                            }
-                        }
-                    }
-                    ToolButton {
-                        text: "+"
-                        Accessible.name: "Zoom in"
-                        onClicked: {
-                            if (secondaryUi.execute_ui_action("browser.tab.zoom", "in")) {
-                                secondaryWindow.applySwitcherEngineAction()
-                            }
-                        }
-                    }
-                }
-            }
-
-            Item {
-                id: transferViewHost
-                anchors.fill: parent
-                visible: secondaryWindow.windowTransferMode
-            }
-
-            Item {
-                id: fallbackViewHost
-                anchors.fill: parent
-                visible: !secondaryWindow.windowTransferMode
-            }
-
-            WebEngineView {
-                id: secondaryView
-                property var viewUi: secondaryUi
-                property var viewHost: secondaryWindow
-                property var viewProfile: secondaryWindow.windowWebEngineProfile
-                property var viewInterceptor: secondaryWindow.windowRequestInterceptor
-                property bool viewTransientProfile: secondaryWindow.windowTransientProfile
-                property bool viewTransferred: false
-                property bool viewIsSecondaryStatic: true
-                property int tabIndex: -1
-                property var viewTabs: null
-                property var viewModel: ({})
-                property var pageUserScriptNames: []
-                property string pageUserScriptReloadUrl: ""
-                property string pageDialogDocumentKey: ""
-                property int pageDialogCount: 0
-                property bool pageDialogSuppressed: false
-                property bool rendererFailed: false
-                property int rendererFailureCount: 0
-                property double rendererFailureAt: 0
-                property string rendererFailureSafeUrl: ""
-                property string rendererFailureReason: ""
-                property int rendererFailureExitCode: 0
-                devToolsView: secondaryWindow.devToolsVisible
-                        ? secondaryWindow.devToolsAttachedView : null
-                // Navigation-scoped content settings are snapshotted per
-                // document; live config changes apply to the next navigation.
-                property var effectiveSiteSettings: ({ values: {}, matched_rules: [] })
-                function refreshEffectiveSiteSettings() {
-                    effectiveSiteSettings = window.siteRuleSettingsFor(
-                        viewUi, secondaryView.url.toString())
-                }
-                Connections {
-                    target: viewUi
-                    function onSite_experiment_kindChanged() {
-                        secondaryView.refreshEffectiveSiteSettings()
-                    }
-                }
-                property int blockedRequestCount: {
-                    var host = secondaryView.url && secondaryView.url.host
-                            ? String(secondaryView.url.host) : ""
-                    var counts = viewInterceptor.blockedSiteCounts || ({})
-                    return host.length > 0 && counts[host] !== undefined ? Number(counts[host]) : 0
-                }
-                anchors.fill: parent
-                visible: !secondaryWindow.windowTransferMode
-                profile: viewProfile
-                url: secondaryWindow.windowTransferMode ? "about:blank" : secondaryUi.initial_url
-                settings.javascriptEnabled: !!window.siteRuleValue(
-                    effectiveSiteSettings, "content.javascript", true)
-                settings.autoLoadImages: !!window.siteRuleValue(
-                    effectiveSiteSettings, "content.images", true)
-                settings.forceDarkMode: !!window.siteRuleValue(
-                    effectiveSiteSettings, "content.force_dark", false)
-                settings.playbackRequiresUserGesture:
-                    window.siteRuleValue(effectiveSiteSettings, "content.autoplay", "engine-default")
-                    === "require-gesture"
-                Accessible.name: "Web content"
-                Component.onCompleted: {
-                    refreshEffectiveSiteSettings()
-                }
-                onUrlChanged: {
-                    refreshEffectiveSiteSettings()
-                    if (viewTabs === tabs) {
-                        viewUi.navigation_url_changed_for(tabIndex, url.toString())
-                    } else {
-                        viewUi.navigation_url_changed(url.toString())
-                    }
-                    if (viewHost === secondaryWindow) {
-                        secondaryAddress.text = viewUi.display_url
-                    }
-                }
-                onTitleChanged: {
-                    if (viewTabs === tabs && tabIndex >= 0 && tabIndex < tabs.count) {
-                        tabs.setProperty(tabIndex, "title", title || "New tab")
-                    }
-                }
-                onRecentlyAudibleChanged: {
-                    if (viewUi === browserUi
-                            && tabIndex === viewUi.active_tab_index) {
-                        window.updateMprisForPrimaryView(webView)
-                    }
-                }
-                onAudioMutedChanged: {
-                    if (viewUi === browserUi
-                            && tabIndex === viewUi.active_tab_index) {
-                        window.updateMprisForPrimaryView(webView)
-                    }
-                }
-                onLoadingChanged: function(loadRequest) {
-                    if (loadRequest.status === WebEngineView.LoadStartedStatus) {
-                        window.clearPageDialogForView(secondaryView)
-                        window.clearClientCertificateForView(secondaryView)
-                        window.clearCertificateErrorForView(secondaryView)
-                        window.clearWebAuthForView(secondaryView)
-                        window.clearContextMenuForView(secondaryView)
-                        window.clearDesktopMediaForView(secondaryView)
-                        window.clearSiteDataClearForView(secondaryView)
-                        window.noteCaptureNavigation(secondaryView)
-                        secondaryWindow.clearFileDialogForView(secondaryView)
-                        window.clearRendererFailureForView(secondaryView)
-                        window.resetPageDialogBudget(secondaryView)
-                        viewInterceptor.clearSiteEvidence(secondaryView.url.host)
-                        window.cancelPermissionForUi(viewUi)
-                        window.installPageUserscripts(
-                            viewUi, secondaryView, secondaryView.url.toString(),
-                            viewTransientProfile)
-                        window.injectPageUserscripts(
-                            viewUi, secondaryView, secondaryView.url.toString(),
-                            viewTransientProfile, "document_start")
-                        window.injectCosmeticRules(viewUi, secondaryView)
-                        if (viewTabs === tabs) {
-                            viewUi.navigation_started_for(tabIndex, loadRequest.url.toString())
-                        } else {
-                            viewUi.navigation_started(loadRequest.url.toString())
-                        }
-                    } else if (loadRequest.status === WebEngineView.LoadSucceededStatus) {
-                        if (viewTabs === tabs) {
-                            viewUi.navigation_committed_for(
-                                tabIndex, secondaryView.url.toString(), secondaryView.title)
-                        } else {
-                            viewUi.navigation_committed(secondaryView.url.toString(), secondaryView.title)
-                        }
-                        window.injectPageUserscripts(
-                            viewUi, secondaryView, secondaryView.url.toString(),
-                            viewTransientProfile, "document_end")
-                        window.injectCosmeticRules(viewUi, secondaryView)
-                        Qt.callLater(function() {
-                            window.injectPageUserscripts(
-                                viewUi, secondaryView, secondaryView.url.toString(),
-                                viewTransientProfile, "document_idle")
-                        })
-                        if (viewTabs === tabs) {
-                            viewUi.navigation_completed_for(tabIndex)
-                        } else {
-                            viewUi.navigation_completed()
-                        }
-                    } else if (loadRequest.status === WebEngineView.LoadFailedStatus) {
-                        if (viewTabs === tabs) {
-                            viewUi.navigation_failed_with_details(
-                                tabIndex,
-                                loadRequest.url.toString(),
-                                window.navigationFailureKind(loadRequest),
-                                window.navigationFailureDetail(loadRequest))
-                        } else {
-                            viewUi.navigation_failed_with_details(
-                                -1,
-                                loadRequest.url.toString(),
-                                window.navigationFailureKind(loadRequest),
-                                window.navigationFailureDetail(loadRequest))
-                        }
-                    }
-                }
-                onPermissionRequested: function(permissionRequest) {
-                    window.handleImmediatePermissionRequested(
-                        viewUi, permissionRequest, viewTransientProfile, viewHost)
-                }
-                onJavaScriptDialogRequested: function(request) {
-                    window.handleJavaScriptDialogRequested(
-                        viewUi, secondaryView, request, viewTransientProfile)
-                }
-                onAuthenticationDialogRequested: function(request) {
-                    window.handleAuthenticationDialogRequested(
-                        viewUi, secondaryView, request, viewTransientProfile)
-                }
-                onSelectClientCertificate: function(selection) {
-                    window.handleClientCertificateRequested(
-                        viewUi, secondaryView, selection, viewTransientProfile, viewHost)
-                }
-                onCertificateError: function(error) {
-                    window.handleCertificateError(
-                        viewUi, secondaryView, error, viewHost)
-                }
-                onWebAuthUxRequested: function(request) {
-                    window.handleWebAuthRequested(viewUi, secondaryView, request, viewHost)
-                }
-                onContextMenuRequested: function(request) {
-                    window.handleContextMenuRequested(viewUi, secondaryView, request, viewHost)
-                }
-                onFileDialogRequested: function(request) {
-                    if (viewHost === secondaryWindow) {
-                        secondaryWindow.handleFileDialogRequested(request)
-                    } else {
-                        window.handleFileDialogRequested(request, secondaryView, viewUi)
-                    }
-                }
-                onDesktopMediaRequested: function(request) {
-                    window.handleDesktopMediaRequested(
-                        viewUi, secondaryView, request, viewHost)
-                }
-                onFullScreenRequested: function(request) {
-                    request.accept()
-                    if (request.toggleOn) {
-                        viewHost.showFullScreen()
-                        viewUi.status_text = "Page fullscreen enabled"
-                    } else {
-                        viewHost.showNormal()
-                        viewUi.status_text = "Page fullscreen ended"
-                    }
-                }
-                onRenderProcessTerminated: function(terminationStatus, exitCode) {
-                    window.handleRendererProcessTerminated(
-                        viewUi, secondaryView, viewHost, -1,
-                        terminationStatus, exitCode)
-                }
-                onNewWindowRequested: function(request) {
-                    if (!viewUi.popup_allowed(request.requestedUrl.toString(), request.userInitiated)) {
-                        return
-                    }
-                    var popup = popupWindowComponent.createObject(null, {
-                        popupRequest: request,
-                        popupJourneyToken: viewUi.take_popup_journey_token(
-                            request.requestedUrl.toString()),
-                        popupProfile: viewProfile,
-                        popupRequestInterceptor: viewInterceptor,
-                        popupPermissionUi: viewUi,
-                        popupContextName: viewUi.context_name,
-                        popupContextLabel: viewUi.context_label,
-                        popupPrivateProfile: viewTransientProfile,
-                        popupEphemeralProfile: secondaryWindow.windowEphemeralProfile,
-                        popupProfileName: secondaryWindow.windowProfileName
-                    })
-                    if (!popup) {
-                        viewUi.navigation_failed()
-                    }
-                }
-            }
-
-            Loader {
-                id: secondaryDevToolsLoader
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.bottom: parent.bottom
-                height: Math.min(280, parent.height * 0.55)
-                active: secondaryWindow.devToolsVisible
-                        && !secondaryWindow.windowTransferMode
-                visible: active
-                z: 20
-                sourceComponent: Component {
-                    WebEngineView {
-                        anchors.fill: parent
-                        profile: secondaryWindow.activeView
-                                ? secondaryWindow.activeView.profile
-                                : secondaryWindow.windowWebEngineProfile
-                        inspectedView: secondaryWindow.activeView
-                        Accessible.name: "Attached developer tools"
-                    }
-                }
-            }
-
-            function detachActiveViewForTransfer() {
-                var view = secondaryWindow.activeView
-                if (!view) {
-                    return null
-                }
-                secondaryWindow.devToolsVisible = false
-                if (secondaryWindow.devToolsWindow) {
-                    secondaryWindow.devToolsWindow.close()
-                    secondaryWindow.devToolsWindow = null
-                }
-                secondaryWindow.windowDetachedView = view
-                secondaryWindow.windowDetachedWasTransfer = secondaryWindow.windowTransferMode
-                if (view === secondaryWindow.windowFallbackView) {
-                    secondaryWindow.windowFallbackView = null
-                }
-                if (view === secondaryView) {
-                    view.parent = null
-                } else {
-                    view.parent = null
-                }
-                view.visible = false
-                return view
-            }
-
-            function restoreDetachedView(view) {
-                if (!view) {
-                    return false
-                }
-                if (secondaryWindow.windowDetachedWasTransfer) {
-                    secondaryWindow.windowTransferView = view
-                    view.parent = transferViewHost
-                    view.anchors.fill = transferViewHost
-                } else {
-                    if (view === secondaryView) {
-                        view.parent = secondaryWindow.contentItem
-                        view.anchors.fill = secondaryWindow.contentItem
-                        secondaryView.visible = true
-                    } else {
-                        secondaryWindow.windowFallbackView = view
-                        view.parent = fallbackViewHost
-                        view.anchors.fill = fallbackViewHost
-                    }
-                }
-                view.visible = true
-                secondaryWindow.windowDetachedView = null
-                return true
-            }
-
-            function prepareTransferFallback() {
-                if (secondaryWindow.windowPreparedTransferFallback) {
-                    return true
-                }
-                var fallback = webViewComponent.createObject(fallbackViewHost, {
-                    tabIndex: -1,
-                    viewUi: secondaryUi,
-                    viewTabs: null,
-                    viewModel: {
-                        loaded: true,
-                        url: "about:blank",
-                        title: "New tab",
-                        muted: false,
-                        zoom: 1.0,
-                        scrollX: -1,
-                        scrollY: -1
-                    },
-                    viewProfile: secondaryWindow.windowWebEngineProfile,
-                    viewInterceptor: secondaryWindow.windowRequestInterceptor,
-                    viewTransientProfile: secondaryWindow.windowTransientProfile,
-                    viewTransferred: false
-                })
-                if (!fallback) {
-                    secondaryUi.status_text = "Transfer fallback view could not be created"
-                    return false
-                }
-                fallback.visible = false
-                secondaryWindow.windowPreparedTransferFallback = fallback
-                return true
-            }
-
-            function discardPreparedTransferFallback() {
-                if (secondaryWindow.windowPreparedTransferFallback) {
-                    secondaryWindow.windowPreparedTransferFallback.destroy()
-                    secondaryWindow.windowPreparedTransferFallback = null
-                }
-            }
-
-            function resetAfterTransferSource() {
-                if (!prepareTransferFallback()) {
-                    return false
-                }
-                secondaryWindow.windowTransferView = null
-                secondaryWindow.windowTransferSourceUi = null
-                secondaryWindow.windowTransferSourceHost = null
-                secondaryWindow.windowTransferOperationId = ""
-                secondaryWindow.windowTransferPayload = ""
-                secondaryView.visible = false
-                if (secondaryWindow.windowFallbackView) {
-                    secondaryWindow.windowFallbackView.destroy()
-                    secondaryWindow.windowFallbackView = null
-                }
-                // complete_tab_transfer() creates the reducer's mandatory
-                // blank fallback when this was the source's last tab.
-                var fallback = secondaryWindow.windowPreparedTransferFallback
-                secondaryWindow.windowPreparedTransferFallback = null
-                fallback.viewHost = secondaryWindow
-                fallback.parent = fallbackViewHost
-                fallback.anchors.fill = fallbackViewHost
-                fallback.visible = true
-                secondaryWindow.windowFallbackView = fallback
-                window.updateBrowserWindowView(secondaryUi, fallback)
-                secondaryUi.status_text = "Live tab moved; blank fallback tab created"
-                return true
-            }
-
-            Rectangle {
-                id: secondaryCommandBar
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.bottom: parent.bottom
-                height: window.inputBarHeight
-                z: 20
-                visible: secondaryUi.mode === "command"
-                color: window.surfaceColor
-
-                RowLayout {
-                    anchors.fill: parent
-                    spacing: 0
-
-                    Rectangle {
-                        Layout.fillHeight: true
-                        Layout.preferredWidth: secondaryCommandPrefix.implicitWidth + 16
-                        color: window.accentColor
-
-                        Label {
-                            id: secondaryCommandPrefix
-                            anchors.centerIn: parent
-                            text: ":"
-                            color: window.contrastText(parent.color)
-                            font.bold: true
-                            Accessible.ignored: true
-                        }
-                    }
-
-                    TextField {
-                        id: secondaryCommandLine
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        leftPadding: 8
-                        rightPadding: 8
-                        topPadding: 0
-                        bottomPadding: 0
-                        color: window.primaryTextColor
-                        selectionColor: window.selectionColor
-                        selectedTextColor: window.selectionTextColor
-                        placeholderText: "command"
-                        placeholderTextColor: window.mutedTextColor
-                        background: Rectangle { color: "transparent" }
-                        focus: secondaryCommandBar.visible
-                        Accessible.name: "Command line"
-                        Accessible.role: Accessible.EditableText
-                        Accessible.editable: true
-                        onVisibleChanged: if (visible) forceActiveFocus()
-                        onTextChanged: secondaryUi.update_completion(text, cursorPosition)
-                        onCursorPositionChanged:
-                            secondaryUi.update_completion(text, cursorPosition)
-                        onAccepted: {
-                            if (secondaryUi.execute_command(text)) {
-                                text = ""
-                                secondaryWindow.applySwitcherEngineAction()
-                                if (secondaryUi.mode === "command") {
-                                    secondaryUi.escape()
-                                }
-                            } else {
-                                selectAll()
-                            }
-                        }
-                        Keys.onPressed: function(event) {
-                            if (event.key === Qt.Key_Escape) {
-                                secondaryUi.escape()
-                                event.accepted = true
-                            } else if (event.key === Qt.Key_Tab) {
-                                secondaryUi.completion_move(
-                                    event.modifiers & Qt.ShiftModifier ? -1 : 1)
-                                event.accepted = true
-                            }
-                        }
-                    }
-                }
-            }
-
-            Rectangle {
-                id: secondarySearchBar
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.bottom: parent.bottom
-                height: window.inputBarHeight
-                z: 20
-                visible: secondaryUi.mode === "search"
-                color: window.surfaceColor
-
-                Label {
-                    id: secondarySearchPrefix
-                    anchors.left: parent.left
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: window.inputBarHeight
-                    text: secondaryUi.search_backward ? "?" : "/"
-                    color: window.warningColor
-                    font.bold: true
-                    horizontalAlignment: Text.AlignHCenter
-                    Accessible.ignored: true
-                }
-
-                TextField {
-                    id: secondarySearchLine
-                    anchors.left: secondarySearchPrefix.right
-                    anchors.right: parent.right
-                    anchors.top: parent.top
-                    anchors.bottom: parent.bottom
-                    leftPadding: 8
-                    rightPadding: 8
-                    topPadding: 0
-                    bottomPadding: 0
-                    text: secondaryUi.search_text
-                    color: window.primaryTextColor
-                    selectionColor: window.selectionColor
-                    selectedTextColor: window.selectionTextColor
-                    placeholderText: "search"
-                    placeholderTextColor: window.mutedTextColor
-                    background: Rectangle { color: "transparent" }
-                    focus: secondarySearchBar.visible
-                    Accessible.name: "Search"
-                    Accessible.role: Accessible.EditableText
-                    Accessible.editable: true
-                    onVisibleChanged: if (visible) forceActiveFocus()
-                    onTextChanged: secondaryUi.search_changed(text)
-                    onAccepted: {
-                        secondaryUi.search_next(secondaryUi.search_backward)
-                        secondaryUi.accept_search()
-                        secondaryWindow.applySwitcherEngineAction()
-                    }
-                    Keys.onPressed: function(event) {
-                        if (event.key === Qt.Key_Escape) {
-                            secondaryUi.escape()
-                            event.accepted = true
-                        }
-                    }
-                }
-            }
-
-            FerricWindowStatusBar {
-                browserWindow: window
-                statusVisible: window.statusbarMode === "always"
-                               && secondaryUi.mode !== "command"
-                               && secondaryUi.mode !== "search"
-                mode: secondaryUi.mode
-                displayUrl: secondaryUi.display_url
-                statusText: secondaryUi.status_text
-                profileLabel: secondaryWindow.windowEphemeralProfile ? "EPHEMERAL"
-                              : secondaryWindow.windowPrivateProfile ? "PRIVATE"
-                              : secondaryWindow.windowProfileName
-                statusColor: window.contextStatusColor(secondaryUi, window.mutedTextColor)
-                profileColor: window.contextStatusColor(secondaryUi, window.secondaryTextColor)
-                accessibleDetails: window.statusDetails(
-                                       secondaryUi, secondaryWindow,
-                                       secondaryWindow.activeView,
-                                       secondaryWindow.windowPrivateProfile,
-                                       secondaryWindow.windowProfileName,
-                                       secondaryWindow.windowEphemeralProfile)
-            }
-
-            function attachTransferredView(view, payload, sourceUi, sourceHost, operationId) {
-                if (!view || typeof payload !== "string" || payload.length === 0) {
-                    return false
-                }
-                var sourceUrl = view.url ? view.url.toString() : "about:blank"
-                var transferData = null
-                try {
-                    transferData = JSON.parse(payload)
-                } catch (error) {
-                    transferData = null
-                }
-                if (!transferData || typeof transferData.tab_id !== "string"
-                        || !secondaryUi.adopt_tab_transfer(payload)) {
-                    return false
-                }
-                var adoptedTabId = secondaryUi.tab_id_for_index(secondaryUi.active_tab_index)
-                secondaryWindow.windowTransferView = view
-                secondaryWindow.windowTransferSourceUi = sourceUi
-                secondaryWindow.windowTransferSourceHost = sourceHost
-                secondaryWindow.windowTransferPayload = payload
-                view.viewUi = secondaryUi
-                view.viewTabs = null
-                view.viewModel = {
-                    loaded: true,
-                    url: transferData.url || "about:blank",
-                    title: transferData.title || "New tab",
-                    muted: !!transferData.muted,
-                    zoom: Number(transferData.zoom_hundredths || 100) / 100.0,
-                    scrollX: -1,
-                    scrollY: -1
-                }
-                view.viewTransferred = true
-                if (view.viewHost !== undefined) {
-                    view.viewHost = secondaryWindow
-                }
-                view.tabIndex = -1
-                view.parent = transferViewHost
-                view.anchors.fill = transferViewHost
-                view.visible = true
-                if (view.viewIsSecondaryStatic === true) {
-                    view.url = sourceUrl
-                }
-                window.updateBrowserWindowView(secondaryUi, view)
-                if (!window.completeDetachedSource(sourceUi, sourceHost, payload)) {
-                    view.parent = null
-                    view.visible = false
-                    secondaryUi.rollback_tab_transfer(adoptedTabId)
-                    window.restoreSourceView(sourceUi, sourceHost, view)
-                    resetAfterTransferSource()
-                    return false
-                }
-                if (operationId && operationId.length > 0 && sourceUi) {
-                    sourceUi.complete_transfer_operation(operationId, true)
-                }
-                if (secondaryWindow.windowTransferOperationId.length > 0
-                        && secondaryWindow.windowTransferSourceUi) {
-                    secondaryWindow.windowTransferSourceUi.complete_transfer_operation(
-                                secondaryWindow.windowTransferOperationId, true)
-                }
-                view.forceActiveFocus()
-                secondaryUi.status_text = "Live tab attached without navigation"
-                return true
-            }
-
-            Timer {
-                id: bookmarkTransferTimer
-                interval: 50
-                repeat: true
-                onTriggered: {
-                    if (secondaryUi.profile_bootstrap_pending) {
-                        return
-                    }
-                    stop()
-                    if (!secondaryUi.queue_bookmark_transfer(
-                                secondaryWindow.windowBookmarkTransferUrl,
-                                secondaryWindow.windowBookmarkTransferTitle)) {
-                        secondaryUi.status_text = "Bookmark transfer failed"
-                    }
-                    secondaryWindow.windowBookmarkTransferUrl = ""
-                    secondaryWindow.windowBookmarkTransferTitle = ""
-                }
-            }
-
-            Component.onCompleted: {
-                secondaryWindow.permissionPromptSurface =
-                        permissionPromptSurfaceComponent.createObject(
-                            secondaryWindow.contentItem, { hostWindow: secondaryWindow })
-                secondaryWindow.desktopMediaSurface =
-                        desktopMediaSurfaceComponent.createObject(
-                            secondaryWindow.contentItem, { hostWindow: secondaryWindow })
-                secondaryWindow.captureIndicatorSurface =
-                        captureIndicatorComponent.createObject(
-                            secondaryWindow.contentItem, { hostWindow: secondaryWindow })
-                secondaryWindow.rendererFailureSurface =
-                        rendererFailureSurfaceComponent.createObject(
-                            secondaryWindow.contentItem, { hostWindow: secondaryWindow })
-                window.installFocusObserver(secondaryWindow.activeView)
-                secondaryUi.set_startup_configuration(
-                            browserUi.config_json, browserUi.config_base_json,
-                            browserUi.cli_overrides_json,
-                            secondaryUi.profile_overrides_json,
-                            browserUi.config_path, browserUi.config_source)
-                secondaryUi.set_contexts_configuration(browserUi.contexts_json)
-                secondaryUi.configure_profile(
-                                              secondaryWindow.windowPrivateProfile,
-                                              secondaryWindow.windowEphemeralProfile,
-                                              secondaryWindow.windowProfileLabel,
-                                              secondaryWindow.windowProfileName,
-                                              window.storageBasePath)
-                if (secondaryWindow.windowBookmarkTransferUrl.length > 0) {
-                    bookmarkTransferTimer.start()
-                }
-                secondaryUi.set_context_entry_reuse(secondaryWindow.windowStartupContextRestore)
-                window.registerBrowserWindow(
-                            secondaryWindow, secondaryUi, secondaryWindow.activeView,
-                            secondaryWindow.windowWebEngineProfile,
-                            secondaryWindow.windowProfileName,
-                            secondaryWindow.windowEphemeralInvocationToken,
-                            secondaryWindow.windowEphemeralProfile)
-                if (!secondaryWindow.windowSharedProfile
-                        && !secondaryRequestInterceptor.attach(secondaryProfile)) {
-                    secondaryUi.status_text = "Request interceptor unavailable"
-                }
-                if (secondaryWindow.windowTransferMode) {
-                    if (!secondaryWindow.attachTransferredView(
-                                secondaryWindow.windowTransferView,
-                                secondaryWindow.windowTransferPayload,
-                                secondaryWindow.windowTransferSourceUi,
-                                secondaryWindow.windowTransferSourceHost,
-                                secondaryWindow.windowTransferOperationId)) {
-                        secondaryUi.status_text = "Live tab adoption failed"
-                        if (secondaryWindow.windowTransferOperationId.length > 0
-                                && secondaryWindow.windowTransferSourceUi) {
-                            secondaryWindow.windowTransferSourceUi.complete_transfer_operation(
-                                        secondaryWindow.windowTransferOperationId, false)
-                            secondaryWindow.windowTransferOperationId = ""
-                        }
-                        return
-                    }
-                } else if (secondaryWindow.windowStartupContext.length > 0) {
-                    secondaryUi.execute_command(
-                                "context-enter " + secondaryWindow.windowStartupContext)
-                    window.routeContextWorkspace(secondaryUi)
-                }
-                if (secondaryWindow.windowStartupContextRestore) {
-                    secondaryWindow.applySwitcherEngineAction()
-                } else if (secondaryWindow.windowStartupRoutePreflighted) {
-                    secondaryUi.navigate_without_context_route(
-                                secondaryWindow.windowStartupUrl)
-                } else {
-                    secondaryUi.navigate_initial(
-                                secondaryWindow.windowStartupUrl, "external-open", false)
-                }
-            }
-            Component.onDestruction: {
-                if (secondaryWindow.devToolsWindow) {
-                    secondaryWindow.devToolsWindow.close()
-                    secondaryWindow.devToolsWindow = null
-                }
-                window.unregisterBrowserWindow(secondaryUi)
-                    window.clearPageDialogForView(secondaryView)
-                    window.clearClientCertificateForView(secondaryView)
-                    window.clearCertificateErrorForView(secondaryView)
-                    window.clearWebAuthForView(secondaryView)
-                    window.clearContextMenuForView(secondaryView)
-                    window.clearDesktopMediaForView(secondaryView)
-                    window.clearCaptureSessionForView(secondaryView)
-        window.clearCaptureSessionsForHost(secondaryWindow)
-                secondaryWindow.clearFileDialogForView(secondaryView)
-                window.clearSiteDataClearForView(secondaryView)
-                window.cancelPermissionForUi(secondaryUi)
-                if (window.pendingDesktopMediaHost === secondaryWindow) {
-                    window.clearDesktopMediaRequest(true)
-                }
-                if (secondaryWindow.permissionPromptSurface) {
-                    secondaryWindow.permissionPromptSurface.destroy()
-                    secondaryWindow.permissionPromptSurface = null
-                }
-                if (secondaryWindow.desktopMediaSurface) {
-                    secondaryWindow.desktopMediaSurface.destroy()
-                    secondaryWindow.desktopMediaSurface = null
-                }
-                if (secondaryWindow.captureIndicatorSurface) {
-                    secondaryWindow.captureIndicatorSurface.destroy()
-                    secondaryWindow.captureIndicatorSurface = null
-                }
-                if (secondaryWindow.rendererFailureSurface) {
-                    secondaryWindow.rendererFailureSurface.destroy()
-                    secondaryWindow.rendererFailureSurface = null
-                }
-                secondaryUi.view_closed()
-                secondaryUi.release_transient_resources()
-            }
+        FerricBrowserWindow {
+            rootWindow: window
         }
     }
 
     header: ToolBar {
-        id: browserHeader
-        height: window.tabPosition === "top" && window.tabStripVisible
-                ? window.tabBarHeight : 0
-        visible: height > 0
+id: browserHeader
+height: window.tabPosition === "top" && window.tabStripVisible
+        ? window.tabBarHeight : 0
+visible: height > 0
 
-        background: Rectangle {
-            color: window.panelColor
+background: Rectangle {
+    color: window.panelColor
 
-            Rectangle {
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.bottom: parent.bottom
-                height: 1
-                color: window.borderColor
-            }
-        }
+    Rectangle {
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: 1
+        color: window.borderColor
+    }
+}
 
-        GridLayout {
-            id: headerColumn
-            columns: 1
-            anchors.fill: parent
-            rowSpacing: 0
+GridLayout {
+    id: headerColumn
+    columns: 1
+    anchors.fill: parent
+    rowSpacing: 0
 
-            GridLayout {
-                id: compactTabStrip
-                property bool vertical: window.sideTabs
-                parent: window.tabPosition === "top" ? headerColumn : window.contentItem
-                columns: vertical ? 1 : Math.max(1, tabs.count + 1)
-                rows: vertical ? Math.max(1, tabs.count + 1) : 1
-                x: parent === headerColumn ? 0
-                   : (window.tabPosition === "right" ? parent.width - width : 0)
-                y: parent === headerColumn || vertical ? 0
-                   : parent.height - window.bottomChromeHeight
-                width: parent === headerColumn ? headerColumn.width
-                       : (vertical ? window.sideTabWidth : parent.width)
-                height: parent === headerColumn ? window.tabBarHeight
-                        : (vertical
-                           ? parent.height
-                             - window.bottomChromeHeight
-                           : window.tabBarHeight)
-                z: 9
-                Accessible.role: Accessible.PageTabList
-                Accessible.name: "Browser tabs"
-                Accessible.description: tabs.count + " browser tabs"
-                Layout.row: 0
-                Layout.fillWidth: parent === headerColumn
+    GridLayout {
+        id: compactTabStrip
+        property bool vertical: window.sideTabs
+        parent: window.tabPosition === "top" ? headerColumn : window.contentItem
+        columns: vertical ? 1 : Math.max(1, tabs.count + 1)
+        rows: vertical ? Math.max(1, tabs.count + 1) : 1
+        x: parent === headerColumn ? 0
+           : (window.tabPosition === "right" ? parent.width - width : 0)
+        y: parent === headerColumn || vertical ? 0
+           : parent.height - window.bottomChromeHeight
+        width: parent === headerColumn ? headerColumn.width
+               : (vertical ? window.sideTabWidth : parent.width)
+        height: parent === headerColumn ? window.tabBarHeight
+                : (vertical
+                   ? parent.height
+                     - window.bottomChromeHeight
+                   : window.tabBarHeight)
+        z: 9
+        Accessible.role: Accessible.PageTabList
+        Accessible.name: "Browser tabs"
+        Accessible.description: tabs.count + " browser tabs"
+        Layout.row: 0
+        Layout.fillWidth: parent === headerColumn
+        Layout.preferredHeight: window.tabBarHeight
+        Layout.maximumHeight: visible && parent === headerColumn
+                              ? window.tabBarHeight : 0
+        rowSpacing: 1
+        columnSpacing: 1
+        visible: window.tabStripVisible
+
+        Repeater {
+            model: tabs
+            delegate: Rectangle {
+                property int tabIndex: index
+                Layout.fillWidth: true
+                Layout.minimumWidth: compactTabStrip.vertical
+                                     ? compactTabStrip.width : 48
+                Layout.maximumWidth: compactTabStrip.vertical
+                                     ? compactTabStrip.width : Number.POSITIVE_INFINITY
+                Layout.fillHeight: !compactTabStrip.vertical
                 Layout.preferredHeight: window.tabBarHeight
-                Layout.maximumHeight: visible && parent === headerColumn
-                                      ? window.tabBarHeight : 0
-                rowSpacing: 1
-                columnSpacing: 1
-                visible: window.tabStripVisible
+                Layout.maximumHeight: window.tabBarHeight
+                color: tabIndex === browserUi.active_tab_index
+                       ? window.surfaceColor : window.backgroundColor
 
-                Repeater {
-                    model: tabs
-                    delegate: Rectangle {
-                        property int tabIndex: index
-                        Layout.fillWidth: true
-                        Layout.minimumWidth: compactTabStrip.vertical
-                                             ? compactTabStrip.width : 48
-                        Layout.maximumWidth: compactTabStrip.vertical
-                                             ? compactTabStrip.width : Number.POSITIVE_INFINITY
-                        Layout.fillHeight: !compactTabStrip.vertical
-                        Layout.preferredHeight: window.tabBarHeight
-                        Layout.maximumHeight: window.tabBarHeight
-                        color: tabIndex === browserUi.active_tab_index
-                               ? window.surfaceColor : window.backgroundColor
+                Accessible.role: Accessible.PageTab
+                Accessible.name: "Tab " + (tabIndex + 1) + ": "
+                                 + (model.title || "New tab")
+                Accessible.selected: tabIndex === browserUi.active_tab_index
 
-                        Accessible.role: Accessible.PageTab
-                        Accessible.name: "Tab " + (tabIndex + 1) + ": "
-                                         + (model.title || "New tab")
-                        Accessible.selected: tabIndex === browserUi.active_tab_index
-
-                        Text {
-                            id: tabTitle
-                            anchors.left: parent.left
-                            anchors.leftMargin: 9
-                            anchors.right: tabClose.left
-                            anchors.rightMargin: 4
-                            anchors.verticalCenter: parent.verticalCenter
-                            color: tabIndex === browserUi.active_tab_index
-                                   ? window.primaryTextColor : window.mutedTextColor
-                            text: (tabIndex + 1) + "  "
-                                  + (model.pinned ? "◆ " : "")
-                                  + (model.muted ? "[M] " : "")
-                                  + (model.title || "New tab")
-                            elide: Text.ElideRight
-                        }
-
-                        ToolButton {
-                            id: tabClose
-                            anchors.right: parent.right
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: visible ? window.tabBarHeight : 0
-                            height: parent.height
-                            text: "×"
-                            padding: 0
-                            visible: tabIndex === browserUi.active_tab_index
-                                     || tabMouse.containsMouse
-                            background: Item {}
-                            contentItem: Text {
-                                text: tabClose.text
-                                color: window.mutedTextColor
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                            }
-                            onClicked: {
-                                if (window.closeTabAtIndex(tabIndex)) {
-                                    window.executePendingEngineAction()
-                                }
-                            }
-                        }
-
-                        MouseArea {
-                            id: tabMouse
-                            anchors.fill: parent
-                            anchors.rightMargin: tabClose.visible ? tabClose.width : 0
-                            hoverEnabled: true
-                            onClicked: {
-                                var tabId = browserUi.tab_id_for_index(tabIndex)
-                                if (tabId.length > 0
-                                        && browserUi.execute_ui_action(
-                                            "browser.tab.select", tabId)) {
-                                    tabs.setProperty(tabIndex, "loaded", true)
-                                    window.executePendingEngineAction()
-                                }
-                            }
-                        }
-
-                        Rectangle {
-                            width: compactTabStrip.vertical ? 2 : parent.width
-                            height: compactTabStrip.vertical ? parent.height : 2
-                            anchors.left: parent.left
-                            anchors.bottom: parent.bottom
-                            color: window.accentColor
-                            visible: tabIndex === browserUi.active_tab_index
-                        }
-                    }
+                Text {
+                    id: tabTitle
+                    anchors.left: parent.left
+                    anchors.leftMargin: 9
+                    anchors.right: tabClose.left
+                    anchors.rightMargin: 4
+                    anchors.verticalCenter: parent.verticalCenter
+                    color: tabIndex === browserUi.active_tab_index
+                           ? window.primaryTextColor : window.mutedTextColor
+                    text: (tabIndex + 1) + "  "
+                          + (model.pinned ? "◆ " : "")
+                          + (model.muted ? "[M] " : "")
+                          + (model.title || "New tab")
+                    elide: Text.ElideRight
                 }
 
                 ToolButton {
-                    text: "+"
-                    Layout.fillWidth: compactTabStrip.vertical
-                    Layout.preferredWidth: compactTabStrip.vertical
-                                           ? compactTabStrip.width : window.tabBarHeight
-                    Layout.maximumWidth: compactTabStrip.vertical
-                                         ? compactTabStrip.width : window.tabBarHeight
-                    Layout.preferredHeight: window.tabBarHeight
+                    id: tabClose
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: visible ? window.tabBarHeight : 0
+                    height: parent.height
+                    text: "×"
                     padding: 0
-                    background: Rectangle {
-                        color: parent.hovered ? window.surfaceColor : window.backgroundColor
-                    }
+                    visible: tabIndex === browserUi.active_tab_index
+                             || tabMouse.containsMouse
+                    background: Item {}
                     contentItem: Text {
-                        text: parent.text
+                        text: tabClose.text
                         color: window.mutedTextColor
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }
-                    Accessible.name: "New tab"
                     onClicked: {
-                        var index = browserUi.new_tab()
-                        if (index >= 0) {
-                            tabs.append({ url: "about:blank", title: "New tab",
-                                loaded: true, pinned: false, muted: false, zoom: 1.0,
-                                suspended: false, discarded: false })
-                            window.syncTabModel()
+                        if (window.closeTabAtIndex(tabIndex)) {
+                            window.executePendingEngineAction()
                         }
                     }
+                }
+
+                MouseArea {
+                    id: tabMouse
+                    anchors.fill: parent
+                    anchors.rightMargin: tabClose.visible ? tabClose.width : 0
+                    hoverEnabled: true
+                    onClicked: {
+                        var tabId = browserUi.tab_id_for_index(tabIndex)
+                        if (tabId.length > 0
+                                && browserUi.execute_ui_action(
+                                    "browser.tab.select", tabId)) {
+                            tabs.setProperty(tabIndex, "loaded", true)
+                            window.executePendingEngineAction()
+                        }
+                    }
+                }
+
+                Rectangle {
+                    width: compactTabStrip.vertical ? 2 : parent.width
+                    height: compactTabStrip.vertical ? parent.height : 2
+                    anchors.left: parent.left
+                    anchors.bottom: parent.bottom
+                    color: window.accentColor
+                    visible: tabIndex === browserUi.active_tab_index
                 }
             }
+        }
 
-            RowLayout {
-                Layout.row: 1
-                Layout.fillWidth: true
-                Layout.preferredHeight: 0
-                Layout.maximumHeight: 0
-                spacing: 8
-                visible: false
+        ToolButton {
+            text: "+"
+            Layout.fillWidth: compactTabStrip.vertical
+            Layout.preferredWidth: compactTabStrip.vertical
+                                   ? compactTabStrip.width : window.tabBarHeight
+            Layout.maximumWidth: compactTabStrip.vertical
+                                 ? compactTabStrip.width : window.tabBarHeight
+            Layout.preferredHeight: window.tabBarHeight
+            padding: 0
+            background: Rectangle {
+                color: parent.hovered ? window.surfaceColor : window.backgroundColor
+            }
+            contentItem: Text {
+                text: parent.text
+                color: window.mutedTextColor
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+            }
+            Accessible.name: "New tab"
+            onClicked: {
+                var index = browserUi.new_tab()
+                if (index >= 0) {
+                    tabs.append({ url: "about:blank", title: "New tab",
+                        loaded: true, pinned: false, muted: false, zoom: 1.0,
+                        suspended: false, discarded: false })
+                    window.syncTabModel()
+                }
+            }
+        }
+    }
 
-                ToolButton {
-                    text: "‹"
-                    Accessible.name: "Back"
-                    onClicked: {
-                        var historyView = window.activeWebView()
-                        if (historyView && historyView.canGoBack) {
-                            browserUi.back()
-                            historyView.goBack()
-                        } else {
-                            browserUi.status_text = "History boundary reached"
-                        }
-                    }
+    RowLayout {
+        Layout.row: 1
+        Layout.fillWidth: true
+        Layout.preferredHeight: 0
+        Layout.maximumHeight: 0
+        spacing: 8
+        visible: false
+
+        ToolButton {
+            text: "‹"
+            Accessible.name: "Back"
+            onClicked: {
+                var historyView = window.activeWebView()
+                if (historyView && historyView.canGoBack) {
+                    browserUi.back()
+                    historyView.goBack()
+                } else {
+                    browserUi.status_text = "History boundary reached"
                 }
-                ToolButton {
-                    text: "›"
-                    Accessible.name: "Forward"
-                    onClicked: {
-                        var historyView = window.activeWebView()
-                        if (historyView && historyView.canGoForward) {
-                            browserUi.forward()
-                            historyView.goForward()
-                        } else {
-                            browserUi.status_text = "History boundary reached"
-                        }
-                    }
+            }
+        }
+        ToolButton {
+            text: "›"
+            Accessible.name: "Forward"
+            onClicked: {
+                var historyView = window.activeWebView()
+                if (historyView && historyView.canGoForward) {
+                    browserUi.forward()
+                    historyView.goForward()
+                } else {
+                    browserUi.status_text = "History boundary reached"
                 }
-                TextField {
-                    id: address
-                    Layout.fillWidth: true
-                    property bool addressEditing: false
-                    function refreshAddressPresentation() {
-                        if (!addressEditing) {
-                            text = window.addressPresentation(
-                                browserUi.display_url,
-                                width / Math.max(1, font.pixelSize * 0.56))
-                        }
-                    }
-                    text: window.addressPresentation(
+            }
+        }
+        TextField {
+            id: address
+            Layout.fillWidth: true
+            property bool addressEditing: false
+            function refreshAddressPresentation() {
+                if (!addressEditing) {
+                    text = window.addressPresentation(
                         browserUi.display_url,
                         width / Math.max(1, font.pixelSize * 0.56))
-                    placeholderText: "Enter a URL"
-                    Accessible.name: "Address"
-                    Accessible.description: browserUi.display_url
-                    Accessible.role: Accessible.EditableText
-                    Accessible.editable: true
-                    selectByMouse: true
-                    onActiveFocusChanged: {
-                        addressEditing = activeFocus
-                        if (addressEditing) {
-                            text = browserUi.display_url
-                            cursorPosition = text.length
-                        } else {
-                            refreshAddressPresentation()
-                        }
-                    }
-                    onWidthChanged: refreshAddressPresentation()
-                    Connections {
-                        target: browserUi
-                        function onDisplay_urlChanged() {
-                            address.refreshAddressPresentation()
-                        }
-                    }
-                    onAccepted: {
-                        browserUi.navigate(text)
-                        window.updateActiveTabUrl()
-                    }
-                }
-                ToolButton {
-                    text: "⟳"
-                    Accessible.name: "Reload"
-                    onClicked: {
-                        browserUi.reload()
-                        window.activeWebView()?.reload()
-                    }
-                }
-                Label {
-            text: browserUi.mode + " · " + browserUi.status_text
-                  + window.contextStatus(
-                      browserUi, window.temporaryProfile, window.profileName,
-                      window.ephemeralProfile)
-                  + window.siteDoctorBadge(browserUi)
-                  + (window.recoveryAvailable ? " · recovery available" : "")
-                    Accessible.name: "Browser status"
-                    color: window.contextStatusColor(
-                               browserUi, window.primaryTextColor)
-                }
-                ToolButton {
-                    text: "Window"
-                    visible: false
-                    Accessible.name: "New profile window"
-                    onClicked: {
-                        browserWindowComponent.createObject(null, {
-                            windowStartupUrl: browserUi.current_url,
-                            windowProfileName: "secondary",
-                            windowPrivateProfile: false
-                        })
-                    }
-                }
-                ToolButton {
-                    text: "Private"
-                    visible: false
-                    contentItem: Text {
-                        text: parent.text
-                        color: window.privateColor
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                        elide: Text.ElideRight
-                    }
-                    Accessible.name: "New private window"
-                    onClicked: {
-                        browserWindowComponent.createObject(null, {
-                            windowStartupUrl: "about:blank",
-                            windowProfileName: "private",
-                            windowPrivateProfile: true
-                        })
-                    }
-                }
-                ToolButton {
-                    text: "Sessions"
-                    visible: false
-                    Accessible.name: "Open session manager"
-                    onClicked: {
-                        window.refreshSessions()
-                        window.openInternalSurface()
-                        window.sessionManagerVisible = true
-                    }
-                }
-                ToolButton {
-                    text: "Profiles"
-                    visible: false
-                    Accessible.name: "Open profile manager"
-                    onClicked: {
-                        window.refreshProfiles()
-                        window.openInternalSurface()
-                        window.profileManagerVisible = true
-                    }
-                }
-                ToolButton {
-                    text: "Downloads"
-                    visible: false
-                    Accessible.name: "Open downloads manager"
-                    onClicked: {
-                        window.refreshDownloads()
-                        window.openInternalSurface()
-                        window.downloadManagerVisible = true
-                    }
-                }
-                ToolButton {
-                    text: "Diagnostics"
-                    visible: false
-                    Accessible.name: "Open diagnostics"
-                    onClicked: window.showDiagnostics()
-                }
-                ToolButton {
-                    text: "Help"
-                    visible: false
-                    Accessible.name: "Open binding help"
-                    onClicked: window.showBindingHelp()
-                }
-                ToolButton {
-                    text: "Settings"
-                    visible: false
-                    Accessible.name: "Open settings"
-                    onClicked: window.showSettings()
-                }
-                ToolButton {
-                    text: "Undo tab"
-                    visible: false
-                    Accessible.name: "Reopen most recently closed tab"
-                    onClicked: {
-                        if (browserUi.execute_ui_action("browser.tab.undo", "")) {
-                            window.syncTabModel()
-                            window.executePendingEngineAction()
-                        }
-                    }
-                }
-                ToolButton {
-                    text: "Clone tab"
-                    visible: false
-                    Accessible.name: "Clone current tab"
-                    onClicked: {
-                        if (browserUi.execute_command(":tab-clone")) {
-                            window.syncTabModel()
-                            window.executePendingEngineAction()
-                        }
-                    }
-                }
-                ToolButton {
-                    text: "Reopen window"
-                    visible: false
-                    Accessible.name: "Reopen tab in same-profile window; live state will be lost"
-                    onClicked: {
-                        if (browserUi.execute_ui_action("browser.tab.reopen-window", "")) {
-                            window.executePendingEngineAction()
-                        }
-                    }
-                }
-                ToolButton {
-                    text: "−"
-                    visible: false
-                    Accessible.name: "Zoom out"
-                    onClicked: {
-                        if (browserUi.execute_ui_action("browser.tab.zoom", "out")) {
-                            window.executePendingEngineAction()
-                        }
-                    }
-                }
-                ToolButton {
-                    text: "100%"
-                    visible: false
-                    Accessible.name: "Reset page zoom"
-                    onClicked: {
-                        if (browserUi.execute_ui_action("browser.tab.zoom", "reset")) {
-                            window.executePendingEngineAction()
-                        }
-                    }
-                }
-                ToolButton {
-                    text: "+"
-                    visible: false
-                    Accessible.name: "Zoom in"
-                    onClicked: {
-                        if (browserUi.execute_ui_action("browser.tab.zoom", "in")) {
-                            window.executePendingEngineAction()
-                        }
-                    }
                 }
             }
+            text: window.addressPresentation(
+                browserUi.display_url,
+                width / Math.max(1, font.pixelSize * 0.56))
+            placeholderText: "Enter a URL"
+            Accessible.name: "Address"
+            Accessible.description: browserUi.display_url
+            Accessible.role: Accessible.EditableText
+            Accessible.editable: true
+            selectByMouse: true
+            onActiveFocusChanged: {
+                addressEditing = activeFocus
+                if (addressEditing) {
+                    text = browserUi.display_url
+                    cursorPosition = text.length
+                } else {
+                    refreshAddressPresentation()
+                }
+            }
+            onWidthChanged: refreshAddressPresentation()
+            Connections {
+                target: browserUi
+                function onDisplay_urlChanged() {
+                    address.refreshAddressPresentation()
+                }
+            }
+            onAccepted: {
+                browserUi.navigate(text)
+                window.updateActiveTabUrl()
+            }
+        }
+        ToolButton {
+            text: "⟳"
+            Accessible.name: "Reload"
+            onClicked: {
+                browserUi.reload()
+                window.activeWebView()?.reload()
+            }
+        }
+        Label {
+    text: browserUi.mode + " · " + browserUi.status_text
+          + window.contextStatus(
+              browserUi, window.temporaryProfile, window.profileName,
+              window.ephemeralProfile)
+          + window.siteDoctorBadge(browserUi)
+          + (window.recoveryAvailable ? " · recovery available" : "")
+            Accessible.name: "Browser status"
+            color: window.contextStatusColor(
+                       browserUi, window.primaryTextColor)
+        }
+        ToolButton {
+            text: "Window"
+            visible: false
+            Accessible.name: "New profile window"
+            onClicked: {
+                window.browserWindowFactory.createObject(null, {
+                    windowStartupUrl: browserUi.current_url,
+                    windowProfileName: "secondary",
+                    windowPrivateProfile: false
+                })
+            }
+        }
+        ToolButton {
+            text: "Private"
+            visible: false
+            contentItem: Text {
+                text: parent.text
+                color: window.privateColor
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+                elide: Text.ElideRight
+            }
+            Accessible.name: "New private window"
+            onClicked: {
+                window.browserWindowFactory.createObject(null, {
+                    windowStartupUrl: "about:blank",
+                    windowProfileName: "private",
+                    windowPrivateProfile: true
+                })
+            }
+        }
+        ToolButton {
+            text: "Sessions"
+            visible: false
+            Accessible.name: "Open session manager"
+            onClicked: {
+                window.refreshSessions()
+                window.openInternalSurface()
+                window.sessionManagerVisible = true
+            }
+        }
+        ToolButton {
+            text: "Profiles"
+            visible: false
+            Accessible.name: "Open profile manager"
+            onClicked: {
+                window.refreshProfiles()
+                window.openInternalSurface()
+                window.profileManagerVisible = true
+            }
+        }
+        ToolButton {
+            text: "Downloads"
+            visible: false
+            Accessible.name: "Open downloads manager"
+            onClicked: {
+                window.refreshDownloads()
+                window.openInternalSurface()
+                window.downloadManagerVisible = true
+            }
+        }
+        ToolButton {
+            text: "Diagnostics"
+            visible: false
+            Accessible.name: "Open diagnostics"
+            onClicked: window.showDiagnostics()
+        }
+        ToolButton {
+            text: "Help"
+            visible: false
+            Accessible.name: "Open binding help"
+            onClicked: window.showBindingHelp()
+        }
+        ToolButton {
+            text: "Settings"
+            visible: false
+            Accessible.name: "Open settings"
+            onClicked: window.showSettings()
+        }
+        ToolButton {
+            text: "Undo tab"
+            visible: false
+            Accessible.name: "Reopen most recently closed tab"
+            onClicked: {
+                if (browserUi.execute_ui_action("browser.tab.undo", "")) {
+                    window.syncTabModel()
+                    window.executePendingEngineAction()
+                }
+            }
+        }
+        ToolButton {
+            text: "Clone tab"
+            visible: false
+            Accessible.name: "Clone current tab"
+            onClicked: {
+                if (browserUi.execute_command(":tab-clone")) {
+                    window.syncTabModel()
+                    window.executePendingEngineAction()
+                }
+            }
+        }
+        ToolButton {
+            text: "Reopen window"
+            visible: false
+            Accessible.name: "Reopen tab in same-profile window; live state will be lost"
+            onClicked: {
+                if (browserUi.execute_ui_action("browser.tab.reopen-window", "")) {
+                    window.executePendingEngineAction()
+                }
+            }
+        }
+        ToolButton {
+            text: "−"
+            visible: false
+            Accessible.name: "Zoom out"
+            onClicked: {
+                if (browserUi.execute_ui_action("browser.tab.zoom", "out")) {
+                    window.executePendingEngineAction()
+                }
+            }
+        }
+        ToolButton {
+            text: "100%"
+            visible: false
+            Accessible.name: "Reset page zoom"
+            onClicked: {
+                if (browserUi.execute_ui_action("browser.tab.zoom", "reset")) {
+                    window.executePendingEngineAction()
+                }
+            }
+        }
+        ToolButton {
+            text: "+"
+            visible: false
+            Accessible.name: "Zoom in"
+            onClicked: {
+                if (browserUi.execute_ui_action("browser.tab.zoom", "in")) {
+                    window.executePendingEngineAction()
+                }
+            }
+        }
+    }
 
-            RowLayout {
-                Layout.row: 2
-                Accessible.role: Accessible.PageTabList
-                Accessible.name: "Browser tabs"
-                Layout.fillWidth: true
-                spacing: 4
-                visible: false
+    RowLayout {
+        Layout.row: 2
+        Accessible.role: Accessible.PageTabList
+        Accessible.name: "Browser tabs"
+        Layout.fillWidth: true
+        spacing: 4
+        visible: false
 
-                Repeater {
-                    id: tabButtons
-                    model: tabs
-                    delegate: RowLayout {
-                        property int tabIndex: index
-                        spacing: 0
-                        Layout.preferredWidth: Math.min(400, Math.max(150, tabLabel.implicitWidth + pinTab.implicitWidth + muteTab.implicitWidth + lifecycleTab.implicitWidth + discardTab.implicitWidth + moveLeft.implicitWidth + moveRight.implicitWidth + closeTab.implicitWidth + 24))
+        Repeater {
+            id: tabButtons
+            model: tabs
+            delegate: RowLayout {
+                property int tabIndex: index
+                spacing: 0
+                Layout.preferredWidth: Math.min(400, Math.max(150, tabLabel.implicitWidth + pinTab.implicitWidth + muteTab.implicitWidth + lifecycleTab.implicitWidth + discardTab.implicitWidth + moveLeft.implicitWidth + moveRight.implicitWidth + closeTab.implicitWidth + 24))
 
-                        ToolButton {
-                            id: tabLabel
-                            Layout.fillWidth: true
-                            text: (title || "New tab")
-                                  + (window.permissionPendingForTab(tabIndex)
-                                     ? " · permission"
-                                     : "")
-                                  + (tabViewAt(tabIndex)
-                                     && tabViewAt(tabIndex).rendererFailed
-                                     ? " · renderer failed"
-                                     : "")
-                            highlighted: tabIndex === browserUi.active_tab_index
-                            Accessible.role: Accessible.PageTab
-                            Accessible.name: "Tab " + (tabIndex + 1) + ": " + text
-                            Accessible.selected: tabIndex === browserUi.active_tab_index
-                            Accessible.description: model.pinned
-                                  ? "Pinned tab"
-                                  : "Browser tab"
-                            onClicked: {
-                                var tabId = browserUi.tab_id_for_index(tabIndex)
-                                if (tabId.length === 0
-                                        || !browserUi.execute_ui_action(
-                                            "browser.tab.select", tabId)) {
-                                    return
-                                }
-                                if (browserUi.active_tab_index === tabIndex) {
-                                    tabs.setProperty(tabIndex, "loaded", true)
-                                    window.executePendingEngineAction()
-                                }
-                                window.showRendererFailureForTab(tabIndex)
-                            }
+                ToolButton {
+                    id: tabLabel
+                    Layout.fillWidth: true
+                    text: (title || "New tab")
+                          + (window.permissionPendingForTab(tabIndex)
+                             ? " · permission"
+                             : "")
+                          + (tabViewAt(tabIndex)
+                             && tabViewAt(tabIndex).rendererFailed
+                             ? " · renderer failed"
+                             : "")
+                    highlighted: tabIndex === browserUi.active_tab_index
+                    Accessible.role: Accessible.PageTab
+                    Accessible.name: "Tab " + (tabIndex + 1) + ": " + text
+                    Accessible.selected: tabIndex === browserUi.active_tab_index
+                    Accessible.description: model.pinned
+                          ? "Pinned tab"
+                          : "Browser tab"
+                    onClicked: {
+                        var tabId = browserUi.tab_id_for_index(tabIndex)
+                        if (tabId.length === 0
+                                || !browserUi.execute_ui_action(
+                                    "browser.tab.select", tabId)) {
+                            return
                         }
-                        ToolButton {
-                            id: pinTab
-                            text: model.pinned ? "📌" : "pin"
-                            Accessible.name: model.pinned ? "Unpin tab " + (tabIndex + 1) : "Pin tab " + (tabIndex + 1)
-                            onClicked: {
-                                var nextPinned = !model.pinned
-                                var tabId = browserUi.tab_id_for_index(tabIndex)
-                                if (tabId.length === 0
-                                        || !browserUi.execute_ui_action("browser.tab.pin", tabId)) {
-                                    return
-                                }
-                                var newIndex = browserUi.tab_index_for_id(tabId)
-                                if (newIndex >= 0 && newIndex !== tabIndex) {
-                                    tabs.move(tabIndex, newIndex, 1)
-                                }
-                                if (newIndex >= 0) {
-                                    tabs.setProperty(newIndex, "pinned", nextPinned)
-                                }
-                                window.syncTabModel()
-                            }
+                        if (browserUi.active_tab_index === tabIndex) {
+                            tabs.setProperty(tabIndex, "loaded", true)
+                            window.executePendingEngineAction()
                         }
-                        ToolButton {
-                            id: muteTab
-                            text: model.muted ? "🔇" : "mute"
-                            Accessible.name: model.muted ? "Unmute tab " + (tabIndex + 1) : "Mute tab " + (tabIndex + 1)
-                            onClicked: {
-                                var nextMuted = !model.muted
-                                var tabId = browserUi.tab_id_for_index(tabIndex)
-                                if (tabId.length === 0
-                                        || !browserUi.execute_ui_action("browser.tab.mute", tabId)) {
-                                    return
-                                }
-                                var newIndex = browserUi.tab_index_for_id(tabId)
-                                if (newIndex >= 0) {
-                                    tabs.setProperty(newIndex, "muted", nextMuted)
-                                }
-                            }
+                        window.showRendererFailureForTab(tabIndex)
+                    }
+                }
+                ToolButton {
+                    id: pinTab
+                    text: model.pinned ? "📌" : "pin"
+                    Accessible.name: model.pinned ? "Unpin tab " + (tabIndex + 1) : "Pin tab " + (tabIndex + 1)
+                    onClicked: {
+                        var nextPinned = !model.pinned
+                        var tabId = browserUi.tab_id_for_index(tabIndex)
+                        if (tabId.length === 0
+                                || !browserUi.execute_ui_action("browser.tab.pin", tabId)) {
+                            return
                         }
-                        ToolButton {
-                            id: lifecycleTab
-                            text: model.suspended || model.discarded ? "resume" : "freeze"
-                            enabled: model.suspended || model.discarded || tabIndex !== browserUi.active_tab_index
-                            Accessible.name: model.suspended || model.discarded
-                                              ? "Resume tab " + (tabIndex + 1)
-                                              : "Freeze hidden tab " + (tabIndex + 1)
-                            onClicked: {
-                                var tabId = browserUi.tab_id_for_index(tabIndex)
-                                var action = model.suspended || model.discarded
-                                        ? "browser.tab.resume" : "browser.tab.suspend"
-                                if (tabId.length === 0
-                                        || !browserUi.execute_ui_action(action, tabId)) {
-                                    return
-                                }
-                                window.executePendingEngineAction()
-                            }
+                        var newIndex = browserUi.tab_index_for_id(tabId)
+                        if (newIndex >= 0 && newIndex !== tabIndex) {
+                            tabs.move(tabIndex, newIndex, 1)
                         }
-                        ToolButton {
-                            id: discardTab
-                            text: "discard"
-                            enabled: !model.suspended && !model.discarded
-                                     && tabIndex !== browserUi.active_tab_index
-                            Accessible.name: "Discard hidden tab " + (tabIndex + 1)
-                            onClicked: {
-                                var tabId = browserUi.tab_id_for_index(tabIndex)
-                                if (tabId.length === 0
-                                        || !browserUi.execute_ui_action("browser.tab.discard", tabId)) {
-                                    return
-                                }
-                                window.executePendingEngineAction()
-                            }
+                        if (newIndex >= 0) {
+                            tabs.setProperty(newIndex, "pinned", nextPinned)
                         }
-                        ToolButton {
-                            id: moveContext
-                            text: "context"
-                            Accessible.name: "Move tab " + (tabIndex + 1) + " to another context window"
-                            enabled: !model.suspended && !model.discarded
-                            onClicked: {
-                                var tabId = browserUi.tab_id_for_index(tabIndex)
-                                if (tabId.length > 0) {
-                                    window.showContextMovePicker(tabId)
-                                }
-                            }
+                        window.syncTabModel()
+                    }
+                }
+                ToolButton {
+                    id: muteTab
+                    text: model.muted ? "🔇" : "mute"
+                    Accessible.name: model.muted ? "Unmute tab " + (tabIndex + 1) : "Mute tab " + (tabIndex + 1)
+                    onClicked: {
+                        var nextMuted = !model.muted
+                        var tabId = browserUi.tab_id_for_index(tabIndex)
+                        if (tabId.length === 0
+                                || !browserUi.execute_ui_action("browser.tab.mute", tabId)) {
+                            return
                         }
-                        ToolButton {
-                            id: moveLeft
-                            text: "←"
-                            Accessible.name: "Move tab left"
-                            onClicked: {
-                                var tabId = browserUi.tab_id_for_index(tabIndex)
-                                if (tabId.length === 0
-                                        || !browserUi.execute_ui_action(
-                                            "browser.tab.move", tabId + "\tleft")) {
-                                    return
-                                }
-                                var newIndex = browserUi.tab_index_for_id(tabId)
-                                if (newIndex >= 0 && newIndex !== tabIndex) {
-                                    tabs.move(tabIndex, newIndex, 1)
-                                }
-                                window.syncTabModel()
-                            }
-                        }
-                        ToolButton {
-                            id: moveRight
-                            text: "→"
-                            Accessible.name: "Move tab right"
-                            onClicked: {
-                                var tabId = browserUi.tab_id_for_index(tabIndex)
-                                if (tabId.length === 0
-                                        || !browserUi.execute_ui_action(
-                                            "browser.tab.move", tabId + "\tright")) {
-                                    return
-                                }
-                                var newIndex = browserUi.tab_index_for_id(tabId)
-                                if (newIndex >= 0 && newIndex !== tabIndex) {
-                                    tabs.move(tabIndex, newIndex, 1)
-                                }
-                                window.syncTabModel()
-                            }
-                        }
-                        ToolButton {
-                            id: closeTab
-                            text: "×"
-                            Accessible.name: "Close tab " + (tabIndex + 1)
-                            onClicked: {
-                                if (window.closeTabAtIndex(tabIndex)) {
-                                    window.executePendingEngineAction()
-                                }
-                            }
+                        var newIndex = browserUi.tab_index_for_id(tabId)
+                        if (newIndex >= 0) {
+                            tabs.setProperty(newIndex, "muted", nextMuted)
                         }
                     }
                 }
-
                 ToolButton {
-                    text: "+"
-                    Accessible.name: "New tab"
+                    id: lifecycleTab
+                    text: model.suspended || model.discarded ? "resume" : "freeze"
+                    enabled: model.suspended || model.discarded || tabIndex !== browserUi.active_tab_index
+                    Accessible.name: model.suspended || model.discarded
+                                      ? "Resume tab " + (tabIndex + 1)
+                                      : "Freeze hidden tab " + (tabIndex + 1)
                     onClicked: {
-                        var index = browserUi.new_tab()
-                        if (index >= 0) {
-                            tabs.append({ url: "about:blank", title: "New tab", loaded: true, pinned: false, muted: false, zoom: 1.0, suspended: false, discarded: false })
-                            window.syncTabModel()
+                        var tabId = browserUi.tab_id_for_index(tabIndex)
+                        var action = model.suspended || model.discarded
+                                ? "browser.tab.resume" : "browser.tab.suspend"
+                        if (tabId.length === 0
+                                || !browserUi.execute_ui_action(action, tabId)) {
+                            return
+                        }
+                        window.executePendingEngineAction()
+                    }
+                }
+                ToolButton {
+                    id: discardTab
+                    text: "discard"
+                    enabled: !model.suspended && !model.discarded
+                             && tabIndex !== browserUi.active_tab_index
+                    Accessible.name: "Discard hidden tab " + (tabIndex + 1)
+                    onClicked: {
+                        var tabId = browserUi.tab_id_for_index(tabIndex)
+                        if (tabId.length === 0
+                                || !browserUi.execute_ui_action("browser.tab.discard", tabId)) {
+                            return
+                        }
+                        window.executePendingEngineAction()
+                    }
+                }
+                ToolButton {
+                    id: moveContext
+                    text: "context"
+                    Accessible.name: "Move tab " + (tabIndex + 1) + " to another context window"
+                    enabled: !model.suspended && !model.discarded
+                    onClicked: {
+                        var tabId = browserUi.tab_id_for_index(tabIndex)
+                        if (tabId.length > 0) {
+                            window.showContextMovePicker(tabId)
+                        }
+                    }
+                }
+                ToolButton {
+                    id: moveLeft
+                    text: "←"
+                    Accessible.name: "Move tab left"
+                    onClicked: {
+                        var tabId = browserUi.tab_id_for_index(tabIndex)
+                        if (tabId.length === 0
+                                || !browserUi.execute_ui_action(
+                                    "browser.tab.move", tabId + "\tleft")) {
+                            return
+                        }
+                        var newIndex = browserUi.tab_index_for_id(tabId)
+                        if (newIndex >= 0 && newIndex !== tabIndex) {
+                            tabs.move(tabIndex, newIndex, 1)
+                        }
+                        window.syncTabModel()
+                    }
+                }
+                ToolButton {
+                    id: moveRight
+                    text: "→"
+                    Accessible.name: "Move tab right"
+                    onClicked: {
+                        var tabId = browserUi.tab_id_for_index(tabIndex)
+                        if (tabId.length === 0
+                                || !browserUi.execute_ui_action(
+                                    "browser.tab.move", tabId + "\tright")) {
+                            return
+                        }
+                        var newIndex = browserUi.tab_index_for_id(tabId)
+                        if (newIndex >= 0 && newIndex !== tabIndex) {
+                            tabs.move(tabIndex, newIndex, 1)
+                        }
+                        window.syncTabModel()
+                    }
+                }
+                ToolButton {
+                    id: closeTab
+                    text: "×"
+                    Accessible.name: "Close tab " + (tabIndex + 1)
+                    onClicked: {
+                        if (window.closeTabAtIndex(tabIndex)) {
+                            window.executePendingEngineAction()
                         }
                     }
                 }
             }
         }
+
+        ToolButton {
+            text: "+"
+            Accessible.name: "New tab"
+            onClicked: {
+                var index = browserUi.new_tab()
+                if (index >= 0) {
+                    tabs.append({ url: "about:blank", title: "New tab", loaded: true, pinned: false, muted: false, zoom: 1.0, suspended: false, discarded: false })
+                    window.syncTabModel()
+                }
+            }
+        }
     }
+}
+
+}
 
     FerricContextMoveDialog {
         id: contextMovePopup

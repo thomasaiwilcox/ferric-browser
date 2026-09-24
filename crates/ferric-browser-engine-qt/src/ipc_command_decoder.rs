@@ -17,6 +17,7 @@ use crate::{
     switcher_policy::valid_scope as valid_switcher_scope,
 };
 use ferric_browser_core::ParsedCommand;
+use ferric_browser_ipc::decode_command_envelope;
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -54,23 +55,10 @@ pub(super) fn interactive_open_command(
 pub(super) fn typed_ipc_command(
     params: &Value,
 ) -> Result<(ParsedCommand, IpcRoute), IpcCommandError> {
-    let object = params
-        .as_object()
-        .ok_or_else(|| "command.execute params must be an object".to_owned())?;
-    let name = object
-        .get("command")
-        .and_then(Value::as_str)
-        .ok_or_else(|| "command.execute requires a string command".to_owned())?;
-    if name.is_empty() || name.len() > 256 || name.chars().any(char::is_control) {
-        return Err("command name is empty, too long, or contains a control character".into());
-    }
-    let arguments = object.get("arguments").map_or(Ok(None), |value| {
-        value
-            .as_object()
-            .map(Some)
-            .ok_or_else(|| "command arguments must be an object".to_owned())
-    })?;
-    let route = typed_ipc_route(object, arguments, name)?;
+    let envelope = decode_command_envelope(params)?;
+    let name = envelope.command.as_str();
+    let arguments = Some(&envelope.arguments);
+    let route = typed_ipc_route(&envelope)?;
     let text_argument = |key: &str| -> Result<String, String> {
         arguments
             .and_then(|arguments| arguments.get(key))
