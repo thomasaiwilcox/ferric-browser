@@ -58,12 +58,13 @@ GridLayout {
     anchors.fill: parent
     rowSpacing: 0
 
-    GridLayout {
+    FerricTabStrip {
         id: compactTabStrip
-        property bool vertical: window.sideTabs
+        browserWindow: window
+        tabsModel: tabs
+        activeTabIndex: browserUi.active_tab_index
+        vertical: window.sideTabs
         parent: window.tabPosition === "top" ? headerColumn : window.contentItem
-        columns: vertical ? 1 : Math.max(1, tabs.count + 1)
-        rows: vertical ? Math.max(1, tabs.count + 1) : 1
         x: parent === headerColumn ? 0
            : (window.tabPosition === "right" ? parent.width - width : 0)
         y: parent === headerColumn || vertical ? 0
@@ -76,132 +77,33 @@ GridLayout {
                      - window.bottomChromeHeight
                    : window.tabBarHeight)
         z: 9
-        Accessible.role: Accessible.PageTabList
-        Accessible.name: "Browser tabs"
-        Accessible.description: tabs.count + " browser tabs"
         Layout.row: 0
         Layout.fillWidth: parent === headerColumn
         Layout.preferredHeight: window.tabBarHeight
         Layout.maximumHeight: visible && parent === headerColumn
                               ? window.tabBarHeight : 0
-        rowSpacing: 1
-        columnSpacing: 1
         visible: window.tabStripVisible
 
-        Repeater {
-            model: tabs
-            delegate: Rectangle {
-                property int tabIndex: index
-                Layout.fillWidth: true
-                Layout.minimumWidth: compactTabStrip.vertical
-                                     ? compactTabStrip.width : 48
-                Layout.maximumWidth: compactTabStrip.vertical
-                                     ? compactTabStrip.width : Number.POSITIVE_INFINITY
-                Layout.fillHeight: !compactTabStrip.vertical
-                Layout.preferredHeight: window.tabBarHeight
-                Layout.maximumHeight: window.tabBarHeight
-                color: tabIndex === browserUi.active_tab_index
-                       ? window.surfaceColor : window.backgroundColor
-
-                Accessible.role: Accessible.PageTab
-                Accessible.name: "Tab " + (tabIndex + 1) + ": "
-                                 + (model.title || "New tab")
-                Accessible.selected: tabIndex === browserUi.active_tab_index
-
-                Text {
-                    id: tabTitle
-                    anchors.left: parent.left
-                    anchors.leftMargin: 9
-                    anchors.right: tabClose.left
-                    anchors.rightMargin: 4
-                    anchors.verticalCenter: parent.verticalCenter
-                    color: tabIndex === browserUi.active_tab_index
-                           ? window.primaryTextColor : window.mutedTextColor
-                    text: (tabIndex + 1) + "  "
-                          + (model.pinned ? "◆ " : "")
-                          + (model.muted ? "[M] " : "")
-                          + (model.title || "New tab")
-                    elide: Text.ElideRight
-                }
-
-                ToolButton {
-                    id: tabClose
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: visible ? window.tabBarHeight : 0
-                    height: parent.height
-                    text: "×"
-                    padding: 0
-                    visible: tabIndex === browserUi.active_tab_index
-                             || tabMouse.containsMouse
-                    background: Item {}
-                    contentItem: Text {
-                        text: tabClose.text
-                        color: window.mutedTextColor
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    onClicked: {
-                        if (window.closeTabAtIndex(tabIndex)) {
-                            window.executePendingEngineAction()
-                        }
-                    }
-                }
-
-                MouseArea {
-                    id: tabMouse
-                    anchors.fill: parent
-                    anchors.rightMargin: tabClose.visible ? tabClose.width : 0
-                    hoverEnabled: true
-                    onClicked: {
-                        var tabId = browserUi.tab_id_for_index(tabIndex)
-                        if (tabId.length > 0
-                                && browserUi.execute_ui_action(
-                                    "browser.tab.select", tabId)) {
-                            tabs.setProperty(tabIndex, "loaded", true)
-                            window.executePendingEngineAction()
-                        }
-                    }
-                }
-
-                Rectangle {
-                    width: compactTabStrip.vertical ? 2 : parent.width
-                    height: compactTabStrip.vertical ? parent.height : 2
-                    anchors.left: parent.left
-                    anchors.bottom: parent.bottom
-                    color: window.accentColor
-                    visible: tabIndex === browserUi.active_tab_index
-                }
+        onSelectRequested: function(tabIndex) {
+            var tabId = browserUi.tab_id_for_index(tabIndex)
+            if (tabId.length > 0
+                    && browserUi.execute_ui_action("browser.tab.select", tabId)) {
+                tabs.setProperty(tabIndex, "loaded", true)
+                window.executePendingEngineAction()
             }
         }
-
-        ToolButton {
-            text: "+"
-            Layout.fillWidth: compactTabStrip.vertical
-            Layout.preferredWidth: compactTabStrip.vertical
-                                   ? compactTabStrip.width : window.tabBarHeight
-            Layout.maximumWidth: compactTabStrip.vertical
-                                 ? compactTabStrip.width : window.tabBarHeight
-            Layout.preferredHeight: window.tabBarHeight
-            padding: 0
-            background: Rectangle {
-                color: parent.hovered ? window.surfaceColor : window.backgroundColor
+        onCloseRequested: function(tabIndex) {
+            if (window.closeTabAtIndex(tabIndex)) {
+                window.executePendingEngineAction()
             }
-            contentItem: Text {
-                text: parent.text
-                color: window.mutedTextColor
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
-            }
-            Accessible.name: "New tab"
-            onClicked: {
-                var index = browserUi.new_tab()
-                if (index >= 0) {
-                    tabs.append({ url: "about:blank", title: "New tab",
-                        loaded: true, pinned: false, muted: false, zoom: 1.0,
-                        suspended: false, discarded: false })
-                    window.syncTabModel()
-                }
+        }
+        onNewRequested: {
+            var index = browserUi.new_tab()
+            if (index >= 0) {
+                tabs.append({ url: "about:blank", title: "New tab",
+                    loaded: true, pinned: false, muted: false, zoom: 1.0,
+                    suspended: false, discarded: false })
+                window.syncTabModel()
             }
         }
     }

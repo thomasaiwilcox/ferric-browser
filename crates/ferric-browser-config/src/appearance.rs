@@ -414,8 +414,9 @@ pub struct ThemeContrastReport {
 }
 
 /// Returns the WCAG 2.x contrast ratio for two validated theme colors.
-/// Eight-digit colors are composited over the supplied background before the
-/// ratio is calculated, matching the colors presented by the QML chrome.
+/// Eight-digit theme-file colors use #RRGGBBAA and are composited over the
+/// supplied background. The Qt presentation boundary separately converts
+/// colors to opaque #RRGGBB before handing them to QML.
 #[must_use]
 pub fn contrast_ratio(foreground: &str, background: &str) -> Option<f64> {
     let background = parse_rgba(background)?;

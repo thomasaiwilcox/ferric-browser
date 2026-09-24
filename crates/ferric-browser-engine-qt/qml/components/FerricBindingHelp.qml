@@ -33,11 +33,22 @@ Rectangle {
         anchors.fill: parent
         anchors.margins: 14
         spacing: 8
-        RowLayout {
+        ColumnLayout {
             Layout.fillWidth: true
-            Label { Layout.fillWidth: true; text: "Keyboard help"; color: bindingHelp.browserWindow.primaryTextColor; font.bold: true; Accessible.name: "Keyboard help" }
-            Button { text: "Refresh"; Accessible.name: "Refresh keyboard help"; onClicked: bindingHelp.refreshRequested() }
-            Button { text: "Close"; Accessible.name: "Close keyboard help"; onClicked: bindingHelp.closeRequested() }
+            Label {
+                Layout.fillWidth: true
+                text: "Keyboard help"
+                color: bindingHelp.browserWindow.primaryTextColor
+                font.bold: true
+                Accessible.name: "Keyboard help"
+                Accessible.description: "Unbound commands remain available through the command line"
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Button { text: "Refresh"; Accessible.name: "Refresh keyboard help"; onClicked: bindingHelp.refreshRequested() }
+                Button { text: "Close"; Accessible.name: "Close keyboard help"; onClicked: bindingHelp.closeRequested() }
+                Item { Layout.fillWidth: true }
+            }
         }
         TextField {
             id: helpSearchInput
@@ -49,12 +60,6 @@ Rectangle {
             onTextChanged: bindingHelp.searchChanged(text)
             Keys.onPressed: function(event) { if (event.key === Qt.Key_Escape) { bindingHelp.closeRequested(); event.accepted = true } }
         }
-        Label {
-            Layout.fillWidth: true
-            text: "Effective bindings are generated from the active validated trie. ‘unbound’ commands remain available through the command line."
-            color: bindingHelp.browserWindow.secondaryTextColor
-            wrapMode: Text.WordWrap
-        }
         ScrollView {
             id: bindingHelpScroll
             Layout.fillWidth: true
@@ -62,35 +67,72 @@ Rectangle {
             clip: true
             ListView {
                 id: bindingHelpList
+                objectName: "bindingHelpList"
                 width: bindingHelpScroll.availableWidth
                 height: bindingHelpScroll.availableHeight
                 clip: true
                 model: bindingHelp.browserWindow.bindingHelpRows
                 spacing: 4
                 delegate: Rectangle {
+                    objectName: "bindingHelpRow"
                     width: bindingHelpList.width
-                    height: modelData.kind === "heading" ? 30 : 76
+                    height: modelData.kind === "heading"
+                            ? headingLabel.implicitHeight + 16
+                            : bindingDetails.implicitHeight + 16
                     color: modelData.kind === "heading" ? bindingHelp.browserWindow.surfaceColor
                          : modelData.kind === "conflict" ? Qt.darker(bindingHelp.browserWindow.errorColor, 2.0)
                          : bindingHelp.browserWindow.surfaceColor
                     radius: 3
                     Accessible.name: modelData.kind === "heading" ? modelData.title : modelData.mode + " " + modelData.command + " " + modelData.keys
                     Label {
-                        anchors.fill: parent; anchors.margins: 8
-                        visible: modelData.kind === "heading"; text: modelData.title
-                        color: bindingHelp.browserWindow.accentColor; font.bold: true; verticalAlignment: Text.AlignVCenter
+                        id: headingLabel
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.margins: 8
+                        visible: modelData.kind === "heading"
+                        text: modelData.kind === "heading" ? modelData.title : ""
+                        color: bindingHelp.browserWindow.accentColor
+                        font.bold: true
+                        wrapMode: Text.WordWrap
                     }
-                    RowLayout {
-                        anchors.fill: parent; anchors.margins: 8
-                        visible: modelData.kind !== "heading"; spacing: 8
-                        Label { Layout.preferredWidth: 100; text: modelData.mode; color: modelData.kind === "conflict" ? bindingHelp.browserWindow.warningColor : bindingHelp.browserWindow.mutedTextColor; elide: Text.ElideRight }
-                        Label { Layout.preferredWidth: 180; text: modelData.command; color: bindingHelp.browserWindow.primaryTextColor; font.bold: true; elide: Text.ElideRight }
-                        ColumnLayout {
-                            Layout.fillWidth: true; spacing: 2
-                            Label { Layout.fillWidth: true; text: modelData.keys; color: modelData.kind === "conflict" ? bindingHelp.browserWindow.warningColor : bindingHelp.browserWindow.accentColor; elide: Text.ElideRight }
-                            Label { Layout.fillWidth: true; text: modelData.description; color: bindingHelp.browserWindow.secondaryTextColor; elide: Text.ElideRight }
+                    ColumnLayout {
+                        id: bindingDetails
+                        objectName: "bindingDetails"
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.margins: 8
+                        visible: modelData.kind !== "heading"
+                        spacing: 2
+                        Label {
+                            Layout.fillWidth: true
+                            text: modelData.command
+                            color: bindingHelp.browserWindow.primaryTextColor
+                            font.bold: true
+                            wrapMode: Text.WordWrap
                         }
-                        Label { Layout.preferredWidth: 120; text: modelData.source + " · " + modelData.count; color: bindingHelp.browserWindow.mutedTextColor; elide: Text.ElideRight }
+                        Label {
+                            Layout.fillWidth: true
+                            text: modelData.keys
+                            color: modelData.kind === "conflict"
+                                   ? bindingHelp.browserWindow.warningColor
+                                   : bindingHelp.browserWindow.accentColor
+                            wrapMode: Text.WordWrap
+                        }
+                        Label {
+                            Layout.fillWidth: true
+                            text: modelData.description
+                            color: bindingHelp.browserWindow.secondaryTextColor
+                            wrapMode: Text.WordWrap
+                        }
+                        Label {
+                            Layout.fillWidth: true
+                            text: modelData.mode + " · " + modelData.source
+                                  + " · " + modelData.count
+                            color: bindingHelp.browserWindow.mutedTextColor
+                            wrapMode: Text.WordWrap
+                        }
                     }
                 }
             }

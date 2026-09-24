@@ -55,23 +55,21 @@ Item {
 
             RowLayout {
                 Layout.fillWidth: true
-                spacing: 4
-                Accessible.role: Accessible.List
-                Accessible.name: "Switcher scopes"
-                Repeater {
+                Label {
+                    text: "Scope"
+                    color: root.browserWindow.primaryTextColor
+                }
+                ComboBox {
+                    id: scopeSelector
+                    objectName: "scopeSelector"
+                    Layout.fillWidth: true
                     model: ["all", "tabs", "windows", "contexts", "commands",
                         "actions", "history", "marks", "sessions", "downloads", "closed"]
-                    delegate: Button {
-                        id: scopeDelegate
-                        required property string modelData
-                        text: scopeDelegate.modelData
-                        checkable: true
-                        checked: scopeDelegate.modelData === root.browserWindow.switcherScope
-                        Accessible.role: Accessible.PageTab
-                        Accessible.name: "Switcher scope " + scopeDelegate.modelData
-                        Accessible.selected: checked
-                        onClicked: root.scopeSelected(scopeDelegate.modelData)
-                    }
+                    currentIndex: Math.max(0, model.indexOf(
+                                               root.browserWindow.switcherScope))
+                    Accessible.name: "Switcher scope"
+                    Accessible.description: "Choose which browser items appear in this menu"
+                    onActivated: root.scopeSelected(currentText)
                 }
             }
 

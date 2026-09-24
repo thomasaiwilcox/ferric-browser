@@ -445,6 +445,7 @@ fn settings_component_composes_schema_rows_and_keeps_mutations_at_the_root() {
     assert!(qml.contains("required property var settingsModel"));
     assert!(rows.contains("required property var settingsModel"));
     assert!(rows.contains("model: settingRows.settingsModel"));
+    assert!(rows.contains("options: options"));
     assert!(rows.contains("rowData.options"));
     assert!(composition_root.contains("FerricSettings {"));
     assert!(composition_root.contains("FerricSettingsModel { id: settingsModel }"));

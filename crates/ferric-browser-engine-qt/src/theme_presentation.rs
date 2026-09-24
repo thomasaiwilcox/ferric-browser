@@ -55,13 +55,15 @@ pub(super) fn project(palette: &ThemePalette) -> ChromeTheme {
 
 fn opaque(value: &str, fallback: &str) -> String {
     let value = valid_color(value).unwrap_or(fallback);
-    format!("{}ff", &value[..7])
+    // Theme files use #RRGGBBAA, but QML interprets eight-digit hex as
+    // #AARRGGBB. Send opaque six-digit RGB across the Qt boundary instead.
+    value[..7].to_owned()
 }
 
 fn readable(value: &str, background: &str, fallback: &str) -> String {
     let candidate = valid_color(value).unwrap_or(fallback);
     if contrast_ratio(candidate, background).is_some_and(|ratio| ratio >= 4.5) {
-        candidate.to_owned()
+        opaque(candidate, fallback)
     } else {
         contrast_text(background)
     }
@@ -98,8 +100,41 @@ mod tests {
             ..ThemePalette::default()
         };
         let theme = project(&palette);
-        assert_eq!(theme.background, "#1e1e2eff");
+        assert_eq!(theme.background, "#1e1e2e");
         assert_eq!(theme.primary_text, "#ffffff");
         assert_eq!(theme.contrast_status, "warning");
+    }
+
+    #[test]
+    fn every_projected_qml_color_is_opaque_rgb() {
+        let palette = ThemePalette {
+            background: "#00000080".into(),
+            surface: "#11111140".into(),
+            foreground: "#ffffff80".into(),
+            ..ThemePalette::default()
+        };
+        let theme = project(&palette);
+        assert_eq!(theme.background, "#000000");
+        assert_eq!(theme.surface, "#111111");
+        for color in [
+            &theme.background,
+            &theme.surface,
+            &theme.panel,
+            &theme.primary_text,
+            &theme.secondary_text,
+            &theme.muted_text,
+            &theme.border,
+            &theme.accent,
+            &theme.warning,
+            &theme.error,
+            &theme.success,
+            &theme.private,
+            &theme.mode_insert,
+            &theme.selection,
+            &theme.selection_text,
+        ] {
+            assert_eq!(color.len(), 7, "QML color must be #RRGGBB: {color}");
+            assert!(color.starts_with('#'));
+        }
     }
 }

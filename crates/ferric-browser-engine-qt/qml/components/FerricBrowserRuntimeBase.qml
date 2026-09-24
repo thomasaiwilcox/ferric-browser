@@ -1199,8 +1199,9 @@ ApplicationWindow {
 
     function contextStatusColor(ui, fallback) {
         var accent = ui && ui.context_accent ? String(ui.context_accent) : ""
-        return /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(accent)
+        var candidate = /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(accent)
                 ? accent.slice(0, 7) : fallback
+        return window.readableTextColor(candidate, window.surfaceColor)
     }
 
     function statusTransport(view) {

@@ -117,7 +117,7 @@ Item {
         anchors.right: parent.right
         anchors.bottom: parent.top
         height: Math.min(220, completionList.contentHeight + 8)
-        z: -1
+        z: 1
         visible: commandSurface.commandVisible && commandSurface.completionVisible
         color: commandSurface.browserWindow.panelColor
         opacity: 1.0

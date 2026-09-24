@@ -822,13 +822,18 @@ fn site_doctor_presentation_uses_typed_properties_not_qml_json() {
 
 #[test]
 fn default_chrome_is_compact_modal_and_content_first() {
-    let qml = QML_SOURCE;
+    let qml = [
+        QML_SOURCE,
+        include_str!("../../qml/components/FerricTabStrip.qml"),
+    ]
+    .concat();
     let status_bar = include_str!("../../qml/components/FerricStatusBar.qml");
     let command_line = include_str!("../../qml/components/FerricCommandLine.qml");
     let chrome_presentation = include_str!("../../qml/scripts/ChromePresentation.js");
     assert!(qml.contains("height: window.tabPosition === \"top\" && window.tabStripVisible"));
     assert!(qml.contains("visible: window.tabStripVisible"));
     assert!(qml.contains("text: (tabIndex + 1) + \"  \""));
+    assert!(qml.contains("positionViewAtIndex(activeTabIndex, ListView.Contain)"));
     assert!(status_bar.contains("text: statusBar.mode.toUpperCase()"));
     assert!(status_bar.contains("id: statusUrl"));
     assert!(command_line.contains("id: commandPrefix"));

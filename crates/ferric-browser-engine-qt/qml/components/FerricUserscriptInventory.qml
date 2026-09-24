@@ -21,49 +21,59 @@ Item {
         enabledOverrides = next
     }
 
-    implicitHeight: Math.min(150, Math.max(42, userscriptList.contentHeight))
+    implicitHeight: Math.min(Math.max(150, browserWindow.chromeRowHeight * 4),
+                             Math.max(42, userscriptList.contentHeight))
     visible: !browserWindow.temporaryProfile
 
     ListView {
         id: userscriptList
+        objectName: "userscriptList"
         anchors.fill: parent
         clip: true
         spacing: 3
         model: inventory.rows
         delegate: Rectangle {
             id: userscriptRow
+            objectName: "userscriptRow"
             required property var modelData
             readonly property string scriptName: String(modelData.name || "")
             width: userscriptList.width
-            height: 42
+            height: userscriptContent.implicitHeight + 12
             color: inventory.browserWindow.surfaceColor
             radius: 3
             Accessible.name: scriptName.length > 0 ? scriptName : "userscript"
 
-            RowLayout {
-                anchors.fill: parent
+            ColumnLayout {
+                id: userscriptContent
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
                 anchors.margins: 6
-                spacing: 8
-                CheckBox {
-                    id: enabledToggle
-                    checked: inventory.enabledFor(userscriptRow.scriptName,
-                                                !!userscriptRow.modelData.enabled)
-                    text: checked ? "Enabled" : "Disabled"
-                    Accessible.name: "Enable userscript " + userscriptRow.scriptName
-                    onToggled: inventory.enabledRequested(userscriptRow.scriptName, checked)
-                }
+                spacing: 2
                 Label {
                     Layout.fillWidth: true
                     text: userscriptRow.scriptName
                           + " · " + Number(userscriptRow.modelData.actions || 0) + " action(s)"
                           + (userscriptRow.modelData.page_world ? " · page world" : "")
                     color: inventory.browserWindow.secondaryTextColor
-                    elide: Text.ElideRight
+                    wrapMode: Text.WordWrap
                 }
-                Button {
-                    text: "Remove"
-                    Accessible.name: "Remove userscript " + userscriptRow.scriptName
-                    onClicked: inventory.removalRequested(userscriptRow.scriptName)
+                RowLayout {
+                    Layout.fillWidth: true
+                    CheckBox {
+                        id: enabledToggle
+                        checked: inventory.enabledFor(userscriptRow.scriptName,
+                                                    !!userscriptRow.modelData.enabled)
+                        text: checked ? "Enabled" : "Disabled"
+                        Accessible.name: "Enable userscript " + userscriptRow.scriptName
+                        onToggled: inventory.enabledRequested(userscriptRow.scriptName, checked)
+                    }
+                    Item { Layout.fillWidth: true }
+                    Button {
+                        text: "Remove"
+                        Accessible.name: "Remove userscript " + userscriptRow.scriptName
+                        onClicked: inventory.removalRequested(userscriptRow.scriptName)
+                    }
                 }
             }
         }

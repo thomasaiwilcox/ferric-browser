@@ -9,7 +9,9 @@ cargo test --workspace --locked
 cargo xtask check
 ```
 
-Qt and QML qualification additionally uses `cargo xtask test engine`.
+Qt and QML qualification additionally uses `cargo xtask test engine`. The
+deterministic checks and engine task run browser-chrome interaction tests with
+Qt Quick Test's `qmltestrunner` in an offscreen software-rendered window.
 Native-Wayland journeys use `cargo xtask test wayland`; they require the system
 QtWebEngine stack, Weston, D-Bus, and the relevant portal services. Packaging is
 checked with `cargo xtask package arch`.

@@ -37,6 +37,7 @@ Item {
 
     ListView {
         id: resultList
+        objectName: "switcherResultList"
         anchors.fill: parent
         clip: true
         focus: true
@@ -47,6 +48,7 @@ Item {
         Accessible.description: count + " results; selected result is announced with its kind and label"
         delegate: Rectangle {
             id: resultRow
+            required property int index
             required property var modelData
             width: resultList.width
             height: Math.max(switcherResults.browserWindow.chromeRowHeight * 5,
@@ -61,6 +63,11 @@ Item {
             Accessible.description: (resultData.profile || "")
                 + (resultData.secondary ? " · " + resultData.secondary : "")
                 + (index === resultList.currentIndex ? " · selected" : "")
+
+            MouseArea {
+                anchors.fill: parent
+                onClicked: switcherResults.activationRequested(resultRow.resultIndex)
+            }
 
             ColumnLayout {
                 id: resultColumn
@@ -88,6 +95,7 @@ Item {
                         model: resultRow.resultData.actions || []
                         delegate: Button {
                             required property var modelData
+                            objectName: "switcherActionButton"
                             text: modelData
                             Accessible.name: modelData + " " + resultRow.resultData.kind
                             onClicked: switcherResults.actionRequested(resultRow.resultIndex, modelData)
@@ -97,10 +105,6 @@ Item {
                 }
             }
 
-            MouseArea {
-                anchors.fill: parent
-                onClicked: switcherResults.activationRequested(resultRow.resultIndex)
-            }
         }
     }
 }

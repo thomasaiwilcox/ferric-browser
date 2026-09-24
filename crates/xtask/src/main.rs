@@ -313,6 +313,7 @@ fn run_check() -> Result<(), String> {
     check_release_freshness_policy()?;
     check_capability_matrix(Path::new("docs/architecture/capabilities.md"))?;
     run_qml_lint()?;
+    run_qml_ui_tests()?;
     check_generated_docs()?;
     check_architecture_boundaries()?;
     validate_release_artifacts()?;
@@ -346,6 +347,34 @@ fn run_qml_lint() -> Result<(), String> {
     arguments.extend(qml_files.into_iter().map(|path| path.display().to_string()));
     let argument_refs = arguments.iter().map(String::as_str).collect::<Vec<_>>();
     run(executable, &argument_refs)
+}
+
+fn run_qml_ui_tests() -> Result<(), String> {
+    let candidates = [
+        "qmltestrunner6",
+        "qmltestrunner",
+        "/usr/lib/qt6/bin/qmltestrunner",
+    ];
+    let executable = candidates
+        .into_iter()
+        .find(|candidate| command_available(candidate))
+        .ok_or_else(|| {
+            "qmltestrunner is required for browser chrome interaction tests".to_owned()
+        })?;
+    let status = Command::new(executable)
+        .args(["-input", "crates/ferric-browser-engine-qt/tests/qml"])
+        .env("QT_QPA_PLATFORM", "offscreen")
+        .env("QT_QPA_PLATFORMTHEME", "")
+        .env("QT_QUICK_BACKEND", "software")
+        .status()
+        .map_err(|error| format!("failed to run {executable}: {error}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "{executable} chrome interaction tests exited with {status}"
+        ))
+    }
 }
 
 fn check_architecture_boundaries() -> Result<(), String> {
@@ -1271,16 +1300,19 @@ fn run_test(arguments: &[String]) -> Result<(), String> {
             "cargo",
             &["test", "-p", "ferric-browser-core", "--locked", "--offline"],
         ),
-        "engine" => run(
-            "cargo",
-            &[
-                "test",
-                "-p",
-                "ferric-browser-engine-qt",
-                "--locked",
-                "--offline",
-            ],
-        ),
+        "engine" => {
+            run(
+                "cargo",
+                &[
+                    "test",
+                    "-p",
+                    "ferric-browser-engine-qt",
+                    "--locked",
+                    "--offline",
+                ],
+            )?;
+            run_qml_ui_tests()
+        }
         "adapter" => run_adapter_smoke(),
         "fuzz" => run_fuzz_smoke(),
         "storage" => run(
