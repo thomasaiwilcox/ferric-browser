@@ -6,6 +6,10 @@
 
 #![allow(unsafe_code)]
 
+mod command_schema;
+
+pub use command_schema::{command_argument_names, validate_command_argument_fields};
+
 use std::{
     collections::{HashMap, VecDeque},
     fs::{self, File, OpenOptions},

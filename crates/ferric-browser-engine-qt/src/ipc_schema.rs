@@ -12,98 +12,9 @@ use serde_json::{Map, Value};
 /// Unknown commands intentionally accept no fields. The command decoder keeps
 /// its existing compatibility behavior for an unknown command name while the
 /// field boundary remains closed.
+#[cfg(test)]
 pub(super) fn command_argument_names(command: &str) -> &'static [&'static str] {
-    match command {
-        "open" => &["input", "target", "clean_link", "external"],
-        "open-current" => &["target"],
-        "back" | "forward" | "tab-next" | "tab-prev" => &["count"],
-        "tab-open" => &["input", "background"],
-        "fullscreen" => &["state"],
-        "reload" => &["bypass_cache"],
-        "search" => &["query", "backward", "case"],
-        "window-new" => &["profile", "private"],
-        "tab-give" => &["window_id"],
-        "set" => &["key", "value", "temporary", "pattern"],
-        "unset" => &["key", "temporary", "pattern"],
-        "get" => &["key", "url", "explain"],
-        "help" => &["topic"],
-        "config-export" | "config-write-defaults" | "print-pdf" | "save-page" => &["path"],
-        "config-edit" | "config-reload" | "config-check" | "theme-reload" => &[],
-        "bind" => &["mode", "keychain", "command"],
-        "unbind" => &["mode", "keychain"],
-        "binding-list" => &["mode"],
-        "binding-explain" => &["keychain", "mode"],
-        "learning-mode" => &["state"],
-        "bookmark-add" => &["title"],
-        "bookmark-edit" => &["id", "title"],
-        "bookmark-delete" | "bookmark-open" | "history-open" | "download-open"
-        | "download-show" | "download-cancel" | "download-pause" | "download-resume"
-        | "download-retry" | "site-doctor-undo" => &["id"],
-        "tab-select" => &["selector"],
-        "tab-focus" | "tab-suspend" | "tab-discard" | "tab-resume" => &["id"],
-        "tab-close" => &["id", "count"],
-        "tab-mute" => &["id", "state"],
-        "tab-pin" => &["id", "state"],
-        "tab-move" => &["id", "direction", "context"],
-        "zoom" => &["factor"],
-        "search-next" => &["direction", "count"],
-        "scroll" => &["direction", "count"],
-        "scroll-page" => &["direction", "half", "count"],
-        "scroll-to" => &["edge"],
-        "window-focus" => &["id"],
-        "window-move" => &["id", "workspace"],
-        "window-close" => &[],
-        "command-help" => &["id"],
-        "command-execute" => &["id", "arguments"],
-        "selection-search" => &["engine"],
-        "quickmark-add" => &["name", "url"],
-        "quickmark-edit" => &["name", "url"],
-        "journey" => &["current", "search", "expand"],
-        "switcher" => &["scope", "query"],
-        "journey-reopen" => &["node", "target"],
-        "profile-open" => &["name", "input"],
-        "quickmark-delete" | "quickmark-open" | "session-save" | "session-delete"
-        | "profile-delete" | "context-enter" | "context-save" => &["name"],
-        "session-load" => &["name", "append"],
-        "profile-create" => &["name", "ephemeral"],
-        "history-clear" => &["since", "origin", "confirmed"],
-        "url-clean" | "url-explain" => &["url"],
-        "hint" => &["kind", "target", "rapid", "script"],
-        "mode-enter" => &["mode"],
-        "caret-move" => &["direction", "count"],
-        "caret-select" => &["state"],
-        "download" => &["input"],
-        "permissions" => &["origin"],
-        "site-status" => &["tab"],
-        "permission-reset" => &["origin", "permission"],
-        "site-doctor" => &["experiment"],
-        "site-data-clear" => &["origin", "confirmed"],
-        "blocking-toggle" => &["site"],
-        "spawn" => &["argv", "userscript"],
-        "script-run" => &["name"],
-        "jseval" => &["world", "script"],
-        "devtools" => &["detach"],
-        "send" => &["target", "input", "url", "selection", "send_subject"],
-        "repeat" => &["count"],
-        "cancel" => &["operation_id"],
-        "macro-record" | "macro-play" => &["register"],
-        "yank" => &["source", "input", "clean", "primary"],
-        "paste-open" => &["target", "primary"],
-        "action" => &["subject", "verb", "input", "url"],
-        "action-list" => &["subject"],
-        "context-create" => &["name", "label", "profile", "workspace"],
-        "context-delete" => &["name", "confirmed"],
-        "context-route" => &[
-            "action",
-            "pattern",
-            "context",
-            "id",
-            "priority",
-            "behavior",
-            "entry_points",
-        ],
-        _ => &[],
-    }
+    ferric_browser_ipc::command_argument_names(command)
 }
 
 /// Validates argument fields whose type does not depend on command execution.
@@ -118,12 +29,7 @@ pub(super) fn validate_command_argument_envelope(
     let Some(arguments) = arguments else {
         return Ok(());
     };
-    if arguments
-        .keys()
-        .any(|key| !command_argument_names(command).contains(&key.as_str()))
-    {
-        return Err("command arguments contain an unknown field".into());
-    }
+    ferric_browser_ipc::validate_command_argument_fields(command, arguments)?;
 
     for (command_name, argument_name) in [
         ("context-delete", "confirmed"),

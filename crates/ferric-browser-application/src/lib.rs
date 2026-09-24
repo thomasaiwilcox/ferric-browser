@@ -22,15 +22,17 @@ use ferric_browser_storage::{
 
 mod configuration;
 mod profile;
+mod profile_open;
 mod storage;
 
 use configuration::ConfigurationState;
 pub use configuration::{ConfigurationLayers, ConfigurationSnapshot};
 pub use ferric_browser_storage::StorageCommand as StorageRequest;
 use profile::ActiveProfile;
-pub use profile::{
-    ContextChange, ContextCommand, ContextEffect, ProfileActivation, ProfileSnapshot,
-};
+use profile::ProfileActivation;
+pub use profile::{ContextChange, ContextCommand, ContextEffect, ProfileSnapshot};
+use profile_open::{PreparedProfile, ProfileOpenCoordinator};
+pub use profile_open::{ProfileOpenEffect, ProfileOpenError, ProfileOpenRequest, ProfileStorage};
 use storage::StorageCoordinator;
 pub use storage::{StorageEffect, StorageTicket};
 
@@ -42,6 +44,7 @@ pub struct BrowserApplication {
     active_profile: Option<ActiveProfile>,
     next_profile_generation: u64,
     storage: StorageCoordinator,
+    profile_open: Option<ProfileOpenCoordinator>,
 }
 
 impl BrowserApplication {
@@ -53,6 +56,7 @@ impl BrowserApplication {
             active_profile: None,
             next_profile_generation: 1,
             storage: StorageCoordinator::default(),
+            profile_open: None,
         }
     }
 
@@ -68,6 +72,7 @@ impl BrowserApplication {
             active_profile: None,
             next_profile_generation: 1,
             storage: StorageCoordinator::default(),
+            profile_open: None,
         }
     }
 
@@ -91,6 +96,7 @@ impl BrowserApplication {
                 active_profile: None,
                 next_profile_generation: 1,
                 storage: StorageCoordinator::default(),
+                profile_open: None,
             },
             window,
             tab,
@@ -268,7 +274,8 @@ impl BrowserApplication {
     /// # Errors
     ///
     /// Returns a storage error when the profile's durable worker cannot start.
-    pub fn activate_profile(
+    #[cfg(test)]
+    fn activate_profile(
         &mut self,
         activation: ProfileActivation,
     ) -> Result<ProfileSnapshot, StorageWorkerError> {
@@ -277,6 +284,76 @@ impl BrowserApplication {
         self.next_profile_generation = self.next_profile_generation.saturating_add(1);
         self.active_profile = Some(ActiveProfile::activate(generation, activation));
         self.profile_snapshot().ok_or(StorageWorkerError::Stopped)
+    }
+
+    /// Starts one bounded, application-owned profile bootstrap operation.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for an invalid request, a pending request, or worker
+    /// startup/admission failure.
+    pub fn request_profile_open(
+        &mut self,
+        request: ProfileOpenRequest,
+    ) -> Result<(), ProfileOpenError> {
+        if self.profile_open.is_none() {
+            self.profile_open = Some(ProfileOpenCoordinator::spawn()?);
+        }
+        self.profile_open
+            .as_mut()
+            .ok_or(ProfileOpenError::WorkerStopped)?
+            .submit(request)
+    }
+
+    /// Polls profile bootstrap and atomically installs its application state.
+    pub fn poll_profile_open(&mut self) -> Option<Result<ProfileOpenEffect, ProfileOpenError>> {
+        let prepared = self.profile_open.as_mut()?.poll()?;
+        self.profile_open = None;
+        Some(prepared.and_then(|prepared| self.install_prepared_profile(prepared)))
+    }
+
+    fn install_prepared_profile(
+        &mut self,
+        mut prepared: PreparedProfile,
+    ) -> Result<ProfileOpenEffect, ProfileOpenError> {
+        let configuration = match self.activate_configuration(prepared.layers) {
+            Ok(snapshot) => snapshot,
+            Err(error) => {
+                prepared
+                    .configuration_error
+                    .get_or_insert_with(|| error.to_string());
+                self.replace_configuration(prepared.fallback_configuration)
+                    .map_err(|error| ProfileOpenError::InvalidRequest(error.to_string()))?
+            }
+        };
+        if let Err(error) = self
+            .storage
+            .replace(prepared.activation.storage_path.as_deref())
+        {
+            prepared
+                .storage_error
+                .get_or_insert_with(|| error.to_string());
+            prepared.activation.storage_path = None;
+            self.storage.close();
+        }
+        let generation = self.next_profile_generation;
+        self.next_profile_generation = self.next_profile_generation.saturating_add(1);
+        self.active_profile = Some(ActiveProfile::activate(generation, prepared.activation));
+        let profile = self
+            .profile_snapshot()
+            .ok_or(ProfileOpenError::WorkerStopped)?;
+        Ok(ProfileOpenEffect {
+            configuration,
+            profile,
+            config_sources: prepared.config_sources,
+            profile_overrides: prepared.profile_overrides,
+            runtime_overrides: prepared.runtime_overrides,
+            session_path: prepared.session_path,
+            session_state_root: prepared.session_state_root,
+            storage_error: prepared.storage_error,
+            configuration_error: prepared.configuration_error,
+            context_error: prepared.context_error,
+        })
     }
 
     /// Closes the active profile after draining its durable worker.
@@ -509,6 +586,58 @@ mod tests {
 
         application.close_profile();
         assert!(application.profile_snapshot().is_none());
+    }
+
+    #[test]
+    fn profile_open_worker_installs_configuration_and_storage_as_one_application_effect() {
+        let base = std::env::temp_dir().join(format!("ferric-app-profile-{}", Uuid::new_v4()));
+        let (mut application, _, _) =
+            BrowserApplication::bootstrap(Config::default(), PrivacyKind::Normal, "default")
+                .expect("application bootstrap");
+        let mut command_line = RuntimeOverrides::default();
+        command_line
+            .set_literal("content.zoom", "1.25")
+            .expect("valid override");
+        application
+            .request_profile_open(ProfileOpenRequest {
+                name: "default".into(),
+                label: "Default".into(),
+                privacy: PrivacyKind::Normal,
+                storage: ProfileStorage::Durable(RootSpec::Base(base.clone())),
+                base_configuration: Config::default(),
+                initial_profile_overrides: RuntimeOverrides::default(),
+                command_line_overrides: command_line,
+                config_path: None,
+                contexts: toml::from_str(
+                    "schema_version = 3\n[[contexts]]\nname = \"worker-context\"\nlabel = \"Worker context\"\nprofile = \"default\"\n",
+                )
+                .expect("context configuration"),
+                context_configuration_error: None,
+            })
+            .expect("profile request");
+
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        let effect = loop {
+            if let Some(result) = application.poll_profile_open() {
+                break result.expect("profile effect");
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "profile open timed out"
+            );
+            thread::yield_now();
+        };
+
+        assert!(effect.profile.durable);
+        assert!(application.storage_is_open());
+        assert!((effect.configuration.effective.content.zoom - 1.25).abs() < f64::EPSILON);
+        assert_eq!(application.profile_snapshot(), Some(effect.profile));
+        assert_eq!(
+            application.contexts().expect("contexts")[0].name,
+            "worker-context"
+        );
+        application.close_profile();
+        let _ = fs::remove_dir_all(base);
     }
 
     #[test]

@@ -3349,7 +3349,7 @@ ApplicationWindow {
                 visibleIndexes.push(index)
             }
         }
-        settingsModel.replaceRows(
+        var replaced = settingsModel.replaceRows(
                     visibleIndexes.map(function(index) { return browserUi.settings_row_keys[index] }),
                     visibleIndexes.map(function(index) { return browserUi.settings_row_labels[index] }),
                     visibleIndexes.map(function(index) { return browserUi.settings_row_types[index] }),
@@ -3357,6 +3357,9 @@ ApplicationWindow {
                     visibleIndexes.map(function(index) { return browserUi.settings_row_applies[index] }),
                     visibleIndexes.map(function(index) { return browserUi.settings_row_values[index] }),
                     visibleIndexes.map(function(index) { return browserUi.settings_row_options[index] }))
+        if (!replaced) {
+            window.settingsNotice = "Settings could not be displayed because their row data was inconsistent"
+        }
     }
 
     function settingLiteral(row, value) {

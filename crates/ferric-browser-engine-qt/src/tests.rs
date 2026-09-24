@@ -2464,71 +2464,6 @@ fn profile_list_worker_reads_registry_off_thread() {
 }
 
 #[test]
-fn profile_setup_worker_opens_profile_store_off_thread() {
-    let roots = StorageRoots::resolve(RootSpec::Temporary).expect("temporary roots");
-    let base = roots
-        .temporary_root()
-        .expect("temporary root")
-        .display()
-        .to_string();
-    let mut worker = ProfileSetupWorker::spawn().expect("profile setup worker");
-    worker
-            .request(
-                false,
-                "worker-setup".into(),
-                "Worker setup".into(),
-                base,
-                String::new(),
-                String::from(
-                    r#"{"schema_version":3,"contexts":[{"name":"worker-context","label":"Worker context","profile":"worker-setup"}]}"#,
-                ),
-            )
-            .expect("setup request");
-    let result = (0..100).find_map(|_| {
-        let value = worker.poll();
-        if value.is_none() {
-            thread::sleep(Duration::from_millis(1));
-        }
-        value
-    });
-    let ProfileBootstrapSetup {
-        storage: setup,
-        profile_overrides,
-        runtime_overrides,
-        config_sources,
-        contexts,
-    } = result.expect("setup response").expect("profile setup");
-    assert!(profile_overrides.is_none());
-    assert!(runtime_overrides.is_some());
-    assert!(config_sources.is_none());
-    let (contexts, context_error) = contexts
-        .expect("context registry result")
-        .expect("context registry");
-    assert!(context_error.is_none());
-    assert_eq!(contexts.contexts().len(), 1);
-    assert_eq!(contexts.contexts()[0].name, "worker-context");
-    let ProfileStoreSetup {
-        store,
-        profile_id,
-        session_path,
-        session_state_root,
-        profile_lock,
-        roots: storage_roots,
-        profile_names: names,
-    } = setup;
-    assert!(store.is_some());
-    assert!(profile_id.is_some());
-    assert!(session_path.is_some());
-    assert!(session_state_root.is_some());
-    assert!(profile_lock.is_some());
-    assert!(storage_roots.is_some());
-    assert_eq!(names, vec!["worker-setup"]);
-    drop((store, profile_lock));
-    drop(worker);
-    roots.cleanup().expect("temporary cleanup");
-}
-
-#[test]
 fn private_history_is_bounded_deduplicated_and_origin_clearable() {
     let mut records = Vec::new();
     let mut next_id = -1;
@@ -2568,65 +2503,6 @@ fn private_history_is_bounded_deduplicated_and_origin_clearable() {
         1
     );
     assert!(records.is_empty());
-}
-
-#[test]
-fn profile_setup_worker_keeps_private_sessions_memory_only() {
-    let roots = StorageRoots::resolve(RootSpec::Temporary).expect("temporary roots");
-    let base = roots
-        .temporary_root()
-        .expect("temporary root")
-        .display()
-        .to_string();
-    let mut worker = ProfileSetupWorker::spawn().expect("profile setup worker");
-    worker
-        .request(
-            true,
-            "private-worker".into(),
-            "Private worker".into(),
-            base,
-            String::new(),
-            String::new(),
-        )
-        .expect("private setup request");
-    let result = (0..100).find_map(|_| {
-        let value = worker.poll();
-        if value.is_none() {
-            thread::sleep(Duration::from_millis(1));
-        }
-        value
-    });
-    let ProfileBootstrapSetup {
-        storage:
-            ProfileStoreSetup {
-                store,
-                profile_id,
-                session_path,
-                session_state_root,
-                profile_lock,
-                roots: storage_roots,
-                profile_names: names,
-            },
-        profile_overrides,
-        runtime_overrides,
-        config_sources,
-        contexts,
-    } = result
-        .expect("private setup response")
-        .expect("private profile setup");
-    assert!(store.is_none());
-    assert!(profile_id.is_none());
-    assert!(session_path.is_none());
-    assert!(session_state_root.is_none());
-    assert!(profile_lock.is_none());
-    assert!(storage_roots.is_none());
-    assert!(names.is_empty());
-    assert!(profile_overrides.is_none());
-    assert!(runtime_overrides.is_none());
-    assert!(config_sources.is_none());
-    assert!(contexts.is_none());
-    drop(worker);
-    roots.cleanup().expect("temporary cleanup");
 }
 
 #[test]
@@ -4721,7 +4597,8 @@ fn ephemeral_profile_uses_off_the_record_memory_only_setup() {
     assert!(source.contains("active_profile_is_transient"));
     assert!(source.contains("release_transient_resources"));
     assert!(source.contains("pending_profile_configuration = None"));
-    assert!(source.contains("profile_setup_worker = None"));
+    assert!(source.contains("request_profile_open(ProfileOpenRequest"));
+    assert!(!source.contains("ProfileSetupWorker"));
     assert!(source.contains("network_policy_worker = None"));
     assert!(source.contains("set_blocking_rule_hosts(QStringList::default())"));
     assert!(source.contains("set_blocking_rule_list_ids(QStringList::default())"));

@@ -498,6 +498,14 @@ fn check_qt_adapter_root() -> Result<(), String> {
     for marker in [
         "storage_worker: Option<ProfileStoreWorker>",
         "ProfileStoreWorker::spawn(",
+        "profile_setup_worker:",
+        "ProfileSetupWorker",
+        "ProfileActivation",
+        "open_profile_store(",
+        "load_profile_runtime_overrides(",
+        "load_runtime_overrides(",
+        "ProfileRegistry::open(",
+        "ContextRegistry::open(",
         "StorageCompletions",
         "poll_completions(",
         "pending_history_writes",
@@ -516,7 +524,7 @@ fn check_qt_adapter_root() -> Result<(), String> {
     let browser_ui_state = production_adapter
         .split("pub struct BrowserUiRust")
         .nth(1)
-        .and_then(|source| source.split("struct ProfileStoreSetup").next())
+        .and_then(|source| source.split("struct ContextSnapshot").next())
         .ok_or_else(|| "could not locate Qt BrowserUi state boundary".to_owned())?;
     for marker in [
         "Option<ProfileStore>",
@@ -547,6 +555,16 @@ fn check_qt_adapter_root() -> Result<(), String> {
                 "Qt adapter must not define configuration-layer policy: {marker}"
             ));
         }
+    }
+    let ipc_schema = fs::read_to_string("crates/ferric-browser-engine-qt/src/ipc_schema.rs")
+        .map_err(|error| format!("could not inspect the Qt IPC schema adapter: {error}"))?;
+    if !ipc_schema.contains("ferric_browser_ipc::validate_command_argument_fields") {
+        return Err("Qt command decoding must use the shared IPC command-field schema".to_owned());
+    }
+    let cli = fs::read_to_string("crates/ferric-browser/src/main.rs")
+        .map_err(|error| format!("could not inspect the CLI command encoder: {error}"))?;
+    if !cli.contains("ferric_browser_ipc::validate_command_argument_fields") {
+        return Err("CLI command encoding must use the shared IPC command-field schema".to_owned());
     }
 
     Ok(())

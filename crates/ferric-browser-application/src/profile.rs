@@ -8,14 +8,14 @@ use uuid::Uuid;
 
 /// Resources transferred into the application when a profile becomes active.
 #[derive(Debug)]
-pub struct ProfileActivation {
-    pub name: String,
-    pub id: Option<Uuid>,
-    pub privacy: PrivacyKind,
-    pub roots: Option<StorageRoots>,
-    pub lock: Option<ProfileLock>,
-    pub contexts: Option<ContextRegistry>,
-    pub storage_path: Option<PathBuf>,
+pub(crate) struct ProfileActivation {
+    pub(crate) name: String,
+    pub(crate) id: Option<Uuid>,
+    pub(crate) privacy: PrivacyKind,
+    pub(crate) roots: Option<StorageRoots>,
+    pub(crate) lock: Option<ProfileLock>,
+    pub(crate) contexts: Option<ContextRegistry>,
+    pub(crate) storage_path: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

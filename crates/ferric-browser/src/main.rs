@@ -139,6 +139,27 @@ impl CliError {
         }
     }
 
+    fn from_run(error: RunError) -> Self {
+        match error {
+            RunError::Config(context) => Self {
+                code: ErrorCode::Config,
+                user_message: "Ferric Browser configuration is invalid.",
+                diagnostic_context: context,
+            },
+            RunError::Storage(context) => Self {
+                code: ErrorCode::Storage,
+                user_message: "Ferric Browser storage is unavailable.",
+                diagnostic_context: context,
+            },
+            RunError::NoInstance(context) => Self {
+                code: ErrorCode::NoInstance,
+                user_message: "No running Ferric Browser instance was found.",
+                diagnostic_context: context,
+            },
+            RunError::Engine(context) => Self::engine(context),
+        }
+    }
+
     const fn status(&self) -> i32 {
         match self.code {
             ErrorCode::InvalidArgument | ErrorCode::Config => 2,
@@ -153,6 +174,40 @@ impl CliError {
             | ErrorCode::Engine
             | ErrorCode::Cancelled => 1,
         }
+    }
+}
+
+#[derive(Debug)]
+enum RunError {
+    Config(String),
+    Storage(String),
+    NoInstance(String),
+    Engine(String),
+}
+
+impl RunError {
+    fn config(context: impl Into<String>) -> Self {
+        Self::Config(context.into())
+    }
+
+    fn storage(context: impl Into<String>) -> Self {
+        Self::Storage(context.into())
+    }
+
+    fn no_instance(context: impl Into<String>) -> Self {
+        Self::NoInstance(context.into())
+    }
+}
+
+impl From<String> for RunError {
+    fn from(context: String) -> Self {
+        Self::Engine(context)
+    }
+}
+
+impl From<&str> for RunError {
+    fn from(context: &str) -> Self {
+        Self::Engine(context.into())
     }
 }
 
@@ -279,32 +334,12 @@ fn run(arguments: &[String]) -> Result<(), CliError> {
         println!("ferric-browser {}", env!("CARGO_PKG_VERSION"));
         return Ok(());
     }
-    parse_cli(arguments).map_err(CliError::invalid)?;
-    run_untyped(arguments).map_err(CliError::engine)
+    let request = parse_cli(arguments).map_err(CliError::invalid)?;
+    validate_cli_request(&request.0, &request.1).map_err(CliError::invalid)?;
+    run_parsed(request).map_err(CliError::from_run)
 }
 
-#[allow(clippy::too_many_lines)]
-fn run_untyped(arguments: &[String]) -> Result<(), String> {
-    if arguments
-        .iter()
-        .any(|argument| argument == "--help" || argument == "-h")
-    {
-        print_help();
-        return Ok(());
-    }
-    if arguments
-        .iter()
-        .any(|argument| argument == "--version" || argument == "-V")
-    {
-        println!("ferric-browser {}", env!("CARGO_PKG_VERSION"));
-        return Ok(());
-    }
-    let (options, action) = parse_cli(arguments)?;
-    emit_structured_log(
-        options.log_level.as_deref(),
-        "debug",
-        cli_action_name(&action),
-    );
+fn validate_cli_request(options: &CliOptions, action: &CliAction) -> Result<(), String> {
     if options.safe_mode
         && (options.basedir.is_some()
             || options.config_path.is_some()
@@ -352,6 +387,68 @@ fn run_untyped(arguments: &[String]) -> Result<(), String> {
             return Err("--set requires KEY=VALUE without control characters".into());
         }
     }
+    let rejects_startup_options = matches!(action, CliAction::ResetData)
+        || matches!(action, CliAction::DefaultBrowser { .. });
+    if rejects_startup_options
+        && (options.temp_basedir
+            || options.ephemeral
+            || options.safe_mode
+            || options.userscripts_off
+            || options.software_rendering
+            || options.basedir.is_some()
+            || options.config_path.is_some()
+            || options.profile.is_some()
+            || options.context.is_some()
+            || options.instance.is_some()
+            || !options.settings.is_empty()
+            || options.log_level.is_some())
+    {
+        return Err(match action {
+            CliAction::ResetData => {
+                "reset-data does not accept browser startup or profile options".into()
+            }
+            CliAction::DefaultBrowser { .. } => {
+                "default-browser does not accept browser startup or profile options".into()
+            }
+            _ => unreachable!("startup-option rejection was guarded above"),
+        });
+    }
+    if options.ephemeral && !matches!(action, CliAction::Open { .. }) {
+        return Err("--ephemeral only applies to GUI open".into());
+    }
+    let private_initial = matches!(
+        action,
+        CliAction::Open {
+            target: Some(target),
+            ..
+        } if target == "private-window"
+    );
+    let ephemeral_open = matches!(
+        action,
+        CliAction::Open {
+            ephemeral: true,
+            ..
+        }
+    );
+    if private_initial && ephemeral_open {
+        return Err("--target private-window and --ephemeral are mutually exclusive".into());
+    }
+    if private_initial && (options.profile.is_some() || options.context.is_some()) {
+        return Err("private-window cannot select a durable profile or context".into());
+    }
+    if options.context.is_some() && (options.temp_basedir || ephemeral_open) {
+        return Err("durable contexts require a non-temporary profile".into());
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_lines)]
+fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), RunError> {
+    emit_structured_log(
+        options.log_level.as_deref(),
+        "debug",
+        cli_action_name(&action),
+    );
     let config_path = if options.safe_mode {
         None
     } else {
@@ -361,33 +458,19 @@ fn run_untyped(arguments: &[String]) -> Result<(), String> {
             .or_else(|| default_config_path(&options))
     };
     if let CliAction::ConfigCheck = action {
-        check_config(config_path.as_deref())?;
+        check_config(config_path.as_deref()).map_err(RunError::config)?;
         return Ok(());
     }
     if let CliAction::ResetData = action {
-        if options.temp_basedir
-            || options.ephemeral
-            || options.safe_mode
-            || options.userscripts_off
-            || options.software_rendering
-            || options.basedir.is_some()
-            || options.config_path.is_some()
-            || options.profile.is_some()
-            || options.context.is_some()
-            || options.instance.is_some()
-            || !options.settings.is_empty()
-            || options.log_level.is_some()
-        {
-            return Err("reset-data does not accept browser startup or profile options".into());
-        }
-        let roots = StorageRoots::resolve(RootSpec::Xdg)
-            .map_err(|error| format!("could not resolve Ferric storage roots: {error}"))?;
+        let roots = StorageRoots::resolve(RootSpec::Xdg).map_err(|error| {
+            RunError::storage(format!("could not resolve Ferric storage roots: {error}"))
+        })?;
         let report = roots
             .reset_owned_contents()
-            .map_err(|error| format!("could not reset Ferric data: {error}"))?;
-        roots
-            .initialize_current_schema()
-            .map_err(|error| format!("could not initialize Ferric data: {error}"))?;
+            .map_err(|error| RunError::storage(format!("could not reset Ferric data: {error}")))?;
+        roots.initialize_current_schema().map_err(|error| {
+            RunError::storage(format!("could not initialize Ferric data: {error}"))
+        })?;
         println!(
             "Reset Ferric Browser data: cleared {} roots and removed {} entries. Legacy browser data was not modified.",
             report.roots_cleared, report.entries_removed
@@ -395,24 +478,7 @@ fn run_untyped(arguments: &[String]) -> Result<(), String> {
         return Ok(());
     }
     if let CliAction::DefaultBrowser { operation } = &action {
-        if options.temp_basedir
-            || options.ephemeral
-            || options.safe_mode
-            || options.userscripts_off
-            || options.software_rendering
-            || options.basedir.is_some()
-            || options.config_path.is_some()
-            || options.profile.is_some()
-            || options.context.is_some()
-            || options.instance.is_some()
-            || !options.settings.is_empty()
-            || options.log_level.is_some()
-        {
-            return Err(
-                "default-browser does not accept browser startup or profile options".into(),
-            );
-        }
-        return run_default_browser_operation(*operation);
+        return run_default_browser_operation(*operation).map_err(RunError::from);
     }
     let temporary_storage = options.temp_basedir
         || options.safe_mode
@@ -436,7 +502,9 @@ fn run_untyped(arguments: &[String]) -> Result<(), String> {
         } else {
             StorageRoots::resolve(RootSpec::Xdg)
         }
-        .map_err(|error| format!("could not resolve Ferric storage roots: {error}"))?;
+        .map_err(|error| {
+            RunError::storage(format!("could not resolve Ferric storage roots: {error}"))
+        })?;
         if roots.requires_schema_reset().map_err(|error| {
             format!("could not inspect Ferric data for the clean-break schema: {error}")
         })? {
@@ -445,9 +513,9 @@ fn run_untyped(arguments: &[String]) -> Result<(), String> {
                     .into(),
             );
         }
-        roots
-            .initialize_current_schema()
-            .map_err(|error| format!("could not initialize Ferric data schema: {error}"))?;
+        roots.initialize_current_schema().map_err(|error| {
+            RunError::storage(format!("could not initialize Ferric data schema: {error}"))
+        })?;
     }
     let (
         mut config,
@@ -458,27 +526,31 @@ fn run_untyped(arguments: &[String]) -> Result<(), String> {
         normal_profile_label,
         profiles,
     ) = if let Some(path) = config_path.as_deref() {
-        let loaded = load(path).map_err(|error| format!("configuration is invalid: {error}"))?;
+        let loaded = load(path)
+            .map_err(|error| RunError::config(format!("configuration is invalid: {error}")))?;
         let config_directory = Path::new(path).parent().unwrap_or_else(|| Path::new("."));
         let contexts_path = config_directory.join("contexts.toml");
         let contexts = if contexts_path.exists() {
-            load_contexts(&contexts_path)
-                .map_err(|error| format!("contexts configuration is invalid: {error}"))?
+            load_contexts(&contexts_path).map_err(|error| {
+                RunError::config(format!("contexts configuration is invalid: {error}"))
+            })?
         } else {
             ContextsConfig::default()
         };
         let profiles_path = config_directory.join("profiles.toml");
         let profiles = if profiles_path.exists() {
-            load_profiles(&profiles_path)
-                .map_err(|error| format!("profiles configuration is invalid: {error}"))?
+            load_profiles(&profiles_path).map_err(|error| {
+                RunError::config(format!("profiles configuration is invalid: {error}"))
+            })?
         } else {
             ProfilesConfig::default()
         };
         let (profile_overrides, profile_name, profile_label) =
             if let Some(profile) = profiles.default_profile() {
                 (
-                    profile_override_layer(profile)
-                        .map_err(|error| format!("profile overrides are invalid: {error}"))?,
+                    profile_override_layer(profile).map_err(|error| {
+                        RunError::config(format!("profile overrides are invalid: {error}"))
+                    })?,
                     profile.name.clone(),
                     profile.label.clone(),
                 )
@@ -492,8 +564,11 @@ fn run_untyped(arguments: &[String]) -> Result<(), String> {
         (
             loaded.config,
             "user",
-            serde_json::to_string(&contexts)
-                .map_err(|error| format!("could not serialize contexts configuration: {error}"))?,
+            serde_json::to_string(&contexts).map_err(|error| {
+                RunError::config(format!(
+                    "could not serialize contexts configuration: {error}"
+                ))
+            })?,
             profile_overrides,
             profile_name,
             profile_label,
@@ -503,8 +578,9 @@ fn run_untyped(arguments: &[String]) -> Result<(), String> {
         (
             Config::default(),
             "built-in",
-            serde_json::to_string(&ContextsConfig::default())
-                .map_err(|error| format!("could not serialize default contexts: {error}"))?,
+            serde_json::to_string(&ContextsConfig::default()).map_err(|error| {
+                RunError::config(format!("could not serialize default contexts: {error}"))
+            })?,
             RuntimeOverrides::default(),
             "default".into(),
             "Default".into(),
@@ -517,7 +593,8 @@ fn run_untyped(arguments: &[String]) -> Result<(), String> {
             options.basedir.as_deref(),
             options.instance.as_deref(),
             !options.temp_basedir,
-        );
+        )
+        .map_err(RunError::from);
     }
 
     let (profile_overrides, normal_profile_name, normal_profile_label, startup_context) =
@@ -525,11 +602,13 @@ fn run_untyped(arguments: &[String]) -> Result<(), String> {
             select_startup_profile(
                 &options,
                 &profiles,
-                &serde_json::from_str(&contexts_json)
-                    .map_err(|error| format!("contexts configuration is invalid: {error}"))?,
+                &serde_json::from_str(&contexts_json).map_err(|error| {
+                    RunError::config(format!("contexts configuration is invalid: {error}"))
+                })?,
                 &normal_profile_name,
                 &normal_profile_label,
-            )?
+            )
+            .map_err(RunError::config)?
         } else {
             (
                 profile_overrides,
@@ -538,18 +617,16 @@ fn run_untyped(arguments: &[String]) -> Result<(), String> {
                 None,
             )
         };
-    let base_config_json = serde_json::to_string(&config)
-        .map_err(|error| format!("could not serialize base configuration: {error}"))?;
+    let base_config_json = serde_json::to_string(&config).map_err(|error| {
+        RunError::config(format!("could not serialize base configuration: {error}"))
+    })?;
     config = apply_runtime_overrides(&config, &profile_overrides)
-        .map_err(|error| format!("profile overrides are invalid: {error}"))?;
+        .map_err(|error| RunError::config(format!("profile overrides are invalid: {error}")))?;
 
     let ephemeral_profile = match &action {
         CliAction::Open { ephemeral, .. } => *ephemeral,
         _ => false,
     };
-    if options.ephemeral && !matches!(&action, CliAction::Open { .. }) {
-        return Err("--ephemeral only applies to GUI open".into());
-    }
     let private_initial = matches!(
         &action,
         CliAction::Open {
@@ -557,15 +634,6 @@ fn run_untyped(arguments: &[String]) -> Result<(), String> {
             ..
         } if target == "private-window"
     );
-    if private_initial && ephemeral_profile {
-        return Err("--target private-window and --ephemeral are mutually exclusive".into());
-    }
-    if private_initial && (options.profile.is_some() || options.context.is_some()) {
-        return Err("private-window cannot select a durable profile or context".into());
-    }
-    if options.context.is_some() && (options.temp_basedir || ephemeral_profile) {
-        return Err("durable contexts require a non-temporary profile".into());
-    }
     let temporary_profile =
         options.temp_basedir || options.safe_mode || ephemeral_profile || private_initial;
     let (ephemeral_profile_name, ephemeral_profile_label) = if ephemeral_profile {
@@ -584,38 +652,42 @@ fn run_untyped(arguments: &[String]) -> Result<(), String> {
         } else {
             options.basedir.clone()
         },
-    )?;
+    )
+    .map_err(RunError::storage)?;
     let runtime_roots = if let Some(base) = storage_base.as_deref() {
         StorageRoots::resolve(RootSpec::Base(base.to_owned()))
     } else {
         StorageRoots::resolve(RootSpec::Xdg)
     }
-    .map_err(|error| format!("could not resolve runtime override roots: {error}"))?;
+    .map_err(|error| {
+        RunError::storage(format!("could not resolve runtime override roots: {error}"))
+    })?;
     let runtime_overrides = if temporary_profile {
         RuntimeOverrides::default()
     } else {
         load_runtime_overrides(runtime_roots.state.join("runtime-overrides.toml"))
-            .map_err(|error| format!("runtime overrides are invalid: {error}"))?
+            .map_err(|error| RunError::config(format!("runtime overrides are invalid: {error}")))?
     };
     let mut cli_overrides = RuntimeOverrides::default();
     for setting in &options.settings {
         let (key, literal) = setting
             .split_once('=')
             .ok_or_else(|| "--set requires KEY=VALUE without control characters".to_owned())?;
-        cli_overrides
-            .set_literal(key, literal)
-            .map_err(|error| format!("invalid runtime setting {key:?}: {error}"))?;
+        cli_overrides.set_literal(key, literal).map_err(|error| {
+            RunError::config(format!("invalid runtime setting {key:?}: {error}"))
+        })?;
     }
     config = apply_runtime_overrides(&config, &runtime_overrides)
-        .map_err(|error| format!("runtime overrides are invalid: {error}"))?;
+        .map_err(|error| RunError::config(format!("runtime overrides are invalid: {error}")))?;
     config = apply_runtime_overrides(&config, &cli_overrides)
-        .map_err(|error| format!("CLI runtime overrides are invalid: {error}"))?;
+        .map_err(|error| RunError::config(format!("CLI runtime overrides are invalid: {error}")))?;
     let config_json = serde_json::to_string(&config)
-        .map_err(|error| format!("could not serialize configuration: {error}"))?;
+        .map_err(|error| RunError::config(format!("could not serialize configuration: {error}")))?;
     let cli_overrides_json = serde_json::to_string(&cli_overrides)
-        .map_err(|error| format!("could not serialize CLI overrides: {error}"))?;
-    let profile_overrides_json = serde_json::to_string(&profile_overrides)
-        .map_err(|error| format!("could not serialize profile overrides: {error}"))?;
+        .map_err(|error| RunError::config(format!("could not serialize CLI overrides: {error}")))?;
+    let profile_overrides_json = serde_json::to_string(&profile_overrides).map_err(|error| {
+        RunError::config(format!("could not serialize profile overrides: {error}"))
+    })?;
     if let CliAction::Open {
         input,
         additional_inputs,
@@ -625,7 +697,8 @@ fn run_untyped(arguments: &[String]) -> Result<(), String> {
         ..
     } = action
     {
-        let instance = match acquire_instance(storage_base.as_deref(), options.instance.as_deref())?
+        let instance = match acquire_instance(storage_base.as_deref(), options.instance.as_deref())
+            .map_err(RunError::storage)?
         {
             InstanceStart::Owner(instance) => instance,
             InstanceStart::Existing(paths) => {
@@ -633,7 +706,8 @@ fn run_untyped(arguments: &[String]) -> Result<(), String> {
                     return finish_forward(
                         Err("software-rendering startup requested but another instance is already running".into()),
                         temporary_roots,
-                    );
+                    )
+                    .map_err(RunError::from);
                 }
                 if !explicit_input {
                     let result = if ephemeral_profile {
@@ -641,7 +715,7 @@ fn run_untyped(arguments: &[String]) -> Result<(), String> {
                     } else {
                         forward_focus(&paths)
                     };
-                    return finish_forward(result, temporary_roots);
+                    return finish_forward(result, temporary_roots).map_err(RunError::from);
                 }
                 let result = if ephemeral_profile {
                     Err("ephemeral open requires a fresh GUI owner; the running instance was not changed".into())
@@ -655,7 +729,7 @@ fn run_untyped(arguments: &[String]) -> Result<(), String> {
                         &options,
                     )
                 };
-                return finish_forward(result, temporary_roots);
+                return finish_forward(result, temporary_roots).map_err(RunError::from);
             }
         };
         if options.software_rendering {
@@ -663,7 +737,7 @@ fn run_untyped(arguments: &[String]) -> Result<(), String> {
         }
         if let Err(error) = validate_engine_security_environment() {
             drop(instance);
-            return finish_forward(Err(error), temporary_roots);
+            return finish_forward(Err(error), temporary_roots).map_err(RunError::from);
         }
         let startup_background = target.as_deref() == Some("tab-bg");
         let startup_url = if startup_background {
@@ -685,7 +759,9 @@ fn run_untyped(arguments: &[String]) -> Result<(), String> {
                 if let Some(roots) = temporary_roots {
                     let _ = roots.cleanup();
                 }
-                return Err(format!("could not create crash marker: {error}"));
+                return Err(RunError::storage(format!(
+                    "could not create crash marker: {error}"
+                )));
             }
         };
         let recovery_available =
@@ -696,32 +772,32 @@ fn run_untyped(arguments: &[String]) -> Result<(), String> {
             "typed-initial-url"
         };
         emit_structured_log(options.log_level.as_deref(), "info", "browser.start");
-        let result = run_gui(
-            startup_url,
-            &startup_additional_inputs,
+        let result = run_gui(&GuiLaunchPlan {
+            initial_url: startup_url,
+            additional_inputs: &startup_additional_inputs,
             initial_entry_point,
             temporary_profile,
             ephemeral_profile,
-            options.safe_mode,
-            options.userscripts_off,
-            options.software_rendering,
-            &instance.paths.lock,
-            options.instance.as_deref(),
-            storage_base.as_deref(),
+            safe_mode: options.safe_mode,
+            userscripts_off: options.userscripts_off,
+            software_rendering: options.software_rendering,
+            instance_lock_path: &instance.paths.lock,
+            instance_selector: options.instance.as_deref(),
+            storage_base: storage_base.as_deref(),
             recovery_available,
-            &base_config_json,
-            &config_json,
+            base_config_json: &base_config_json,
+            config_json: &config_json,
             config_source,
-            config_path.as_deref(),
-            &cli_overrides_json,
-            &profile_overrides_json,
-            &contexts_json,
-            &ephemeral_profile_name,
-            &ephemeral_profile_label,
-            startup_context.as_deref(),
-            clean_link,
+            config_path: config_path.as_deref(),
+            cli_overrides_json: &cli_overrides_json,
+            profile_overrides_json: &profile_overrides_json,
+            contexts_json: &contexts_json,
+            profile_name: &ephemeral_profile_name,
+            profile_label: &ephemeral_profile_label,
+            startup_context: startup_context.as_deref(),
+            startup_clean_link: clean_link,
             startup_background,
-        );
+        });
         emit_structured_log(
             options.log_level.as_deref(),
             if result.is_ok() { "info" } else { "error" },
@@ -737,10 +813,12 @@ fn run_untyped(arguments: &[String]) -> Result<(), String> {
             temporary_roots,
             instance,
             ferric_browser_engine_qt::shutdown_was_forced(),
-        );
+        )
+        .map_err(RunError::from);
     }
 
-    let paths = existing_instance_paths(storage_base.as_deref(), options.instance.as_deref())?;
+    let paths = existing_instance_paths(storage_base.as_deref(), options.instance.as_deref())
+        .map_err(RunError::no_instance)?;
     let result = match action {
         CliAction::Command { text, window } => {
             forward_command(&paths, &text, window.as_deref(), &options)
@@ -761,7 +839,7 @@ fn run_untyped(arguments: &[String]) -> Result<(), String> {
             unreachable!("default-browser was handled before instance setup")
         }
     };
-    finish_forward(result, temporary_roots)
+    finish_forward(result, temporary_roots).map_err(RunError::from)
 }
 
 fn run_default_browser_operation(operation: DefaultBrowserOperation) -> Result<(), String> {
@@ -3399,6 +3477,10 @@ fn command_params(command: &ParsedCommand) -> Result<serde_json::Value, String> 
         _ if command.arguments.is_empty() => serde_json::json!({}),
         _ => return Err(format!("{} does not accept arguments", command.name)),
     };
+    let argument_object = arguments
+        .as_object()
+        .ok_or_else(|| "command arguments must encode as an object".to_owned())?;
+    ferric_browser_ipc::validate_command_argument_fields(&command.name, argument_object)?;
     Ok(serde_json::json!({
         "command": command.name,
         "arguments": arguments
@@ -3820,38 +3902,64 @@ fn default_config_path(options: &CliOptions) -> Option<String> {
     path.exists().then(|| path.to_string_lossy().into_owned())
 }
 
-#[allow(
-    clippy::fn_params_excessive_bools,
-    clippy::struct_excessive_bools,
-    clippy::too_many_arguments,
-    clippy::too_many_lines
-)]
-fn run_gui(
-    initial_url: &str,
-    additional_inputs: &[String],
-    initial_entry_point: &str,
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Clone, Copy)]
+struct GuiLaunchPlan<'a> {
+    initial_url: &'a str,
+    additional_inputs: &'a [String],
+    initial_entry_point: &'a str,
     temporary_profile: bool,
     ephemeral_profile: bool,
     safe_mode: bool,
     userscripts_off: bool,
     software_rendering: bool,
-    instance_lock_path: &Path,
-    instance_selector: Option<&str>,
-    storage_base: Option<&std::path::Path>,
+    instance_lock_path: &'a Path,
+    instance_selector: Option<&'a str>,
+    storage_base: Option<&'a Path>,
     recovery_available: bool,
-    base_config_json: &str,
-    config_json: &str,
-    config_source: &str,
-    config_path: Option<&str>,
-    cli_overrides_json: &str,
-    profile_overrides_json: &str,
-    contexts_json: &str,
-    profile_name: &str,
-    profile_label: &str,
-    startup_context: Option<&str>,
+    base_config_json: &'a str,
+    config_json: &'a str,
+    config_source: &'a str,
+    config_path: Option<&'a str>,
+    cli_overrides_json: &'a str,
+    profile_overrides_json: &'a str,
+    contexts_json: &'a str,
+    profile_name: &'a str,
+    profile_label: &'a str,
+    startup_context: Option<&'a str>,
     startup_clean_link: bool,
     startup_background: bool,
-) -> Result<(), String> {
+}
+
+#[allow(clippy::too_many_lines)]
+fn run_gui(plan: &GuiLaunchPlan<'_>) -> Result<(), String> {
+    let plan = *plan;
+    let GuiLaunchPlan {
+        initial_url,
+        additional_inputs,
+        initial_entry_point,
+        temporary_profile,
+        ephemeral_profile,
+        safe_mode,
+        userscripts_off,
+        software_rendering,
+        instance_lock_path,
+        instance_selector,
+        storage_base,
+        recovery_available,
+        base_config_json,
+        config_json,
+        config_source,
+        config_path,
+        cli_overrides_json,
+        profile_overrides_json,
+        contexts_json,
+        profile_name,
+        profile_label,
+        startup_context,
+        startup_clean_link,
+        startup_background,
+    } = plan;
     ferric_browser_engine_qt::register_internal_scheme();
     cxx_qt::init_crate!(ferric_browser_engine_qt);
     cxx_qt::init_qml_module!("io.github.ferricbrowser");
@@ -6270,7 +6378,24 @@ mod tests {
         let error = run(&["--unknown".into()]).expect_err("unknown option is rejected");
         assert_eq!(error.code, ErrorCode::InvalidArgument);
         assert_eq!(error.status(), 2);
+        let config_error = CliError::from_run(RunError::config("invalid test config"));
+        assert_eq!(config_error.code, ErrorCode::Config);
+        assert_eq!(config_error.status(), 2);
+        let storage_error = CliError::from_run(RunError::storage("unavailable test storage"));
+        assert_eq!(storage_error.code, ErrorCode::Storage);
+        assert_eq!(storage_error.status(), 1);
+        let instance_error = CliError::from_run(RunError::no_instance("missing test instance"));
+        assert_eq!(instance_error.code, ErrorCode::NoInstance);
+        assert_eq!(instance_error.status(), 3);
         assert_eq!(error.user_message, "The command-line request is invalid.");
+        let error = run(&[
+            "--safe-mode".into(),
+            "--basedir".into(),
+            "/tmp/ferric-invalid-combination".into(),
+        ])
+        .expect_err("post-parse option conflict is rejected");
+        assert_eq!(error.code, ErrorCode::InvalidArgument);
+        assert_eq!(error.status(), 2);
         assert!(wants_structured_error(&[
             "query".into(),
             "tabs".into(),

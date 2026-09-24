@@ -18,7 +18,7 @@ public:
     QVariant data(const QModelIndex &index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
 
-    Q_INVOKABLE void replaceRows(const QStringList &keys, const QStringList &labels,
+    Q_INVOKABLE bool replaceRows(const QStringList &keys, const QStringList &labels,
                                  const QStringList &types, const QStringList &scopes,
                                  const QStringList &applies, const QStringList &values,
                                  const QStringList &options);

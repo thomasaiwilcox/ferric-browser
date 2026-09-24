@@ -80,7 +80,6 @@ mod operation_projection;
 mod presentation_text;
 mod process_output;
 mod profile_management;
-mod profile_store_setup;
 mod profile_workers;
 mod renderer_lifecycle;
 mod runtime_bridge;
@@ -191,7 +190,6 @@ use presentation_text::{
     bounded_navigation_failure_detail, normalized_navigation_failure_kind, sanitize_untrusted_title,
 };
 use process_output::sanitize_process_stderr;
-use profile_store_setup::open_profile_store;
 use profile_workers::{
     ProfileDeleteWorker, ProfileListWorker, ProfileMutationResult, ProfilePreviewWorker,
     profile_from_list_values,
@@ -1343,14 +1341,13 @@ use core::pin::Pin;
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QString, QStringList};
 use ferric_browser_application::{
-    BrowserApplication, ConfigurationLayers, ContextCommand, ProfileActivation, StorageEffect,
-    StorageRequest, StorageTicket,
+    BrowserApplication, ConfigurationLayers, ContextCommand, ProfileOpenEffect, ProfileOpenRequest,
+    ProfileStorage, StorageEffect, StorageRequest, StorageTicket,
 };
 use ferric_browser_config::{
     ActionTargetConfig, Config, ContextsConfig, HyprlandConfig, LoggingConfig, RuntimeOverrides,
-    ThemePalette, load, load_profile_runtime_overrides, load_runtime_overrides, load_theme_palette,
-    matching_context_routes, matching_site_rules, profile_config_path, save_contexts_atomic,
-    save_runtime_overrides_atomic, setting_metadata, setting_metadata_all,
+    ThemePalette, load_theme_palette, matching_context_routes, matching_site_rules,
+    save_contexts_atomic, save_runtime_overrides_atomic, setting_metadata, setting_metadata_all,
     setting_supported_scopes, setting_supports_site_scope, theme_contrast_report,
 };
 #[cfg(test)]
@@ -1378,15 +1375,14 @@ use ferric_browser_storage::ProfilePrivacy;
 use ferric_browser_storage::ProfileRegistry;
 #[cfg(test)]
 use ferric_browser_storage::Quickmark;
-#[cfg(test)]
 use ferric_browser_storage::RootSpec;
 use ferric_browser_storage::{
-    ClosedTabSnapshot, CollisionPolicy, ContextMember, ContextRegistry, ContextTabDescriptor,
-    DownloadState, DownloadUpdate, HistoryRecord, JourneyQuerySnapshot, JourneyWrite, MarkWrite,
-    PermissionRule, ProfileLibrarySnapshot, ProfileLock, ProfileStore, RestoreSafety,
-    SessionSnapshot, SnapshotTabInput, SnapshotWindowInput, StorageCompletion, StorageRoots,
-    StorageWorkerError, VisitInput, choose_download_path, crash_diagnostics, is_safe_history_url,
-    named_session_path, sanitize_download_filename, unix_timestamp,
+    ClosedTabSnapshot, CollisionPolicy, ContextMember, ContextTabDescriptor, DownloadState,
+    DownloadUpdate, HistoryRecord, JourneyQuerySnapshot, JourneyWrite, MarkWrite, PermissionRule,
+    ProfileLibrarySnapshot, RestoreSafety, SessionSnapshot, SnapshotTabInput, SnapshotWindowInput,
+    StorageCompletion, StorageRoots, StorageWorkerError, VisitInput, choose_download_path,
+    crash_diagnostics, is_safe_history_url, named_session_path, sanitize_download_filename,
+    unix_timestamp,
 };
 use ipc_params::{
     query_bool_param, query_empty_object_or_null, query_limit, query_object, query_offset,
@@ -1813,7 +1809,6 @@ pub struct BrowserUiRust {
     print_worker: Option<PrintWorker>,
     editor_write_worker: Option<EditorWriteWorker>,
     profile_delete_worker: Option<ProfileDeleteWorker>,
-    profile_setup_worker: Option<ProfileSetupWorker>,
     network_policy_worker: Option<NetworkPolicyWorker>,
     hyprland_worker: Option<HyprlandWorker>,
     portal_probe_worker: Option<PortalProbeWorker>,
@@ -1881,21 +1876,6 @@ impl ProfilePersistence {
     }
 }
 
-/// Durable resources created for one profile bootstrap attempt.
-///
-/// The worker owns this record until the Qt adapter installs it.  Named fields
-/// keep the storage boundary explicit and prevent accidental positional mixes
-/// between similarly typed paths and optional handles.
-struct ProfileStoreSetup {
-    store: Option<ProfileStore>,
-    profile_id: Option<Uuid>,
-    session_path: Option<PathBuf>,
-    session_state_root: Option<PathBuf>,
-    profile_lock: Option<ProfileLock>,
-    roots: Option<StorageRoots>,
-    profile_names: Vec<String>,
-}
-
 #[derive(Clone, Debug, Default)]
 struct ContextSnapshot {
     records: Vec<ferric_browser_storage::ContextRecord>,
@@ -1913,19 +1893,8 @@ impl ContextSnapshot {
     }
 }
 
-/// All profile-bootstrap worker results, grouped by the subsystem that
-/// produced them rather than by a positional tuple slot.
-struct ProfileBootstrapSetup {
-    storage: ProfileStoreSetup,
-    profile_overrides: Option<Result<RuntimeOverrides, String>>,
-    runtime_overrides: Option<Result<RuntimeOverrides, String>>,
-    config_sources: Option<Result<Vec<PathBuf>, String>>,
-    contexts: Option<Result<(ContextRegistry, Option<String>), String>>,
-}
-
 struct PendingProfileConfiguration {
     private_profile: bool,
-    profile_label: String,
     profile_name: String,
     storage_base: String,
     state: BrowserApplication,
@@ -1972,19 +1941,6 @@ struct PrintWorker {
 
 struct EditorWriteWorker {
     inner: SingleFlightWorker<(PathBuf, Vec<u8>), Result<PathBuf, String>>,
-}
-
-struct ProfileSetupRequest {
-    transient_profile: bool,
-    profile_name: String,
-    profile_label: String,
-    storage_base: String,
-    config_path: String,
-    contexts_json: String,
-}
-
-struct ProfileSetupWorker {
-    inner: SingleFlightWorker<ProfileSetupRequest, Result<ProfileBootstrapSetup, String>>,
 }
 
 struct NetworkPolicyRequest {
@@ -2146,141 +2102,6 @@ impl UserscriptManagerWorker {
             WorkerPoll::Stopped => Some(UserscriptManagerResult::Inventory(Err(
                 "userscript manager stopped".into(),
             ))),
-        }
-    }
-}
-
-impl ProfileSetupWorker {
-    fn spawn() -> Result<Self, String> {
-        let inner = SingleFlightWorker::spawn(
-            "ferric-browser-profile-bootstrap",
-            |request: ProfileSetupRequest| {
-                let ProfileSetupRequest {
-                    transient_profile,
-                    profile_name,
-                    profile_label,
-                    storage_base,
-                    config_path,
-                    contexts_json,
-                } = request;
-                open_profile_store(
-                    transient_profile,
-                    &profile_name,
-                    &profile_label,
-                    &storage_base,
-                )
-                .map(|storage| {
-                    let profile_overrides = if transient_profile || config_path.is_empty() {
-                        None
-                    } else {
-                        Some(
-                            load_profile_runtime_overrides(Path::new(&config_path), &profile_name)
-                                .map_err(|error| error.to_string()),
-                        )
-                    };
-                    let runtime_overrides = if transient_profile {
-                        None
-                    } else {
-                        storage.roots.as_ref().map(|roots| {
-                            load_runtime_overrides(roots.state.join("runtime-overrides.toml"))
-                                .map_err(|error| error.to_string())
-                        })
-                    };
-                    let config_sources = if config_path.is_empty() {
-                        None
-                    } else {
-                        Some(
-                            load(Path::new(&config_path))
-                                .map(|loaded| {
-                                    let mut sources = loaded.sources;
-                                    let profiles_path =
-                                        profile_config_path(Path::new(&config_path));
-                                    if profiles_path.exists() {
-                                        sources.push(profiles_path);
-                                    }
-                                    sources
-                                })
-                                .map_err(|error| error.to_string()),
-                        )
-                    };
-                    let contexts = storage.roots.as_ref().map(|roots| {
-                        let mut contexts =
-                            ContextRegistry::open(roots).map_err(|error| error.to_string())?;
-                        let mut context_error = None;
-                        match serde_json::from_str::<ContextsConfig>(&contexts_json) {
-                            Ok(definitions) => {
-                                for definition in definitions.contexts {
-                                    let profile_exists = storage
-                                        .profile_names
-                                        .iter()
-                                        .any(|profile| profile == &definition.profile);
-                                    if !profile_exists {
-                                        context_error = Some(format!(
-                                            "context {} references missing profile {}",
-                                            definition.name, definition.profile
-                                        ));
-                                        continue;
-                                    }
-                                    if let Err(error) = contexts.ensure_definition(
-                                        &definition.name,
-                                        &definition.label,
-                                        &definition.profile,
-                                        definition.sessions,
-                                        definition.workspace,
-                                        definition.accent,
-                                        &definition.default_target,
-                                    ) {
-                                        context_error = Some(error.to_string());
-                                    }
-                                }
-                            }
-                            Err(error) => context_error = Some(error.to_string()),
-                        }
-                        Ok((contexts, context_error))
-                    });
-                    ProfileBootstrapSetup {
-                        storage,
-                        profile_overrides,
-                        runtime_overrides,
-                        config_sources,
-                        contexts,
-                    }
-                })
-            },
-        )
-        .map_err(|error| error.to_string())?;
-        Ok(Self { inner })
-    }
-
-    fn request(
-        &mut self,
-        transient: bool,
-        name: String,
-        label: String,
-        base: String,
-        config_path: String,
-        contexts_json: String,
-    ) -> Result<(), String> {
-        match self.inner.submit(ProfileSetupRequest {
-            transient_profile: transient,
-            profile_name: name,
-            profile_label: label,
-            storage_base: base,
-            config_path,
-            contexts_json,
-        }) {
-            Ok(()) => Ok(()),
-            Err(SubmitError::Busy) => Err("profile bootstrap is already pending".into()),
-            Err(SubmitError::QueueFull) => Err("profile bootstrap queue is full".into()),
-            Err(SubmitError::Stopped) => Err("profile bootstrap worker stopped".into()),
-        }
-    }
-
-    fn poll(&mut self) -> Option<Result<ProfileBootstrapSetup, String>> {
-        match self.inner.poll() {
-            WorkerPoll::Pending => None,
-            WorkerPoll::Ready(result) => Some(result),
-            WorkerPoll::Stopped => Some(Err("profile bootstrap worker stopped".into())),
         }
     }
 }
@@ -3722,9 +3543,9 @@ impl qobject::BrowserUi {
             let mut rust = self.as_mut().rust_mut();
             rust.as_mut()
                 .get_mut()
-                .profile_setup_worker
+                .pending_profile_configuration
                 .as_mut()
-                .and_then(ProfileSetupWorker::poll)
+                .and_then(|pending| pending.state.poll_profile_open())
         };
         if let Some(result) = profile_setup_result {
             let pending = self
@@ -3735,10 +3556,8 @@ impl qobject::BrowserUi {
                 .pending_profile_configuration
                 .take();
             if let Some(pending) = pending {
-                match result {
-                    Ok(storage) => self.as_mut().finish_configure_profile(pending, Ok(storage)),
-                    Err(error) => self.as_mut().finish_configure_profile(pending, Err(error)),
-                }
+                self.as_mut()
+                    .finish_configure_profile(pending, result.map_err(|error| error.to_string()));
             } else {
                 self.as_mut()
                     .set_status_text(QString::from("Profile bootstrap result was stale"));
@@ -16875,10 +16694,7 @@ impl qobject::BrowserUi {
                 .profile_delete_worker
                 .as_ref()
                 .is_some_and(ProfileDeleteWorker::is_pending)
-            || rust
-                .profile_setup_worker
-                .as_ref()
-                .is_some_and(|worker| worker.inner.is_pending())
+            || rust.pending_profile_configuration.is_some()
             || rust
                 .network_policy_worker
                 .as_ref()
@@ -25136,24 +24952,47 @@ impl qobject::BrowserUi {
             return;
         };
         self.as_mut().set_profile_bootstrap_pending(true);
-        let request_result = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            if this.profile_setup_worker.is_none() {
-                this.profile_setup_worker = ProfileSetupWorker::spawn().ok();
-            }
-            match this.profile_setup_worker.as_mut() {
-                Some(worker) => worker.request(
-                    private_profile || ephemeral_profile,
-                    profile_name.clone(),
-                    profile_label.clone(),
-                    storage_base.clone(),
-                    config_path,
-                    contexts_json,
-                ),
-                None => Err("profile bootstrap worker unavailable".to_owned()),
-            }
+        let startup_config =
+            serde_json::from_str::<Config>(&self.as_ref().rust().config_json.to_string())
+                .unwrap_or_default();
+        let base_configuration =
+            serde_json::from_str::<Config>(&self.as_ref().rust().config_base_json.to_string())
+                .unwrap_or(startup_config);
+        let command_line_overrides = serde_json::from_str::<RuntimeOverrides>(
+            &self.as_ref().rust().cli_overrides_json.to_string(),
+        )
+        .unwrap_or_default();
+        let initial_profile_overrides = serde_json::from_str::<RuntimeOverrides>(
+            &self.as_ref().rust().profile_overrides_json.to_string(),
+        )
+        .unwrap_or_default();
+        let (contexts, context_configuration_error) =
+            match serde_json::from_str::<ContextsConfig>(&contexts_json) {
+                Ok(contexts) => (contexts, None),
+                Err(error) => (ContextsConfig::default(), Some(error.to_string())),
+            };
+        let storage = if private_profile || ephemeral_profile {
+            ProfileStorage::Transient
+        } else if storage_base.is_empty() {
+            ProfileStorage::Durable(RootSpec::Xdg)
+        } else {
+            ProfileStorage::Durable(RootSpec::Base(PathBuf::from(&storage_base)))
         };
+        let mut state = BrowserApplication::from_runtime(runtime, Config::default());
+        let request_result = state
+            .request_profile_open(ProfileOpenRequest {
+                name: profile_name.clone(),
+                label: profile_label,
+                privacy,
+                storage,
+                base_configuration,
+                initial_profile_overrides,
+                command_line_overrides,
+                config_path: (!config_path.is_empty()).then(|| PathBuf::from(config_path)),
+                contexts,
+                context_configuration_error,
+            })
+            .map_err(|error| error.to_string());
         if let Err(error) = request_result {
             self.as_mut().set_profile_bootstrap_pending(false);
             self.set_status_text(QString::from(format!("Profile bootstrap failed: {error}")));
@@ -25165,10 +25004,9 @@ impl qobject::BrowserUi {
             .get_mut()
             .pending_profile_configuration = Some(PendingProfileConfiguration {
             private_profile,
-            profile_label,
             profile_name,
             storage_base,
-            state: BrowserApplication::from_runtime(runtime, Config::default()),
+            state,
             window,
             tab,
         });
@@ -25180,72 +25018,34 @@ impl qobject::BrowserUi {
     fn finish_configure_profile(
         mut self: Pin<&mut Self>,
         pending: PendingProfileConfiguration,
-        setup: Result<ProfileBootstrapSetup, String>,
+        setup: Result<ProfileOpenEffect, String>,
     ) {
-        let (
-            storage,
-            worker_profile_overrides,
-            worker_runtime_overrides,
-            worker_config_sources,
-            worker_contexts,
-        ) = match setup {
-            Ok(ProfileBootstrapSetup {
-                storage,
-                profile_overrides,
-                runtime_overrides,
-                config_sources,
-                contexts,
-            }) => (
-                Ok(storage),
-                profile_overrides,
-                runtime_overrides,
-                config_sources,
-                contexts,
-            ),
-            Err(error) => (Err(error), None, None, None, None),
-        };
         let PendingProfileConfiguration {
             private_profile,
-            profile_label: _profile_label,
             profile_name,
             storage_base,
-            mut state,
+            state,
             window,
             tab,
         } = pending;
         let userscript_roots = resolve_browser_roots(&storage_base).ok();
         let startup_config = serde_json::from_str(&self.as_ref().rust().config_json.to_string())
             .unwrap_or_else(|_| serde_json::to_value(Config::default()).unwrap_or(Value::Null));
-        let (
-            store,
-            profile_id,
-            session_path,
-            session_state_root,
-            profile_lock,
-            storage_roots,
-            storage_ready,
-            storage_error,
-        ) = match storage {
-            Ok(ProfileStoreSetup {
-                store,
-                profile_id,
-                session_path,
-                session_state_root,
-                profile_lock,
-                roots: storage_roots,
-                profile_names: _,
-            }) => (
-                store,
-                profile_id,
-                session_path,
-                session_state_root,
-                profile_lock,
-                storage_roots,
-                true,
-                None,
-            ),
-            Err(error) => (None, None, None, None, None, None, false, Some(error)),
+        let effect = match setup {
+            Ok(effect) => effect,
+            Err(error) => {
+                self.as_mut().set_profile_bootstrap_pending(false);
+                self.as_mut()
+                    .set_status_text(QString::from(format!("Profile bootstrap failed: {error}")));
+                return;
+            }
         };
+        let profile_id = effect.profile.id;
+        let session_path = effect.session_path;
+        let session_state_root = effect.session_state_root;
+        let storage_roots = effect.profile.roots.clone();
+        let storage_ready = effect.storage_error.is_none();
+        let storage_error = effect.storage_error;
         let base_config =
             serde_json::from_str::<Value>(&self.as_ref().rust().config_base_json.to_string())
                 .ok()
@@ -25255,74 +25055,14 @@ impl qobject::BrowserUi {
             &self.as_ref().rust().cli_overrides_json.to_string(),
         )
         .unwrap_or_default();
-        let mut profile_overrides = serde_json::from_str::<RuntimeOverrides>(
-            &self.as_ref().rust().profile_overrides_json.to_string(),
-        )
-        .unwrap_or_default();
+        let profile_overrides = effect.profile_overrides;
+        let runtime_overrides = effect.runtime_overrides;
         let config_path = self.as_ref().rust().config_path.to_string();
-        let mut config_layer_error = None;
-        if let Some(profile_overrides_result) = worker_profile_overrides {
-            match profile_overrides_result {
-                Ok(overrides) => profile_overrides = overrides,
-                Err(error) => {
-                    // Never let a secondary window fall back to the primary
-                    // window's profile layer when its selected definition is
-                    // invalid. Keep the authored base plus lower-risk runtime
-                    // layers available and surface the configuration issue.
-                    profile_overrides = RuntimeOverrides::default();
-                    config_layer_error = Some(error);
-                }
-            }
-        }
-        let mut runtime_overrides = RuntimeOverrides::default();
-        if let Some(runtime_overrides_result) = worker_runtime_overrides {
-            match runtime_overrides_result {
-                Ok(overrides) => runtime_overrides = overrides,
-                Err(error) => {
-                    config_layer_error.get_or_insert(error);
-                }
-            }
-        }
-        let bootstrap_layers = serde_json::from_value::<Config>(base_config.clone())
-            .map(|base| ConfigurationLayers {
-                base,
-                profile: profile_overrides.clone(),
-                runtime: runtime_overrides.clone(),
-                command_line: cli_overrides.clone(),
-                temporary: RuntimeOverrides::default(),
-            })
-            .map_err(|error| format!("base configuration is invalid: {error}"));
-        let config = match bootstrap_layers
-            .as_ref()
-            .map_err(Clone::clone)
-            .and_then(|layers| layers.resolve().map_err(|error| error.to_string()))
-            .and_then(|config| {
-                serde_json::to_value(config)
-                    .map_err(|error| format!("could not serialize resolved configuration: {error}"))
-            }) {
-            Ok(value) => value,
-            Err(error) => {
-                config_layer_error.get_or_insert(error);
-                startup_config.clone()
-            }
-        };
+        let config_layer_error = effect.configuration_error;
+        let presentation_config = effect.configuration.effective;
+        let config =
+            serde_json::to_value(&presentation_config).unwrap_or_else(|_| startup_config.clone());
         self.as_mut().update_theme_palette(&config);
-        let mut presentation_config =
-            serde_json::from_value::<Config>(config.clone()).unwrap_or_default();
-        match bootstrap_layers {
-            Ok(layers) => match state.activate_configuration(layers) {
-                Ok(snapshot) => presentation_config = snapshot.effective,
-                Err(error) => {
-                    config_layer_error.get_or_insert_with(|| error.to_string());
-                    let _ = state.replace_configuration(presentation_config.clone());
-                }
-            },
-            Err(error) => {
-                config_layer_error
-                    .get_or_insert_with(|| format!("base configuration is invalid: {error}"));
-                let _ = state.replace_configuration(presentation_config.clone());
-            }
-        }
         self.as_mut()
             .update_chrome_preferences(&presentation_config);
         self.as_mut()
@@ -25351,36 +25091,15 @@ impl qobject::BrowserUi {
         let mut config_watch = ConfigWatch::default();
         if !config_path.is_empty() {
             let path = PathBuf::from(&config_path);
-            match worker_config_sources {
-                Some(Ok(sources)) => config_watch.set_sources(&path, &sources),
-                _ => config_watch.set_sources(&path, &[]),
-            }
+            config_watch.set_sources(&path, &effect.config_sources);
         }
         let effective_config_json = serde_json::to_string(&config).unwrap_or_else(|_| "{}".into());
         let desktop_portal_mode = desktop_portals::mode_name(&presentation_config.desktop.portals);
         let profile_overrides_json =
             serde_json::to_string(&profile_overrides).unwrap_or_else(|_| "{}".into());
-        let (contexts, context_config_error) = match worker_contexts {
-            Some(Ok((contexts, error))) => (Some(contexts), error),
-            Some(Err(error)) => (None, Some(error)),
-            None => (None, None),
-        };
-        let storage_path = store.as_ref().map(|store| store.path().to_owned());
-        let privacy = state
-            .profiles()
-            .values()
-            .next()
-            .map_or(PrivacyKind::Normal, |profile| profile.privacy);
-        let profile_snapshot = state.activate_profile(ProfileActivation {
-            name: profile_name.clone(),
-            id: profile_id,
-            privacy,
-            roots: storage_roots.clone(),
-            lock: profile_lock,
-            contexts,
-            storage_path,
-        });
-        let storage_worker_error = profile_snapshot.as_ref().err().map(ToString::to_string);
+        let context_config_error = effect.context_error;
+        let profile_snapshot = effect.profile;
+        let storage_worker_error: Option<String> = None;
         let status = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
@@ -25550,10 +25269,10 @@ impl qobject::BrowserUi {
                 this.bindings = Some(bindings);
             }
             this.profile_id = profile_id;
-            this.profile_persistence = match profile_snapshot {
-                Ok(profile) if profile.durable => ProfilePersistence::Durable,
-                Ok(_) => ProfilePersistence::Transient,
-                Err(_) => ProfilePersistence::Unavailable,
+            this.profile_persistence = if profile_snapshot.durable {
+                ProfilePersistence::Durable
+            } else {
+                ProfilePersistence::Transient
             };
             this.session_permissions.clear();
             this.pending_permission_reset_session = None;
@@ -26158,7 +25877,6 @@ impl qobject::BrowserUi {
             // the pending handoff before dropping workers so a late result
             // cannot recreate state after the final owner has gone away.
             this.pending_profile_configuration = None;
-            this.profile_setup_worker = None;
             this.config_reload_worker = None;
             this.config_write_worker = None;
             this.profile_delete_worker = None;
@@ -26910,7 +26628,6 @@ impl Default for BrowserUiRust {
             print_worker: None,
             editor_write_worker: None,
             profile_delete_worker: None,
-            profile_setup_worker: None,
             network_policy_worker: None,
             hyprland_worker: None,
             portal_probe_worker: None,
