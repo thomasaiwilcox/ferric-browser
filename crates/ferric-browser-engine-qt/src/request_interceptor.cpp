@@ -85,6 +85,29 @@ QString navigationTypeName(const QWebEngineUrlRequestInfo::NavigationType type)
     return QStringLiteral("unknown");
 }
 
+QStringList evidenceFields(const QVariantMap &evidence)
+{
+    QStringList fields;
+    fields.reserve(13);
+    for (const auto &key : {
+             "resource_host", "first_party_host", "initiator_host", "resource_type",
+             "navigation_type"}) {
+        fields.append(evidence.value(QString::fromLatin1(key)).toString());
+    }
+    fields.append(evidence.value(QStringLiteral("is_top_level")).toBool()
+                      ? QStringLiteral("true")
+                      : QStringLiteral("false"));
+    fields.append(evidence.value(QStringLiteral("is_subframe")).toBool()
+                      ? QStringLiteral("true")
+                      : QStringLiteral("false"));
+    for (const auto &key : {
+             "matched_rule", "list_id", "decision", "reason", "exception_rule",
+             "exception_list_id"}) {
+        fields.append(evidence.value(QString::fromLatin1(key)).toString());
+    }
+    return fields;
+}
+
 QString adblockResourceType(const QWebEngineUrlRequestInfo::ResourceType type)
 {
     switch (type) {
@@ -117,13 +140,13 @@ QString adblockResourceType(const QWebEngineUrlRequestInfo::ResourceType type)
     }
 }
 
-QVariantMap validatedRuleLists(const QVariantMap &lists)
+QVariantMap validatedRuleLists(const QStringList &hosts, const QStringList &sources)
 {
     QVariantMap result;
-    for (auto iterator = lists.cbegin(); iterator != lists.cend() && result.size() < 1024;
-         ++iterator) {
-        auto host = iterator.key().trimmed().toLower();
-        const auto source = iterator.value().toString().trimmed();
+    const auto length = std::min(hosts.size(), sources.size());
+    for (qsizetype index = 0; index < length && result.size() < 1024; ++index) {
+        auto host = hosts.at(index).trimmed().toLower();
+        const auto source = sources.at(index).trimmed();
         const auto encodedSource = source.toUtf8();
         if (host.isEmpty() || host.size() > 253 || host.contains(u'\0')
             || source.isEmpty() || source.size() > 128 || source.contains(u'\0')
@@ -232,15 +255,69 @@ void FerricBrowserRequestInterceptor::setSecurityDenyHosts(const QStringList &ho
     emit securityDenyHostsChanged();
 }
 
-QVariantMap FerricBrowserRequestInterceptor::blockedRuleLists() const
+QStringList FerricBrowserRequestInterceptor::blockedRuleHosts() const
 {
-    QReadLocker locker(&policyLock_);
-    return policy_->blockedRuleLists;
+    return blockedRuleHosts_;
 }
 
-void FerricBrowserRequestInterceptor::setBlockedRuleLists(const QVariantMap &lists)
+void FerricBrowserRequestInterceptor::setBlockedRuleHosts(const QStringList &hosts)
 {
-    const auto next = validatedRuleLists(lists);
+    if (blockedRuleHosts_ == hosts) {
+        return;
+    }
+    blockedRuleHosts_ = hosts;
+    updateBlockedRuleLists();
+    emit blockedRuleHostsChanged();
+}
+
+QStringList FerricBrowserRequestInterceptor::blockedRuleListIds() const
+{
+    return blockedRuleListIds_;
+}
+
+void FerricBrowserRequestInterceptor::setBlockedRuleListIds(const QStringList &ids)
+{
+    if (blockedRuleListIds_ == ids) {
+        return;
+    }
+    blockedRuleListIds_ = ids;
+    updateBlockedRuleLists();
+    emit blockedRuleListIdsChanged();
+}
+
+QStringList FerricBrowserRequestInterceptor::exceptionRuleHosts() const
+{
+    return exceptionRuleHosts_;
+}
+
+void FerricBrowserRequestInterceptor::setExceptionRuleHosts(const QStringList &hosts)
+{
+    if (exceptionRuleHosts_ == hosts) {
+        return;
+    }
+    exceptionRuleHosts_ = hosts;
+    updateExceptionRuleLists();
+    emit exceptionRuleHostsChanged();
+}
+
+QStringList FerricBrowserRequestInterceptor::exceptionRuleListIds() const
+{
+    return exceptionRuleListIds_;
+}
+
+void FerricBrowserRequestInterceptor::setExceptionRuleListIds(const QStringList &ids)
+{
+    if (exceptionRuleListIds_ == ids) {
+        return;
+    }
+    exceptionRuleListIds_ = ids;
+    updateExceptionRuleLists();
+    emit exceptionRuleListIdsChanged();
+}
+
+void FerricBrowserRequestInterceptor::updateBlockedRuleLists()
+{
+    const auto next = validatedRuleLists(blockedRuleHosts_, blockedRuleListIds_);
     {
         QWriteLocker locker(&policyLock_);
         if (policy_->blockedRuleLists == next) {
@@ -250,18 +327,11 @@ void FerricBrowserRequestInterceptor::setBlockedRuleLists(const QVariantMap &lis
         replacement.blockedRuleLists = next;
         policy_ = std::make_shared<const PolicySnapshot>(replacement);
     }
-    emit blockedRuleListsChanged();
 }
 
-QVariantMap FerricBrowserRequestInterceptor::exceptionRuleLists() const
+void FerricBrowserRequestInterceptor::updateExceptionRuleLists()
 {
-    QReadLocker locker(&policyLock_);
-    return policy_->exceptionRuleLists;
-}
-
-void FerricBrowserRequestInterceptor::setExceptionRuleLists(const QVariantMap &lists)
-{
-    const auto next = validatedRuleLists(lists);
+    const auto next = validatedRuleLists(exceptionRuleHosts_, exceptionRuleListIds_);
     {
         QWriteLocker locker(&policyLock_);
         if (policy_->exceptionRuleLists == next) {
@@ -271,7 +341,6 @@ void FerricBrowserRequestInterceptor::setExceptionRuleLists(const QVariantMap &l
         replacement.exceptionRuleLists = next;
         policy_ = std::make_shared<const PolicySnapshot>(replacement);
     }
-    emit exceptionRuleListsChanged();
 }
 
 QStringList FerricBrowserRequestInterceptor::adblockSourceIds() const
@@ -356,28 +425,29 @@ QVariantMap FerricBrowserRequestInterceptor::blockedSiteCounts() const
     return result;
 }
 
-QVariantMap FerricBrowserRequestInterceptor::blockedRequestExplanation(const QString &site) const
+QStringList FerricBrowserRequestInterceptor::blockedRequestExplanationFields(const QString &site) const
 {
     const auto normalizedSite = normalizedHost(site);
     if (normalizedSite.isEmpty()) {
         return {};
     }
     QReadLocker locker(&countsLock_);
-    return blockedRequestExplanations_.value(normalizedSite);
+    const auto explanation = blockedRequestExplanations_.value(normalizedSite);
+    return explanation.isEmpty() ? QStringList{} : evidenceFields(explanation);
 }
 
-QVariantList FerricBrowserRequestInterceptor::blockedRequestDecisions(const QString &site) const
+QStringList FerricBrowserRequestInterceptor::blockedRequestDecisionFields(const QString &site) const
 {
     const auto normalizedSite = normalizedHost(site);
     if (normalizedSite.isEmpty()) {
         return {};
     }
     QReadLocker locker(&countsLock_);
-    QVariantList result;
+    QStringList result;
     const auto decisions = requestDecisionLog_.value(normalizedSite);
-    result.reserve(decisions.size());
+    result.reserve(decisions.size() * 13);
     for (const auto &decision : decisions) {
-        result.append(decision);
+        result.append(evidenceFields(decision));
     }
     return result;
 }

@@ -636,7 +636,7 @@ mod tests {
             },
             RawClient {
                 address: "0x1".into(),
-                class: format!("{}\n", FERRIC_BROWSER_DESKTOP_ID),
+                class: format!("{FERRIC_BROWSER_DESKTOP_ID}\n"),
                 initial_class: String::new(),
                 pid: Some(2),
                 workspace: None,

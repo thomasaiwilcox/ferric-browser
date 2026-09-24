@@ -43,27 +43,29 @@ Popup {
 
         Label {
             Layout.fillWidth: true
-            text: "Use browsing context " + (popup.browserWindow.contextRouteData.context || "") + "?"
+            text: "Use browsing context "
+                  + (popup.browserWindow.contextRouteUi.context_route_context || "") + "?"
             color: popup.browserWindow.primaryTextColor
             font.bold: true
             Accessible.name: "Context route title"
         }
         Label {
             Layout.fillWidth: true
-            text: "Route " + (popup.browserWindow.contextRouteData.route_id || "")
-                  + " (" + (popup.browserWindow.contextRouteData.behavior || "prompt") + ")"
+            text: "Route " + (popup.browserWindow.contextRouteUi.context_route_id || "")
+                  + " (" + (popup.browserWindow.contextRouteUi.context_route_behavior || "prompt") + ")"
             color: popup.browserWindow.mutedTextColor
             elide: Text.ElideRight
         }
         Label {
             Layout.fillWidth: true
-            text: "Target profile: " + (popup.browserWindow.contextRouteData.profile || "unavailable")
+            text: "Target profile: "
+                  + (popup.browserWindow.contextRouteUi.context_route_profile || "unavailable")
             color: popup.browserWindow.secondaryTextColor
             elide: Text.ElideMiddle
         }
         Label {
             Layout.fillWidth: true
-            text: "Address: " + (popup.browserWindow.contextRouteData.url || "unavailable")
+            text: "Address: " + (popup.browserWindow.contextRouteUi.context_route_url || "unavailable")
             color: popup.browserWindow.primaryTextColor
             wrapMode: Text.WrapAnywhere
             maximumLineCount: 6

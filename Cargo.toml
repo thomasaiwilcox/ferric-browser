@@ -7,6 +7,7 @@ members = [
     "crates/ferric-browser-storage",
     "crates/ferric-browser-engine-qt",
     "crates/ferric-browser-runtime",
+    "crates/ferric-browser-application",
     "crates/ferric-browser",
     "crates/xtask",
 ]

@@ -34,14 +34,17 @@ cargo xtask check
 cargo xtask test engine
 ```
 
-Existing pre-alpha data is never moved automatically. To copy and validate the
-retired RustBrowser XDG roots into empty Ferric roots, run:
+Ferric makes a clean pre-alpha data break: legacy browser roots are never read,
+moved, modified, or deleted. If an incompatible earlier Ferric root is found,
+startup refuses to interpret it. To explicitly erase only Ferric-owned data
+and start fresh, run:
 
 ```sh
-ferric-browser migrate --from-rustbrowser
+ferric-browser reset-data --confirm
 ```
 
-The source remains untouched, and populated Ferric destinations are refused.
+The command rejects unsafe root symlinks and leaves root directories and their
+parents in place. See [the clean-break policy](packaging/MIGRATIONS.md).
 
 ## Architecture
 

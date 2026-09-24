@@ -2,6 +2,12 @@ use std::collections::BTreeMap;
 
 use crate::{DocumentId, IdSource, JourneyGraph, ProfileId, TabId, WindowId};
 
+// The reducer is a child of the state model so it is the sole module with
+// mutable access to `ApplicationState` internals. All other subsystems use the
+// read-only snapshots below and express changes as typed events.
+#[path = "reducer.rs"]
+pub(crate) mod reducer;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PrivacyKind {
     Normal,
@@ -130,15 +136,15 @@ pub struct WindowState {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ApplicationState {
-    pub(crate) profiles: BTreeMap<ProfileId, ProfileState>,
-    pub(crate) windows: BTreeMap<WindowId, WindowState>,
-    pub(crate) tabs: BTreeMap<TabId, TabState>,
-    pub(crate) journey: JourneyGraph,
-    pub(crate) active_window: Option<WindowId>,
-    pub(crate) last_focused_window: Option<WindowId>,
-    pub(crate) revision: u64,
-    pub(crate) shutdown: ShutdownState,
-    pub(crate) ids: IdSource,
+    profiles: BTreeMap<ProfileId, ProfileState>,
+    windows: BTreeMap<WindowId, WindowState>,
+    tabs: BTreeMap<TabId, TabState>,
+    journey: JourneyGraph,
+    active_window: Option<WindowId>,
+    last_focused_window: Option<WindowId>,
+    revision: u64,
+    shutdown: ShutdownState,
+    ids: IdSource,
 }
 
 impl Default for ApplicationState {

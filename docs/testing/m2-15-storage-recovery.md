@@ -12,10 +12,9 @@ Status: in-progress
   `crates/ferric-browser/src/main.rs`.
 - Observable result: opening an existing nonempty profile database performs a
   read-only SQLite integrity check and rejects corruption or a schema newer
-  than the application before enabling WAL or running migrations. The original
-  file is never replaced. Older schemas are copied through SQLite's online
-  backup API to one bounded, versioned pre-migration file in the same
-  directory before migration. SQLite `SQLITE_FULL` write failures become an
+  than the application before enabling WAL. The original file is never
+  replaced. Older schemas are refused without a backup, migration, or in-place
+  rewrite. SQLite `SQLITE_FULL` write failures become an
   explicit disk-full error rather than an opaque generic SQLite message.
   `diagnostics --format json` inspects profile database files read-only and
   reports per-profile health, schema, integrity, and recovery guidance without
@@ -35,8 +34,8 @@ Status: in-progress
   read-only inspection or a clearly named new profile. A failed open does not
   delete the database, retry migration in a loop, or silently create a
   replacement at the same path.
-- `older_schema_is_backed_up_before_migration` verifies the retained backup
-  still reports the legacy schema after the live database reaches version 1.
+- `older_schema_is_refused_without_migration_or_replacement` verifies that a
+  legacy database remains byte-for-byte unchanged.
 
 ## Limitations
 

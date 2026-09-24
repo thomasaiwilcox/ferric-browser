@@ -349,6 +349,12 @@ fn run_qml_lint() -> Result<(), String> {
 }
 
 fn check_architecture_boundaries() -> Result<(), String> {
+    check_identity_and_layer_boundaries()?;
+    check_qt_adapter_boundaries()?;
+    check_core_and_error_boundaries()
+}
+
+fn check_identity_and_layer_boundaries() -> Result<(), String> {
     let retired_markers = [
         ["Rust", "Browser"].concat(),
         ["rust", "browser"].concat(),
@@ -356,11 +362,6 @@ fn check_architecture_boundaries() -> Result<(), String> {
     ];
     for root in [Path::new("crates"), Path::new("packaging")] {
         visit_files(root, &mut |path, source| {
-            if path.ends_with("ferric-browser-storage/src/migration.rs")
-                || path.ends_with("packaging/MIGRATIONS.md")
-            {
-                return Ok(());
-            }
             if let Some(marker) = retired_markers
                 .iter()
                 .find(|marker| source.contains(marker.as_str()))
@@ -377,6 +378,7 @@ fn check_architecture_boundaries() -> Result<(), String> {
     for root in [
         Path::new("crates/ferric-browser-core/src"),
         Path::new("crates/ferric-browser-runtime/src"),
+        Path::new("crates/ferric-browser-application/src"),
     ] {
         visit_files(root, &mut |path, source| {
             for marker in ["cxx_qt", "QString", "QObject", "QAbstractListModel"] {
@@ -391,19 +393,179 @@ fn check_architecture_boundaries() -> Result<(), String> {
         })?;
     }
 
-    let adapter = fs::read_to_string("crates/ferric-browser-engine-qt/src/lib.rs")
-        .map_err(|error| format!("could not inspect Qt adapter: {error}"))?;
+    let application = fs::read_to_string("crates/ferric-browser-application/src/lib.rs")
+        .map_err(|error| format!("could not inspect the application boundary: {error}"))?;
     for marker in [
+        "pub enum ApplicationInput",
+        "pub enum ApplicationEffect",
+        "pub fn handle(",
+    ] {
+        if application.contains(marker) {
+            return Err(format!(
+                "application concerns must use domain-specific methods, not a catch-all boundary: {marker}"
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn check_qt_adapter_boundaries() -> Result<(), String> {
+    let reducer_mutation_markers = [
         ".tabs.get_mut(",
         ".windows.get_mut(",
         ".profiles.get_mut(",
         ".journey.clear_matching(",
         ".active_window =",
         ".last_focused_window =",
+        ".state.as_mut(",
+        ".state.handle(",
+    ];
+    let reducer_ownership_markers = ["ApplicationState", "RuntimeOwner", "StateView"];
+    let prose_error_markers = ["error.contains(", "error.starts_with(", "error.ends_with("];
+    visit_files(
+        Path::new("crates/ferric-browser-engine-qt/src"),
+        &mut |path, source| {
+            if path.extension().is_none_or(|extension| extension != "rs") {
+                return Ok(());
+            }
+            if path.file_name().is_some_and(|name| name == "tests.rs") {
+                return Ok(());
+            }
+            let production_source = source.split("#[cfg(test)]").next().unwrap_or(source);
+            if let Some(marker) = reducer_mutation_markers
+                .iter()
+                .find(|marker| production_source.contains(**marker))
+            {
+                return Err(format!(
+                    "Qt adapter mutates application state outside the reducer: {} contains {marker}",
+                    path.display()
+                ));
+            }
+            if let Some(marker) = reducer_ownership_markers
+                .iter()
+                .find(|marker| production_source.contains(**marker))
+            {
+                return Err(format!(
+                    "Qt adapter must use BrowserApplication read projections: {} contains {marker}",
+                    path.display()
+                ));
+            }
+            if let Some(marker) = prose_error_markers
+                .iter()
+                .find(|marker| production_source.contains(**marker))
+            {
+                return Err(format!(
+                    "Qt adapter must not classify public errors from prose: {} contains {marker}",
+                    path.display()
+                ));
+            }
+            Ok(())
+        },
+    )?;
+    check_qt_adapter_root()
+}
+
+fn check_qt_adapter_root() -> Result<(), String> {
+    // Root-specific checks remain below because the generated QObject bridge is
+    // intentionally declared in lib.rs, while reducer-mutation checks above
+    // cover every extracted adapter module.
+    let adapter = fs::read_to_string("crates/ferric-browser-engine-qt/src/lib.rs")
+        .map_err(|error| format!("could not inspect Qt adapter root: {error}"))?;
+    let production_adapter = adapter
+        .split_once("\n#[cfg(test)]\nmod tests;")
+        .map(|(production, _)| production)
+        .ok_or_else(|| "could not locate Qt adapter test-module boundary".to_owned())?;
+    for marker in [
+        "dispatch_command(",
+        "dispatch_command_for(",
+        "dispatch_for_legacy(",
+        "reduce(",
     ] {
-        if adapter.contains(marker) {
+        if production_adapter.contains(marker) {
             return Err(format!(
-                "Qt adapter mutates application state outside the reducer: {marker}"
+                "Qt adapter bypasses the runtime command boundary: {marker}"
+            ));
+        }
+    }
+    for marker in ["state: Option<ApplicationState>", ".into_state()"] {
+        if production_adapter.contains(marker) {
+            return Err(format!(
+                "Qt adapter must retain BrowserRuntime ownership instead of core state: {marker}"
+            ));
+        }
+    }
+    for marker in [
+        "storage_worker: Option<ProfileStoreWorker>",
+        "ProfileStoreWorker::spawn(",
+        "StorageCompletions",
+        "poll_completions(",
+        "pending_history_writes",
+        "pending_permission_writes",
+        "pending_mark_writes",
+        "pending_download_writes",
+        "pending_journey_writes",
+    ] {
+        if production_adapter.contains(marker) {
+            return Err(format!(
+                "Qt adapter must not own a profile metadata worker: {marker}"
+            ));
+        }
+    }
+
+    let browser_ui_state = production_adapter
+        .split("pub struct BrowserUiRust")
+        .nth(1)
+        .and_then(|source| source.split("struct ProfileStoreSetup").next())
+        .ok_or_else(|| "could not locate Qt BrowserUi state boundary".to_owned())?;
+    for marker in [
+        "Option<ProfileStore>",
+        "Option<ProfileLock>",
+        "Option<ContextRegistry>",
+        "Option<ProfileStoreWorker>",
+    ] {
+        if browser_ui_state.contains(marker) {
+            return Err(format!(
+                "Qt BrowserUi state must project application-owned profile resources, not own {marker}"
+            ));
+        }
+    }
+    if !production_adapter.contains("state: Option<BrowserApplication>") {
+        return Err("Qt adapter must keep browser ownership behind BrowserApplication".to_owned());
+    }
+    let config_projection =
+        fs::read_to_string("crates/ferric-browser-engine-qt/src/config_projection.rs")
+            .map_err(|error| format!("could not inspect Qt config projection: {error}"))?;
+    for marker in [
+        "config_value_with_layers",
+        "apply_runtime_overrides(",
+        "resolve_runtime_override_layers",
+        "presentation_config_with_layers",
+    ] {
+        if production_adapter.contains(marker) || config_projection.contains(marker) {
+            return Err(format!(
+                "Qt adapter must not define configuration-layer policy: {marker}"
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn check_core_and_error_boundaries() -> Result<(), String> {
+    let model = fs::read_to_string("crates/ferric-browser-core/src/model.rs")
+        .map_err(|error| format!("could not inspect core state model: {error}"))?;
+    for marker in [
+        "pub(crate) profiles:",
+        "pub(crate) windows:",
+        "pub(crate) tabs:",
+        "pub(crate) journey:",
+        "pub(crate) active_window:",
+        "pub(crate) revision:",
+    ] {
+        if model.contains(marker) {
+            return Err(format!(
+                "application state must remain reducer-private: {marker}"
             ));
         }
     }
@@ -419,6 +581,20 @@ fn check_architecture_boundaries() -> Result<(), String> {
         if source.contains(marker) {
             return Err(format!(
                 "public error codes must be carried by typed errors, not inferred from prose: {path} contains {marker}"
+            ));
+        }
+    }
+    let adapter = fs::read_to_string("crates/ferric-browser-engine-qt/src/lib.rs")
+        .map_err(|error| format!("could not inspect Qt adapter root: {error}"))?;
+    let ipc_dispatch = adapter
+        .split("fn handle_ipc_request")
+        .nth(1)
+        .and_then(|source| source.split("fn poll_ipc").next())
+        .ok_or_else(|| "could not locate Qt IPC dispatch boundary".to_owned())?;
+    for marker in ["error.contains(", "error.starts_with("] {
+        if ipc_dispatch.contains(marker) {
+            return Err(format!(
+                "IPC dispatch must select public error codes from typed errors, not {marker}"
             ));
         }
     }

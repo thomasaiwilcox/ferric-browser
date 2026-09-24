@@ -26,7 +26,9 @@ use serde::{Deserialize, Serialize, de, de::Deserializer as _};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-pub const PROTOCOL_MAJOR: u32 = 1;
+/// Clean-break local-control protocol. Version 1 clients are deliberately
+/// rejected during the hello negotiation before any method is dispatched.
+pub const PROTOCOL_MAJOR: u32 = 2;
 pub const PROTOCOL_MINOR: u32 = 0;
 pub const MAX_FRAME_BYTES: usize = 1024 * 1024;
 pub const MAX_JSON_DEPTH: usize = 32;

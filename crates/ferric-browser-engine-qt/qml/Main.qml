@@ -5,6 +5,8 @@ import QtQuick.Dialogs
 import QtWebEngine
 import io.github.ferricbrowser 1.0
 import "scripts/BrowserScripts.js" as BrowserScripts
+import "scripts/ChromePresentation.js" as ChromePresentation
+import "scripts/SpellcheckPresentation.js" as SpellcheckPresentation
 
 ApplicationWindow {
     id: window
@@ -119,30 +121,6 @@ ApplicationWindow {
     readonly property real tabBarHeight: Math.ceil(
         chromeFontMetrics.height + (chromePadding * 2))
 
-    function macroStatusText(raw) {
-        try {
-            var state = JSON.parse(String(raw || "{}"))
-            if (state.recording && state.recording.register) {
-                return " · recording macro @" + state.recording.register
-                        + " (" + Number(state.recording.command_count || 0) + ")"
-            }
-            var registers = state.registers || []
-            if (registers.length === 0) {
-                return ""
-            }
-            var labels = []
-            for (var index = 0; index < registers.length; index++) {
-                var entry = registers[index]
-                if (entry && entry.register) {
-                    labels.push("@" + entry.register + ":" + Number(entry.command_count || 0))
-                }
-            }
-            return labels.length > 0 ? " · macros " + labels.join(" ") : ""
-        } catch (error) {
-            return ""
-        }
-    }
-
     readonly property real chromeRowHeight: Math.ceil(
         chromeFontMetrics.height + (chromePadding * 1.25))
     // Qt Quick dimensions are already logical pixels. This scale only grows
@@ -161,185 +139,67 @@ ApplicationWindow {
         font: window.font
     }
 
-    function colorChannels(value) {
-        if (typeof value === "string"
-                && /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(value)) {
-            return {
-                r: parseInt(value.slice(1, 3), 16) / 255,
-                g: parseInt(value.slice(3, 5), 16) / 255,
-                b: parseInt(value.slice(5, 7), 16) / 255,
-                a: value.length === 9 ? parseInt(value.slice(7, 9), 16) / 255 : 1.0
-            }
-        }
-        return value
-    }
-
-    function renderedColorLuminance(color) {
-        function linear(channel) {
-            return channel <= 0.03928 ? channel / 12.92
-                                       : Math.pow((channel + 0.055) / 1.055, 2.4)
-        }
-        return 0.2126 * linear(color.r) + 0.7152 * linear(color.g)
-                + 0.0722 * linear(color.b)
-    }
-
-    function renderedContrastRatio(foreground, background) {
-        foreground = colorChannels(foreground)
-        background = colorChannels(background)
-        var alpha = typeof foreground.a === "number" ? foreground.a : 1.0
-        var compositedForeground = Qt.rgba(
-                    foreground.r * alpha + background.r * (1.0 - alpha),
-                    foreground.g * alpha + background.g * (1.0 - alpha),
-                    foreground.b * alpha + background.b * (1.0 - alpha), 1.0)
-        var foregroundLuminance = renderedColorLuminance(compositedForeground)
-        var backgroundLuminance = renderedColorLuminance(background)
-        var lighter = Math.max(foregroundLuminance, backgroundLuminance)
-        var darker = Math.min(foregroundLuminance, backgroundLuminance)
-        return (lighter + 0.05) / (darker + 0.05)
-    }
-
     function contrastText(background) {
-        return renderedContrastRatio("#000000", background)
-                >= renderedContrastRatio("#ffffff", background)
-                ? "#000000" : "#ffffff"
+        return ChromePresentation.contrastText(background)
     }
 
     function readableTextColor(candidate, background) {
-        return renderedContrastRatio(candidate, background) >= 4.5
-                ? candidate : contrastText(background)
+        return ChromePresentation.readableTextColor(candidate, background)
     }
 
     function renderedContrastReport() {
-        var checks = [
-            { name: "primary-on-background", ratio: renderedContrastRatio(
-                window.primaryTextColor, window.backgroundColor) },
-            { name: "secondary-on-surface", ratio: renderedContrastRatio(
-                window.secondaryTextColor, window.surfaceColor) },
-            { name: "muted-on-panel", ratio: renderedContrastRatio(
-                window.mutedTextColor, window.panelColor) },
-            { name: "accent-on-background", ratio: renderedContrastRatio(
-                window.accentColor, window.backgroundColor) }
-        ]
-        var failing = []
-        for (var index = 0; index < checks.length; index++) {
-            if (checks[index].ratio < 4.5) {
-                failing.push(checks[index].name)
-            }
-        }
-        return { status: failing.length === 0 ? "pass" : "warning", failing: failing }
+        return ChromePresentation.contrastReport({
+            primaryText: window.primaryTextColor,
+            background: window.backgroundColor,
+            secondaryText: window.secondaryTextColor,
+            surface: window.surfaceColor,
+            mutedText: window.mutedTextColor,
+            panel: window.panelColor,
+            accent: window.accentColor
+        })
     }
 
     function refreshChromeAppearance() {
-        var config = {}
-        try {
-            config = JSON.parse(browserUi.config_json)
-        } catch (error) {
-            config = {}
-        }
-        var ui = config.ui || {}
-        var palette = {}
-        try {
-            palette = JSON.parse(browserUi.theme_palette_json)
-        } catch (error) {
-            palette = {}
-        }
-        var contrast = {}
-        try {
-            contrast = JSON.parse(browserUi.theme_contrast_json)
-        } catch (error) {
-            contrast = {}
-        }
-        var systemMotion = {}
-        try {
-            systemMotion = JSON.parse(browserUi.system_reduced_motion_json)
-        } catch (error) {
-            systemMotion = {}
-        }
-        var systemFont = {}
-        try {
-            systemFont = JSON.parse(browserUi.system_font_scale_json)
-        } catch (error) {
-            systemFont = {}
-        }
-        function paletteColor(value, fallback, opaque) {
-            if (typeof value !== "string"
-                    || !(/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(value))) {
-                return fallback
-            }
-            var alpha = value.length === 9 ? parseInt(value.slice(7, 9), 16) : 255
-            if (opaque || alpha < 218) {
-                return value.slice(0, 7) + (opaque ? "ff" : "da")
-            }
-            return value
-        }
-        window.backgroundColor = paletteColor(palette.background, "#1e1e2e", true)
-        window.surfaceColor = paletteColor(
-                    palette.surface || palette.lighter_background, "#313244", true)
-        window.panelColor = paletteColor(palette.dark_background, "#181825", true)
-        window.primaryTextColor = readableTextColor(
-                    paletteColor(palette.foreground, "#cdd6f4"), window.backgroundColor)
-        window.secondaryTextColor = readableTextColor(
-                    paletteColor(palette.selection_foreground || palette.foreground, "#cdd6f4"),
-                    window.surfaceColor)
-        window.mutedTextColor = readableTextColor(
-                    paletteColor(palette.muted, "#a6adc8"), window.panelColor)
-        window.borderColor = paletteColor(palette.border, "#585b70", true)
-        window.accentColor = readableTextColor(
-                    paletteColor(palette.accent, "#89b4fa"), window.backgroundColor)
-        window.warningColor = readableTextColor(
-                    paletteColor(palette.warning || palette.yellow, "#f9e2af"),
-                    window.backgroundColor)
-        window.errorColor = readableTextColor(
-                    paletteColor(palette.error || palette.red, "#f38ba8"),
-                    window.backgroundColor)
-        window.successColor = readableTextColor(
-                    paletteColor(palette.success || palette.green, "#a6e3a1"),
-                    window.backgroundColor)
-        window.privateColor = readableTextColor(
-                    paletteColor(palette.private, "#cba6f7"), window.backgroundColor)
-        window.modeInsertColor = readableTextColor(
-                    paletteColor(palette.mode_insert, "#f9e2af"), window.backgroundColor)
-        window.selectionColor = paletteColor(
-                    palette.selection_background || palette.selection, "#45475a", true)
-        window.selectionTextColor = readableTextColor(
-                    paletteColor(palette.selection_foreground || palette.foreground, "#cdd6f4"),
-                    window.selectionColor)
+        window.backgroundColor = browserUi.theme_background_color
+        window.surfaceColor = browserUi.theme_surface_color
+        window.panelColor = browserUi.theme_panel_color
+        window.primaryTextColor = browserUi.theme_primary_text_color
+        window.secondaryTextColor = browserUi.theme_secondary_text_color
+        window.mutedTextColor = browserUi.theme_muted_text_color
+        window.borderColor = browserUi.theme_border_color
+        window.accentColor = browserUi.theme_accent_color
+        window.warningColor = browserUi.theme_warning_color
+        window.errorColor = browserUi.theme_error_color
+        window.successColor = browserUi.theme_success_color
+        window.privateColor = browserUi.theme_private_color
+        window.modeInsertColor = browserUi.theme_mode_insert_color
+        window.selectionColor = browserUi.theme_selection_color
+        window.selectionTextColor = browserUi.theme_selection_text_color
         var renderedContrast = window.renderedContrastReport()
         window.renderedThemeContrastStatus = renderedContrast.status
-        if (typeof ui.font_family === "string" && ui.font_family.trim().length > 0) {
-            window.chromeFontFamily = ui.font_family
-        }
-        window.systemFontScale = systemFont.status === "available"
-                && typeof systemFont.value === "number"
-                && systemFont.value >= 0.5 && systemFont.value <= 3.0
-                ? systemFont.value : 1.0
-        if (typeof ui.font_size_pt === "number" && ui.font_size_pt >= 6 && ui.font_size_pt <= 40) {
-            window.chromeFontPointSize = Math.min(60, Math.max(6, ui.font_size_pt
-                                                               * window.systemFontScale))
-        }
-        window.statusbarMode = ["always", "command", "never"].indexOf(ui.statusbar) >= 0
-                ? ui.statusbar : "always"
-        window.tabsMode = ["always", "multiple", "switching", "never"].indexOf(ui.tabs) >= 0
-                ? ui.tabs : "multiple"
-        window.tabPosition = ["top", "bottom", "left", "right"].indexOf(ui.tab_position) >= 0
-                ? ui.tab_position : "top"
-        window.systemReducedMotionStatus = typeof systemMotion.status === "string"
-                ? systemMotion.status : "unknown"
-        if (ui.reduced_motion === "on") {
+        window.chromeFontFamily = browserUi.chrome_font_family
+        window.systemFontScale = browserUi.system_font_scale_status === "available"
+                ? browserUi.system_font_scale : 1.0
+        window.chromeFontPointSize = Math.min(60, Math.max(6, browserUi.chrome_font_size_pt
+                                                           * window.systemFontScale))
+        window.statusbarMode = browserUi.chrome_statusbar_mode
+        window.tabsMode = browserUi.chrome_tabs_mode
+        window.tabPosition = browserUi.chrome_tab_position
+        window.systemReducedMotionStatus = browserUi.system_reduced_motion_status
+        if (browserUi.chrome_reduced_motion === "on") {
             window.reducedMotionActive = true
-        } else if (ui.reduced_motion === "off") {
+        } else if (browserUi.chrome_reduced_motion === "off") {
             window.reducedMotionActive = false
         } else {
             // Unknown or unavailable desktop preferences fail closed: optional
             // motion stays disabled until a positive probe says otherwise.
-            window.reducedMotionActive = systemMotion.status === "available"
-                    ? systemMotion.value === true : true
+            window.reducedMotionActive = browserUi.system_reduced_motion_status === "available"
+                    ? browserUi.system_reduced_motion_enabled : true
         }
-        window.themeContrastStatus = typeof contrast.status === "string"
-                ? contrast.status : "unknown"
+        window.themeContrastStatus = browserUi.theme_contrast_status
         window.themeContrastWarning = (window.themeContrastStatus === "warning"
                 || window.renderedThemeContrastStatus === "warning")
-                ? String(contrast.reason || "Some theme colors may be difficult to read") : ""
+                ? browserUi.theme_contrast_reason : ""
     }
 
     function noteTabActivity() {
@@ -350,81 +210,16 @@ ApplicationWindow {
     }
 
     function spellcheckEnabled(ui) {
-        var config = {}
-        try {
-            config = JSON.parse(ui && ui.config_json ? ui.config_json : "{}")
-        } catch (error) {
-            return true
-        }
-        return (!config.spellcheck || config.spellcheck.enabled !== false)
-                && window.spellcheckLanguages(ui).length > 0
-    }
-
-    function spellcheckLanguageKey(language) {
-        return String(language || "").trim().replace(/-/g, "_").toLowerCase()
-    }
-
-    function spellcheckLanguageIsValid(language) {
-        var grandfathered = [
-            "art-lojban", "cel-gaulish", "en-gb-oed", "i-ami", "i-bnn",
-            "i-default", "i-enochian", "i-hak", "i-klingon", "i-lux",
-            "i-mingo", "i-navajo", "i-pwn", "i-tao", "i-tay", "i-tsu",
-            "no-bok", "no-nyn", "sgn-be-fr", "sgn-be-nl", "sgn-ch-de",
-            "zh-guoyu", "zh-hakka", "zh-min", "zh-min-nan", "zh-xiang"
-        ]
-        var normalized = String(language || "").toLowerCase()
-        return grandfathered.indexOf(normalized) >= 0
-                || /^(?:[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*|x(?:-[A-Za-z0-9]{1,8})+)$/.test(language)
+        return SpellcheckPresentation.enabled(
+                    !ui || ui.feature_spellcheck_enabled,
+                    window.spellcheckDictionaryStatus(ui))
     }
 
     function spellcheckDictionaryStatus(ui) {
-        var config = {}
-        try {
-            config = JSON.parse(ui && ui.config_json ? ui.config_json : "{}")
-        } catch (error) {
-            config = {}
-        }
-        var configured = config.spellcheck && config.spellcheck.languages
-        if (!Array.isArray(configured) || configured.length === 0) {
-            configured = ["system"]
-        }
-        var requested = []
-        for (var i = 0; i < configured.length && i < 16; ++i) {
-            var language = String(configured[i] || "").trim()
-            if (language === "system") {
-                language = Qt.locale().name.replace("_", "-")
-            }
-            if (window.spellcheckLanguageIsValid(language)
-                    && requested.indexOf(language) < 0) {
-                requested.push(language)
-            }
-        }
-        if (requested.length === 0) {
-            requested = [Qt.locale().name.replace("_", "-")]
-        }
-        var installed = window.spellcheckInventory || []
-        var installedKeys = []
-        for (var installedIndex = 0; installedIndex < installed.length; ++installedIndex) {
-            var installedKey = window.spellcheckLanguageKey(installed[installedIndex])
-            if (installedKey.length > 0 && installedKeys.indexOf(installedKey) < 0) {
-                installedKeys.push(installedKey)
-            }
-        }
-        var active = []
-        var missing = []
-        for (var requestedIndex = 0; requestedIndex < requested.length; ++requestedIndex) {
-            var requestedLanguage = requested[requestedIndex]
-            var requestedKey = window.spellcheckLanguageKey(requestedLanguage)
-            var baseKey = requestedKey.split("_")[0]
-            var found = installedKeys.indexOf(requestedKey) >= 0
-                    || installedKeys.indexOf(baseKey) >= 0
-            if (found) {
-                active.push(requestedLanguage)
-            } else {
-                missing.push(requestedLanguage)
-            }
-        }
-        return { requested: requested, active: active, missing: missing, installed: installed }
+        return SpellcheckPresentation.dictionaryStatus(
+                    ui ? ui.feature_spellcheck_languages : [],
+                    window.spellcheckInventory || [],
+                    Qt.locale().name.replace("_", "-"))
     }
 
     function spellcheckLanguages(ui) {
@@ -433,54 +228,27 @@ ApplicationWindow {
     }
 
     function refreshSpellcheckInventory(ui) {
-        try {
-            var payload = ui && ui.spellcheck_dictionaries ? ui.spellcheck_dictionaries() : "[]"
-            var values = JSON.parse(payload || "[]")
-            window.spellcheckInventory = Array.isArray(values) ? values.slice(0, 64) : []
-        } catch (error) {
-            window.spellcheckInventory = []
-        }
+        var values = ui && ui.spellcheck_dictionaries ? ui.spellcheck_dictionaries() : []
+        window.spellcheckInventory = values && values.length ? values.slice(0, 64) : []
     }
 
     function spellcheckStatusText(ui) {
-        var status = window.spellcheckDictionaryStatus(ui)
-        if (status.missing.length === 0) {
-            return status.installed.length > 0
-                    ? "Spellcheck dictionaries: " + status.active.join(", ")
-                    : "Spellcheck dictionary inventory unavailable; no download was attempted"
-        }
-        return "Missing spellcheck dictionaries: " + status.missing.join(", ")
-                + " (no download was attempted)"
+        return SpellcheckPresentation.statusText(window.spellcheckDictionaryStatus(ui))
     }
 
     function desktopNotificationsEnabled(ui) {
-        try {
-            var config = JSON.parse(ui && ui.config_json ? ui.config_json : "{}")
-            return !config.desktop || config.desktop.notifications !== false
-        } catch (error) {
-            return true
-        }
+        return !ui || ui.feature_desktop_notifications_enabled !== false
     }
 
     function pushServiceEnabled(ui, privateProfile) {
         if (privateProfile) {
             return false
         }
-        try {
-            var config = JSON.parse(ui && ui.config_json ? ui.config_json : "{}")
-            return !!(config.privacy && config.privacy.push_service === true)
-        } catch (error) {
-            return false
-        }
+        return !!(ui && ui.feature_push_service_enabled)
     }
 
     function mediaKeysEnabled(ui) {
-        try {
-            var config = JSON.parse(ui && ui.config_json ? ui.config_json : "{}")
-            return !config.desktop || config.desktop.media_keys !== false
-        } catch (error) {
-            return true
-        }
+        return !ui || ui.feature_desktop_media_keys_enabled !== false
     }
 
     function handleMediaKey(event) {
@@ -923,29 +691,19 @@ ApplicationWindow {
     }
 
     function showContextRoute(ui) {
-        if (!ui || !ui.context_route_json || ui.context_route_json === "{}") {
+        if (!ui || !ui.context_route_id || !ui.context_route_context
+                || !ui.context_route_profile || !ui.context_route_url) {
             return
         }
-        try {
-            var data = JSON.parse(ui.context_route_json)
-            if (!data || !data.route_id || !data.context || !data.profile || !data.url) {
-                ui.status_text = "Context route data was invalid"
-                return
-            }
-            window.contextRouteUi = ui
-            window.contextRouteData = data
-            window.contextRouteVisible = true
-            window.captureOverlayFocus(window, window.activeWebView())
-        } catch (error) {
-            ui.status_text = "Context route data was invalid"
-        }
+        window.contextRouteUi = ui
+        window.contextRouteVisible = true
+        window.captureOverlayFocus(window, window.activeWebView())
     }
 
     function closeContextRoutePrompt() {
         var wasVisible = window.contextRouteVisible
         window.contextRouteVisible = false
         window.contextRouteUi = null
-        window.contextRouteData = ({})
         if (wasVisible) {
             window.restoreOverlayFocus()
         }
@@ -954,28 +712,22 @@ ApplicationWindow {
     function showContextMovePicker(tabId) {
         var sourceEntry = window.browserWindowEntryForUi(browserUi)
         var choices = []
-        try {
-            var config = JSON.parse(browserUi.contexts_json || "{}")
-            var contexts = config && Array.isArray(config.contexts) ? config.contexts : []
-            for (var i = 0; i < contexts.length; ++i) {
-                var context = contexts[i]
-                if (!context || typeof context.name !== "string"
-                        || context.name.length === 0
-                        || String(context.name) === String(browserUi.context_name || "")
-                        || String(context.profile || "") !== String(window.profileName)) {
-                    continue
-                }
-                var targetEntry = window.browserWindowEntryForContext(
-                            context.name, sourceEntry)
-                choices.push({
-                    name: context.name,
-                    label: context.label || context.name,
-                    available: window.sameProfileWindow(sourceEntry, targetEntry)
-                })
+        var names = browserUi.context_choice_names || []
+        var labels = browserUi.context_choice_labels || []
+        var profiles = browserUi.context_choice_profiles || []
+        for (var i = 0; i < names.length; ++i) {
+            var name = String(names[i] || "")
+            if (name.length === 0
+                    || name === String(browserUi.context_name || "")
+                    || String(profiles[i] || "") !== String(window.profileName)) {
+                continue
             }
-        } catch (error) {
-            browserUi.status_text = "Context move choices are unavailable"
-            return
+            var targetEntry = window.browserWindowEntryForContext(name, sourceEntry)
+            choices.push({
+                name: name,
+                label: String(labels[i] || name),
+                available: window.sameProfileWindow(sourceEntry, targetEntry)
+            })
         }
         if (choices.length === 0) {
             browserUi.status_text = "No other same-profile contexts are configured"
@@ -1086,25 +838,29 @@ ApplicationWindow {
     }
 
     function publishBrowserWindowRegistry() {
-        var values = []
+        var ids = []
+        var ownerTokens = []
+        var profiles = []
+        var privateFlags = []
+        var ephemeralFlags = []
+        var tabCounts = []
         var entries = window.browserWindowRegistry || []
-        for (var i = 0; i < entries.length && values.length < 64; ++i) {
+        for (var i = 0; i < entries.length && ids.length < 64; ++i) {
             var entry = entries[i]
             if (!entry || !entry.ui || !entry.host) {
                 continue
             }
-            values.push({
-                "id": String(entry.coreWindowId || ""),
-                "owner_token": String(entry.windowToken || ""),
-                "profile": String(entry.profileName || ""),
-                "private": !!entry.privateProfile,
-                "ephemeral": !!entry.ephemeralProfile,
-                "tab_count": entry.ui === browserUi
-                        ? Number(browserUi.tab_count || 0)
-                        : Number(entry.ui.tab_count || 0)
-            })
+            ids.push(String(entry.coreWindowId || ""))
+            ownerTokens.push(String(entry.windowToken || ""))
+            profiles.push(String(entry.profileName || ""))
+            privateFlags.push(entry.privateProfile ? "true" : "false")
+            ephemeralFlags.push(entry.ephemeralProfile ? "true" : "false")
+            tabCounts.push(String(entry.ui === browserUi
+                                  ? Number(browserUi.tab_count || 0)
+                                  : Number(entry.ui.tab_count || 0)))
         }
-        browserUi.window_registry_json = JSON.stringify(values)
+        browserUi.publish_live_window_registry(
+                    ids, ownerTokens, profiles, privateFlags, ephemeralFlags, tabCounts)
     }
 
     function updateBrowserWindowView(ui, view) {
@@ -1734,7 +1490,7 @@ ApplicationWindow {
         window.beginQuitRequest()
     }
     property string startupUrl: "about:blank"
-    property string startupAdditionalUrlsJson: "[]"
+    property var startupAdditionalUrls: []
     property string startupEntryPoint: "typed-initial-url"
     property bool startupTrustedLocalInput: false
     property bool startupBackground: false
@@ -1769,7 +1525,6 @@ ApplicationWindow {
     property string startupContextsJson: ""
     property bool contextRouteVisible: false
     property var contextRouteUi: null
-    property var contextRouteData: ({})
     property bool contextMoveVisible: false
     property string contextMoveTabId: ""
     property var contextMoveChoices: []
@@ -1786,9 +1541,7 @@ ApplicationWindow {
     property var reopenWindowConfirmationHost: null
     property string pendingDeleteName: ""
     property bool profileManagerVisible: false
-    property string profileRenameName: ""
     property int profileRefreshAttempts: 0
-    property string profileRenameLabel: ""
     property bool profileDeletePreviewVisible: false
     property string profileDeleteName: ""
     property string profileDeletePreviewText: ""
@@ -1897,7 +1650,6 @@ ApplicationWindow {
     property var qtResolutionCounts: ({})
     property bool bindingHelpVisible: false
     property string bindingHelpSearch: ""
-    property var bindingHelpData: ({})
 
     function noteQtResolution(ui, kind, outcome) {
         var target = ui || browserUi
@@ -1952,7 +1704,6 @@ ApplicationWindow {
     property string settingsSearch: ""
     property string settingsNotice: ""
     property string pendingUserscriptRemoval: ""
-    property var settingsRows: []
     property bool libraryManagerVisible: false
     property string pendingLibraryDelete: ""
     property bool privateHistoryTransferVisible: false
@@ -1962,7 +1713,6 @@ ApplicationWindow {
     property int libraryPage: 0
     property int libraryPageSize: 100
     property int libraryTotalEntries: 0
-    property var linkPreviewData: ({})
     property bool linkPreviewVisible: false
     property var hintResults: []
     property string hintInput: ""
@@ -2060,55 +1810,15 @@ ApplicationWindow {
     RequestInterceptor {
         id: requestInterceptor
         enabled: browserUi.blocking_enabled || securityDenyHosts.length > 0
-        blockedHosts: {
-            try {
-                var hosts = JSON.parse(browserUi.blocking_hosts)
-                return Array.isArray(hosts) ? hosts : []
-            } catch (error) {
-                return []
-            }
-        }
-        exceptionHosts: {
-            try {
-                var hosts = JSON.parse(browserUi.blocking_exceptions)
-                return Array.isArray(hosts) ? hosts : []
-            } catch (error) {
-                return []
-            }
-        }
-        blockedRuleLists: {
-            try {
-                var lists = JSON.parse(browserUi.blocking_rule_lists)
-                return lists && typeof lists === "object" && !Array.isArray(lists) ? lists : ({})
-            } catch (error) {
-                return ({})
-            }
-        }
-        exceptionRuleLists: {
-            try {
-                var lists = JSON.parse(browserUi.blocking_exception_rule_lists)
-                return lists && typeof lists === "object" && !Array.isArray(lists) ? lists : ({})
-            } catch (error) {
-                return ({})
-            }
-        }
+        blockedHosts: browserUi.blocking_hosts
+        exceptionHosts: browserUi.blocking_exceptions
+        blockedRuleHosts: browserUi.blocking_rule_hosts
+        blockedRuleListIds: browserUi.blocking_rule_list_ids
+        exceptionRuleHosts: browserUi.blocking_exception_rule_hosts
+        exceptionRuleListIds: browserUi.blocking_exception_rule_list_ids
         adblockEngineHandle: browserUi.blocking_adblock_handle
-        bypassSites: {
-            try {
-                var sites = JSON.parse(browserUi.blocking_bypass_sites)
-                return Array.isArray(sites) ? sites : []
-            } catch (error) {
-                return []
-            }
-        }
-        securityDenyHosts: {
-            try {
-                var hosts = JSON.parse(browserUi.blocking_security_deny_hosts)
-                return Array.isArray(hosts) ? hosts : []
-            } catch (error) {
-                return []
-            }
-        }
+        bypassSites: browserUi.blocking_bypass_sites
+        securityDenyHosts: browserUi.blocking_security_deny_hosts
         onBlockedCountChanged: window.refreshBlockingEvidence()
         onUnknownContextCountChanged: window.refreshBlockingEvidence()
         onBlockedSiteCountsChanged: window.refreshBlockingEvidence()
@@ -2116,22 +1826,14 @@ ApplicationWindow {
 
     function refreshBlockingEvidence() {
         var blockedRequests = Number(requestInterceptor.blockedCount)
-        if (isFinite(blockedRequests)) {
-            browserUi.blocking_blocked_count = Math.max(0, Math.floor(blockedRequests))
-        }
         var unknownRequests = Number(requestInterceptor.unknownContextCount)
-        if (isFinite(unknownRequests)) {
-            browserUi.blocking_unknown_context_count = Math.max(
-                        0, Math.floor(unknownRequests))
-        }
-        browserUi.blocking_active_site_count = Math.max(
-                    0, Math.floor(window.activeBlockedRequestCount))
+        browserUi.publish_blocking_live_counts(
+                    blockedRequests, unknownRequests, window.activeBlockedRequestCount)
         var activeView = window.activeWebView()
         var activeHost = activeView && activeView.url ? activeView.url.host : ""
-        browserUi.blocking_active_explanation = JSON.stringify(
-                    requestInterceptor.blockedRequestExplanation(activeHost))
-        browserUi.blocking_active_decisions = JSON.stringify(
-                    requestInterceptor.blockedRequestDecisions(activeHost))
+        browserUi.set_blocking_active_evidence(
+                    requestInterceptor.blockedRequestExplanationFields(activeHost),
+                    requestInterceptor.blockedRequestDecisionFields(activeHost))
     }
 
     NotificationPresenter {
@@ -2226,7 +1928,8 @@ ApplicationWindow {
                 window.refreshSwitcher()
             }
             if (consumed && browserUi.mode === "command") {
-                browserUi.update_completion(commandLine.text, commandLine.cursorPosition)
+                browserUi.update_completion(commandSurface.commandText,
+                                            commandSurface.cursorPosition)
             }
             if (consumed && window.downloadManagerVisible) {
                 window.refreshDownloads()
@@ -2266,7 +1969,7 @@ ApplicationWindow {
                 return
             }
             view.runJavaScript(
-                        "window.__ferric_browserSiteDataClearResult || ''",
+                        BrowserScripts.siteDataClearResult(),
                         window.browserScriptWorld,
                         function(value) {
                             if (typeof value !== "string" || value.length === 0) {
@@ -2316,8 +2019,9 @@ ApplicationWindow {
     Connections {
         target: browserUi
         function onStorage_library_revisionChanged() {
-            if (commandBar.visible) {
-                browserUi.update_completion(commandLine.text, commandLine.cursorPosition)
+            if (commandSurface.commandVisible) {
+                browserUi.update_completion(commandSurface.commandText,
+                                            commandSurface.cursorPosition)
             }
         }
     }
@@ -2343,37 +2047,22 @@ ApplicationWindow {
     Component {
         id: devToolsWindowComponent
 
-        ApplicationWindow {
+        FerricDevToolsWindow {
             id: devToolsWindow
-            property var inspectView: null
-            property var ownerWindow: null
-            property alias inspectorView: detachedDevToolsView
-            width: 980
-            height: 620
-            visible: false
-            title: "Ferric Browser · DevTools"
-            color: ownerWindow ? ownerWindow.backgroundColor : "#1e1e2e"
-            palette: window.palette
-            onClosing: {
-                if (ownerWindow) {
-                    if (ownerWindow.devToolsDetachedWindow === devToolsWindow) {
-                        ownerWindow.devToolsDetachedWindow = null
-                        ownerWindow.devToolsExternalView = null
-                        ownerWindow.devToolsDetached = false
-                        ownerWindow.devToolsVisible = false
-                        ownerWindow.browserUi.status_text = "DevTools closed"
-                    }
-                } else if (devToolsWindow.inspectView) {
-                    devToolsWindow.inspectView.devToolsView = null
+            browserWindow: window
+            onOwnerWindowClosed: {
+                if (ownerWindow.devToolsDetachedWindow === devToolsWindow) {
+                    ownerWindow.devToolsDetachedWindow = null
+                    ownerWindow.devToolsExternalView = null
+                    ownerWindow.devToolsDetached = false
+                    ownerWindow.devToolsVisible = false
+                    ownerWindow.browserUi.status_text = "DevTools closed"
                 }
             }
-
-            WebEngineView {
-                id: detachedDevToolsView
-                anchors.fill: parent
-                profile: devToolsWindow.inspectView ? devToolsWindow.inspectView.profile : null
-                inspectedView: devToolsWindow.inspectView
-                Accessible.name: "Detached developer tools"
+            onInspectedViewClosed: {
+                if (inspectView) {
+                    inspectView.devToolsView = null
+                }
             }
         }
     }
@@ -2484,33 +2173,9 @@ ApplicationWindow {
         onTriggered: window.refreshEngineUpdateNotice()
     }
 
-    Rectangle {
-        id: bindingOverlay
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: window.statusBarHeight + 8
-        width: Math.min(620, parent.width - 40)
-        height: Math.max(34, bindingOverlayLabel.implicitHeight + 14)
-        z: 30
-        visible: window.bindingOverlayVisible
-        enabled: false
-        color: window.panelColor
-        border.color: window.accentColor
-        border.width: 1
-        radius: 3
-
-        Label {
-            id: bindingOverlayLabel
-            anchors.fill: parent
-            anchors.margins: 7
-            text: browserUi.binding_overlay
-            color: window.primaryTextColor
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-            wrapMode: Text.WordWrap
-            Accessible.name: "Keyboard binding continuation"
-            Accessible.role: Accessible.StatusBar
-        }
+    FerricBindingOverlay {
+        browserWindow: window
+        browserUi: browserUi
     }
 
     function runBrowserScript(view, script, callback, world) {
@@ -2607,9 +2272,7 @@ ApplicationWindow {
         }
         var capturedUrl = view.url.toString()
         window.runBrowserScript(view,
-            "(function(){var root=document.scrollingElement||document.documentElement;"
-            + "if(!root)return null;"
-            + "return {x:Math.max(0,root.scrollLeft||0),y:Math.max(0,root.scrollTop||0)};})()",
+            BrowserScripts.scrollPosition(),
             function(value) {
                 if (view.tabIndex !== index || view.url.toString() !== capturedUrl || !value) {
                     return
@@ -2629,8 +2292,7 @@ ApplicationWindow {
             return
         }
         window.runBrowserScript(view,
-            "(function(){var root=document.scrollingElement||document.documentElement;"
-            + "if(!root)return false;root.scrollTo(" + x + "," + y + ");return true;})()")
+            BrowserScripts.restoreScrollPosition(x, y))
     }
 
     function siteDataClearScript() {
@@ -2653,27 +2315,36 @@ ApplicationWindow {
     }
 
     function siteRuleSettingsFor(ui, url) {
-        if (!ui || !ui.site_rule_settings || !url) {
+        if (!ui || !ui.select_site_rule_settings || !url) {
             return { values: {}, matched_rules: [] }
         }
-        try {
-            var experiment = JSON.parse(ui.site_experiment_json || "{}")
-            var experimentDocument = String(experiment.url || "").split(/[?#]/)[0]
-            var currentDocument = String(url).split(/[?#]/)[0]
-            if (experiment.kind === "compiled-defaults"
-                    && experimentDocument === currentDocument) {
-                return { values: {}, matched_rules: [] }
-            }
-        } catch (error) {
-            // Rust will reject malformed experiment state; keep the normal
-            // site-rule path usable while that state is being cleared.
-        }
-        try {
-            var result = JSON.parse(ui.site_rule_settings(url))
-            return result && result.values ? result : { values: {}, matched_rules: [] }
-        } catch (error) {
+        var experimentDocument = String(ui.site_experiment_url || "").split(/[?#]/)[0]
+        var currentDocument = String(url).split(/[?#]/)[0]
+        if (ui.site_experiment_active
+                && ui.site_experiment_kind === "compiled-defaults"
+                && experimentDocument === currentDocument) {
             return { values: {}, matched_rules: [] }
         }
+        if (!ui.select_site_rule_settings(url)) {
+            return { values: {}, matched_rules: [] }
+        }
+        var values = ({})
+        if (ui.site_rule_javascript_set) {
+            values["content.javascript"] = ui.site_rule_javascript_enabled
+        }
+        if (ui.site_rule_images_set) {
+            values["content.images"] = ui.site_rule_images_enabled
+        }
+        if (ui.site_rule_force_dark_set) {
+            values["content.force_dark"] = ui.site_rule_force_dark_enabled
+        }
+        if (ui.site_rule_autoplay_set) {
+            values["content.autoplay"] = String(ui.site_rule_autoplay)
+        }
+        if (ui.site_rule_zoom_set) {
+            values["content.zoom"] = Number(ui.site_rule_zoom)
+        }
+        return { values: values, matched_rules: [] }
     }
 
     function siteRuleValue(settings, key, fallback) {
@@ -2685,31 +2356,7 @@ ApplicationWindow {
     }
 
     function focusObserverSource() {
-        return "(function(){"
-            + "if(window.__ferric_browserFocusObserverInstalled)return;"
-            + "window.__ferric_browserFocusObserverInstalled=true;"
-            + "var sequence=0;var userGestureUntil=0;"
-            + "function classify(){"
-            + "var element=document.activeElement;var depth=0;"
-            + "while(element&&element.shadowRoot&&depth<16&&element.shadowRoot.activeElement){"
-            + "element=element.shadowRoot.activeElement;depth++;}"
-            + "var tag=element&&element.tagName?String(element.tagName).toLowerCase():'';"
-            + "var type=element&&element.type?String(element.type).toLowerCase():'';"
-            + "var excluded=['button','checkbox','file','hidden','image','radio','range','reset','submit'];"
-            + "var editable=!!element&&(element.isContentEditable===true||tag==='textarea'||tag==='select'||"
-            + "(tag==='input'&&excluded.indexOf(type)<0));"
-            + "var kind=editable?(tag==='textarea'?'textarea':element.isContentEditable?'contenteditable':"
-            + "tag==='input'&&type==='password'?'password':'input'):tag==='iframe'?'frame':'other';"
-            + "return {editable:editable,kind:kind};}"
-            + "function publish(userActivated){var state=classify();"
-            + "window.__ferric_browserFocusState={sequence:++sequence,editable:state.editable,user_activated:!!userActivated,kind:state.kind};}"
-            + "window.__ferric_browserAuthorizeExplicitFocus=function(){userGestureUntil=performance.now()+1500;};"
-            + "function noteGesture(event){if(event.isTrusted!==false){userGestureUntil=performance.now()+1500;publish(true);}}"
-            + "document.addEventListener('pointerdown',noteGesture,true);"
-            + "document.addEventListener('keydown',function(event){if(event.key==='Tab')noteGesture(event);},true);"
-            + "document.addEventListener('focusin',function(){publish(performance.now()<=userGestureUntil);},true);"
-            + "document.addEventListener('focusout',function(){setTimeout(function(){publish(false);},0);},true);"
-            + "publish(false);})();"
+        return BrowserScripts.focusObserverSource()
     }
 
     function installFocusObserver(view) {
@@ -2771,39 +2418,36 @@ ApplicationWindow {
     }
 
     function injectCosmeticRules(ui, view) {
-        if (window.safeMode || !ui || !view || !ui.blocking_cosmetic_rules) {
+        if (window.safeMode || !ui || !view) {
             return
         }
-        var rules = []
-        var exceptions = []
-        try {
-            rules = JSON.parse(ui.blocking_cosmetic_rules)
-            exceptions = JSON.parse(ui.blocking_cosmetic_exceptions || "[]")
-        } catch (error) {
-            ui.status_text = "Cosmetic filter metadata was invalid"
-            return
-        }
-        if (!Array.isArray(rules) || !Array.isArray(exceptions)) {
+        var ruleHosts = ui.blocking_cosmetic_rule_hosts
+        var ruleSelectors = ui.blocking_cosmetic_rule_selectors
+        var exceptionHosts = ui.blocking_cosmetic_exception_hosts
+        var exceptionSelectors = ui.blocking_cosmetic_exception_selectors
+        if (ruleHosts.length !== ruleSelectors.length
+                || exceptionHosts.length !== exceptionSelectors.length) {
+            ui.status_text = "Cosmetic filter metadata was incomplete"
             return
         }
         var host = view.url && view.url.host ? String(view.url.host) : ""
         var selectors = []
-        for (var i = 0; i < rules.length && selectors.length < 256; ++i) {
-            var rule = rules[i]
-            if (!rule || !cosmeticHostMatches(host, rule.host)) {
+        for (var i = 0; i < ruleHosts.length && selectors.length < 256; ++i) {
+            var ruleHost = String(ruleHosts[i])
+            var ruleSelector = String(ruleSelectors[i])
+            if (!cosmeticHostMatches(host, ruleHost)) {
                 continue
             }
             var excluded = false
-            for (var j = 0; j < exceptions.length; ++j) {
-                var exception = exceptions[j]
-                if (exception && exception.selector === rule.selector
-                        && cosmeticHostMatches(host, exception.host)) {
+            for (var j = 0; j < exceptionHosts.length; ++j) {
+                if (String(exceptionSelectors[j]) === ruleSelector
+                        && cosmeticHostMatches(host, String(exceptionHosts[j]))) {
                     excluded = true
                     break
                 }
             }
-            if (!excluded && selectors.indexOf(String(rule.selector || "")) < 0) {
-                selectors.push(String(rule.selector || ""))
+            if (!excluded && ruleSelector.length > 0 && selectors.indexOf(ruleSelector) < 0) {
+                selectors.push(ruleSelector)
             }
         }
         if (selectors.length === 0) {
@@ -2811,13 +2455,7 @@ ApplicationWindow {
         }
         var css = selectors.join(" { display: none !important; }\n")
                 + " { display: none !important; }"
-        var source = "(function(){try{"
-                + "var id='ferric-browser-cosmetic-filter';"
-                + "var old=document.getElementById(id);if(old)old.remove();"
-                + "var style=document.createElement('style');style.id=id;"
-                + "style.textContent=" + JSON.stringify(css) + ";"
-                + "(document.head||document.documentElement).appendChild(style);"
-                + "}catch(error){return false;}return true;})()"
+        var source = BrowserScripts.cosmeticFilter(css)
         window.runBrowserScript(view, source, function(ok) {
             if (ok === false) {
                 ui.status_text = "Cosmetic filter injection failed"
@@ -2825,21 +2463,40 @@ ApplicationWindow {
         }, WebEngineScript.MainWorld)
     }
 
+    function matchingPageUserscriptsFor(ui, url, privateProfile) {
+        if (!ui.select_matching_page_scripts(url, privateProfile)) {
+            return []
+        }
+        var names = ui.page_userscript_names
+        var sources = ui.page_userscript_sources
+        var runAt = ui.page_userscript_run_at
+        var runsOnSubFrames = ui.page_userscript_runs_on_sub_frames
+        if (names.length !== sources.length || names.length !== runAt.length
+                || names.length !== runsOnSubFrames.length) {
+            ui.status_text = "Page userscript metadata was incomplete"
+            return []
+        }
+        var scripts = []
+        for (var i = 0; i < names.length; ++i) {
+            scripts.push({
+                name: String(names[i]),
+                source: String(sources[i]),
+                run_at: String(runAt[i]),
+                runs_on_sub_frames: String(runsOnSubFrames[i]) === "true"
+            })
+        }
+        return scripts
+    }
+
     function injectPageUserscripts(ui, view, url, privateProfile, phase) {
         if (window.safeMode || window.userscriptsOff
-                || !ui || !view || !url || !ui.matching_page_scripts) {
+                || !ui || !view || !url || !ui.select_matching_page_scripts) {
             return
         }
         if (window.siteDoctorUserscriptsDisabled(ui)) {
             return
         }
-        var scripts = []
-        try {
-            scripts = JSON.parse(ui.matching_page_scripts(url, privateProfile))
-        } catch (error) {
-            ui.status_text = "Page userscript metadata was invalid"
-            return
-        }
+        var scripts = window.matchingPageUserscriptsFor(ui, url, privateProfile)
         for (var i = 0; i < scripts.length; ++i) {
             var script = scripts[i]
             if (script.run_at !== phase) {
@@ -2849,8 +2506,7 @@ ApplicationWindow {
                 continue
             }
             (function(pageUi, scriptName, scriptSource) {
-                var source = "(function(){try{" + scriptSource
-                        + "\n}catch(error){return false;}return true;})()"
+                var source = BrowserScripts.pageUserscriptRun(scriptSource)
                 window.runBrowserScript(view, source, function(ok) {
                     if (ok === false) {
                         pageUi.status_text = "Page userscript failed: " + scriptName
@@ -2876,20 +2532,14 @@ ApplicationWindow {
 
     function installPageUserscripts(ui, view, url, privateProfile) {
         if (window.safeMode || window.userscriptsOff
-                || !ui || !view || !url || !ui.matching_page_scripts || !view.userScripts) {
+                || !ui || !view || !url || !ui.select_matching_page_scripts || !view.userScripts) {
             return
         }
         if (window.siteDoctorUserscriptsDisabled(ui)) {
             return
         }
         window.clearInstalledPageUserscripts(view)
-        var scripts = []
-        try {
-            scripts = JSON.parse(ui.matching_page_scripts(url, privateProfile))
-        } catch (error) {
-            ui.status_text = "Page userscript metadata was invalid"
-            return
-        }
+        var scripts = window.matchingPageUserscriptsFor(ui, url, privateProfile)
         var names = []
         for (var i = 0; i < scripts.length; ++i) {
             var script = scripts[i]
@@ -2905,8 +2555,7 @@ ApplicationWindow {
             var installedName = "ferric-browser-page-userscript-" + script.name
             var installedScript = WebEngine.script()
             installedScript.name = installedName
-            installedScript.sourceCode = "(function(){try{" + script.source
-                    + "\n}catch(error){}})()"
+            installedScript.sourceCode = BrowserScripts.pageUserscriptInstall(script.source)
             installedScript.injectionPoint = injectionPoint
             installedScript.worldId = WebEngineScript.MainWorld
             installedScript.runsOnSubFrames = true
@@ -2996,77 +2645,66 @@ ApplicationWindow {
         }
     }
 
-    FileDialog {
-        id: downloadChooser
-        title: "Choose download destination"
-        fileMode: FileDialog.SaveFile
-        nameFilters: ["All files (*)"]
-        onAccepted: window.acceptPendingDownload()
-        onRejected: window.cancelPendingDownload()
+    FerricFileDialogSurfaces {
+        id: fileDialogSurfaces
+        onDownloadAccepted: window.acceptPendingDownload()
+        onDownloadRejected: window.cancelPendingDownload()
+        onJourneyExportAccepted: window.finishJourneyExport()
+        onJourneyExportRejected: window.journeyExportPreviewVisible = true
+        onDiagnosticsExportAccepted: window.finishDiagnosticsExport()
+        onDiagnosticsExportRejected: window.diagnosticsVisible = true
+        onEngineFileAccepted: window.acceptEngineFileDialog()
+        onEngineFileRejected: window.rejectEngineFileDialog()
+        onEngineFolderAccepted: window.acceptEngineFolderDialog()
+        onEngineFolderRejected: window.rejectEngineFileDialog()
+        onUserscriptManifestAccepted: window.installUserscriptManifest()
     }
 
-    FileDialog {
-        id: journeyExportChooser
-        title: "Choose journey export destination"
-        fileMode: FileDialog.SaveFile
-        nameFilters: ["JSON files (*.json)", "All files (*)"]
-        onAccepted: window.finishJourneyExport()
-        onRejected: window.journeyExportPreviewVisible = true
-    }
-
-    FileDialog {
-        id: diagnosticsExportChooser
-        title: "Choose diagnostics export destination"
-        fileMode: FileDialog.SaveFile
-        nameFilters: ["JSON files (*.json)", "All files (*)"]
-        onAccepted: window.finishDiagnosticsExport()
-        onRejected: window.diagnosticsVisible = true
-    }
-
-    FileDialog {
-        id: engineFileChooser
-        title: "Choose file"
-        onAccepted: window.acceptEngineFileDialog()
-        onRejected: window.rejectEngineFileDialog()
-    }
-
-    FileDialog {
-        id: userscriptManifestChooser
-        title: "Install userscript manifest"
-        fileMode: FileDialog.OpenFile
-        nameFilters: ["Userscript manifests (*.toml)", "All files (*)"]
-        onAccepted: window.installUserscriptManifest()
-    }
-
-    Dialog {
-        id: userscriptRemovalDialog
-        title: "Remove userscript"
-        modal: true
-        width: Math.min(520, window.width - 48)
-        height: Math.min(180, window.height - 48)
-        standardButtons: Dialog.Ok | Dialog.Cancel
-        contentItem: Label {
-            text: "Remove userscript '" + window.pendingUserscriptRemoval
-                    + "' and its copied assets?"
-            wrapMode: Text.WordWrap
-            padding: 16
-            color: window.primaryTextColor
+    FerricCertificatePrompts {
+        id: certificatePrompts
+        browserWindow: window
+        onClientCertificateAccepted: function(index) {
+            window.acceptClientCertificate(index)
         }
-        onAccepted: {
+        onClientCertificateRejected: window.rejectClientCertificate()
+        onCertificateAccepted: window.acceptCertificateError()
+        onCertificateRejected: window.rejectCertificateError()
+    }
+
+    FerricWebAuthPrompt {
+        id: webAuthPrompt
+        browserWindow: window
+        onAccountSelected: function(account) {
+            window.selectWebAuthAccount(account)
+        }
+        onPinSubmitted: window.submitWebAuthPin()
+        onCancelled: window.cancelWebAuth()
+        onRetryRequested: window.retryWebAuth()
+    }
+
+    FerricContextMenu {
+        id: contextMenu
+        browserWindow: window
+        onScopeSelected: function(scope) {
+            window.setSwitcherScope(scope)
+        }
+        onItemActivated: function(item) {
+            window.activateContextMenuItem(item)
+        }
+        onDismissed: window.clearContextMenuRequest()
+    }
+
+    FerricUserscriptRemovalDialog {
+        id: userscriptRemovalDialog
+        browserWindow: window
+        onConfirmed: {
             var name = window.pendingUserscriptRemoval
             window.pendingUserscriptRemoval = ""
             if (browserUi.remove_userscript(name)) {
                 window.settingsNotice = "Removing userscript…"
             }
         }
-        onRejected: window.pendingUserscriptRemoval = ""
-    }
-
-    FolderDialog {
-        id: engineFolderChooser
-        title: "Choose folder"
-        onAccepted: window.acceptEngineFolderDialog()
-        onRejected: window.rejectEngineFileDialog()
+        onCancelled: window.pendingUserscriptRemoval = ""
     }
 
     function copyToClipboard(value, exposeValue, primary) {
@@ -3114,9 +2752,9 @@ ApplicationWindow {
 
     function fileDialogPaths() {
         var paths = []
-        var urls = engineFileChooser.fileMode === FileDialog.OpenFiles
-                ? engineFileChooser.selectedFiles
-                : [engineFileChooser.selectedFile]
+        var urls = fileDialogSurfaces.engineFileMode === FileDialog.OpenFiles
+                ? fileDialogSurfaces.engineFileSelectedFiles
+                : [fileDialogSurfaces.engineFileSelectedFile]
         for (var i = 0; i < urls.length; ++i) {
             var path = urls[i].toLocalFile()
             if (!path || urls[i].scheme !== "file") {
@@ -3136,31 +2774,22 @@ ApplicationWindow {
     }
 
     function folderDialogPaths() {
-        var url = engineFolderChooser.selectedFolder
+        var url = fileDialogSurfaces.engineFolderSelectedFolder
         var path = url && url.scheme === "file" ? url.toLocalFile() : ""
         return path ? [path] : []
     }
 
     function desktopPortalMode(ui) {
-        var config = JSON.parse(ui && ui.config_json ? ui.config_json : "{}")
-        return config.desktop && config.desktop.portals
-                ? String(config.desktop.portals) : "auto"
+        return ui && ui.desktop_portal_mode
+                ? String(ui.desktop_portal_mode) : "auto"
     }
 
     function desktopPortalCapabilityStatus(ui, capability) {
         // Portal availability is user-session global, so secondary and popup
         // browser objects use the root probe result instead of maintaining
         // independent D-Bus probes.
-        var value = JSON.parse(browserUi && browserUi.desktop_portal_status
-                                ? browserUi.desktop_portal_status : "{}")
-        var serviceStatus = value.service && value.service.status
-                ? String(value.service.status) : "not-probed"
-        if (serviceStatus !== "available") {
-            return serviceStatus
-        }
-        var interfaceValue = value.interfaces && value.interfaces[capability]
-        return interfaceValue && interfaceValue.status
-                ? String(interfaceValue.status) : "unavailable"
+        return browserUi && browserUi.portal_capability_status
+                ? browserUi.portal_capability_status(capability) : "not-probed"
     }
 
     function openPendingEngineFileDialog() {
@@ -3170,23 +2799,23 @@ ApplicationWindow {
         }
         window.pendingFileDialogWaitingForPortal = false
         if (request.mode === FileDialogRequest.FileModeUploadFolder) {
-            engineFolderChooser.open()
+            fileDialogSurfaces.openEngineFolder()
             return
         }
-        engineFileChooser.fileMode = request.mode === FileDialogRequest.FileModeOpenMultiple
+        fileDialogSurfaces.engineFileMode = request.mode === FileDialogRequest.FileModeOpenMultiple
                 ? FileDialog.OpenFiles
                 : request.mode === FileDialogRequest.FileModeSave
                     ? FileDialog.SaveFile
                     : FileDialog.OpenFile
-        engineFileChooser.nameFilters = window.fileDialogNameFilters(request)
-        engineFileChooser.currentFile = request.defaultFileName.length > 0
+        fileDialogSurfaces.engineFileNameFilters = window.fileDialogNameFilters(request)
+        fileDialogSurfaces.engineFileCurrentFile = request.defaultFileName.length > 0
                 ? request.defaultFileName : ""
-        engineFileChooser.title = request.mode === FileDialogRequest.FileModeSave
+        fileDialogSurfaces.engineFileTitle = request.mode === FileDialogRequest.FileModeSave
                 ? "Save file"
                 : request.mode === FileDialogRequest.FileModeOpenMultiple
                     ? "Choose files"
                     : "Choose file"
-        engineFileChooser.open()
+        fileDialogSurfaces.openEngineFile()
     }
 
     function maybeOpenPendingEngineFileDialog() {
@@ -3221,11 +2850,11 @@ ApplicationWindow {
         window.pendingFileDialogUi = null
         window.pendingFileDialogWaitingForPortal = false
         window.pendingFileDialogPortalDeadlineMs = 0
-        if (engineFileChooser.visible) {
-            engineFileChooser.close()
+        if (fileDialogSurfaces.engineFileVisible) {
+            fileDialogSurfaces.closeEngineFile()
         }
-        if (engineFolderChooser.visible) {
-            engineFolderChooser.close()
+        if (fileDialogSurfaces.engineFolderVisible) {
+            fileDialogSurfaces.closeEngineFolder()
         }
         if (hadRequest) {
             window.restoreOverlayFocus()
@@ -3660,98 +3289,32 @@ ApplicationWindow {
     }
 
     function rebuildBindingHelpRows() {
-        var data = window.bindingHelpData || {}
-        var commands = data.commands || []
-        var bindings = data.bindings || []
-        var conflicts = data.conflicts || []
-        var modes = ["normal", "insert", "command", "search", "hint", "caret", "pass-through"]
-        var query = (window.bindingHelpSearch || "").trim().toLowerCase()
+        var kinds = browserUi.binding_help_row_kinds || []
+        var titles = browserUi.binding_help_row_titles || []
+        var modes = browserUi.binding_help_row_modes || []
+        var commands = browserUi.binding_help_row_commands || []
+        var descriptions = browserUi.binding_help_row_descriptions || []
+        var keys = browserUi.binding_help_row_keys || []
+        var sources = browserUi.binding_help_row_sources || []
+        var counts = browserUi.binding_help_row_counts || []
         var rows = []
-        function matches(value) {
-            return !query || String(value || "").toLowerCase().indexOf(query) >= 0
-        }
-        for (var modeIndex = 0; modeIndex < modes.length; ++modeIndex) {
-            var mode = modes[modeIndex]
-            var modeRows = []
-            for (var commandIndex = 0; commandIndex < commands.length; ++commandIndex) {
-                var command = commands[commandIndex]
-                if ((command.modes || []).indexOf(mode) < 0) {
-                    continue
-                }
-                var commandBindings = []
-                for (var bindingIndex = 0; bindingIndex < bindings.length; ++bindingIndex) {
-                    var binding = bindings[bindingIndex]
-                    if (binding.mode === mode && binding.command_name === command.name) {
-                        commandBindings.push(binding)
-                    }
-                }
-                var keyText = commandBindings.length > 0
-                        ? commandBindings.map(function(binding) {
-                            return (binding.keys || []).join(" ")
-                        }).join(" · ")
-                        : "unbound"
-                var sourceText = commandBindings.length > 0
-                        ? commandBindings.map(function(binding) { return binding.source }).join(" · ")
-                        : "—"
-                var haystack = [mode, command.name, command.description, keyText, sourceText].join(" ")
-                if (!matches(haystack)) {
-                    continue
-                }
-                modeRows.push({
-                    kind: "command",
-                    mode: mode,
-                    command: command.name,
-                    description: command.description,
-                    keys: keyText,
-                    source: sourceText,
-                    count: command.count && command.count.supported
-                           ? "count ≤ " + command.count.maximum
-                           : "no count"
-                })
-            }
-            if (modeRows.length > 0) {
-                rows.push({ kind: "heading", title: mode + " mode" })
-                rows = rows.concat(modeRows)
-            }
-        }
-        var visibleConflicts = []
-        for (var conflictIndex = 0; conflictIndex < conflicts.length; ++conflictIndex) {
-            var conflict = conflicts[conflictIndex]
-            var conflictText = [conflict.mode, (conflict.keys || []).join(" / "),
-                                 (conflict.commands || []).join(" / "), conflict.description].join(" ")
-            if (matches(conflictText)) {
-                visibleConflicts.push({
-                    kind: "conflict",
-                    mode: conflict.mode,
-                    command: (conflict.keys || []).join(" / "),
-                    description: conflict.description,
-                    keys: (conflict.commands || []).join(" · "),
-                    source: "prefix ambiguity",
-                    count: "timeout " + (data.bindings && data.bindings.length > 0
-                          ? (data.bindings[0].timeout_ms || 1000) : 1000) + " ms"
-                })
-            }
-        }
-        if (visibleConflicts.length > 0) {
-            rows.push({ kind: "heading", title: "Binding conflicts" })
-            rows = rows.concat(visibleConflicts)
+        for (var index = 0; index < kinds.length; ++index) {
+            rows.push({
+                kind: kinds[index],
+                title: titles[index],
+                mode: modes[index],
+                command: commands[index],
+                description: descriptions[index],
+                keys: keys[index],
+                source: sources[index],
+                count: counts[index]
+            })
         }
         window.bindingHelpRows = rows
     }
 
     function refreshBindingHelp() {
-        var payload = browserUi.bindings_json()
-        try {
-            var parsed = JSON.parse(payload)
-            window.bindingHelpData = parsed && typeof parsed === "object" ? parsed : {}
-        } catch (error) {
-            window.bindingHelpData = {
-                commands: [],
-                bindings: [],
-                conflicts: [],
-                error: "Binding map response was invalid"
-            }
-        }
+        browserUi.refresh_binding_help(window.bindingHelpSearch)
         window.rebuildBindingHelpRows()
     }
 
@@ -3775,85 +3338,25 @@ ApplicationWindow {
         }
     }
 
-    function settingConfigValue(config, key, fallback) {
-        var value = config
-        var parts = key.split(".")
-        for (var i = 0; i < parts.length; ++i) {
-            if (!value || value[parts[i]] === undefined) {
-                return fallback
-            }
-            value = value[parts[i]]
-        }
-        return value
-    }
-
     function refreshSettings() {
-        var config = {}
-        try {
-            config = JSON.parse(browserUi.config_json)
-        } catch (error) {
-            window.settingsRows = []
-            window.settingsNotice = "The validated configuration could not be displayed"
-            return
-        }
-        var specs = [
-            { key: "ui.font_family", label: "Chrome font family", type: "text",
-              scope: "global", apply: "live", fallback: "monospace" },
-            { key: "ui.font_size_pt", label: "Chrome font size (pt)", type: "number",
-              scope: "global", apply: "live", fallback: 10.0 },
-            { key: "ui.reduced_motion", label: "Reduced motion", type: "enum",
-              options: ["system", "on", "off"], scope: "global", apply: "live", fallback: "system" },
-            { key: "input.entry_mode", label: "Page entry mode", type: "enum",
-              options: ["normal", "insert", "pass-through"], scope: "global/profile/site",
-              apply: "next navigation", fallback: "normal" },
-            { key: "discovery.learning_mode", label: "Learning mode", type: "bool",
-              scope: "global/profile", apply: "live", fallback: false },
-            { key: "links.cleaning.enabled", label: "Clean-link operations", type: "bool",
-              scope: "global/profile", apply: "live", fallback: true },
-            { key: "content.javascript", label: "JavaScript", type: "bool",
-              scope: "global/profile/site", apply: "next navigation", fallback: true },
-            { key: "content.images", label: "Images", type: "bool",
-              scope: "global/profile/site", apply: "next navigation", fallback: true },
-            { key: "content.force_dark", label: "Force dark pages", type: "bool",
-              scope: "global/profile/site", apply: "next navigation", fallback: false },
-            { key: "content.autoplay", label: "Autoplay policy", type: "enum",
-              options: ["engine-default", "require-gesture"], scope: "global/profile/site",
-              apply: "next navigation", fallback: "engine-default" },
-            { key: "content.zoom", label: "Default page zoom", type: "number",
-              scope: "global/profile/site", apply: "live", fallback: 1.0 },
-            { key: "privacy.remote_suggestions", label: "Remote suggestions", type: "bool",
-              scope: "global/profile", apply: "live", fallback: false },
-            { key: "blocking.enabled", label: "Network blocking", type: "bool",
-              scope: "global/profile/site", apply: "live", fallback: true },
-            { key: "blocking.update_interval_hours", label: "Blocklist update interval (hours)",
-              type: "number", scope: "global", apply: "live", fallback: 24 },
-            { key: "downloads.ask_destination", label: "Ask for download destination", type: "bool",
-              scope: "global/profile", apply: "live", fallback: true },
-            { key: "downloads.collision", label: "Download collision policy", type: "enum",
-              options: ["ask", "rename"], scope: "global/profile", apply: "live", fallback: "ask" },
-            { key: "spellcheck.enabled", label: "Spellcheck", type: "bool",
-              scope: "profile", apply: "live", fallback: true },
-            { key: "spellcheck.languages", label: "Spellcheck languages", type: "languages",
-              scope: "profile", apply: "live", fallback: ["system"] },
-            { key: "desktop.portals", label: "Desktop portals", type: "enum",
-              options: ["auto", "required"], scope: "global", apply: "restart", fallback: "auto" },
-            { key: "desktop.notifications", label: "Desktop notifications", type: "bool",
-              scope: "global/profile", apply: "live", fallback: true },
-            { key: "logging.level", label: "Logging level", type: "enum",
-              options: ["error", "warn", "info", "debug"], scope: "global", apply: "live", fallback: "info" }
-        ]
         var query = (window.settingsSearch || "").trim().toLowerCase()
-        var visibleSpecs = []
-        for (var index = 0; index < specs.length; ++index) {
-            specs[index].value = settingConfigValue(
-                        config, specs[index].key, specs[index].fallback)
-            var searchable = [specs[index].key, specs[index].label,
-                              specs[index].scope, specs[index].apply].join(" ").toLowerCase()
+        var visibleIndexes = []
+        for (var index = 0; index < browserUi.settings_row_keys.length; ++index) {
+            var searchable = [browserUi.settings_row_keys[index], browserUi.settings_row_labels[index],
+                              browserUi.settings_row_scopes[index], browserUi.settings_row_applies[index]]
+                             .join(" ").toLowerCase()
             if (!query || searchable.indexOf(query) >= 0) {
-                visibleSpecs.push(specs[index])
+                visibleIndexes.push(index)
             }
         }
-        window.settingsRows = visibleSpecs
+        settingsModel.replaceRows(
+                    visibleIndexes.map(function(index) { return browserUi.settings_row_keys[index] }),
+                    visibleIndexes.map(function(index) { return browserUi.settings_row_labels[index] }),
+                    visibleIndexes.map(function(index) { return browserUi.settings_row_types[index] }),
+                    visibleIndexes.map(function(index) { return browserUi.settings_row_scopes[index] }),
+                    visibleIndexes.map(function(index) { return browserUi.settings_row_applies[index] }),
+                    visibleIndexes.map(function(index) { return browserUi.settings_row_values[index] }),
+                    visibleIndexes.map(function(index) { return browserUi.settings_row_options[index] }))
     }
 
     function settingLiteral(row, value) {
@@ -3878,39 +3381,25 @@ ApplicationWindow {
     }
 
     function applySetting(row, value) {
-        var response = browserUi.set_runtime_setting(
-                    row.key, settingLiteral(row, value), window.settingsTemporary)
-        try {
-            var result = JSON.parse(response)
-            if (result.error) {
-                window.settingsNotice = row.key + ": " + result.error
-                return false
-            }
-            window.settingsNotice = "Applied " + row.key + " ("
-                    + (result.temporary ? "temporary" : "persistent or memory-only") + ")"
-            window.refreshSettings()
-            return true
-        } catch (error) {
-            window.settingsNotice = "Setting response was invalid"
+        if (!browserUi.set_runtime_setting(
+                    row.key, settingLiteral(row, value), window.settingsTemporary)) {
+            window.settingsNotice = row.key + ": " + browserUi.runtime_setting_error
             return false
         }
+        window.settingsNotice = "Applied " + row.key + " ("
+                + (window.settingsTemporary ? "temporary" : "persistent or memory-only") + ")"
+        window.refreshSettings()
+        return true
     }
 
     function resetSetting(row) {
-        var response = browserUi.unset_runtime_setting(row.key, window.settingsTemporary)
-        try {
-            var result = JSON.parse(response)
-            if (result.error) {
-                window.settingsNotice = row.key + ": " + result.error
-                return false
-            }
-            window.settingsNotice = "Reset " + row.key
-            window.refreshSettings()
-            return true
-        } catch (error) {
-            window.settingsNotice = "Setting response was invalid"
+        if (!browserUi.unset_runtime_setting(row.key, window.settingsTemporary)) {
+            window.settingsNotice = row.key + ": " + browserUi.runtime_setting_error
             return false
         }
+        window.settingsNotice = "Reset " + row.key
+        window.refreshSettings()
+        return true
     }
 
     function showSettings(search) {
@@ -3928,35 +3417,22 @@ ApplicationWindow {
     }
 
     function chooseUserscriptManifest() {
-        userscriptManifestChooser.open()
+        fileDialogSurfaces.openUserscriptManifest()
     }
 
     function installUserscriptManifest() {
-        var selected = userscriptManifestChooser.selectedFile
+        var selected = fileDialogSurfaces.userscriptManifestSelectedFile
         if (!selected || selected.scheme !== "file") {
             window.settingsNotice = "Choose a local userscript manifest"
             return
         }
-        var response = browserUi.install_userscript_manifest(selected.toLocalFile())
-        try {
-            var result = JSON.parse(response)
-            if (result.error) {
-                window.settingsNotice = "Userscript installation failed: " + result.error
-                return
-            }
-            if (result.pending) {
-                window.settingsNotice = "Installing userscript…"
-                window.refreshUserscriptInventory()
-                window.refreshSettings()
-                return
-            }
-            window.settingsNotice = "Installed userscript " + result.name
-                    + "; registered actions: " + result.actions
-            window.refreshUserscriptInventory()
-            window.refreshSettings()
-        } catch (error) {
-            window.settingsNotice = "Userscript installation response was invalid"
+        if (!browserUi.install_userscript_manifest(selected.toLocalFile())) {
+            window.settingsNotice = "Userscript installation could not be started"
+            return
         }
+        window.settingsNotice = "Installing userscript…"
+        window.refreshUserscriptInventory()
+        window.refreshSettings()
     }
 
     function confirmRemoveUserscript(name) {
@@ -3972,12 +3448,26 @@ ApplicationWindow {
     }
 
     function userscriptInventoryRows() {
-        try {
-            var rows = JSON.parse(browserUi.userscript_inventory || "[]")
-            return Array.isArray(rows) ? rows : []
-        } catch (error) {
+        var names = browserUi.userscript_names
+        var enabled = browserUi.userscript_enabled_values
+        var pageWorld = browserUi.userscript_page_world_values
+        var actions = browserUi.userscript_action_counts
+        if (names.length !== enabled.length || names.length !== pageWorld.length
+                || names.length !== actions.length) {
             return []
         }
+        var rows = []
+        for (var index = 0; index < names.length; ++index) {
+            var actionCount = Number(actions[index])
+            rows.push({
+                name: String(names[index]),
+                enabled: String(enabled[index]) === "true",
+                page_world: String(pageWorld[index]) === "true",
+                actions: isFinite(actionCount) && actionCount >= 0
+                         ? Math.floor(actionCount) : 0
+            })
+        }
+        return rows
     }
 
     function closeSettings() {
@@ -3989,48 +3479,28 @@ ApplicationWindow {
     }
 
     function siteDoctorUserscriptsDisabled(ui) {
-        if (!ui || !ui.site_experiment_json || ui.site_experiment_json.length === 0) {
-            return false
-        }
-        try {
-            var experiment = JSON.parse(ui.site_experiment_json)
-            return experiment.kind === "userscripts-off"
-        } catch (error) {
-            return false
-        }
+        return !!ui && ui.site_experiment_active
+                && ui.site_experiment_kind === "userscripts-off"
     }
 
     function siteDoctorBadge(ui) {
-        if (!ui || !ui.site_experiment_json || ui.site_experiment_json.length === 0
-                || ui.site_experiment_json === "{}") {
+        if (!ui || !ui.site_experiment_active || !ui.site_experiment_kind) {
             return ""
         }
-        try {
-            var experiment = JSON.parse(ui.site_experiment_json)
-            return experiment.kind ? " · Site Doctor: " + experiment.kind : ""
-        } catch (error) {
-            return " · Site Doctor: invalid state"
-        }
+        return " · Site Doctor: " + ui.site_experiment_kind
     }
 
     function finishSiteDoctorAfterLoad(ui, succeeded) {
-        if (!ui || !ui.site_experiment_json || ui.site_experiment_json.length === 0) {
+        if (!ui || !ui.site_experiment_active || !ui.site_experiment_id) {
             return
         }
-        try {
-            var experiment = JSON.parse(ui.site_experiment_json)
-            if (experiment.id) {
-                var freshView = experiment.kind === "fresh-view"
-                ui.finish_site_doctor_experiment(experiment.id, succeeded)
-                if (freshView) {
-                    Qt.callLater(function() { window.executePendingEngineAction() })
-                }
-                if (window.siteLedgerVisible) {
-                    Qt.callLater(window.showSiteLedger)
-                }
-            }
-        } catch (error) {
-            ui.status_text = "Site Doctor state was invalid"
+        var freshView = ui.site_experiment_kind === "fresh-view"
+        ui.finish_site_doctor_experiment(ui.site_experiment_id, succeeded)
+        if (freshView) {
+            Qt.callLater(function() { window.executePendingEngineAction() })
+        }
+        if (window.siteLedgerVisible) {
+            Qt.callLater(window.showSiteLedger)
         }
     }
 
@@ -4167,13 +3637,11 @@ ApplicationWindow {
     }
 
     function openDownload(id, reveal) {
-        var payload = browserUi.download_desktop_action(id, reveal)
-        if (payload.length === 0) {
+        if (!browserUi.download_desktop_action(id, reveal)) {
             return
         }
-        var data = JSON.parse(payload)
-        if (data.uri) {
-            window.openExternalUri(browserUi, data.uri)
+        if (browserUi.download_desktop_uri.length > 0) {
+            window.openExternalUri(browserUi, browserUi.download_desktop_uri)
         }
     }
 
@@ -4397,16 +3865,7 @@ ApplicationWindow {
             browserUi.status_text = "Tab suspension refused: " + reason
             return
         }
-        var probe = "(function() {"
-                + "var elements = document.querySelectorAll('input,textarea,select,[contenteditable=\"true\"]');"
-                + "for (var i = 0; i < elements.length; ++i) {"
-                + "var e = elements[i];"
-                + "if (e.isContentEditable) return 'unknown';"
-                + "if (e.tagName === 'INPUT' && (e.type === 'checkbox' || e.type === 'radio')"
-                + " && e.checked !== e.defaultChecked) return 'dirty';"
-                + "if (e.tagName === 'SELECT' && e.selectedIndex !== e.defaultSelectedIndex) return 'dirty';"
-                + "if (e.tagName !== 'SELECT' && e.value !== e.defaultValue) return 'dirty';"
-                + "} return 'safe'; })()"
+        var probe = BrowserScripts.formStateProbe()
         view.runJavaScript(probe, function(result) {
             if (result !== "safe") {
                 browserUi.status_text = "Tab suspension refused: editable page state is not safely empty"
@@ -4461,16 +3920,7 @@ ApplicationWindow {
             browserUi.status_text = "Tab discard refused: " + reason
             return
         }
-        var probe = "(function() {"
-                + "var elements = document.querySelectorAll('input,textarea,select,[contenteditable=\"true\"]');"
-                + "for (var i = 0; i < elements.length; ++i) {"
-                + "var e = elements[i];"
-                + "if (e.isContentEditable) return 'unknown';"
-                + "if (e.tagName === 'INPUT' && (e.type === 'checkbox' || e.type === 'radio')"
-                + " && e.checked !== e.defaultChecked) return 'dirty';"
-                + "if (e.tagName === 'SELECT' && e.selectedIndex !== e.defaultSelectedIndex) return 'dirty';"
-                + "if (e.tagName !== 'SELECT' && e.value !== e.defaultValue) return 'dirty';"
-                + "} return 'safe'; })()"
+        var probe = BrowserScripts.formStateProbe()
         view.runJavaScript(probe, function(result) {
             if (result !== "safe") {
                 browserUi.status_text = "Tab discard refused: editable page state is not safely empty"
@@ -4621,9 +4071,17 @@ ApplicationWindow {
                 })
             }
         }
-        if (kind === "journey" && browserUi.library_graph_values.length > 0) {
-            try {
-                var graph = JSON.parse(browserUi.library_graph_values)
+        if (kind === "journey") {
+            var edgeSources = browserUi.library_graph_edge_sources
+            var edgeTargets = browserUi.library_graph_edge_targets
+            var edgeTransitions = browserUi.library_graph_edge_transitions
+            if (edgeSources.length !== edgeTargets.length
+                    || edgeSources.length !== edgeTransitions.length) {
+                libraryGraphEntries.append({
+                    label: "Relationship graph unavailable",
+                    secondary: "The graph data was incomplete"
+                })
+            } else {
                 var nodeLabels = ({})
                 for (var n = 0; n < lines.length; ++n) {
                     var nodeFields = lines[n].split("\t")
@@ -4632,7 +4090,6 @@ ApplicationWindow {
                                 ? nodeFields[1] : nodeFields[2]
                     }
                 }
-                var edges = graph.edges || []
                 var nodeIndex = ({})
                 var graphNodeLimit = Math.min(lines.length, 120)
                 var graphNodeWidth = 170
@@ -4660,24 +4117,26 @@ ApplicationWindow {
                         y: graphY
                     })
                 }
-                for (var e = 0; e < edges.length; ++e) {
-                    var edge = edges[e]
-                    var source = nodeLabels[String(edge.source)] || String(edge.source)
-                    var target = nodeLabels[String(edge.target)] || String(edge.target)
+                for (var e = 0; e < edgeSources.length; ++e) {
+                    var sourceId = String(edgeSources[e])
+                    var targetId = String(edgeTargets[e])
+                    var transition = String(edgeTransitions[e] || "navigate")
+                    var source = nodeLabels[sourceId] || sourceId
+                    var target = nodeLabels[targetId] || targetId
                     libraryGraphEntries.append({
                         label: source + " → " + target,
-                        secondary: String(edge.transition || "navigate")
+                        secondary: transition
                     })
-                    if (nodeIndex[String(edge.source)] !== undefined
-                            && nodeIndex[String(edge.target)] !== undefined) {
-                        var sourceNode = libraryGraphNodes.get(nodeIndex[String(edge.source)])
-                        var targetNode = libraryGraphNodes.get(nodeIndex[String(edge.target)])
+                    if (nodeIndex[sourceId] !== undefined
+                            && nodeIndex[targetId] !== undefined) {
+                        var sourceNode = libraryGraphNodes.get(nodeIndex[sourceId])
+                        var targetNode = libraryGraphNodes.get(nodeIndex[targetId])
                         window.libraryGraphLineData.push({
                             x1: sourceNode.x + graphNodeWidth / 2,
                             y1: sourceNode.y + graphNodeHeight / 2,
                             x2: targetNode.x + graphNodeWidth / 2,
                             y2: targetNode.y + graphNodeHeight / 2,
-                            transition: String(edge.transition || "navigate")
+                            transition: transition
                         })
                     }
                 }
@@ -4693,14 +4152,9 @@ ApplicationWindow {
                         secondary: "The current node has no visible edge in this bounded view"
                     })
                 }
-            } catch (error) {
-                libraryGraphEntries.append({
-                        label: "Relationship graph unavailable",
-                        secondary: "The graph data was malformed"
-                    })
             }
         }
-        graphCanvas.requestPaint()
+        libraryManager.requestGraphPaint()
     }
 
     function libraryPageCount() {
@@ -4731,7 +4185,6 @@ ApplicationWindow {
         window.libraryJourneyCurrentOnly = true
         window.libraryJourneySearchText = ""
         window.libraryJourneyExpandedNode = ""
-        journeySearchField.text = ""
         window.runJourneyQuery("--current")
     }
 
@@ -4739,7 +4192,6 @@ ApplicationWindow {
         window.libraryJourneyCurrentOnly = false
         window.libraryJourneySearchText = ""
         window.libraryJourneyExpandedNode = ""
-        journeySearchField.text = ""
         window.runJourneyQuery("")
     }
 
@@ -4870,7 +4322,7 @@ ApplicationWindow {
     }
 
     function finishJourneyExport() {
-        var selected = journeyExportChooser.selectedFile
+        var selected = fileDialogSurfaces.journeyExportSelectedFile
         var path = selected && selected.scheme === "file" ? selected.toLocalFile() : ""
         if (path.length === 0 || !browserUi.export_journey(path)) {
             window.journeyExportPreviewVisible = true
@@ -4880,7 +4332,7 @@ ApplicationWindow {
     }
 
     function finishDiagnosticsExport() {
-        var selected = diagnosticsExportChooser.selectedFile
+        var selected = fileDialogSurfaces.diagnosticsExportSelectedFile
         var path = selected && selected.scheme === "file" ? selected.toLocalFile() : ""
         if (!path || !browserUi.export_diagnostics(path)) {
             window.diagnosticsVisible = true
@@ -4904,25 +4356,13 @@ ApplicationWindow {
     }
 
     function switcherMaxResults() {
-        var fallback = 100
-        try {
-            var config = JSON.parse(browserUi.config_json)
-            var configured = Number(config.switcher && config.switcher.max_results)
-            if (isFinite(configured)) {
-                return Math.max(10, Math.min(1000, Math.floor(configured)))
-            }
-        } catch (error) {
-            // The validated Rust configuration remains authoritative. If its
-            // presentation snapshot is temporarily unavailable, retain the
-            // bounded UI default rather than exposing an unbounded query.
-        }
-        return fallback
+        return browserUi.feature_switcher_max_results
     }
 
     function processSwitcherBatch() {
         if (switcherBatchScheduledGeneration !== switcherBatchGeneration
                 || !window.switcherVisible
-                || switcherBatchQuery !== switcherInput.text
+                || switcherBatchQuery !== switcherSurface.query
                 || switcherBatchScope !== window.switcherScope) {
             window.cancelSwitcherBatch()
             return
@@ -4934,16 +4374,39 @@ ApplicationWindow {
         var entry = switcherBatchEntries[switcherBatchIndex]
         switcherBatchIndex += 1
         if (entry && entry.ui) {
-        var raw = entry.ui.switcher_query(switcherBatchQuery, switcherBatchScope)
-            if (raw && raw.length > 0) {
-                try {
-                    var rows = JSON.parse(raw).results || []
-                    for (var j = 0; j < rows.length; ++j) {
-                        rows[j].owner_token = String(entry.ui.window_token)
-                        switcherBatchMerged.push(rows[j])
+            if (entry.ui.switcher_query(switcherBatchQuery, switcherBatchScope)) {
+                var kinds = entry.ui.switcher_result_kinds || []
+                var ids = entry.ui.switcher_result_ids || []
+                var generations = entry.ui.switcher_result_generations || []
+                var labels = entry.ui.switcher_result_labels || []
+                var secondaries = entry.ui.switcher_result_secondaries || []
+                var profiles = entry.ui.switcher_result_profiles || []
+                var workspaces = entry.ui.switcher_result_workspaces || []
+                var actions = entry.ui.switcher_result_actions || []
+                var ranks = entry.ui.switcher_result_ranks || []
+                var recencies = entry.ui.switcher_result_recencies || []
+                var count = kinds.length
+                if (ids.length === count && generations.length === count
+                        && labels.length === count && secondaries.length === count
+                        && profiles.length === count && workspaces.length === count
+                        && actions.length === count && ranks.length === count
+                        && recencies.length === count) {
+                    for (var j = 0; j < count; ++j) {
+                        var actionText = String(actions[j])
+                        switcherBatchMerged.push({
+                            kind: String(kinds[j]),
+                            id: String(ids[j]),
+                            generation: String(generations[j]),
+                            label: String(labels[j]),
+                            secondary: String(secondaries[j]),
+                            profile: String(profiles[j]),
+                            workspace: String(workspaces[j]),
+                            actions: actionText.length > 0 ? actionText.split("\t") : [],
+                            rank: Number(ranks[j]),
+                            recency: Number(recencies[j]),
+                            owner_token: String(entry.ui.window_token)
+                        })
                     }
-                } catch (error) {
-                    // A destroyed or unavailable source contributes no rows.
                 }
             }
         }
@@ -4969,7 +4432,7 @@ ApplicationWindow {
         switcherBatchEntries = entries.slice(0)
         switcherBatchMerged = []
         switcherBatchIndex = 0
-        switcherBatchQuery = switcherInput.text
+        switcherBatchQuery = switcherSurface.query
         switcherBatchScope = window.switcherScope
         switcherBatchScheduledGeneration = switcherBatchGeneration
         switcherResults = []
@@ -5003,9 +4466,9 @@ ApplicationWindow {
         switcherVisible = true
         switcherScope = scope && scope.length > 0 ? scope : "all"
         switcherRefreshTimer.stop()
-        switcherInput.text = query || ""
+        switcherSurface.query = query || ""
         refreshSwitcher()
-        switcherInput.forceActiveFocus()
+        switcherSurface.focusInput()
     }
 
     function showSwitcher() {
@@ -5031,15 +4494,10 @@ ApplicationWindow {
         switcherRefreshTimer.stop()
         window.cancelSwitcherBatch()
         refreshSwitcher()
-        switcherInput.forceActiveFocus()
+        switcherSurface.focusInput()
     }
 
     function showLinkPreview() {
-        try {
-            linkPreviewData = JSON.parse(browserUi.link_preview)
-        } catch (error) {
-            linkPreviewData = {}
-        }
         if (!linkPreviewVisible && browserUi.link_preview_visible) {
             window.openInternalSurface()
         }
@@ -5055,42 +4513,8 @@ ApplicationWindow {
         }
     }
 
-    function hintSelector(linksOnly) {
-        if (linksOnly) {
-            return "a[href],area[href],link[href],[role='link'][href]"
-        }
-        return "a,area,textarea,select,input:not([type='hidden']),button,frame,iframe,img,link,summary,"
-            + "[contenteditable]:not([contenteditable='false']),[onclick],[onmousedown],"
-            + "[role='link'],[role='option'],[role='button'],[role='tab'],[role='checkbox'],"
-            + "[role='switch'],[role='menuitem'],[role='menuitemcheckbox'],"
-            + "[role='menuitemradio'],[role='treeitem'],[aria-haspopup],[ng-click],[ngClick],"
-            + "[data-ng-click],[x-ng-click],[tabindex]:not([tabindex='-1'])"
-    }
-
     function hintCollectorScript(linksOnly) {
-        var selector = window.hintSelector(linksOnly)
-        var linkSelector = window.hintSelector(true)
-        return "(function(){"
-            + "const out=[];const seen=new Set();const selector=" + JSON.stringify(selector) + ";"
-            + "const linkSelector=" + JSON.stringify(linkSelector) + ";"
-            + "const elements=new Map();window.__ferric_browserHintElements=elements;let nextElementId=1;"
-            + "function add(el,ox,oy,framePath){if(out.length>=5000||seen.has(el))return;seen.add(el);"
-            + "const s=getComputedStyle(el),r=el.getBoundingClientRect();"
-            + "if(s.display==='none'||s.visibility==='hidden'||s.pointerEvents==='none'||Number(s.opacity)===0||r.width<=0||r.height<=0)return;"
-            + "let kind='aria';if(el.matches(linkSelector))kind='link';else if(el.matches('button,[role=button]'))kind='button';"
-            + "else if(el.matches('input'))kind='input';else if(el.matches('select'))kind='select';"
-            + "else if(el.matches('textarea'))kind='textarea';else if(el.isContentEditable)kind='contenteditable';"
-            + "const text=String(el.getAttribute('aria-label')||el.getAttribute('title')||el.innerText||el.value||'').replace(/[\\n\\r]+/g,' ').trim().slice(0,512);"
-            + "const href=kind==='link'?String(el.href||el.getAttribute('href')||''):null;"
-            + "const elementId=nextElementId++;elements.set(elementId,{element:el,framePath:framePath});"
-            + "out.push({element_id:elementId,kind:kind,frame_path:framePath,text:text,href:href,geometry:{x:r.x+ox,y:r.y+oy,width:r.width,height:r.height}});}"
-            + "function visit(root,framePath,ox,oy,depth){if(out.length>=5000||depth>8)return;"
-            + "root.querySelectorAll(selector).forEach(function(el){add(el,ox,oy,framePath);});if(out.length>=5000)return;"
-            + "root.querySelectorAll('*').forEach(function(el){if(el.shadowRoot)visit(el.shadowRoot,framePath,ox,oy,depth);});"
-            + "if(root.nodeType!==9)return;root.querySelectorAll('iframe,frame').forEach(function(frame,index){if(out.length>=5000||depth>=8)return;"
-            + "const fs=getComputedStyle(frame),fr=frame.getBoundingClientRect();if(fs.display==='none'||fs.visibility==='hidden'||fr.width<=0||fr.height<=0)return;"
-            + "try{if(frame.contentDocument)visit(frame.contentDocument,framePath+'.'+index,ox+fr.x,oy+fr.y,depth+1);}catch(error){}});}"
-            + "visit(document,'0',0,0,0);return {candidates:out};})()"
+        return BrowserScripts.hintCollector(linksOnly)
     }
 
     function selectionScript() {
@@ -5114,37 +4538,15 @@ ApplicationWindow {
     }
 
     function hintFreshScript(candidate) {
-        var selector = window.hintSelector(false)
-        var linkSelector = window.hintSelector(true)
-        return "(function(){const elementId=" + Number(candidate.element_id) + ",path=" + JSON.stringify(candidate.frame_path || "0") + ";"
-            + "const selector=" + JSON.stringify(selector) + ",linkSelector=" + JSON.stringify(linkSelector) + ";"
-            + "const elements=window.__ferric_browserHintElements,record=elements&&elements.get(elementId);"
-            + "if(!record||record.framePath!==path||!record.element||!record.element.isConnected)return {visible:false,element_id:elementId};"
-            + "const el=record.element;if(!el.matches(selector))return {visible:false,element_id:elementId};"
-            + "const ownerView=el.ownerDocument&&el.ownerDocument.defaultView;if(!ownerView)return {visible:false,element_id:elementId};"
-            + "const s=ownerView.getComputedStyle(el),r=el.getBoundingClientRect();let bx=0,by=0,view=ownerView;"
-            + "try{while(view&&view!==window){const frame=view.frameElement;if(!frame)return {visible:false,element_id:elementId};const fr=frame.getBoundingClientRect();bx+=fr.x;by+=fr.y;view=frame.ownerDocument.defaultView;}}catch(error){return {visible:false,element_id:elementId};}"
-            + "if(view!==window)return {visible:false,element_id:elementId};"
-            + "let kind='aria';if(el.matches(linkSelector))kind='link';else if(el.matches('button,[role=button]'))kind='button';"
-            + "else if(el.matches('input'))kind='input';else if(el.matches('select'))kind='select';else if(el.matches('textarea'))kind='textarea';else if(el.isContentEditable)kind='contenteditable';"
-            + "return {visible:s.display!=='none'&&s.visibility!=='hidden'&&s.pointerEvents!=='none'&&Number(s.opacity)!==0&&r.width>0&&r.height>0,element_id:elementId,kind:kind,frame_path:path,"
-            + "text:String(el.getAttribute('aria-label')||el.getAttribute('title')||el.innerText||el.value||'').replace(/[\\n\\r]+/g,' ').trim().slice(0,512),"
-            + "href:kind==='link'?String(el.href||el.getAttribute('href')||''):null,geometry:{x:r.x+bx,y:r.y+by,width:r.width,height:r.height}};})()"
+        return BrowserScripts.hintFresh(candidate)
     }
 
     function hintFocusScript(elementId) {
-        return "(function(){const elements=window.__ferric_browserHintElements,record=elements&&elements.get("
-            + Number(elementId) + ");const el=record&&record.element;"
-            + "if(!el||!el.isConnected||!el.matches('input,select,textarea,[contenteditable]:not([contenteditable=false])'))return false;"
-            + "const ownerView=el.ownerDocument&&el.ownerDocument.defaultView;if(ownerView&&typeof ownerView.__ferric_browserAuthorizeExplicitFocus==='function')ownerView.__ferric_browserAuthorizeExplicitFocus();"
-            + "el.focus();return true;})()"
+        return BrowserScripts.hintFocus(elementId)
     }
 
     function hintClickScript(elementId) {
-        var selector = window.hintSelector(false)
-        return "(function(){const selector=" + JSON.stringify(selector) + ",elements=window.__ferric_browserHintElements,record=elements&&elements.get("
-            + Number(elementId) + ");const el=record&&record.element;"
-            + "if(!el||!el.isConnected||!el.matches(selector)||typeof el.click!=='function')return false;el.click();return true;})()"
+        return BrowserScripts.hintClick(elementId)
     }
 
     function startHintCollection() {
@@ -5585,19 +4987,20 @@ ApplicationWindow {
             return
         }
         var items = []
-        try {
-            var actions = JSON.parse(browserUi.userscript_actions("link") || "[]")
-            for (var i = 0; i < actions.length; ++i) {
-                var action = actions[i]
-                if (action && action.id && action.label && action.availability
-                        && action.availability.state === "available") {
-                    items.push(window.contextMenuItem(action.label,
-                                                       "hint-userscript-action",
-                                                       label, action.id))
+        if (browserUi.select_userscript_action_subject("link")) {
+            var ids = browserUi.userscript_action_ids
+            var labels = browserUi.userscript_action_labels
+            var availability = browserUi.userscript_action_availability
+            if (ids.length === labels.length && ids.length === availability.length) {
+                for (var i = 0; i < ids.length; ++i) {
+                    if (String(availability[i]) === "true" && String(ids[i]).length > 0
+                            && String(labels[i]).length > 0) {
+                        items.push(window.contextMenuItem(String(labels[i]),
+                                                           "hint-userscript-action",
+                                                           label, String(ids[i])))
+                    }
                 }
             }
-        } catch (error) {
-            browserUi.status_text = "Hint actions unavailable"
         }
         if (items.length === 0) {
             browserUi.status_text = "No userscript actions are available for this hint"
@@ -5609,7 +5012,7 @@ ApplicationWindow {
         window.pendingContextMenuHost = window
         window.contextMenuItems = items
         window.captureOverlayFocus(window, view)
-        contextMenuPopup.open()
+        contextMenu.open()
         browserUi.status_text = "Hint actions"
     }
 
@@ -5740,9 +5143,9 @@ ApplicationWindow {
                 window.captureModeFocus()
                 Qt.callLater(function() {
                     if (browserUi.mode === "command") {
-                        commandLine.forceActiveFocus()
+                        commandSurface.focusInput()
                     } else if (browserUi.mode === "search") {
-                        searchLine.forceActiveFocus()
+                        searchSurface.focusInput()
                     }
                 })
             } else {
@@ -5896,12 +5299,7 @@ ApplicationWindow {
     }
 
     function downloadsAskDestination() {
-        try {
-            var config = JSON.parse(browserUi.config_json)
-            return !config.downloads || config.downloads.ask_destination !== false
-        } catch (error) {
-            return true
-        }
+        return browserUi.feature_downloads_ask_destination
     }
 
     function permissionTypeName(permissionType) {
@@ -6141,7 +5539,7 @@ ApplicationWindow {
         window.pendingClientCertificateView = null
         window.pendingClientCertificateOptions = []
         window.pendingClientCertificateHost = ""
-        clientCertificatePopup.close()
+        certificatePrompts.closeClientCertificate()
         if (hadSelection && selectNone) {
             window.resolveQtRequest(ui, selection, "client-certificate", "selectNone", [])
         }
@@ -6196,7 +5594,7 @@ ApplicationWindow {
                 ? window.boundedPageDialogText(selection.host.host)
                 : "opaque or unavailable host"
         window.captureOverlayFocus(hostWindow || window, view)
-        clientCertificatePopup.open()
+        certificatePrompts.openClientCertificate()
         ui.status_text = privateProfile
                 ? "Private client certificate selection"
                 : "Client certificate selection"
@@ -6241,7 +5639,7 @@ ApplicationWindow {
         window.pendingCertificateErrorView = null
         window.pendingCertificateErrorHost = ""
         window.pendingCertificateErrorDescription = ""
-        certificateErrorPopup.close()
+        certificatePrompts.closeCertificateError()
         if (hadError && rejectRequest) {
             window.resolveQtRequest(ui, error, "client-certificate", "rejectCertificate", [])
         }
@@ -6291,7 +5689,7 @@ ApplicationWindow {
         window.pendingCertificateErrorDescription = window.boundedPageDialogText(
                     error.description || "The certificate could not be verified")
         window.captureOverlayFocus(hostWindow || window, view)
-        certificateErrorPopup.open()
+        certificatePrompts.openCertificateError()
         ui.status_text = "TLS certificate confirmation required"
     }
 
@@ -6359,8 +5757,8 @@ ApplicationWindow {
         window.pendingWebAuthState = null
         window.pendingWebAuthRelyingParty = ""
         window.webAuthStatusText = ""
-        webAuthPinField.text = ""
-        webAuthPopup.close()
+        webAuthPrompt.pin = ""
+        webAuthPrompt.close()
         if (hadRequest && cancelRequest
                 && request.state !== WebEngineWebAuthUxRequest.Completed
                 && request.state !== WebEngineWebAuthUxRequest.Cancelled) {
@@ -6411,7 +5809,7 @@ ApplicationWindow {
             window.updateWebAuthState(request, state)
         })
         window.captureOverlayFocus(hostWindow || window, view)
-        webAuthPopup.open()
+        webAuthPrompt.open()
         ui.status_text = "WebAuthn security-key prompt"
     }
 
@@ -6428,8 +5826,8 @@ ApplicationWindow {
         if (!request || window.pendingWebAuthState !== WebEngineWebAuthUxRequest.CollectPin) {
             return
         }
-        var pin = window.boundedPageDialogText(webAuthPinField.text)
-        webAuthPinField.text = ""
+        var pin = window.boundedPageDialogText(webAuthPrompt.pin)
+        webAuthPrompt.pin = ""
         request.setPin(pin)
         pin = ""
     }
@@ -6486,7 +5884,7 @@ ApplicationWindow {
         window.pendingContextMenuUi = null
         window.pendingContextMenuHost = null
         window.contextMenuItems = []
-        contextMenuPopup.close()
+        contextMenu.close()
         if (hadRequest) {
             window.restoreOverlayFocus()
         }
@@ -6504,41 +5902,41 @@ ApplicationWindow {
     }
 
     function appendExternalActions(items, ui, subject, value) {
-        try {
-            var raw = ui.external_action_values(subject)
-            var actions = JSON.parse(raw || "[]")
-            for (var i = 0; i < actions.length; ++i) {
-                var action = actions[i]
-                if (action && action.id && action.label
-                        && action.availability
-                        && action.availability.state === "available") {
+        if (ui.select_external_action_subject(subject)) {
+            var ids = ui.external_action_ids
+            var labels = ui.external_action_labels
+            var availability = ui.external_action_availability
+            if (ids.length !== labels.length || ids.length !== availability.length) {
+                return
+            }
+            for (var i = 0; i < ids.length; ++i) {
+                if (String(availability[i]) === "true" && String(ids[i]).length > 0
+                        && String(labels[i]).length > 0) {
                     items.push(window.contextMenuItem(
-                                  action.label,
+                                  String(labels[i]),
                                   "external-" + subject + "-send",
                                   value || "",
-                                  action.id))
+                                  String(ids[i])))
                 }
             }
-        } catch (error) {
-            ui.status_text = "External actions unavailable"
         }
     }
 
     function appendUserscriptActions(items, ui, subject, value) {
-        try {
-            var raw = ui.userscript_actions(subject)
-            var actions = JSON.parse(raw || "[]")
-            for (var i = 0; i < actions.length; ++i) {
-                var action = actions[i]
-                if (action && action.id && action.label
-                        && action.availability
-                        && action.availability.state === "available") {
-                    items.push(window.contextMenuItem(action.label, "userscript-action",
-                                                       value, action.id))
+        if (ui.select_userscript_action_subject(subject)) {
+            var ids = ui.userscript_action_ids
+            var labels = ui.userscript_action_labels
+            var availability = ui.userscript_action_availability
+            if (ids.length !== labels.length || ids.length !== availability.length) {
+                return
+            }
+            for (var i = 0; i < ids.length; ++i) {
+                if (String(availability[i]) === "true" && String(ids[i]).length > 0
+                        && String(labels[i]).length > 0) {
+                    items.push(window.contextMenuItem(String(labels[i]), "userscript-action",
+                                                       value, String(ids[i])))
                 }
             }
-        } catch (error) {
-            ui.status_text = "Userscript actions unavailable"
         }
     }
 
@@ -6620,7 +6018,7 @@ ApplicationWindow {
         window.contextMenuItems = items
         request.accepted = true
         window.captureOverlayFocus(hostWindow || window, view)
-        contextMenuPopup.open()
+        contextMenu.open()
         ui.status_text = "Context menu"
     }
 
@@ -6654,12 +6052,10 @@ ApplicationWindow {
                     }
                 }
             } else if (action === "download-link" && view) {
-                var downloadRequest = ui.take_download_request()
-                if (downloadRequest.length > 0) {
-                    var downloadData = JSON.parse(downloadRequest)
-                    window.runBrowserScript(view, window.downloadLinkScript(downloadData.url),
+                if (ui.take_download_request()) {
+                    window.runBrowserScript(view, window.downloadLinkScript(ui.download_request_url),
                                             function() {
-                                                ui.complete_download_request(downloadData.token, true)
+                                                ui.complete_download_request(ui.download_request_token, true)
                                             })
                 }
             } else if (action === "copy-link" && view) {
@@ -7515,435 +6911,6 @@ ApplicationWindow {
         browserWindow: window
     }
 
-    Popup {
-        id: clientCertificatePopup
-        parent: Overlay.overlay
-        modal: true
-        focus: true
-        closePolicy: Popup.NoAutoClose
-        width: Math.min(760 * window.chromeScale, window.width - 48)
-        height: Math.min(520 * window.chromeScale, window.height - 32)
-        padding: 14
-        x: Math.round((window.width - width) / 2)
-        y: Math.round((window.height - height) / 2)
-
-        background: Rectangle {
-            color: window.panelColor
-            border.color: window.accentColor
-            radius: 4
-        }
-
-        contentItem: ColumnLayout {
-            focus: true
-            Accessible.role: Accessible.Dialog
-            Accessible.name: "Client certificate selection"
-            spacing: 10
-
-            Keys.onPressed: function(event) {
-                if (event.key === Qt.Key_Escape) {
-                    window.rejectClientCertificate()
-                    event.accepted = true
-                }
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: "Select a client certificate"
-                color: window.primaryTextColor
-                font.bold: true
-                Accessible.name: "Client certificate selection title"
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: "Host: " + (window.pendingClientCertificateHost
-                                   || "opaque or unavailable host")
-                color: window.mutedTextColor
-                elide: Text.ElideMiddle
-                Accessible.name: "Client certificate host"
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: "Choose one of the identities offered by the browser engine. Private keys are never exposed here."
-                color: window.secondaryTextColor
-                wrapMode: Text.WordWrap
-                Accessible.name: "Client certificate guidance"
-            }
-
-            ListView {
-                id: clientCertificateList
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
-                model: window.pendingClientCertificateOptions
-                Accessible.role: Accessible.List
-                Accessible.name: "Available client certificates"
-
-                delegate: Rectangle {
-                    required property var modelData
-                    width: clientCertificateList.width
-                    height: Math.max(72 * window.chromeScale, 64)
-                    color: index % 2 === 0 ? window.surfaceColor : window.panelColor
-                    border.color: window.borderColor
-                    border.width: 1
-
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.margins: 8
-                        spacing: 10
-
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            Label {
-                                Layout.fillWidth: true
-                                text: modelData.subject
-                                color: window.primaryTextColor
-                                elide: Text.ElideMiddle
-                                Accessible.name: "Certificate subject"
-                            }
-                            Label {
-                                Layout.fillWidth: true
-                                text: "Issuer: " + modelData.issuer
-                                      + (modelData.selfSigned ? " (self-signed)" : "")
-                                color: window.mutedTextColor
-                                elide: Text.ElideMiddle
-                                Accessible.name: "Certificate issuer"
-                            }
-                        }
-
-                        Button {
-                            text: "Use"
-                            Accessible.name: "Use this client certificate"
-                            onClicked: window.acceptClientCertificate(modelData.index)
-                        }
-                    }
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                Item { Layout.fillWidth: true }
-                Button {
-                    text: "Cancel"
-                    Accessible.name: "Cancel client certificate selection"
-                    onClicked: window.rejectClientCertificate()
-                }
-            }
-        }
-    }
-
-    Popup {
-        id: certificateErrorPopup
-        parent: Overlay.overlay
-        modal: true
-        focus: true
-        closePolicy: Popup.NoAutoClose
-        width: Math.min(680 * window.chromeScale, window.width - 48)
-        height: Math.min(420 * window.chromeScale, window.height - 32)
-        padding: 14
-        x: Math.round((window.width - width) / 2)
-        y: Math.round((window.height - height) / 2)
-
-        background: Rectangle {
-            color: window.panelColor
-            border.color: window.warningColor
-            radius: 4
-        }
-
-        contentItem: ColumnLayout {
-            focus: true
-            Accessible.role: Accessible.Dialog
-            Accessible.name: "TLS certificate warning"
-            spacing: 10
-
-            Keys.onPressed: function(event) {
-                if (event.key === Qt.Key_Escape) {
-                    window.rejectCertificateError()
-                    event.accepted = true
-                } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                    window.acceptCertificateError()
-                    event.accepted = true
-                }
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: "Certificate cannot be verified"
-                color: window.warningColor
-                font.bold: true
-                Accessible.name: "TLS certificate warning title"
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: "Host: " + (window.pendingCertificateErrorHost
-                                   || "opaque or unavailable host")
-                color: window.mutedTextColor
-                elide: Text.ElideMiddle
-                Accessible.name: "TLS certificate host"
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: window.pendingCertificateErrorDescription
-                color: window.primaryTextColor
-                wrapMode: Text.WordWrap
-                maximumLineCount: 12
-                elide: Text.ElideRight
-                Accessible.name: "TLS certificate error"
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: "Only continue if you recognize this host and understand the risk. This exception applies to this request only."
-                color: window.secondaryTextColor
-                wrapMode: Text.WordWrap
-                Accessible.name: "TLS certificate warning guidance"
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                Item { Layout.fillWidth: true }
-                Button {
-                    text: "Go back"
-                    Accessible.name: "Reject TLS certificate"
-                    onClicked: window.rejectCertificateError()
-                }
-                Button {
-                    text: "Accept once"
-                    Accessible.name: "Accept TLS certificate for this request only"
-                    onClicked: window.acceptCertificateError()
-                }
-            }
-        }
-    }
-
-    Popup {
-        id: webAuthPopup
-        parent: Overlay.overlay
-        modal: true
-        focus: true
-        closePolicy: Popup.NoAutoClose
-        width: Math.min(680 * window.chromeScale, window.width - 48)
-        height: Math.min(520 * window.chromeScale, window.height - 32)
-        padding: 14
-        x: Math.round((window.width - width) / 2)
-        y: Math.round((window.height - height) / 2)
-
-        background: Rectangle {
-            color: window.panelColor
-            border.color: window.privateColor
-            radius: 4
-        }
-
-        contentItem: ColumnLayout {
-            focus: true
-            Accessible.role: Accessible.Dialog
-            Accessible.name: "WebAuthn security-key prompt"
-            spacing: 10
-
-            Keys.onPressed: function(event) {
-                if (event.key === Qt.Key_Escape) {
-                    window.cancelWebAuth()
-                    event.accepted = true
-                } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                    if (window.pendingWebAuthState === WebEngineWebAuthUxRequest.CollectPin) {
-                        window.submitWebAuthPin()
-                        event.accepted = true
-                    }
-                }
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: "WebAuthn security-key request"
-                color: window.privateColor
-                font.bold: true
-                Accessible.name: "WebAuthn title"
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: "Relying party: " + (window.pendingWebAuthRelyingParty
-                                             || "opaque or unavailable relying party")
-                color: window.mutedTextColor
-                elide: Text.ElideMiddle
-                Accessible.name: "WebAuthn relying party"
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: window.webAuthStatusText
-                color: window.primaryTextColor
-                wrapMode: Text.WordWrap
-                Accessible.name: "WebAuthn status"
-            }
-
-            ListView {
-                id: webAuthAccountList
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                visible: window.pendingWebAuthState === WebEngineWebAuthUxRequest.SelectAccount
-                clip: true
-                model: window.pendingWebAuthUserNames
-                Accessible.role: Accessible.List
-                Accessible.name: "WebAuthn accounts"
-
-                delegate: Button {
-                    required property var modelData
-                    width: webAuthAccountList.width
-                    text: modelData
-                    Accessible.name: "Use WebAuthn account " + modelData
-                    onClicked: window.selectWebAuthAccount(modelData)
-                }
-            }
-
-            Label {
-                Layout.fillWidth: true
-                visible: window.pendingWebAuthState === WebEngineWebAuthUxRequest.CollectPin
-                text: "PIN attempts remaining: "
-                      + (window.pendingWebAuthRequest
-                         ? window.pendingWebAuthRequest.pinRequest.remainingAttempts : 0)
-                      + "; minimum length: "
-                      + (window.pendingWebAuthRequest
-                         ? window.pendingWebAuthRequest.pinRequest.minPinLength : 0)
-                color: window.mutedTextColor
-                Accessible.name: "WebAuthn PIN guidance"
-            }
-
-            TextField {
-                id: webAuthPinField
-                Layout.fillWidth: true
-                visible: window.pendingWebAuthState === WebEngineWebAuthUxRequest.CollectPin
-                echoMode: TextInput.Password
-                placeholderText: "Security-key PIN"
-                Accessible.name: "WebAuthn PIN"
-                Accessible.role: Accessible.EditableText
-                Accessible.editable: true
-                onVisibleChanged: if (visible) forceActiveFocus()
-            }
-
-            Label {
-                Layout.fillWidth: true
-                visible: window.pendingWebAuthState === WebEngineWebAuthUxRequest.FinishTokenCollection
-                text: "Follow the security-key instruction, then wait for completion."
-                color: window.secondaryTextColor
-                wrapMode: Text.WordWrap
-                Accessible.name: "WebAuthn security-key instruction"
-            }
-
-            Label {
-                Layout.fillWidth: true
-                visible: window.pendingWebAuthState === WebEngineWebAuthUxRequest.RequestFailed
-                text: "The authenticator reported a failure. You may retry or cancel."
-                color: window.errorColor
-                wrapMode: Text.WordWrap
-                Accessible.name: "WebAuthn failure guidance"
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                Item { Layout.fillWidth: true }
-                Button {
-                    text: "Cancel"
-                    Accessible.name: "Cancel WebAuthn request"
-                    onClicked: window.cancelWebAuth()
-                }
-                Button {
-                    visible: window.pendingWebAuthState === WebEngineWebAuthUxRequest.CollectPin
-                    text: "Submit PIN"
-                    Accessible.name: "Submit WebAuthn PIN"
-                    onClicked: window.submitWebAuthPin()
-                }
-                Button {
-                    visible: window.pendingWebAuthState === WebEngineWebAuthUxRequest.RequestFailed
-                    text: "Retry"
-                    Accessible.name: "Retry WebAuthn request"
-                    onClicked: window.retryWebAuth()
-                }
-            }
-        }
-    }
-
-    Popup {
-        id: contextMenuPopup
-        parent: Overlay.overlay
-        modal: true
-        focus: true
-        closePolicy: Popup.NoAutoClose
-        width: Math.min(420 * window.chromeScale, window.width - 48)
-        height: Math.min(560 * window.chromeScale, window.height - 32)
-        padding: 8
-        x: Math.round((window.width - width) / 2)
-        y: Math.round((window.height - height) / 2)
-
-        background: Rectangle {
-            color: window.panelColor
-            border.color: window.accentColor
-            radius: 4
-        }
-
-        contentItem: ColumnLayout {
-            focus: true
-            Accessible.role: Accessible.PopupMenu
-            Accessible.name: "Web content context menu"
-
-            Keys.onPressed: function(event) {
-                if (event.key === Qt.Key_Escape) {
-                    window.clearContextMenuRequest()
-                    event.accepted = true
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 4
-                Accessible.role: Accessible.List
-                Accessible.name: "Switcher scopes"
-                Repeater {
-                    model: ["all", "tabs", "windows", "contexts", "commands",
-                        "actions", "history", "marks", "sessions", "downloads", "closed"]
-                    delegate: Button {
-                        text: modelData
-                        checkable: true
-                        checked: modelData === window.switcherScope
-                        Accessible.role: Accessible.PageTab
-                        Accessible.name: "Switcher scope " + modelData
-                        Accessible.selected: checked
-                        onClicked: window.setSwitcherScope(modelData)
-                    }
-                }
-            }
-
-            ListView {
-                id: contextMenuList
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
-                model: window.contextMenuItems
-                Accessible.role: Accessible.List
-                Accessible.name: "Context menu actions"
-
-                delegate: Button {
-                    required property var modelData
-                    width: contextMenuList.width
-                    text: modelData.label
-                    Accessible.role: Accessible.MenuItem
-                    Accessible.name: modelData.label
-                    onClicked: window.activateContextMenuItem(modelData)
-                }
-            }
-
-            Button {
-                Layout.fillWidth: true
-                text: "Close"
-                Accessible.name: "Close context menu"
-                onClicked: window.clearContextMenuRequest()
-            }
-        }
-    }
-
     function attachDownloadStateUpdates(download, id) {
         download.stateChanged.connect(function() {
             browserUi.update_download(id, window.downloadStateName(download), download.receivedBytes, false)
@@ -7996,7 +6963,7 @@ ApplicationWindow {
             window.restoreOverlayFocus()
             return
         }
-        var selectedPath = downloadChooser.selectedFile.toLocalFile()
+        var selectedPath = fileDialogSurfaces.downloadSelectedFile.toLocalFile()
         var finalName = browserUi.accept_download_path(id, selectedPath)
         if (finalName.length === 0) {
             window.resolveQtRequest(browserUi, download, "download", "cancel", [])
@@ -8091,8 +7058,8 @@ ApplicationWindow {
         window.pendingDownloadSuggestedName = safeName
         window.captureOverlayFocus(window, window.activeWebView())
         browserUi.update_download(id, "selecting-destination", 0, false)
-        downloadChooser.currentFile = window.fileUrlForPath(directory + "/" + safeName)
-        downloadChooser.open()
+        fileDialogSurfaces.downloadCurrentFile = window.fileUrlForPath(directory + "/" + safeName)
+        fileDialogSurfaces.openDownload()
     }
 
     function handleDownloadFinished(download) {
@@ -8798,7 +7765,7 @@ ApplicationWindow {
                 }
                 Connections {
                     target: popupWindow.popupPermissionUi || browserUi
-                    function onSite_experiment_jsonChanged() {
+                    function onSite_experiment_kindChanged() {
                         popupView.refreshEffectiveSiteSettings()
                     }
                 }
@@ -9271,18 +8238,12 @@ ApplicationWindow {
                 secondaryWindow.beginQuitRequest()
             }
 
-            FileDialog {
-                id: secondaryFileChooser
-                title: "Choose file"
-                onAccepted: secondaryWindow.acceptFileDialog()
-                onRejected: secondaryWindow.rejectFileDialog()
-            }
-
-            FolderDialog {
-                id: secondaryFolderChooser
-                title: "Choose folder"
-                onAccepted: secondaryWindow.acceptFolderDialog()
-                onRejected: secondaryWindow.rejectFileDialog()
+            FerricFileDialogSurfaces {
+                id: secondaryDialogSurfaces
+                onEngineFileAccepted: secondaryWindow.acceptFileDialog()
+                onEngineFileRejected: secondaryWindow.rejectFileDialog()
+                onEngineFolderAccepted: secondaryWindow.acceptFolderDialog()
+                onEngineFolderRejected: secondaryWindow.rejectFileDialog()
             }
 
             Timer {
@@ -9483,170 +8444,83 @@ ApplicationWindow {
                 status_text: "Ready"
             }
 
-            Rectangle {
-                anchors.centerIn: parent
-                width: Math.min(560, secondaryWindow.width - 80)
-                height: Math.min(190 * window.chromeScale, secondaryWindow.height - 32)
-                z: 100
-                visible: secondaryWindow.windowShutdownPromptVisible
-                color: window.panelColor
-                border.color: window.warningColor
-                border.width: 2
-
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 16
-                    spacing: 12
-
-                    Label {
-                        Layout.fillWidth: true
-                        text: "Active browser work is still running"
-                        color: window.primaryTextColor
-                        font.bold: true
-                    }
-                    Label {
-                        Layout.fillWidth: true
-                        text: "Cancel active work before closing, or keep this window open."
-                        color: window.secondaryTextColor
-                        wrapMode: Text.WordWrap
-                    }
-                    RowLayout {
-                        Layout.alignment: Qt.AlignRight
-                        spacing: 8
-                        Button {
-                            text: "Keep window open"
-                            Accessible.name: "Keep window open"
-                            onClicked: {
-                                secondaryWindow.windowShutdownPromptVisible = false
-                                window.abortApplicationShutdown()
-                                secondaryUi.status_text = "Shutdown cancelled"
-                            }
-                        }
-                        Button {
-                            text: "Cancel and close"
-                            Accessible.name: "Cancel and close"
-                            onClicked: secondaryWindow.cancelDownloadsAndQuit()
-                        }
-                    }
+            FerricShutdownDecisionDialog {
+                hostWindow: secondaryWindow
+                promptVisible: secondaryWindow.windowShutdownPromptVisible
+                title: "Active browser work is still running"
+                message: "Cancel active work before closing, or keep this window open."
+                keepLabel: "Keep window open"
+                proceedLabel: "Cancel and close"
+                dialogHeight: 190 * window.chromeScale
+                onKeepRequested: {
+                    secondaryWindow.windowShutdownPromptVisible = false
+                    window.abortApplicationShutdown()
+                    secondaryUi.status_text = "Shutdown cancelled"
                 }
+                onProceedRequested: secondaryWindow.cancelDownloadsAndQuit()
             }
 
-            Rectangle {
-                anchors.centerIn: parent
-                width: Math.min(560, secondaryWindow.width - 80)
-                height: Math.min(220 * window.chromeScale, secondaryWindow.height - 32)
-                z: 100
-                visible: secondaryWindow.windowShutdownPagePromptVisible
-                color: window.panelColor
-                border.color: window.warningColor
-                border.width: 2
-
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 16
-                    spacing: 12
-
-                    Label {
-                        Layout.fillWidth: true
-                        text: "Page state may be lost"
-                        color: window.primaryTextColor
-                        font.bold: true
-                    }
-                    Label {
-                        Layout.fillWidth: true
-                        text: secondaryWindow.windowShutdownPagePromptReason
-                              + " Close anyway may lose that state."
-                        color: window.secondaryTextColor
-                        wrapMode: Text.WordWrap
-                    }
-                    RowLayout {
-                        Layout.alignment: Qt.AlignRight
-                        spacing: 8
-                        Button {
-                            text: "Keep window open"
-                            Accessible.name: "Keep window open"
-                            onClicked: {
-                                secondaryWindow.cancelPageStateProbe()
-                                window.abortApplicationShutdown()
-                                secondaryUi.status_text = "Shutdown cancelled"
-                            }
-                        }
-                        Button {
-                            text: "Close anyway"
-                            Accessible.name: "Close anyway despite page state"
-                            onClicked: secondaryWindow.finalizeQuit()
-                        }
-                    }
+            FerricShutdownDecisionDialog {
+                hostWindow: secondaryWindow
+                promptVisible: secondaryWindow.windowShutdownPagePromptVisible
+                title: "Page state may be lost"
+                message: secondaryWindow.windowShutdownPagePromptReason
+                         + " Close anyway may lose that state."
+                keepLabel: "Keep window open"
+                proceedLabel: "Close anyway"
+                proceedAccessibleName: "Close anyway despite page state"
+                dialogHeight: 220 * window.chromeScale
+                onKeepRequested: {
+                    secondaryWindow.cancelPageStateProbe()
+                    window.abortApplicationShutdown()
+                    secondaryUi.status_text = "Shutdown cancelled"
                 }
+                onProceedRequested: secondaryWindow.finalizeQuit()
             }
 
-            Rectangle {
-                anchors.centerIn: parent
-                width: Math.min(560, secondaryWindow.width - 80)
-                height: Math.min(220 * window.chromeScale, secondaryWindow.height - 32)
-                z: 101
-                visible: secondaryWindow.windowShutdownStoragePromptVisible
-                color: window.panelColor
-                border.color: window.errorColor
-                border.width: 2
-
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 16
-                    spacing: 12
-
-                    Label {
-                        Layout.fillWidth: true
-                        text: "Durable profile state could not be flushed"
-                        color: window.errorColor
-                        font.bold: true
-                    }
-                    Label {
-                        Layout.fillWidth: true
-                        text: "The window remains open so its session and profile data are not abandoned. Retry the close after checking storage availability, or keep it open."
-                        color: window.secondaryTextColor
-                        wrapMode: Text.WordWrap
-                    }
-                    RowLayout {
-                        Layout.alignment: Qt.AlignRight
-                        spacing: 8
-                        Button {
-                            text: "Keep window open"
-                            Accessible.name: "Keep window open after storage flush failure"
-                            onClicked: {
-                                secondaryWindow.windowShutdownStoragePromptVisible = false
-                                window.abortApplicationShutdown()
-                                secondaryUi.status_text = "Shutdown cancelled; durable state was retained"
-                            }
-                        }
-                        Button {
-                            text: "Retry close"
-                            Accessible.name: "Retry close after storage flush failure"
-                            onClicked: secondaryWindow.finalizeQuit()
-                        }
-                    }
+            FerricShutdownDecisionDialog {
+                hostWindow: secondaryWindow
+                promptVisible: secondaryWindow.windowShutdownStoragePromptVisible
+                title: "Durable profile state could not be flushed"
+                message: "The window remains open so its session and profile data are not abandoned. Retry the close after checking storage availability, or keep it open."
+                keepLabel: "Keep window open"
+                proceedLabel: "Retry close"
+                keepAccessibleName: "Keep window open after storage flush failure"
+                dialogBorderColor: window.errorColor
+                dialogHeight: 220 * window.chromeScale
+                stackingOrder: 101
+                onKeepRequested: {
+                    secondaryWindow.windowShutdownStoragePromptVisible = false
+                    window.abortApplicationShutdown()
+                    secondaryUi.status_text = "Shutdown cancelled; durable state was retained"
                 }
+                onProceedRequested: secondaryWindow.finalizeQuit()
             }
 
             Connections {
                 target: browserUi
                 function onConfig_jsonChanged() {
-                    secondaryUi.config_json = browserUi.config_json
-                    secondaryUi.config_base_json = browserUi.config_base_json
-                    secondaryUi.cli_overrides_json = browserUi.cli_overrides_json
-                    secondaryUi.config_path = browserUi.config_path
+                    secondaryUi.set_startup_configuration(
+                                browserUi.config_json, browserUi.config_base_json,
+                                browserUi.cli_overrides_json,
+                                secondaryUi.profile_overrides_json,
+                                browserUi.config_path, secondaryUi.config_source)
                 }
                 function onConfig_base_jsonChanged() {
-                    secondaryUi.config_base_json = browserUi.config_base_json
+                    secondaryUi.set_startup_configuration(
+                                secondaryUi.config_json, browserUi.config_base_json,
+                                secondaryUi.cli_overrides_json,
+                                secondaryUi.profile_overrides_json,
+                                secondaryUi.config_path, secondaryUi.config_source)
                 }
                 function onContexts_jsonChanged() {
-                    secondaryUi.contexts_json = browserUi.contexts_json
+                    secondaryUi.set_contexts_configuration(browserUi.contexts_json)
                 }
             }
 
             Connections {
                 target: secondaryUi
-        function onContext_route_jsonChanged() {
+        function onContext_route_idChanged() {
             window.showContextRoute(secondaryUi)
         }
         function onContext_workspaceChanged() {
@@ -9747,55 +8621,15 @@ ApplicationWindow {
             RequestInterceptor {
                 id: secondaryRequestInterceptor
                 enabled: secondaryUi.blocking_enabled || securityDenyHosts.length > 0
-                blockedHosts: {
-                    try {
-                        var hosts = JSON.parse(secondaryUi.blocking_hosts)
-                        return Array.isArray(hosts) ? hosts : []
-                    } catch (error) {
-                        return []
-                    }
-                }
-                exceptionHosts: {
-                    try {
-                        var hosts = JSON.parse(secondaryUi.blocking_exceptions)
-                        return Array.isArray(hosts) ? hosts : []
-                    } catch (error) {
-                        return []
-                    }
-                }
-                blockedRuleLists: {
-                    try {
-                        var lists = JSON.parse(secondaryUi.blocking_rule_lists)
-                        return lists && typeof lists === "object" && !Array.isArray(lists) ? lists : ({})
-                    } catch (error) {
-                        return ({})
-                    }
-                }
-                exceptionRuleLists: {
-                    try {
-                        var lists = JSON.parse(secondaryUi.blocking_exception_rule_lists)
-                        return lists && typeof lists === "object" && !Array.isArray(lists) ? lists : ({})
-                    } catch (error) {
-                        return ({})
-                    }
-                }
+                blockedHosts: secondaryUi.blocking_hosts
+                exceptionHosts: secondaryUi.blocking_exceptions
+                blockedRuleHosts: secondaryUi.blocking_rule_hosts
+                blockedRuleListIds: secondaryUi.blocking_rule_list_ids
+                exceptionRuleHosts: secondaryUi.blocking_exception_rule_hosts
+                exceptionRuleListIds: secondaryUi.blocking_exception_rule_list_ids
                 adblockEngineHandle: secondaryUi.blocking_adblock_handle
-                bypassSites: {
-                    try {
-                        var sites = JSON.parse(secondaryUi.blocking_bypass_sites)
-                        return Array.isArray(sites) ? sites : []
-                    } catch (error) {
-                        return []
-                    }
-                }
-                securityDenyHosts: {
-                    try {
-                        var hosts = JSON.parse(secondaryUi.blocking_security_deny_hosts)
-                        return Array.isArray(hosts) ? hosts : []
-                    } catch (error) {
-                        return []
-                    }
-                }
+                bypassSites: secondaryUi.blocking_bypass_sites
+                securityDenyHosts: secondaryUi.blocking_security_deny_hosts
             }
 
             function secondaryDownloadStateName(download) {
@@ -9816,9 +8650,9 @@ ApplicationWindow {
 
             function secondaryFileDialogPaths() {
                 var paths = []
-                var urls = secondaryFileChooser.fileMode === FileDialog.OpenFiles
-                        ? secondaryFileChooser.selectedFiles
-                        : [secondaryFileChooser.selectedFile]
+                var urls = secondaryDialogSurfaces.engineFileMode === FileDialog.OpenFiles
+                        ? secondaryDialogSurfaces.engineFileSelectedFiles
+                        : [secondaryDialogSurfaces.engineFileSelectedFile]
                 for (var i = 0; i < urls.length; ++i) {
                     var path = urls[i].toLocalFile()
                     if (!path || urls[i].scheme !== "file") {
@@ -9830,7 +8664,7 @@ ApplicationWindow {
             }
 
             function secondaryFolderDialogPaths() {
-                var url = secondaryFolderChooser.selectedFolder
+                var url = secondaryDialogSurfaces.engineFolderSelectedFolder
                 var path = url && url.scheme === "file" ? url.toLocalFile() : ""
                 return path ? [path] : []
             }
@@ -9843,11 +8677,11 @@ ApplicationWindow {
                 secondaryWindow.pendingFileDialogWaitingForPortal = false
                 secondaryWindow.pendingFileDialogPortalDeadlineMs = 0
                 secondaryFilePortalTimer.stop()
-                if (secondaryFileChooser.visible) {
-                    secondaryFileChooser.close()
+                if (secondaryDialogSurfaces.engineFileVisible) {
+                    secondaryDialogSurfaces.closeEngineFile()
                 }
-                if (secondaryFolderChooser.visible) {
-                    secondaryFolderChooser.close()
+                if (secondaryDialogSurfaces.engineFolderVisible) {
+                    secondaryDialogSurfaces.closeEngineFolder()
                 }
                 if (hadRequest) {
                     window.restoreOverlayFocus()
@@ -9949,24 +8783,24 @@ ApplicationWindow {
                 secondaryWindow.pendingFileDialogWaitingForPortal = false
                 secondaryFilePortalTimer.stop()
                 if (request.mode === FileDialogRequest.FileModeUploadFolder) {
-                    secondaryFolderChooser.open()
+                    secondaryDialogSurfaces.openEngineFolder()
                     return
                 }
-                secondaryFileChooser.fileMode = request.mode === FileDialogRequest.FileModeOpenMultiple
+                secondaryDialogSurfaces.engineFileMode = request.mode === FileDialogRequest.FileModeOpenMultiple
                         ? FileDialog.OpenFiles
                         : request.mode === FileDialogRequest.FileModeSave
                             ? FileDialog.SaveFile
                             : FileDialog.OpenFile
-                secondaryFileChooser.nameFilters = window.fileDialogNameFilters(request)
-                secondaryFileChooser.currentFile = request.defaultFileName.length > 0
+                secondaryDialogSurfaces.engineFileNameFilters = window.fileDialogNameFilters(request)
+                secondaryDialogSurfaces.engineFileCurrentFile = request.defaultFileName.length > 0
                         ? request.defaultFileName
                         : ""
-                secondaryFileChooser.title = request.mode === FileDialogRequest.FileModeSave
+                secondaryDialogSurfaces.engineFileTitle = request.mode === FileDialogRequest.FileModeSave
                         ? "Save file"
                         : request.mode === FileDialogRequest.FileModeOpenMultiple
                             ? "Choose files"
                             : "Choose file"
-                secondaryFileChooser.open()
+                secondaryDialogSurfaces.openEngineFile()
             }
 
             function maybeOpenPendingFileDialog() {
@@ -9994,23 +8828,23 @@ ApplicationWindow {
                 secondaryFilePortalTimer.stop()
                 var request = secondaryWindow.pendingFileDialogRequest
                 if (request.mode === FileDialogRequest.FileModeUploadFolder) {
-                    secondaryFolderChooser.open()
+                    secondaryDialogSurfaces.openEngineFolder()
                     return
                 }
-                secondaryFileChooser.fileMode = request.mode === FileDialogRequest.FileModeOpenMultiple
+                secondaryDialogSurfaces.engineFileMode = request.mode === FileDialogRequest.FileModeOpenMultiple
                         ? FileDialog.OpenFiles
                         : request.mode === FileDialogRequest.FileModeSave
                             ? FileDialog.SaveFile
                             : FileDialog.OpenFile
-                secondaryFileChooser.nameFilters = window.fileDialogNameFilters(request)
-                secondaryFileChooser.currentFile = request.defaultFileName.length > 0
+                secondaryDialogSurfaces.engineFileNameFilters = window.fileDialogNameFilters(request)
+                secondaryDialogSurfaces.engineFileCurrentFile = request.defaultFileName.length > 0
                         ? request.defaultFileName : ""
-                secondaryFileChooser.title = request.mode === FileDialogRequest.FileModeSave
+                secondaryDialogSurfaces.engineFileTitle = request.mode === FileDialogRequest.FileModeSave
                         ? "Save file"
                         : request.mode === FileDialogRequest.FileModeOpenMultiple
                             ? "Choose files"
                             : "Choose file"
-                secondaryFileChooser.open()
+                secondaryDialogSurfaces.openEngineFile()
             }
 
             function clearFileDialogForView(view) {
@@ -10188,22 +9022,14 @@ ApplicationWindow {
                     secondaryWindow.activeView.forceActiveFocus()
                     return
                 }
-                if (action.indexOf("jseval\t") === 0) {
-                    var secondaryEvalPayload = null
-                    try {
-                        secondaryEvalPayload = JSON.parse(
-                            action.split("\t").slice(1).join("\t"))
-                    } catch (error) {
-                        secondaryUi.status_text = "JavaScript evaluation request was invalid"
-                        return
-                    }
-                    var secondaryEvalId = String(secondaryEvalPayload.tab_id || "")
+                if (action === "jseval") {
+                    var secondaryEvalId = String(secondaryUi.jseval_tab_id)
                     var secondaryEvalIndex = secondaryUi.tab_index_for_id(secondaryEvalId)
                     var secondaryEvalView = secondaryEvalIndex >= 0
                             && secondaryEvalIndex === secondaryUi.active_tab_index
                             ? secondaryWindow.activeView : null
-                    var secondaryEvalScript = String(secondaryEvalPayload.script || "")
-                    var secondaryEvalWorld = secondaryEvalPayload.world === "page"
+                    var secondaryEvalScript = String(secondaryUi.jseval_script)
+                    var secondaryEvalWorld = secondaryUi.jseval_world === "page"
                             ? WebEngineScript.MainWorld : window.browserScriptWorld
                     if (!secondaryEvalView || secondaryEvalScript.length === 0
                             || secondaryEvalScript.length > 65536) {
@@ -10430,7 +9256,7 @@ ApplicationWindow {
                 }
                 Connections {
                     target: viewUi
-                    function onSite_experiment_jsonChanged() {
+                    function onSite_experiment_kindChanged() {
                         secondaryView.refreshEffectiveSiteSettings()
                     }
                 }
@@ -10895,85 +9721,25 @@ ApplicationWindow {
                 }
             }
 
-            Rectangle {
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.bottom: parent.bottom
-                height: window.statusBarHeight
-                z: 10
-                visible: window.statusbarMode === "always"
-                         && secondaryUi.mode !== "command"
-                         && secondaryUi.mode !== "search"
-                color: window.surfaceColor
-                opacity: window.chromeOpacity
-
-                Accessible.name: "Browser status bar. " + secondaryUi.mode + ". "
-                                 + secondaryUi.display_url + ". "
-                                 + secondaryUi.status_text
-                                 + window.statusDetails(
-                                     secondaryUi, secondaryWindow,
-                                     secondaryWindow.activeView,
-                                     secondaryWindow.windowPrivateProfile,
-                                     secondaryWindow.windowProfileName,
-                                     secondaryWindow.windowEphemeralProfile)
-                Accessible.role: Accessible.StatusBar
-
-                RowLayout {
-                    anchors.fill: parent
-                    spacing: 0
-
-                    Rectangle {
-                        Layout.fillHeight: true
-                        Layout.preferredWidth: secondaryModeLabel.implicitWidth + 16
-                        color: secondaryUi.mode === "insert"
-                               ? window.modeInsertColor : window.panelColor
-
-                        Label {
-                            id: secondaryModeLabel
-                            anchors.centerIn: parent
-                            text: secondaryUi.mode.toUpperCase()
-                            color: secondaryUi.mode === "normal"
-                                   ? window.primaryTextColor : window.backgroundColor
-                            font.bold: true
-                            Accessible.ignored: true
-                        }
-                    }
-
-                    Label {
-                        Layout.fillWidth: true
-                        Layout.leftMargin: 8
-                        Layout.rightMargin: 8
-                        text: window.addressPresentation(
-                                  secondaryUi.display_url,
-                                  width / Math.max(1, font.pixelSize * 0.56))
-                        color: /^https:/i.test(secondaryUi.display_url)
-                               ? window.successColor : window.primaryTextColor
-                        elide: Text.ElideMiddle
-                        Accessible.ignored: true
-                    }
-
-                    Label {
-                        Layout.maximumWidth: Math.max(120, parent.width * 0.32)
-                        Layout.rightMargin: 8
-                        text: secondaryUi.status_text
-                        color: window.contextStatusColor(
-                                   secondaryUi, window.mutedTextColor)
-                        elide: Text.ElideRight
-                        horizontalAlignment: Text.AlignRight
-                        Accessible.ignored: true
-                    }
-
-                    Label {
-                        Layout.rightMargin: 8
-                        text: secondaryWindow.windowEphemeralProfile ? "EPHEMERAL"
+            FerricWindowStatusBar {
+                browserWindow: window
+                statusVisible: window.statusbarMode === "always"
+                               && secondaryUi.mode !== "command"
+                               && secondaryUi.mode !== "search"
+                mode: secondaryUi.mode
+                displayUrl: secondaryUi.display_url
+                statusText: secondaryUi.status_text
+                profileLabel: secondaryWindow.windowEphemeralProfile ? "EPHEMERAL"
                               : secondaryWindow.windowPrivateProfile ? "PRIVATE"
                               : secondaryWindow.windowProfileName
-                        color: window.contextStatusColor(
-                                   secondaryUi, window.secondaryTextColor)
-                        font.bold: true
-                        Accessible.ignored: true
-                    }
-                }
+                statusColor: window.contextStatusColor(secondaryUi, window.mutedTextColor)
+                profileColor: window.contextStatusColor(secondaryUi, window.secondaryTextColor)
+                accessibleDetails: window.statusDetails(
+                                       secondaryUi, secondaryWindow,
+                                       secondaryWindow.activeView,
+                                       secondaryWindow.windowPrivateProfile,
+                                       secondaryWindow.windowProfileName,
+                                       secondaryWindow.windowEphemeralProfile)
             }
 
             function attachTransferredView(view, payload, sourceUi, sourceHost, operationId) {
@@ -11073,12 +9839,12 @@ ApplicationWindow {
                         rendererFailureSurfaceComponent.createObject(
                             secondaryWindow.contentItem, { hostWindow: secondaryWindow })
                 window.installFocusObserver(secondaryWindow.activeView)
-                secondaryUi.config_json = browserUi.config_json
-                secondaryUi.config_base_json = browserUi.config_base_json
-                secondaryUi.cli_overrides_json = browserUi.cli_overrides_json
-                secondaryUi.config_path = browserUi.config_path
-                secondaryUi.config_source = browserUi.config_source
-                secondaryUi.contexts_json = browserUi.contexts_json
+                secondaryUi.set_startup_configuration(
+                            browserUi.config_json, browserUi.config_base_json,
+                            browserUi.cli_overrides_json,
+                            secondaryUi.profile_overrides_json,
+                            browserUi.config_path, browserUi.config_source)
+                secondaryUi.set_contexts_configuration(browserUi.contexts_json)
                 secondaryUi.configure_profile(
                                               secondaryWindow.windowPrivateProfile,
                                               secondaryWindow.windowEphemeralProfile,
@@ -11088,7 +9854,7 @@ ApplicationWindow {
                 if (secondaryWindow.windowBookmarkTransferUrl.length > 0) {
                     bookmarkTransferTimer.start()
                 }
-                secondaryUi.context_entry_force_reuse = secondaryWindow.windowStartupContextRestore
+                secondaryUi.set_context_entry_reuse(secondaryWindow.windowStartupContextRestore)
                 window.registerBrowserWindow(
                             secondaryWindow, secondaryUi, secondaryWindow.activeView,
                             secondaryWindow.windowWebEngineProfile,
@@ -11798,1881 +10564,246 @@ ApplicationWindow {
         browserUi: browserUi
     }
 
-    Rectangle {
-        id: recoveryBanner
-        anchors.top: parent.top
-        anchors.topMargin: 76
-        anchors.left: parent.left
-        anchors.right: parent.right
-        height: Math.max(42, window.chromeRowHeight * 2.75)
-        z: 20
-        visible: window.recoveryAvailable
-        color: Qt.darker(window.warningColor, 2.2)
-
-        RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 10
-            anchors.rightMargin: 10
-            spacing: 10
-
-            Label {
-                Layout.fillWidth: true
-                text: "The previous browser run ended unexpectedly. Recover the last safe session?"
-                color: window.primaryTextColor
-                Accessible.name: "Session recovery notice"
+    FerricRecoveryBanner {
+        browserWindow: window
+        onRecoveryRequested: {
+            var restored = browserUi.recover_session()
+            if (restored === "QUEUED") {
+                window.sessionPreviewLoading = true
+                return
             }
-            Button {
-                text: "Recover"
-                Accessible.name: "Recover last session"
-                onClicked: {
-                    var restored = browserUi.recover_session()
-                    if (restored === "QUEUED") {
-                        window.sessionPreviewLoading = true
-                        return
-                    }
-                    if (restored.length === 0) {
-                        return
-                    }
-                    tabs.clear()
-                    window.applyRestorePayload(restored, false)
-                    window.recoveryAvailable = false
-                    window.syncTabModel()
-                    window.executePendingEngineAction()
-                }
+            if (restored.length === 0) {
+                return
             }
-            Button {
-                text: "Dismiss"
-                Accessible.name: "Dismiss session recovery"
-                onClicked: window.recoveryAvailable = false
+            tabs.clear()
+            window.applyRestorePayload(restored, false)
+            window.recoveryAvailable = false
+            window.syncTabModel()
+            window.executePendingEngineAction()
+        }
+        onDismissalRequested: window.recoveryAvailable = false
+    }
+
+    FerricSiteLedger {
+        browserWindow: window
+        siteExperimentAvailable: !browserUi.site_experiment_active
+        onCloseRequested: {
+            window.siteLedgerVisible = false
+            window.closeInternalSurface()
+        }
+        onRefreshRequested: window.showSiteLedger()
+        onActiveOriginDataClearRequested: {
+            if (browserUi.site_data_clear(window.siteLedgerData.origin, true)) {
+                window.executePendingEngineAction()
+            }
+        }
+        onSanitizedReportCopyRequested: function(includeHost) {
+            var report = browserUi.site_report(includeHost)
+            if (report && report.length > 0) {
+                window.copyToClipboard(report, true)
+                browserUi.status_text = "Sanitized site report copied"
+            }
+        }
+        onSiteDoctorProposalApplyRequested: function(proposalId) {
+            if (browserUi.apply_site_doctor_proposal(proposalId, true)) {
+                window.showSiteLedger()
+            }
+        }
+        onSiteDoctorExperimentRequested: function(kind) {
+            var started = browserUi.begin_site_doctor_experiment(kind)
+            if (started.length > 0) {
+                window.executePendingEngineAction()
             }
         }
     }
 
-    Rectangle {
-        id: siteLedger
-        anchors.centerIn: parent
-        width: Math.min(900, parent.width - 80)
-        height: Math.min(600, parent.height - 100)
-        z: 70
-        visible: window.siteLedgerVisible
-        focus: visible
-        Accessible.role: Accessible.Dialog
-        Accessible.name: "Site Ledger"
-        onVisibleChanged: if (visible) forceActiveFocus()
-        color: window.panelColor
-        border.color: window.accentColor
-        border.width: 1
-
-        Keys.onPressed: function(event) {
-            if (event.key === Qt.Key_Escape) {
-                window.siteLedgerVisible = false
-                window.closeInternalSurface()
-                event.accepted = true
-            }
-        }
-
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 14
-            spacing: 8
-
-            RowLayout {
-                Layout.fillWidth: true
-                Label {
-                    Layout.fillWidth: true
-                    text: "Site Ledger"
-                    color: window.primaryTextColor
-                    font.bold: true
-                    Accessible.name: "Site Ledger"
-                }
-                Button {
-                    text: "Refresh"
-                    Accessible.name: "Refresh Site Ledger"
-                    onClicked: window.showSiteLedger()
-                }
-                Button {
-                    text: "Close"
-                    Accessible.name: "Close Site Ledger"
-                    onClicked: {
-                        window.siteLedgerVisible = false
-                        window.closeInternalSurface()
-                    }
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                visible: !!(!window.siteLedgerData.private && window.siteLedgerData.origin)
-                CheckBox {
-                    id: siteDataClearConfirmation
-                    text: "Clear supported site data"
-                    checked: false
-                    Accessible.name: "Confirm supported site data clearing"
-                    Accessible.description: "Clears page-origin local storage, Cache Storage, service-worker registrations, and visible cookies only; HTTP cache and other cookie-store entries remain"
-                }
-                Button {
-                    text: "Clear active-origin data"
-                    enabled: siteDataClearConfirmation.checked && !window.siteDataClearPending
-                    Accessible.name: "Clear supported active-origin site data"
-                    onClicked: {
-                        var origin = window.siteLedgerData.origin
-                        if (browserUi.site_data_clear(origin, true)) {
-                            siteDataClearConfirmation.checked = false
-                            window.executePendingEngineAction()
-                        }
-                    }
-                }
-                Label {
-                    Layout.fillWidth: true
-                    text: "Per-origin: local storage, Cache Storage, service workers; cookies are page-visible-only; HTTP cache is profile-wide and excluded"
-                    color: window.secondaryTextColor
-                    wrapMode: Text.WordWrap
-                }
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: window.siteLedgerData.private
-                      ? "Private session · site identity is withheld"
-                      : (window.siteLedgerData.origin || "No normalized HTTP(S) origin")
-                color: window.secondaryTextColor
-                elide: Text.ElideMiddle
-                Accessible.name: "Ledger origin"
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                CheckBox {
-                    id: siteReportHost
-                    text: "Include current site host"
-                    checked: false
-                    Accessible.name: "Include current site host in report"
-                    Accessible.description: "Host disclosure is opt-in; paths and query strings are never included"
-                }
-                Button {
-                    text: "Copy sanitized report"
-                    Accessible.name: "Copy sanitized site report"
-                    onClicked: {
-                        var report = browserUi.site_report(siteReportHost.checked)
-                        if (report && report.length > 0) {
-                            window.copyToClipboard(report, true)
-                            browserUi.status_text = "Sanitized site report copied"
-                        }
-                    }
-                }
-                Label {
-                    Layout.fillWidth: true
-                    text: "URLs, cookies, tokens, DOM, and account identifiers are excluded"
-                    color: window.secondaryTextColor
-                    wrapMode: Text.WordWrap
-                }
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: "Tab " + (window.siteLedgerData.capture && window.siteLedgerData.capture.tab_id || "unknown")
-                      + " · document " + (window.siteLedgerData.capture && window.siteLedgerData.capture.document_id || "unknown")
-                      + " · " + (window.siteLedgerData.renderer || "renderer unknown")
-                color: window.mutedTextColor
-                elide: Text.ElideRight
-            }
-
-            ListView {
-                id: siteLedgerFacts
-                Layout.fillWidth: true
-                Layout.preferredHeight: Math.min(270, Math.max(66, siteLedgerFacts.contentHeight + 6))
-                clip: true
-                spacing: 6
-                model: window.siteLedgerData.facts || []
-                delegate: Rectangle {
-                    width: siteLedgerFacts.width
-                    height: Math.max(66, window.chromeRowHeight * 5)
-                    color: window.surfaceColor
-                    radius: 3
-
-                    ColumnLayout {
-                        anchors.fill: parent
-                        anchors.margins: 8
-                        spacing: 2
-                        Label {
-                            Layout.fillWidth: true
-                            text: modelData.id + " · " + modelData.state + " · " + modelData.capability
-                            color: window.primaryTextColor
-                            font.bold: true
-                            elide: Text.ElideRight
-                            Accessible.name: modelData.id + " fact"
-                        }
-                        Label {
-                            Layout.fillWidth: true
-                            text: modelData.provenance + " · " + modelData.scope + " · " + modelData.apply_time
-                            color: window.mutedTextColor
-                            elide: Text.ElideRight
-                        }
-                        Label {
-                            Layout.fillWidth: true
-                            text: JSON.stringify(modelData.value)
-                            color: window.secondaryTextColor
-                            elide: Text.ElideRight
-                        }
-                    }
-                }
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: "Recent request decisions"
-                color: window.primaryTextColor
-                font.bold: true
-            }
-
-            ListView {
-                id: siteLedgerDecisions
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
-                spacing: 3
-                model: window.siteLedgerData.blocking
-                      ? (window.siteLedgerData.blocking.active_site_decisions || [])
-                      : []
-                delegate: Label {
-                    width: siteLedgerDecisions.width
-                    text: (modelData.decision || "unknown") + " · "
-                          + (modelData.resource_host || "unknown host") + " · "
-                          + "list " + (modelData.list_id || "unknown") + " · "
-                          + (modelData.exception_list_id
-                             ? "exception " + modelData.exception_list_id + " · " : "")
-                          + (modelData.reason || "no reason")
-                    color: modelData.decision === "blocked" ? window.errorColor : window.successColor
-                    elide: Text.ElideRight
-                    Accessible.name: "Request decision"
-                }
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: "Safe actions: " + ((window.siteLedgerData.safe_remediation_actions || []).join(", ") || "none")
-                color: window.warningColor
-                wrapMode: Text.WordWrap
-            }
-
-            Label {
-                Layout.fillWidth: true
-                visible: window.siteLedgerData.site_doctor
-                         && window.siteLedgerData.site_doctor.active
-                         && window.siteLedgerData.site_doctor.active.kind
-                text: window.siteLedgerData.site_doctor
-                      && window.siteLedgerData.site_doctor.active
-                      ? "Active experiment: "
-                        + window.siteLedgerData.site_doctor.active.kind
-                        + " (temporary; "
-                        + (window.siteLedgerData.site_doctor.active.remaining_seconds || 0)
-                        + "s remaining; reload/navigation ends it)"
-                      : ""
-                color: window.accentColor
-                wrapMode: Text.WordWrap
-            }
-
-            Label {
-                Layout.fillWidth: true
-                visible: !!(window.siteLedgerData.site_doctor
-                         && window.siteLedgerData.site_doctor.last_result
-                         && window.siteLedgerData.site_doctor.last_result.kind)
-                text: window.siteLedgerData.site_doctor
-                      && window.siteLedgerData.site_doctor.last_result
-                      ? "Site Doctor proposal: "
-                        + window.siteLedgerData.site_doctor.last_result.kind
-                        + " · "
-                        + window.siteLedgerData.site_doctor.last_result.security_effect
-                      : ""
-                color: window.warningColor
-                wrapMode: Text.WordWrap
-                Accessible.name: "Site Doctor durable fix proposal"
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                visible: !!(window.siteLedgerData.site_doctor
-                         && window.siteLedgerData.site_doctor.last_result
-                         && window.siteLedgerData.site_doctor.last_result.kind === "blocker-exception")
-                CheckBox {
-                    id: siteDoctorProposalConfirmation
-                    text: "I reviewed this host-scoped exception"
-                    checked: false
-                    Accessible.name: "Confirm Site Doctor blocker exception"
-                    Accessible.description: "This saves a generated runtime override for the current host and does not change permissions or TLS"
-                }
-                Button {
-                    text: "Apply reviewed fix"
-                    enabled: siteDoctorProposalConfirmation.checked
-                             && window.siteLedgerData.site_doctor.last_result.state === "pending-confirmation"
-                    Accessible.name: "Apply reviewed Site Doctor fix"
-                    onClicked: {
-                        var proposal = window.siteLedgerData.site_doctor.last_result
-                        if (browserUi.apply_site_doctor_proposal(proposal.id, true)) {
-                            siteDoctorProposalConfirmation.checked = false
-                            window.showSiteLedger()
-                        }
-                    }
-                }
-            }
-
-            Button {
-                Layout.alignment: Qt.AlignLeft
-                visible: window.siteLedgerData.site_doctor
-                         && window.siteLedgerData.site_doctor.experiments
-                         && window.siteLedgerData.site_doctor.experiments.indexOf("blocking-bypass") >= 0
-                enabled: browserUi.site_experiment_json.length === 0
-                         || browserUi.site_experiment_json === "{}"
-                text: "Try blocker bypass once"
-                Accessible.name: "Run one-shot blocker bypass experiment"
-                onClicked: {
-                    var started = browserUi.begin_site_doctor_experiment("blocking-bypass")
-                    if (started.length > 0) {
-                        window.executePendingEngineAction()
-                    }
-                }
-            }
-
-            Button {
-                Layout.alignment: Qt.AlignLeft
-                visible: window.siteLedgerData.site_doctor
-                         && window.siteLedgerData.site_doctor.experiments
-                         && window.siteLedgerData.site_doctor.experiments.indexOf("compiled-defaults") >= 0
-                enabled: browserUi.site_experiment_json.length === 0
-                         || browserUi.site_experiment_json === "{}"
-                text: "Try compiled-default site settings once"
-                Accessible.name: "Run one-shot compiled-default site settings experiment"
-                onClicked: {
-                    var started = browserUi.begin_site_doctor_experiment("compiled-defaults")
-                    if (started.length > 0) {
-                        window.executePendingEngineAction()
-                    }
-                }
-            }
-
-            Button {
-                Layout.alignment: Qt.AlignLeft
-                visible: window.siteLedgerData.site_doctor
-                         && window.siteLedgerData.site_doctor.experiments
-                         && window.siteLedgerData.site_doctor.experiments.indexOf("userscripts-off") >= 0
-                enabled: browserUi.site_experiment_json.length === 0
-                         || browserUi.site_experiment_json === "{}"
-                text: "Try without matching userscripts once"
-                Accessible.name: "Run one-shot userscript-free experiment"
-                onClicked: {
-                    var started = browserUi.begin_site_doctor_experiment("userscripts-off")
-                    if (started.length > 0) {
-                        window.executePendingEngineAction()
-                    }
-                }
-            }
-
-            Button {
-                Layout.alignment: Qt.AlignLeft
-                visible: window.siteLedgerData.site_doctor
-                         && window.siteLedgerData.site_doctor.experiments
-                         && window.siteLedgerData.site_doctor.experiments.indexOf("fresh-view") >= 0
-                enabled: browserUi.site_experiment_json.length === 0
-                         || browserUi.site_experiment_json === "{}"
-                text: "Open fresh same-profile view once"
-                Accessible.name: "Run one-shot fresh same-profile view experiment"
-                onClicked: {
-                    var started = browserUi.begin_site_doctor_experiment("fresh-view")
-                    if (started.length > 0) {
-                        window.executePendingEngineAction()
-                    }
-                }
-            }
+    FerricDiagnostics {
+        browserWindow: window
+        onCloseRequested: window.closeDiagnostics()
+        onRefreshRequested: window.refreshDiagnostics()
+        onCopyRequested: window.copyToClipboard(window.diagnosticsText, true)
+        onSaveRequested: {
+            window.refreshDiagnostics()
+            fileDialogSurfaces.diagnosticsExportCurrentFile = "ferric-browser-diagnostics.json"
+            fileDialogSurfaces.openDiagnosticsExport()
         }
     }
 
-    Rectangle {
-        id: diagnosticsSurface
-        anchors.centerIn: parent
-        width: Math.min(900, parent.width - 80)
-        height: Math.min(620, parent.height - 100)
-        z: 72
-        visible: window.diagnosticsVisible
-        focus: visible
-        Accessible.role: Accessible.Dialog
-        Accessible.name: "Diagnostics"
-        onVisibleChanged: if (visible) forceActiveFocus()
-        color: window.panelColor
-        border.color: window.accentColor
-        border.width: 1
-
-        Keys.onPressed: function(event) {
-            if (event.key === Qt.Key_Escape) {
-                window.closeDiagnostics()
-                event.accepted = true
-            }
-        }
-
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 14
-            spacing: 8
-
-            RowLayout {
-                Layout.fillWidth: true
-                Label {
-                    Layout.fillWidth: true
-                    text: "Diagnostics"
-                    color: window.primaryTextColor
-                    font.bold: true
-                    Accessible.name: "Diagnostics"
-                }
-                Button {
-                    text: "Refresh"
-                    Accessible.name: "Refresh diagnostics"
-                    onClicked: window.refreshDiagnostics()
-                }
-                Button {
-                    text: "Copy preview"
-                    Accessible.name: "Copy diagnostics preview"
-                    onClicked: window.copyToClipboard(window.diagnosticsText, true)
-                }
-                Button {
-                    text: "Save preview"
-                    Accessible.name: "Save diagnostics preview"
-                    onClicked: {
-                        window.refreshDiagnostics()
-                        diagnosticsExportChooser.currentFile = "ferric-browser-diagnostics.json"
-                        diagnosticsExportChooser.open()
-                    }
-                }
-                Button {
-                    text: "Close"
-                    Accessible.name: "Close diagnostics"
-                    onClicked: window.closeDiagnostics()
-                }
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: "Read-only, privacy-safe runtime snapshot. Probe values are bounded and may be marked unavailable or not tested."
-                color: window.secondaryTextColor
-                wrapMode: Text.WordWrap
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: "Qt logical-unit layout · current screen scale: " + window.displayScaleLabel
-                color: window.mutedTextColor
-                Accessible.name: "Current screen scale"
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: "Window activation: " + window.activationStatus
-                color: window.activationStatus === "unknown"
-                      ? window.warningColor : window.mutedTextColor
-                Accessible.name: "Window activation status"
-            }
-
-            Label {
-                Layout.fillWidth: true
-                visible: window.themeContrastWarning.length > 0
-                text: "Theme contrast warning: " + window.themeContrastWarning
-                color: window.warningColor
-                wrapMode: Text.WordWrap
-                Accessible.name: "Theme contrast warning"
-                Accessible.description: "The imported theme remains enabled, but one or more assessed chrome color pairs are below WCAG AA."
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: window.reducedMotionActive
-                      ? "Optional interface motion is disabled (reduced-motion setting: system or on)."
-                      : "Optional interface motion is enabled by the reduced-motion setting."
-                color: window.mutedTextColor
-                wrapMode: Text.WordWrap
-                Accessible.name: "Reduced motion status"
-            }
-
-            ScrollView {
-                id: diagnosticsScroll
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
-
-                TextArea {
-                    id: diagnosticsTextArea
-                    width: diagnosticsScroll.availableWidth
-                    height: Math.max(diagnosticsScroll.availableHeight, contentHeight + 16)
-                    text: window.diagnosticsText
-                    readOnly: true
-                    selectByMouse: true
-                    wrapMode: TextEdit.NoWrap
-                    color: window.primaryTextColor
-                    selectionColor: window.accentColor
-                    selectedTextColor: window.backgroundColor
-                    font.family: window.chromeFontFamily
-                    Accessible.name: "Read-only diagnostics snapshot"
-                    Accessible.description: "Privacy-safe runtime diagnostics in JSON format"
-                }
-            }
+    FerricBindingHelp {
+        browserWindow: window
+        onCloseRequested: window.closeBindingHelp()
+        onRefreshRequested: window.refreshBindingHelp()
+        onSearchChanged: function(text) {
+            window.bindingHelpSearch = text
+            window.refreshBindingHelp()
         }
     }
 
-    Rectangle {
-        id: bindingHelpSurface
-        anchors.centerIn: parent
-        width: Math.min(980, parent.width - 70)
-        height: Math.min(650, parent.height - 90)
-        z: 74
-        visible: window.bindingHelpVisible
-        focus: visible
-        Accessible.role: Accessible.Dialog
-        Accessible.name: "Binding help"
-        onVisibleChanged: if (visible) forceActiveFocus()
-        color: window.panelColor
-        border.color: window.accentColor
-        border.width: 1
+    FerricSettingsModel { id: settingsModel }
 
-        Keys.onPressed: function(event) {
-            if (event.key === Qt.Key_Escape) {
-                window.closeBindingHelp()
-                event.accepted = true
-            }
-        }
-
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 14
-            spacing: 8
-
-            RowLayout {
-                Layout.fillWidth: true
-                Label {
-                    Layout.fillWidth: true
-                    text: "Keyboard help"
-                    color: window.primaryTextColor
-                    font.bold: true
-                    Accessible.name: "Keyboard help"
-                }
-                Button {
-                    text: "Refresh"
-                    Accessible.name: "Refresh keyboard help"
-                    onClicked: window.refreshBindingHelp()
-                }
-                Button {
-                    text: "Close"
-                    Accessible.name: "Close keyboard help"
-                    onClicked: window.closeBindingHelp()
-                }
-            }
-
-            TextField {
-                id: helpSearchInput
-                Layout.fillWidth: true
-                text: window.bindingHelpSearch
-                placeholderText: "Search commands, keys, modes, or descriptions"
-                Accessible.name: "Search keyboard help"
-                Accessible.role: Accessible.EditableText
-                onTextChanged: {
-                    window.bindingHelpSearch = text
-                    window.rebuildBindingHelpRows()
-                }
-                Keys.onPressed: function(event) {
-                    if (event.key === Qt.Key_Escape) {
-                        window.closeBindingHelp()
-                        event.accepted = true
-                    }
-                }
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: "Effective bindings are generated from the active validated trie. ‘unbound’ commands remain available through the command line."
-                color: window.secondaryTextColor
-                wrapMode: Text.WordWrap
-            }
-
-            ScrollView {
-                id: bindingHelpScroll
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
-
-                ListView {
-                    id: bindingHelpList
-                    width: bindingHelpScroll.availableWidth
-                    height: bindingHelpScroll.availableHeight
-                    clip: true
-                    model: window.bindingHelpRows
-                    spacing: 4
-                    delegate: Rectangle {
-                        width: bindingHelpList.width
-                        height: modelData.kind === "heading" ? 30 : 76
-                        color: modelData.kind === "heading"
-                               ? window.surfaceColor
-                               : modelData.kind === "conflict"
-                                   ? Qt.darker(window.errorColor, 2.0)
-                                   : window.surfaceColor
-                        radius: 3
-                        Accessible.name: modelData.kind === "heading"
-                                         ? modelData.title
-                                         : modelData.mode + " " + modelData.command
-                                           + " " + modelData.keys
-
-                        Label {
-                            anchors.fill: parent
-                            anchors.margins: 8
-                            visible: modelData.kind === "heading"
-                            text: modelData.title
-                            color: window.accentColor
-                            font.bold: true
-                            verticalAlignment: Text.AlignVCenter
-                        }
-
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.margins: 8
-                            visible: modelData.kind !== "heading"
-                            spacing: 8
-                            Label {
-                                Layout.preferredWidth: 100
-                                text: modelData.mode
-                                color: modelData.kind === "conflict"
-                                       ? window.warningColor : window.mutedTextColor
-                                elide: Text.ElideRight
-                            }
-                            Label {
-                                Layout.preferredWidth: 180
-                                text: modelData.command
-                                color: window.primaryTextColor
-                                font.bold: true
-                                elide: Text.ElideRight
-                            }
-                            ColumnLayout {
-                                Layout.fillWidth: true
-                                spacing: 2
-                                Label {
-                                    Layout.fillWidth: true
-                                    text: modelData.keys
-                                    color: modelData.kind === "conflict"
-                                           ? window.warningColor : window.accentColor
-                                    elide: Text.ElideRight
-                                }
-                                Label {
-                                    Layout.fillWidth: true
-                                    text: modelData.description
-                                    color: window.secondaryTextColor
-                                    elide: Text.ElideRight
-                                }
-                            }
-                            Label {
-                                Layout.preferredWidth: 120
-                                text: modelData.source + " · " + modelData.count
-                                color: window.mutedTextColor
-                                elide: Text.ElideRight
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    Rectangle {
+    FerricSettings {
         id: settingsSurface
-        anchors.centerIn: parent
-        width: Math.min(980, parent.width - 70)
-        height: Math.min(680, parent.height - 80)
-        z: 76
-        visible: window.settingsVisible
-        focus: visible
-        Accessible.role: Accessible.Dialog
-        Accessible.name: "Settings"
-        onVisibleChanged: if (visible) forceActiveFocus()
-        color: window.panelColor
-        border.color: window.accentColor
-        border.width: 1
-
-        Keys.onPressed: function(event) {
-            if (event.key === Qt.Key_Escape) {
-                window.closeSettings()
-                event.accepted = true
+        browserWindow: window
+        settingsVisible: window.settingsVisible
+        temporary: window.settingsTemporary
+        searchText: window.settingsSearch
+        notice: window.settingsNotice
+        spellcheckStatus: window.spellcheckStatusText(browserUi)
+        spellcheckDictionariesMissing: window.spellcheckDictionaryStatus(browserUi).missing.length > 0
+        userscriptRows: window.userscriptInventoryRows()
+        settingsModel: settingsModel
+        onCloseRequested: window.closeSettings()
+        onRefreshRequested: window.refreshSettings()
+        onInstallUserscriptRequested: window.chooseUserscriptManifest()
+        onTemporaryChanged: function(temporary) {
+            window.settingsTemporary = temporary
+            window.settingsNotice = temporary
+                    ? "Changes apply only to this window and session"
+                    : "Changes use the profile runtime override layer"
+        }
+        onSearchChanged: function(text) {
+            window.settingsSearch = text
+            window.refreshSettings()
+        }
+        onUserscriptEnabledRequested: function(name, enabled) {
+            if (browserUi.set_userscript_enabled(name, enabled)) {
+                settingsSurface.setUserscriptEnabled(name, enabled)
+            } else {
+                settingsSurface.setUserscriptEnabled(name, !enabled)
             }
         }
-
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 14
-            spacing: 8
-
-            RowLayout {
-                Layout.fillWidth: true
-                Label {
-                    Layout.fillWidth: true
-                    text: "Settings"
-                    color: window.primaryTextColor
-                    font.bold: true
-                    Accessible.name: "Settings"
-                }
-                Button {
-                    text: "Refresh"
-                    Accessible.name: "Refresh settings"
-                    onClicked: window.refreshSettings()
-                }
-                Button {
-                    text: "Install userscript"
-                    Accessible.name: "Install userscript manifest"
-                    onClicked: window.chooseUserscriptManifest()
-                }
-                Button {
-                    text: "Close"
-                    Accessible.name: "Close settings"
-                    onClicked: window.closeSettings()
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                CheckBox {
-                    id: settingsTemporaryToggle
-                    text: "Temporary (memory only)"
-                    checked: window.settingsTemporary
-                    Accessible.name: "Apply settings temporarily"
-                    onToggled: {
-                        window.settingsTemporary = checked
-                        window.settingsNotice = checked
-                                ? "Changes apply only to this window and session"
-                                : "Changes use the profile runtime override layer"
-                    }
-                }
-                Label {
-                    Layout.fillWidth: true
-                    text: "Persistent edits never rewrite the authored config.toml."
-                    color: window.secondaryTextColor
-                    wrapMode: Text.WordWrap
-                }
-            }
-
-            TextField {
-                id: settingsSearchInput
-                Layout.fillWidth: true
-                text: window.settingsSearch
-                placeholderText: "Filter settings by key, description, scope, or apply time"
-                Accessible.name: "Search settings"
-                Accessible.role: Accessible.EditableText
-                onTextChanged: {
-                    window.settingsSearch = text
-                    window.refreshSettings()
-                }
-                Keys.onPressed: function(event) {
-                    if (event.key === Qt.Key_Escape) {
-                        window.closeSettings()
-                        event.accepted = true
-                    }
-                }
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: "Supported fields below use the validated typed schema. Site-scoped values remain available through explicit site-rule commands; this manager edits the active global/profile runtime layer."
-                color: window.secondaryTextColor
-                wrapMode: Text.WordWrap
-            }
-
-            Label {
-                Layout.fillWidth: true
-                visible: window.settingsNotice.length > 0
-                text: window.settingsNotice
-                color: window.settingsNotice.indexOf("error") >= 0
-                       ? window.errorColor : window.successColor
-                wrapMode: Text.WordWrap
-                Accessible.name: "Settings status"
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: window.spellcheckStatusText(browserUi)
-                color: window.spellcheckDictionaryStatus(browserUi).missing.length > 0
-                       ? window.warningColor : window.mutedTextColor
-                wrapMode: Text.WordWrap
-                Accessible.name: "Spellcheck dictionary status"
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: "Installed userscripts"
-                color: window.primaryTextColor
-                font.bold: true
-                Accessible.name: "Installed userscripts"
-            }
-
-            ListView {
-                id: userscriptList
-                Layout.fillWidth: true
-                Layout.preferredHeight: Math.min(150, Math.max(42, contentHeight))
-                visible: !window.temporaryProfile
-                clip: true
-                spacing: 3
-                model: window.userscriptInventoryRows()
-                delegate: Rectangle {
-                    width: userscriptList.width
-                    height: 42
-                    color: window.surfaceColor
-                    radius: 3
-                    Accessible.name: String(modelData.name || "userscript")
-
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.margins: 6
-                        spacing: 8
-                        CheckBox {
-                            checked: !!modelData.enabled
-                            text: checked ? "Enabled" : "Disabled"
-                            Accessible.name: "Enable userscript " + String(modelData.name || "")
-                            onToggled: {
-                                if (!browserUi.set_userscript_enabled(
-                                            String(modelData.name || ""), checked)) {
-                                    checked = !checked
-                                }
-                            }
-                        }
-                        Label {
-                            Layout.fillWidth: true
-                            text: String(modelData.name || "")
-                                  + " · " + Number(modelData.actions || 0) + " action(s)"
-                                  + (modelData.page_world ? " · page world" : "")
-                            color: window.secondaryTextColor
-                            elide: Text.ElideRight
-                        }
-                        Button {
-                            text: "Remove"
-                            Accessible.name: "Remove userscript " + String(modelData.name || "")
-                            onClicked: window.confirmRemoveUserscript(String(modelData.name || ""))
-                        }
-                    }
-                }
-            }
-
-            Label {
-                Layout.fillWidth: true
-                visible: window.temporaryProfile
-                text: "Userscript installation and enable changes are unavailable in private or ephemeral profiles."
-                color: window.mutedTextColor
-                wrapMode: Text.WordWrap
-            }
-
-            ListView {
-                id: settingsList
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
-                spacing: 5
-                model: window.settingsRows
-                delegate: Rectangle {
-                    property var rowData: modelData
-                    width: settingsList.width
-                    height: Math.max(76, window.chromeRowHeight * 5)
-                    color: window.surfaceColor
-                    radius: 3
-                    Accessible.name: rowData.label + " " + rowData.key
-
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.margins: 8
-                        spacing: 8
-
-                        ColumnLayout {
-                            Layout.preferredWidth: 300
-                            Layout.minimumWidth: 210
-                            spacing: 2
-                            Label {
-                                Layout.fillWidth: true
-                                text: rowData.label
-                                color: window.primaryTextColor
-                                font.bold: true
-                                elide: Text.ElideRight
-                            }
-                            Label {
-                                Layout.fillWidth: true
-                                text: rowData.key + " · " + rowData.scope + " · " + rowData.apply
-                                color: window.mutedTextColor
-                                elide: Text.ElideRight
-                            }
-                        }
-
-                        CheckBox {
-                            id: settingBooleanEditor
-                            visible: rowData.type === "bool"
-                            Layout.fillWidth: true
-                            text: checked ? "On" : "Off"
-                            checked: !!rowData.value
-                            Accessible.name: rowData.label
-                            onToggled: window.applySetting(rowData, checked)
-                        }
-
-                        ComboBox {
-                            id: settingEnumEditor
-                            visible: rowData.type === "enum"
-                            Layout.fillWidth: true
-                            model: rowData.options || []
-                            currentIndex: Math.max(0, (rowData.options || []).indexOf(String(rowData.value)))
-                            Accessible.name: rowData.label
-                            onActivated: window.applySetting(rowData, currentText)
-                        }
-
-                        TextField {
-                            id: settingTextEditor
-                            visible: rowData.type === "text" || rowData.type === "number"
-                                     || rowData.type === "languages"
-                            Layout.fillWidth: true
-                            text: rowData.type === "languages"
-                                  ? (rowData.value || []).join(", ") : String(rowData.value)
-                            Accessible.name: rowData.label
-                            Accessible.role: Accessible.EditableText
-                            onAccepted: window.applySetting(rowData, text)
-                        }
-
-                        Button {
-                            visible: rowData.type === "text" || rowData.type === "number"
-                                     || rowData.type === "languages"
-                            text: "Apply"
-                            Accessible.name: "Apply " + rowData.label
-                            onClicked: window.applySetting(rowData, settingTextEditor.text)
-                        }
-                        Button {
-                            text: "Reset"
-                            Accessible.name: "Reset " + rowData.label
-                            onClicked: window.resetSetting(rowData)
-                        }
-                    }
-                }
-            }
-        }
+        onUserscriptRemovalRequested: function(name) { window.confirmRemoveUserscript(name) }
+        onSettingApplyRequested: function(row, value) { window.applySetting(row, value) }
+        onSettingResetRequested: function(row) { window.resetSetting(row) }
     }
 
-    Rectangle {
+    FerricLibraryManager {
         id: libraryManager
-        anchors.centerIn: parent
-        width: Math.min(820, parent.width - 100)
-        height: Math.min(520, parent.height - 120)
-        z: 55
-        visible: window.libraryManagerVisible
-        focus: visible
-        Accessible.role: Accessible.Dialog
-        Accessible.name: "Library manager"
-        onVisibleChanged: if (visible) forceActiveFocus()
-        color: window.panelColor
-        border.color: window.borderColor
-
-        Keys.onPressed: function(event) {
-            if (event.key === Qt.Key_Escape) {
+        browserWindow: window
+        managerVisible: window.libraryManagerVisible
+        libraryKind: browserUi.library_kind
+        graphMode: window.libraryJourneyGraphMode
+        totalEntries: window.libraryTotalEntries
+        page: window.libraryPage
+        pageCount: window.libraryPageCount()
+        pageSize: window.libraryPageSize
+        journeySearchText: window.libraryJourneySearchText
+        journeyCurrentOnly: window.libraryJourneyCurrentOnly
+        pendingDelete: window.pendingLibraryDelete
+        entries: libraryEntries
+        graphNodes: libraryGraphNodes
+        graphEntries: libraryGraphEntries
+        graphLineData: window.libraryGraphLineData
+        profilesModel: profiles
+        profilesLoading: browserUi.profile_values_pending
+        onCloseRequested: {
+            window.libraryManagerVisible = false
+            window.closeInternalSurface()
+        }
+        onGraphToggleRequested: window.libraryJourneyGraphMode = !window.libraryJourneyGraphMode
+        onExportRequested: window.beginJourneyExport()
+        onPageChangeRequested: function(delta) { window.changeLibraryPage(delta) }
+        onJourneySearchRequested: function(text) {
+            window.libraryJourneySearchText = text
+            window.libraryJourneyExpandedNode = ""
+            window.libraryJourneyCurrentOnly = false
+            window.runJourneyQuery(window.journeySearchArgument(text))
+        }
+        onJourneyClearRequested: {
+            window.libraryJourneySearchText = ""
+            window.libraryJourneyExpandedNode = ""
+            window.libraryJourneyCurrentOnly = false
+            window.runJourneyQuery("")
+        }
+        onJourneyCurrentRequested: window.runJourneyCurrentQuery()
+        onJourneyAllRequested: window.runJourneyAllQuery()
+        onEntryOpenRequested: function(entryKind, entryId) {
+            window.openLibraryEntry(entryKind, entryId)
+        }
+        onPrivateHistoryTransferRequested: function(entryId, title, url) {
+            window.showPrivateHistoryTransfer(entryId, title, url)
+        }
+        onEntryEditRequested: function(entryKind, entryId, value) {
+            if (window.editLibraryEntry(entryKind, entryId, value)) {
+                libraryManager.markEditSaved(entryKind, entryId)
+            }
+        }
+        onEntryDeleteRequested: function(entryKind, entryId) {
+            window.deleteLibraryEntry(entryKind, entryId)
+        }
+        onJourneyReopenRequested: function(nodeId, target) {
+            var command = ":journey-reopen " + window.libraryCommandArgument(nodeId)
+                    + " --target " + target
+            if (browserUi.execute_command(command)) {
+                window.syncTabModel()
+                window.executePendingEngineAction()
                 window.libraryManagerVisible = false
                 window.closeInternalSurface()
-                event.accepted = true
             }
         }
+        onJourneyExpandRequested: function(nodeId) {
+            window.libraryJourneyExpandedNode = nodeId
+            window.libraryJourneySearchText = ""
+            window.libraryJourneyCurrentOnly = false
+            window.runJourneyQuery(window.journeyExpandArgument(nodeId))
+        }
+        onJourneyExportFileRequested: {
+            fileDialogSurfaces.journeyExportCurrentFile = "journey-export.json"
+            fileDialogSurfaces.openJourneyExport()
+        }
+        onJourneyExportCancelRequested: window.journeyExportPreviewVisible = false
+        onPrivateHistoryReopenRequested: function(profileName) {
+            window.confirmPrivateHistoryTransfer(profileName)
+        }
+        onPrivateHistoryBookmarkRequested: function(profileName, profileLabel) {
+            window.confirmPrivateHistoryBookmark(profileName, profileLabel)
+        }
+        onPrivateHistoryCancelRequested: window.cancelPrivateHistoryTransfer()
+    }
 
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 12
-            spacing: 8
-
-            RowLayout {
-                Layout.fillWidth: true
-                Label {
-                    Layout.fillWidth: true
-                    text: browserUi.library_kind
-                    color: window.primaryTextColor
-                    font.bold: true
-                }
-                Button {
-                    visible: browserUi.library_kind === "journey"
-                    text: window.libraryJourneyGraphMode ? "Outline" : "Relationships"
-                    Accessible.name: text + " view"
-                    onClicked: window.libraryJourneyGraphMode = !window.libraryJourneyGraphMode
-                }
-                Button {
-                    visible: browserUi.library_kind === "journey"
-                    text: "Export"
-                    Accessible.name: "Export journey records"
-                    onClicked: window.beginJourneyExport()
-                }
-                Button {
-                    visible: browserUi.library_kind !== "journey"
-                             && window.libraryTotalEntries > window.libraryPageSize
-                    text: "Previous"
-                    enabled: window.libraryPage > 0
-                    Accessible.name: "Previous library page"
-                    onClicked: window.changeLibraryPage(-1)
-                }
-                Label {
-                    visible: browserUi.library_kind !== "journey"
-                             && window.libraryTotalEntries > window.libraryPageSize
-                    text: "Page " + (window.libraryPage + 1) + " / " + window.libraryPageCount()
-                    color: window.mutedTextColor
-                    Accessible.name: text
-                }
-                Button {
-                    visible: browserUi.library_kind !== "journey"
-                             && window.libraryTotalEntries > window.libraryPageSize
-                    text: "Next"
-                    enabled: window.libraryPage + 1 < window.libraryPageCount()
-                    Accessible.name: "Next library page"
-                    onClicked: window.changeLibraryPage(1)
-                }
-                Button {
-                    text: "Close"
-                    Accessible.name: "Close library manager"
-                    onClicked: {
-                        window.libraryManagerVisible = false
-                        window.closeInternalSurface()
-                    }
-                }
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: "Profile-local records; URLs are displayed in their sanitized form."
-                color: window.mutedTextColor
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                visible: browserUi.library_kind === "journey"
-                TextField {
-                    id: journeySearchField
-                    Layout.fillWidth: true
-                    placeholderText: "Search title, URL, transition, or source"
-                    Accessible.name: "Search journey records"
-                    text: window.libraryJourneySearchText
-                    onAccepted: {
-                        window.libraryJourneySearchText = text
-                        window.libraryJourneyExpandedNode = ""
-                        window.libraryJourneyCurrentOnly = false
-                        window.runJourneyQuery(window.journeySearchArgument(text))
-                    }
-                }
-                Button {
-                    text: "Search"
-                    Accessible.name: "Search journey records"
-                    onClicked: {
-                        window.libraryJourneySearchText = journeySearchField.text
-                        window.libraryJourneyExpandedNode = ""
-                        window.libraryJourneyCurrentOnly = false
-                        window.runJourneyQuery(
-                            window.journeySearchArgument(journeySearchField.text))
-                    }
-                }
-                Button {
-                    text: "Clear"
-                    Accessible.name: "Clear journey search"
-                    onClicked: {
-                        journeySearchField.text = ""
-                        window.libraryJourneySearchText = ""
-                        window.libraryJourneyExpandedNode = ""
-                        window.libraryJourneyCurrentOnly = false
-                        window.runJourneyQuery("")
-                    }
-                }
-                Button {
-                    text: "Current"
-                    checkable: true
-                    checked: window.libraryJourneyCurrentOnly
-                    Accessible.name: "Show current journey node only"
-                    onClicked: window.runJourneyCurrentQuery()
-                }
-                Button {
-                    text: "All"
-                    enabled: window.libraryJourneyCurrentOnly
-                    Accessible.name: "Show all journey records"
-                    onClicked: window.runJourneyAllQuery()
-                }
-            }
-
-            ListView {
-                id: libraryList
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
-                visible: !window.libraryJourneyGraphMode || browserUi.library_kind !== "journey"
-                model: libraryEntries
-                delegate: ColumnLayout {
-                    width: libraryList.width
-                    spacing: 2
-                    property bool editing: false
-                    property bool journeyTargetPickerVisible: false
-                    property string editValue: model.entryKind === "quickmark"
-                            ? model.secondary : model.label
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Label {
-                            Layout.fillWidth: !editing
-                            text: model.label
-                            color: window.primaryTextColor
-                            elide: Text.ElideRight
-                        }
-                        TextField {
-                            visible: editing
-                            Layout.fillWidth: true
-                            text: editValue
-                            Accessible.name: "Edit " + model.entryKind + " " + model.entryId
-                            onTextChanged: editValue = text
-                            onAccepted: {
-                                if (window.editLibraryEntry(model.entryKind, model.entryId, text)) {
-                                    editing = false
-                                }
-                            }
-                        }
-                        Button {
-                            visible: model.entryKind === "history"
-                                     || model.entryKind === "bookmark"
-                                     || model.entryKind === "quickmark"
-                            text: "Open"
-                            Accessible.name: "Open " + model.entryKind + " " + model.entryId
-                            onClicked: window.openLibraryEntry(model.entryKind, model.entryId)
-                        }
-                        Button {
-                            visible: window.temporaryProfile && model.entryKind === "history"
-                            text: "Reopen in profile"
-                            Accessible.name: "Reopen private history entry in a named profile"
-                            onClicked: window.showPrivateHistoryTransfer(
-                                        model.entryId, model.label, model.secondary)
-                        }
-                        Button {
-                            visible: model.entryKind === "bookmark"
-                                     || model.entryKind === "quickmark"
-                            text: editing ? "Save" : "Edit"
-                            Accessible.name: (editing ? "Save " : "Edit ")
-                                             + model.entryKind + " " + model.entryId
-                            onClicked: {
-                                if (editing) {
-                                    if (window.editLibraryEntry(model.entryKind,
-                                                                 model.entryId,
-                                                                 editValue)) {
-                                        editing = false
-                                    }
-                                } else {
-                                    editValue = model.entryKind === "quickmark"
-                                            ? model.secondary : model.label
-                                    editing = true
-                                }
-                            }
-                        }
-                        Button {
-                            visible: (model.entryKind === "bookmark"
-                                      || model.entryKind === "quickmark") && !editing
-                            text: window.pendingLibraryDelete === (model.entryKind + "\t" + model.entryId)
-                                  ? "Confirm delete" : "Delete"
-                            Accessible.name: (text === "Delete" ? "Delete " : "Confirm delete ")
-                                             + model.entryKind + " " + model.entryId
-                            onClicked: window.deleteLibraryEntry(model.entryKind, model.entryId)
-                        }
-                        Button {
-                            visible: browserUi.library_kind === "journey"
-                            text: "Reopen target"
-                            Accessible.name: "Choose reopen target for journey node " + model.nodeId
-                            onClicked: {
-                                journeyTargetPickerVisible = !journeyTargetPickerVisible
-                            }
-                        }
-                        ComboBox {
-                            id: journeyTargetSelector
-                            visible: browserUi.library_kind === "journey"
-                                     && journeyTargetPickerVisible
-                            model: ["current", "tab", "window"]
-                            Accessible.name: "Journey reopen target"
-                            ToolTip.visible: hovered
-                            ToolTip.text: "Choose where this safe GET will open"
-                        }
-                        Button {
-                            visible: browserUi.library_kind === "journey"
-                            text: "Reopen"
-                            Accessible.name: "Reopen journey node " + model.nodeId
-                                    + " in " + journeyTargetSelector.currentText
-                            onClicked: {
-                                var target = journeyTargetSelector.currentText
-                                var command = ":journey-reopen "
-                                        + window.libraryCommandArgument(model.nodeId)
-                                        + " --target " + target
-                                if (browserUi.execute_command(command)) {
-                                    window.syncTabModel()
-                                    window.executePendingEngineAction()
-                                    window.libraryManagerVisible = false
-                                    window.closeInternalSurface()
-                                }
-                            }
-                        }
-                        Button {
-                            visible: browserUi.library_kind === "journey"
-                            text: "Expand"
-                            Accessible.name: "Expand journey node " + model.nodeId
-                            onClicked: {
-                                window.libraryJourneyExpandedNode = model.nodeId
-                                window.libraryJourneySearchText = ""
-                                window.libraryJourneyCurrentOnly = false
-                                journeySearchField.text = ""
-                                window.runJourneyQuery(window.journeyExpandArgument(model.nodeId))
-                            }
-                        }
-                    }
-                    Label {
-                        Layout.fillWidth: true
-                        text: model.secondary
-                        color: window.mutedTextColor
-                        elide: Text.ElideMiddle
-                    }
-                }
-            }
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                visible: window.libraryJourneyGraphMode && browserUi.library_kind === "journey"
-                spacing: 6
-
-                Flickable {
-                    id: journeyGraphFlickable
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 220
-                    Layout.minimumHeight: 120
-                    clip: true
-                    contentWidth: journeyGraphCanvas.width
-                    contentHeight: journeyGraphCanvas.height
-                    Accessible.name: "Bounded journey graph layout"
-
-                    Item {
-                        id: journeyGraphCanvas
-                        width: Math.max(journeyGraphFlickable.width, 4 * (170 + 24))
-                        height: Math.max(120, Math.ceil(libraryGraphNodes.count / 4) * (48 + 18))
-
-                        Canvas {
-                            id: graphCanvas
-                            anchors.fill: parent
-                            z: 0
-                            onPaint: {
-                                var context = getContext("2d")
-                                context.clearRect(0, 0, width, height)
-                                var colors = {
-                                    navigate: window.borderColor,
-                                    redirect: window.warningColor,
-                                    opener: window.accentColor,
-                                    popup: window.accentColor,
-                                    hint: window.successColor,
-                                    "session-restore": window.privateColor,
-                                    reopen: window.warningColor,
-                                    "branch-after-back": window.errorColor
-                                }
-                                var lines = window.libraryGraphLineData
-                                for (var i = 0; i < lines.length; ++i) {
-                                    var line = lines[i]
-                                    context.beginPath()
-                                    context.moveTo(line.x1, line.y1)
-                                    context.lineTo(line.x2, line.y2)
-                                    context.strokeStyle = colors[line.transition]
-                                            || window.borderColor
-                                    context.lineWidth = 2
-                                    context.stroke()
-                                }
-                            }
-                        }
-
-                        Repeater {
-                            model: libraryGraphNodes
-                            delegate: Rectangle {
-                                x: model.x
-                                y: model.y
-                                width: 170
-                                height: 48
-                                z: 1
-                                color: window.surfaceColor
-                                border.color: window.accentColor
-                                Accessible.role: Accessible.ListItem
-                                Accessible.name: model.label + ", transition " + model.transition
-                                Accessible.description: "Journey node " + model.nodeId
-                                        + (model.source.length > 0 ? ", source " + model.source : "")
-
-                                Column {
-                                    anchors.fill: parent
-                                    anchors.margins: 5
-                                    spacing: 2
-                                    Label {
-                                        width: parent.width
-                                        text: model.label
-                                        color: window.primaryTextColor
-                                        elide: Text.ElideRight
-                                    }
-                                    Label {
-                                        width: parent.width
-                                        text: model.transition
-                                                + (model.source.length > 0 ? " · " + model.source : "")
-                                        color: window.mutedTextColor
-                                        elide: Text.ElideRight
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                ListView {
-                    id: libraryGraphList
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    clip: true
-                    model: libraryGraphEntries
-                    Accessible.name: "Journey relationships"
-                    delegate: ColumnLayout {
-                        width: libraryGraphList.width
-                        spacing: 2
-                        Label {
-                            Layout.fillWidth: true
-                            text: model.label
-                            color: window.primaryTextColor
-                            elide: Text.ElideRight
-                        }
-                        Label {
-                            Layout.fillWidth: true
-                            text: model.secondary
-                            color: window.mutedTextColor
-                            elide: Text.ElideMiddle
-                        }
-                    }
-                }
+    FerricSwitcher {
+        id: switcherSurface
+        browserWindow: window
+        switcherVisible: window.switcherVisible
+        results: window.switcherResults
+        onQueryChanged: function(query) {
+            if (window.switcherVisible) {
+                window.cancelSwitcherBatch()
+                switcherRefreshTimer.restart()
             }
         }
-
-        Rectangle {
-            id: journeyExportPreviewSurface
-            anchors.fill: parent
-            z: 10
-            visible: window.journeyExportPreviewVisible
-            color: window.panelColor
-            border.color: window.warningColor
-            Accessible.role: Accessible.Dialog
-            Accessible.name: "Journey export preview"
-
-            ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: 18
-                spacing: 12
-
-                Label {
-                    Layout.fillWidth: true
-                    text: "Review journey export"
-                    color: window.primaryTextColor
-                    font.bold: true
-                }
-                Text {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    text: window.journeyExportPreviewText
-                    color: window.primaryTextColor
-                    wrapMode: Text.WordWrap
-                    Accessible.name: text
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    Item { Layout.fillWidth: true }
-                    Button {
-                        text: "Choose file"
-                        Accessible.name: "Choose journey export file"
-                        onClicked: {
-                            journeyExportChooser.currentFile = "journey-export.json"
-                            journeyExportChooser.open()
-                        }
-                    }
-                    Button {
-                        text: "Cancel"
-                        Accessible.name: "Cancel journey export"
-                        onClicked: window.journeyExportPreviewVisible = false
-                    }
-                }
-            }
-        }
-
-        Rectangle {
-            id: privateHistoryTransferSurface
-            anchors.fill: parent
-            z: 12
-            visible: window.privateHistoryTransferVisible
-            color: window.panelColor
-            border.color: window.warningColor
-            Accessible.role: Accessible.Dialog
-            Accessible.name: "Private history transfer preview"
-
-            ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: 18
-                spacing: 10
-
-                Label {
-                    Layout.fillWidth: true
-                    text: "Reopen private history in a named profile"
-                    color: window.primaryTextColor
-                    font.bold: true
-                }
-                Label {
-                    Layout.fillWidth: true
-                    text: "Preview only: this transfers the safe URL below. Private history, title, permissions, cookies, sessions, and marks remain in the transient profile."
-                    color: window.warningColor
-                    wrapMode: Text.WordWrap
-                }
-                Label {
-                    Layout.fillWidth: true
-                    text: "Title: " + window.privateHistoryTransferTitle
-                    color: window.primaryTextColor
-                    elide: Text.ElideRight
-                }
-                Label {
-                    Layout.fillWidth: true
-                    text: "URL: " + window.privateHistoryTransferUrl
-                    color: window.secondaryTextColor
-                    wrapMode: Text.WrapAnywhere
-                }
-                Label {
-                    Layout.fillWidth: true
-                    text: "Choose a destination profile:"
-                    color: window.primaryTextColor
-                }
-                ListView {
-                    id: privateHistoryProfileList
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    clip: true
-                    model: profiles
-                    delegate: RowLayout {
-                        width: privateHistoryProfileList.width
-                        spacing: 8
-                        Label {
-                            Layout.fillWidth: true
-                            text: model.name + " — " + model.label
-                            color: window.primaryTextColor
-                            elide: Text.ElideRight
-                        }
-                        Button {
-                            text: "Confirm reopen"
-                            Accessible.name: "Confirm private history reopen in " + model.label
-                            onClicked: window.confirmPrivateHistoryTransfer(model.name)
-                        }
-                        Button {
-                            text: "Add bookmark"
-                            Accessible.name: "Add private history entry as a bookmark in "
-                                             + model.label
-                            onClicked: window.confirmPrivateHistoryBookmark(model.name,
-                                                                              model.label)
-                        }
-                    }
-                    Label {
-                        anchors.centerIn: parent
-                        visible: privateHistoryProfileList.count === 0
-                        text: browserUi.profile_values_pending
-                                ? "Loading named profiles…"
-                                : "No named profiles available"
-                        color: window.mutedTextColor
-                    }
-                }
-                Button {
-                    Layout.alignment: Qt.AlignRight
-                    text: "Cancel"
-                    Accessible.name: "Cancel private history transfer"
-                    onClicked: window.cancelPrivateHistoryTransfer()
-                }
-            }
+        onCloseRequested: window.closeSwitcher()
+        onActivationRequested: function(index) { window.activateSwitcher(index) }
+        onActionRequested: function(index, action) {
+            window.activateSwitcherAction(index, action)
         }
     }
 
-    Rectangle {
-        id: switcher
-        anchors.centerIn: parent
-        width: Math.min(860, parent.width - Math.max(40, window.chromeRowHeight * 4))
-        height: Math.min(520, parent.height - Math.max(90, window.chromeRowHeight * 6))
-        z: 60
-        visible: window.switcherVisible
-        focus: visible
-        Accessible.role: Accessible.Dialog
-        Accessible.name: "Universal switcher"
-        Accessible.description: "Search up to " + window.switcherMaxResults()
-            + " browser items; use arrow keys, Page Up, Page Down, Home, End, and Enter to choose"
-        color: window.panelColor
-        border.color: window.accentColor
-
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 12
-            spacing: 8
-
-            RowLayout {
-                Layout.fillWidth: true
-                Label {
-                    Layout.fillWidth: true
-                    text: "Switcher"
-                    color: window.primaryTextColor
-                    font.bold: true
-                    Accessible.name: "Universal switcher heading"
-                }
-                Label {
-                    text: "Ctrl-P · Esc"
-                    color: window.mutedTextColor
-                }
-                Label {
-                    text: window.switcherResults.length + " results"
-                    color: window.mutedTextColor
-                    Accessible.name: text
-                    Accessible.role: Accessible.StatusBar
-                    Accessible.description: "Current universal switcher result count"
-                }
-            }
-
-            TextField {
-                id: switcherInput
-                Layout.fillWidth: true
-                placeholderText: "Search tabs, windows, contexts, commands, history, marks, sessions, downloads"
-                Accessible.name: "Universal switcher search"
-                Accessible.role: Accessible.EditableText
-                Accessible.editable: true
-                onTextChanged: {
-                    if (window.switcherVisible) {
-                        window.cancelSwitcherBatch()
-                        switcherRefreshTimer.restart()
-                    }
-                }
-                Keys.onPressed: function(event) {
-                    if (event.key === Qt.Key_Escape) {
-                        window.closeSwitcher()
-                        event.accepted = true
-                    } else if (event.key === Qt.Key_Down) {
-                        switcherList.incrementCurrentIndex()
-                        event.accepted = true
-                    } else if (event.key === Qt.Key_Up) {
-                        switcherList.decrementCurrentIndex()
-                        event.accepted = true
-                    } else if (event.key === Qt.Key_PageDown) {
-                        if (switcherList.count > 0) {
-                            switcherList.positionViewAtIndex(
-                                        Math.min(switcherList.count - 1,
-                                                 switcherList.currentIndex + 8),
-                                        ListView.Beginning)
-                            switcherList.currentIndex = Math.min(
-                                        switcherList.count - 1,
-                                        switcherList.currentIndex + 8)
-                        }
-                        event.accepted = true
-                    } else if (event.key === Qt.Key_PageUp) {
-                        if (switcherList.count > 0) {
-                            switcherList.positionViewAtIndex(
-                                        Math.max(0, switcherList.currentIndex - 8),
-                                        ListView.Beginning)
-                            switcherList.currentIndex = Math.max(
-                                        0, switcherList.currentIndex - 8)
-                        }
-                        event.accepted = true
-                    } else if (event.key === Qt.Key_Home) {
-                        if (switcherList.count > 0) {
-                            switcherList.currentIndex = 0
-                            switcherList.positionViewAtBeginning()
-                        }
-                        event.accepted = true
-                    } else if (event.key === Qt.Key_End) {
-                        if (switcherList.count > 0) {
-                            switcherList.currentIndex = switcherList.count - 1
-                            switcherList.positionViewAtEnd()
-                        }
-                        event.accepted = true
-                    } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                        window.activateSwitcher(switcherList.currentIndex)
-                        event.accepted = true
-                    }
-                }
-            }
-
-            ListView {
-                id: switcherList
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
-                focus: true
-                model: window.switcherResults
-                currentIndex: count > 0 ? 0 : -1
-                Accessible.role: Accessible.List
-                Accessible.name: "Switcher results"
-                Accessible.description: count + " results; selected result is announced with its kind and label"
-                delegate: Rectangle {
-                    width: switcherList.width
-                    height: Math.max(window.chromeRowHeight * 5,
-                                     resultColumn.implicitHeight + window.chromeRowHeight)
-                    property var resultData: modelData
-                    property int resultIndex: index
-                    color: index === switcherList.currentIndex ? window.selectionColor : "transparent"
-                    Accessible.role: Accessible.ListItem
-                    Accessible.selected: index === switcherList.currentIndex
-                    Accessible.name: resultData.kind + " " + resultData.label
-                    Accessible.description: (resultData.profile || "")
-                        + (resultData.secondary ? " · " + resultData.secondary : "")
-                        + (index === switcherList.currentIndex ? " · selected" : "")
-
-                    ColumnLayout {
-                        id: resultColumn
-                        anchors.fill: parent
-                        anchors.margins: 6
-                        spacing: 2
-                        Label {
-                            Layout.fillWidth: true
-                            color: window.primaryTextColor
-                            text: "[" + resultData.kind + "] " + resultData.label
-                            elide: Text.ElideRight
-                        }
-                        Label {
-                            Layout.fillWidth: true
-                            color: window.mutedTextColor
-                            text: (resultData.profile || "")
-                                  + (resultData.secondary ? " · " + resultData.secondary : "")
-                            elide: Text.ElideRight
-                        }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 4
-                            Repeater {
-                                model: resultData.actions || []
-                                delegate: Button {
-                                    text: modelData
-                                    Accessible.name: modelData + " " + resultData.kind
-                                    onClicked: window.activateSwitcherAction(resultIndex, modelData)
-                                }
-                            }
-                            Item { Layout.fillWidth: true }
-                        }
-                    }
-
-                    MouseArea {
-                        anchors.top: parent.top
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.bottom: parent.bottom
-                        onClicked: window.activateSwitcher(index)
-                    }
-                }
-            }
-        }
-    }
-
-    Rectangle {
-        id: linkPreview
-        anchors.centerIn: parent
-        width: Math.min(900, parent.width - 80)
-        height: Math.min(470, parent.height - 120)
-        z: 70
-        visible: window.linkPreviewVisible
-        focus: visible
-        Accessible.role: Accessible.Dialog
-        Accessible.name: "Clean-link preview"
-        onVisibleChanged: if (visible) forceActiveFocus()
-        color: window.panelColor
-        border.color: window.warningColor
-
-        Keys.onPressed: function(event) {
-            if (event.key === Qt.Key_Escape) {
+    FerricLinkPreview {
+        browserWindow: window
+        previewUi: browserUi
+        onCloseRequested: window.closeLinkPreview()
+        onNavigationConfirmed: {
+            if (browserUi.confirm_link_navigation()) {
+                window.executePendingEngineAction()
                 window.closeLinkPreview()
-                event.accepted = true
-            }
-        }
-
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 14
-            spacing: 8
-
-            RowLayout {
-                Layout.fillWidth: true
-                Label {
-                    Layout.fillWidth: true
-                    text: linkPreviewData.command === "url-explain" ? "URL explanation" : "Clean-link preview"
-                    color: window.primaryTextColor
-                    font.bold: true
-                }
-                Button {
-                    text: "Confirm navigation"
-                    visible: linkPreviewData.requires_confirmation === true
-                    Accessible.name: "Confirm cleaned URL navigation"
-                    onClicked: {
-                        if (browserUi.confirm_link_navigation()) {
-                            window.executePendingEngineAction()
-                            window.closeLinkPreview()
-                            window.syncTabModel()
-                        }
-                    }
-                }
-                Button {
-                    text: "Close"
-                    Accessible.name: "Close URL preview"
-                    onClicked: window.closeLinkPreview()
-                }
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: "Preview only; no navigation was performed. Sensitive URL components are masked."
-                color: window.warningColor
-                wrapMode: Text.WordWrap
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: "Original: " + (linkPreviewData.original || "")
-                color: window.primaryTextColor
-                wrapMode: Text.WrapAnywhere
-            }
-            Label {
-                Layout.fillWidth: true
-                text: "Result: " + (linkPreviewData.cleaned || "")
-                color: window.primaryTextColor
-                wrapMode: Text.WrapAnywhere
-            }
-            Label {
-                Layout.fillWidth: true
-                text: "Rules: " + ((linkPreviewData.applied_rules || []).join(", ") || "none")
-                color: window.mutedTextColor
-                wrapMode: Text.WordWrap
-            }
-            Label {
-                Layout.fillWidth: true
-                text: "Removed: " + ((linkPreviewData.removed_parameters || []).join(", ") || "none")
-                color: window.mutedTextColor
-                wrapMode: Text.WordWrap
-            }
-            Label {
-                Layout.fillWidth: true
-                text: "Retained: " + ((linkPreviewData.retained_parameters || []).join(", ") || "none")
-                color: window.mutedTextColor
-                wrapMode: Text.WordWrap
-            }
-            Label {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                text: linkPreviewData.explanation || ""
-                color: window.secondaryTextColor
-                wrapMode: Text.WordWrap
-                verticalAlignment: Text.AlignTop
+                window.syncTabModel()
             }
         }
     }
 
-    Rectangle {
-        id: downloadManager
-        anchors.centerIn: parent
-        width: Math.min(760 * window.chromeScale, parent.width - 32)
-        height: Math.min(430 * window.chromeScale, parent.height - 32)
-        z: 40
-        visible: window.downloadManagerVisible
-        focus: visible
-        Accessible.role: Accessible.Dialog
-        Accessible.name: "Download manager"
-        onVisibleChanged: if (visible) forceActiveFocus()
-        color: window.panelColor
-        border.color: window.borderColor
-
-        Keys.onPressed: function(event) {
-            if (event.key === Qt.Key_Escape) {
-                window.downloadManagerVisible = false
-                window.closeInternalSurface()
-                event.accepted = true
-            }
+    FerricDownloadManager {
+        browserWindow: window
+        downloadsModel: downloads
+        onCloseRequested: {
+            window.downloadManagerVisible = false
+            window.closeInternalSurface()
         }
-
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 12
-            spacing: 8
-
-            RowLayout {
-                Layout.fillWidth: true
-                Label {
-                    Layout.fillWidth: true
-                    text: "Downloads"
-                    color: window.primaryTextColor
-                    font.bold: true
-                }
-                Button {
-                    text: "Close"
-                    Accessible.name: "Close download manager"
-                    onClicked: {
-                        window.downloadManagerVisible = false
-                        window.closeInternalSurface()
-                    }
-                }
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: "Downloads are saved to the user Downloads directory with validated names and collision-safe renaming."
-                color: window.secondaryTextColor
-                wrapMode: Text.WordWrap
-            }
-
-            ListView {
-                id: downloadList
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
-                model: downloads
-                delegate: ColumnLayout {
-                    width: downloadList.width
-                    spacing: 2
-                    Label {
-                        Layout.fillWidth: true
-                        text: model.state + " · " + model.bytes + " bytes"
-                              + (Number(model.total) >= 0
-                                 ? " / " + model.total + " bytes" : "")
-                              + (window.formatDownloadRate(model.speed).length > 0
-                                 ? " · " + window.formatDownloadRate(model.speed) : "")
-                              + " · " + model.id
-                        color: window.primaryTextColor
-                    }
-                    Label {
-                        Layout.fillWidth: true
-                        text: model.destination.length > 0 ? model.destination : "Selecting destination"
-                        color: window.mutedTextColor
-                        elide: Text.ElideMiddle
-                    }
-                    Label {
-                        Layout.fillWidth: true
-                        visible: model.reason.length > 0
-                        text: "Failure reason: " + model.reason
-                        color: window.warningColor
-                        wrapMode: Text.WordWrap
-                    }
-                    RowLayout {
-                        visible: model.state === "completed"
-                        Button {
-                            text: "Open"
-                            Accessible.name: "Open completed download"
-                            onClicked: window.openDownload(model.id, false)
-                        }
-                        Button {
-                            text: "Show"
-                            Accessible.name: "Reveal completed download"
-                            onClicked: window.openDownload(model.id, true)
-                        }
-                    }
-                    RowLayout {
-                        visible: model.state === "in-progress" || model.state === "paused"
-                        Button {
-                            text: model.state === "paused" ? "Resume" : "Pause"
-                            Accessible.name: model.state === "paused" ? "Resume download" : "Pause download"
-                            onClicked: window.requestDownloadAction(model.id, model.state === "paused" ? "resume" : "pause")
-                        }
-                        Button {
-                            text: "Cancel"
-                            Accessible.name: "Cancel download"
-                            onClicked: window.requestDownloadAction(model.id, "cancel")
-                        }
-                    }
-                    RowLayout {
-                        visible: model.state === "interrupted" || model.state === "cancelled"
-                        Button {
-                            text: "Retry"
-                            Accessible.name: "Retry download"
-                            onClicked: window.requestDownloadAction(model.id, "retry")
-                        }
-                    }
-                }
-            }
+        onOpenRequested: function(downloadId, reveal) {
+            window.openDownload(downloadId, reveal)
+        }
+        onActionRequested: function(downloadId, action) {
+            window.requestDownloadAction(downloadId, action)
         }
     }
 
@@ -13722,453 +10853,89 @@ ApplicationWindow {
         }
     }
 
-    Rectangle {
-        id: profileManager
-        anchors.centerIn: parent
-        width: Math.min(620 * window.chromeScale, parent.width - 32)
-        height: Math.min(430 * window.chromeScale, parent.height - 32)
-        z: 40
-        visible: window.profileManagerVisible
-        focus: visible
-        Accessible.role: Accessible.Dialog
-        Accessible.name: "Profile manager"
-        onVisibleChanged: if (visible) forceActiveFocus()
-        color: window.panelColor
-        border.color: window.borderColor
+    FerricProfileManager {
+        id: profileManagerSurface
+        browserWindow: window
+        profilesModel: profiles
+        onCloseRequested: {
+            window.profileManagerVisible = false
+            window.closeInternalSurface()
+        }
+        onCreateRequested: function(name, label) {
+            if (browserUi.create_profile(name, label)) {
+                profileManagerSurface.clearCreateInputs()
+                window.scheduleProfileRefresh()
+            }
+        }
+        onRenameRequested: function(name, label) {
+            if (browserUi.rename_profile(name, label)) {
+                profileManagerSurface.clearRename()
+                window.scheduleProfileRefresh()
+            }
+        }
+        onOpenRequested: function(name, label) { window.openProfile(name, label) }
+        onDeleteRequested: function(name) { window.showProfileDeletePreview(name) }
+    }
 
-        Keys.onPressed: function(event) {
-            if (event.key === Qt.Key_Escape) {
+    FerricProfileDeletePreview {
+        browserWindow: window
+        onConfirmRequested: {
+            if (browserUi.delete_profile(window.profileDeleteName, true)) {
+                window.profileDeletePreviewVisible = false
                 window.profileManagerVisible = false
                 window.closeInternalSurface()
-                event.accepted = true
-            }
-        }
-
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 12
-            spacing: 8
-
-            RowLayout {
-                Layout.fillWidth: true
-                Label {
-                    Layout.fillWidth: true
-                    text: "Profiles"
-                    color: window.primaryTextColor
-                    font.bold: true
-                }
-                Button {
-                    text: "Close"
-                    Accessible.name: "Close profile manager"
-                    onClicked: {
-                        window.profileManagerVisible = false
-                        window.closeInternalSurface()
-                    }
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                TextField {
-                    id: profileNameInput
-                    Layout.fillWidth: true
-                    placeholderText: "new-profile-name"
-                    Accessible.name: "New profile name"
-                }
-                TextField {
-                    id: profileLabelInput
-                    Layout.fillWidth: true
-                    placeholderText: "Display label"
-                    Accessible.name: "New profile label"
-                }
-                Button {
-                    text: "Create"
-                    enabled: profileNameInput.text.length > 0 && profileLabelInput.text.length > 0
-                    onClicked: {
-                        if (browserUi.create_profile(profileNameInput.text, profileLabelInput.text)) {
-                            profileNameInput.text = ""
-                            profileLabelInput.text = ""
-                            window.scheduleProfileRefresh()
-                        }
-                    }
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                TextField {
-                    Layout.fillWidth: true
-                    text: window.profileRenameName
-                    readOnly: true
-                    placeholderText: "Select a profile to rename"
-                    Accessible.name: "Profile being renamed"
-                }
-                TextField {
-                    id: profileRenameInput
-                    Layout.fillWidth: true
-                    text: window.profileRenameLabel
-                    placeholderText: "New display label"
-                    Accessible.name: "New profile display label"
-                }
-                Button {
-                    text: "Rename label"
-                    enabled: window.profileRenameName.length > 0 && profileRenameInput.text.length > 0
-                    onClicked: {
-                        if (browserUi.rename_profile(window.profileRenameName, profileRenameInput.text)) {
-                            window.profileRenameName = ""
-                            window.profileRenameLabel = ""
-                            profileRenameInput.text = ""
-                            window.scheduleProfileRefresh()
-                        }
-                    }
-                }
-            }
-
-            ListView {
-                id: profileList
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
-                model: profiles
-                delegate: RowLayout {
-                    width: profileList.width
-                    spacing: 6
-                    Label {
-                        Layout.fillWidth: true
-                        text: model.name + " — " + model.label
-                        color: window.primaryTextColor
-                    }
-                    Button {
-                        text: "Open window"
-                        onClicked: window.openProfile(model.name, model.label)
-                    }
-                    Button {
-                        text: "Edit label"
-                        onClicked: {
-                            window.profileRenameName = model.name
-                            window.profileRenameLabel = model.label
-                            profileRenameInput.text = model.label
-                        }
-                    }
-                    Button {
-                        text: "Delete"
-                        onClicked: window.showProfileDeletePreview(model.name)
-                    }
-                }
-            }
-        }
-    }
-
-    Rectangle {
-        id: profileDeletePreview
-        anchors.centerIn: parent
-        width: Math.min(660 * window.chromeScale, parent.width - 32)
-        height: Math.min(390 * window.chromeScale, parent.height - 32)
-        z: 50
-        visible: window.profileDeletePreviewVisible
-        focus: visible
-        Accessible.role: Accessible.Dialog
-        Accessible.name: "Profile deletion preview"
-        onVisibleChanged: if (visible) forceActiveFocus()
-        color: window.backgroundColor
-        border.color: window.errorColor
-
-        Keys.onPressed: function(event) {
-            if (event.key === Qt.Key_Escape) {
-                window.profileDeletePreviewVisible = false
                 window.closeInternalSurface()
-                event.accepted = true
             }
         }
+        onCancelRequested: {
+            window.profileDeletePreviewVisible = false
+            window.closeInternalSurface()
+        }
+    }
 
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 14
-            spacing: 10
-
-            Label {
-                Layout.fillWidth: true
-                text: "Delete profile: " + window.profileDeleteName
-                color: window.primaryTextColor
-                font.bold: true
-            }
-            Label {
-                Layout.fillWidth: true
-                text: "This removes the exact Ferric Browser metadata roots below. QtWebEngine storage is not removed."
-                color: window.errorColor
-                wrapMode: Text.WordWrap
-            }
-            Text {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                text: window.profileDeletePreviewText
-                color: window.primaryTextColor
-                wrapMode: Text.Wrap
-                elide: Text.ElideRight
-            }
-            RowLayout {
-                Layout.fillWidth: true
-                Item { Layout.fillWidth: true }
-                Button {
-                    text: "Confirm delete"
-                    onClicked: {
-                        if (browserUi.delete_profile(window.profileDeleteName, true)) {
-                            window.profileDeletePreviewVisible = false
-                            window.profileManagerVisible = false
-                            window.closeInternalSurface()
-                            window.closeInternalSurface()
-                        }
-                    }
+    FerricSessionManager {
+        browserWindow: window
+        sessionsModel: namedSessions
+        onCloseRequested: {
+            window.sessionManagerVisible = false
+            window.closeInternalSurface()
+        }
+        onSaveRequested: function(name) {
+            if (browserUi.save_named_session(name))
+                window.refreshSessions()
+        }
+        onPreviewRequested: function(name) { window.showSessionPreview(name, false) }
+        onDeleteRequested: function(name, confirmed) {
+            if (confirmed) {
+                if (browserUi.delete_named_session(name, true)) {
+                    window.pendingDeleteName = ""
+                    window.refreshSessions()
                 }
-                Button {
-                    text: "Cancel"
-                    onClicked: {
-                        window.profileDeletePreviewVisible = false
-                        window.closeInternalSurface()
-                    }
-                }
+            } else {
+                window.pendingDeleteName = name
             }
         }
     }
 
-    Rectangle {
-        id: sessionManager
-        anchors.centerIn: parent
-        width: Math.min(560 * window.chromeScale, parent.width - 32)
-        height: Math.min(420 * window.chromeScale, parent.height - 32)
-        z: 40
-        visible: window.sessionManagerVisible
-        focus: visible
-        Accessible.role: Accessible.Dialog
-        Accessible.name: "Session manager"
-        onVisibleChanged: if (visible) forceActiveFocus()
-        color: window.panelColor
-        border.color: window.borderColor
-
-        Keys.onPressed: function(event) {
-            if (event.key === Qt.Key_Escape) {
-                window.sessionManagerVisible = false
-                window.closeInternalSurface()
-                event.accepted = true
-            }
+    FerricSessionPreview {
+        browserWindow: window
+        onCloseRequested: {
+            window.sessionPreviewVisible = false
+            window.sessionPreviewLoading = false
+            window.sessionPreviewError = false
+            window.closeInternalSurface()
         }
-
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 12
-            spacing: 8
-
-            RowLayout {
-                Layout.fillWidth: true
-                Label {
-                    Layout.fillWidth: true
-                    text: "Named sessions"
-                    color: window.primaryTextColor
-                    font.bold: true
-                }
-                Button {
-                    text: "Close"
-                    Accessible.name: "Close session manager"
-                    onClicked: {
-                        window.sessionManagerVisible = false
-                        window.closeInternalSurface()
-                    }
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                TextField {
-                    id: sessionNameInput
-                    Layout.fillWidth: true
-                    placeholderText: "Save current session as..."
-                    Accessible.name: "New session name"
-                }
-                Button {
-                    text: "Save"
-                    enabled: sessionNameInput.text.length > 0
-                    onClicked: {
-                        if (browserUi.save_named_session(sessionNameInput.text)) {
-                            sessionNameInput.text = ""
-                            window.refreshSessions()
-                        }
-                    }
-                }
-            }
-
-            ListView {
-                id: sessionList
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
-                model: namedSessions
-                delegate: RowLayout {
-                    width: sessionList.width
-                    spacing: 6
-                    Label {
-                        Layout.fillWidth: true
-                        text: model.name
-                        color: window.primaryTextColor
-                        Accessible.name: "Named session " + model.name
-                    }
-                    Button {
-                        text: "Preview"
-                        onClicked: window.showSessionPreview(model.name, false)
-                    }
-                    Button {
-                        text: window.pendingDeleteName === model.name ? "Confirm delete" : "Delete"
-                        onClicked: {
-                            if (window.pendingDeleteName === model.name) {
-                                if (browserUi.delete_named_session(model.name, true)) {
-                                    window.pendingDeleteName = ""
-                                    window.refreshSessions()
-                                }
-                            } else {
-                                window.pendingDeleteName = model.name
-                            }
-                        }
-                    }
-                }
-            }
+        onLoadRequested: function(append) {
+            if (append)
+                window.sessionPreviewAppend = true
+            window.loadPreviewedSession()
         }
     }
 
-    Rectangle {
-        id: sessionPreview
-        anchors.centerIn: parent
-        width: Math.min(620 * window.chromeScale, parent.width - 32)
-        height: Math.min(430 * window.chromeScale, parent.height - 32)
-        z: 50
-        visible: window.sessionPreviewVisible
-        focus: visible
-        Accessible.role: Accessible.Dialog
-        Accessible.name: "Session preview"
-        onVisibleChanged: if (visible) forceActiveFocus()
-        color: window.backgroundColor
-        border.color: window.accentColor
-
-        Keys.onPressed: function(event) {
-            if (event.key === Qt.Key_Escape) {
-                window.sessionPreviewVisible = false
-                window.sessionPreviewLoading = false
-                window.sessionPreviewError = false
-                window.closeInternalSurface()
-                event.accepted = true
-            }
-        }
-
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 14
-            spacing: 10
-
-            Label {
-                Layout.fillWidth: true
-                text: "Load session: " + window.sessionPreviewName
-                color: window.primaryTextColor
-                font.bold: true
-            }
-            Label {
-                Layout.fillWidth: true
-                text: window.sessionPreviewAppend
-                      ? "Append these validated descriptors to the current tabs?"
-                      : "Replace the current tabs with these validated descriptors?"
-                color: window.secondaryTextColor
-                wrapMode: Text.WordWrap
-            }
-            Text {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                text: window.sessionPreviewText
-                color: window.primaryTextColor
-                wrapMode: Text.Wrap
-                elide: Text.ElideRight
-            }
-            RowLayout {
-                Layout.fillWidth: true
-                Item { Layout.fillWidth: true }
-                Button {
-                    text: "Replace"
-                    enabled: !window.sessionPreviewLoading
-                             && !window.sessionPreviewAppend
-                             && !window.sessionPreviewError
-                    onClicked: window.loadPreviewedSession()
-                }
-                Button {
-                    text: "Append"
-                    enabled: !window.sessionPreviewLoading && !window.sessionPreviewError
-                    onClicked: {
-                        window.sessionPreviewAppend = true
-                        window.loadPreviewedSession()
-                    }
-                }
-                Button {
-                    text: "Cancel"
-                    Accessible.name: "Cancel session preview"
-                    onClicked: {
-                        window.sessionPreviewVisible = false
-                        window.sessionPreviewLoading = false
-                        window.sessionPreviewError = false
-                        window.closeInternalSurface()
-                    }
-                }
-            }
-        }
-    }
-
-    Rectangle {
-        id: reopenWindowConfirmation
-        anchors.centerIn: parent
-        width: Math.min(560 * window.chromeScale, parent.width - 32)
-        height: Math.min(260 * window.chromeScale, parent.height - 32)
-        z: 55
-        visible: window.reopenWindowConfirmationVisible
-        focus: visible
-        Accessible.role: Accessible.Dialog
-        Accessible.name: "Reopen tab in window confirmation"
-        onVisibleChanged: if (visible) forceActiveFocus()
-        color: window.panelColor
-        border.color: window.warningColor
-
-        Keys.onPressed: function(event) {
-            if (event.key === Qt.Key_Escape) {
-                window.cancelReopenWindow()
-                event.accepted = true
-            }
-        }
-
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 14
-            spacing: 10
-
-            Label {
-                Layout.fillWidth: true
-                text: "Reopen tab in a same-profile window?"
-                color: window.primaryTextColor
-                font.bold: true
-            }
-            Label {
-                Layout.fillWidth: true
-                text: "This opens a safe URL descriptor in a new window. Live page state, forms, media, and in-progress engine work will not be preserved."
-                color: window.warningColor
-                wrapMode: Text.WordWrap
-            }
-            RowLayout {
-                Layout.fillWidth: true
-                Item { Layout.fillWidth: true }
-                Button {
-                    text: "Reopen"
-                    Accessible.name: "Confirm reopen tab in window"
-                    onClicked: window.confirmReopenWindow()
-                }
-                Button {
-                    text: "Cancel"
-                    Accessible.name: "Cancel reopen tab in window"
-                    onClicked: window.cancelReopenWindow()
-                }
-            }
-        }
+    FerricReopenWindowConfirmation {
+        browserWindow: window
+        onConfirmRequested: window.confirmReopenWindow()
+        onCancelRequested: window.cancelReopenWindow()
     }
 
     StackLayout {
@@ -14221,7 +10988,7 @@ ApplicationWindow {
                 }
                 Connections {
                     target: viewUi
-                    function onSite_experiment_jsonChanged() {
+                    function onSite_experiment_kindChanged() {
                         webView.refreshEffectiveSiteSettings()
                     }
                     function onActive_tab_indexChanged() {
@@ -14310,7 +11077,7 @@ ApplicationWindow {
                         window.clearRendererFailureForView(webView)
                         window.resetPageDialogBudget(webView)
                         viewInterceptor.clearSiteEvidence(webView.url.host)
-                        viewUi.blocking_active_decisions = "[]"
+                        viewUi.clear_blocking_active_evidence()
                         if (viewTabs === tabs) {
                             window.cancelPermissionForTab(tabIndex)
                         } else {
@@ -14512,564 +11279,125 @@ ApplicationWindow {
         }
     }
 
-    Item {
-        id: hintOverlay
+    FerricHintOverlay {
         anchors.fill: webViews
-        z: 30
-        visible: browserUi.hint_visible && window.hintResults.length > 0
-        focus: visible
+        browserWindow: window
+        hintsVisible: browserUi.hint_visible
+        hintResults: window.hintResults
+        onActivationRequested: function(label) { window.activateHint(label) }
+        onActionsRequested: function(label) { window.showHintActions(label) }
+    }
 
-        Repeater {
-            model: window.hintResults
-            delegate: Rectangle {
-                x: modelData.x
-                y: modelData.y
-                width: Math.max(24, hintLabel.implicitWidth + 10)
-                height: Math.max(22, hintLabel.implicitHeight + 6)
-                color: window.warningColor
-                border.color: window.backgroundColor
-                border.width: 1
-                radius: 3
-
-                Text {
-                    id: hintLabel
-                    anchors.centerIn: parent
-                    text: modelData.label
-                    color: window.contrastText(parent.color)
-                    font.bold: true
-                    Accessible.name: "Hint " + modelData.label + " " + modelData.text
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    acceptedButtons: Qt.LeftButton | Qt.RightButton
-                    onClicked: function(mouse) {
-                        if (mouse.button === Qt.RightButton) {
-                            window.showHintActions(modelData.label)
-                        } else {
-                            window.activateHint(modelData.label)
-                        }
-                    }
-                }
+    FerricRapidHintConfirmation {
+        browserWindow: window
+        onContinueRequested: {
+            if (browserUi.confirm_rapid_hint_tabs()) {
+                window.rapidHintConfirmationVisible = false
+                Qt.callLater(window.startHintCollection)
             }
+        }
+        onCancelRequested: {
+            window.rapidHintConfirmationVisible = false
+            window.closeHints()
         }
     }
 
-    Rectangle {
-        id: rapidHintConfirmation
-        anchors.centerIn: parent
-        width: Math.min(560, parent.width - 80)
-        height: Math.min(170 * window.chromeScale, parent.height - 32)
-        z: 80
-        visible: window.rapidHintConfirmationVisible
-        color: window.panelColor
-        border.color: window.warningColor
-        border.width: 2
-
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 16
-            spacing: 10
-
-            Label {
-                Layout.fillWidth: true
-                text: "Rapid hint has opened 20 background tabs. Continue?"
-                color: window.primaryTextColor
-                wrapMode: Text.WordWrap
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: "Confirming grants one additional bounded batch of 20 tabs."
-                color: window.warningColor
-                wrapMode: Text.WordWrap
-            }
-
-            RowLayout {
-                Layout.alignment: Qt.AlignRight
-                spacing: 8
-
-                Button {
-                    text: "Continue"
-                    Accessible.name: "Confirm another rapid hint tab batch"
-                    onClicked: {
-                        if (browserUi.confirm_rapid_hint_tabs()) {
-                            window.rapidHintConfirmationVisible = false
-                            Qt.callLater(window.startHintCollection)
-                        }
-                    }
-                }
-
-                Button {
-                    text: "Cancel hints"
-                    Accessible.name: "Cancel rapid hints"
-                    onClicked: {
-                        window.rapidHintConfirmationVisible = false
-                        window.closeHints()
-                    }
-                }
-            }
-        }
+    FerricCopyNotice {
+        browserWindow: window
+        onCopyAgainRequested: window.copyToClipboard(
+                                  window.copiedValue, !window.copyNoticeSensitive)
+        onDismissalRequested: window.copyNoticeVisible = false
     }
 
-    Rectangle {
-        id: copyNotice
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: window.bottomChromeHeight + 8
-        width: Math.min(parent.width - 32, 720)
-        height: Math.max(74, window.chromeRowHeight * 5)
-        z: 30
-        visible: window.copyNoticeVisible
-        color: window.surfaceColor
-        border.color: window.accentColor
-        radius: 4
-
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 8
-            spacing: 4
-
-            Label {
-                Layout.fillWidth: true
-                text: window.copyNoticeSensitive ? "Copied selected document text" : "Copied safe URL"
-                color: window.primaryTextColor
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8
-
-                Label {
-                    Layout.fillWidth: true
-                    text: window.copiedText
-                    color: window.secondaryTextColor
-                    elide: Text.ElideMiddle
-                    Accessible.name: "Copied URL"
-                }
-
-                Button {
-                    text: "Copy again"
-                    onClicked: window.copyToClipboard(window.copiedValue, !window.copyNoticeSensitive)
-                }
-
-                ToolButton {
-                    text: "×"
-                    onClicked: window.copyNoticeVisible = false
-                    Accessible.name: "Dismiss copied URL notice"
-                }
-            }
-        }
+    FerricStatusBar {
+        browserWindow: window
+        statusVisible: window.normalStatusVisible
+        mode: browserUi.mode
+        displayUrl: browserUi.display_url
+        statusText: browserUi.status_text
+        contextName: browserUi.context_name
+        contextColor: window.contextStatusColor(browserUi, window.mutedTextColor)
+        profileName: window.profileName
+        temporaryProfile: window.temporaryProfile
+        ephemeralProfile: window.ephemeralProfile
+        blockingSiteCount: browserUi.blocking_active_site_count
+        activeTabIndex: browserUi.active_tab_index
+        tabCount: browserUi.tab_count
+        engineUpdateNotice: window.engineUpdateNotice
+        macroStatusText: browserUi.macro_status_text
+        activeView: window.activeWebView()
+        accessibleDetails: window.statusDetails(
+                               browserUi, window, window.activeWebView(),
+                               window.temporaryProfile, window.profileName,
+                               window.ephemeralProfile)
     }
 
-    Rectangle {
-        id: statusBar
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        height: window.statusBarHeight
-        z: 10
-        color: window.surfaceColor
-        opacity: window.chromeOpacity
-        visible: window.normalStatusVisible
-
-        Accessible.name: "Browser status bar. " + browserUi.mode + ". "
-                         + browserUi.display_url + ". " + browserUi.status_text
-                         + window.statusDetails(
-                             browserUi, window, window.activeWebView(),
-                             window.temporaryProfile, window.profileName,
-                             window.ephemeralProfile)
-        Accessible.role: Accessible.StatusBar
-
-        RowLayout {
-            anchors.fill: parent
-            spacing: 0
-
-            Rectangle {
-                Layout.fillHeight: true
-                Layout.preferredWidth: statusModeLabel.implicitWidth + 16
-                color: browserUi.mode === "insert" ? window.modeInsertColor
-                       : browserUi.mode === "hint" ? window.warningColor
-                       : browserUi.mode === "caret" ? window.accentColor
-                       : window.panelColor
-
-                Label {
-                    id: statusModeLabel
-                    anchors.centerIn: parent
-                    text: browserUi.mode.toUpperCase()
-                    color: browserUi.mode === "normal"
-                           ? window.primaryTextColor
-                           : window.contrastText(parent.color)
-                    font.bold: true
-                    Accessible.ignored: true
-                }
-            }
-
-            Label {
-                Layout.leftMargin: 8
-                Layout.rightMargin: 8
-                Layout.maximumWidth: Math.max(90, statusBar.width * 0.18)
-                text: (window.ephemeralProfile ? "EPHEMERAL "
-                       : window.temporaryProfile ? "PRIVATE " : "")
-                      + window.profileName
-                      + (browserUi.context_name
-                         ? ":" + String(browserUi.context_name) : "")
-                color: window.contextStatusColor(browserUi, window.mutedTextColor)
-                elide: Text.ElideRight
-                Accessible.ignored: true
-            }
-
-            Rectangle {
-                Layout.fillHeight: true
-                Layout.preferredWidth: 1
-                color: window.borderColor
-            }
-
-            Label {
-                id: statusUrl
-                Layout.fillWidth: true
-                Layout.leftMargin: 8
-                Layout.rightMargin: 8
-                text: window.addressPresentation(
-                          browserUi.display_url,
-                          width / Math.max(1, font.pixelSize * 0.56))
-                color: /^https:/i.test(browserUi.display_url)
-                       ? window.successColor
-                       : (/^http:/i.test(browserUi.display_url)
-                          ? window.warningColor : window.primaryTextColor)
-                elide: Text.ElideMiddle
-                Accessible.ignored: true
-            }
-
-            Label {
-                Layout.maximumWidth: Math.max(120, statusBar.width * 0.32)
-                Layout.rightMargin: 10
-                visible: text.length > 0
-                text: window.engineUpdateNotice.length > 0
-                      ? window.engineUpdateNotice
-                      : browserUi.status_text
-                        + window.macroStatusText(browserUi.macro_status)
-                color: window.engineUpdateNotice.length > 0
-                       ? window.warningColor : window.mutedTextColor
-                elide: Text.ElideRight
-                horizontalAlignment: Text.AlignRight
-                Accessible.ignored: true
-            }
-
-            Label {
-                Layout.rightMargin: 8
-                text: {
-                    var view = window.activeWebView()
-                    var load = view && view.loading
-                            ? " " + Math.round(Number(view.loadProgress || 0)) + "%" : ""
-                    var media = view && view.audioMuted ? " M" : ""
-                    return (browserUi.blocking_active_site_count > 0 ? " B" : "")
-                            + media + load + "  "
-                            + (browserUi.active_tab_index + 1) + "/" + browserUi.tab_count
-                }
-                color: window.secondaryTextColor
-                font.bold: true
-                Accessible.ignored: true
-            }
+    FerricCommandLine {
+        id: commandSurface
+        browserWindow: window
+        commandVisible: browserUi.mode === "command"
+        completionVisible: browserUi.completion_visible
+        completionText: browserUi.completion_text
+        completionSelected: browserUi.completion_selected
+        onCompletionUpdateRequested: function(text, cursorPosition) {
+            browserUi.update_completion(text, cursorPosition)
         }
-    }
-
-    Rectangle {
-        id: commandBar
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        height: window.inputBarHeight
-        z: 20
-        visible: browserUi.mode === "command"
-        color: window.surfaceColor
-        opacity: window.chromeOpacity
-
-        RowLayout {
-            anchors.fill: parent
-            spacing: 0
-
-            Rectangle {
-                Layout.fillHeight: true
-                Layout.preferredWidth: commandPrefix.implicitWidth + 16
-                color: window.accentColor
-
-                Label {
-                    id: commandPrefix
-                    anchors.centerIn: parent
-                    text: ":"
-                    color: window.contrastText(parent.color)
-                    font.bold: true
-                    Accessible.ignored: true
+        onSubmitted: function(text) {
+            var focusedContextWindow = window.focusExistingContextWindow(text, browserUi)
+            if (focusedContextWindow || browserUi.execute_command(text)) {
+                var preview = browserUi.take_session_preview()
+                if (preview.length > 0) {
+                    window.showCommandSessionPreview(preview)
                 }
-            }
-
-            TextField {
-                id: commandLine
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                leftPadding: 8
-                rightPadding: 8
-                topPadding: 0
-                bottomPadding: 0
-                color: window.primaryTextColor
-                selectionColor: window.selectionColor
-                selectedTextColor: window.selectionTextColor
-                placeholderText: "command"
-                placeholderTextColor: window.mutedTextColor
-                background: Rectangle { color: "transparent" }
-                Accessible.name: "Command line"
-                Accessible.role: Accessible.EditableText
-                Accessible.editable: true
-                focus: commandBar.visible
-
-                onVisibleChanged: {
-                    if (visible) {
-                        forceActiveFocus()
-                        browserUi.update_completion(text, cursorPosition)
-                    }
+                if (browserUi.library_kind.length > 0) {
+                    window.libraryPage = 0
+                    window.openInternalSurface()
+                    window.libraryManagerVisible = true
+                    window.refreshLibraryManager()
                 }
-                onTextChanged: browserUi.update_completion(text, cursorPosition)
-                onCursorPositionChanged: browserUi.update_completion(text, cursorPosition)
-                onAccepted: {
-                    var focusedContextWindow = window.focusExistingContextWindow(text, browserUi)
-                    if (focusedContextWindow || browserUi.execute_command(text)) {
-                        var preview = browserUi.take_session_preview()
-                        if (preview.length > 0) {
-                            window.showCommandSessionPreview(preview)
-                        }
-                        if (browserUi.library_kind.length > 0) {
-                            window.libraryPage = 0
-                            window.openInternalSurface()
-                            window.libraryManagerVisible = true
-                            window.refreshLibraryManager()
-                        }
-                        if (browserUi.link_preview_visible) {
-                            window.showLinkPreview()
-                        }
-                        if (text.trim().indexOf("context-enter ") === 0) {
-                            window.routeContextWorkspace(browserUi)
-                        }
-                        window.syncTabModel()
-                        window.executePendingEngineAction()
-                    text = ""
-                    if (browserUi.mode === "command") {
-                        browserUi.escape()
-                    }
-                    } else {
-                        selectAll()
-                    }
+                if (browserUi.link_preview_visible) {
+                    window.showLinkPreview()
                 }
-                Keys.onPressed: function(event) {
-                    if (event.key === Qt.Key_Escape) {
-                        browserUi.escape()
-                        event.accepted = true
-                    } else if (event.key === Qt.Key_Tab) {
-                        browserUi.completion_move(event.modifiers & Qt.ShiftModifier ? -1 : 1)
-                        event.accepted = true
-                    } else if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_N) {
-                        browserUi.completion_move(1)
-                        event.accepted = true
-                    } else if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_P) {
-                        browserUi.completion_move(-1)
-                        event.accepted = true
-                    }
+                if (text.trim().indexOf("context-enter ") === 0) {
+                    window.routeContextWorkspace(browserUi)
                 }
-            }
-        }
-    }
-
-    Rectangle {
-        id: completionPopup
-        anchors.left: commandBar.left
-        anchors.right: commandBar.right
-        anchors.bottom: commandBar.top
-        height: Math.min(220, completionList.contentHeight + 8)
-        z: 19
-        visible: commandBar.visible && browserUi.completion_visible
-        color: window.panelColor
-        opacity: 1.0
-        border.color: window.borderColor
-        border.width: 1
-        Accessible.role: Accessible.PopupMenu
-        Accessible.name: "Command completion popup"
-        Accessible.description: "Use Tab or Shift-Tab to move through command completion values"
-
-        ListView {
-            id: completionList
-            anchors.fill: parent
-            anchors.margins: 1
-            clip: true
-            Accessible.role: Accessible.List
-            Accessible.name: "Command completion"
-            model: browserUi.completion_text.length ? browserUi.completion_text.split("\n") : []
-            delegate: Rectangle {
-                id: completionRow
-                width: completionList.width
-                height: window.chromeRowHeight
-                color: index === browserUi.completion_selected
-                       ? window.selectionColor : window.panelColor
-                opacity: 1.0
-                Accessible.role: Accessible.ListItem
-                Accessible.name: modelData
-                Accessible.selected: index === browserUi.completion_selected
-                Accessible.focusable: false
-
-                Text {
-                    anchors.fill: parent
-                    anchors.leftMargin: 8
-                    verticalAlignment: Text.AlignVCenter
-                    color: index === browserUi.completion_selected
-                           ? window.selectionTextColor
-                           : window.readableTextColor(window.primaryTextColor,
-                                                      completionRow.color)
-                    text: modelData
-                    elide: Text.ElideRight
-                    Accessible.ignored: true
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: {
-                        browserUi.completion_select(index)
-                        commandLine.forceActiveFocus()
-                    }
-                }
-            }
-        }
-    }
-
-    Rectangle {
-        id: searchBar
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        height: window.inputBarHeight
-        z: 20
-        visible: browserUi.mode === "search"
-        color: window.surfaceColor
-        opacity: window.chromeOpacity
-
-        Rectangle {
-            id: searchPrefixBackground
-            anchors.left: parent.left
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
-            width: searchPrefix.implicitWidth + 16
-            color: window.warningColor
-
-            Label {
-                id: searchPrefix
-                anchors.centerIn: parent
-                text: browserUi.search_backward ? "?" : "/"
-                color: window.contrastText(parent.color)
-                font.bold: true
-                Accessible.ignored: true
-            }
-        }
-
-        TextField {
-            id: searchLine
-            anchors.left: searchPrefixBackground.right
-            anchors.right: searchBackwardButton.left
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
-            leftPadding: 8
-            rightPadding: 8
-            topPadding: 0
-            bottomPadding: 0
-            text: browserUi.search_text
-            color: window.primaryTextColor
-            selectionColor: window.selectionColor
-            selectedTextColor: window.selectionTextColor
-            placeholderText: browserUi.search_backward ? "search backward" : "search"
-            placeholderTextColor: window.mutedTextColor
-            background: Rectangle { color: "transparent" }
-            Accessible.name: browserUi.search_backward ? "Search backward" : "Search forward"
-            Accessible.role: Accessible.EditableText
-            Accessible.editable: true
-            focus: searchBar.visible
-
-            onVisibleChanged: {
-                if (visible) {
-                    forceActiveFocus()
-                }
-            }
-            onTextChanged: browserUi.search_changed(text)
-            onAccepted: {
-                browserUi.search_next(browserUi.search_backward)
-                browserUi.accept_search()
+                window.syncTabModel()
                 window.executePendingEngineAction()
-            }
-            Keys.onPressed: function(event) {
-                if (event.key === Qt.Key_Escape) {
+                commandSurface.clearInput()
+                if (browserUi.mode === "command") {
                     browserUi.escape()
-                    event.accepted = true
                 }
+            } else {
+                commandSurface.selectAllInput()
             }
         }
+        onEscapeRequested: browserUi.escape()
+        onCompletionMoveRequested: function(delta) { browserUi.completion_move(delta) }
+        onCompletionSelectRequested: function(index) { browserUi.completion_select(index) }
+    }
 
-        ToolButton {
-            id: searchBackwardButton
-            anchors.right: searchForwardButton.left
-            anchors.verticalCenter: parent.verticalCenter
-            text: "↑"
-            width: window.inputBarHeight
-            height: window.inputBarHeight
-            padding: 0
-            background: Rectangle {
-                color: parent.hovered ? window.panelColor : "transparent"
-            }
-            contentItem: Text {
-                text: parent.text
-                color: window.mutedTextColor
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
-            }
-            Accessible.name: "Find previous match"
-            onClicked: {
-                browserUi.execute_ui_action("browser.tab.search-next", "backward")
-                window.executePendingEngineAction()
-                searchLine.forceActiveFocus()
-            }
+    FerricSearchBar {
+        id: searchSurface
+        browserWindow: window
+        searchVisible: browserUi.mode === "search"
+        searchBackward: browserUi.search_backward
+        searchText: browserUi.search_text
+        onSearchChanged: function(text) { browserUi.search_changed(text) }
+        onAccepted: {
+            browserUi.search_next(browserUi.search_backward)
+            browserUi.accept_search()
+            window.executePendingEngineAction()
         }
-
-        ToolButton {
-            id: searchForwardButton
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            text: "↓"
-            width: window.inputBarHeight
-            height: window.inputBarHeight
-            padding: 0
-            background: Rectangle {
-                color: parent.hovered ? window.panelColor : "transparent"
-            }
-            contentItem: Text {
-                text: parent.text
-                color: window.mutedTextColor
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
-            }
-            Accessible.name: "Find next match"
-            onClicked: {
-                browserUi.execute_ui_action("browser.tab.search-next", "forward")
-                window.executePendingEngineAction()
-                searchLine.forceActiveFocus()
-            }
+        onEscapeRequested: browserUi.escape()
+        onNextRequested: function(backward) {
+            browserUi.execute_ui_action(
+                        "browser.tab.search-next", backward ? "backward" : "forward")
+            window.executePendingEngineAction()
         }
     }
 
     function configuredBlocklistIds() {
-        try {
-            var config = JSON.parse(browserUi.config_json)
-            if (config.blocking && Array.isArray(config.blocking.lists)) {
-                return config.blocking.lists
-            }
-        } catch (error) {
-            browserUi.status_text = "Blocklist configuration was invalid"
-        }
-        return []
+        return browserUi.feature_blocking_list_ids || []
     }
 
     function requestBlocklistUpdate() {
@@ -15094,19 +11422,10 @@ ApplicationWindow {
     }
 
     function configuredLinkCleaningUpdate() {
-        try {
-            var config = JSON.parse(browserUi.config_json)
-            var cleaning = config.links && config.links.cleaning
-            return {
-                source: cleaning && typeof cleaning.update_source === "string"
-                        ? cleaning.update_source : "",
-                checksum: cleaning && typeof cleaning.update_sha256 === "string"
-                        ? cleaning.update_sha256 : ""
-            }
-        } catch (error) {
-            browserUi.status_text = "Clean-link update configuration was invalid"
+        return {
+            source: browserUi.feature_link_cleaning_update_source,
+            checksum: browserUi.feature_link_cleaning_update_sha256
         }
-        return { source: "", checksum: "" }
     }
 
     function requestLinkCleaningUpdate(automatic) {
@@ -15161,16 +11480,7 @@ ApplicationWindow {
     }
 
     function configureBlocklistUpdateTimer() {
-        var intervalHours = 24
-        try {
-            var config = JSON.parse(browserUi.config_json)
-            if (config.blocking && Number.isFinite(Number(config.blocking.update_interval_hours))) {
-                intervalHours = Math.max(1, Math.min(168, Math.floor(Number(config.blocking.update_interval_hours))))
-            }
-        } catch (error) {
-            browserUi.status_text = "Blocklist configuration was invalid"
-        }
-        window.blocklistUpdateIntervalHours = intervalHours
+        window.blocklistUpdateIntervalHours = browserUi.feature_blocking_update_interval_hours
         blocklistUpdateTimer.restart()
     }
 
@@ -15228,9 +11538,9 @@ ApplicationWindow {
     function executePendingEngineAction() {
         var action = browserUi.take_engine_action()
         if (action.indexOf("command-prefill\t") === 0) {
-            commandLine.text = action.slice("command-prefill\t".length)
-            commandLine.cursorPosition = commandLine.text.length
-            commandLine.forceActiveFocus()
+            commandSurface.commandText = action.slice("command-prefill\t".length)
+            commandSurface.cursorPosition = commandSurface.commandText.length
+            commandSurface.focusInput()
             return
         }
         if (action === "quit-request") {
@@ -15417,18 +11727,11 @@ ApplicationWindow {
             }
             return
         }
-        if (action.indexOf("jseval\t") === 0) {
-            var evalPayload = null
-            try {
-                evalPayload = JSON.parse(action.split("\t").slice(1).join("\t"))
-            } catch (error) {
-                browserUi.status_text = "JavaScript evaluation request was invalid"
-                return
-            }
-            var evalIndex = browserUi.tab_index_for_id(String(evalPayload.tab_id || ""))
+        if (action === "jseval") {
+            var evalIndex = browserUi.tab_index_for_id(browserUi.jseval_tab_id)
             var evalView = tabViewAt(evalIndex)
-            var evalScript = String(evalPayload.script || "")
-            var evalWorld = evalPayload.world === "page"
+            var evalScript = browserUi.jseval_script
+            var evalWorld = browserUi.jseval_world === "page"
                     ? WebEngineScript.MainWorld : window.browserScriptWorld
             if (!evalView || evalScript.length === 0 || evalScript.length > 65536) {
                 browserUi.status_text = "JavaScript evaluation target is stale or invalid"
@@ -15464,17 +11767,10 @@ ApplicationWindow {
             window.refreshDownloads()
             return
         }
-        if (action.indexOf("show-switcher\t") === 0) {
-            var switcherPayload = null
-            try {
-                switcherPayload = JSON.parse(action.split("\t").slice(1).join("\t"))
-            } catch (error) {
-                browserUi.status_text = "Switcher request was invalid"
-                return
-            }
+        if (action === "show-switcher") {
             window.showSwitcherWith(
-                String(switcherPayload.scope || "all"),
-                String(switcherPayload.query || ""))
+                String(browserUi.switcher_request_scope || "all"),
+                String(browserUi.switcher_request_query || ""))
             return
         }
         if (action.indexOf("tab-close\t") === 0) {
@@ -16040,20 +12336,20 @@ ApplicationWindow {
             browserUi.tick_bindings()
             browserUi.tick_site_doctor_experiment()
             browserUi.checkpoint_session()
-            var caretRequest = browserUi.take_caret_request()
-            if (caretRequest.length > 0) {
-                var caretData = JSON.parse(caretRequest)
+            if (browserUi.take_caret_request()) {
+                var caretToken = browserUi.caret_request_token
+                var caretOperation = browserUi.caret_request_operation
                 var caretView = window.activeWebView()
                 if (caretView) {
-                    window.runBrowserScript(caretView, window.caretScript(caretData.operation, window.caretSelecting), function(value) {
+                    window.runBrowserScript(caretView, window.caretScript(caretOperation, window.caretSelecting), function(value) {
                         var response = value || {error: "caret script returned no result"}
                         if (response.selecting !== undefined) {
                             window.caretSelecting = response.selecting
                         }
-                        browserUi.deliver_caret(caretData.token, JSON.stringify(response))
+                        browserUi.deliver_caret(caretToken, JSON.stringify(response))
                     })
                 } else {
-                    browserUi.deliver_caret(caretData.token, JSON.stringify({error: "document view unavailable"}))
+                    browserUi.deliver_caret(caretToken, JSON.stringify({error: "document view unavailable"}))
                 }
             }
             var editorRequest = browserUi.take_editor_request()
@@ -16067,22 +12363,24 @@ ApplicationWindow {
                     browserUi.deliver_editor(editorRequest, JSON.stringify({error: "document view unavailable"}))
                 }
             }
-            var editorCompletion = browserUi.take_editor_completion()
-            if (editorCompletion.length > 0) {
-                var editorData = JSON.parse(editorCompletion)
+            if (browserUi.take_editor_completion()) {
+                var editorToken = browserUi.editor_completion_token
+                var editorOriginal = browserUi.editor_completion_original
+                var editorUpdated = browserUi.editor_completion_updated
+                var editorError = browserUi.editor_completion_error
+                var editorStderr = browserUi.editor_completion_stderr
                 var applyView = window.activeWebView()
-                if (editorData.error) {
-                    var editorError = editorData.error
-                    if (editorData.stderr) {
-                        editorError += " (stderr: " + editorData.stderr + ")"
+                if (editorError.length > 0) {
+                    if (editorStderr.length > 0) {
+                        editorError += " (stderr: " + editorStderr + ")"
                     }
-                    browserUi.deliver_editor_apply(editorData.token, JSON.stringify({error: editorError}))
+                    browserUi.deliver_editor_apply(editorToken, JSON.stringify({error: editorError}))
                 } else if (applyView) {
-                    window.runBrowserScript(applyView, window.editorApplyScript(editorData.original, editorData.updated), function(value) {
-                        browserUi.deliver_editor_apply(editorData.token, JSON.stringify(value || {error: "editor apply returned no result"}))
+                    window.runBrowserScript(applyView, window.editorApplyScript(editorOriginal, editorUpdated), function(value) {
+                        browserUi.deliver_editor_apply(editorToken, JSON.stringify(value || {error: "editor apply returned no result"}))
                     })
                 } else {
-                    browserUi.deliver_editor_apply(editorData.token, JSON.stringify({error: "document view unavailable"}))
+                    browserUi.deliver_editor_apply(editorToken, JSON.stringify({error: "document view unavailable"}))
                 }
             }
             var selectionToken = browserUi.take_selection_request()
@@ -16096,16 +12394,14 @@ ApplicationWindow {
                     browserUi.deliver_selection(selectionToken, JSON.stringify({error: "document view unavailable"}))
                 }
             }
-            var downloadRequest = browserUi.take_download_request()
-            if (downloadRequest.length > 0) {
-                var downloadData = JSON.parse(downloadRequest)
+            if (browserUi.take_download_request()) {
                 var downloadView = window.activeWebView()
                 if (downloadView) {
-                    window.runBrowserScript(downloadView, window.downloadLinkScript(downloadData.url), function() {
-                        browserUi.complete_download_request(downloadData.token, true)
+                    window.runBrowserScript(downloadView, window.downloadLinkScript(browserUi.download_request_url), function() {
+                        browserUi.complete_download_request(browserUi.download_request_token, true)
                     })
                 } else {
-                    browserUi.complete_download_request(downloadData.token, false)
+                    browserUi.complete_download_request(browserUi.download_request_token, false)
                 }
             }
             var clipboardRequest = browserUi.take_clipboard_request()
@@ -16385,345 +12681,74 @@ ApplicationWindow {
         return handled
     }
 
-    Rectangle {
-        id: permissionPrompt
-        anchors.centerIn: parent
-        width: Math.min(600, parent.width - 80)
-        height: Math.min(280 * window.chromeScale, parent.height - 32)
-        z: 90
-        visible: window.permissionPromptVisible
-                 && window.pendingPermissionHost === window
-        focus: visible
-        Accessible.role: Accessible.Dialog
-        Accessible.name: "Permission request"
-        onVisibleChanged: if (visible) forceActiveFocus()
-        color: window.panelColor
-        border.color: window.accentColor
-        border.width: 2
-
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 16
-            spacing: 10
-
-            Label {
-                Layout.fillWidth: true
-                text: "Permission request"
-                color: window.primaryTextColor
-                font.bold: true
-                Accessible.name: "Permission request"
-            }
-            Label {
-                Layout.fillWidth: true
-                text: window.pendingPermissionOrigin + " wants to "
-                      + window.permissionDisplayName(window.pendingPermissionName) + "."
-                color: window.secondaryTextColor
-                wrapMode: Text.WordWrap
-                Accessible.name: "Permission request for " + window.pendingPermissionOrigin
-            }
-            Label {
-                Layout.fillWidth: true
-                text: (window.pendingPermissionPrivate ? "Private profile · " : "")
-                      + "Scope: current document"
-                      + (window.pendingPermissionGroupCount > 1
-                         ? " · " + window.pendingPermissionGroupCount
-                           + " identical requests grouped"
-                         : "")
-                color: window.mutedTextColor
-                wrapMode: Text.WordWrap
-                Accessible.name: "Permission scope and grouped request count"
-            }
-            Label {
-                Layout.fillWidth: true
-                text: window.permissionCanRemember(
-                          window.pendingPermissionOrigin, window.pendingPermissionName)
-                      ? "Allow once, or remember an allow rule for this exact site."
-                      : "This decision applies to this request only."
-                color: window.warningColor
-                wrapMode: Text.WordWrap
-            }
-            RowLayout {
-                Layout.alignment: Qt.AlignRight
-                spacing: 8
-                Button {
-                    text: "Deny"
-                    Accessible.name: "Deny permission request"
-                    onClicked: window.decidePermission(false, "")
-                }
-                Button {
-                    text: "Allow for session"
-                    Accessible.name: "Allow permission for this session"
-                    visible: window.pendingPermissionName !== "screen-capture"
-                    onClicked: window.decidePermission(true, "session")
-                }
-                Button {
-                    text: "Allow once"
-                    Accessible.name: "Allow permission request once"
-                    onClicked: window.decidePermission(true, "")
-                }
-                Button {
-                    visible: window.permissionCanRememberForSite(
-                        window.pendingPermissionOrigin, window.pendingPermissionName)
-                    text: "Allow for site"
-                    Accessible.name: "Allow permission for this site"
-                    onClicked: window.decidePermission(true, "site")
-                }
-            }
-        }
-        Keys.onPressed: function(event) {
-            if (event.key === Qt.Key_Escape) {
-                window.decidePermission(false, "")
-                event.accepted = true
-            } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                event.accepted = true
-            }
+    FerricPermissionPrompt {
+        browserWindow: window
+        hostWindow: window
+        onDecisionRequested: function(allow, lifetime) {
+            window.decidePermission(allow, lifetime)
         }
     }
 
-    Rectangle {
-        id: shutdownPrompt
-        anchors.centerIn: parent
-        width: Math.min(560, parent.width - 80)
-        height: Math.min(190 * window.chromeScale, parent.height - 32)
-        z: 100
-        visible: window.shutdownPromptVisible
-        color: window.panelColor
-        border.color: window.warningColor
-        border.width: 2
-
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 16
-            spacing: 12
-
-            Label {
-                Layout.fillWidth: true
-                text: "Active downloads are still running"
-                color: window.primaryTextColor
-                font.bold: true
-            }
-            Label {
-                Layout.fillWidth: true
-                text: "Cancel active browser work before quitting, or keep the browser open."
-                color: window.secondaryTextColor
-                wrapMode: Text.WordWrap
-            }
-            RowLayout {
-                Layout.alignment: Qt.AlignRight
-                spacing: 8
-                Button {
-                    text: "Keep browser open"
-                    Accessible.name: "Keep browser open"
-                    onClicked: {
-                        window.shutdownPromptVisible = false
-                        browserUi.status_text = "Shutdown cancelled"
-                    }
-                }
-                Button {
-                    text: "Cancel active work and quit"
-                    Accessible.name: "Cancel active work and quit"
-                    onClicked: window.cancelDownloadsAndQuit()
-                }
-            }
+    FerricShutdownDecisionDialog {
+        hostWindow: window
+        promptVisible: window.shutdownPromptVisible
+        title: "Active downloads are still running"
+        message: "Cancel active browser work before quitting, or keep the browser open."
+        keepLabel: "Keep browser open"
+        proceedLabel: "Cancel active work and quit"
+        dialogHeight: 190 * window.chromeScale
+        onKeepRequested: {
+            window.shutdownPromptVisible = false
+            browserUi.status_text = "Shutdown cancelled"
         }
+        onProceedRequested: window.cancelDownloadsAndQuit()
     }
 
-    Rectangle {
-        id: shutdownPagePrompt
-        anchors.centerIn: parent
-        width: Math.min(560, parent.width - 80)
-        height: Math.min(220 * window.chromeScale, parent.height - 32)
-        z: 100
-        visible: window.shutdownPagePromptVisible
-        color: window.panelColor
-        border.color: window.warningColor
-        border.width: 2
-
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 16
-            spacing: 12
-
-            Label {
-                Layout.fillWidth: true
-                text: "Page state may be lost"
-                color: window.primaryTextColor
-                font.bold: true
-            }
-            Label {
-                Layout.fillWidth: true
-                text: window.shutdownPagePromptReason
-                      + " Close anyway may lose that state."
-                color: window.secondaryTextColor
-                wrapMode: Text.WordWrap
-            }
-            RowLayout {
-                Layout.alignment: Qt.AlignRight
-                spacing: 8
-                Button {
-                    text: "Keep browser open"
-                    Accessible.name: "Keep browser open"
-                    onClicked: {
-                        window.shutdownPageProbeGeneration += 1
-                        window.shutdownPagePromptVisible = false
-                        browserUi.status_text = "Shutdown cancelled"
-                    }
-                }
-                Button {
-                    text: "Close anyway"
-                    Accessible.name: "Close anyway despite page state"
-                    onClicked: window.finalizeQuit()
-                }
-            }
+    FerricShutdownDecisionDialog {
+        hostWindow: window
+        promptVisible: window.shutdownPagePromptVisible
+        title: "Page state may be lost"
+        message: window.shutdownPagePromptReason + " Close anyway may lose that state."
+        keepLabel: "Keep browser open"
+        proceedLabel: "Close anyway"
+        proceedAccessibleName: "Close anyway despite page state"
+        dialogHeight: 220 * window.chromeScale
+        onKeepRequested: {
+            window.shutdownPageProbeGeneration += 1
+            window.shutdownPagePromptVisible = false
+            browserUi.status_text = "Shutdown cancelled"
         }
+        onProceedRequested: window.finalizeQuit()
     }
 
-    Rectangle {
-        id: applicationShutdownForcePrompt
-        anchors.centerIn: parent
-        width: Math.min(600, parent.width - 80)
-        height: Math.min(250 * window.chromeScale, parent.height - 32)
-        z: 110
-        visible: window.applicationShutdownForcePromptVisible
-        color: window.panelColor
-        border.color: window.errorColor
-        border.width: 2
-
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 16
-            spacing: 12
-
-            Label {
-                Layout.fillWidth: true
-                text: "Browser shutdown is taking longer than expected"
-                color: window.primaryTextColor
-                font.bold: true
-            }
-            Label {
-                Layout.fillWidth: true
-                text: window.applicationShutdownStage
-                      + ". Continue waiting, or force quit? Force quit leaves the "
-                      + "unclean-exit marker for recovery on the next launch."
-                color: window.secondaryTextColor
-                wrapMode: Text.WordWrap
-            }
-            RowLayout {
-                Layout.alignment: Qt.AlignRight
-                spacing: 8
-                Button {
-                    text: "Continue waiting"
-                    Accessible.name: "Continue waiting for shutdown"
-                    onClicked: {
-                        window.applicationShutdownForcePromptVisible = false
-                        applicationShutdownTimer.restart()
-                    }
-                }
-                Button {
-                    text: "Force quit (unclean)"
-                    Accessible.name: "Force quit and preserve the unclean marker"
-                    onClicked: window.forceApplicationShutdown()
-                }
-            }
+    FerricShutdownDecisionDialog {
+        hostWindow: window
+        promptVisible: window.applicationShutdownForcePromptVisible
+        title: "Browser shutdown is taking longer than expected"
+        message: window.applicationShutdownStage
+                 + ". Continue waiting, or force quit? Force quit leaves the "
+                 + "unclean-exit marker for recovery on the next launch."
+        keepLabel: "Continue waiting"
+        proceedLabel: "Force quit (unclean)"
+        keepAccessibleName: "Continue waiting for shutdown"
+        proceedAccessibleName: "Force quit and preserve the unclean marker"
+        dialogBorderColor: window.errorColor
+        dialogHeight: 250 * window.chromeScale
+        stackingOrder: 110
+        onKeepRequested: {
+            window.applicationShutdownForcePromptVisible = false
+            applicationShutdownTimer.restart()
         }
+        onProceedRequested: window.forceApplicationShutdown()
     }
 
     Component {
         id: permissionPromptSurfaceComponent
 
-        Rectangle {
-            property var hostWindow
-            width: Math.min(600, hostWindow ? hostWindow.width - 80 : 520)
-            height: Math.min(280 * window.chromeScale, hostWindow.height - 32)
-            anchors.centerIn: parent
-            z: 90
-            visible: window.permissionPromptVisible
-                     && window.pendingPermissionHost === hostWindow
-            focus: visible
-            Accessible.role: Accessible.Dialog
-            Accessible.name: "Permission request"
-            onVisibleChanged: if (visible) forceActiveFocus()
-            color: window.panelColor
-            border.color: window.accentColor
-            border.width: 2
-
-            ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: 16
-                spacing: 10
-
-                Label {
-                    Layout.fillWidth: true
-                    text: "Permission request"
-                    color: window.primaryTextColor
-                    font.bold: true
-                    Accessible.name: "Permission request"
-                }
-                Label {
-                    Layout.fillWidth: true
-                    text: window.pendingPermissionOrigin + " wants to "
-                          + window.permissionDisplayName(window.pendingPermissionName) + "."
-                    color: window.secondaryTextColor
-                    wrapMode: Text.WordWrap
-                    Accessible.name: "Permission request for " + window.pendingPermissionOrigin
-                }
-                Label {
-                    Layout.fillWidth: true
-                    text: (window.pendingPermissionPrivate ? "Private profile · " : "")
-                          + "Scope: current document"
-                          + (window.pendingPermissionGroupCount > 1
-                             ? " · " + window.pendingPermissionGroupCount
-                               + " identical requests grouped"
-                             : "")
-                    color: window.mutedTextColor
-                    wrapMode: Text.WordWrap
-                    Accessible.name: "Permission scope and grouped request count"
-                }
-                Label {
-                    Layout.fillWidth: true
-                    text: window.permissionCanRemember(
-                              window.pendingPermissionOrigin, window.pendingPermissionName)
-                          ? "Allow once, or remember an allow rule for this exact site."
-                          : "This decision applies to this request only."
-                    color: window.warningColor
-                    wrapMode: Text.WordWrap
-                }
-                RowLayout {
-                    Layout.alignment: Qt.AlignRight
-                    spacing: 8
-                    Button {
-                        text: "Deny"
-                        Accessible.name: "Deny permission request"
-                        onClicked: window.decidePermission(false, "")
-                    }
-                    Button {
-                        text: "Allow for session"
-                        Accessible.name: "Allow permission for this session"
-                        visible: window.pendingPermissionName !== "screen-capture"
-                        onClicked: window.decidePermission(true, "session")
-                    }
-                    Button {
-                        text: "Allow once"
-                        Accessible.name: "Allow permission request once"
-                        onClicked: window.decidePermission(true, "")
-                    }
-                    Button {
-                        visible: window.permissionCanRememberForSite(
-                            window.pendingPermissionOrigin, window.pendingPermissionName)
-                        text: "Allow for site"
-                        Accessible.name: "Allow permission for this site"
-                        onClicked: window.decidePermission(true, "site")
-                    }
-                }
-            }
-
-            Keys.onPressed: function(event) {
-                if (event.key === Qt.Key_Escape) {
-                    window.decidePermission(false, "")
-                    event.accepted = true
-                } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                    event.accepted = true
-                }
+        FerricPermissionPrompt {
+            browserWindow: window
+            onDecisionRequested: function(allow, lifetime) {
+                window.decidePermission(allow, lifetime)
             }
         }
     }
@@ -16731,83 +12756,13 @@ ApplicationWindow {
     Component {
         id: captureIndicatorComponent
 
-        Rectangle {
-            property var hostWindow
-            width: Math.min(520 * window.chromeScale,
-                            hostWindow ? hostWindow.width - 32 : 488)
-            height: Math.min(90 * Math.max(1, window.chromeScale)
-                             + (window.captureSessions.length * 42),
-                             hostWindow ? hostWindow.height - 32 : 560)
-            anchors.top: parent.top
-            anchors.right: parent.right
-            anchors.topMargin: 8
-            anchors.rightMargin: 8
-            z: 120
-            visible: hostWindow !== null && window.captureSessions.some(function(session) {
-                return session && session.host === hostWindow
-            })
-            color: window.panelColor
-            border.color: window.warningColor
-            border.width: 2
-            radius: 4
-            Accessible.role: Accessible.Dialog
-            Accessible.name: "Active capture indicator"
-            focus: visible
-
-            ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: 8
-                spacing: 4
-
-                Label {
-                    Layout.fillWidth: true
-                    text: "Capture indicator"
-                    color: window.warningColor
-                    font.bold: true
-                    Accessible.name: "Capture indicator title"
-                }
-
-                ListView {
-                    id: captureIndicatorList
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    clip: true
-                    model: hostWindow
-                           ? window.captureSessions.filter(function(session) {
-                               return session && session.host === hostWindow
-                           }) : []
-                    delegate: RowLayout {
-                        required property var modelData
-                        Layout.fillWidth: true
-                        spacing: 6
-
-                        Label {
-                            Layout.fillWidth: true
-                            text: modelData.origin + " · "
-                                  + (modelData.status === "active"
-                                     ? "capture active"
-                                     : modelData.status === "stop-requested"
-                                       ? "stop requested"
-                                       : "ended by navigation")
-                            color: window.primaryTextColor
-                            elide: Text.ElideMiddle
-                            Accessible.name: "Capture origin and state"
-                        }
-
-                        Button {
-                            text: modelData.status === "ended-by-navigation"
-                                  ? "Dismiss" : "Stop"
-                            Accessible.name: text + " capture for " + modelData.origin
-                            onClicked: {
-                                if (modelData.status === "ended-by-navigation") {
-                                    window.dismissCaptureSession(modelData.id)
-                                } else {
-                                    window.stopCaptureSession(modelData.id)
-                                }
-                            }
-                        }
-                    }
-                }
+        FerricCaptureIndicator {
+            browserWindow: window
+            onDismissRequested: function(sessionId) {
+                window.dismissCaptureSession(sessionId)
+            }
+            onStopRequested: function(sessionId) {
+                window.stopCaptureSession(sessionId)
             }
         }
     }
@@ -16815,217 +12770,33 @@ ApplicationWindow {
     Component {
         id: desktopMediaSurfaceComponent
 
-        Rectangle {
-            property var hostWindow
-            property bool showingWindows: false
-            width: Math.min(680, hostWindow ? hostWindow.width - 80 : 600)
-            height: Math.min(520, hostWindow ? hostWindow.height - 100 : 420)
-            anchors.centerIn: parent
-            z: 95
-            visible: window.desktopMediaPromptVisible
-                     && window.pendingDesktopMediaHost === hostWindow
-            focus: visible
-            Accessible.role: Accessible.Dialog
-            Accessible.name: "Screen sharing source chooser"
-            color: window.panelColor
-            border.color: window.warningColor
-            border.width: 2
-            onVisibleChanged: {
-                if (visible) {
-                    showingWindows = false
-                    forceActiveFocus()
-                }
+        FerricDesktopMediaPrompt {
+            browserWindow: window
+            onScreenRequested: function(index) {
+                window.selectDesktopScreen(index)
             }
-
-            ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: 16
-                spacing: 10
-
-                Label {
-                    Layout.fillWidth: true
-                    text: "Choose what to share"
-                    color: window.primaryTextColor
-                    font.bold: true
-                    Accessible.name: "Screen sharing source chooser"
-                }
-                Label {
-                    Layout.fillWidth: true
-                    text: "Origin: " + window.desktopMediaOrigin
-                    color: window.mutedTextColor
-                    elide: Text.ElideMiddle
-                    Accessible.name: "Screen sharing requesting origin"
-                }
-                Label {
-                    Layout.fillWidth: true
-                    text: "Select one source for this request. Ferric Browser will not reuse a previous source."
-                    color: window.secondaryTextColor
-                    wrapMode: Text.WordWrap
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    Button {
-                        text: "Screens"
-                        checked: !showingWindows
-                        checkable: true
-                        onClicked: showingWindows = false
-                        Accessible.name: "Show screens"
-                    }
-                    Button {
-                        text: "Windows"
-                        checked: showingWindows
-                        checkable: true
-                        onClicked: showingWindows = true
-                        Accessible.name: "Show windows"
-                    }
-                    Item { Layout.fillWidth: true }
-                }
-                ListView {
-                    id: desktopMediaSourceList
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    clip: true
-                    spacing: 6
-                    model: window.pendingDesktopMediaRequest
-                           ? (showingWindows
-                              ? window.pendingDesktopMediaRequest.windowsModel
-                              : window.pendingDesktopMediaRequest.screensModel)
-                           : null
-                    delegate: Button {
-                        width: desktopMediaSourceList.width
-                        text: (showingWindows ? "Window " : "Screen ") + (index + 1)
-                        Accessible.name: text
-                        onClicked: {
-                            if (showingWindows) {
-                                window.selectDesktopWindow(index)
-                            } else {
-                                window.selectDesktopScreen(index)
-                            }
-                        }
-                    }
-                }
-                Label {
-                    Layout.fillWidth: true
-                    visible: desktopMediaSourceList.count === 0
-                    text: showingWindows ? "No windows are available." : "No screens are available."
-                    color: window.warningColor
-                    horizontalAlignment: Text.AlignHCenter
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    Item { Layout.fillWidth: true }
-                    Button {
-                        text: "Cancel"
-                        Accessible.name: "Cancel screen sharing source selection"
-                        onClicked: window.clearDesktopMediaRequest(true)
-                    }
-                }
+            onWindowRequested: function(index) {
+                window.selectDesktopWindow(index)
             }
-
-            Keys.onPressed: function(event) {
-                if (event.key === Qt.Key_Escape) {
-                    window.clearDesktopMediaRequest(true)
-                    event.accepted = true
-                } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                    event.accepted = true
-                }
-            }
+            onCancellationRequested: window.clearDesktopMediaRequest(true)
         }
     }
 
     Component {
         id: rendererFailureSurfaceComponent
 
-        Rectangle {
-            property var hostWindow
-            width: Math.min(680, hostWindow ? hostWindow.width - 80 : 600)
-            height: Math.min(260 * window.chromeScale, hostWindow.height - 32)
-            anchors.centerIn: parent
-            z: 85
-            visible: window.rendererFailureVisible
-                     && window.rendererFailureHost === hostWindow
-                     && (hostWindow !== window
-                         || window.rendererFailureView === window.activeWebView())
-            focus: visible
-            Accessible.role: Accessible.Dialog
-            Accessible.name: "Page renderer failure"
-            onVisibleChanged: if (visible) forceActiveFocus()
-            color: window.panelColor
-            border.color: window.errorColor
-            border.width: 2
-
-            ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: 16
-                spacing: 10
-
-                Label {
-                    Layout.fillWidth: true
-                    text: "Page renderer stopped"
-                    color: window.errorColor
-                    font.bold: true
-                    Accessible.name: "Page renderer failure"
-                }
-                Label {
-                    Layout.fillWidth: true
-                    text: "Safe URL: " + window.rendererFailureSafeUrl
-                    color: window.primaryTextColor
-                    elide: Text.ElideMiddle
-                    Accessible.name: "Safe URL for failed page"
-                }
-                Label {
-                    Layout.fillWidth: true
-                    text: "Reason: " + window.rendererFailureReason
-                          + " · exit code " + window.rendererFailureExitCode
-                    color: window.secondaryTextColor
-                    wrapMode: Text.WordWrap
-                }
-                Label {
-                    Layout.fillWidth: true
-                    text: window.rendererFailureCount > 1
-                          ? "This renderer has failed repeatedly. Ferric Browser will not auto-reload it into a loop."
-                          : "Other tabs remain usable. Choose an explicit recovery action."
-                    color: window.warningColor
-                    wrapMode: Text.WordWrap
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    Item { Layout.fillWidth: true }
-                    Button {
-                        text: "Reload"
-                        Accessible.name: "Reload failed page"
-                        onClicked: window.reloadRendererFailure()
-                    }
-                    Button {
-                        text: hostWindow === window ? "Close tab" : "Close window"
-                        Accessible.name: text
-                        onClicked: window.closeRendererFailure()
-                    }
-                    Button {
-                        text: "Copy safe URL"
-                        Accessible.name: "Copy safe URL from renderer failure"
-                        onClicked: window.copyToClipboard(window.rendererFailureSafeUrl, true)
-                    }
-                    Button {
-                        text: "Diagnostics"
-                        Accessible.name: "Open renderer diagnostics"
-                        onClicked: window.showRendererFailureDiagnostics()
-                    }
-                    Button {
-                        text: "Restart software"
-                        Accessible.name: "Restart with software rendering"
-                        enabled: !window.softwareRendering
-                        onClicked: window.restartSoftwareRendering()
-                    }
-                }
+        FerricRendererFailurePrompt {
+            browserWindow: window
+            onReloadRequested: window.reloadRendererFailure()
+            onCloseRequested: window.closeRendererFailure()
+            onCopyUrlRequested: function(url) {
+                window.copyToClipboard(url, true)
             }
-
-            Keys.onPressed: function(event) {
-                if (event.key === Qt.Key_Escape) {
-                    window.rendererFailureVisible = false
-                    window.restoreOverlayFocus()
-                    event.accepted = true
-                }
+            onDiagnosticsRequested: window.showRendererFailureDiagnostics()
+            onSoftwareRestartRequested: window.restartSoftwareRendering()
+            onDismissalRequested: {
+                window.rendererFailureVisible = false
+                window.restoreOverlayFocus()
             }
         }
     }
@@ -17043,7 +12814,7 @@ ApplicationWindow {
                     window.profileName,
                     window.ephemeralInvocationToken, window.ephemeralProfile)
         if (window.startupContext.length > 0) {
-            browserUi.context_entry_force_reuse = true
+            browserUi.set_context_entry_reuse(true)
             browserUi.execute_command("context-enter " + window.startupContext)
             window.routeContextWorkspace(browserUi)
         }
@@ -17070,17 +12841,7 @@ ApplicationWindow {
     }
 
     function openAdditionalStartupUrls() {
-        var urls
-        try {
-            urls = JSON.parse(window.startupAdditionalUrlsJson || "[]")
-        } catch (error) {
-            browserUi.status_text = "Additional startup URLs were invalid"
-            return
-        }
-        if (!Array.isArray(urls)) {
-            browserUi.status_text = "Additional startup URLs were invalid"
-            return
-        }
+        var urls = window.startupAdditionalUrls || []
         for (var index = 0; index < urls.length && index < 31; ++index) {
             var url = String(urls[index] || "")
             if (url.length === 0 || url.length > 65536) {
@@ -17125,13 +12886,14 @@ ApplicationWindow {
                     window.contentItem, { hostWindow: window })
         window.rendererFailureSurface = rendererFailureSurfaceComponent.createObject(
                     window.contentItem, { hostWindow: window })
-        browserUi.config_json = window.startupConfigJson
-        browserUi.config_base_json = window.startupConfigBaseJson
-        browserUi.cli_overrides_json = window.startupCliOverridesJson
-        browserUi.profile_overrides_json = window.startupProfileOverridesJson
-        browserUi.config_path = window.startupConfigPath
-        browserUi.config_source = window.startupConfigSource
-        browserUi.contexts_json = window.startupContextsJson
+        if (!browserUi.set_startup_configuration(
+                    window.startupConfigJson, window.startupConfigBaseJson,
+                    window.startupCliOverridesJson, window.startupProfileOverridesJson,
+                    window.startupConfigPath, window.startupConfigSource)) {
+            Qt.quit()
+            return
+        }
+        browserUi.set_contexts_configuration(window.startupContextsJson)
         window.refreshSpellcheckInventory(browserUi)
         browserProfile.spellCheckEnabled = window.spellcheckEnabled(browserUi)
         browserProfile.isPushServiceEnabled = window.pushServiceEnabled(

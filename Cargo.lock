@@ -364,6 +364,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ferric-browser-application"
+version = "0.1.0"
+dependencies = [
+ "ferric-browser-config",
+ "ferric-browser-core",
+ "ferric-browser-runtime",
+ "ferric-browser-storage",
+ "toml",
+ "uuid",
+]
+
+[[package]]
 name = "ferric-browser-config"
 version = "0.1.0"
 dependencies = [
@@ -384,6 +396,7 @@ dependencies = [
  "cxx-qt",
  "cxx-qt-build",
  "cxx-qt-lib",
+ "ferric-browser-application",
  "ferric-browser-config",
  "ferric-browser-core",
  "ferric-browser-ipc",
@@ -413,6 +426,7 @@ version = "0.1.0"
 dependencies = [
  "ferric-browser-core",
  "ferric-browser-ipc",
+ "serde_json",
 ]
 
 [[package]]

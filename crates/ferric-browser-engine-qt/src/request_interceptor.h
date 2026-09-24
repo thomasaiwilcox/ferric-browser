@@ -38,8 +38,10 @@ class FerricBrowserRequestInterceptor : public QWebEngineUrlRequestInterceptor {
     Q_PROPERTY(QStringList exceptionHosts READ exceptionHosts WRITE setExceptionHosts NOTIFY exceptionHostsChanged)
     Q_PROPERTY(QStringList bypassSites READ bypassSites WRITE setBypassSites NOTIFY bypassSitesChanged)
     Q_PROPERTY(QStringList securityDenyHosts READ securityDenyHosts WRITE setSecurityDenyHosts NOTIFY securityDenyHostsChanged)
-    Q_PROPERTY(QVariantMap blockedRuleLists READ blockedRuleLists WRITE setBlockedRuleLists NOTIFY blockedRuleListsChanged)
-    Q_PROPERTY(QVariantMap exceptionRuleLists READ exceptionRuleLists WRITE setExceptionRuleLists NOTIFY exceptionRuleListsChanged)
+    Q_PROPERTY(QStringList blockedRuleHosts READ blockedRuleHosts WRITE setBlockedRuleHosts NOTIFY blockedRuleHostsChanged)
+    Q_PROPERTY(QStringList blockedRuleListIds READ blockedRuleListIds WRITE setBlockedRuleListIds NOTIFY blockedRuleListIdsChanged)
+    Q_PROPERTY(QStringList exceptionRuleHosts READ exceptionRuleHosts WRITE setExceptionRuleHosts NOTIFY exceptionRuleHostsChanged)
+    Q_PROPERTY(QStringList exceptionRuleListIds READ exceptionRuleListIds WRITE setExceptionRuleListIds NOTIFY exceptionRuleListIdsChanged)
     Q_PROPERTY(QStringList adblockSourceIds READ adblockSourceIds WRITE setAdblockSourceIds NOTIFY adblockSourceIdsChanged)
     Q_PROPERTY(qulonglong adblockEngineHandle READ adblockEngineHandle WRITE setAdblockEngineHandle NOTIFY adblockEngineHandleChanged)
     Q_PROPERTY(bool enabled READ enabled WRITE setEnabled NOTIFY enabledChanged)
@@ -63,11 +65,15 @@ public:
     QStringList securityDenyHosts() const;
     void setSecurityDenyHosts(const QStringList &hosts);
 
-    QVariantMap blockedRuleLists() const;
-    void setBlockedRuleLists(const QVariantMap &lists);
+    QStringList blockedRuleHosts() const;
+    void setBlockedRuleHosts(const QStringList &hosts);
+    QStringList blockedRuleListIds() const;
+    void setBlockedRuleListIds(const QStringList &ids);
 
-    QVariantMap exceptionRuleLists() const;
-    void setExceptionRuleLists(const QVariantMap &lists);
+    QStringList exceptionRuleHosts() const;
+    void setExceptionRuleHosts(const QStringList &hosts);
+    QStringList exceptionRuleListIds() const;
+    void setExceptionRuleListIds(const QStringList &ids);
 
     QStringList adblockSourceIds() const;
     void setAdblockSourceIds(const QStringList &ids);
@@ -81,8 +87,10 @@ public:
     qulonglong blockedCount() const;
     qulonglong unknownContextCount() const;
     QVariantMap blockedSiteCounts() const;
-    Q_INVOKABLE QVariantMap blockedRequestExplanation(const QString &site) const;
-    Q_INVOKABLE QVariantList blockedRequestDecisions(const QString &site) const;
+    // The QML bridge consumes fixed-width rows rather than JSON.  Keep the
+    // QVariant containers private to this native adapter.
+    Q_INVOKABLE QStringList blockedRequestExplanationFields(const QString &site) const;
+    Q_INVOKABLE QStringList blockedRequestDecisionFields(const QString &site) const;
     Q_INVOKABLE void clearSiteEvidence(const QString &site);
 
     Q_INVOKABLE bool attach(QObject *profile);
@@ -95,8 +103,10 @@ public:
     void exceptionHostsChanged();
     void bypassSitesChanged();
     void securityDenyHostsChanged();
-    void blockedRuleListsChanged();
-    void exceptionRuleListsChanged();
+    void blockedRuleHostsChanged();
+    void blockedRuleListIdsChanged();
+    void exceptionRuleHostsChanged();
+    void exceptionRuleListIdsChanged();
     void adblockSourceIdsChanged();
     void adblockEngineHandleChanged();
     void enabledChanged();
@@ -119,12 +129,18 @@ private:
     static QString normalizedHost(const QString &host);
     static bool hostMatches(const QString &host, const QString &pattern);
     static QStringList validatedHosts(const QStringList &hosts);
+    void updateBlockedRuleLists();
+    void updateExceptionRuleLists();
     void recordDecision(const QString &site, const QVariantMap &decision);
     void scheduleEvidenceChanged();
     void detachProfiles();
 
     mutable QReadWriteLock policyLock_;
     std::shared_ptr<const PolicySnapshot> policy_;
+    QStringList blockedRuleHosts_;
+    QStringList blockedRuleListIds_;
+    QStringList exceptionRuleHosts_;
+    QStringList exceptionRuleListIds_;
     bool enabled_ = false;
     std::atomic<qulonglong> blockedCount_{0};
     std::atomic<qulonglong> unknownContextCount_{0};

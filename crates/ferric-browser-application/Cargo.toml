@@ -1,0 +1,19 @@
+[package]
+name = "ferric-browser-application"
+version = "0.1.0"
+description = "Qt-independent Ferric Browser application use cases and orchestration"
+license.workspace = true
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+ferric-browser-config = { path = "../ferric-browser-config" }
+ferric-browser-core = { path = "../ferric-browser-core" }
+ferric-browser-runtime = { path = "../ferric-browser-runtime" }
+ferric-browser-storage = { path = "../ferric-browser-storage" }
+toml.workspace = true
+uuid.workspace = true
+
+[lints]
+workspace = true

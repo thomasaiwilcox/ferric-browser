@@ -15,7 +15,6 @@ mod journey;
 mod link_cleaning;
 mod model;
 mod navigation;
-mod reducer;
 mod switcher;
 mod url;
 
@@ -53,6 +52,10 @@ pub use link_cleaning::{
     CleanLinkResult, CleaningRule, CleaningRules, HostPattern, LinkCleanError, builtin_rules,
     clean_link,
 };
+pub use model::reducer::{
+    Diagnostic, Effect, EngineEffect, Event, PersistEffect, ReduceError, TabTransfer, Target,
+    reduce,
+};
 pub use model::{
     ApplicationState, ExistenceState, LoadingState, Mode, PrivacyKind, ProfileState, RendererState,
     ResourceLifecycle, SearchCase, SearchState, ShutdownState, TabState, WindowState,
@@ -60,10 +63,6 @@ pub use model::{
 pub use navigation::{
     NavigationContext, NavigationError, NavigationResult, NavigationSource, resolve_input,
     resolve_search_query,
-};
-pub use reducer::{
-    Diagnostic, Effect, EngineEffect, Event, PersistEffect, ReduceError, TabTransfer, Target,
-    reduce,
 };
 pub use switcher::{
     MAX_SWITCHER_QUERY_TERMS, MAX_SWITCHER_TERM_BYTES, rank as switcher_rank,

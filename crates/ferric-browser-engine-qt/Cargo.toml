@@ -14,6 +14,7 @@ crate-type = ["lib", "staticlib"]
 [dependencies]
 adblock.workspace = true
 ferric-browser-config = { path = "../ferric-browser-config" }
+ferric-browser-application = { path = "../ferric-browser-application" }
 ferric-browser-core = { path = "../ferric-browser-core" }
 ferric-browser-ipc = { path = "../ferric-browser-ipc" }
 ferric-browser-runtime = { path = "../ferric-browser-runtime" }

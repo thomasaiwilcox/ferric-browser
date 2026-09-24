@@ -8,7 +8,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-const SNAPSHOT_SCHEMA_VERSION: u32 = 1;
+const SNAPSHOT_SCHEMA_VERSION: u32 = 2;
 const MAX_WINDOWS: usize = 256;
 const MAX_TABS: usize = 5_000;
 const MAX_CLOSED_TABS: usize = 100;
@@ -265,6 +265,7 @@ pub enum SessionError {
     Io { path: PathBuf, message: String },
     Json { path: PathBuf, message: String },
     Invalid(String),
+    LegacySchema(u32),
     NewerSchema(u32),
     SizeLimit,
 }
@@ -276,6 +277,10 @@ impl std::fmt::Display for SessionError {
                 write!(formatter, "{}: {message}", path.display())
             }
             Self::Invalid(message) => formatter.write_str(message),
+            Self::LegacySchema(version) => write!(
+                formatter,
+                "session schema {version} belongs to an earlier clean-break release; preserve it and create a new session"
+            ),
             Self::NewerSchema(version) => write!(
                 formatter,
                 "session schema {version} is newer than supported schema {SNAPSHOT_SCHEMA_VERSION}"
@@ -584,6 +589,9 @@ fn plan_entry(tab: &SessionTab, selected: bool) -> RestorePlanEntry {
 }
 
 fn validate_snapshot(snapshot: &SessionSnapshot) -> Result<(), SessionError> {
+    if snapshot.schema_version < SNAPSHOT_SCHEMA_VERSION {
+        return Err(SessionError::LegacySchema(snapshot.schema_version));
+    }
     if snapshot.schema_version > SNAPSHOT_SCHEMA_VERSION {
         return Err(SessionError::NewerSchema(snapshot.schema_version));
     }
@@ -844,12 +852,17 @@ mod tests {
         let mut snapshot =
             SessionSnapshot::new(Uuid::new_v4(), "test", Uuid::new_v4(), 1, "now", Vec::new())
                 .expect("snapshot");
-        snapshot.schema_version = 2;
+        snapshot.schema_version = 3;
         assert!(matches!(
             snapshot.restore_plan(),
-            Err(SessionError::NewerSchema(2))
+            Err(SessionError::NewerSchema(3))
         ));
         snapshot.schema_version = 1;
+        assert!(matches!(
+            snapshot.restore_plan(),
+            Err(SessionError::LegacySchema(1))
+        ));
+        snapshot.schema_version = 2;
         snapshot.windows.push(SessionWindow {
             selected_tab: Some(Uuid::new_v4()),
             workspace: None,

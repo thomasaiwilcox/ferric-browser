@@ -10,7 +10,6 @@ mod contexts;
 mod downloads;
 mod durable;
 mod lifecycle;
-mod migration;
 mod permissions;
 mod profiles;
 mod roots;
@@ -34,16 +33,15 @@ pub use downloads::{
     sanitize_download_filename,
 };
 pub use lifecycle::{CrashMarker, CrashMarkerError, crash_diagnostics, transient_marker_scan};
-pub use migration::{
-    LEGACY_MIGRATION_FLAG, MigrationError, MigrationReport, migrate_legacy_xdg, migrate_roots,
-};
 pub use permissions::{PermissionRule, normalize_permission_origin};
 pub use profiles::{
     ProfileDataError, ProfileDeletionError, ProfileDeletionOutcome, ProfileLock, ProfileLockError,
     ProfilePrivacy, ProfileRecord, ProfileRegistry, RegistryError, delete_profile_data,
     delete_profile_transaction,
 };
-pub use roots::{RootSpec, StorageRoots, StorageRootsError};
+pub use roots::{
+    CURRENT_ROOT_SCHEMA_VERSION, ResetReport, RootSpec, StorageRoots, StorageRootsError,
+};
 pub use sessions::{
     ClosedTabSnapshot, RestoreMethod, RestorePlanEntry, RestoreSafety, SessionError,
     SessionSnapshot, SessionTab, SnapshotTabInput, SnapshotWindowInput,
@@ -52,12 +50,12 @@ pub use sessions::{
 };
 pub use worker::JourneyQuerySnapshot;
 pub use worker::{
-    ProfileLibrarySnapshot, ProfileStoreWorker, SessionRestoreSnapshot, StorageWorkerError,
+    ProfileLibrarySnapshot, ProfileStoreWorker, SessionRestoreSnapshot, StorageCommand,
+    StorageCompletion, StorageOperation, StorageOperationError, StorageWorkerError,
 };
 
-const SCHEMA_VERSION: i64 = 1;
-const SCHEMA_MIGRATION_CHECKSUM: &str = "builtin-schema-1";
-const MAX_PRE_MIGRATION_BACKUP_BYTES: u64 = 512 * 1024 * 1024;
+const SCHEMA_VERSION: i64 = 3;
+const SCHEMA_MIGRATION_CHECKSUM: &str = "builtin-schema-3";
 const DEFAULT_HISTORY_RETENTION_SECONDS: i64 = 90 * 24 * 60 * 60;
 const MAX_COMMAND_HISTORY_ROWS: i64 = 1_000;
 const MAX_STORED_TITLE_BYTES: usize = 4 * 1024;
@@ -111,10 +109,10 @@ pub enum StoreMode {
 pub enum StoreError {
     PrivateNoDurableState,
     Corrupt(String),
+    LegacySchema(i64),
     UnsupportedSchema(i64),
     DiskFull,
     CheckpointBusy,
-    MigrationBackup(String),
     Sql(rusqlite::Error),
     InvalidInput(&'static str),
     UnsafeHistoryUrl,
@@ -130,6 +128,10 @@ impl std::fmt::Display for StoreError {
                 formatter,
                 "profile database integrity check failed; original data was preserved; use read-only inspection or create a new named profile ({reason})"
             ),
+            Self::LegacySchema(version) => write!(
+                formatter,
+                "profile storage schema version {version} belongs to an earlier clean-break release; original data was preserved; reset only Ferric-owned data or create a new named profile"
+            ),
             Self::UnsupportedSchema(version) => write!(
                 formatter,
                 "profile database schema version {version} is newer than this application; original data was preserved; use a newer Ferric Browser or create a new named profile"
@@ -139,10 +141,6 @@ impl std::fmt::Display for StoreError {
             ),
             Self::CheckpointBusy => formatter.write_str(
                 "profile storage could not be checkpointed because another connection is active",
-            ),
-            Self::MigrationBackup(reason) => write!(
-                formatter,
-                "profile storage migration backup could not be retained; original data was preserved ({reason})"
             ),
             Self::Sql(error) => write!(formatter, "SQLite error: {error}"),
             Self::InvalidInput(message) => formatter.write_str(message),
@@ -363,12 +361,13 @@ pub enum JourneyWrite {
 }
 
 impl ProfileStore {
-    /// Opens or creates a normal profile database and applies migrations.
+    /// Opens or creates a normal profile database for the current clean-break schema.
     ///
     /// # Errors
     ///
     /// Returns an error if the mode is private, SQLite cannot be configured,
-    /// or a migration fails.
+    /// or existing data belongs to a different schema. Existing databases are
+    /// never migrated or rewritten by this release.
     pub fn open(path: impl AsRef<Path>, mode: StoreMode) -> Result<Self, StoreError> {
         if mode == StoreMode::Private {
             return Err(StoreError::PrivateNoDurableState);
@@ -380,8 +379,13 @@ impl ProfileStore {
             } else {
                 None
             };
-        if let Some(version) = existing_version.filter(|version| *version < SCHEMA_VERSION) {
-            create_pre_migration_backup(&path, version)?;
+        if let Some(version) = existing_version {
+            if version < SCHEMA_VERSION {
+                return Err(StoreError::LegacySchema(version));
+            }
+            if version > SCHEMA_VERSION {
+                return Err(StoreError::UnsupportedSchema(version));
+            }
         }
         let connection = Connection::open(&path)?;
         connection.busy_timeout(std::time::Duration::from_secs(5))?;
@@ -1717,73 +1721,6 @@ fn inspect_existing_database(path: &Path) -> Result<Option<i64>, StoreError> {
     Ok(version)
 }
 
-fn pre_migration_backup_path(path: &Path, version: i64) -> PathBuf {
-    let filename = path
-        .file_name()
-        .map_or_else(|| "browser.sqlite".into(), |name| name.to_string_lossy());
-    path.with_file_name(format!("{filename}.pre-migration-v{version}.sqlite"))
-}
-
-fn create_pre_migration_backup(path: &Path, version: i64) -> Result<(), StoreError> {
-    let metadata =
-        fs::metadata(path).map_err(|error| StoreError::MigrationBackup(error.to_string()))?;
-    if metadata.len() > MAX_PRE_MIGRATION_BACKUP_BYTES {
-        return Err(StoreError::MigrationBackup(
-            "the source database exceeds the 512 MiB backup limit".into(),
-        ));
-    }
-    let backup_path = pre_migration_backup_path(path, version);
-    if fs::metadata(&backup_path).is_ok_and(|metadata| metadata.is_file()) {
-        return Ok(());
-    }
-    let temporary_path = backup_path.with_file_name(format!(
-        ".{}.tmp-{}",
-        backup_path
-            .file_name()
-            .map_or_else(|| "migration-backup".into(), |name| name.to_string_lossy()),
-        std::process::id()
-    ));
-    let _ = fs::remove_file(&temporary_path);
-    let source = rusqlite::Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
-        .map_err(|error| StoreError::MigrationBackup(error.to_string()))?;
-    source
-        .busy_timeout(std::time::Duration::from_secs(5))
-        .map_err(|error| StoreError::MigrationBackup(error.to_string()))?;
-    source
-        .backup("main", &temporary_path, None)
-        .map_err(|error| {
-            let _ = fs::remove_file(&temporary_path);
-            StoreError::from(error)
-        })?;
-    let backup_file = fs::File::open(&temporary_path).map_err(|error| {
-        let _ = fs::remove_file(&temporary_path);
-        StoreError::MigrationBackup(error.to_string())
-    })?;
-    backup_file.sync_all().map_err(|error| {
-        let _ = fs::remove_file(&temporary_path);
-        StoreError::MigrationBackup(error.to_string())
-    })?;
-    drop(backup_file);
-    fs::rename(&temporary_path, &backup_path).map_err(|error| {
-        let _ = fs::remove_file(&temporary_path);
-        StoreError::MigrationBackup(error.to_string())
-    })?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&backup_path, fs::Permissions::from_mode(0o600))
-            .map_err(|error| StoreError::MigrationBackup(error.to_string()))?;
-    }
-    if let Some(parent) = backup_path.parent() {
-        let directory = fs::File::open(parent)
-            .map_err(|error| StoreError::MigrationBackup(error.to_string()))?;
-        directory
-            .sync_all()
-            .map_err(|error| StoreError::MigrationBackup(error.to_string()))?;
-    }
-    Ok(())
-}
-
 fn download_from_row(row: &rusqlite::Row<'_>) -> Result<DownloadRecord, rusqlite::Error> {
     let state: String = row.get(3)?;
     Ok(DownloadRecord {
@@ -2015,7 +1952,7 @@ fn migrate(connection: &Connection) -> Result<(), rusqlite::Error> {
              node_id TEXT NOT NULL REFERENCES journey_nodes(id) ON DELETE CASCADE
          );
          INSERT OR IGNORE INTO schema_migrations(version, checksum, applied_at)
-             VALUES (1, 'builtin-schema-1', strftime('%s','now'));
+             VALUES (3, 'builtin-schema-3', strftime('%s','now'));
          COMMIT;",
     )
 }
@@ -2045,7 +1982,7 @@ mod tests {
     fn migration_configures_durable_profile_storage() {
         let path = temp_path("migration");
         let store = ProfileStore::open(&path, StoreMode::Normal).expect("open");
-        assert_eq!(store.schema_version(), 1);
+        assert_eq!(store.schema_version(), 3);
         let foreign_keys: i64 = store
             .connection
             .query_row("PRAGMA foreign_keys", [], |row| row.get(0))
@@ -2258,8 +2195,8 @@ mod tests {
     }
 
     #[test]
-    fn older_schema_is_backed_up_before_migration() {
-        let path = temp_path("migration-backup");
+    fn older_schema_is_refused_without_migration_or_replacement() {
+        let path = temp_path("legacy-schema");
         let connection = Connection::open(&path).expect("create fixture");
         connection
             .execute_batch(
@@ -2269,24 +2206,11 @@ mod tests {
             .expect("write legacy schema");
         drop(connection);
 
-        let backup_path = pre_migration_backup_path(&path, 0);
-        let store = ProfileStore::open(&path, StoreMode::Normal).expect("migrate legacy schema");
-        assert_eq!(store.schema_version(), 1);
-        let backup = Connection::open_with_flags(&backup_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
-            .expect("open migration backup");
-        assert_eq!(
-            backup
-                .query_row("SELECT MAX(version) FROM schema_migrations", [], |row| row
-                    .get::<_, i64>(
-                    0
-                ))
-                .expect("read backup schema"),
-            0
-        );
-        drop(backup);
-        drop(store);
+        let original = std::fs::read(&path).expect("read fixture");
+        let error = ProfileStore::open(&path, StoreMode::Normal).expect_err("legacy schema");
+        assert!(matches!(error, StoreError::LegacySchema(0)));
+        assert_eq!(std::fs::read(&path).expect("read original"), original);
         let _ = std::fs::remove_file(&path);
-        let _ = std::fs::remove_file(&backup_path);
         let _ = std::fs::remove_file(format!("{}-wal", path.display()));
         let _ = std::fs::remove_file(format!("{}-shm", path.display()));
     }
@@ -2298,7 +2222,7 @@ mod tests {
         connection
             .execute_batch(
                 "CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, checksum TEXT NOT NULL, applied_at INTEGER NOT NULL);
-                 INSERT INTO schema_migrations(version, checksum, applied_at) VALUES (1, 'tampered', 1);",
+                 INSERT INTO schema_migrations(version, checksum, applied_at) VALUES (3, 'tampered', 1);",
             )
             .expect("write mismatched schema");
         drop(connection);

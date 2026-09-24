@@ -12,11 +12,11 @@
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
     clippy::drop_non_drop,
+    clippy::float_cmp,
     clippy::implicit_clone,
     clippy::let_and_return,
     clippy::manual_let_else,
     clippy::map_unwrap_or,
-    clippy::match_bool,
     clippy::match_same_arms,
     clippy::must_use_candidate,
     clippy::needless_pass_by_value,
@@ -24,23 +24,212 @@
     clippy::redundant_guards,
     clippy::semicolon_if_nothing_returned,
     clippy::single_match_else,
-    clippy::too_many_lines,
-    clippy::uninlined_format_args
+    clippy::too_many_lines
 )]
 // CXX-Qt generates the audited FFI and Qt meta-object glue for this crate.
 // Browser policy remains outside this boundary in ferric-browser-core.
 
+mod action_arguments;
+mod action_catalog;
+mod action_mapping;
+mod action_request_decoder;
+mod binding_policy;
+mod binding_presentation;
+mod blocking_evidence;
+mod blocking_presentation;
+mod chrome_preferences;
+mod command_options;
 mod compatibility;
+mod config_projection;
+mod config_watch;
+mod configuration_workers;
+mod desktop_portals;
+mod desktop_preferences;
 mod diagnostics;
+mod download_files;
+mod editor_process;
+mod effect_projection;
+mod feature_preferences;
+mod focus_policy;
+mod hint_payload;
+mod hint_policy;
 mod hyprland;
+mod input_validation;
+mod ipc_command_decoder;
+mod ipc_contract;
+mod ipc_dispatch_context;
+mod ipc_event_projection;
+mod ipc_params;
+mod ipc_response;
+mod ipc_route;
+mod ipc_schema;
+mod ipc_transport;
+mod library_presentation;
 mod link_cleaning_policy;
 mod logging;
+mod macro_policy;
+mod macro_projection;
 mod maintenance;
+mod native_files;
+mod navigation_lifecycle;
+mod navigation_policy;
 mod network_policy;
+mod open_policy;
+mod operation_policy;
+mod operation_projection;
+mod presentation_text;
+mod process_output;
+mod profile_management;
+mod profile_store_setup;
+mod profile_workers;
+mod renderer_lifecycle;
+mod runtime_bridge;
+mod runtime_facts;
+mod runtime_guard;
+mod settings_presentation;
+mod shutdown_control;
 mod single_flight;
+mod switcher_index;
+mod switcher_policy;
+mod switcher_presentation;
+mod tab_presentation;
+mod theme_presentation;
+mod url_presentation;
+mod url_safety;
 pub mod userscript;
+mod userscript_catalog;
+mod userscript_io;
+mod userscript_presentation;
+mod view_lifecycle;
+mod window_registry;
+
+use action_arguments::decode_ui_action_arguments as ui_action_arguments;
+use action_catalog::{
+    action_list_value, configured_action_target_supports_subject, configured_action_target_values,
+    configured_action_targets, configured_switcher_action_values, external_action_presentations,
+    parse_external_action_id, security_deny_rule_count,
+};
+use action_mapping::parse_action_invocation;
+use action_request_decoder::typed_ipc_action;
+use binding_policy::{
+    binding_command_parameters, binding_uses_full_command_executor, config_get_command_parameters,
+    configured_bindings, configured_undo_limit, ipc_mode_name, is_context_command,
+    is_library_command, is_profile_command, is_session_command, learning_mode_request,
+    modal_command_prefill, normalize_active_tab_command, parse_ipc_mode, switcher_max_results,
+};
+use chrome_preferences::ChromePreferences;
+use command_options::{
+    command_count as ipc_command_count, history_clear as parse_history_clear_arguments,
+    is_link_clean as is_link_clean_command, is_reopen_in_window as is_reopen_in_window_command,
+    is_scroll as is_scroll_command, is_search_next as is_search_next_command,
+    is_tab_clone as is_tab_clone_command, is_tab_detach as is_tab_detach_command,
+    is_tab_give as is_tab_give_command, is_tab_undo as is_tab_undo_command,
+    is_yank as is_yank_command, is_zoom as is_zoom_command, scroll as parse_scroll_options,
+    search_next as parse_search_next_options, selection_yank_command,
+};
+use config_projection::{
+    config_value_at_path, configured_editor_argv, runtime_override_value, toml_string_array_literal,
+};
+use config_watch::ConfigWatch;
+use configuration_workers::{ConfigReadOperation, ConfigReloadWorker, ConfigWriteWorker};
+use desktop_portals::{PortalCapabilities, PortalProbeWorker};
+use desktop_preferences::{ReducedMotionProbeWorker, SystemFontScaleProbeWorker};
+#[cfg(test)]
+use download_files::parse_user_dirs_download;
+use download_files::{
+    StagedDownload, cleanup_print_artifact, cleanup_staged_download, cleanup_staged_downloads,
+    configured_download_directory_path, finalize_staged_download, path_to_file_url,
+    stage_download_path, validate_pdf_output_path, validate_print_pdf_path,
+    validate_save_page_path,
+};
+use editor_process::{
+    EditorCompletion, PendingConfigEdit, PendingEditor, cleanup_editor_artifact,
+    discard_config_edit, discard_editor_request, join_editor_stderr, terminate_child_process,
+    terminate_editor_process, try_wait_editor_process,
+};
+use effect_projection::{engine_action_name, restore_entry_line};
+use feature_preferences::FeaturePreferences;
+use focus_policy::{FocusObservation, focus_mode_transition};
+use hint_payload::{hint_json, hint_kind_name, parse_hint_candidate, parse_hint_payload};
+use hint_policy::{external_hint_target, parse_hint_options, rapid_hint_keeps_mode};
+use input_validation::{
+    is_bounded_journey_query, is_bounded_untrusted_text, validate_jseval_script,
+};
+use ipc_command_decoder::{interactive_open_command, typed_ipc_command};
+use ipc_contract::{IpcOpenTarget, IpcRoute};
+use ipc_dispatch_context::{
+    command_context as ipc_command_context, command_invocation as ipc_command_invocation,
+};
+use ipc_event_projection::is_mutating_ipc_method;
+use ipc_response::{
+    IpcQueryError, action_failure_category, ipc_action_failure, ipc_action_failure_with_context,
+    ipc_command_failure_with_context, ipc_failure,
+};
+use ipc_transport::{instance_id as ipc_instance_id, publish_ipc_event};
+use library_presentation::JourneyGraphEdgePresentation;
+use macro_policy::{
+    MAX_MACRO_COMMANDS, MAX_MACRO_DEPTH, is_repeatable_command, valid_macro_register,
+};
+use macro_projection::{state_value as macro_state_value, status_text as macro_status_text};
+use native_files::{
+    atomic_write_private, bounded_header, resolve_browser_roots, scalar_cursor_to_utf16,
+    set_private_directory_permissions, utf16_cursor_to_scalar,
+};
+use navigation_policy::{
+    configured_search_url, journey_transition_after_load,
+    navigation_context as navigation_context_from_config_and_quickmarks,
+    recordable_same_document_change, strip_url_fragment,
+};
+use open_policy::clean_input as clean_open_input;
+use operation_policy::{
+    action_audit_record, action_operation_id, operation_is_terminal, operation_status_kind,
+};
+use operation_projection::{operations_query_value, remember_operation_stderr};
+#[cfg(test)]
+use presentation_text::MAX_PAGE_TITLE_BYTES;
+use presentation_text::{
+    bounded_navigation_failure_detail, normalized_navigation_failure_kind, sanitize_untrusted_title,
+};
+use process_output::sanitize_process_stderr;
+use profile_store_setup::open_profile_store;
+use profile_workers::{
+    ProfileDeleteWorker, ProfileListWorker, ProfileMutationResult, ProfilePreviewWorker,
+    profile_from_list_values,
+};
+use runtime_guard::{
+    captured_target_is_current, current_target, elapsed_ms, live_document_available,
+    validate_clipboard_navigation_input,
+};
+use switcher_index::{
+    SwitcherLibraryIndex, SwitcherLibraryIndexResult, build_switcher_library_index,
+};
+use switcher_policy::{
+    action_allowed as switcher_action_allowed, context_boost as switcher_context_boost,
+    default_action as switcher_default_action, parse_command as parse_switcher_command,
+    parse_generation as parse_switcher_generation,
+    validate_generation as validate_switcher_generation,
+};
+use url_presentation::{
+    blocking_site_host, canonical_engine_url, display_url, link_preview_presentation,
+    link_result_value,
+};
+use url_safety::{safe_ipc_url, safe_site_host, safe_site_origin};
+#[cfg(test)]
+use userscript_catalog::{
+    action_value as userscript_action_value, is_available as userscript_action_is_available,
+};
+use userscript_catalog::{
+    action_values as userscript_action_values, is_hint_only as userscript_action_is_hint_only,
+    subject_argument_name as userscript_action_argument_name,
+    subject_target as userscript_subject_target,
+};
+use userscript_io::read_bounded;
+use window_registry::LiveWindowRegistryEntry;
+#[cfg(test)]
+use window_registry::decode_live_window_registry;
 
 pub use diagnostics::{action_error_summary, storage_health as diagnostics_storage_health};
+pub use ipc_transport::spawn_ipc_server;
 
 /// Returns the display-free diagnostic snapshot. The CLI may perform the
 /// bounded compositor probe here; live Qt diagnostics use `diagnostics::snapshot`
@@ -90,108 +279,23 @@ pub fn qt_chromium_security_patch_version() -> String {
 }
 
 fn apply_qt_runtime_facts(snapshot: &mut Value) {
-    let platform = qt_platform_name();
-    let backend = qt_quick_graphics_api();
-    let backend_fact = if backend.is_empty() || backend == "unknown" {
-        serde_json::json!({
-            "status": "unknown",
-            "value": null,
-            "reason": "Qt has not exposed a selected graphics backend",
-            "provenance": "runtime-qt"
-        })
-    } else {
-        serde_json::json!({
-            "status": "available",
-            "value": backend,
-            "reason": "reported by QQuickWindow::graphicsApi",
-            "provenance": "runtime-qt"
-        })
-    };
-    if let Some(runtime) = snapshot.get_mut("runtime").and_then(Value::as_object_mut) {
-        runtime.insert(
-            "window_system".into(),
-            serde_json::json!({
-                "status": if platform.is_empty() { "unknown" } else { "available" },
-                "value": if platform.is_empty() { Value::Null } else { Value::String(platform) },
-                "reason": "reported by QGuiApplication::platformName",
-                "provenance": "runtime-qt"
-            }),
-        );
-        runtime.insert("graphics_backend".into(), backend_fact);
-    }
-    apply_qt_webengine_fact(snapshot);
+    runtime_facts::apply_runtime_facts(
+        snapshot,
+        qt_platform_name(),
+        qt_quick_graphics_api(),
+        qt_webengine_version(),
+        qt_chromium_version(),
+        qt_chromium_security_patch_version(),
+    );
 }
 
 fn apply_qt_webengine_fact(snapshot: &mut Value) {
-    let version = qt_webengine_version();
-    let fact = if version.is_empty() {
-        serde_json::json!({
-            "status": "unknown",
-            "value": null,
-            "reason": "QtWebEngine did not expose its public module version",
-            "provenance": "compile-time-qtwebengine"
-        })
-    } else {
-        serde_json::json!({
-            "status": "available",
-            "value": version,
-            "reason": "reported by the public QtWebEngineCore version header",
-            "provenance": "compile-time-qtwebengine"
-        })
-    };
-    if let Some(build) = snapshot.get_mut("build").and_then(Value::as_object_mut) {
-        build.insert("qt_webengine".into(), fact);
-        let chromium = qt_chromium_version();
-        build.insert(
-            "chromium_base".into(),
-            chromium_fact(
-                chromium,
-                "reported by QtWebEngine's public Chromium version API",
-            ),
-        );
-        let security_patch = qt_chromium_security_patch_version();
-        build.insert(
-            "chromium_security_patch".into(),
-            chromium_fact(
-                security_patch,
-                "reported by QtWebEngine's public Chromium security-patch API",
-            ),
-        );
-    }
-}
-
-fn chromium_fact(value: String, reason: &str) -> Value {
-    if value.is_empty() {
-        serde_json::json!({
-            "status": "unknown",
-            "value": null,
-            "reason": "QtWebEngine returned an empty Chromium version",
-            "provenance": "runtime-qtwebengine"
-        })
-    } else if !is_bounded_runtime_version(&value) {
-        serde_json::json!({
-            "status": "unknown",
-            "value": null,
-            "reason": "QtWebEngine returned an invalid or unbounded Chromium version",
-            "provenance": "runtime-qtwebengine"
-        })
-    } else {
-        serde_json::json!({
-            "status": "available",
-            "value": value,
-            "reason": reason,
-            "provenance": "runtime-qtwebengine"
-        })
-    }
-}
-
-fn is_bounded_runtime_version(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 64
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || byte == b'.')
-        && value.split('.').all(|part| !part.is_empty())
+    runtime_facts::apply_webengine_fact(
+        snapshot,
+        qt_webengine_version(),
+        qt_chromium_version(),
+        qt_chromium_security_patch_version(),
+    );
 }
 
 static FORCED_SHUTDOWN: AtomicBool = AtomicBool::new(false);
@@ -211,8 +315,10 @@ pub fn shutdown_was_forced() -> bool {
 mod qobject {
     unsafe extern "C++" {
         include!("cxx-qt-lib/qstring.h");
+        include!("cxx-qt-lib/qstringlist.h");
         include!("url_display.h");
         type QString = cxx_qt_lib::QString;
+        type QStringList = cxx_qt_lib::QStringList;
 
         fn ferric_browser_to_ascii_host(host: &QString) -> QString;
         fn ferric_browser_canonicalize_url(value: &QString) -> QString;
@@ -238,7 +344,7 @@ mod qobject {
         #[qproperty(QString, display_url)]
         #[qproperty(QString, page_title)]
         #[qproperty(QString, status_text)]
-        #[qproperty(QString, macro_status)]
+        #[qproperty(QString, macro_status_text)]
         #[qproperty(QString, load_state)]
         #[qproperty(QString, navigation_failure_kind)]
         #[qproperty(QString, navigation_failure_requested_url)]
@@ -257,23 +363,78 @@ mod qobject {
         #[qproperty(i32, completion_selected)]
         #[qproperty(bool, completion_visible)]
         #[qproperty(QString, binding_overlay)]
+        #[qproperty(QStringList, binding_help_row_kinds)]
+        #[qproperty(QStringList, binding_help_row_titles)]
+        #[qproperty(QStringList, binding_help_row_modes)]
+        #[qproperty(QStringList, binding_help_row_commands)]
+        #[qproperty(QStringList, binding_help_row_descriptions)]
+        #[qproperty(QStringList, binding_help_row_keys)]
+        #[qproperty(QStringList, binding_help_row_sources)]
+        #[qproperty(QStringList, binding_help_row_counts)]
+        #[qproperty(QStringList, switcher_result_kinds)]
+        #[qproperty(QStringList, switcher_result_ids)]
+        #[qproperty(QStringList, switcher_result_generations)]
+        #[qproperty(QStringList, switcher_result_labels)]
+        #[qproperty(QStringList, switcher_result_secondaries)]
+        #[qproperty(QStringList, switcher_result_profiles)]
+        #[qproperty(QStringList, switcher_result_workspaces)]
+        #[qproperty(QStringList, switcher_result_actions)]
+        #[qproperty(QStringList, switcher_result_ranks)]
+        #[qproperty(QStringList, switcher_result_recencies)]
+        #[qproperty(QString, switcher_request_scope)]
+        #[qproperty(QString, switcher_request_query)]
         #[qproperty(QString, search_text)]
         #[qproperty(bool, search_backward)]
         #[qproperty(QString, session_restore_values)]
         #[qproperty(QString, session_preview)]
         #[qproperty(QString, profile_values)]
         #[qproperty(bool, profile_values_pending)]
-        #[qproperty(QString, userscript_inventory)]
+        #[qproperty(QStringList, userscript_names)]
+        #[qproperty(QStringList, userscript_enabled_values)]
+        #[qproperty(QStringList, userscript_page_world_values)]
+        #[qproperty(QStringList, userscript_action_counts)]
+        #[qproperty(QStringList, userscript_action_ids)]
+        #[qproperty(QStringList, userscript_action_labels)]
+        #[qproperty(QStringList, userscript_action_availability)]
+        #[qproperty(QStringList, page_userscript_names)]
+        #[qproperty(QStringList, page_userscript_sources)]
+        #[qproperty(QStringList, page_userscript_run_at)]
+        #[qproperty(QStringList, page_userscript_runs_on_sub_frames)]
+        #[qproperty(bool, site_rule_javascript_set)]
+        #[qproperty(bool, site_rule_javascript_enabled)]
+        #[qproperty(bool, site_rule_images_set)]
+        #[qproperty(bool, site_rule_images_enabled)]
+        #[qproperty(bool, site_rule_force_dark_set)]
+        #[qproperty(bool, site_rule_force_dark_enabled)]
+        #[qproperty(bool, site_rule_autoplay_set)]
+        #[qproperty(QString, site_rule_autoplay)]
+        #[qproperty(bool, site_rule_zoom_set)]
+        #[qproperty(f64, site_rule_zoom)]
+        #[qproperty(QStringList, external_action_ids)]
+        #[qproperty(QStringList, external_action_labels)]
+        #[qproperty(QStringList, external_action_availability)]
         #[qproperty(QString, userscript_install_state)]
+        #[qproperty(QString, download_desktop_uri)]
+        #[qproperty(QString, download_request_token)]
+        #[qproperty(QString, download_request_url)]
         #[qproperty(bool, profile_bootstrap_pending)]
         #[qproperty(QString, profile_preview_text)]
         #[qproperty(bool, profile_preview_pending)]
         #[qproperty(QString, library_kind)]
         #[qproperty(QString, library_values)]
-        #[qproperty(QString, library_graph_values)]
+        #[qproperty(QStringList, library_graph_edge_sources)]
+        #[qproperty(QStringList, library_graph_edge_targets)]
+        #[qproperty(QStringList, library_graph_edge_transitions)]
         #[qproperty(QString, journey_export_preview_text)]
         #[qproperty(i64, storage_library_revision)]
-        #[qproperty(QString, link_preview)]
+        #[qproperty(QString, link_preview_command)]
+        #[qproperty(QString, link_preview_original)]
+        #[qproperty(QString, link_preview_cleaned)]
+        #[qproperty(QStringList, link_preview_applied_rules)]
+        #[qproperty(QStringList, link_preview_removed_parameters)]
+        #[qproperty(QStringList, link_preview_retained_parameters)]
+        #[qproperty(QString, link_preview_explanation)]
+        #[qproperty(bool, link_preview_requires_confirmation)]
         #[qproperty(bool, link_preview_visible)]
         #[qproperty(QString, external_navigation_uri)]
         #[qproperty(QString, external_navigation_scheme)]
@@ -283,53 +444,117 @@ mod qobject {
         #[qproperty(bool, hint_links_only)]
         #[qproperty(bool, hint_rapid)]
         #[qproperty(bool, caret_selecting)]
+        #[qproperty(QString, caret_request_token)]
+        #[qproperty(QString, caret_request_operation)]
+        #[qproperty(QString, editor_completion_token)]
+        #[qproperty(QString, editor_completion_original)]
+        #[qproperty(QString, editor_completion_updated)]
+        #[qproperty(QString, editor_completion_error)]
+        #[qproperty(QString, editor_completion_stderr)]
+        #[qproperty(QString, jseval_tab_id)]
+        #[qproperty(QString, jseval_world)]
+        #[qproperty(QString, jseval_script)]
         #[qproperty(QString, clipboard_request)]
         #[qproperty(bool, clipboard_request_sensitive)]
         #[qproperty(bool, clipboard_request_primary)]
         #[qproperty(QString, config_json)]
+        #[qproperty(QStringList, settings_row_keys)]
+        #[qproperty(QStringList, settings_row_labels)]
+        #[qproperty(QStringList, settings_row_types)]
+        #[qproperty(QStringList, settings_row_scopes)]
+        #[qproperty(QStringList, settings_row_applies)]
+        #[qproperty(QStringList, settings_row_values)]
+        #[qproperty(QStringList, settings_row_options)]
+        #[qproperty(QString, runtime_setting_error)]
+        #[qproperty(QString, chrome_font_family)]
+        #[qproperty(f64, chrome_font_size_pt)]
+        #[qproperty(QString, chrome_statusbar_mode)]
+        #[qproperty(QString, chrome_tabs_mode)]
+        #[qproperty(QString, chrome_tab_position)]
+        #[qproperty(QString, chrome_reduced_motion)]
+        #[qproperty(i32, feature_switcher_max_results)]
+        #[qproperty(bool, feature_downloads_ask_destination)]
+        #[qproperty(bool, feature_desktop_notifications_enabled)]
+        #[qproperty(bool, feature_desktop_media_keys_enabled)]
+        #[qproperty(bool, feature_push_service_enabled)]
+        #[qproperty(bool, feature_spellcheck_enabled)]
+        #[qproperty(QStringList, feature_spellcheck_languages)]
+        #[qproperty(QStringList, feature_blocking_list_ids)]
+        #[qproperty(i32, feature_blocking_update_interval_hours)]
+        #[qproperty(QString, feature_link_cleaning_update_source)]
+        #[qproperty(QString, feature_link_cleaning_update_sha256)]
         #[qproperty(QString, config_base_json)]
         #[qproperty(QString, cli_overrides_json)]
         #[qproperty(QString, profile_overrides_json)]
         #[qproperty(QString, config_path)]
         #[qproperty(QString, config_source)]
         #[qproperty(QString, contexts_json)]
+        #[qproperty(QStringList, context_choice_names)]
+        #[qproperty(QStringList, context_choice_labels)]
+        #[qproperty(QStringList, context_choice_profiles)]
         #[qproperty(QString, context_name)]
         #[qproperty(QString, context_label)]
         #[qproperty(QString, context_workspace)]
         #[qproperty(QString, context_accent)]
         #[qproperty(bool, context_entry_force_reuse)]
-        #[qproperty(QString, context_route_json)]
+        #[qproperty(QString, context_route_id)]
+        #[qproperty(QString, context_route_behavior)]
+        #[qproperty(QString, context_route_context)]
+        #[qproperty(QString, context_route_profile)]
+        #[qproperty(QString, context_route_url)]
         #[qproperty(QString, window_token)]
         #[qproperty(QString, core_window_id)]
-        #[qproperty(QString, window_registry_json)]
         #[qproperty(QString, hyprland_status)]
         #[qproperty(QString, hyprland_clients_json)]
-        #[qproperty(QString, desktop_portal_status)]
-        #[qproperty(QString, system_reduced_motion_json)]
-        #[qproperty(QString, system_font_scale_json)]
-        #[qproperty(QString, theme_palette_json)]
-        #[qproperty(QString, theme_contrast_json)]
+        #[qproperty(QString, desktop_portal_mode)]
+        #[qproperty(QString, system_reduced_motion_status)]
+        #[qproperty(bool, system_reduced_motion_enabled)]
+        #[qproperty(QString, system_font_scale_status)]
+        #[qproperty(f64, system_font_scale)]
+        #[qproperty(QString, theme_background_color)]
+        #[qproperty(QString, theme_surface_color)]
+        #[qproperty(QString, theme_panel_color)]
+        #[qproperty(QString, theme_primary_text_color)]
+        #[qproperty(QString, theme_secondary_text_color)]
+        #[qproperty(QString, theme_muted_text_color)]
+        #[qproperty(QString, theme_border_color)]
+        #[qproperty(QString, theme_accent_color)]
+        #[qproperty(QString, theme_warning_color)]
+        #[qproperty(QString, theme_error_color)]
+        #[qproperty(QString, theme_success_color)]
+        #[qproperty(QString, theme_private_color)]
+        #[qproperty(QString, theme_mode_insert_color)]
+        #[qproperty(QString, theme_selection_color)]
+        #[qproperty(QString, theme_selection_text_color)]
+        #[qproperty(QString, theme_contrast_status)]
+        #[qproperty(QString, theme_contrast_reason)]
         #[qproperty(QString, site_status)]
-        #[qproperty(QString, site_experiment_json)]
-        #[qproperty(QString, blocking_hosts)]
-        #[qproperty(QString, blocking_exceptions)]
-        #[qproperty(QString, blocking_rule_lists)]
-        #[qproperty(QString, blocking_exception_rule_lists)]
+        #[qproperty(bool, site_experiment_active)]
+        #[qproperty(QString, site_experiment_id)]
+        #[qproperty(QString, site_experiment_kind)]
+        #[qproperty(QString, site_experiment_url)]
+        #[qproperty(i64, site_experiment_remaining_seconds)]
+        #[qproperty(QStringList, blocking_hosts)]
+        #[qproperty(QStringList, blocking_exceptions)]
+        #[qproperty(QStringList, blocking_rule_hosts)]
+        #[qproperty(QStringList, blocking_rule_list_ids)]
+        #[qproperty(QStringList, blocking_exception_rule_hosts)]
+        #[qproperty(QStringList, blocking_exception_rule_list_ids)]
         #[qproperty(QString, blocking_loaded_lists)]
         #[qproperty(QString, blocking_list_metadata)]
         #[qproperty(QString, blocking_skipped_lists)]
-        #[qproperty(QString, blocking_bypass_sites)]
-        #[qproperty(QString, blocking_cosmetic_rules)]
-        #[qproperty(QString, blocking_cosmetic_exceptions)]
+        #[qproperty(QStringList, blocking_bypass_sites)]
+        #[qproperty(QStringList, blocking_cosmetic_rule_hosts)]
+        #[qproperty(QStringList, blocking_cosmetic_rule_selectors)]
+        #[qproperty(QStringList, blocking_cosmetic_exception_hosts)]
+        #[qproperty(QStringList, blocking_cosmetic_exception_selectors)]
         #[qproperty(QString, blocking_adblock_source_ids)]
         #[qproperty(u64, blocking_adblock_handle)]
-        #[qproperty(QString, blocking_security_deny_hosts)]
+        #[qproperty(QStringList, blocking_security_deny_hosts)]
         #[qproperty(bool, blocking_enabled)]
         #[qproperty(i64, blocking_blocked_count)]
         #[qproperty(i64, blocking_active_site_count)]
         #[qproperty(i64, blocking_unknown_context_count)]
-        #[qproperty(QString, blocking_active_explanation)]
-        #[qproperty(QString, blocking_active_decisions)]
         type BrowserUi = super::BrowserUiRust;
 
         #[qsignal]
@@ -356,6 +581,52 @@ mod qobject {
         fn navigate_without_context_route(self: Pin<&mut BrowserUi>, input: &QString);
 
         #[qinvokable]
+        fn set_blocking_active_evidence(
+            self: Pin<&mut BrowserUi>,
+            explanation: &QStringList,
+            decisions: &QStringList,
+        ) -> bool;
+
+        #[qinvokable]
+        fn publish_blocking_live_counts(
+            self: Pin<&mut BrowserUi>,
+            blocked: f64,
+            unknown_context: f64,
+            active_site: f64,
+        ) -> bool;
+
+        #[qinvokable]
+        fn clear_blocking_active_evidence(self: Pin<&mut BrowserUi>);
+
+        #[qinvokable]
+        fn set_contexts_configuration(self: Pin<&mut BrowserUi>, input: &QString) -> bool;
+
+        #[qinvokable]
+        fn set_context_entry_reuse(self: Pin<&mut BrowserUi>, force_reuse: bool);
+
+        #[qinvokable]
+        fn set_startup_configuration(
+            self: Pin<&mut BrowserUi>,
+            config: &QString,
+            base_config: &QString,
+            cli_overrides: &QString,
+            profile_overrides: &QString,
+            path: &QString,
+            source: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn publish_live_window_registry(
+            self: Pin<&mut BrowserUi>,
+            ids: &QStringList,
+            owner_tokens: &QStringList,
+            profiles: &QStringList,
+            private_flags: &QStringList,
+            ephemeral_flags: &QStringList,
+            tab_counts: &QStringList,
+        ) -> bool;
+
+        #[qinvokable]
         fn note_renderer_process_terminated(self: Pin<&mut BrowserUi>, tab_index: i32) -> bool;
 
         #[qinvokable]
@@ -372,7 +643,7 @@ mod qobject {
         ) -> bool;
 
         #[qinvokable]
-        fn userscript_actions(self: Pin<&mut BrowserUi>, subject: &QString) -> QString;
+        fn select_userscript_action_subject(self: Pin<&mut BrowserUi>, subject: &QString) -> bool;
 
         #[qinvokable]
         fn refresh_userscript_inventory(self: Pin<&mut BrowserUi>) -> bool;
@@ -385,10 +656,10 @@ mod qobject {
         fn remove_userscript(self: Pin<&mut BrowserUi>, name: &QString) -> bool;
 
         #[qinvokable]
-        fn external_action_values(self: Pin<&mut BrowserUi>, subject: &QString) -> QString;
+        fn select_external_action_subject(self: Pin<&mut BrowserUi>, subject: &QString) -> bool;
 
         #[qinvokable]
-        fn install_userscript_manifest(self: Pin<&mut BrowserUi>, path: &QString) -> QString;
+        fn install_userscript_manifest(self: Pin<&mut BrowserUi>, path: &QString) -> bool;
 
         #[qinvokable]
         fn journey_export_preview(self: Pin<&mut BrowserUi>) -> QString;
@@ -615,11 +886,7 @@ mod qobject {
         fn list_downloads(self: Pin<&mut BrowserUi>) -> QString;
 
         #[qinvokable]
-        fn download_desktop_action(
-            self: Pin<&mut BrowserUi>,
-            id: &QString,
-            reveal: bool,
-        ) -> QString;
+        fn download_desktop_action(self: Pin<&mut BrowserUi>, id: &QString, reveal: bool) -> bool;
 
         #[qinvokable]
         fn request_download_action(
@@ -684,7 +951,7 @@ mod qobject {
         fn finish_print_job(self: Pin<&mut BrowserUi>, path: &QString, succeeded: bool) -> bool;
 
         #[qinvokable]
-        fn take_download_request(self: Pin<&mut BrowserUi>) -> QString;
+        fn take_download_request(self: Pin<&mut BrowserUi>) -> bool;
 
         #[qinvokable]
         fn complete_download_request(
@@ -694,7 +961,7 @@ mod qobject {
         ) -> bool;
 
         #[qinvokable]
-        fn switcher_query(self: Pin<&mut BrowserUi>, query: &QString, scope: &QString) -> QString;
+        fn switcher_query(self: Pin<&mut BrowserUi>, query: &QString, scope: &QString) -> bool;
 
         #[qinvokable]
         fn poll_storage_library(self: Pin<&mut BrowserUi>) -> bool;
@@ -808,19 +1075,19 @@ mod qobject {
         fn probe_desktop_portals(self: Pin<&mut BrowserUi>) -> bool;
 
         #[qinvokable]
+        fn portal_capability_status(self: Pin<&mut BrowserUi>, capability: &QString) -> QString;
+
+        #[qinvokable]
         fn set_runtime_setting(
             self: Pin<&mut BrowserUi>,
             key: &QString,
             literal: &QString,
             temporary: bool,
-        ) -> QString;
+        ) -> bool;
 
         #[qinvokable]
-        fn unset_runtime_setting(
-            self: Pin<&mut BrowserUi>,
-            key: &QString,
-            temporary: bool,
-        ) -> QString;
+        fn unset_runtime_setting(self: Pin<&mut BrowserUi>, key: &QString, temporary: bool)
+        -> bool;
 
         #[qinvokable]
         fn toggle_blocking_site(self: Pin<&mut BrowserUi>) -> bool;
@@ -884,7 +1151,7 @@ mod qobject {
         fn diagnostics_json(self: Pin<&mut BrowserUi>) -> QString;
 
         #[qinvokable]
-        fn spellcheck_dictionaries(self: Pin<&mut BrowserUi>) -> QString;
+        fn spellcheck_dictionaries(self: Pin<&mut BrowserUi>) -> QStringList;
 
         #[qinvokable]
         fn export_diagnostics(self: Pin<&mut BrowserUi>, path: &QString) -> bool;
@@ -897,7 +1164,7 @@ mod qobject {
         );
 
         #[qinvokable]
-        fn bindings_json(self: Pin<&mut BrowserUi>) -> QString;
+        fn refresh_binding_help(self: Pin<&mut BrowserUi>, search: &QString) -> bool;
 
         #[qinvokable]
         fn begin_site_doctor_experiment(self: Pin<&mut BrowserUi>, kind: &QString) -> QString;
@@ -913,11 +1180,11 @@ mod qobject {
         fn tick_site_doctor_experiment(self: Pin<&mut BrowserUi>);
 
         #[qinvokable]
-        fn matching_page_scripts(
+        fn select_matching_page_scripts(
             self: Pin<&mut BrowserUi>,
             url: &QString,
             private_profile: bool,
-        ) -> QString;
+        ) -> bool;
 
         #[qinvokable]
         fn page_focus_observed_for(
@@ -931,7 +1198,7 @@ mod qobject {
         );
 
         #[qinvokable]
-        fn site_rule_settings(self: Pin<&mut BrowserUi>, url: &QString) -> QString;
+        fn select_site_rule_settings(self: Pin<&mut BrowserUi>, url: &QString) -> bool;
 
         #[qinvokable]
         fn navigation_started(self: Pin<&mut BrowserUi>, url: QString);
@@ -1014,7 +1281,7 @@ mod qobject {
         fn deliver_selection(self: Pin<&mut BrowserUi>, token: &QString, result: &QString) -> bool;
 
         #[qinvokable]
-        fn take_caret_request(self: Pin<&mut BrowserUi>) -> QString;
+        fn take_caret_request(self: Pin<&mut BrowserUi>) -> bool;
 
         #[qinvokable]
         fn deliver_caret(self: Pin<&mut BrowserUi>, token: &QString, result: &QString) -> bool;
@@ -1026,7 +1293,7 @@ mod qobject {
         fn deliver_editor(self: Pin<&mut BrowserUi>, token: &QString, result: &QString) -> bool;
 
         #[qinvokable]
-        fn take_editor_completion(self: Pin<&mut BrowserUi>) -> QString;
+        fn take_editor_completion(self: Pin<&mut BrowserUi>) -> bool;
 
         #[qinvokable]
         fn deliver_editor_apply(
@@ -1074,210 +1341,111 @@ mod qobject {
 
 use core::pin::Pin;
 use cxx_qt::{CxxQtType, Threading};
-use cxx_qt_lib::QString;
+use cxx_qt_lib::{QString, QStringList};
+use ferric_browser_application::{
+    BrowserApplication, ConfigurationLayers, ContextCommand, ProfileActivation, StorageEffect,
+    StorageRequest, StorageTicket,
+};
 use ferric_browser_config::{
     ActionTargetConfig, Config, ContextsConfig, HyprlandConfig, LoggingConfig, RuntimeOverrides,
-    ThemePalette, apply_immediate_config_changes, apply_runtime_overrides, load, load_contexts,
-    load_profiles, load_runtime_overrides, load_theme_palette, matching_context_routes,
-    matching_site_rules, pending_config_changes, profile_override_layer, save_contexts_atomic,
+    ThemePalette, load, load_profile_runtime_overrides, load_runtime_overrides, load_theme_palette,
+    matching_context_routes, matching_site_rules, profile_config_path, save_contexts_atomic,
     save_runtime_overrides_atomic, setting_metadata, setting_metadata_all,
     setting_supported_scopes, setting_supports_site_scope, theme_contrast_report,
 };
+#[cfg(test)]
+use ferric_browser_core::ActionSubject;
 use ferric_browser_core::{
-    ActionDefinition, ActionRegistry, ActionSource, ActionSubject, ApplicationState, ArgumentKind,
-    BindingDefinition, BindingOutcome, BindingResolver, BindingTrie, CommandContext,
-    CommandInvocation, CommandRegistry, CommandSource, CompletionCandidate, CompletionCategory,
-    DEFAULT_COMPLETION_LIMIT, Diagnostic, DispatchTarget, Effect, EngineEffect, Event,
-    ExistenceState, HintCandidate, HintGeometry, HintKind, HintSession, HintTarget, IdSource,
-    JourneyEdgeKind, JourneyNodeId, LoadingState, Mode, NavigationContext, NavigationError,
-    NavigationSource, ParseInput, ParsedCommand, PrivacyKind, RendererState, ResourceLifecycle,
-    SearchCase, TabId, TabTransfer, Target, ValidatedUrl, WindowId, assign_labels,
-    canonical_origin, clean_link, complete, dispatch_command, dispatch_command_for, parse_chain,
-    reduce, resolve_input, resolve_search_query, switcher_rank, tokenize_switcher_query,
-    validate_open_target,
+    ActionDefinition, ActionRegistry, ActionSource, BindingOutcome, BindingResolver, BindingTrie,
+    CleanLinkResult, CommandInvocation, CommandRegistry, CommandSource, CompletionCandidate,
+    CompletionCategory, DEFAULT_COMPLETION_LIMIT, Diagnostic, DispatchTarget, Effect, EngineEffect,
+    Event, ExistenceState, HintKind, HintSession, HintTarget, IdSource, JourneyEdgeKind,
+    JourneyNodeId, LoadingState, Mode, NavigationContext, NavigationError, NavigationSource,
+    ParseInput, ParsedCommand, PrivacyKind, ResourceLifecycle, SearchCase, TabId, TabTransfer,
+    Target, ValidatedUrl, WindowId, assign_labels, canonical_origin, clean_link, complete,
+    parse_chain, resolve_input, switcher_rank, tokenize_switcher_query,
 };
 use ferric_browser_ipc::{
-    CacheLookup, ErrorCode, EventNotification, HelloParams, HelloResult, PendingRequest,
-    ProtocolError, PublicError, Request, RequestCache, Response, current_uid, enqueue_request,
-    has_pending_requests, install_pending_request_waker, parse_request, peer_uid, publish_event,
-    read_frame, serialize_response, subscribe_event_stream, take_pending_request, write_frame,
+    EventNotification, PublicError, Request, Response, has_pending_requests,
+    install_pending_request_waker, publish_event, subscribe_event_stream, take_pending_request,
 };
-use ferric_browser_runtime::{BrowserRuntime, RuntimeEffect, RuntimeInput};
+use ferric_browser_runtime::{
+    BrowserRuntime, RuntimeCommand, RuntimeDispatch, RuntimeEffect, RuntimeInput,
+};
+#[cfg(test)]
+use ferric_browser_storage::ProfilePrivacy;
+#[cfg(test)]
+use ferric_browser_storage::ProfileRegistry;
+#[cfg(test)]
+use ferric_browser_storage::Quickmark;
+#[cfg(test)]
+use ferric_browser_storage::RootSpec;
 use ferric_browser_storage::{
     ClosedTabSnapshot, CollisionPolicy, ContextMember, ContextRegistry, ContextTabDescriptor,
     DownloadState, DownloadUpdate, HistoryRecord, JourneyQuerySnapshot, JourneyWrite, MarkWrite,
-    PermissionRule, ProfileDeletionOutcome, ProfileLibrarySnapshot, ProfileLock, ProfilePrivacy,
-    ProfileRegistry, ProfileStore, ProfileStoreWorker, Quickmark, RestoreSafety, RootSpec,
-    SessionSnapshot, SnapshotTabInput, SnapshotWindowInput, StorageRoots, StoreMode, VisitInput,
-    choose_download_path, crash_diagnostics, delete_profile_transaction, is_safe_history_url,
+    PermissionRule, ProfileLibrarySnapshot, ProfileLock, ProfileStore, RestoreSafety,
+    SessionSnapshot, SnapshotTabInput, SnapshotWindowInput, StorageCompletion, StorageRoots,
+    StorageWorkerError, VisitInput, choose_download_path, crash_diagnostics, is_safe_history_url,
     named_session_path, sanitize_download_filename, unix_timestamp,
 };
-use serde_json::{Value, json};
+use ipc_params::{
+    query_bool_param, query_empty_object_or_null, query_limit, query_object, query_offset,
+    query_optional_string,
+};
+use serde_json::Value;
 use single_flight::{Poll as WorkerPoll, SingleFlightWorker, SubmitError};
 use std::cell::{Cell, RefCell};
-use std::fmt::Write as _;
 #[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
 use std::time::Instant;
 use std::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
+    collections::{BTreeMap, BTreeSet},
     fs,
-    io::{Read, Write},
-    os::unix::net::{UnixListener, UnixStream},
+    io::Write,
     path::{Path, PathBuf},
-    process::{Child, Command, ExitStatus, Stdio},
+    process::{Command, Stdio},
     sync::{
-        Arc, Mutex, OnceLock,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
     },
     thread,
-    time::{Duration, UNIX_EPOCH},
+    time::Duration,
 };
 use uuid::Uuid;
 
 const PAGE_SCRIPT_DEADLINE: Duration = Duration::from_secs(2);
-const CHILD_TERMINATION_GRACE: Duration = Duration::from_millis(500);
 const SITE_DOCTOR_EXPERIMENT_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_UNTRUSTED_ARGUMENT_BYTES: usize = 16 * 1024;
 const MAX_USER_DIRS_FILE_BYTES: u64 = 16 * 1024;
-const MAX_PAGE_TITLE_BYTES: usize = 4 * 1024;
-const MAX_NAVIGATION_FAILURE_DETAIL_BYTES: usize = 2 * 1024;
-const MAX_JSEVAL_SCRIPT_BYTES: usize = 64 * 1024;
-const MAX_JOURNEY_QUERY_BYTES: usize = 256;
 const MAX_JOURNEY_REDIRECT_HOPS: u8 = 64;
 const MAX_ACTION_AUDIT_RECORDS: usize = 128;
 const MAX_DIAGNOSTICS_EXPORT_BYTES: usize = 256 * 1024;
-const MAX_PENDING_HISTORY_WRITES: usize = 1_024;
 const MAX_PRIVATE_HISTORY: usize = 1_000;
-const MAX_PENDING_PERMISSION_WRITES: usize = 64;
-const MAX_PENDING_DOWNLOAD_WRITES: usize = 128;
-const MAX_PENDING_MARK_WRITES: usize = 64;
-const MAX_PENDING_JOURNEY_WRITES: usize = 64;
-const MAX_HINT_FRAME_DEPTH: usize = 8;
 
-fn is_bounded_untrusted_text(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= MAX_UNTRUSTED_ARGUMENT_BYTES
-        && !value.chars().any(char::is_control)
+/// A ranked switcher row before pagination and JSON serialization.
+struct SwitcherCandidate {
+    rank: i64,
+    kind: String,
+    recency: i64,
+    value: Value,
 }
-
-fn is_bounded_journey_query(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= MAX_JOURNEY_QUERY_BYTES
-        && !value.chars().any(char::is_control)
-}
-
-fn validate_jseval_script(value: &str) -> Result<(), String> {
-    if value.is_empty() || value.len() > MAX_JSEVAL_SCRIPT_BYTES {
-        return Err("jseval script must be nonempty and at most 64 KiB".into());
-    }
-    if value.chars().any(|character| {
-        character == '\0' || (character.is_control() && !matches!(character, '\n' | '\r' | '\t'))
-    }) {
-        return Err("jseval script contains a disallowed control character".into());
-    }
-    Ok(())
-}
-
-fn query_object<'a>(
-    params: &'a Value,
-    method: &str,
-    allowed: &[&str],
-) -> Result<&'a serde_json::Map<String, Value>, String> {
-    let object = params
-        .as_object()
-        .ok_or_else(|| format!("{method} params must be an object"))?;
-    if object
-        .keys()
-        .any(|key| !allowed.iter().any(|allowed| *allowed == key))
-    {
-        return Err(format!("{method} contains an unknown field"));
-    }
-    Ok(object)
-}
-
-fn query_bool_param(
-    object: &serde_json::Map<String, Value>,
-    method: &str,
-    name: &str,
-    default: bool,
-) -> Result<bool, String> {
-    object
-        .get(name)
-        .map(|value| {
-            value
-                .as_bool()
-                .ok_or_else(|| format!("{method} {name} must be a boolean"))
-        })
-        .transpose()
-        .map(|value| value.unwrap_or(default))
-}
-
-fn query_optional_string<'a>(
-    object: &'a serde_json::Map<String, Value>,
-    method: &str,
-    name: &str,
-) -> Result<Option<&'a str>, String> {
-    object
-        .get(name)
-        .map(|value| {
-            value
-                .as_str()
-                .ok_or_else(|| format!("{method} {name} must be a string"))
-        })
-        .transpose()
-}
-
-fn query_limit(
-    object: &serde_json::Map<String, Value>,
-    method: &str,
-    default: usize,
-) -> Result<usize, String> {
-    object
-        .get("limit")
-        .map(|value| {
-            value
-                .as_u64()
-                .filter(|limit| (1..=1_000).contains(limit))
-                .map(|limit| limit as usize)
-                .ok_or_else(|| format!("{method} limit must be an integer from 1 to 1000"))
-        })
-        .transpose()
-        .map(|value| value.unwrap_or(default))
-}
-
-fn query_offset(object: &serde_json::Map<String, Value>, method: &str) -> Result<usize, String> {
-    object
-        .get("offset")
-        .map(|value| {
-            value
-                .as_u64()
-                .filter(|offset| *offset <= 100_000)
-                .map(|offset| offset as usize)
-                .ok_or_else(|| format!("{method} offset must be an integer from 0 to 100000"))
-        })
-        .transpose()
-        .map(|value| value.unwrap_or(0))
-}
-
-type SwitcherCandidate = (i64, String, i64, Value);
 
 fn compare_switcher_candidates(
     left: &SwitcherCandidate,
     right: &SwitcherCandidate,
 ) -> std::cmp::Ordering {
     right
-        .0
-        .cmp(&left.0)
-        .then_with(|| right.2.cmp(&left.2))
-        .then_with(|| left.1.cmp(&right.1))
+        .rank
+        .cmp(&left.rank)
+        .then_with(|| right.recency.cmp(&left.recency))
+        .then_with(|| left.kind.cmp(&right.kind))
         .then_with(|| {
-            left.3
+            left.value
                 .get("id")
                 .and_then(Value::as_str)
-                .cmp(&right.3.get("id").and_then(Value::as_str))
+                .cmp(&right.value.get("id").and_then(Value::as_str))
         })
 }
 
@@ -1297,20 +1465,9 @@ fn select_switcher_page(
         .into_iter()
         .skip(offset)
         .take(limit)
-        .map(|(_, _, _, value)| value)
+        .map(|candidate| candidate.value)
         .collect();
     (total, results)
-}
-
-fn query_empty_object_or_null(params: &Value, method: &str) -> Result<(), String> {
-    if params.is_null() {
-        return Ok(());
-    }
-    let object = query_object(params, method, &[])?;
-    if !object.is_empty() {
-        return Err(format!("{method} does not accept parameters"));
-    }
-    Ok(())
 }
 
 #[derive(Clone, Debug)]
@@ -1344,26 +1501,6 @@ fn permission_session_key(scope_id: Uuid, origin: &str, permission: &str) -> Per
     }
 }
 
-fn normalized_navigation_failure_kind(value: &str) -> &'static str {
-    match value {
-        "dns" => "dns",
-        "network" => "network",
-        "tls" => "tls",
-        "http" => "http",
-        "download" => "download",
-        _ => "unknown",
-    }
-}
-
-fn bounded_navigation_failure_detail(value: &str) -> String {
-    let sanitized = sanitize_display_text(value, false);
-    let mut end = sanitized.len().min(MAX_NAVIGATION_FAILURE_DETAIL_BYTES);
-    while end > 0 && !sanitized.is_char_boundary(end) {
-        end -= 1;
-    }
-    sanitized[..end].to_owned()
-}
-
 #[allow(clippy::struct_excessive_bools)]
 pub struct BrowserUiRust {
     initial_url: QString,
@@ -1371,7 +1508,7 @@ pub struct BrowserUiRust {
     display_url: QString,
     page_title: QString,
     status_text: QString,
-    macro_status: QString,
+    macro_status_text: QString,
     load_state: QString,
     navigation_failure_kind: QString,
     navigation_failure_requested_url: QString,
@@ -1381,7 +1518,9 @@ pub struct BrowserUiRust {
     mode: QString,
     learning_mode: bool,
     view_alive: bool,
-    state: Option<ApplicationState>,
+    // The application boundary owns reducer state and durable resources; Qt
+    // receives only read projections and typed effects.
+    state: Option<BrowserApplication>,
     window: Option<WindowId>,
     tab: Option<TabId>,
     registry: CommandRegistry,
@@ -1393,8 +1532,7 @@ pub struct BrowserUiRust {
     pending_journey_transitions: Vec<(Target, JourneyEdgeKind, String)>,
     pending_journey_parent: Option<(Target, JourneyNodeId)>,
     pending_journey_traversal: Option<Target>,
-    pending_journey_mapping: Option<(JourneyNodeId, String)>,
-    pending_journey_writes: VecDeque<(JourneyWrite, Option<(JourneyNodeId, String)>)>,
+    pending_journey_mappings: BTreeMap<StorageTicket, (JourneyNodeId, String)>,
     pending_history_clear: Option<(Option<i64>, Option<String>)>,
     pending_journey_reopen: Option<(String, String, Option<TabId>, String)>,
     pending_navigation_urls: BTreeMap<TabId, String>,
@@ -1413,14 +1551,60 @@ pub struct BrowserUiRust {
     completion_selected: i32,
     completion_visible: bool,
     binding_overlay: QString,
+    binding_help_row_kinds: QStringList,
+    binding_help_row_titles: QStringList,
+    binding_help_row_modes: QStringList,
+    binding_help_row_commands: QStringList,
+    binding_help_row_descriptions: QStringList,
+    binding_help_row_keys: QStringList,
+    binding_help_row_sources: QStringList,
+    binding_help_row_counts: QStringList,
+    switcher_result_kinds: QStringList,
+    switcher_result_ids: QStringList,
+    switcher_result_generations: QStringList,
+    switcher_result_labels: QStringList,
+    switcher_result_secondaries: QStringList,
+    switcher_result_profiles: QStringList,
+    switcher_result_workspaces: QStringList,
+    switcher_result_actions: QStringList,
+    switcher_result_ranks: QStringList,
+    switcher_result_recencies: QStringList,
+    switcher_request_scope: QString,
+    switcher_request_query: QString,
     search_text: QString,
     search_backward: bool,
     session_restore_values: QString,
     session_preview: QString,
     profile_values: QString,
     profile_values_pending: bool,
-    userscript_inventory: QString,
+    userscript_names: QStringList,
+    userscript_enabled_values: QStringList,
+    userscript_page_world_values: QStringList,
+    userscript_action_counts: QStringList,
+    userscript_action_ids: QStringList,
+    userscript_action_labels: QStringList,
+    userscript_action_availability: QStringList,
+    page_userscript_names: QStringList,
+    page_userscript_sources: QStringList,
+    page_userscript_run_at: QStringList,
+    page_userscript_runs_on_sub_frames: QStringList,
+    site_rule_javascript_set: bool,
+    site_rule_javascript_enabled: bool,
+    site_rule_images_set: bool,
+    site_rule_images_enabled: bool,
+    site_rule_force_dark_set: bool,
+    site_rule_force_dark_enabled: bool,
+    site_rule_autoplay_set: bool,
+    site_rule_autoplay: QString,
+    site_rule_zoom_set: bool,
+    site_rule_zoom: f64,
+    external_action_ids: QStringList,
+    external_action_labels: QStringList,
+    external_action_availability: QStringList,
     userscript_install_state: QString,
+    download_desktop_uri: QString,
+    download_request_token: QString,
+    download_request_url: QString,
     profile_bootstrap_pending: bool,
     profile_list_command_pending: bool,
     pending_profile_open: Option<(String, String)>,
@@ -1430,10 +1614,11 @@ pub struct BrowserUiRust {
     profile_preview_pending: bool,
     library_kind: QString,
     library_values: QString,
-    library_graph_values: QString,
+    library_graph_edge_sources: QStringList,
+    library_graph_edge_targets: QStringList,
+    library_graph_edge_transitions: QStringList,
     journey_export_preview_text: QString,
     journey_export_payload: Option<String>,
-    storage_worker: Option<ProfileStoreWorker>,
     storage_library: Option<ProfileLibrarySnapshot>,
     storage_library_revision: i64,
     storage_library_dirty: Cell<bool>,
@@ -1451,16 +1636,19 @@ pub struct BrowserUiRust {
     session_save_pending: bool,
     session_save_checkpoint: bool,
     session_checkpoint_clear_pending: bool,
-    pending_history_writes: VecDeque<VisitInput>,
-    inflight_history_writes: Option<Vec<VisitInput>>,
-    pending_permission_writes: VecDeque<PermissionRule>,
-    inflight_permission_writes: Option<Vec<PermissionRule>>,
+    storage_flush_pending: bool,
+    storage_flush_error: Option<String>,
+    download_destination_pending: bool,
+    download_create_pending: bool,
     pending_permission_reset_session: Option<bool>,
-    pending_mark_writes: VecDeque<MarkWrite>,
-    inflight_mark_writes: Option<Vec<MarkWrite>>,
-    pending_download_writes: VecDeque<DownloadUpdate>,
-    inflight_download_writes: Option<Vec<DownloadUpdate>>,
-    link_preview: QString,
+    link_preview_command: QString,
+    link_preview_original: QString,
+    link_preview_cleaned: QString,
+    link_preview_applied_rules: QStringList,
+    link_preview_removed_parameters: QStringList,
+    link_preview_retained_parameters: QStringList,
+    link_preview_explanation: QString,
+    link_preview_requires_confirmation: bool,
     link_preview_visible: bool,
     pending_link_navigation: Option<PendingLinkNavigation>,
     external_navigation_uri: QString,
@@ -1476,6 +1664,16 @@ pub struct BrowserUiRust {
     hint_rapid_tabs_created: u8,
     pending_hint_action: Option<String>,
     caret_selecting: bool,
+    caret_request_token: QString,
+    caret_request_operation: QString,
+    editor_completion_token: QString,
+    editor_completion_original: QString,
+    editor_completion_updated: QString,
+    editor_completion_error: QString,
+    editor_completion_stderr: QString,
+    jseval_tab_id: QString,
+    jseval_world: QString,
+    jseval_script: QString,
     clipboard_request: QString,
     clipboard_request_sensitive: bool,
     clipboard_request_primary: bool,
@@ -1500,52 +1698,109 @@ pub struct BrowserUiRust {
     hint_session: Option<HintSession>,
     hint_ids: IdSource,
     config_json: QString,
+    settings_row_keys: QStringList,
+    settings_row_labels: QStringList,
+    settings_row_types: QStringList,
+    settings_row_scopes: QStringList,
+    settings_row_applies: QStringList,
+    settings_row_values: QStringList,
+    settings_row_options: QStringList,
+    runtime_setting_error: QString,
+    chrome_font_family: QString,
+    chrome_font_size_pt: f64,
+    chrome_statusbar_mode: QString,
+    chrome_tabs_mode: QString,
+    chrome_tab_position: QString,
+    chrome_reduced_motion: QString,
+    feature_switcher_max_results: i32,
+    feature_downloads_ask_destination: bool,
+    feature_desktop_notifications_enabled: bool,
+    feature_desktop_media_keys_enabled: bool,
+    feature_push_service_enabled: bool,
+    feature_spellcheck_enabled: bool,
+    feature_spellcheck_languages: QStringList,
+    feature_blocking_list_ids: QStringList,
+    feature_blocking_update_interval_hours: i32,
+    feature_link_cleaning_update_source: QString,
+    feature_link_cleaning_update_sha256: QString,
     config_base_json: QString,
     cli_overrides_json: QString,
     profile_overrides_json: QString,
     config_path: QString,
     config_source: QString,
     contexts_json: QString,
+    context_choice_names: QStringList,
+    context_choice_labels: QStringList,
+    context_choice_profiles: QStringList,
     context_name: QString,
     context_label: QString,
     context_workspace: QString,
     context_accent: QString,
     context_entry_force_reuse: bool,
-    context_route_json: QString,
+    context_route_id: QString,
+    context_route_behavior: QString,
+    context_route_context: QString,
+    context_route_profile: QString,
+    context_route_url: QString,
     window_token: QString,
     core_window_id: QString,
-    window_registry_json: QString,
     hyprland_status: QString,
     hyprland_clients_json: QString,
-    desktop_portal_status: QString,
-    system_reduced_motion_json: QString,
-    system_font_scale_json: QString,
-    theme_palette_json: QString,
-    theme_contrast_json: QString,
+    desktop_portal_mode: QString,
+    system_reduced_motion_status: QString,
+    system_reduced_motion_enabled: bool,
+    system_font_scale_status: QString,
+    system_font_scale: f64,
+    theme_background_color: QString,
+    theme_surface_color: QString,
+    theme_panel_color: QString,
+    theme_primary_text_color: QString,
+    theme_secondary_text_color: QString,
+    theme_muted_text_color: QString,
+    theme_border_color: QString,
+    theme_accent_color: QString,
+    theme_warning_color: QString,
+    theme_error_color: QString,
+    theme_success_color: QString,
+    theme_private_color: QString,
+    theme_mode_insert_color: QString,
+    theme_selection_color: QString,
+    theme_selection_text_color: QString,
+    theme_contrast_status: QString,
+    theme_contrast_reason: QString,
     site_status: QString,
-    site_experiment_json: QString,
-    blocking_hosts: QString,
-    blocking_exceptions: QString,
-    blocking_rule_lists: QString,
-    blocking_exception_rule_lists: QString,
+    site_experiment_active: bool,
+    site_experiment_id: QString,
+    site_experiment_kind: QString,
+    site_experiment_url: QString,
+    site_experiment_remaining_seconds: i64,
+    blocking_hosts: QStringList,
+    blocking_exceptions: QStringList,
+    blocking_rule_hosts: QStringList,
+    blocking_rule_list_ids: QStringList,
+    blocking_exception_rule_hosts: QStringList,
+    blocking_exception_rule_list_ids: QStringList,
     blocking_loaded_lists: QString,
     blocking_list_metadata: QString,
     blocking_skipped_lists: QString,
-    blocking_bypass_sites: QString,
-    blocking_cosmetic_rules: QString,
-    blocking_cosmetic_exceptions: QString,
+    blocking_bypass_sites: QStringList,
+    blocking_cosmetic_rule_hosts: QStringList,
+    blocking_cosmetic_rule_selectors: QStringList,
+    blocking_cosmetic_exception_hosts: QStringList,
+    blocking_cosmetic_exception_selectors: QStringList,
     blocking_adblock_source_ids: QString,
     blocking_adblock_handle: u64,
-    blocking_security_deny_hosts: QString,
+    blocking_security_deny_hosts: QStringList,
     blocking_enabled: bool,
     blocking_blocked_count: i64,
     blocking_active_site_count: i64,
     blocking_unknown_context_count: i64,
-    blocking_active_explanation: QString,
-    blocking_active_decisions: QString,
+    blocking_active_evidence: blocking_evidence::BlockingEvidence,
     focus_observations: BTreeMap<(i32, String), FocusObservation>,
     focus_suppressions: BTreeMap<(i32, String), i32>,
     config: Value,
+    portal_capabilities: PortalCapabilities,
+    theme_palette: ThemePalette,
     base_config: Value,
     pending_config: Option<Value>,
     profile_overrides: RuntimeOverrides,
@@ -1572,16 +1827,15 @@ pub struct BrowserUiRust {
     theme_watch: ConfigWatch,
     ipc_sequence: u64,
     ipc_shutdown_gate: bool,
-    contexts: Option<ContextRegistry>,
+    contexts: Option<ContextSnapshot>,
     pending_context_route: Option<PendingContextRoute>,
     profile_name: String,
     profile_id: Option<Uuid>,
     journey_durable_ids: RefCell<BTreeMap<JourneyNodeId, String>>,
-    store: Option<ProfileStore>,
+    profile_persistence: ProfilePersistence,
     session_permissions: BTreeMap<PermissionDecisionKey, String>,
     private_history: Vec<HistoryRecord>,
     private_history_next_id: i64,
-    profile_lock: Option<ProfileLock>,
     storage_roots: Option<StorageRoots>,
     profile_registry_roots: Option<StorageRoots>,
     userscript_roots: Option<StorageRoots>,
@@ -1606,32 +1860,75 @@ pub struct BrowserUiRust {
     macro_key_started_ms: Option<u64>,
     macro_depth: u8,
     macro_expanded_commands: usize,
+    live_window_registry: Vec<LiveWindowRegistryEntry>,
 }
 
-type ProfileStoreSetup = (
-    Option<ProfileStore>,
-    Option<Uuid>,
-    Option<PathBuf>,
-    Option<PathBuf>,
-    Option<ProfileLock>,
-    Option<StorageRoots>,
-    Vec<String>,
-);
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+enum ProfilePersistence {
+    #[default]
+    Unavailable,
+    Transient,
+    Durable,
+}
 
-type ProfileBootstrapSetup = (
-    ProfileStoreSetup,
-    Option<Result<RuntimeOverrides, String>>,
-    Option<Result<RuntimeOverrides, String>>,
-    Option<Result<Vec<PathBuf>, String>>,
-    Option<Result<(ContextRegistry, Option<String>), String>>,
-);
+impl ProfilePersistence {
+    const fn is_durable(self) -> bool {
+        matches!(self, Self::Durable)
+    }
+
+    const fn lacks_durable_storage(self) -> bool {
+        !self.is_durable()
+    }
+}
+
+/// Durable resources created for one profile bootstrap attempt.
+///
+/// The worker owns this record until the Qt adapter installs it.  Named fields
+/// keep the storage boundary explicit and prevent accidental positional mixes
+/// between similarly typed paths and optional handles.
+struct ProfileStoreSetup {
+    store: Option<ProfileStore>,
+    profile_id: Option<Uuid>,
+    session_path: Option<PathBuf>,
+    session_state_root: Option<PathBuf>,
+    profile_lock: Option<ProfileLock>,
+    roots: Option<StorageRoots>,
+    profile_names: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct ContextSnapshot {
+    records: Vec<ferric_browser_storage::ContextRecord>,
+}
+
+impl ContextSnapshot {
+    fn from_records(records: &[ferric_browser_storage::ContextRecord]) -> Self {
+        Self {
+            records: records.to_vec(),
+        }
+    }
+
+    fn contexts(&self) -> &[ferric_browser_storage::ContextRecord] {
+        &self.records
+    }
+}
+
+/// All profile-bootstrap worker results, grouped by the subsystem that
+/// produced them rather than by a positional tuple slot.
+struct ProfileBootstrapSetup {
+    storage: ProfileStoreSetup,
+    profile_overrides: Option<Result<RuntimeOverrides, String>>,
+    runtime_overrides: Option<Result<RuntimeOverrides, String>>,
+    config_sources: Option<Result<Vec<PathBuf>, String>>,
+    contexts: Option<Result<(ContextRegistry, Option<String>), String>>,
+}
 
 struct PendingProfileConfiguration {
     private_profile: bool,
     profile_label: String,
     profile_name: String,
     storage_base: String,
-    state: ApplicationState,
+    state: BrowserApplication,
     window: WindowId,
     tab: TabId,
 }
@@ -1645,128 +1942,14 @@ struct SwitcherQueryCache {
     contexts_json: String,
     config_fingerprint: String,
     profile_name: String,
-    result: String,
-}
-
-#[derive(Clone, Debug)]
-struct SwitcherLibraryCandidate {
-    kind: String,
-    id: String,
-    label: String,
-    secondary: String,
-    recency: i64,
-    fields: Vec<String>,
-}
-
-#[derive(Clone, Debug, Default)]
-struct SwitcherLibraryIndex {
-    profile_name: String,
-    candidates: Vec<SwitcherLibraryCandidate>,
-}
-
-#[derive(Clone, Debug)]
-struct SwitcherLibraryIndexResult {
-    revision: i64,
-    index: Option<SwitcherLibraryIndex>,
-}
-
-fn build_switcher_library_index(
-    snapshot: &ProfileLibrarySnapshot,
-    profile_name: String,
-    cancelled: &AtomicBool,
-) -> Option<SwitcherLibraryIndex> {
-    let mut candidates = Vec::with_capacity(
-        snapshot.history.len()
-            + snapshot.bookmarks.len()
-            + snapshot.quickmarks.len()
-            + snapshot.downloads.len(),
-    );
-    let mut add = |kind: &str,
-                   id: String,
-                   label: String,
-                   secondary: String,
-                   recency: i64,
-                   fields: Vec<String>| {
-        candidates.push(SwitcherLibraryCandidate {
-            kind: kind.to_owned(),
-            id,
-            label,
-            secondary,
-            recency,
-            fields,
-        });
-    };
-    for page in &snapshot.history {
-        if cancelled.load(Ordering::Relaxed) {
-            return None;
-        }
-        add(
-            "history",
-            page.id.to_string(),
-            if page.title.is_empty() {
-                page.url.clone()
-            } else {
-                page.title.clone()
-            },
-            page.url.clone(),
-            page.last_visit,
-            vec![page.title.clone(), page.url.clone()],
-        );
-    }
-    for mark in &snapshot.bookmarks {
-        if cancelled.load(Ordering::Relaxed) {
-            return None;
-        }
-        add(
-            "bookmark",
-            mark.id.clone(),
-            if mark.title.is_empty() {
-                mark.url.clone()
-            } else {
-                mark.title.clone()
-            },
-            mark.url.clone(),
-            mark.updated_at,
-            vec![mark.title.clone(), mark.url.clone()],
-        );
-    }
-    for mark in &snapshot.quickmarks {
-        if cancelled.load(Ordering::Relaxed) {
-            return None;
-        }
-        add(
-            "quickmark",
-            mark.name.clone(),
-            mark.name.clone(),
-            mark.url.clone(),
-            0,
-            vec![mark.name.clone(), mark.url.clone()],
-        );
-    }
-    for download in &snapshot.downloads {
-        if cancelled.load(Ordering::Relaxed) {
-            return None;
-        }
-        add(
-            "download",
-            download.id.clone(),
-            download.destination.clone(),
-            download.source_url.clone(),
-            download.created_at,
-            vec![download.destination.clone(), download.source_url.clone()],
-        );
-    }
-    Some(SwitcherLibraryIndex {
-        profile_name,
-        candidates,
-    })
+    result: Value,
 }
 
 impl SwitcherQueryCache {
     fn matches(&self, rust: &BrowserUiRust, params: &Value) -> bool {
         self.params == *params
             && !rust.storage_library_dirty.get()
-            && self.state_revision == rust.state.as_ref().map_or(0, ApplicationState::revision)
+            && self.state_revision == rust.state.as_ref().map_or(0, BrowserApplication::revision)
             && self.storage_library_revision == rust.storage_library_revision
             && self.session_names == rust.session_names
             && self.contexts_json == rust.contexts_json.to_string()
@@ -1783,54 +1966,6 @@ struct SessionCheckpoint {
     restore_pending: Option<TabId>,
 }
 
-#[derive(Debug)]
-struct ConfigWatch {
-    #[cfg(target_os = "linux")]
-    receiver: Option<std::sync::mpsc::Receiver<()>>,
-    #[cfg(target_os = "linux")]
-    stop: Option<Arc<AtomicBool>>,
-    #[cfg(target_os = "linux")]
-    thread: Option<thread::JoinHandle<()>>,
-    watched_paths: Vec<PathBuf>,
-    signatures: BTreeMap<PathBuf, WatchSignature>,
-    pending_since: Option<Instant>,
-}
-
-struct ConfigReloadResult {
-    loaded: ferric_browser_config::LoadedConfig,
-    profile_overrides: RuntimeOverrides,
-    profiles_path: Option<PathBuf>,
-    operation: ConfigReadOperation,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum ConfigReadOperation {
-    Reload,
-    Check,
-}
-
-enum ConfigReloadRequest {
-    Load { path: PathBuf, profile_name: String },
-    Check { path: PathBuf },
-}
-
-struct ConfigReloadWorker {
-    inner: SingleFlightWorker<ConfigReloadRequest, Result<ConfigReloadResult, String>>,
-}
-
-struct ConfigWriteResult {
-    path: PathBuf,
-    bytes: usize,
-}
-
-enum ConfigWriteRequest {
-    Write { path: PathBuf, bytes: Vec<u8> },
-}
-
-struct ConfigWriteWorker {
-    inner: SingleFlightWorker<ConfigWriteRequest, Result<ConfigWriteResult, String>>,
-}
-
 struct PrintWorker {
     inner: SingleFlightWorker<PathBuf, Result<PathBuf, String>>,
 }
@@ -1839,21 +1974,23 @@ struct EditorWriteWorker {
     inner: SingleFlightWorker<(PathBuf, Vec<u8>), Result<PathBuf, String>>,
 }
 
-struct ProfileDeleteWorker {
-    inner: SingleFlightWorker<ProfileMutation, Result<ProfileMutationResult, String>>,
+struct ProfileSetupRequest {
+    transient_profile: bool,
+    profile_name: String,
+    profile_label: String,
+    storage_base: String,
+    config_path: String,
+    contexts_json: String,
 }
-
-struct ProfileListWorker {
-    inner: SingleFlightWorker<StorageRoots, Result<String, String>>,
-}
-
-type ProfileSetupRequest = (bool, String, String, String, String, String);
 
 struct ProfileSetupWorker {
     inner: SingleFlightWorker<ProfileSetupRequest, Result<ProfileBootstrapSetup, String>>,
 }
 
-type NetworkPolicyRequest = (Option<StorageRoots>, Value);
+struct NetworkPolicyRequest {
+    roots: Option<StorageRoots>,
+    config: Value,
+}
 
 struct NetworkPolicyWorker {
     inner: SingleFlightWorker<NetworkPolicyRequest, Result<network_policy::PolicySnapshot, String>>,
@@ -1926,141 +2063,6 @@ impl HyprlandWorker {
     }
 }
 
-struct PortalProbeWorker {
-    inner: SingleFlightWorker<(), Value>,
-}
-
-struct ReducedMotionProbeWorker {
-    inner: SingleFlightWorker<(), Value>,
-    requested: bool,
-}
-
-impl ReducedMotionProbeWorker {
-    fn spawn() -> Result<Self, String> {
-        let inner = SingleFlightWorker::spawn("ferric-browser-reduced-motion-probe", |()| {
-            diagnostics::reduced_motion_probe()
-        })
-        .map_err(|error| error.to_string())?;
-        Ok(Self {
-            inner,
-            requested: false,
-        })
-    }
-
-    fn request_once(&mut self) -> Result<(), String> {
-        if self.requested {
-            return Ok(());
-        }
-        match self.inner.submit(()) {
-            Ok(()) | Err(SubmitError::Busy) => {
-                self.requested = true;
-                Ok(())
-            }
-            Err(SubmitError::QueueFull) => {
-                Err("reduced-motion probe queue unavailable: sending on a full channel".into())
-            }
-            Err(SubmitError::Stopped) => Err("reduced-motion probe stopped".into()),
-        }
-    }
-
-    fn poll(&mut self) -> Option<Value> {
-        match self.inner.poll() {
-            WorkerPoll::Pending => None,
-            WorkerPoll::Ready(result) => Some(result),
-            WorkerPoll::Stopped => Some(json!({
-                "status": "unavailable",
-                "value": null,
-                "reason": "reduced-motion probe worker stopped",
-                "provenance": "runtime-worker"
-            })),
-        }
-    }
-}
-
-struct SystemFontScaleProbeWorker {
-    inner: SingleFlightWorker<(), Value>,
-    requested: bool,
-}
-
-impl SystemFontScaleProbeWorker {
-    fn spawn() -> Result<Self, String> {
-        let inner = SingleFlightWorker::spawn("ferric-browser-font-scale-probe", |()| {
-            diagnostics::system_font_scale_probe()
-        })
-        .map_err(|error| error.to_string())?;
-        Ok(Self {
-            inner,
-            requested: false,
-        })
-    }
-
-    fn request_once(&mut self) -> Result<(), String> {
-        if self.requested {
-            return Ok(());
-        }
-        match self.inner.submit(()) {
-            Ok(()) | Err(SubmitError::Busy) => {
-                self.requested = true;
-                Ok(())
-            }
-            Err(SubmitError::QueueFull) => Err("font-scale probe queue unavailable".into()),
-            Err(SubmitError::Stopped) => Err("font-scale probe stopped".into()),
-        }
-    }
-
-    fn poll(&mut self) -> Option<Value> {
-        match self.inner.poll() {
-            WorkerPoll::Pending => None,
-            WorkerPoll::Ready(result) => Some(result),
-            WorkerPoll::Stopped => Some(json!({
-                "status": "unavailable",
-                "value": null,
-                "reason": "font-scale probe worker stopped",
-                "provenance": "runtime-worker"
-            })),
-        }
-    }
-}
-
-impl PortalProbeWorker {
-    fn spawn() -> Result<Self, String> {
-        let inner = SingleFlightWorker::spawn("ferric-browser-portal-probe", |()| {
-            diagnostics::portal_probe()
-        })
-        .map_err(|error| error.to_string())?;
-        Ok(Self { inner })
-    }
-
-    fn request(&mut self) -> Result<(), String> {
-        match self.inner.submit(()) {
-            Ok(()) | Err(SubmitError::Busy) => Ok(()),
-            Err(SubmitError::QueueFull) => {
-                Err("portal probe queue unavailable: sending on a full channel".into())
-            }
-            Err(SubmitError::Stopped) => Err("portal probe stopped".into()),
-        }
-    }
-
-    fn poll(&mut self) -> Option<Value> {
-        match self.inner.poll() {
-            WorkerPoll::Pending => None,
-            WorkerPoll::Ready(result) => Some(result),
-            WorkerPoll::Stopped => Some(json!({
-                "service": {
-                    "status": "unavailable",
-                    "value": "org.freedesktop.portal.Desktop",
-                    "reason": "portal probe worker stopped",
-                    "provenance": "runtime-worker"
-                }
-            })),
-        }
-    }
-}
-
-struct ProfilePreviewWorker {
-    inner: SingleFlightWorker<(StorageRoots, String), Result<String, String>>,
-}
-
 enum UserscriptManagerRequest {
     Refresh {
         root: PathBuf,
@@ -2093,30 +2095,6 @@ enum UserscriptManagerResult {
 
 struct UserscriptManagerWorker {
     inner: SingleFlightWorker<UserscriptManagerRequest, UserscriptManagerResult>,
-}
-
-enum ProfileMutation {
-    Create {
-        roots: StorageRoots,
-        name: String,
-        label: String,
-    },
-    Rename {
-        roots: StorageRoots,
-        name: String,
-        label: String,
-    },
-    Delete {
-        roots: StorageRoots,
-        name: String,
-        active_profile_id: Option<Uuid>,
-    },
-}
-
-enum ProfileMutationResult {
-    Created,
-    Renamed,
-    Deleted(ProfileDeletionOutcome),
 }
 
 impl UserscriptManagerWorker {
@@ -2172,151 +2150,38 @@ impl UserscriptManagerWorker {
     }
 }
 
-fn profile_delete_preview_text(roots: &StorageRoots, name: &str) -> Result<String, String> {
-    let registry = ProfileRegistry::open(roots)
-        .map_err(|error| format!("profile registry unavailable: {error}"))?;
-    let profile = registry
-        .profiles()
-        .iter()
-        .find(|profile| profile.name == name)
-        .ok_or_else(|| "profile was not found".to_owned())?;
-    Ok(format!(
-        "Profile: {}\nUUID: {}\nRust data: {}\nSession data: {}\nCache: {}\nQtWebEngine storage is not deleted by this operation.",
-        profile.name,
-        profile.id,
-        roots
-            .data
-            .join("profiles")
-            .join(profile.id.to_string())
-            .display(),
-        roots
-            .state
-            .join("sessions")
-            .join(profile.id.to_string())
-            .display(),
-        roots
-            .cache
-            .join("profiles")
-            .join(profile.id.to_string())
-            .display(),
-    ))
-}
-
-impl ProfileDeleteWorker {
-    fn spawn() -> Result<Self, String> {
-        let inner = SingleFlightWorker::spawn(
-            "ferric-browser-profile-mutator",
-            |request: ProfileMutation| {
-                (|| match request {
-                    ProfileMutation::Create { roots, name, label } => {
-                        let mut registry = ProfileRegistry::open(&roots)
-                            .map_err(|error| format!("profile registry unavailable: {error}"))?;
-                        registry
-                            .create(&name, &label, ProfilePrivacy::Normal)
-                            .map_err(|error| format!("profile creation failed: {error}"))?;
-                        Ok(ProfileMutationResult::Created)
-                    }
-                    ProfileMutation::Rename { roots, name, label } => {
-                        let mut registry = ProfileRegistry::open(&roots)
-                            .map_err(|error| format!("profile registry unavailable: {error}"))?;
-                        registry
-                            .rename_label(&name, &label)
-                            .map_err(|error| format!("profile rename failed: {error}"))?;
-                        Ok(ProfileMutationResult::Renamed)
-                    }
-                    ProfileMutation::Delete {
-                        roots,
-                        name,
-                        active_profile_id,
-                    } => {
-                        let registry = ProfileRegistry::open(&roots)
-                            .map_err(|error| format!("profile registry unavailable: {error}"))?;
-                        let profile = registry
-                            .profiles()
-                            .iter()
-                            .find(|profile| profile.name == name)
-                            .cloned()
-                            .ok_or_else(|| "profile was not found".to_owned())?;
-                        if active_profile_id == Some(profile.id)
-                            || ProfileLock::is_held(&roots, profile.id)
-                        {
-                            return Err("profile is loaded and cannot be deleted".into());
-                        }
-                        let outcome = delete_profile_transaction(&roots, &profile.name)
-                            .map_err(|error| error.to_string())?;
-                        Ok(ProfileMutationResult::Deleted(outcome))
-                    }
-                })()
-            },
-        )
-        .map_err(|error| error.to_string())?;
-        Ok(Self { inner })
-    }
-
-    fn request_create(
-        &mut self,
-        roots: StorageRoots,
-        name: String,
-        label: String,
-    ) -> Result<(), String> {
-        self.request(ProfileMutation::Create { roots, name, label })
-    }
-
-    fn request_rename(
-        &mut self,
-        roots: StorageRoots,
-        name: String,
-        label: String,
-    ) -> Result<(), String> {
-        self.request(ProfileMutation::Rename { roots, name, label })
-    }
-
-    fn request_delete(
-        &mut self,
-        roots: StorageRoots,
-        name: String,
-        active_profile_id: Option<Uuid>,
-    ) -> Result<(), String> {
-        self.request(ProfileMutation::Delete {
-            roots,
-            name,
-            active_profile_id,
-        })
-    }
-
-    fn request(&mut self, request: ProfileMutation) -> Result<(), String> {
-        match self.inner.submit(request) {
-            Ok(()) => Ok(()),
-            Err(SubmitError::Busy) => Err("profile mutation is already pending".into()),
-            Err(SubmitError::QueueFull) => Err("profile mutation queue is full".into()),
-            Err(SubmitError::Stopped) => Err("profile mutation worker stopped".into()),
-        }
-    }
-
-    fn poll(&mut self) -> Option<Result<ProfileMutationResult, String>> {
-        match self.inner.poll() {
-            WorkerPoll::Pending => None,
-            WorkerPoll::Ready(result) => Some(result),
-            WorkerPoll::Stopped => Some(Err("profile deletion worker stopped".into())),
-        }
-    }
-}
-
 impl ProfileSetupWorker {
     fn spawn() -> Result<Self, String> {
         let inner = SingleFlightWorker::spawn(
             "ferric-browser-profile-bootstrap",
-            |(transient, name, label, base, config_path, contexts_json): ProfileSetupRequest| {
-                open_profile_store(transient, &name, &label, &base).map(|storage| {
-                    let profile_overrides = if transient || config_path.is_empty() {
+            |request: ProfileSetupRequest| {
+                let ProfileSetupRequest {
+                    transient_profile,
+                    profile_name,
+                    profile_label,
+                    storage_base,
+                    config_path,
+                    contexts_json,
+                } = request;
+                open_profile_store(
+                    transient_profile,
+                    &profile_name,
+                    &profile_label,
+                    &storage_base,
+                )
+                .map(|storage| {
+                    let profile_overrides = if transient_profile || config_path.is_empty() {
                         None
                     } else {
-                        Some(load_profile_overrides(Path::new(&config_path), &name))
+                        Some(
+                            load_profile_runtime_overrides(Path::new(&config_path), &profile_name)
+                                .map_err(|error| error.to_string()),
+                        )
                     };
-                    let runtime_overrides = if transient {
+                    let runtime_overrides = if transient_profile {
                         None
                     } else {
-                        storage.5.as_ref().map(|roots| {
+                        storage.roots.as_ref().map(|roots| {
                             load_runtime_overrides(roots.state.join("runtime-overrides.toml"))
                                 .map_err(|error| error.to_string())
                         })
@@ -2338,7 +2203,7 @@ impl ProfileSetupWorker {
                                 .map_err(|error| error.to_string()),
                         )
                     };
-                    let contexts = storage.5.as_ref().map(|roots| {
+                    let contexts = storage.roots.as_ref().map(|roots| {
                         let mut contexts =
                             ContextRegistry::open(roots).map_err(|error| error.to_string())?;
                         let mut context_error = None;
@@ -2346,7 +2211,7 @@ impl ProfileSetupWorker {
                             Ok(definitions) => {
                                 for definition in definitions.contexts {
                                     let profile_exists = storage
-                                        .6
+                                        .profile_names
                                         .iter()
                                         .any(|profile| profile == &definition.profile);
                                     if !profile_exists {
@@ -2373,13 +2238,13 @@ impl ProfileSetupWorker {
                         }
                         Ok((contexts, context_error))
                     });
-                    (
+                    ProfileBootstrapSetup {
                         storage,
                         profile_overrides,
                         runtime_overrides,
                         config_sources,
                         contexts,
-                    )
+                    }
                 })
             },
         )
@@ -2396,10 +2261,14 @@ impl ProfileSetupWorker {
         config_path: String,
         contexts_json: String,
     ) -> Result<(), String> {
-        match self
-            .inner
-            .submit((transient, name, label, base, config_path, contexts_json))
-        {
+        match self.inner.submit(ProfileSetupRequest {
+            transient_profile: transient,
+            profile_name: name,
+            profile_label: label,
+            storage_base: base,
+            config_path,
+            contexts_json,
+        }) {
             Ok(()) => Ok(()),
             Err(SubmitError::Busy) => Err("profile bootstrap is already pending".into()),
             Err(SubmitError::QueueFull) => Err("profile bootstrap queue is full".into()),
@@ -2420,7 +2289,7 @@ impl NetworkPolicyWorker {
     fn spawn() -> Result<Self, String> {
         let inner = SingleFlightWorker::spawn(
             "ferric-browser-network-policy",
-            |(roots, config): NetworkPolicyRequest| {
+            |NetworkPolicyRequest { roots, config }| {
                 Ok(network_policy::load(roots.as_ref(), &config))
             },
         )
@@ -2429,7 +2298,7 @@ impl NetworkPolicyWorker {
     }
 
     fn request(&mut self, roots: Option<StorageRoots>, config: Value) -> Result<(), String> {
-        match self.inner.submit((roots, config)) {
+        match self.inner.submit(NetworkPolicyRequest { roots, config }) {
             Ok(()) => Ok(()),
             Err(SubmitError::Busy) => Err("network policy load is already pending".into()),
             Err(SubmitError::QueueFull) => Err("network policy queue is full".into()),
@@ -2442,86 +2311,6 @@ impl NetworkPolicyWorker {
             WorkerPoll::Pending => None,
             WorkerPoll::Ready(result) => Some(result),
             WorkerPoll::Stopped => Some(Err("network policy worker stopped".into())),
-        }
-    }
-}
-
-impl ProfileListWorker {
-    fn spawn() -> Result<Self, String> {
-        let inner =
-            SingleFlightWorker::spawn("ferric-browser-profile-reader", |roots: StorageRoots| {
-                ProfileRegistry::open(&roots)
-                    .map(|registry| {
-                        registry
-                            .profiles()
-                            .iter()
-                            .map(|profile| {
-                                format!("{}\t{}\t{}", profile.name, profile.label, profile.id)
-                            })
-                            .collect::<Vec<_>>()
-                            .join("\n")
-                    })
-                    .map_err(|error| format!("profile registry unavailable: {error}"))
-            })
-            .map_err(|error| error.to_string())?;
-        Ok(Self { inner })
-    }
-
-    fn request(&mut self, roots: StorageRoots) -> Result<(), String> {
-        match self.inner.submit(roots) {
-            Ok(()) => Ok(()),
-            Err(SubmitError::Busy) => Err("profile list is already pending".into()),
-            Err(SubmitError::QueueFull) => Err("profile list queue is full".into()),
-            Err(SubmitError::Stopped) => Err("profile reader stopped".into()),
-        }
-    }
-
-    fn poll(&mut self) -> Option<Result<String, String>> {
-        match self.inner.poll() {
-            WorkerPoll::Pending => None,
-            WorkerPoll::Ready(result) => Some(result),
-            WorkerPoll::Stopped => Some(Err("profile reader stopped".into())),
-        }
-    }
-}
-
-fn profile_from_list_values(values: &str, name: &str) -> Option<(String, String)> {
-    values.lines().find_map(|line| {
-        let mut fields = line.splitn(3, '\t');
-        let candidate = fields.next()?;
-        let label = fields.next()?;
-        if candidate == name {
-            Some((candidate.to_owned(), label.to_owned()))
-        } else {
-            None
-        }
-    })
-}
-
-impl ProfilePreviewWorker {
-    fn spawn() -> Result<Self, String> {
-        let inner = SingleFlightWorker::spawn(
-            "ferric-browser-profile-preview-reader",
-            |(roots, name): (StorageRoots, String)| profile_delete_preview_text(&roots, &name),
-        )
-        .map_err(|error| error.to_string())?;
-        Ok(Self { inner })
-    }
-
-    fn request(&mut self, roots: StorageRoots, name: String) -> Result<(), String> {
-        match self.inner.submit((roots, name)) {
-            Ok(()) => Ok(()),
-            Err(SubmitError::Busy) => Err("profile preview is already pending".into()),
-            Err(SubmitError::QueueFull) => Err("profile preview queue is full".into()),
-            Err(SubmitError::Stopped) => Err("profile preview reader stopped".into()),
-        }
-    }
-
-    fn poll(&mut self) -> Option<Result<String, String>> {
-        match self.inner.poll() {
-            WorkerPoll::Pending => None,
-            WorkerPoll::Ready(result) => Some(result),
-            WorkerPoll::Stopped => Some(Err("profile preview reader stopped".into())),
         }
     }
 }
@@ -2637,341 +2426,6 @@ impl PrintWorker {
     }
 }
 
-impl ConfigWriteWorker {
-    fn spawn() -> Result<Self, String> {
-        let inner = SingleFlightWorker::spawn(
-            "ferric-browser-config-writer",
-            |request: ConfigWriteRequest| match request {
-                ConfigWriteRequest::Write { path, bytes } => (|| {
-                    let mut options = fs::OpenOptions::new();
-                    options.write(true).create_new(true);
-                    #[cfg(unix)]
-                    options.mode(0o600);
-                    let mut file = options.open(&path).map_err(|error| error.to_string())?;
-                    if let Err(error) = file.write_all(&bytes).and_then(|()| file.sync_all()) {
-                        let _ = fs::remove_file(&path);
-                        return Err(error.to_string());
-                    }
-                    Ok(ConfigWriteResult {
-                        path,
-                        bytes: bytes.len(),
-                    })
-                })(),
-            },
-        )
-        .map_err(|error| error.to_string())?;
-        Ok(Self { inner })
-    }
-
-    fn request(&mut self, path: PathBuf, bytes: Vec<u8>) -> Result<(), String> {
-        match self.inner.submit(ConfigWriteRequest::Write { path, bytes }) {
-            Ok(()) => Ok(()),
-            Err(SubmitError::Busy) => Err("configuration write is already pending".into()),
-            Err(SubmitError::QueueFull) => Err("configuration write queue is full".into()),
-            Err(SubmitError::Stopped) => Err("configuration writer stopped".into()),
-        }
-    }
-
-    fn poll(&mut self) -> Option<Result<ConfigWriteResult, String>> {
-        match self.inner.poll() {
-            WorkerPoll::Pending => None,
-            WorkerPoll::Ready(result) => Some(result),
-            WorkerPoll::Stopped => Some(Err("configuration writer stopped".into())),
-        }
-    }
-}
-
-impl ConfigReloadWorker {
-    fn spawn() -> Result<Self, String> {
-        let inner = SingleFlightWorker::spawn(
-            "ferric-browser-config-loader",
-            |request: ConfigReloadRequest| match request {
-                ConfigReloadRequest::Load { path, profile_name } => load(&path)
-                    .map_err(|error| error.to_string())
-                    .and_then(|loaded| {
-                        let directory = path.parent().unwrap_or_else(|| Path::new("."));
-                        let contexts_path = directory.join("contexts.toml");
-                        if contexts_path.exists() {
-                            load_contexts(&contexts_path).map_err(|error| {
-                                format!("contexts configuration is invalid: {error}")
-                            })?;
-                        }
-                        let profile_overrides = load_profile_overrides(&path, &profile_name)
-                            .map_err(|error| error.to_string())?;
-                        let profiles_path = profile_config_path(&path);
-                        Ok(ConfigReloadResult {
-                            loaded,
-                            profile_overrides,
-                            profiles_path: profiles_path.exists().then_some(profiles_path),
-                            operation: ConfigReadOperation::Reload,
-                        })
-                    }),
-                ConfigReloadRequest::Check { path } => load(&path)
-                    .map_err(|error| format!("configuration is invalid: {error}"))
-                    .and_then(|loaded| {
-                        let directory = path.parent().unwrap_or_else(|| Path::new("."));
-                        let contexts_path = directory.join("contexts.toml");
-                        if contexts_path.exists() {
-                            load_contexts(&contexts_path).map_err(|error| {
-                                format!("contexts configuration is invalid: {error}")
-                            })?;
-                        }
-                        let profiles_path = directory.join("profiles.toml");
-                        if profiles_path.exists() {
-                            load_profiles(&profiles_path).map_err(|error| {
-                                format!("profiles configuration is invalid: {error}")
-                            })?;
-                        }
-                        Ok(ConfigReloadResult {
-                            loaded,
-                            profile_overrides: RuntimeOverrides::default(),
-                            profiles_path: profiles_path.exists().then_some(profiles_path),
-                            operation: ConfigReadOperation::Check,
-                        })
-                    }),
-            },
-        )
-        .map_err(|error| error.to_string())?;
-        Ok(Self { inner })
-    }
-
-    fn request(&mut self, path: PathBuf, profile_name: String) -> Result<(), String> {
-        match self
-            .inner
-            .submit(ConfigReloadRequest::Load { path, profile_name })
-        {
-            Ok(()) => Ok(()),
-            Err(SubmitError::Busy) => Err("configuration reload is already pending".into()),
-            Err(SubmitError::QueueFull) => Err("configuration reload queue is full".into()),
-            Err(SubmitError::Stopped) => Err("configuration reload worker stopped".into()),
-        }
-    }
-
-    fn request_check(&mut self, path: PathBuf) -> Result<(), String> {
-        match self.inner.submit(ConfigReloadRequest::Check { path }) {
-            Ok(()) => Ok(()),
-            Err(SubmitError::Busy) => Err("configuration read is already pending".into()),
-            Err(SubmitError::QueueFull) => Err("configuration read queue is full".into()),
-            Err(SubmitError::Stopped) => Err("configuration reload worker stopped".into()),
-        }
-    }
-
-    fn poll(&mut self) -> Option<Result<ConfigReloadResult, String>> {
-        match self.inner.poll() {
-            WorkerPoll::Pending => None,
-            WorkerPoll::Ready(result) => Some(result),
-            WorkerPoll::Stopped => Some(Err("configuration reload worker stopped".into())),
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct WatchSignature {
-    exists: bool,
-    is_directory: bool,
-    length: u64,
-    modified_ns: Option<u128>,
-}
-
-fn watch_signature(path: &Path) -> WatchSignature {
-    let Ok(metadata) = fs::symlink_metadata(path) else {
-        return WatchSignature {
-            exists: false,
-            is_directory: false,
-            length: 0,
-            modified_ns: None,
-        };
-    };
-    let modified_ns = metadata
-        .modified()
-        .ok()
-        .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
-        .map(|duration| duration.as_nanos());
-    WatchSignature {
-        exists: true,
-        is_directory: metadata.is_dir(),
-        length: metadata.len(),
-        modified_ns,
-    }
-}
-
-impl ConfigWatch {
-    #[cfg(not(target_os = "linux"))]
-    fn new() -> Self {
-        Self {
-            watched_paths: Vec::new(),
-            signatures: BTreeMap::new(),
-            pending_since: None,
-        }
-    }
-
-    #[cfg(target_os = "linux")]
-    fn new() -> Self {
-        Self {
-            receiver: None,
-            stop: None,
-            thread: None,
-            watched_paths: Vec::new(),
-            signatures: BTreeMap::new(),
-            pending_since: None,
-        }
-    }
-
-    fn set_sources(&mut self, root: &Path, sources: &[PathBuf]) {
-        let mut paths = sources.to_vec();
-        paths.push(root.to_owned());
-        let source_paths = paths.clone();
-        for source in &source_paths {
-            if let Some(parent) = source.parent() {
-                paths.push(parent.to_owned());
-            }
-        }
-        paths.sort();
-        paths.dedup();
-        self.watched_paths = paths.clone();
-        self.signatures = paths
-            .iter()
-            .map(|path| (path.clone(), watch_signature(path)))
-            .collect();
-        #[cfg(target_os = "linux")]
-        self.start_inotify(&paths);
-        self.pending_since = None;
-    }
-
-    #[cfg(target_os = "linux")]
-    fn start_inotify(&mut self, paths: &[PathBuf]) {
-        self.stop_inotify();
-        let directories = paths
-            .iter()
-            .filter_map(|path| path.parent().map(Path::to_owned))
-            .collect::<std::collections::BTreeSet<_>>();
-        let Some((receiver, stop, thread)) = spawn_inotify_watcher(directories) else {
-            return;
-        };
-        self.receiver = Some(receiver);
-        self.stop = Some(stop);
-        self.thread = Some(thread);
-    }
-
-    #[cfg(target_os = "linux")]
-    fn stop_inotify(&mut self) {
-        if let Some(stop) = self.stop.take() {
-            stop.store(true, Ordering::Relaxed);
-        }
-        if let Some(thread) = self.thread.take() {
-            let _ = thread.join();
-        }
-        self.receiver = None;
-    }
-
-    fn changed(&mut self) -> bool {
-        let polled = self.poll_signatures_changed();
-        #[cfg(target_os = "linux")]
-        {
-            let notified = self
-                .receiver
-                .as_ref()
-                .is_some_and(|receiver| receiver.try_iter().next().is_some());
-            notified || polled
-        }
-        #[cfg(not(target_os = "linux"))]
-        {
-            polled
-        }
-    }
-
-    fn poll_signatures_changed(&mut self) -> bool {
-        let mut changed = false;
-        for path in &self.watched_paths {
-            let signature = watch_signature(path);
-            if self.signatures.get(path).copied() != Some(signature) {
-                changed = true;
-                self.signatures.insert(path.clone(), signature);
-            }
-        }
-        changed
-    }
-}
-
-impl Default for ConfigWatch {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[cfg(target_os = "linux")]
-impl Drop for ConfigWatch {
-    fn drop(&mut self) {
-        self.stop_inotify();
-    }
-}
-
-#[cfg(target_os = "linux")]
-fn spawn_inotify_watcher(
-    directories: std::collections::BTreeSet<PathBuf>,
-) -> Option<(
-    std::sync::mpsc::Receiver<()>,
-    Arc<AtomicBool>,
-    thread::JoinHandle<()>,
-)> {
-    use std::os::unix::ffi::OsStrExt;
-
-    let descriptor = unsafe { libc::inotify_init1(libc::IN_NONBLOCK | libc::IN_CLOEXEC) };
-    if descriptor < 0 {
-        return None;
-    }
-    let mask = libc::IN_CLOSE_WRITE
-        | libc::IN_MOVED_TO
-        | libc::IN_MOVED_FROM
-        | libc::IN_CREATE
-        | libc::IN_DELETE
-        | libc::IN_ATTRIB
-        | libc::IN_MODIFY;
-    let mut watched = false;
-    for directory in directories {
-        let Ok(path) = std::ffi::CString::new(directory.as_os_str().as_bytes()) else {
-            continue;
-        };
-        let watch = unsafe { libc::inotify_add_watch(descriptor, path.as_ptr(), mask) };
-        watched |= watch >= 0;
-    }
-    if !watched {
-        unsafe {
-            libc::close(descriptor);
-        }
-        return None;
-    }
-
-    let (sender, receiver) = std::sync::mpsc::channel();
-    let stop = Arc::new(AtomicBool::new(false));
-    let thread_stop = Arc::clone(&stop);
-    let thread = thread::Builder::new()
-        .name("ferric-browser-config-watch".into())
-        .spawn(move || {
-            let mut buffer = [0_u8; 8192];
-            while !thread_stop.load(Ordering::Relaxed) {
-                let mut pollfd = libc::pollfd {
-                    fd: descriptor,
-                    events: libc::POLLIN,
-                    revents: 0,
-                };
-                let ready = unsafe { libc::poll(&raw mut pollfd, 1, 100) };
-                if ready > 0 && pollfd.revents & libc::POLLIN != 0 {
-                    let read =
-                        unsafe { libc::read(descriptor, buffer.as_mut_ptr().cast(), buffer.len()) };
-                    if read > 0 {
-                        let _ = sender.send(());
-                    }
-                }
-            }
-            unsafe {
-                libc::close(descriptor);
-            }
-        })
-        .ok()?;
-    Some((receiver, stop, thread))
-}
-
 #[derive(Clone, Debug)]
 struct SiteExperiment {
     id: String,
@@ -3005,75 +2459,6 @@ struct ClosedTabDescriptor {
     profile: String,
     private: bool,
     closed_at: i64,
-}
-
-#[derive(Clone, Debug)]
-struct FocusObservation {
-    url: String,
-    sequence: i32,
-    editable: bool,
-    user_activated: bool,
-}
-
-fn focus_mode_transition(
-    mode: Mode,
-    focused_editable: bool,
-    user_activated: bool,
-    site_entry_mode: Option<&str>,
-) -> Option<Mode> {
-    let should_insert = (focused_editable && user_activated) || site_entry_mode == Some("insert");
-    match (mode, should_insert) {
-        (Mode::Normal, true) => Some(Mode::Insert),
-        (Mode::Insert, false) => Some(Mode::Normal),
-        _ => None,
-    }
-}
-
-fn profile_config_path(config_path: &Path) -> PathBuf {
-    config_path
-        .parent()
-        .unwrap_or_else(|| Path::new("."))
-        .join("profiles.toml")
-}
-
-fn load_profile_overrides(
-    config_path: &Path,
-    profile_name: &str,
-) -> Result<RuntimeOverrides, String> {
-    let path = profile_config_path(config_path);
-    if !path.exists() {
-        return Ok(RuntimeOverrides::default());
-    }
-    let profiles = load_profiles(&path).map_err(|error| error.to_string())?;
-    profiles
-        .profiles
-        .iter()
-        .find(|profile| profile.name == profile_name)
-        .map(profile_override_layer)
-        .transpose()
-        .map_err(|error| error.to_string())
-        .map(Option::unwrap_or_default)
-}
-
-fn config_value_with_layers(
-    base_value: &Value,
-    profile_overrides: &RuntimeOverrides,
-    runtime_overrides: &RuntimeOverrides,
-    cli_overrides: &RuntimeOverrides,
-    temporary_overrides: &RuntimeOverrides,
-) -> Result<Value, String> {
-    let base = serde_json::from_value::<Config>(base_value.clone())
-        .map_err(|error| format!("base configuration is invalid: {error}"))?;
-    let profiled = apply_runtime_overrides(&base, profile_overrides)
-        .map_err(|error| format!("profile overrides are invalid: {error}"))?;
-    let persistent = apply_runtime_overrides(&profiled, runtime_overrides)
-        .map_err(|error| format!("runtime overrides are invalid: {error}"))?;
-    let cli = apply_runtime_overrides(&persistent, cli_overrides)
-        .map_err(|error| format!("CLI runtime overrides are invalid: {error}"))?;
-    let effective = apply_runtime_overrides(&cli, temporary_overrides)
-        .map_err(|error| format!("temporary runtime overrides are invalid: {error}"))?;
-    serde_json::to_value(effective)
-        .map_err(|error| format!("could not encode effective configuration: {error}"))
 }
 
 #[derive(Clone, Debug)]
@@ -3124,143 +2509,6 @@ struct PendingCaret {
 }
 
 #[derive(Clone, Debug)]
-struct PendingEditor {
-    token: String,
-    target: Target,
-    original: String,
-    file: PathBuf,
-    process: Option<Arc<Mutex<Option<Child>>>>,
-    cancellation: Arc<AtomicBool>,
-    private_temporary: bool,
-    issued: bool,
-    created_at: Instant,
-}
-
-type ConfigEditStderr = Arc<Mutex<Option<Result<Vec<u8>, String>>>>;
-
-#[derive(Clone, Debug)]
-struct PendingConfigEdit {
-    token: String,
-    path: PathBuf,
-    process: Arc<Mutex<Option<Child>>>,
-    exit_status: Option<ExitStatus>,
-    stderr: ConfigEditStderr,
-}
-
-impl Drop for PendingConfigEdit {
-    fn drop(&mut self) {
-        terminate_editor_process(&self.process);
-    }
-}
-
-fn terminate_child_process(child: &mut Child) {
-    #[cfg(unix)]
-    {
-        if let Ok(process_group) = libc::pid_t::try_from(child.id()) {
-            if process_group > 0 {
-                // Editor and userscript commands are placed in a private
-                // process group at spawn time, so descendants that inherit
-                // that group are cancelled with the browser-owned operation.
-                unsafe {
-                    let _ = libc::kill(-process_group, libc::SIGTERM);
-                }
-                let deadline = Instant::now() + CHILD_TERMINATION_GRACE;
-                loop {
-                    let child_finished = match child.try_wait() {
-                        Ok(Some(_)) => true,
-                        Ok(None) | Err(_) => false,
-                    };
-                    let group_exists = unsafe { libc::kill(-process_group, 0) == 0 };
-                    if child_finished && !group_exists {
-                        return;
-                    }
-                    if !group_exists || Instant::now() >= deadline {
-                        if group_exists {
-                            unsafe {
-                                let _ = libc::kill(-process_group, libc::SIGKILL);
-                            }
-                        }
-                        let _ = child.wait();
-                        return;
-                    }
-                    thread::sleep(Duration::from_millis(10));
-                }
-            }
-        }
-    }
-    let _ = child.kill();
-    let _ = child.wait();
-}
-
-fn terminate_editor_process(process: &Arc<Mutex<Option<Child>>>) {
-    if let Ok(mut child) = process.lock() {
-        if let Some(child) = child.as_mut() {
-            terminate_child_process(child);
-        }
-        child.take();
-    }
-}
-
-fn discard_editor_request(request: PendingEditor) {
-    request.cancellation.store(true, Ordering::Release);
-    if let Some(process) = request.process.as_ref() {
-        terminate_editor_process(process);
-    }
-    cleanup_editor_artifact(&request.file, request.private_temporary);
-}
-
-fn cleanup_editor_artifact(path: &Path, private_temporary: bool) {
-    let _ = fs::remove_file(path);
-    if private_temporary && let Some(parent) = path.parent() {
-        let _ = fs::remove_dir(parent);
-    }
-}
-
-fn discard_config_edit(request: PendingConfigEdit) {
-    terminate_editor_process(&request.process);
-}
-
-fn try_wait_editor_process(
-    process: &Arc<Mutex<Option<Child>>>,
-) -> Result<Option<ExitStatus>, String> {
-    let mut child = process
-        .lock()
-        .map_err(|_| "editor process state is unavailable".to_owned())?;
-    let Some(child_process) = child.as_mut() else {
-        return Err("editor process state is unavailable".into());
-    };
-    let status = child_process
-        .try_wait()
-        .map_err(|error| format!("editor wait failed: {error}"))?;
-    if status.is_some() {
-        child.take();
-    }
-    Ok(status)
-}
-
-#[derive(Clone, Debug)]
-struct EditorCompletion {
-    token: String,
-    original: String,
-    updated: Option<String>,
-    error: Option<String>,
-    stderr: Option<String>,
-}
-
-fn join_editor_stderr(
-    reader: &mut Option<thread::JoinHandle<Result<Vec<u8>, String>>>,
-) -> Option<String> {
-    let result = reader.take()?.join().ok()?;
-    match result {
-        Ok(bytes) => {
-            let text = sanitize_userscript_stderr(&bytes);
-            (!text.is_empty()).then_some(text)
-        }
-        Err(error) => Some(error),
-    }
-}
-
-#[derive(Clone, Debug)]
 struct PendingSpawn {
     token: String,
     target: Target,
@@ -3294,13 +2542,6 @@ struct PendingDownload {
 }
 
 #[derive(Clone, Debug)]
-struct StagedDownload {
-    staging_directory: PathBuf,
-    staging_path: PathBuf,
-    final_path: PathBuf,
-}
-
-#[derive(Clone, Debug)]
 struct SpawnCompletion {
     operation_id: String,
     status: String,
@@ -3315,170 +2556,11 @@ struct UserscriptCompletion {
     stderr: String,
 }
 
-fn read_bounded<R: Read>(mut reader: R, maximum: usize) -> Result<Vec<u8>, String> {
-    let mut output = Vec::new();
-    let mut buffer = [0_u8; 16 * 1024];
-    loop {
-        let count = reader
-            .read(&mut buffer)
-            .map_err(|error| format!("userscript pipe read failed: {error}"))?;
-        if count == 0 {
-            return Ok(output);
-        }
-        if output.len().saturating_add(count) > maximum {
-            return Err(format!("userscript output exceeds {maximum} bytes"));
-        }
-        output.extend_from_slice(&buffer[..count]);
-    }
-}
-
-fn is_repeatable_command(name: &str) -> bool {
-    matches!(
-        name,
-        "open"
-            | "back"
-            | "forward"
-            | "reload"
-            | "stop"
-            | "zoom"
-            | "search"
-            | "search-next"
-            | "scroll"
-            | "scroll-page"
-            | "scroll-to"
-            | "tab-open"
-            | "tab-next"
-            | "tab-prev"
-    )
-}
-
-const MAX_MACRO_COMMANDS: usize = 1_000;
-const MAX_MACRO_DEPTH: u8 = 8;
-
-fn valid_macro_register(register: &str) -> bool {
-    register.len() == 1
-        && register
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric())
-}
-
-fn bootstrap_core(
+fn bootstrap_runtime(
     privacy: PrivacyKind,
     profile_label: &str,
-) -> Option<(ApplicationState, WindowId, TabId)> {
-    let mut state = ApplicationState::new();
-    reduce(
-        &mut state,
-        Event::CreateProfile {
-            label: profile_label.into(),
-            privacy,
-        },
-    )
-    .ok()?;
-    let profile = state.profiles().keys().next().copied()?;
-    reduce(&mut state, Event::CreateWindow { profile }).ok()?;
-    let window = state.windows().keys().next().copied()?;
-    reduce(&mut state, Event::OpenTab { window }).ok()?;
-    let tab = state.windows().get(&window)?.active_tab?;
-    Some((state, window, tab))
-}
-
-fn current_target(state: Option<&ApplicationState>, tab: Option<TabId>) -> Option<Target> {
-    state?.capture_target(tab?)
-}
-
-fn captured_target_is_current(state: Option<&ApplicationState>, target: Target) -> bool {
-    state
-        .and_then(|state| state.capture_target(target.tab))
-        .is_some_and(|current| current == target)
-}
-
-fn userscript_subject_target(
-    state: &ApplicationState,
-    current: Target,
-    subject: &str,
-    value: &str,
-) -> Result<Target, String> {
-    if !matches!(subject, "tab" | "window" | "context") || value.is_empty() {
-        return Ok(current);
-    }
-    let tab = match subject {
-        "tab" => {
-            let tab = TabId::from_display(value)
-                .ok_or_else(|| "userscript tab action target is invalid".to_owned())?;
-            state
-                .tabs()
-                .get(&tab)
-                .filter(|tab_state| tab_state.existence == ExistenceState::Live)
-                .map(|_| tab)
-                .ok_or_else(|| "userscript tab action target is stale".to_owned())?
-        }
-        "window" => {
-            let window = WindowId::from_display(value)
-                .ok_or_else(|| "userscript window action target is invalid".to_owned())?;
-            let window = state
-                .windows()
-                .get(&window)
-                .ok_or_else(|| "userscript window action target is stale".to_owned())?;
-            window
-                .active_tab
-                .filter(|tab| {
-                    state.tabs().get(tab).is_some_and(|tab_state| {
-                        tab_state.existence == ExistenceState::Live && tab_state.window == window.id
-                    })
-                })
-                .ok_or_else(|| "userscript window has no live active tab".to_owned())?
-        }
-        "context" => state
-            .windows()
-            .values()
-            .filter(|window| window.context.as_deref() == Some(value))
-            .filter_map(|window| window.active_tab)
-            .find(|tab| {
-                state
-                    .tabs()
-                    .get(tab)
-                    .is_some_and(|tab_state| tab_state.existence == ExistenceState::Live)
-            })
-            .ok_or_else(|| "userscript context action target is stale".to_owned())?,
-        _ => unreachable!("subject was checked above"),
-    };
-    state
-        .capture_target(tab)
-        .ok_or_else(|| "userscript action target is stale".to_owned())
-}
-
-fn live_document_available(state: Option<&ApplicationState>, tab: Option<TabId>) -> bool {
-    let Some(target) = current_target(state, tab) else {
-        return false;
-    };
-    state.is_some_and(|state| {
-        state.tabs().get(&target.tab).is_some_and(|tab| {
-            tab.document == target.document
-                && tab.existence == ExistenceState::Live
-                && tab.renderer == RendererState::Healthy
-        })
-    })
-}
-
-fn elapsed_ms(clock: Instant) -> u64 {
-    u64::try_from(clock.elapsed().as_millis()).unwrap_or(u64::MAX)
-}
-
-fn validate_clipboard_navigation_input(value: &str) -> Result<String, String> {
-    let value = value.trim();
-    if value.is_empty() {
-        return Err("Clipboard read returned no text; navigation was not started".into());
-    }
-    if value.len() > 64 * 1024 {
-        return Err("Clipboard text exceeds 64 KiB; navigation was not started".into());
-    }
-    if value.chars().any(char::is_control) {
-        return Err(
-            "Clipboard text contains control characters; navigation was not started".into(),
-        );
-    }
-    Ok(value.to_owned())
+) -> Option<(BrowserRuntime, WindowId, TabId)> {
+    BrowserRuntime::bootstrap(privacy, profile_label).ok()
 }
 
 fn ensure_spawn_working_directory(rust: &mut BrowserUiRust) -> Result<PathBuf, String> {
@@ -3497,5339 +2579,55 @@ fn ensure_spawn_working_directory(rust: &mut BrowserUiRust) -> Result<PathBuf, S
     Ok(path)
 }
 
-fn open_profile_store(
-    transient_profile: bool,
-    profile_name: &str,
-    profile_label: &str,
-    storage_base: &str,
-) -> Result<ProfileStoreSetup, String> {
-    if transient_profile {
-        return Ok((None, None, None, None, None, None, Vec::new()));
-    }
-    let roots = resolve_browser_roots(storage_base)?;
-    let mut registry = ProfileRegistry::open(&roots).map_err(|error| error.to_string())?;
-    let profile = registry
-        .get_or_create(profile_name, profile_label)
-        .map_err(|error| error.to_string())?;
-    let profile_id = profile.id;
-    let profile_names = registry
-        .profiles()
-        .iter()
-        .map(|profile| profile.name.clone())
-        .collect::<Vec<_>>();
-    let profile_lock =
-        ProfileLock::acquire(&roots, profile_id).map_err(|error| error.to_string())?;
-    let profile_root = roots.data.join("profiles").join(profile_id.to_string());
-    fs::create_dir_all(&profile_root).map_err(|error| error.to_string())?;
-    set_private_directory_permissions(&profile_root).map_err(|error| error.to_string())?;
-    let store = ProfileStore::open(profile_root.join("browser.sqlite"), StoreMode::Normal)
-        .map_err(|error| error.to_string())?;
-    let session_path = roots
-        .state
-        .join("sessions")
-        .join(profile_id.to_string())
-        .join("current.json");
-    Ok((
-        Some(store),
-        Some(profile_id),
-        Some(session_path),
-        Some(roots.state.clone()),
-        Some(profile_lock),
-        Some(roots),
-        profile_names,
-    ))
-}
-
-fn resolve_browser_roots(storage_base: &str) -> Result<StorageRoots, String> {
-    if storage_base.is_empty() {
-        StorageRoots::resolve(RootSpec::Xdg)
-    } else {
-        StorageRoots::resolve(RootSpec::Base(PathBuf::from(storage_base)))
-    }
-    .map_err(|error| error.to_string())
-}
-
-fn set_private_directory_permissions(path: &Path) -> std::io::Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
-    }
-    Ok(())
-}
-
-fn bounded_header(value: &QString) -> String {
-    let value = value.to_string();
-    if value.len() <= 4096 && !value.chars().any(char::is_control) {
-        value
-    } else {
-        String::new()
-    }
-}
-
-fn atomic_write_private(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| "target has no parent directory".to_owned())?;
-    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    set_private_directory_permissions(parent).map_err(|error| error.to_string())?;
-    let file_name = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or_else(|| "target filename is invalid".to_owned())?;
-    let temporary = parent.join(format!(".{file_name}.tmp-{}", Uuid::new_v4()));
-    let mut options = fs::OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    options.mode(0o600);
-    let result = (|| {
-        let mut file = options
-            .open(&temporary)
-            .map_err(|error| error.to_string())?;
-        file.write_all(bytes).map_err(|error| error.to_string())?;
-        file.sync_all().map_err(|error| error.to_string())?;
-        fs::rename(&temporary, path).map_err(|error| error.to_string())
-    })();
-    if result.is_err() {
-        let _ = fs::remove_file(&temporary);
-    }
-    result
-}
-
-fn utf16_cursor_to_scalar(input: &str, cursor: usize) -> usize {
-    let mut units: usize = 0;
-    for (scalar, character) in input.chars().enumerate() {
-        let width = character.len_utf16();
-        if units.saturating_add(width) > cursor {
-            return scalar;
-        }
-        units = units.saturating_add(width);
-    }
-    input.chars().count()
-}
-
-fn scalar_cursor_to_utf16(input: &str, cursor: usize) -> usize {
-    input.chars().take(cursor).map(char::len_utf16).sum()
-}
-
-fn default_download_directory_path() -> PathBuf {
-    if let Some(path) = std::env::var_os("XDG_DOWNLOAD_DIR").map(PathBuf::from)
-        && path.is_absolute()
-    {
-        return path;
-    }
-    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
-        let config_home = std::env::var_os("XDG_CONFIG_HOME")
-            .map(PathBuf::from)
-            .filter(|path| path.is_absolute())
-            .unwrap_or_else(|| home.join(".config"));
-        let user_dirs = config_home.join("user-dirs.dirs");
-        if let Ok(metadata) = fs::metadata(&user_dirs)
-            && metadata.is_file()
-            && metadata.len() <= MAX_USER_DIRS_FILE_BYTES
-            && let Ok(contents) = fs::read_to_string(user_dirs)
-            && let Some(path) = parse_user_dirs_download(&contents, &home)
-        {
-            return path;
-        }
-        return home.join("Downloads");
-    }
-    std::env::temp_dir().join("ferric-browser-downloads")
-}
-
-fn parse_user_dirs_download(contents: &str, home: &Path) -> Option<PathBuf> {
-    for line in contents.lines().take(256) {
-        let line = line.trim();
-        let Some(value) = line.strip_prefix("XDG_DOWNLOAD_DIR=") else {
-            continue;
-        };
-        let value = value.trim();
-        let Some(value) = value
-            .strip_prefix('"')
-            .and_then(|value| value.strip_suffix('"'))
-        else {
-            continue;
-        };
-        let mut expanded = String::with_capacity(value.len());
-        let mut characters = value.chars();
-        while let Some(character) = characters.next() {
-            if character != '\\' {
-                expanded.push(character);
-                continue;
-            }
-            match characters.next() {
-                Some('x') if characters.next() == Some('2') && characters.next() == Some('0') => {
-                    expanded.push(' ');
-                }
-                Some('\\') => expanded.push('\\'),
-                Some('"') => expanded.push('"'),
-                _ => {
-                    expanded.clear();
-                    break;
-                }
-            }
-        }
-        if expanded.is_empty() || expanded.chars().any(char::is_control) {
-            continue;
-        }
-        let path = if let Some(suffix) = expanded.strip_prefix("$HOME/") {
-            home.join(suffix)
-        } else if expanded == "$HOME" {
-            home.to_owned()
-        } else {
-            PathBuf::from(expanded)
-        };
-        if path.is_absolute() {
-            return Some(path);
-        }
-    }
-    None
-}
-
-fn configured_download_directory_path(config: &Value) -> PathBuf {
-    let directory = config
-        .get("downloads")
-        .and_then(|downloads| downloads.get("directory"));
-    if let Some(path) = directory
-        .and_then(|directory| directory.get("path").or_else(|| directory.get("Path")))
-        .and_then(Value::as_str)
-        .map(PathBuf::from)
-        .filter(|path| path.is_absolute())
-    {
-        return path;
-    }
-    default_download_directory_path()
-}
-
-fn validate_pdf_output_path(input: &str) -> Result<PathBuf, String> {
-    let path = PathBuf::from(input);
-    if !path.is_absolute() || input.chars().any(char::is_control) {
-        return Err("PDF path must be an absolute path without control characters".into());
-    }
-    let directory = path
-        .parent()
-        .ok_or_else(|| "PDF path has no containing directory".to_owned())?;
-    let metadata = fs::symlink_metadata(directory)
-        .map_err(|error| format!("PDF containing directory is unavailable: {error}"))?;
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
-        return Err("PDF containing path is not a real directory".into());
-    }
-    Ok(path)
-}
-
-fn validate_print_pdf_path(input: &str) -> Result<PathBuf, String> {
-    let path = validate_pdf_output_path(input)?;
-    let name = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or_else(|| "PDF path has no valid filename".to_owned())?;
-    let directory = path
-        .parent()
-        .ok_or_else(|| "PDF path has no containing directory".to_owned())?;
-    let chosen = choose_download_path(directory, name, CollisionPolicy::Ask)
-        .map_err(|error| format!("PDF destination rejected: {error}"))?;
-    if chosen != path {
-        return Err("PDF destination is not a safe non-colliding path".into());
-    }
-    Ok(path)
-}
-
-fn cleanup_print_artifact(path: &Path, private_temporary: bool) {
-    let _ = fs::remove_file(path);
-    if private_temporary {
-        if let Some(parent) = path.parent() {
-            let _ = fs::remove_dir(parent);
-        }
-    }
-}
-
-fn download_staging_root(roots: Option<&StorageRoots>, session_id: Uuid) -> PathBuf {
-    roots.map_or_else(
-        || {
-            std::env::temp_dir()
-                .join("ferric-browser-download-staging")
-                .join(session_id.to_string())
-        },
-        |roots| roots.runtime.join("download-staging"),
-    )
-}
-
-fn stage_download_path(
-    roots: Option<&StorageRoots>,
-    session_id: Uuid,
-    final_path: &Path,
-) -> Result<StagedDownload, String> {
-    let root = download_staging_root(roots, session_id);
-    fs::create_dir_all(&root)
-        .map_err(|error| format!("download staging directory is unavailable: {error}"))?;
-    let root_metadata = fs::symlink_metadata(&root)
-        .map_err(|error| format!("download staging directory is unavailable: {error}"))?;
-    if root_metadata.file_type().is_symlink() || !root_metadata.is_dir() {
-        return Err("download staging path is not a real directory".into());
-    }
-    #[cfg(unix)]
-    fs::set_permissions(&root, std::os::unix::fs::PermissionsExt::from_mode(0o700))
-        .map_err(|error| format!("download staging permissions could not be secured: {error}"))?;
-
-    let staging_directory = root.join(Uuid::new_v4().to_string());
-    fs::create_dir(&staging_directory)
-        .map_err(|error| format!("download staging directory could not be created: {error}"))?;
-    #[cfg(unix)]
-    if let Err(error) = fs::set_permissions(
-        &staging_directory,
-        std::os::unix::fs::PermissionsExt::from_mode(0o700),
-    ) {
-        let _ = fs::remove_dir(&staging_directory);
-        return Err(format!(
-            "download staging permissions could not be secured: {error}"
-        ));
-    }
-    let file_name = final_path
-        .file_name()
-        .ok_or_else(|| "download destination has no filename".to_owned())?;
-    let staging_path = staging_directory.join(file_name);
-    Ok(StagedDownload {
-        staging_directory,
-        staging_path,
-        final_path: final_path.to_owned(),
-    })
-}
-
-fn cleanup_staged_download(staged: &StagedDownload) {
-    let _ = fs::remove_file(&staged.staging_path);
-    let _ = fs::remove_dir(&staged.staging_directory);
-}
-
-fn cleanup_staged_downloads(staged_downloads: &mut BTreeMap<String, StagedDownload>) {
-    for staged in staged_downloads.values() {
-        cleanup_staged_download(staged);
-    }
-    staged_downloads.clear();
-}
-
-fn finalize_staged_download(staged: &StagedDownload) -> Result<(), String> {
-    let source_metadata = fs::symlink_metadata(&staged.staging_path)
-        .map_err(|error| format!("staged download is unavailable: {error}"))?;
-    if source_metadata.file_type().is_symlink() || !source_metadata.is_file() {
-        return Err("staged download is not a regular file".into());
-    }
-    let directory = staged
-        .final_path
-        .parent()
-        .ok_or_else(|| "download destination has no containing directory".to_owned())?;
-    let directory_metadata = fs::symlink_metadata(directory)
-        .map_err(|error| format!("download destination directory is unavailable: {error}"))?;
-    if directory_metadata.file_type().is_symlink() || !directory_metadata.is_dir() {
-        return Err("download destination directory is not a real directory".into());
-    }
-    let mut destination = fs::OpenOptions::new();
-    destination.write(true).create_new(true);
-    #[cfg(unix)]
-    destination.mode(0o600);
-    let mut destination = destination
-        .open(&staged.final_path)
-        .map_err(|error| format!("download destination cannot be created safely: {error}"))?;
-    let copy_result = (|| {
-        let mut source = fs::File::open(&staged.staging_path)
-            .map_err(|error| format!("staged download cannot be opened: {error}"))?;
-        std::io::copy(&mut source, &mut destination)
-            .map_err(|error| format!("download finalization failed: {error}"))?;
-        destination
-            .sync_all()
-            .map_err(|error| format!("download destination could not be synced: {error}"))
-    })();
-    if let Err(error) = copy_result {
-        drop(destination);
-        let _ = fs::remove_file(&staged.final_path);
-        return Err(error);
-    }
-    drop(destination);
-    cleanup_staged_download(staged);
-    Ok(())
-}
-
-fn validate_save_page_path(input: &str) -> Result<PathBuf, String> {
-    let path = PathBuf::from(input);
-    if !path.is_absolute() || input.chars().any(char::is_control) {
-        return Err("save-page path must be an absolute path without control characters".into());
-    }
-    let directory = path
-        .parent()
-        .ok_or_else(|| "save-page path has no containing directory".to_owned())?;
-    let metadata = fs::symlink_metadata(directory)
-        .map_err(|error| format!("save-page containing directory is unavailable: {error}"))?;
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
-        return Err("save-page containing path is not a real directory".into());
-    }
-    let name = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or_else(|| "save-page path has no valid filename".to_owned())?;
-    let chosen = choose_download_path(directory, name, CollisionPolicy::Ask)
-        .map_err(|error| format!("save-page destination rejected: {error}"))?;
-    if chosen != path {
-        return Err("save-page destination is not a safe non-colliding path".into());
-    }
-    Ok(path)
-}
-
-fn path_to_file_url(path: &Path) -> Result<String, String> {
-    let path = path
-        .to_str()
-        .ok_or_else(|| "download path is not valid Unicode".to_owned())?;
-    if !Path::new(path).is_absolute() || path.chars().any(char::is_control) {
-        return Err("download path is not a safe absolute path".into());
-    }
-    let mut url = String::from("file://");
-    for byte in path.as_bytes() {
-        if byte.is_ascii_alphanumeric() || matches!(*byte, b'-' | b'.' | b'_' | b'~' | b'/') {
-            url.push(char::from(*byte));
-        } else {
-            use std::fmt::Write as _;
-            write!(url, "%{byte:02X}").map_err(|_| "file URL encoding failed".to_owned())?;
-        }
-    }
-    Ok(url)
-}
-
-fn restore_entry_line(entry: &ferric_browser_storage::RestorePlanEntry) -> String {
-    let (scroll_x, scroll_y) = entry.scroll_position.unwrap_or((-1.0, -1.0));
-    format!(
-        "{}\t{}\t{}\t{}\t{}\t{}",
-        entry.url.as_deref().unwrap_or("about:blank"),
-        entry.pinned,
-        entry.muted,
-        entry.zoom,
-        scroll_x,
-        scroll_y,
-    )
-}
-
-fn engine_action_name(effect: &Effect) -> Option<&'static str> {
-    match effect {
-        Effect::Engine(EngineEffect::Navigate { .. }) => Some("navigate"),
-        Effect::Engine(EngineEffect::Reload { .. }) => Some("reload"),
-        Effect::Engine(EngineEffect::Stop { .. }) => Some("stop"),
-        Effect::Engine(EngineEffect::TraverseHistory { offset, .. }) if *offset < 0 => Some("back"),
-        Effect::Engine(EngineEffect::TraverseHistory { .. }) => Some("forward"),
-        Effect::Engine(EngineEffect::FindText { .. }) => Some("find"),
-        Effect::Engine(EngineEffect::ClearFindText { .. }) => Some("clear-find"),
-        Effect::Engine(EngineEffect::CloseView { .. }) => Some("close"),
-        Effect::Engine(EngineEffect::SetTabLifecycle { .. }) => Some("tab-lifecycle"),
-        Effect::Engine(EngineEffect::ReparentView { .. }) => Some("reparent"),
-        _ => None,
-    }
-}
-
-static IPC_INSTANCE_ID: OnceLock<String> = OnceLock::new();
-
-fn publish_ipc_event(sequence: &mut u64, event_type: &str, payload: Value) {
-    *sequence = sequence.saturating_add(1);
-    if let Some(instance_id) = IPC_INSTANCE_ID.get() {
-        publish_event(&EventNotification {
-            instance_id: instance_id.clone(),
-            sequence: *sequence,
-            event_type: event_type.into(),
-            payload,
-        });
-    }
-}
-
-fn operation_status_kind(status: &str) -> &'static str {
-    if status.starts_with("failed") {
-        "failed"
-    } else if status == "cancelled" {
-        "cancelled"
-    } else {
-        "completed"
-    }
-}
-
-fn operation_is_terminal(status: &str) -> bool {
-    matches!(status, "cancelled" | "detached" | "completed")
-        || status.starts_with("completed: ")
-        || status.starts_with("failed")
-}
-
-fn action_operation_id(result: Option<&Value>, prefix: &str) -> String {
-    result
-        .and_then(|value| value.get("operation_id"))
-        .and_then(Value::as_str)
-        .filter(|value| is_bounded_untrusted_text(value))
-        .map(str::to_owned)
-        .unwrap_or_else(|| format!("{prefix}-{}", Uuid::new_v4()))
-}
-
-fn action_audit_record(
-    action_id: &str,
-    operation_id: &str,
-    outcome: &str,
-    category: Option<&str>,
-) -> Value {
-    serde_json::json!({
-        "action_id": action_id,
-        "operation_id": operation_id,
-        "outcome": outcome,
-        "category": category,
-    })
-}
-
-fn remember_operation_stderr(rust: &mut BrowserUiRust, operation_id: &str, stderr: String) {
-    const MAX_RETAINED_OPERATION_STDERR: usize = 256;
-    if !rust.operation_stderr.contains_key(operation_id)
-        && rust.operation_stderr.len() >= MAX_RETAINED_OPERATION_STDERR
-        && let Some(oldest) = rust.operation_stderr.keys().next().cloned()
-    {
-        rust.operation_stderr.remove(&oldest);
-    }
-    rust.operation_stderr
-        .insert(operation_id.to_owned(), stderr);
-}
-
-fn operations_query_value(rust: &BrowserUiRust, params: &Value) -> Result<Value, String> {
-    let object = query_object(
-        params,
-        "operations.query",
-        &["operation_id", "include_stderr"],
-    )?;
-    let requested = query_optional_string(object, "operations.query", "operation_id")?;
-    if requested.is_some_and(str::is_empty) {
-        return Err("operations.query operation_id must be nonempty".into());
-    }
-    let include_stderr = query_bool_param(object, "operations.query", "include_stderr", false)?;
-    let operations = rust
-        .operation_states
-        .iter()
-        .filter(|(id, _)| requested.is_none_or(|requested| requested == id.as_str()))
-        .map(|(id, status)| {
-            let mut operation = serde_json::json!({
-                "operation_id": id,
-                "status": status
-            });
-            if include_stderr {
-                operation["stderr"] = rust
-                    .operation_stderr
-                    .get(id)
-                    .cloned()
-                    .map_or(Value::Null, Value::String);
-            }
-            operation
-        })
-        .collect::<Vec<_>>();
-    Ok(serde_json::json!({
-        "sequence": rust.ipc_sequence,
-        "operations": operations
-    }))
-}
-
-fn is_mutating_ipc_method(method: &str) -> bool {
-    matches!(
-        method,
-        "command.execute" | "action.execute" | "switcher.activate" | "window.focus"
-    )
-}
-
-fn ipc_event_type(event: &Event) -> &'static str {
-    match event {
-        Event::CreateProfile { .. } => "profile.changed",
-        Event::CreateWindow { .. } | Event::FocusWindow { .. } | Event::SetActiveWindow { .. } => {
-            "window.changed"
-        }
-        Event::SetWindowContext { .. } => "context.changed",
-        Event::OpenTab { .. }
-        | Event::OpenTabWithNavigation { .. }
-        | Event::OpenPopup { .. }
-        | Event::MoveTab { .. }
-        | Event::TransferTabOut { .. }
-        | Event::TransferTabIn { .. }
-        | Event::SetTabPinned { .. }
-        | Event::SetTabMuted { .. }
-        | Event::SetTabZoom { .. }
-        | Event::ActivateTab { .. }
-        | Event::CloseTab { .. }
-        | Event::SuspendTab { .. }
-        | Event::DiscardTab { .. }
-        | Event::ResumeTab { .. }
-        | Event::ViewClosed { .. } => "tab.changed",
-        Event::StartNavigation { .. }
-        | Event::CommitNavigation { .. }
-        | Event::CommitNavigationWithTransition { .. }
-        | Event::SameDocumentNavigation { .. }
-        | Event::CompleteNavigation { .. }
-        | Event::FailNavigation { .. }
-        | Event::Reload { .. }
-        | Event::Stop { .. }
-        | Event::TraverseHistory { .. } => "navigation.changed",
-        Event::StartSearch { .. }
-        | Event::SearchNext { .. }
-        | Event::EndSearch { .. }
-        | Event::PushMode { .. }
-        | Event::PopMode { .. }
-        | Event::Escape { .. } => "mode.changed",
-        Event::RendererTerminated { .. } => "renderer.changed",
-        Event::ClearJourney { .. } => "history.changed",
-        Event::RequestShutdown => "shutdown.requested",
-    }
-}
-
-fn ipc_target_payload(state: &ApplicationState, target: Target) -> Value {
-    let mut payload = serde_json::json!({
-        "tab_id": target.tab.to_string(),
-        "generation": target.generation,
-        "document_id": target.document.to_string()
-    });
-    if let Some(tab) = state.tabs().get(&target.tab) {
-        payload["window_id"] = serde_json::json!(tab.window.to_string());
-        payload["profile_id"] = serde_json::json!(tab.profile.to_string());
-    }
-    payload
-}
-
-fn ipc_tab_payload(state: &ApplicationState, tab_id: TabId) -> Value {
-    let Some(tab) = state.tabs().get(&tab_id) else {
-        return serde_json::json!({"tab_id": tab_id.to_string()});
-    };
-    serde_json::json!({
-        "tab_id": tab.id.to_string(),
-        "window_id": tab.window.to_string(),
-        "profile_id": tab.profile.to_string(),
-        "generation": tab.generation,
-        "document_id": tab.document.to_string(),
-        "existence": format!("{:?}", tab.existence).to_ascii_lowercase(),
-        "loading": format!("{:?}", tab.loading).to_ascii_lowercase(),
-        "renderer": format!("{:?}", tab.renderer).to_ascii_lowercase(),
-        "resources": format!("{:?}", tab.resources).to_ascii_lowercase(),
-        "selected": state.windows().get(&tab.window)
-            .and_then(|window| window.active_tab)
-            .is_some_and(|active| active == tab.id),
-        "pinned": tab.pinned,
-        "muted": tab.muted
-    })
-}
-
-fn ipc_event_payload(event: &Event, state: &ApplicationState) -> Value {
-    match event {
-        Event::CreateProfile { privacy, .. } => serde_json::json!({
-            "privacy": privacy.name()
-        }),
-        Event::CreateWindow { profile } => serde_json::json!({
-            "profile_id": profile.to_string(),
-            "window_count": state.windows().len()
-        }),
-        Event::SetWindowContext { window, .. } => serde_json::json!({
-            "window_id": window.to_string(),
-            "context_changed": true
-        }),
-        Event::OpenTab { window } | Event::OpenTabWithNavigation { window, .. } => {
-            let active_tab = state
-                .windows()
-                .get(window)
-                .and_then(|window| window.active_tab);
-            serde_json::json!({
-                "window_id": window.to_string(),
-                "tab": active_tab.map_or(Value::Null, |tab| ipc_tab_payload(state, tab))
-            })
-        }
-        Event::FocusWindow { window } | Event::SetActiveWindow { window } => serde_json::json!({
-            "window_id": window.to_string(),
-            "active": state.active_window() == Some(*window)
-        }),
-        Event::ActivateTab { window, tab } => serde_json::json!({
-            "window_id": window.to_string(),
-            "tab": ipc_tab_payload(state, *tab)
-        }),
-        Event::OpenPopup {
-            opener,
-            user_gesture,
-            ..
-        } => serde_json::json!({
-            "opener": ipc_target_payload(state, *opener),
-            "user_gesture": user_gesture
-        }),
-        Event::MoveTab {
-            tab,
-            to_window,
-            index,
-        } => serde_json::json!({
-            "tab": ipc_tab_payload(state, *tab),
-            "to_window_id": to_window.to_string(),
-            "index": index
-        }),
-        Event::TransferTabOut { tab } => serde_json::json!({
-            "tab": ipc_tab_payload(state, *tab)
-        }),
-        Event::TransferTabIn { window, .. } => serde_json::json!({
-            "window_id": window.to_string()
-        }),
-        Event::SetTabPinned { tab, pinned } => serde_json::json!({
-            "tab": ipc_tab_payload(state, *tab),
-            "pinned": pinned
-        }),
-        Event::SetTabMuted { tab, muted } => serde_json::json!({
-            "tab": ipc_tab_payload(state, *tab),
-            "muted": muted
-        }),
-        Event::SetTabZoom {
-            tab,
-            zoom_hundredths,
-        } => serde_json::json!({
-            "tab": ipc_tab_payload(state, *tab),
-            "zoom_hundredths": zoom_hundredths
-        }),
-        Event::StartNavigation { target, .. }
-        | Event::CommitNavigation { target, .. }
-        | Event::CommitNavigationWithTransition { target, .. }
-        | Event::SameDocumentNavigation { target, .. }
-        | Event::CompleteNavigation { target }
-        | Event::FailNavigation { target }
-        | Event::Reload { target, .. }
-        | Event::Stop { target }
-        | Event::TraverseHistory { target, .. } => {
-            serde_json::json!({"target": ipc_target_payload(state, *target)})
-        }
-        Event::StartSearch {
-            target,
-            backward,
-            case,
-            ..
-        } => serde_json::json!({
-            "target": ipc_target_payload(state, *target),
-            "backward": backward,
-            "case": format!("{:?}", case).to_ascii_lowercase(),
-            "query_changed": true
-        }),
-        Event::SearchNext { target, backward } => serde_json::json!({
-            "target": ipc_target_payload(state, *target),
-            "backward": backward
-        }),
-        Event::EndSearch { target } => serde_json::json!({
-            "target": ipc_target_payload(state, *target),
-            "search_active": false
-        }),
-        Event::CloseTab { tab }
-        | Event::SuspendTab { tab }
-        | Event::DiscardTab { tab }
-        | Event::ResumeTab { tab } => serde_json::json!({
-            "tab": ipc_tab_payload(state, *tab)
-        }),
-        Event::ViewClosed { tab, generation } => serde_json::json!({
-            "tab_id": tab.to_string(),
-            "generation": generation
-        }),
-        Event::PushMode { window, mode } => serde_json::json!({
-            "window_id": window.to_string(),
-            "mode": ipc_mode_name(*mode)
-        }),
-        Event::PopMode { window } | Event::Escape { window } => serde_json::json!({
-            "window_id": window.to_string(),
-            "mode": state.windows().get(window)
-                .and_then(|window| window.modes.last())
-                .map_or("normal", |mode| ipc_mode_name(*mode))
-        }),
-        Event::RendererTerminated { target } => serde_json::json!({
-            "target": ipc_target_payload(state, *target),
-            "renderer": "terminated"
-        }),
-        Event::ClearJourney { since, origin } => serde_json::json!({
-            "since": since,
-            "origin": origin,
-        }),
-        Event::RequestShutdown => serde_json::json!({"shutdown": "requested"}),
-    }
-}
-
-fn parse_ipc_mode(mode: &str) -> Result<Mode, String> {
-    match mode {
-        "normal" => Ok(Mode::Normal),
-        "insert" => Ok(Mode::Insert),
-        "command" => Ok(Mode::Command),
-        "search" => Ok(Mode::Search),
-        "hint" => Ok(Mode::Hint),
-        "caret" => Ok(Mode::Caret),
-        "pass-through" => Ok(Mode::PassThrough),
-        _ => Err(format!("unknown binding mode: {mode}")),
-    }
-}
-
-fn ipc_mode_name(mode: Mode) -> &'static str {
-    match mode {
-        Mode::Normal => "normal",
-        Mode::Insert => "insert",
-        Mode::Command => "command",
-        Mode::Search => "search",
-        Mode::Hint => "hint",
-        Mode::Caret => "caret",
-        Mode::PassThrough => "pass-through",
-    }
-}
-
-fn binding_command_parameters(
-    command: &ParsedCommand,
-) -> Result<(Option<String>, Option<String>), String> {
-    let mut keychain = None;
-    let mut mode = None;
-    let mut index = 0;
-    while index < command.arguments.len() {
-        match command.arguments[index].as_str() {
-            "--mode" => {
-                if mode.is_some() {
-                    return Err(format!("{} accepts --mode at most once", command.name));
-                }
-                let value = command
-                    .arguments
-                    .get(index + 1)
-                    .ok_or_else(|| format!("{} --mode requires a value", command.name))?;
-                parse_ipc_mode(value)?;
-                mode = Some(value.clone());
-                index += 2;
-            }
-            value if command.name == "binding-explain" && keychain.is_none() => {
-                if !is_bounded_untrusted_text(value) {
-                    return Err("binding-explain requires a bounded keychain".into());
-                }
-                keychain = Some(value.to_owned());
-                index += 1;
-            }
-            _ => return Err(format!("{} received an unexpected argument", command.name)),
-        }
-    }
-    if command.name == "binding-explain" && keychain.is_none() {
-        return Err("binding-explain requires a keychain".into());
-    }
-    Ok((keychain, mode))
-}
-
-fn config_get_command_parameters(command: &ParsedCommand) -> Result<Value, String> {
-    let mut key = None;
-    let mut url = None;
-    let mut explain = false;
-    let mut index = 0;
-    while index < command.arguments.len() {
-        match command.arguments[index].as_str() {
-            "--url" => {
-                if url.is_some() {
-                    return Err("get accepts --url at most once".into());
-                }
-                let value = command
-                    .arguments
-                    .get(index + 1)
-                    .filter(|value| is_bounded_untrusted_text(value))
-                    .cloned()
-                    .ok_or_else(|| "get --url requires a bounded URL".to_owned())?;
-                url = Some(value);
-                index += 1;
-            }
-            "--explain" => {
-                if explain {
-                    return Err("get accepts --explain at most once".into());
-                }
-                explain = true;
-            }
-            value if !value.starts_with('-') && key.is_none() => {
-                if !is_bounded_untrusted_text(value) {
-                    return Err("get requires a bounded configuration key".into());
-                }
-                key = Some(value.to_owned());
-            }
-            value => return Err(format!("unknown get option or extra argument: {value}")),
-        }
-        index += 1;
-    }
-    let key = key.ok_or_else(|| "get requires a configuration key".to_owned())?;
-    Ok(serde_json::json!({
-        "key": key,
-        "url": url,
-        "explain": explain
-    }))
-}
-
-fn learning_mode_request(command: &ParsedCommand, current: bool) -> Result<Option<bool>, String> {
-    match command.arguments.as_slice() {
-        [] => Ok(None),
-        [state] => match state.as_str() {
-            "on" => Ok(Some(true)),
-            "off" => Ok(Some(false)),
-            "toggle" => Ok(Some(!current)),
-            _ => Err("learning-mode state must be on, off, or toggle".into()),
-        },
-        _ => Err("learning-mode accepts at most one state".into()),
-    }
-}
-
-fn modal_command_prefill(command: &ParsedCommand, current_url: &str) -> Option<String> {
-    match (command.name.as_str(), command.arguments.as_slice()) {
-        ("open", []) => Some("open ".to_owned()),
-        ("open-current", []) if !current_url.is_empty() => Some(format!("open {current_url}")),
-        ("open-current", [flag, target])
-            if flag == "--target" && target == "tab" && !current_url.is_empty() =>
-        {
-            Some(format!("tab-open {current_url}"))
-        }
-        ("tab-open", []) => Some("tab-open ".to_owned()),
-        ("quickmark-add", []) => Some("quickmark-add ".to_owned()),
-        ("quickmark-open", []) => Some("quickmark-open ".to_owned()),
-        ("bookmark-open", []) => Some("bookmark-open ".to_owned()),
-        _ => None,
-    }
-}
-
-fn binding_uses_full_command_executor(command: &ParsedCommand) -> bool {
-    !command.arguments.is_empty()
-        || matches!(
-            command.name.as_str(),
-            "repeat"
-                | "cancel"
-                | "macro-record"
-                | "macro-stop"
-                | "macro-play"
-                | "binding-list"
-                | "bookmark-add"
-                | "bookmark-list"
-                | "devtools"
-                | "fullscreen"
-                | "history"
-                | "print"
-                | "tab-clone"
-                | "tab-close"
-                | "tab-move"
-                | "tab-mute"
-                | "tab-pin"
-                | "tab-undo"
-                | "view-source"
-                | "window-close"
-                | "window-new"
-        )
-}
-
-fn normalize_active_tab_command(
-    command: &mut ParsedCommand,
-    active_tab_id: Option<String>,
-) -> Result<(), &'static str> {
-    let replacement = match command.name.as_str() {
-        "tab-pin" | "tab-mute" => match command.arguments.as_slice() {
-            [] => Some(vec!["toggle".into()]),
-            [state] if matches!(state.as_str(), "on" | "off" | "toggle") => {
-                Some(vec![state.clone()])
-            }
-            _ => None,
-        },
-        "tab-move" => match command.arguments.as_slice() {
-            [direction] if matches!(direction.as_str(), "left" | "right") => {
-                Some(vec![direction.clone()])
-            }
-            _ => None,
-        },
-        _ => None,
-    };
-    let Some(mut arguments) = replacement else {
-        return Ok(());
-    };
-    let active_tab_id = active_tab_id.ok_or("No active tab")?;
-    arguments.insert(0, active_tab_id);
-    command.arguments = arguments;
-    Ok(())
-}
-
-fn switcher_default_action(kind: &str) -> Option<&'static str> {
-    match kind {
-        "tab" | "window" => Some("focus"),
-        "context" => Some("enter"),
-        "history" | "bookmark" | "quickmark" => Some("open"),
-        "session" => Some("load-preview"),
-        "download" => Some("show"),
-        "command" => Some("help"),
-        "closed" => Some("reopen"),
-        "action" => Some("execute"),
-        _ => None,
-    }
-}
-
-fn valid_switcher_scope(scope: &str) -> bool {
-    matches!(
-        scope,
-        "all"
-            | "tabs"
-            | "windows"
-            | "contexts"
-            | "commands"
-            | "history"
-            | "marks"
-            | "sessions"
-            | "downloads"
-            | "closed"
-            | "actions"
-    )
-}
-
-fn parse_switcher_command(arguments: &[String]) -> Result<(String, String), String> {
-    let mut scope = "all".to_owned();
-    let mut scope_set = false;
-    let mut query = Vec::new();
-    let mut index = 0;
-    while index < arguments.len() {
-        match arguments[index].as_str() {
-            "--scope" => {
-                if scope_set {
-                    return Err("switcher accepts --scope at most once".into());
-                }
-                let value = arguments
-                    .get(index + 1)
-                    .ok_or_else(|| "switcher --scope requires a value".to_owned())?;
-                if !valid_switcher_scope(value) {
-                    return Err("switcher --scope must be a valid switcher scope".into());
-                }
-                scope = value.clone();
-                scope_set = true;
-                index += 2;
-            }
-            value if !value.starts_with('-') => {
-                query.push(value.to_owned());
-                index += 1;
-            }
-            _ => return Err("switcher accepts optional --scope SCOPE and QUERY".into()),
-        }
-    }
-    let query = query.join(" ");
-    if query.len() > 4_096 {
-        return Err("switcher query exceeds 4096 bytes".into());
-    }
-    Ok((scope, query))
-}
-
-fn parse_switcher_generation(value: &str) -> Result<Option<u64>, String> {
-    if value.is_empty() {
-        return Ok(None);
-    }
-    value
-        .parse::<u64>()
-        .map(Some)
-        .map_err(|_| "switcher target generation is invalid".to_owned())
-}
-
-fn validate_switcher_generation(
-    expected: Option<u64>,
-    current: Option<u64>,
-) -> Result<(), &'static str> {
-    let Some(expected) = expected else {
-        return Ok(());
-    };
-    let Some(current) = current else {
-        return Err("Switcher target generation is only valid for tabs");
-    };
-    if current == expected {
-        Ok(())
-    } else {
-        Err("Switcher tab target is stale; refresh the results")
-    }
-}
-
-fn switcher_action_allowed(kind: &str, action: &str) -> bool {
-    match kind {
-        "tab" => matches!(action, "focus" | "open"),
-        "window" => action == "focus",
-        "context" => action == "enter",
-        "history" => action == "open",
-        "bookmark" | "quickmark" => matches!(action, "open" | "delete"),
-        "session" => matches!(action, "load-preview" | "load"),
-        "download" => matches!(action, "show" | "open"),
-        "command" => matches!(action, "execute" | "help"),
-        "closed" => action == "reopen",
-        "action" => action == "execute",
-        _ => false,
-    }
-}
-
-fn switcher_context_boost(current_context: Option<&str>, candidate: Option<&str>) -> i64 {
-    if current_context.is_some() && current_context == candidate {
-        25
-    } else {
-        0
-    }
-}
-
-const DEFAULT_SWITCHER_MAX_RESULTS: u32 = 100;
-
-fn switcher_max_results(config: &Value) -> u32 {
-    config
-        .get("switcher")
-        .and_then(Value::as_object)
-        .and_then(|switcher| switcher.get("max_results"))
-        .and_then(Value::as_u64)
-        .and_then(|value| u32::try_from(value).ok())
-        .unwrap_or(DEFAULT_SWITCHER_MAX_RESULTS)
-        .clamp(10, 1000)
-}
-
-fn configured_undo_limit(config: &Value) -> usize {
-    config
-        .get("tabs")
-        .and_then(Value::as_object)
-        .and_then(|tabs| tabs.get("undo_limit"))
-        .and_then(Value::as_u64)
-        .and_then(|value| usize::try_from(value).ok())
-        .unwrap_or(100)
-        .min(100)
-}
-
-fn configured_bindings(registry: &CommandRegistry, config: &Value) -> Option<BindingResolver> {
-    let mut definitions = BindingTrie::default_v1(registry.clone())
-        .ok()?
-        .definitions();
-    let modes = config.get("bindings")?.as_object()?;
-    for (mode_name, entries) in modes {
-        let Ok(mode) = parse_ipc_mode(mode_name) else {
-            continue;
-        };
-        let Some(entries) = entries.as_object() else {
-            continue;
-        };
-        for (keychain, command) in entries {
-            let Some(command) = command.as_str() else {
-                continue;
-            };
-            let keys = keychain
-                .chars()
-                .map(|key| key.to_string())
-                .collect::<Vec<_>>();
-            if keys.is_empty() || keys.iter().any(|key| key.chars().any(char::is_control)) {
-                continue;
-            }
-            definitions.retain(|definition| definition.mode != mode || definition.keys != keys);
-            if !matches!(command, "unbound" | "none") {
-                definitions.push(BindingDefinition {
-                    mode,
-                    keys,
-                    command: command.into(),
-                });
-            }
-        }
-    }
-    BindingTrie::new(registry.clone(), definitions)
-        .ok()
-        .map(|trie| BindingResolver::new(trie, Mode::Normal))
-}
-
-fn is_session_command(name: &str) -> bool {
-    matches!(
-        name,
-        "session-save" | "session-load" | "session-list" | "session-delete"
-    )
-}
-
-fn is_profile_command(name: &str) -> bool {
-    matches!(
-        name,
-        "profile-list" | "profile-open" | "profile-create" | "profile-delete"
-    )
-}
-
-fn is_context_command(name: &str) -> bool {
-    matches!(
-        name,
-        "context-list"
-            | "context-create"
-            | "context-delete"
-            | "context-enter"
-            | "context-save"
-            | "context-route"
-    )
-}
-
-fn is_library_command(name: &str) -> bool {
-    matches!(
-        name,
-        "bookmark-add"
-            | "bookmark-delete"
-            | "bookmark-edit"
-            | "bookmark-open"
-            | "bookmark-list"
-            | "quickmark-add"
-            | "quickmark-delete"
-            | "quickmark-edit"
-            | "quickmark-open"
-            | "quickmark-list"
-            | "history"
-            | "history-open"
-            | "journey"
-            | "journey-reopen"
-            | "history-clear"
-    )
-}
-
-fn parse_history_clear_arguments(
-    command: &ParsedCommand,
-) -> Result<(Option<i64>, Option<String>, bool), String> {
-    let mut since = None;
-    let mut origin = None;
-    let mut confirmed = false;
-    let mut index = 0;
-    while index < command.arguments.len() {
-        match command.arguments[index].as_str() {
-            "--confirm" if !confirmed => confirmed = true,
-            "--since" if since.is_none() => {
-                let value = command
-                    .arguments
-                    .get(index + 1)
-                    .ok_or_else(|| "history-clear --since requires Unix seconds".to_owned())?;
-                let timestamp = value
-                    .parse::<i64>()
-                    .ok()
-                    .filter(|timestamp| *timestamp >= 0)
-                    .ok_or_else(|| {
-                        "history-clear --since requires a nonnegative Unix timestamp".to_owned()
-                    })?;
-                since = Some(timestamp);
-                index += 1;
-            }
-            "--origin" if origin.is_none() => {
-                let value = command.arguments.get(index + 1).ok_or_else(|| {
-                    "history-clear --origin requires an exact HTTP(S) origin".to_owned()
-                })?;
-                origin = Some(normalize_history_clear_origin(value)?);
-                index += 1;
-            }
-            value if value.starts_with("--") => {
-                return Err(format!("unknown history-clear option: {value}"));
-            }
-            value => return Err(format!("unexpected history-clear argument: {value}")),
-        }
-        index += 1;
-    }
-    Ok((since, origin, confirmed))
-}
-
-fn normalize_history_clear_origin(value: &str) -> Result<String, String> {
-    let authority = value
-        .split_once("://")
-        .map(|(_, authority)| authority)
-        .filter(|authority| !authority.is_empty() && !authority.contains(['/', '?', '#', '@']))
-        .ok_or_else(|| "history-clear --origin requires an exact HTTP(S) origin".to_owned())?;
-    if authority.contains('\\') {
-        return Err("history-clear --origin requires an exact HTTP(S) origin".into());
-    }
-    canonical_origin(value)
-        .ok_or_else(|| "history-clear --origin requires an exact HTTP(S) origin".to_owned())
-}
-
-fn is_tab_undo_command(name: &str) -> bool {
-    name == "tab-undo"
-}
-
-fn is_tab_clone_command(name: &str) -> bool {
-    name == "tab-clone"
-}
-
-fn is_reopen_in_window_command(name: &str) -> bool {
-    name == "reopen-in-window"
-}
-
-fn is_tab_detach_command(name: &str) -> bool {
-    name == "tab-detach"
-}
-
-fn is_tab_give_command(name: &str) -> bool {
-    name == "tab-give"
-}
-
-fn is_zoom_command(name: &str) -> bool {
-    name == "zoom"
-}
-
-fn is_search_next_command(name: &str) -> bool {
-    name == "search-next"
-}
-
-fn is_scroll_command(name: &str) -> bool {
-    matches!(name, "scroll" | "scroll-page" | "scroll-to")
-}
-
-fn parse_search_next_options(
-    arguments: &[String],
-    default_backward: bool,
-) -> Result<(bool, u32), String> {
-    let mut backward = default_backward;
-    let mut backward_seen = false;
-    let mut count = 1;
-    let mut count_seen = false;
-    let mut index = 0;
-    while index < arguments.len() {
-        match arguments[index].as_str() {
-            "--backward" if !backward_seen => {
-                backward = true;
-                backward_seen = true;
-                index += 1;
-            }
-            "--backward" => {
-                return Err("search-next accepts --backward at most once".to_owned());
-            }
-            "--count" if !count_seen => {
-                let value = arguments.get(index + 1).ok_or_else(|| {
-                    "search-next --count requires a value from 1 to 100".to_owned()
-                })?;
-                count = value
-                    .parse::<u32>()
-                    .ok()
-                    .filter(|value| (1..=100).contains(value))
-                    .ok_or_else(|| "search-next count must be 1 to 100".to_owned())?;
-                count_seen = true;
-                index += 2;
-            }
-            "--count" => {
-                return Err("search-next accepts --count at most once".to_owned());
-            }
-            _ => {
-                return Err(
-                    "search-next accepts --backward and optional --count N flags".to_owned(),
-                );
-            }
-        }
-    }
-    Ok((backward, count))
-}
-
-fn parse_scroll_count(value: &str) -> Result<u32, String> {
-    value
-        .parse::<u32>()
-        .ok()
-        .filter(|value| (1..=9_999).contains(value))
-        .ok_or_else(|| "scroll count must be 1 to 9999".to_owned())
-}
-
-fn parse_scroll_options(command: &str, arguments: &[String]) -> Result<(bool, u32), String> {
-    match command {
-        "scroll" => match arguments {
-            [] => Ok((false, 1)),
-            [flag, value] if flag == "--count" => Ok((false, parse_scroll_count(value)?)),
-            _ => Err("scroll accepts only --count N once, after DIRECTION".to_owned()),
-        },
-        "scroll-page" => match arguments {
-            [] => Ok((false, 1)),
-            [flag] if flag == "--half" => Ok((true, 1)),
-            [flag, value] if flag == "--count" => Ok((false, parse_scroll_count(value)?)),
-            [half, count, value] if half == "--half" && count == "--count" => {
-                Ok((true, parse_scroll_count(value)?))
-            }
-            _ => Err(
-                "scroll-page accepts --half optionally followed by --count N, each once".to_owned(),
-            ),
-        },
-        _ => Err("unsupported scroll command".to_owned()),
-    }
-}
-
-fn is_link_clean_command(name: &str) -> bool {
-    matches!(name, "url-clean" | "url-explain")
-}
-
-fn is_yank_command(name: &str) -> bool {
-    name == "yank"
-}
-
-fn selection_yank_command() -> ParsedCommand {
-    ParsedCommand {
-        name: "yank".into(),
-        arguments: vec!["selection".into()],
-    }
-}
-
-fn external_hint_target(value: &str) -> Option<&str> {
-    let name = value.strip_prefix("external:")?;
-    (is_bounded_untrusted_text(name)
-        && name.chars().all(|character| {
-            character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-'
-        }))
-    .then_some(name)
-}
-
-fn rapid_hint_keeps_mode(rapid: bool, action: Option<&str>) -> bool {
-    rapid
-        && matches!(
-            action,
-            Some("yank" | "clean-yank" | "tab-bg" | "userscript" | "download")
-        )
-}
-
-fn hint_options(command: &ParsedCommand) -> Result<(bool, bool, String, Option<String>), String> {
-    let mut links_only = false;
-    let mut rapid = false;
-    let mut target = "current".to_owned();
-    let mut script = None;
-    let mut index = 0;
-    while index < command.arguments.len() {
-        match command.arguments[index].as_str() {
-            "links" if !links_only => links_only = true,
-            "all" if !links_only => {}
-            "--rapid" if !rapid => rapid = true,
-            "--target" => {
-                index += 1;
-                target = command
-                    .arguments
-                    .get(index)
-                    .filter(|value| {
-                        matches!(
-                            value.as_str(),
-                            "current"
-                                | "tab"
-                                | "tab-bg"
-                                | "window"
-                                | "yank"
-                                | "clean-yank"
-                                | "download"
-                                | "userscript"
-                                | "ephemeral"
-                        ) || external_hint_target(value).is_some()
-                    })
-                    .cloned()
-                    .ok_or_else(|| {
-                        "hint target must be current, tab, tab-bg, window, yank, clean-yank, download, userscript, ephemeral, or external:NAME"
-                            .to_owned()
-                    })?;
-            }
-            "--script" => {
-                index += 1;
-                let value = command
-                    .arguments
-                    .get(index)
-                    .filter(|value| is_bounded_untrusted_text(value))
-                    .cloned()
-                    .ok_or_else(|| "hint script must be a nonempty safe name".to_owned())?;
-                if script.replace(value).is_some() {
-                    return Err("hint script was specified more than once".into());
-                }
-            }
-            "links" | "all" => return Err("hint kind was specified more than once".into()),
-            _ => {
-                return Err(
-                    "hint expects [--target TARGET] [--rapid] [--script NAME] [links|all]".into(),
-                );
-            }
-        }
-        index += 1;
-    }
-    if rapid && target == "current" {
-        target = "yank".into();
-    }
-    if rapid && target == "ephemeral" {
-        return Err("hint target ephemeral does not support --rapid".into());
-    }
-    if rapid && external_hint_target(&target).is_some() {
-        return Err("external hint targets do not support --rapid".into());
-    }
-    if rapid
-        && !matches!(
-            target.as_str(),
-            "tab-bg" | "yank" | "clean-yank" | "download" | "userscript"
-        )
-    {
-        return Err(
-            "rapid hint target must be tab-bg, yank, clean-yank, download, or userscript".into(),
-        );
-    }
-    if target == "userscript" && script.is_none() {
-        return Err("hint target userscript requires --script NAME".into());
-    }
-    if target != "userscript" && script.is_some() {
-        return Err("--script is only valid with the userscript hint target".into());
-    }
-    Ok((links_only, rapid, target, script))
-}
-
-fn parse_hint_kind(value: &str) -> Result<HintKind, String> {
-    match value {
-        "link" => Ok(HintKind::Link),
-        "button" => Ok(HintKind::Button),
-        "input" => Ok(HintKind::Input),
-        "select" => Ok(HintKind::Select),
-        "textarea" => Ok(HintKind::Textarea),
-        "contenteditable" => Ok(HintKind::ContentEditable),
-        "aria" => Ok(HintKind::Aria),
-        _ => Err(format!("unknown hint kind: {value}")),
-    }
-}
-
-fn valid_hint_frame_path(path: &str) -> bool {
-    let mut segments = path.split('.');
-    if segments.next() != Some("0") {
-        return false;
-    }
-    let mut depth = 0;
-    segments.all(|segment| {
-        depth += 1;
-        depth <= MAX_HINT_FRAME_DEPTH
-            && !segment.is_empty()
-            && segment.parse::<usize>().is_ok_and(|index| index <= 5_000)
-    })
-}
-
-fn parse_hint_candidate(value: &Value) -> Result<HintCandidate, String> {
-    let object = value
-        .as_object()
-        .ok_or_else(|| "hint candidate must be an object".to_owned())?;
-    let kind = parse_hint_kind(
-        object
-            .get("kind")
-            .and_then(Value::as_str)
-            .ok_or_else(|| "hint candidate kind must be a string".to_owned())?,
-    )?;
-    let element_id = object
-        .get("element_id")
-        .and_then(Value::as_u64)
-        .and_then(|value| u32::try_from(value).ok())
-        .filter(|value| *value > 0 && *value <= ferric_browser_core::MAX_HINT_CANDIDATES as u32)
-        .ok_or_else(|| "hint candidate element_id must be a bounded positive integer".to_owned())?;
-    let frame_path = object
-        .get("frame_path")
-        .and_then(Value::as_str)
-        .ok_or_else(|| "hint candidate frame_path must be a string".to_owned())?;
-    let text = object
-        .get("text")
-        .and_then(Value::as_str)
-        .ok_or_else(|| "hint candidate text must be a string".to_owned())?;
-    if frame_path.is_empty()
-        || frame_path.len() > 256
-        || !valid_hint_frame_path(frame_path)
-        || text.len() > 512
-        || frame_path.chars().any(char::is_control)
-        || text.chars().any(char::is_control)
-    {
-        return Err("hint candidate text or frame path is invalid".into());
-    }
-    let href = object
-        .get("href")
-        .and_then(|href| if href.is_null() { None } else { href.as_str() })
-        .map(str::to_owned);
-    if href.as_ref().is_some_and(|href| {
-        href.is_empty() || href.len() > 8_192 || href.chars().any(char::is_control)
-    }) {
-        return Err("hint candidate href is invalid".into());
-    }
-    let geometry = object
-        .get("geometry")
-        .and_then(Value::as_object)
-        .ok_or_else(|| "hint candidate geometry must be an object".to_owned())?;
-    let number = |name: &str| {
-        geometry
-            .get(name)
-            .and_then(Value::as_f64)
-            .ok_or_else(|| format!("hint candidate geometry {name} must be a number"))
-    };
-    Ok(HintCandidate {
-        element_id,
-        kind,
-        frame_path: frame_path.to_owned(),
-        text: text.to_owned(),
-        href,
-        geometry: HintGeometry {
-            x: number("x")?,
-            y: number("y")?,
-            width: number("width")?,
-            height: number("height")?,
-        },
-    })
-}
-
-fn parse_hint_payload(raw: &str) -> Result<Vec<HintCandidate>, String> {
-    let values = serde_json::from_str::<Value>(raw)
-        .map_err(|error| format!("hint candidate JSON is invalid: {error}"))?;
-    let values = if let Some(values) = values.as_array() {
-        values
-    } else {
-        let object = values
-            .as_object()
-            .ok_or_else(|| "hint payload must be an array or object".to_owned())?;
-        object
-            .get("candidates")
-            .and_then(Value::as_array)
-            .ok_or_else(|| "hint payload candidates must be an array".to_owned())?
-    };
-    if values.len() > ferric_browser_core::MAX_HINT_CANDIDATES {
-        return Err(format!(
-            "hint candidate count {} exceeds {}",
-            values.len(),
-            ferric_browser_core::MAX_HINT_CANDIDATES
-        ));
-    }
-    let candidates = values
-        .iter()
-        .map(parse_hint_candidate)
-        .collect::<Result<Vec<_>, _>>()?;
-    let unique_ids = candidates
-        .iter()
-        .map(|candidate| candidate.element_id)
-        .collect::<BTreeSet<_>>();
-    if unique_ids.len() != candidates.len() {
-        return Err("hint candidate element_id values must be unique".into());
-    }
-    Ok(candidates)
-}
-
-fn hint_kind_name(kind: HintKind) -> &'static str {
-    match kind {
-        HintKind::Link => "link",
-        HintKind::Button => "button",
-        HintKind::Input => "input",
-        HintKind::Select => "select",
-        HintKind::Textarea => "textarea",
-        HintKind::ContentEditable => "contenteditable",
-        HintKind::Aria => "aria",
-    }
-}
-
-fn hint_json(hints: &[ferric_browser_core::LabeledHint]) -> Value {
-    Value::Array(
-        hints
-            .iter()
-            .map(|hint| {
-                serde_json::json!({
-                    "label": hint.label,
-                    "element_id": hint.candidate.element_id,
-                    "kind": hint_kind_name(hint.candidate.kind),
-                    "frame_path": hint.candidate.frame_path,
-                    "text": hint.candidate.text,
-                    "href": hint.candidate.href,
-                    "x": hint.candidate.geometry.x,
-                    "y": hint.candidate.geometry.y,
-                    "width": hint.candidate.geometry.width,
-                    "height": hint.candidate.geometry.height
-                })
-            })
-            .collect(),
-    )
-}
-
-fn parse_action_invocation(command: &ParsedCommand) -> Result<(ParsedCommand, String), String> {
-    let [subject, verb, arguments @ ..] = command.arguments.as_slice() else {
-        return Err("action requires SUBJECT VERB and typed arguments".into());
-    };
-    let registry = ActionRegistry::default_v1();
-    let definition = registry
-        .resolve_subject_verb(subject, verb)
-        .ok_or_else(|| format!("unknown action subject/verb: {subject} {verb}"))?;
-    let command_arguments = match definition.command.as_str() {
-        "open" => {
-            let (target, input) = match arguments {
-                [input] if is_bounded_untrusted_text(input) => (None, input),
-                [flag, target, input]
-                    if flag == "--target"
-                        && matches!(
-                            target.as_str(),
-                            "current" | "tab" | "tab-bg" | "window" | "private-window"
-                        ) =>
-                {
-                    if !is_bounded_untrusted_text(input) {
-                        return Err(
-                            "action open input is empty, oversized, or contains control characters"
-                                .into(),
-                        );
-                    }
-                    (Some(target), input)
-                }
-                _ => {
-                    return Err(format!(
-                        "action {subject} {verb} expects [--target TARGET] URL"
-                    ));
-                }
-            };
-            let mut mapped = Vec::with_capacity(target.map_or(1, |_| 3));
-            if let Some(target) = target {
-                mapped.extend(["--target".into(), target.clone()]);
-            }
-            mapped.push(input.clone());
-            mapped
-        }
-        "download" => match arguments {
-            [url] if is_bounded_untrusted_text(url) => vec![url.clone()],
-            _ => return Err("action link download requires one URL".into()),
-        },
-        "tab-open" => match arguments {
-            [input] if is_bounded_untrusted_text(input) => vec![input.clone()],
-            [flag, input] if flag == "--background" && is_bounded_untrusted_text(input) => {
-                vec![flag.clone(), input.clone()]
-            }
-            _ => return Err("action tab open expects [--background] INPUT".into()),
-        },
-        "url-clean" | "url-explain" => match arguments {
-            [] => Vec::new(),
-            [url] if is_bounded_untrusted_text(url) => vec![url.clone()],
-            _ => return Err(format!("action {subject} {verb} accepts at most one URL")),
-        },
-        "tab-select" => match arguments {
-            [selector] if is_bounded_untrusted_text(selector) => vec![selector.clone()],
-            _ => return Err("action tab select requires one tab ID or displayed index".into()),
-        },
-        "tab-give" => match arguments {
-            [window_id] if is_bounded_untrusted_text(window_id) => vec![window_id.clone()],
-            _ => return Err("action tab give requires one target window ID".into()),
-        },
-        "tab-focus" | "tab-close" | "tab-suspend" | "tab-discard" | "tab-resume" => match arguments
-        {
-            [id] if is_bounded_untrusted_text(id) => vec![id.clone()],
-            _ => return Err(format!("action tab {verb} requires one stable tab ID")),
-        },
-        "tab-mute" => match arguments {
-            [id] if is_bounded_untrusted_text(id) => vec![id.clone()],
-            [id, state]
-                if is_bounded_untrusted_text(id)
-                    && matches!(state.as_str(), "on" | "off" | "toggle") =>
-            {
-                vec![id.clone(), state.clone()]
-            }
-            _ => return Err("action tab mute expects TAB_ID [on|off|toggle]".into()),
-        },
-        "tab-pin" => match arguments {
-            [id] if is_bounded_untrusted_text(id) => vec![id.clone()],
-            [id, state]
-                if is_bounded_untrusted_text(id)
-                    && matches!(state.as_str(), "on" | "off" | "toggle") =>
-            {
-                vec![id.clone(), state.clone()]
-            }
-            _ => return Err("action tab pin expects TAB_ID [on|off|toggle]".into()),
-        },
-        "window-new" => match arguments {
-            [] => Vec::new(),
-            [flag] if flag == "--private" => vec![flag.clone()],
-            [flag, profile]
-                if flag == "--profile"
-                    && is_bounded_untrusted_text(profile)
-                    && !profile.starts_with("--") =>
-            {
-                vec![flag.clone(), profile.clone()]
-            }
-            [profile_flag, profile, private_flag]
-                if profile_flag == "--profile"
-                    && is_bounded_untrusted_text(profile)
-                    && !profile.starts_with("--")
-                    && private_flag == "--private" =>
-            {
-                vec![profile_flag.clone(), profile.clone(), private_flag.clone()]
-            }
-            [private_flag, profile_flag, profile]
-                if private_flag == "--private"
-                    && profile_flag == "--profile"
-                    && is_bounded_untrusted_text(profile)
-                    && !profile.starts_with("--") =>
-            {
-                vec![private_flag.clone(), profile_flag.clone(), profile.clone()]
-            }
-            _ => return Err("action window new expects [--private] [--profile NAME]".into()),
-        },
-        "tab-move" => match arguments {
-            [id, direction]
-                if is_bounded_untrusted_text(id)
-                    && matches!(direction.as_str(), "left" | "right") =>
-            {
-                vec![id.clone(), direction.clone()]
-            }
-            [id, flag, context]
-                if is_bounded_untrusted_text(id)
-                    && flag == "--context"
-                    && is_bounded_untrusted_text(context) =>
-            {
-                vec![id.clone(), flag.clone(), context.clone()]
-            }
-            _ => return Err("action tab move requires TAB_ID and left or right".into()),
-        },
-        "window-close" | "reopen-in-window" | "tab-detach" | "tab-clone"
-            if arguments.is_empty() =>
-        {
-            Vec::new()
-        }
-        "window-close" => return Err("action window close takes no arguments".into()),
-        "reopen-in-window" | "tab-detach" => {
-            return Err(format!("action {subject} {verb} takes no arguments"));
-        }
-        "tab-clone" => return Err("action tab clone takes no arguments".into()),
-        "back" | "forward" => match arguments {
-            [] => Vec::new(),
-            [count]
-                if count
-                    .parse::<u32>()
-                    .is_ok_and(|count| (1..=100).contains(&count)) =>
-            {
-                vec!["--count".into(), count.clone()]
-            }
-            _ => return Err(format!("action tab {verb} accepts an optional count")),
-        },
-        "reload" => match arguments {
-            [] => Vec::new(),
-            [flag] if flag == "--bypass-cache" => vec![flag.clone()],
-            _ => return Err("action tab reload accepts --bypass-cache".into()),
-        },
-        "stop" if arguments.is_empty() => Vec::new(),
-        "stop" => return Err("action tab stop takes no arguments".into()),
-        "tab-next" | "tab-prev" => match arguments {
-            [] => Vec::new(),
-            [count]
-                if count
-                    .parse::<u32>()
-                    .is_ok_and(|count| (1..=9_999).contains(&count)) =>
-            {
-                vec!["--count".into(), count.clone()]
-            }
-            _ => return Err(format!("action tab {verb} accepts an optional count")),
-        },
-        "fullscreen" => match arguments {
-            [] => Vec::new(),
-            [state] if matches!(state.as_str(), "on" | "off" | "toggle") => vec![state.clone()],
-            _ => return Err("action window fullscreen accepts on, off, or toggle".into()),
-        },
-        "zoom" => match arguments {
-            [factor] if is_bounded_untrusted_text(factor) => vec![factor.clone()],
-            _ => return Err("action tab zoom requires one factor".into()),
-        },
-        "search-next" => match arguments {
-            [] => Vec::new(),
-            [direction] if matches!(direction.as_str(), "forward" | "backward") => {
-                if direction == "backward" {
-                    vec!["--backward".into()]
-                } else {
-                    Vec::new()
-                }
-            }
-            [direction, count]
-                if matches!(direction.as_str(), "forward" | "backward")
-                    && count
-                        .parse::<u32>()
-                        .is_ok_and(|count| (1..=100).contains(&count)) =>
-            {
-                let mut args = Vec::new();
-                if direction == "backward" {
-                    args.push("--backward".into());
-                }
-                args.extend(["--count".into(), count.clone()]);
-                args
-            }
-            _ => return Err("action tab search-next expects [forward|backward] [count]".into()),
-        },
-        "scroll" => match arguments {
-            [direction] if matches!(direction.as_str(), "up" | "down" | "left" | "right") => {
-                vec![direction.clone()]
-            }
-            [direction, count]
-                if matches!(direction.as_str(), "up" | "down" | "left" | "right")
-                    && count
-                        .parse::<u32>()
-                        .is_ok_and(|count| (1..=9_999).contains(&count)) =>
-            {
-                vec![direction.clone(), "--count".into(), count.clone()]
-            }
-            _ => return Err("action tab scroll expects DIRECTION [COUNT]".into()),
-        },
-        "scroll-page" => match arguments {
-            [direction] if matches!(direction.as_str(), "up" | "down") => {
-                vec![direction.clone()]
-            }
-            [direction, flag]
-                if matches!(direction.as_str(), "up" | "down") && flag == "--half" =>
-            {
-                vec![direction.clone(), flag.clone()]
-            }
-            [direction, flag, count]
-                if matches!(direction.as_str(), "up" | "down")
-                    && flag == "--half"
-                    && count
-                        .parse::<u32>()
-                        .is_ok_and(|count| (1..=9_999).contains(&count)) =>
-            {
-                vec![
-                    direction.clone(),
-                    flag.clone(),
-                    "--count".into(),
-                    count.clone(),
-                ]
-            }
-            [direction, flag, count]
-                if matches!(direction.as_str(), "up" | "down")
-                    && flag == "--count"
-                    && count
-                        .parse::<u32>()
-                        .is_ok_and(|count| (1..=9_999).contains(&count)) =>
-            {
-                vec![direction.clone(), flag.clone(), count.clone()]
-            }
-            [direction, half_flag, count_flag, count]
-                if matches!(direction.as_str(), "up" | "down")
-                    && half_flag == "--half"
-                    && count_flag == "--count"
-                    && count
-                        .parse::<u32>()
-                        .is_ok_and(|count| (1..=9_999).contains(&count)) =>
-            {
-                vec![
-                    direction.clone(),
-                    half_flag.clone(),
-                    count_flag.clone(),
-                    count.clone(),
-                ]
-            }
-            _ => return Err("action tab scroll-page expects DIRECTION [--half|--count N]".into()),
-        },
-        "scroll-to" => match arguments {
-            [edge] if matches!(edge.as_str(), "top" | "bottom") => vec![edge.clone()],
-            _ => return Err("action tab scroll-to expects top or bottom".into()),
-        },
-        "window-focus" => match arguments {
-            [id] if is_bounded_untrusted_text(id) => vec![id.clone()],
-            _ => return Err("action window focus requires one stable window ID".into()),
-        },
-        "window-move" => match arguments {
-            [id, workspace]
-                if is_bounded_untrusted_text(id) && is_bounded_untrusted_text(workspace) =>
-            {
-                vec![id.clone(), workspace.clone()]
-            }
-            _ => return Err("action window move requires WINDOW_ID and WORKSPACE".into()),
-        },
-        "bookmark-add" => match arguments {
-            [] => Vec::new(),
-            [flag, title] if flag == "--title" && is_bounded_untrusted_text(title) => {
-                vec![flag.clone(), title.clone()]
-            }
-            _ => return Err("action bookmark add accepts optional --title TEXT".into()),
-        },
-        "quickmark-add" => match arguments {
-            [name] if is_bounded_untrusted_text(name) => vec![name.clone()],
-            [name, url] if is_bounded_untrusted_text(name) && is_bounded_untrusted_text(url) => {
-                vec![name.clone(), url.clone()]
-            }
-            _ => return Err("action quickmark add expects NAME [URL]".into()),
-        },
-        "history-clear" => {
-            let mut mapped = Vec::new();
-            let mut index = 0;
-            while index < arguments.len() {
-                match arguments[index].as_str() {
-                    "--confirm" => mapped.push("--confirm".into()),
-                    "--since" | "--origin" => {
-                        let value = arguments.get(index + 1).ok_or_else(|| {
-                            format!(
-                                "action history-entry clear requires a value after {}",
-                                arguments[index]
-                            )
-                        })?;
-                        if !is_bounded_untrusted_text(value) {
-                            return Err(format!(
-                                "action history-entry clear requires bounded data after {}",
-                                arguments[index]
-                            ));
-                        }
-                        mapped.push(arguments[index].clone());
-                        mapped.push(value.clone());
-                        index += 1;
-                    }
-                    value => {
-                        return Err(format!(
-                            "action history-entry clear received unsupported argument {value}"
-                        ));
-                    }
-                }
-                index += 1;
-            }
-            mapped
-        }
-        "history-open" | "bookmark-open" | "bookmark-delete" => match arguments {
-            [id] if is_bounded_untrusted_text(id) => vec![id.clone()],
-            _ => {
-                return Err(format!(
-                    "action {subject} {verb} requires one stable entry ID"
-                ));
-            }
-        },
-        "quickmark-open" | "quickmark-delete" => match arguments {
-            [name] if is_bounded_untrusted_text(name) => vec![name.clone()],
-            _ => {
-                return Err(format!(
-                    "action {subject} {verb} requires one quickmark name"
-                ));
-            }
-        },
-        "bookmark-edit" => match arguments {
-            [id, flag, title]
-                if is_bounded_untrusted_text(id)
-                    && flag == "--title"
-                    && is_bounded_untrusted_text(title) =>
-            {
-                vec![id.clone(), flag.clone(), title.clone()]
-            }
-            _ => return Err("action bookmark edit expects ID --title TEXT".into()),
-        },
-        "quickmark-edit" => match arguments {
-            [name, url] if is_bounded_untrusted_text(name) && is_bounded_untrusted_text(url) => {
-                vec![name.clone(), url.clone()]
-            }
-            _ => return Err("action quickmark edit expects NAME URL".into()),
-        },
-        "bookmark-list" | "quickmark-list" | "session-list" => {
-            if arguments.is_empty() {
-                Vec::new()
-            } else {
-                return Err(format!("action {subject} {verb} takes no arguments"));
-            }
-        }
-        "session-save" | "session-delete" => match arguments {
-            [name] if is_bounded_untrusted_text(name) => vec![name.clone()],
-            _ => return Err(format!("action {subject} {verb} requires one session name")),
-        },
-        "session-load" => match arguments {
-            [name] if is_bounded_untrusted_text(name) => vec![name.clone()],
-            [flag, name] if flag == "--append" && is_bounded_untrusted_text(name) => {
-                vec![flag.clone(), name.clone()]
-            }
-            _ => return Err("action session load expects [--append] NAME".into()),
-        },
-        "command-help" | "command-execute" => match arguments {
-            [id] if is_bounded_untrusted_text(id) => vec![id.clone()],
-            _ => return Err(format!("action command {verb} requires one command ID")),
-        },
-        "selection-search" => match arguments {
-            [] => Vec::new(),
-            [flag, engine] if flag == "--engine" && is_bounded_untrusted_text(engine) => {
-                vec![engine.clone()]
-            }
-            _ => return Err("action selection search accepts optional --engine NAME".into()),
-        },
-        "context-enter" => match arguments {
-            [name] if is_bounded_untrusted_text(name) => vec![name.clone()],
-            _ => return Err("action context enter requires one context name".into()),
-        },
-        "context-save" => match arguments {
-            [] => Vec::new(),
-            [name] if is_bounded_untrusted_text(name) => vec![name.clone()],
-            _ => return Err("action context save accepts at most one context name".into()),
-        },
-        "yank" => match definition.subject {
-            ActionSubject::Url if arguments.is_empty() && verb == "copy" => vec!["url".into()],
-            ActionSubject::Url if arguments.is_empty() => vec!["url".into(), "--clean".into()],
-            ActionSubject::Url => {
-                return Err(format!("action {subject} {verb} takes no arguments"));
-            }
-            ActionSubject::Link => match arguments {
-                [url] if is_bounded_untrusted_text(url) && verb == "copy" => {
-                    vec!["url".into(), url.clone()]
-                }
-                [url] if is_bounded_untrusted_text(url) => {
-                    vec!["url".into(), url.clone(), "--clean".into()]
-                }
-                _ => return Err(format!("action {subject} {verb} requires one URL")),
-            },
-            ActionSubject::Selection if verb == "copy" && arguments.is_empty() => {
-                vec!["selection".into()]
-            }
-            ActionSubject::Selection => {
-                return Err("action selection copy takes no arguments".into());
-            }
-            ActionSubject::Tab => return Err("tab does not support URL copying".into()),
-            ActionSubject::Download => return Err("download does not support URL copying".into()),
-            ActionSubject::Context => return Err("context does not support URL copying".into()),
-            ActionSubject::Window => return Err("window does not support URL copying".into()),
-            ActionSubject::HistoryEntry => {
-                return Err("history entry does not support URL copying".into());
-            }
-            ActionSubject::Bookmark => return Err("bookmark does not support URL copying".into()),
-            ActionSubject::Quickmark => {
-                return Err("quickmark does not support URL copying".into());
-            }
-            ActionSubject::Session => return Err("session does not support URL copying".into()),
-            ActionSubject::Command => return Err("command does not support URL copying".into()),
-        },
-        "tab-undo" if arguments.is_empty() => Vec::new(),
-        "tab-undo" => return Err("action tab undo takes no arguments".into()),
-        "download-open" | "download-show" | "download-cancel" | "download-pause"
-        | "download-resume" | "download-retry" => match arguments {
-            [id] if is_bounded_untrusted_text(id) => vec![id.clone()],
-            _ => return Err(format!("action download {verb} requires one download ID")),
-        },
-        "send" => match (subject.as_str(), arguments) {
-            ("link", [flag, target]) if flag == "--to" && is_bounded_untrusted_text(target) => {
-                vec![target.clone()]
-            }
-            ("link", [flag, target, url])
-                if flag == "--to"
-                    && is_bounded_untrusted_text(target)
-                    && is_bounded_untrusted_text(url) =>
-            {
-                vec![target.clone(), url.clone()]
-            }
-            ("url", [flag, target]) if flag == "--to" && is_bounded_untrusted_text(target) => {
-                vec![target.clone(), "--url".into()]
-            }
-            ("url", [flag, target, url])
-                if flag == "--to"
-                    && is_bounded_untrusted_text(target)
-                    && is_bounded_untrusted_text(url) =>
-            {
-                vec![target.clone(), "--url".into(), url.clone()]
-            }
-            ("tab", [flag, target]) if flag == "--to" && is_bounded_untrusted_text(target) => {
-                vec![target.clone(), "--tab".into()]
-            }
-            ("selection", [flag, target])
-                if flag == "--to" && is_bounded_untrusted_text(target) =>
-            {
-                vec![target.clone(), "--selection".into()]
-            }
-            _ => return Err(format!("action {subject} send requires --to TARGET")),
-        },
-        _ => return Err("action executor is not implemented".into()),
-    };
-    Ok((
-        ParsedCommand {
-            name: definition.command.clone(),
-            arguments: command_arguments,
-        },
-        definition.id.clone(),
-    ))
-}
-
-fn action_list_value(subject: Option<&str>) -> Result<Value, String> {
-    let registry = ActionRegistry::default_v1();
-    if let Some(subject) = subject
-        && !registry
-            .definitions()
-            .iter()
-            .any(|definition| definition.subject.as_str() == subject)
-    {
-        return Err(format!("unknown action subject: {subject}"));
-    }
-    Ok(Value::Array(
-        registry
-            .definitions()
-            .iter()
-            .filter(|definition| {
-                subject.is_none_or(|subject| definition.subject.as_str() == subject)
-            })
-            .map(|definition| {
-                serde_json::json!({
-                    "id": definition.id,
-                    "subject": definition.subject.as_str(),
-                    "verb": definition.verb,
-                    "label": definition.label,
-                    "description": definition.description,
-                    "command": definition.command,
-                    "arguments": definition.arguments.iter().map(|argument| serde_json::json!({
-                        "name": argument.name,
-                        "kind": format!("{:?}", argument.kind).to_ascii_lowercase(),
-                        "required": argument.required
-                    })).collect::<Vec<_>>(),
-                    "sources": definition.sources.iter().map(|source| source.as_str()).collect::<Vec<_>>(),
-                    "effect": format!("{:?}", definition.effect).to_ascii_lowercase(),
-                    "confirmation": definition.confirmation.as_str(),
-                    "sensitive": definition.sensitive,
-                    "required_capabilities": definition.required_capabilities(),
-                    "completion_provider": definition.completion_provider(),
-                    "availability_predicate": definition.availability_predicate(),
-                    "availability": {
-                        "state": "subject-dependent",
-                        "predicate": definition.availability_predicate(),
-                        "requires_subject_revalidation": true
-                    },
-                    "examples": definition.examples
-                })
-            })
-            .collect(),
-    ))
-}
-
-fn security_deny_rule_count(config_json: &str) -> usize {
-    serde_json::from_str::<Value>(config_json)
-        .ok()
-        .and_then(|config| config.get("blocking").cloned())
-        .and_then(|blocking| blocking.get("security_deny_hosts").cloned())
-        .filter(Value::is_array)
-        .and_then(|rules| rules.as_array().map(Vec::len))
-        .unwrap_or(0)
-}
-
-fn configured_action_targets(config: &Value) -> Result<Vec<(String, ActionTargetConfig)>, String> {
-    let Some(values) = config.get("action_targets").and_then(Value::as_object) else {
-        return Ok(Vec::new());
-    };
-    values
-        .iter()
-        .map(|(name, value)| {
-            serde_json::from_value::<ActionTargetConfig>(value.clone())
-                .map(|target| (name.clone(), target))
-                .map_err(|error| format!("configured action target {name} is invalid: {error}"))
-        })
-        .collect()
-}
-
-fn configured_action_target_supports_subject(
-    config: &Value,
-    subject: ActionSubject,
-) -> Result<bool, String> {
-    let subject = subject.as_str();
-    Ok(configured_action_targets(config)?
-        .iter()
-        .any(|(_, target)| target.subject_types.iter().any(|value| value == subject)))
-}
-
-fn configured_action_target_value(
-    name: &str,
-    target: &ActionTargetConfig,
-    subject: &str,
-    private_profile: bool,
-) -> Value {
-    let selection = subject == "selection";
-    let tab = subject == "tab";
-    let url_like = matches!(subject, "url" | "link");
-    let subject_label = match subject {
-        "selection" => "selection",
-        "tab" => "tab",
-        "url" => "URL",
-        _ => "link",
-    };
-    let (availability_state, availability_reason) = if private_profile && !target.allow_private {
-        ("unavailable", "private-profile")
-    } else {
-        ("available", "ready")
-    };
-    let completion_provider = if url_like { "url" } else { "text" };
-    let availability_predicate = match subject {
-        "url" => "current-document",
-        "link" => "captured-link",
-        "selection" => "live-selection",
-        "tab" => "live-tab",
-        _ => "unknown",
-    };
-    serde_json::json!({
-        "id": format!("external.{name}.{subject}.send"),
-        "subject": subject,
-        "verb": "send",
-        "label": format!("Send {subject_label} to {name}"),
-        "description": if selection {
-            "Send the current visible selection to a configured external target."
-        } else if tab {
-            "Send the active tab URL and title to a configured external target."
-        } else if subject == "url" {
-            "Send the current or explicitly supplied URL to a configured external target."
-        } else {
-            "Send a validated link to a configured external target."
-        },
-        "command": "send",
-        "effect": "sensitive",
-        "confirmation": "never",
-        "sensitive": true,
-        "required_capabilities": ["configured-action-target"],
-        "target": name,
-        "subjects": target.subject_types,
-        "detach": target.detach,
-        "allow_private": target.allow_private,
-        "completion_provider": completion_provider,
-        "availability_predicate": availability_predicate,
-        "availability": {
-            "state": availability_state,
-            "reason": availability_reason,
-            "predicate": availability_predicate,
-            "requires_subject_revalidation": true
-        },
-        "examples": [format!("action {subject} send --to {name}")],
-        "arguments": if selection || tab {
-            serde_json::json!([{"name": "target", "kind": "text", "required": true}])
-        } else if url_like {
-            serde_json::json!([
-                {"name": "target", "kind": "text", "required": true},
-                {"name": "url", "kind": "url", "required": subject == "link"}
-            ])
-        } else {
-            serde_json::json!([{"name": "target", "kind": "text", "required": true}])
-        }
-    })
-}
-
-fn configured_action_target_values(
-    name: &str,
-    target: &ActionTargetConfig,
-    private_profile: bool,
-) -> Vec<Value> {
-    ["url", "link", "selection", "tab"]
-        .into_iter()
-        .filter(|subject| {
-            target
-                .subject_types
-                .iter()
-                .any(|declared| declared == subject)
-        })
-        .map(|subject| configured_action_target_value(name, target, subject, private_profile))
-        .collect()
-}
-
-fn configured_switcher_action_values(
-    config: &Value,
-    private_profile: bool,
-) -> Result<Vec<Value>, String> {
-    let mut values = Vec::new();
-    for (name, target) in configured_action_targets(config)? {
-        values.extend(
-            configured_action_target_values(&name, &target, private_profile)
-                .into_iter()
-                .filter(|value| {
-                    matches!(
-                        value.get("subject").and_then(Value::as_str),
-                        Some("url" | "tab")
-                    ) && value
-                        .get("availability")
-                        .and_then(|availability| availability.get("state"))
-                        .and_then(Value::as_str)
-                        == Some("available")
-                }),
-        );
-    }
-    Ok(values)
-}
-
-fn parse_external_action_id(action_id: &str) -> Option<(String, String)> {
-    let [prefix, name, subject, verb] = action_id.split('.').collect::<Vec<_>>().try_into().ok()?;
-    if prefix != "external"
-        || verb != "send"
-        || !is_bounded_untrusted_text(name)
-        || !name.chars().all(|character| {
-            character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-'
-        })
-        || !matches!(subject, "url" | "link" | "selection" | "tab")
-    {
-        return None;
-    }
-    Some((name.to_owned(), subject.to_owned()))
-}
-
-/// Converts the compact value passed by QML context menus and row actions into
-/// the same typed argument object used by IPC.  Multi-field values use a tab
-/// separator because all UI-originated fields are bounded text and controls
-/// are rejected by the typed action validator.
-fn ui_action_arguments(action_id: &str, value: &str) -> Result<Value, String> {
-    fn fields<'a>(value: &'a str, count: usize, label: &str) -> Result<Vec<&'a str>, String> {
-        let fields = value.split('\t').collect::<Vec<_>>();
-        if fields.len() != count || fields.iter().any(|field| field.is_empty()) {
-            return Err(format!("{label} UI action value has invalid fields"));
-        }
-        Ok(fields)
-    }
-
-    fn optional_fields<'a>(
-        value: &'a str,
-        max: usize,
-        label: &str,
-    ) -> Result<Vec<&'a str>, String> {
-        if value.is_empty() {
-            return Ok(Vec::new());
-        }
-        let fields = value.split('\t').collect::<Vec<_>>();
-        if fields.len() > max || fields.iter().any(|field| field.is_empty()) {
-            return Err(format!("{label} UI action value has invalid fields"));
-        }
-        Ok(fields)
-    }
-
-    match action_id {
-        "browser.url.open" | "browser.tab.open" => Ok(serde_json::json!({"input": value})),
-        "browser.url.copy" | "browser.url.clean-copy" => Ok(serde_json::json!({})),
-        "browser.url.clean" | "browser.url.explain" => {
-            if value.is_empty() {
-                Ok(serde_json::json!({}))
-            } else {
-                Ok(serde_json::json!({"url": value}))
-            }
-        }
-        "browser.link.open"
-        | "browser.link.copy"
-        | "browser.link.clean-copy"
-        | "browser.link.download" => Ok(serde_json::json!({"url": value})),
-        "browser.url.send" | "browser.link.send" => {
-            let values = optional_fields(value, 2, "Send")?;
-            match values.as_slice() {
-                [target] => Ok(serde_json::json!({"target": target})),
-                [target, url] => Ok(serde_json::json!({"target": target, "url": url})),
-                _ => Err("Send UI action requires a target".into()),
-            }
-        }
-        "browser.selection.send" | "browser.tab.send" => Ok(serde_json::json!({"target": value})),
-        "browser.selection.copy" => Ok(serde_json::json!({})),
-        "browser.selection.search" => {
-            if value.is_empty() {
-                Ok(serde_json::json!({}))
-            } else {
-                Ok(serde_json::json!({"engine": value}))
-            }
-        }
-        "browser.context.enter" => Ok(serde_json::json!({"name": value})),
-        "browser.context.save" => {
-            if value.is_empty() {
-                Ok(serde_json::json!({}))
-            } else {
-                Ok(serde_json::json!({"name": value}))
-            }
-        }
-        "browser.window.focus" => Ok(serde_json::json!({"id": value})),
-        "browser.window.move" => {
-            let values = fields(value, 2, "Window move")?;
-            Ok(serde_json::json!({"id": values[0], "workspace": values[1]}))
-        }
-        "browser.window.new" => match optional_fields(value, 2, "Window new")?.as_slice() {
-            [] => Ok(serde_json::json!({})),
-            [private] if *private == "private" => Ok(serde_json::json!({"private": true})),
-            [profile] => Ok(serde_json::json!({"profile": profile})),
-            [profile, private] if *private == "private" => {
-                Ok(serde_json::json!({"profile": profile, "private": true}))
-            }
-            _ => unreachable!("optional fields are bounded"),
-        },
-        "browser.window.close"
-        | "browser.tab.stop"
-        | "browser.tab.clone"
-        | "browser.tab.undo"
-        | "browser.tab.reopen-window"
-        | "browser.tab.detach"
-            if value.is_empty() =>
-        {
-            Ok(serde_json::json!({}))
-        }
-        "browser.tab.next" | "browser.tab.previous" if value.is_empty() => {
-            Ok(serde_json::json!({}))
-        }
-        "browser.tab.next" | "browser.tab.previous" => value
-            .parse::<u64>()
-            .ok()
-            .filter(|count| (1..=9_999).contains(count))
-            .map(|count| serde_json::json!({"count": count}))
-            .ok_or_else(|| "Tab traversal count must be 1..9999".into()),
-        "browser.tab.back" | "browser.tab.forward" if value.is_empty() => Ok(serde_json::json!({})),
-        "browser.tab.back" | "browser.tab.forward" => value
-            .parse::<u64>()
-            .ok()
-            .filter(|count| (1..=100).contains(count))
-            .map(|count| serde_json::json!({"count": count}))
-            .ok_or_else(|| "History traversal count must be 1..100".into()),
-        "browser.tab.reload" if value.is_empty() => Ok(serde_json::json!({})),
-        "browser.tab.reload" if value == "bypass-cache" => {
-            Ok(serde_json::json!({"bypass_cache": true}))
-        }
-        "browser.window.fullscreen" => {
-            if value.is_empty() {
-                Ok(serde_json::json!({}))
-            } else {
-                Ok(serde_json::json!({"state": value}))
-            }
-        }
-        "browser.tab.zoom" => Ok(serde_json::json!({"factor": value})),
-        "browser.tab.scroll" | "browser.tab.scroll-page" => {
-            Ok(serde_json::json!({"direction": value}))
-        }
-        "browser.tab.scroll-to" => Ok(serde_json::json!({"edge": value})),
-        "browser.tab.search-next" => {
-            if value.is_empty() {
-                Ok(serde_json::json!({}))
-            } else {
-                Ok(serde_json::json!({"direction": value}))
-            }
-        }
-        "browser.tab.select" => Ok(serde_json::json!({"selector": value})),
-        "browser.tab.focus"
-        | "browser.tab.close"
-        | "browser.tab.suspend"
-        | "browser.tab.discard"
-        | "browser.tab.resume" => Ok(serde_json::json!({"id": value})),
-        "browser.tab.give" => Ok(serde_json::json!({"window_id": value})),
-        "browser.tab.move" => {
-            let values = fields(value, 2, "Tab move")?;
-            Ok(serde_json::json!({"id": values[0], "direction": values[1]}))
-        }
-        "browser.tab.pin" | "browser.tab.mute" => {
-            let values = optional_fields(value, 2, "Tab state")?;
-            match values.as_slice() {
-                [id] => Ok(serde_json::json!({"id": id})),
-                [id, state] => Ok(serde_json::json!({"id": id, "state": state})),
-                _ => Err("Tab state UI action requires a tab ID".into()),
-            }
-        }
-        "browser.history-entry.open" | "browser.bookmark.open" | "browser.bookmark.delete" => {
-            Ok(serde_json::json!({"id": value}))
-        }
-        "browser.history-entry.clear" => {
-            if value.is_empty() {
-                Ok(serde_json::json!({}))
-            } else {
-                serde_json::from_str(value)
-                    .map_err(|_| "History clear UI action requires a JSON object".to_owned())
-            }
-        }
-        "browser.bookmark.add" => {
-            if value.is_empty() {
-                Ok(serde_json::json!({}))
-            } else {
-                Ok(serde_json::json!({"title": value}))
-            }
-        }
-        "browser.bookmark.edit" => {
-            let values = fields(value, 2, "Bookmark edit")?;
-            Ok(serde_json::json!({"id": values[0], "title": values[1]}))
-        }
-        "browser.bookmark.list" | "browser.quickmark.list" | "browser.session.list"
-            if value.is_empty() =>
-        {
-            Ok(serde_json::json!({}))
-        }
-        "browser.quickmark.open" | "browser.quickmark.delete" => {
-            Ok(serde_json::json!({"name": value}))
-        }
-        "browser.quickmark.add" => match optional_fields(value, 2, "Quickmark add")?.as_slice() {
-            [name] => Ok(serde_json::json!({"name": name})),
-            [name, url] => Ok(serde_json::json!({"name": name, "url": url})),
-            _ => Err("Quickmark add UI action requires a name".into()),
-        },
-        "browser.quickmark.edit" => {
-            let values = fields(value, 2, "Quickmark edit")?;
-            Ok(serde_json::json!({"name": values[0], "url": values[1]}))
-        }
-        "browser.session.save" | "browser.session.delete" => Ok(serde_json::json!({"name": value})),
-        "browser.session.load" => match optional_fields(value, 2, "Session load")?.as_slice() {
-            [name] => Ok(serde_json::json!({"name": name})),
-            [name, append] if *append == "append" => {
-                Ok(serde_json::json!({"name": name, "append": true}))
-            }
-            _ => Err("Session load UI action requires a session name".into()),
-        },
-        "browser.download.open"
-        | "browser.download.show"
-        | "browser.download.pause"
-        | "browser.download.resume"
-        | "browser.download.cancel"
-        | "browser.download.retry" => Ok(serde_json::json!({"id": value})),
-        "browser.command.help" | "browser.command.execute" => Ok(serde_json::json!({"id": value})),
-        _ => Err("UI action is not available here".into()),
-    }
-}
-
-fn userscript_action_value(action: &userscript::RegisteredAction, available: bool) -> Value {
-    let arguments = action
-        .required_fields
-        .iter()
-        .map(|field| {
-            serde_json::json!({
-                "name": field,
-                "kind": if field == "url" || field == "hint_url" { "url" } else { "text" },
-                "required": true
-            })
-        })
-        .collect::<Vec<_>>();
-    let sources = if userscript_action_is_hint_only(action) {
-        serde_json::json!(["hint"])
-    } else {
-        serde_json::json!(["ui", "ipc", "hint"])
-    };
-    let completion_provider = if action
-        .required_fields
-        .iter()
-        .any(|field| field == "url" || field == "hint_url")
-    {
-        "url"
-    } else {
-        "text"
-    };
-    let availability_predicate = match action.subject.as_str() {
-        "url" => "current-document",
-        "link" => "captured-link",
-        "selection" => "live-selection",
-        "tab" => "live-tab",
-        "window" => "live-window",
-        "context" => "profile-context",
-        "download" => "download-state",
-        "history-entry" => "stored-history",
-        "bookmark" => "stored-bookmark",
-        "quickmark" => "stored-quickmark",
-        "session" => "stored-session",
-        "command" => "command-registry",
-        _ => "unknown",
-    };
-    serde_json::json!({
-        "id": action.id,
-        "subject": action.subject,
-        "verb": action.verb,
-        "label": action.label,
-        "description": format!("Run the installed {} userscript action.", action.script),
-        "command": "userscript",
-        "effect": "sensitive",
-        "sensitive": true,
-        "script": action.script,
-        "sources": sources,
-        "confirmation": "when-changed",
-        "required_capabilities": ["installed-userscript"],
-        "completion_provider": completion_provider,
-        "availability_predicate": availability_predicate,
-        "availability": {
-            "state": if available { "available" } else { "unavailable" },
-            "reason": if available { "ready" } else { "userscript-unavailable" },
-            "predicate": availability_predicate,
-            "requires_subject_revalidation": true
-        },
-        "examples": [format!("action {} {}", action.subject, action.verb)],
-        "arguments": arguments
-    })
-}
-
-fn userscript_action_values(
-    root: Option<&Path>,
-    subject: Option<&str>,
-    core_state_available: bool,
-    durable_storage_available: bool,
-    private_profile: bool,
-) -> Result<Vec<Value>, String> {
-    let Some(root) = root else {
-        return Ok(Vec::new());
-    };
-    let builtins = ActionRegistry::default_v1();
-    userscript::registered_actions(root).map(|actions| {
-        actions
-            .into_iter()
-            .filter(|action| {
-                subject.is_none_or(|subject| action.subject == subject)
-                    && builtins.resolve(&action.id).is_none()
-            })
-            .map(|action| {
-                let available = userscript_action_is_available(
-                    &action,
-                    core_state_available,
-                    durable_storage_available,
-                    private_profile,
-                );
-                userscript_action_value(&action, available)
-            })
-            .collect()
-    })
-}
-
-fn userscript_action_is_available(
-    action: &userscript::RegisteredAction,
-    core_state_available: bool,
-    durable_storage_available: bool,
-    private_profile: bool,
-) -> bool {
-    let requires_storage = matches!(
-        action.subject.as_str(),
-        "download" | "history-entry" | "bookmark" | "quickmark" | "session"
-    );
-    core_state_available
-        && (!requires_storage || durable_storage_available)
-        && (!private_profile || action.allow_private)
-}
-
-fn configured_search_url(
-    config_value: &Value,
-    requested_engine: Option<&str>,
-    query: &str,
-) -> Result<(String, String), String> {
-    let config = serde_json::from_value::<Config>(config_value.clone())
-        .map_err(|error| format!("search configuration is invalid: {error}"))?;
-    let engine = requested_engine
-        .unwrap_or(config.navigation.default_search.as_str())
-        .to_owned();
-    if !is_bounded_untrusted_text(&engine) {
-        return Err("search engine name must be a nonempty bounded value".into());
-    }
-    let template = config
-        .search_engines
-        .get(&engine)
-        .ok_or_else(|| format!("configured search engine not found: {engine}"))?;
-    let url = resolve_search_query(template, query).map_err(|error| error.to_string())?;
-    Ok((engine, url.to_string()))
-}
-
-fn navigation_context_from_config_and_quickmarks(
-    config_value: &Value,
-    quickmarks: &[Quickmark],
-    trusted_local_input: bool,
-) -> NavigationContext {
-    let config = serde_json::from_value::<Config>(config_value.clone()).unwrap_or_default();
-    let search_keywords = config
-        .search_engines
-        .iter()
-        .map(|(name, template)| (name.clone(), template.replace("{query}", "{}")))
-        .collect();
-    let default_search_template = config
-        .search_engines
-        .get(&config.navigation.default_search)
-        .map(|template| template.replace("{query}", "{}"));
-    let quickmarks = quickmarks
-        .iter()
-        .map(|mark| (mark.name.clone(), mark.url.clone()))
-        .collect();
-    NavigationContext {
-        quickmarks,
-        search_keywords,
-        default_search_template,
-        trusted_local_input,
-    }
-}
-
-fn clean_open_input(command: &ParsedCommand) -> Result<Option<String>, String> {
-    if command.name != "open"
-        || command.arguments.first().map(String::as_str) != Some("--clean-link")
-    {
-        return Ok(None);
-    }
-    let start = if command.arguments.get(1).map(String::as_str) == Some("--") {
-        2
-    } else {
-        1
-    };
-    let input = command.arguments[start..].join(" ");
-    (!input.is_empty())
-        .then_some(input)
-        .ok_or_else(|| "open --clean-link requires an input".to_owned())
-        .map(Some)
-}
-
-fn interactive_open_command(
-    command: &ParsedCommand,
-) -> Result<Option<(ParsedCommand, IpcRoute)>, String> {
-    if command.name != "open"
-        || !command.arguments.iter().any(|argument| {
-            matches!(
-                argument.as_str(),
-                "--" | "--target" | "--profile" | "--context" | "--clean-link" | "--ephemeral"
-            )
-        })
-    {
-        return Ok(None);
-    }
-    let mut target = None;
-    let mut profile = None;
-    let mut context = None;
-    let mut clean_link = false;
-    let mut input = Vec::new();
-    let mut options_ended = false;
-    let mut index = 0;
-    while index < command.arguments.len() {
-        let argument = &command.arguments[index];
-        if options_ended {
-            input.push(argument.clone());
-        } else {
-            match argument.as_str() {
-                "--" => options_ended = true,
-                "--target" | "--profile" | "--context" => {
-                    index += 1;
-                    let value = command
-                        .arguments
-                        .get(index)
-                        .filter(|value| is_bounded_untrusted_text(value))
-                        .cloned()
-                        .ok_or_else(|| format!("{argument} requires a value"))?;
-                    let destination = match argument.as_str() {
-                        "--target" => &mut target,
-                        "--profile" => &mut profile,
-                        "--context" => &mut context,
-                        _ => unreachable!("matched option has a destination"),
-                    };
-                    if destination.replace(value).is_some() {
-                        return Err(format!("{argument} may be specified only once"));
-                    }
-                }
-                "--clean-link" => {
-                    if clean_link {
-                        return Err("--clean-link may be specified only once".into());
-                    }
-                    clean_link = true;
-                }
-                "--ephemeral" => {
-                    return Err(
-                        "open --ephemeral requires a fresh GUI launch; use the CLI entry point"
-                            .into(),
-                    );
-                }
-                value if value.starts_with('-') => {
-                    return Err(format!("unknown open option: {value}"));
-                }
-                value => {
-                    options_ended = true;
-                    input.push(value.to_owned());
-                }
-            }
-        }
-        index += 1;
-    }
-    if input.is_empty() {
-        return Err("open requires an input".into());
-    }
-    let target = target
-        .map(|target| -> Result<String, String> {
-            match target.as_str() {
-                "current" => Ok("tab".to_owned()),
-                "tab" | "tab-bg" | "window" | "private-window" => Ok(target),
-                _ => Err(
-                    "open target must be current, tab, tab-bg, window, or private-window".into(),
-                ),
-            }
-        })
-        .transpose()?;
-    validate_open_target(target.as_deref(), clean_link).map_err(str::to_owned)?;
-    let mut params = serde_json::json!({
-        "command": "open",
-        "arguments": {
-            "input": input.join(" "),
-            "clean_link": clean_link,
-        }
-    });
-    if let Some(target) = target {
-        params["arguments"]["target"] = Value::String(target);
-    }
-    let mut route_context = serde_json::Map::new();
-    if let Some(profile) = profile {
-        route_context.insert("profile".into(), Value::String(profile));
-    }
-    if let Some(context) = context {
-        route_context.insert("context".into(), Value::String(context));
-    }
-    if !route_context.is_empty() {
-        params["context"] = Value::Object(route_context);
-    }
-    typed_ipc_command(&params)
-        .map(Some)
-        .map_err(|error| error.to_string())
-}
-
-fn ipc_failure(id: &str, code: &str, message: impl Into<String>) -> Response {
-    Response::failure(
-        id,
-        ProtocolError {
-            code: code.into(),
-            message: message.into(),
-            details: None,
-        },
-    )
-}
-
-fn action_failure_category(code: ErrorCode) -> &'static str {
-    match code {
-        ErrorCode::InvalidArgument => "invalid-subject-or-parameters",
-        ErrorCode::NotFound => "not-found",
-        ErrorCode::StaleTarget => "stale-target",
-        ErrorCode::ConfirmationRequired => "confirmation-required",
-        ErrorCode::Unsupported => "missing-capability",
-        ErrorCode::Denied => "denied-source-or-privacy",
-        ErrorCode::Cancelled => "cancelled",
-        _ => "executor-failure",
-    }
-}
-
-fn ipc_action_failure(
-    id: &str,
-    action_id: &str,
-    operation_id: &str,
-    error: impl Into<PublicError>,
-) -> Response {
-    let error = error.into();
-    let code = error.code();
-    let category = action_failure_category(code);
-    Response::failure(
-        id,
-        ProtocolError {
-            code: code.as_str().into(),
-            message: error.user_message().into(),
-            details: Some(serde_json::json!({
-                "action_id": action_id,
-                "operation_id": operation_id,
-                "category": category,
-                "retry": matches!(code, ErrorCode::StaleTarget | ErrorCode::Busy | ErrorCode::Timeout),
-                "diagnostic_context": error.diagnostic_context(),
-            })),
-        },
-    )
-}
-
-fn ipc_action_failure_with_context(
-    id: &str,
-    action_id: &str,
-    operation_id: &str,
-    error: impl Into<PublicError>,
-    command_context: Value,
-) -> Response {
-    let error = error.into();
-    let code = error.code();
-    let category = action_failure_category(code);
-    Response::failure(
-        id,
-        ProtocolError {
-            code: code.as_str().into(),
-            message: error.user_message().into(),
-            details: Some(serde_json::json!({
-                "action_id": action_id,
-                "operation_id": operation_id,
-                "category": category,
-                "retry": matches!(code, ErrorCode::StaleTarget | ErrorCode::Busy | ErrorCode::Timeout),
-                "command_context": command_context,
-                "diagnostic_context": error.diagnostic_context(),
-            })),
-        },
-    )
-}
-
-fn ipc_command_failure_with_context(
-    id: &str,
-    error: impl Into<PublicError>,
-    command_context: Value,
-) -> Response {
-    let error = error.into();
-    Response::failure(
-        id,
-        ProtocolError {
-            code: error.code().as_str().into(),
-            message: error.user_message().into(),
-            details: Some(serde_json::json!({
-                "command_context": command_context,
-                "diagnostic_context": error.diagnostic_context(),
-            })),
-        },
-    )
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum IpcOpenTarget {
-    Tab,
-    BackgroundTab,
-    Window,
-    PrivateWindow,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct IpcRoute {
-    selector: DispatchTarget,
-    open_target: IpcOpenTarget,
-    profile: Option<String>,
-    context: Option<String>,
-    external_open: bool,
-    source: CommandSource,
-}
-
-/// Invalid local IPC command data.
-///
-/// JSON decoding is a presentation/protocol boundary: every failure here is
-/// an invalid argument, independent of the wording used for diagnostics.
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct IpcCommandError(String);
-
-impl IpcCommandError {
-    fn into_public(self) -> PublicError {
-        PublicError::new(
-            ErrorCode::InvalidArgument,
-            "The command request is invalid.",
-            self.0,
-        )
-    }
-}
-
-impl From<String> for IpcCommandError {
-    fn from(message: String) -> Self {
-        Self(message)
-    }
-}
-
-impl From<&str> for IpcCommandError {
-    fn from(message: &str) -> Self {
-        Self(message.into())
-    }
-}
-
-impl std::fmt::Display for IpcCommandError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(&self.0)
-    }
-}
-
-impl std::error::Error for IpcCommandError {}
-
-impl From<IpcCommandError> for PublicError {
-    fn from(error: IpcCommandError) -> Self {
-        error.into_public()
-    }
-}
-
-fn ipc_command_context(
-    state: Option<&ApplicationState>,
-    route: &IpcRoute,
-    operation_id: &str,
-    count: u32,
-) -> Value {
-    let captured = state.map(|state| {
-        CommandContext::capture(
-            state,
-            route.selector,
-            route.source,
-            count,
-            Some(operation_id.to_owned()),
-        )
-    });
-    let window_id = captured.as_ref().and_then(|context| context.window);
-    let tab_id = captured.as_ref().and_then(|context| context.tab);
-    let profile_id = captured.as_ref().and_then(|context| context.profile);
-    let profile = profile_id.and_then(|profile| state?.profiles().get(&profile));
-    serde_json::json!({
-        "source": captured.as_ref().map_or(route.source.as_str(), |context| context.source.as_str()),
-        "operation_id": captured.as_ref().and_then(|context| context.operation_id.as_deref()).unwrap_or(operation_id),
-        "count": captured.as_ref().map_or(count, |context| context.count),
-        "window_id": window_id.map(|id| id.to_string()),
-        "tab_id": tab_id.map(|id| id.to_string()),
-        "profile_id": profile_id.map(|id| id.to_string()),
-        "profile": profile.map(|profile| profile.label.clone()),
-        "privacy": profile.map_or("unknown", |profile| profile.privacy.name()),
-        "context": captured.as_ref().and_then(|context| context.context.clone()),
-        "requested_profile": route.profile,
-        "requested_context": route.context,
-        "target": match route.open_target {
-            IpcOpenTarget::Tab => "tab",
-            IpcOpenTarget::BackgroundTab => "tab-bg",
-            IpcOpenTarget::Window => "window",
-            IpcOpenTarget::PrivateWindow => "private-window",
-        }
-    })
-}
-
-fn ipc_command_count(command: &ParsedCommand) -> u32 {
-    command
-        .arguments
-        .windows(2)
-        .find_map(|arguments| {
-            (arguments[0] == "--count")
-                .then(|| arguments[1].parse::<u32>().ok())
-                .flatten()
-        })
-        .filter(|count| (1..=9_999).contains(count))
-        .unwrap_or(1)
-}
-
-fn ipc_command_invocation(
-    state: &ApplicationState,
-    command: ParsedCommand,
-    selector: DispatchTarget,
-    source: CommandSource,
-    operation_id: Option<&str>,
-) -> CommandInvocation {
-    let count = ipc_command_count(&command);
-    CommandInvocation::with_count(command, count).with_context(CommandContext::capture(
-        state,
-        selector,
-        source,
-        count,
-        operation_id.map(ToOwned::to_owned),
-    ))
-}
-
-#[allow(clippy::too_many_lines)]
-fn typed_ipc_command(params: &Value) -> Result<(ParsedCommand, IpcRoute), IpcCommandError> {
-    let object = params
-        .as_object()
-        .ok_or_else(|| "command.execute params must be an object".to_owned())?;
-    let name = object
-        .get("command")
-        .and_then(Value::as_str)
-        .ok_or_else(|| "command.execute requires a string command".to_owned())?;
-    if name.is_empty() || name.len() > 256 || name.chars().any(char::is_control) {
-        return Err("command name is empty, too long, or contains a control character".into());
-    }
-    let arguments = object.get("arguments").map_or(Ok(None), |value| {
-        value
-            .as_object()
-            .map(Some)
-            .ok_or_else(|| "command arguments must be an object".to_owned())
-    })?;
-    let route = typed_ipc_route(object, arguments, name)?;
-    let text_argument = |key: &str| -> Result<String, String> {
-        arguments
-            .and_then(|arguments| arguments.get(key))
-            .and_then(Value::as_str)
-            .filter(|value| is_bounded_untrusted_text(value))
-            .map(ToOwned::to_owned)
-            .ok_or_else(|| format!("command argument {key} must be a nonempty string"))
-    };
-    let optional_text_argument = |key: &str| -> Result<Option<String>, String> {
-        arguments
-            .and_then(|arguments| arguments.get(key))
-            .map(|value| {
-                value
-                    .as_str()
-                    .filter(|value| is_bounded_untrusted_text(value))
-                    .map(ToOwned::to_owned)
-                    .ok_or_else(|| format!("command argument {key} must be a nonempty string"))
-            })
-            .transpose()
-    };
-    let jseval_script_argument = || -> Result<String, String> {
-        let script = arguments
-            .and_then(|arguments| arguments.get("script"))
-            .and_then(Value::as_str)
-            .ok_or_else(|| "command argument script must be a nonempty string".to_owned())?;
-        validate_jseval_script(script)?;
-        Ok(script.to_owned())
-    };
-    let optional_timestamp_argument = |key: &str| -> Result<Option<i64>, String> {
-        arguments
-            .and_then(|arguments| arguments.get(key))
-            .map(|value| {
-                value
-                    .as_i64()
-                    .filter(|timestamp| *timestamp >= 0)
-                    .ok_or_else(|| {
-                        format!("command argument {key} must be a nonnegative Unix timestamp")
-                    })
-            })
-            .transpose()
-    };
-    let args = match name {
-        "back" | "forward" | "tab-next" | "tab-prev" => {
-            let count = arguments
-                .and_then(|arguments| arguments.get("count"))
-                .map(|value| {
-                    let count = value
-                        .as_u64()
-                        .and_then(|value| u32::try_from(value).ok())
-                        .filter(|value| (1..=100).contains(value))
-                        .ok_or_else(|| {
-                            format!("command argument count must be 1 to 100 for {name}")
-                        })?;
-                    Ok::<u32, String>(count)
-                })
-                .transpose()?;
-            count
-                .map(|count| vec!["--count".into(), count.to_string()])
-                .unwrap_or_default()
-        }
-        "tab-open" => {
-            let input = text_argument("input")?;
-            let background = match arguments.and_then(|arguments| arguments.get("background")) {
-                None => false,
-                Some(value) => value
-                    .as_bool()
-                    .ok_or_else(|| "command argument background must be a boolean".to_owned())?,
-            };
-            if background {
-                vec!["--background".into(), input]
-            } else {
-                vec![input]
-            }
-        }
-        "open-current" => match optional_text_argument("target")?.as_deref() {
-            None => Vec::new(),
-            Some("tab") => vec!["--target".into(), "tab".into()],
-            Some(_) => return Err("command argument target must be tab".into()),
-        },
-        "open" => {
-            let input = text_argument("input")?;
-            if let Some(external) = arguments.and_then(|arguments| arguments.get("external"))
-                && external.as_bool().is_none()
-            {
-                return Err("command argument external must be a boolean".into());
-            }
-            if arguments
-                .and_then(|arguments| arguments.get("clean_link"))
-                .is_some_and(|value| value.as_bool() == Some(true))
-            {
-                vec!["--clean-link".into(), input]
-            } else {
-                vec![input]
-            }
-        }
-        "fullscreen" => match optional_text_argument("state")? {
-            None => Vec::new(),
-            Some(state) if matches!(state.as_str(), "on" | "off" | "toggle") => vec![state],
-            Some(_) => return Err("command argument state must be on, off, or toggle".into()),
-        },
-        "reload" => {
-            let bypass_cache = match arguments.and_then(|arguments| arguments.get("bypass_cache")) {
-                None => false,
-                Some(value) => value
-                    .as_bool()
-                    .ok_or_else(|| "command argument bypass_cache must be a boolean".to_owned())?,
-            };
-            if bypass_cache {
-                vec!["--bypass-cache".into()]
-            } else {
-                Vec::new()
-            }
-        }
-        "search" => {
-            let query = text_argument("query")?;
-            let backward = match arguments.and_then(|arguments| arguments.get("backward")) {
-                None => false,
-                Some(value) => value
-                    .as_bool()
-                    .ok_or_else(|| "command argument backward must be a boolean".to_owned())?,
-            };
-            let case = optional_text_argument("case")?.unwrap_or_else(|| "smart".into());
-            if !matches!(case.as_str(), "smart" | "sensitive" | "insensitive") {
-                return Err(
-                    "command argument case must be smart, sensitive, or insensitive".into(),
-                );
-            }
-            let mut args = Vec::new();
-            if backward {
-                args.push("--backward".into());
-            }
-            if case != "smart" {
-                args.extend(["--case".into(), case]);
-            }
-            args.push(query);
-            args
-        }
-        "window-new" => {
-            let mut args = Vec::new();
-            if let Some(profile) = optional_text_argument("profile")? {
-                args.extend(["--profile".into(), profile]);
-            }
-            if let Some(private) = arguments.and_then(|arguments| arguments.get("private")) {
-                if private.as_bool().is_none() {
-                    return Err("command argument private must be a boolean".into());
-                }
-                if private.as_bool() == Some(true) {
-                    args.push("--private".into());
-                }
-            }
-            args
-        }
-        "tab-close" => {
-            let id = optional_text_argument("id")?;
-            let count = arguments
-                .and_then(|arguments| arguments.get("count"))
-                .map(|value| {
-                    let count = value
-                        .as_u64()
-                        .and_then(|value| u32::try_from(value).ok())
-                        .filter(|value| (1..=100).contains(value))
-                        .ok_or_else(|| "command argument count must be 1 to 100".to_owned())?;
-                    Ok::<u32, String>(count)
-                })
-                .transpose()?;
-            if id.is_some() && count.is_some() {
-                return Err("tab-close cannot combine id and count".into());
-            }
-            let mut args = Vec::new();
-            if let Some(id) = id {
-                args.extend(["--id".into(), id]);
-            }
-            if let Some(count) = count {
-                args.extend(["--count".into(), count.to_string()]);
-            }
-            args
-        }
-        "tab-give" => vec![text_argument("window_id")?],
-        "set" => {
-            let key = text_argument("key")?;
-            let value = text_argument("value")?;
-            let mut args = Vec::new();
-            if arguments
-                .and_then(|arguments| arguments.get("temporary"))
-                .is_some_and(|value| value.as_bool() == Some(true))
-            {
-                args.push("--temp".into());
-            }
-            if let Some(pattern) = optional_text_argument("pattern")? {
-                args.extend(["--pattern".into(), pattern]);
-            }
-            args.push(format!("{key}={value}"));
-            args
-        }
-        "unset" => {
-            let key = text_argument("key")?;
-            let mut args = if arguments
-                .and_then(|arguments| arguments.get("temporary"))
-                .is_some_and(|value| value.as_bool() == Some(true))
-            {
-                vec!["--temp".into()]
-            } else {
-                Vec::new()
-            };
-            if let Some(pattern) = optional_text_argument("pattern")? {
-                args.extend(["--pattern".into(), pattern]);
-            }
-            args.push(key);
-            args
-        }
-        "get" => {
-            let key = text_argument("key")?;
-            let mut args = vec![key];
-            if let Some(url) = optional_text_argument("url")? {
-                args.extend(["--url".into(), url]);
-            }
-            if arguments
-                .and_then(|arguments| arguments.get("explain"))
-                .is_some_and(|value| value.as_bool() == Some(true))
-            {
-                args.push("--explain".into());
-            }
-            args
-        }
-        "help" => optional_text_argument("topic")?
-            .map(|topic| vec![topic])
-            .unwrap_or_default(),
-        "config-export" | "config-write-defaults" | "print-pdf" | "save-page" => {
-            vec![text_argument("path")?]
-        }
-        "bind" => {
-            let mode = optional_text_argument("mode")?.unwrap_or_else(|| "normal".into());
-            if parse_ipc_mode(&mode).is_err() {
-                return Err("command argument mode is invalid".into());
-            }
-            vec![
-                "--mode".into(),
-                mode,
-                text_argument("keychain")?,
-                text_argument("command")?,
-            ]
-        }
-        "unbind" => {
-            let mode = optional_text_argument("mode")?.unwrap_or_else(|| "normal".into());
-            if parse_ipc_mode(&mode).is_err() {
-                return Err("command argument mode is invalid".into());
-            }
-            vec!["--mode".into(), mode, text_argument("keychain")?]
-        }
-        "binding-list" => {
-            let mode = optional_text_argument("mode")?;
-            if let Some(mode) = &mode {
-                parse_ipc_mode(mode)?;
-            }
-            mode.map(|mode| vec!["--mode".into(), mode])
-                .unwrap_or_default()
-        }
-        "binding-explain" => {
-            let mode = optional_text_argument("mode")?;
-            if let Some(mode) = &mode {
-                parse_ipc_mode(mode)?;
-            }
-            let mut args = vec![text_argument("keychain")?];
-            if let Some(mode) = mode {
-                args.extend(["--mode".into(), mode]);
-            }
-            args
-        }
-        "learning-mode" => match optional_text_argument("state")? {
-            None => Vec::new(),
-            Some(state) if matches!(state.as_str(), "on" | "off" | "toggle") => vec![state],
-            Some(_) => return Err("command argument state must be on, off, or toggle".into()),
-        },
-        "bookmark-open" | "bookmark-delete" | "history-open" | "quickmark-open"
-        | "quickmark-delete" => vec![text_argument(
-            if name == "quickmark-open" || name == "quickmark-delete" {
-                "name"
-            } else {
-                "id"
-            },
-        )?],
-        "bookmark-edit" => {
-            let id = text_argument("id")?;
-            let title = text_argument("title")?;
-            vec![id, "--title".into(), title]
-        }
-        "quickmark-edit" => vec![text_argument("name")?, text_argument("url")?],
-        "quickmark-add" => {
-            let mut args = vec![text_argument("name")?];
-            if let Some(url) = optional_text_argument("url")? {
-                args.push(url);
-            }
-            args
-        }
-        "bookmark-add" => optional_text_argument("title")?
-            .map(|title| vec!["--title".into(), title])
-            .unwrap_or_default(),
-        "journey" => {
-            let mut args = Vec::new();
-            if arguments
-                .and_then(|arguments| arguments.get("current"))
-                .is_some_and(|value| value.as_bool().is_none())
-            {
-                return Err("command argument current must be a boolean".into());
-            }
-            if arguments
-                .and_then(|arguments| arguments.get("current"))
-                .is_some_and(|value| value.as_bool() == Some(true))
-            {
-                args.push("--current".into());
-            }
-            if let Some(search) = optional_text_argument("search")? {
-                if !is_bounded_journey_query(&search) {
-                    return Err(
-                        "command argument search must be 1..256 bytes without control characters"
-                            .into(),
-                    );
-                }
-                args.extend(["--search".into(), search]);
-            }
-            if let Some(expand) = optional_text_argument("expand")? {
-                if Uuid::parse_str(&expand).is_err() {
-                    return Err("command argument expand must be a node UUID".into());
-                }
-                args.extend(["--expand".into(), expand]);
-            }
-            args
-        }
-        "switcher" => {
-            let mut args = Vec::new();
-            if let Some(scope) = optional_text_argument("scope")? {
-                if !valid_switcher_scope(&scope) {
-                    return Err("command argument scope must be a valid switcher scope".into());
-                }
-                args.extend(["--scope".into(), scope]);
-            }
-            if let Some(query) = optional_text_argument("query")? {
-                args.push(query);
-            }
-            args
-        }
-        "journey-reopen" => {
-            let node = text_argument("node")?;
-            if Uuid::parse_str(&node).is_err() {
-                return Err("command argument node must be a UUID".into());
-            }
-            let mut args = vec![node];
-            if let Some(target) = optional_text_argument("target")? {
-                if !matches!(target.as_str(), "current" | "tab" | "window") {
-                    return Err("command argument target must be current, tab, or window".into());
-                }
-                args.extend(["--target".into(), target]);
-            }
-            args
-        }
-        "history-clear" => {
-            let since = optional_timestamp_argument("since")?;
-            let origin = optional_text_argument("origin")?
-                .map(|origin| normalize_history_clear_origin(&origin))
-                .transpose()?;
-            let mut args = Vec::new();
-            if let Some(since) = since {
-                args.extend(["--since".into(), since.to_string()]);
-            }
-            if let Some(origin) = origin {
-                args.extend(["--origin".into(), origin]);
-            }
-            if arguments
-                .and_then(|arguments| arguments.get("confirmed"))
-                .is_some_and(|value| value.as_bool() == Some(true))
-            {
-                args.push("--confirm".into());
-            }
-            args
-        }
-        "url-clean" | "url-explain" => optional_text_argument("url")?
-            .map(|url| vec![url])
-            .unwrap_or_default(),
-        "hint" => {
-            let mut args = Vec::new();
-            if arguments
-                .and_then(|arguments| arguments.get("rapid"))
-                .is_some_and(|value| value.as_bool() == Some(true))
-            {
-                args.push("--rapid".into());
-            }
-            if let Some(target) = optional_text_argument("target")? {
-                args.extend(["--target".into(), target]);
-            }
-            if let Some(script) = optional_text_argument("script")? {
-                args.extend(["--script".into(), script]);
-            }
-            if let Some(kind) = optional_text_argument("kind")? {
-                args.push(kind);
-            }
-            args
-        }
-        "mode-enter" => vec![text_argument("mode")?],
-        "caret-move" => {
-            let mut args = vec![text_argument("direction")?];
-            if let Some(count) = arguments.and_then(|arguments| arguments.get("count")) {
-                let count = count
-                    .as_u64()
-                    .filter(|count| (1..=9_999).contains(count))
-                    .ok_or_else(|| "command argument count must be 1..9999".to_owned())?;
-                args.extend(["--count".into(), count.to_string()]);
-            }
-            args
-        }
-        "caret-select" => optional_text_argument("state")?
-            .map(|state| vec![state])
-            .unwrap_or_default(),
-        "download" => vec![text_argument("input")?],
-        "permissions" => optional_text_argument("origin")?
-            .map(|origin| vec![origin])
-            .unwrap_or_default(),
-        "permission-reset" => vec![text_argument("origin")?, text_argument("permission")?],
-        "site-doctor" => vec![text_argument("experiment")?],
-        "site-doctor-undo" => vec![text_argument("id")?],
-        "site-status" => optional_text_argument("tab")?
-            .map(|tab| vec!["--tab".into(), tab])
-            .unwrap_or_default(),
-        "site-data-clear" => {
-            let mut args = vec![text_argument("origin")?];
-            if arguments
-                .and_then(|arguments| arguments.get("confirmed"))
-                .is_some_and(|value| value.as_bool() == Some(true))
-            {
-                args.push("--confirm".into());
-            }
-            args
-        }
-        "blocking-toggle" => {
-            if arguments
-                .and_then(|arguments| arguments.get("site"))
-                .is_some_and(|value| value.as_bool() == Some(true))
-            {
-                vec!["--site".into()]
-            } else {
-                Vec::new()
-            }
-        }
-        "download-open" | "download-show" | "download-cancel" | "download-pause"
-        | "download-resume" | "download-retry" => {
-            vec![text_argument("id")?]
-        }
-        "tab-select" => vec![text_argument("selector")?],
-        "tab-focus" | "tab-suspend" | "tab-discard" | "tab-resume" => {
-            vec![text_argument("id")?]
-        }
-        "tab-mute" | "tab-pin" => {
-            let mut args = optional_text_argument("id")?
-                .map(|id| vec![id])
-                .unwrap_or_default();
-            if let Some(state) = arguments.and_then(|arguments| arguments.get("state")) {
-                let state = state
-                    .as_str()
-                    .ok_or_else(|| "command argument state must be a string".to_owned())?;
-                if !matches!(state, "on" | "off" | "toggle") {
-                    return Err("command argument state must be on, off, or toggle".into());
-                }
-                args.push(state.to_owned());
-            }
-            args
-        }
-        "tab-move" => {
-            if let Some(context) = optional_text_argument("context")? {
-                if arguments
-                    .and_then(|arguments| arguments.get("direction"))
-                    .is_some()
-                {
-                    return Err("tab-move context cannot be combined with direction".into());
-                }
-                let mut args = Vec::with_capacity(3);
-                if let Some(id) = optional_text_argument("id")? {
-                    args.push(id);
-                }
-                args.extend(["--context".into(), context]);
-                args
-            } else {
-                let direction = text_argument("direction")?;
-                if !matches!(direction.as_str(), "left" | "right") {
-                    return Err("command argument direction must be left or right".into());
-                }
-                let mut args = optional_text_argument("id")?
-                    .map(|id| vec![id])
-                    .unwrap_or_default();
-                args.push(direction);
-                args
-            }
-        }
-        "zoom" => vec![text_argument("factor")?],
-        "search-next" => {
-            let mut args = Vec::new();
-            if let Some(direction) = optional_text_argument("direction")? {
-                match direction.as_str() {
-                    "forward" => {}
-                    "backward" => args.push("--backward".into()),
-                    _ => {
-                        return Err("command argument direction must be forward or backward".into());
-                    }
-                }
-            }
-            if let Some(count) = arguments.and_then(|arguments| arguments.get("count")) {
-                let count = count
-                    .as_u64()
-                    .filter(|count| (1..=100).contains(count))
-                    .ok_or_else(|| "command argument count must be 1..100".to_owned())?;
-                args.extend(["--count".into(), count.to_string()]);
-            }
-            args
-        }
-        "scroll" => {
-            let direction = text_argument("direction")?;
-            if !matches!(direction.as_str(), "up" | "down" | "left" | "right") {
-                return Err("command argument direction must be up, down, left, or right".into());
-            }
-            let mut args = vec![direction];
-            if let Some(count) = arguments.and_then(|arguments| arguments.get("count")) {
-                let count = count
-                    .as_u64()
-                    .filter(|count| (1..=9_999).contains(count))
-                    .ok_or_else(|| "command argument count must be 1..9999".to_owned())?;
-                args.extend(["--count".into(), count.to_string()]);
-            }
-            args
-        }
-        "scroll-page" => {
-            let direction = text_argument("direction")?;
-            if !matches!(direction.as_str(), "up" | "down") {
-                return Err("command argument direction must be up or down".into());
-            }
-            let mut args = vec![direction];
-            if arguments
-                .and_then(|arguments| arguments.get("half"))
-                .is_some_and(|value| value.as_bool().is_none())
-            {
-                return Err("command argument half must be a boolean".into());
-            }
-            if arguments
-                .and_then(|arguments| arguments.get("half"))
-                .is_some_and(|value| value.as_bool() == Some(true))
-            {
-                args.push("--half".into());
-            }
-            if let Some(count) = arguments.and_then(|arguments| arguments.get("count")) {
-                let count = count
-                    .as_u64()
-                    .filter(|count| (1..=9_999).contains(count))
-                    .ok_or_else(|| "command argument count must be 1..9999".to_owned())?;
-                args.extend(["--count".into(), count.to_string()]);
-            }
-            args
-        }
-        "scroll-to" => {
-            let edge = text_argument("edge")?;
-            if !matches!(edge.as_str(), "top" | "bottom") {
-                return Err("command argument edge must be top or bottom".into());
-            }
-            vec![edge]
-        }
-        "window-focus" => vec![text_argument("id")?],
-        "window-move" => vec![text_argument("id")?, text_argument("workspace")?],
-        "command-help" => vec![text_argument("id")?],
-        "command-execute" => {
-            let mut args = vec![text_argument("id")?];
-            if let Some(command_arguments) =
-                arguments.and_then(|arguments| arguments.get("arguments"))
-            {
-                if !command_arguments.is_object() {
-                    return Err("command argument arguments must be an object".into());
-                }
-                let encoded = serde_json::to_string(command_arguments)
-                    .map_err(|error| format!("command arguments could not be encoded: {error}"))?;
-                if encoded.len() > 64 * 1024 {
-                    return Err("command argument arguments exceed 64 KiB".into());
-                }
-                args.push(encoded);
-            }
-            args
-        }
-        "selection-search" => optional_text_argument("engine")?
-            .map(|engine| vec![engine])
-            .unwrap_or_default(),
-        "spawn" => {
-            let arguments = arguments
-                .ok_or_else(|| "spawn requires argv or userscript arguments".to_owned())?;
-            match (arguments.get("argv"), arguments.get("userscript")) {
-                (Some(_), Some(_)) | (None, None) => {
-                    return Err("spawn requires exactly one of argv or userscript".into());
-                }
-                (Some(values), None) => {
-                    let values = values
-                        .as_array()
-                        .ok_or_else(|| "command argument argv must be an array".to_owned())?;
-                    if values.is_empty() || values.len() > 256 {
-                        return Err("command argument argv must contain 1..256 values".into());
-                    }
-                    values
-                        .iter()
-                        .map(|value| {
-                            value
-                                .as_str()
-                                .filter(|value| is_bounded_untrusted_text(value))
-                                .map(ToOwned::to_owned)
-                                .ok_or_else(|| {
-                                    "command argument argv values must be nonempty strings"
-                                        .to_owned()
-                                })
-                        })
-                        .collect::<Result<Vec<_>, _>>()?
-                }
-                (None, Some(name)) => {
-                    let name = name
-                        .as_str()
-                        .filter(|value| is_bounded_untrusted_text(value))
-                        .ok_or_else(|| {
-                            "command argument userscript must be a nonempty string".to_owned()
-                        })?;
-                    vec!["--userscript".into(), name.into()]
-                }
-            }
-        }
-        "script-run" => {
-            let name = text_argument("name")?;
-            if !is_bounded_untrusted_text(&name) {
-                return Err("command argument name must be a nonempty bounded string".into());
-            }
-            vec![name]
-        }
-        "jseval" => {
-            let script = jseval_script_argument()?;
-            let world = optional_text_argument("world")?.unwrap_or_else(|| "isolated".into());
-            if !matches!(world.as_str(), "isolated" | "page") {
-                return Err("command argument world must be isolated or page".into());
-            }
-            vec!["--world".into(), world, script]
-        }
-        "devtools" => match arguments.and_then(|arguments| arguments.get("detach")) {
-            None => Vec::new(),
-            Some(Value::Bool(true)) => vec!["--detach".into()],
-            Some(Value::Bool(false)) => Vec::new(),
-            Some(_) => return Err("command argument detach must be a boolean".into()),
-        },
-        "send" => {
-            let target = text_argument("target")?;
-            let mut args = vec![target];
-            match arguments
-                .and_then(|arguments| arguments.get("send_subject"))
-                .and_then(Value::as_str)
-            {
-                Some("selection") => args.push("--selection".into()),
-                Some("tab") => args.push("--tab".into()),
-                Some("link") => {
-                    if let Some(input) =
-                        optional_text_argument("input")?.or(optional_text_argument("url")?)
-                    {
-                        args.push(input);
-                    }
-                }
-                Some("url") => {
-                    args.push("--url".into());
-                    if let Some(input) =
-                        optional_text_argument("input")?.or(optional_text_argument("url")?)
-                    {
-                        args.push(input);
-                    }
-                }
-                Some(other) => {
-                    return Err(format!("command argument send_subject is invalid: {other}").into());
-                }
-                None => {
-                    if arguments
-                        .and_then(|arguments| arguments.get("selection"))
-                        .is_some_and(|value| value.as_bool() == Some(true))
-                    {
-                        args.push("--selection".into());
-                    } else if let Some(input) =
-                        optional_text_argument("input")?.or(optional_text_argument("url")?)
-                    {
-                        args.push(input);
-                    }
-                }
-            }
-            args
-        }
-        "repeat" => match arguments.and_then(|arguments| arguments.get("count")) {
-            None => Vec::new(),
-            Some(count) => vec![
-                "--count".into(),
-                count
-                    .as_u64()
-                    .filter(|count| (1..=100).contains(count))
-                    .ok_or_else(|| "command argument count must be 1..100".to_owned())?
-                    .to_string(),
-            ],
-        },
-        "cancel" => arguments
-            .and_then(|arguments| arguments.get("operation_id"))
-            .map(|value| {
-                value
-                    .as_str()
-                    .filter(|value| is_bounded_untrusted_text(value))
-                    .map(|value| vec![value.to_owned()])
-                    .ok_or_else(|| {
-                        "command argument operation_id must be a nonempty string".to_owned()
-                    })
-            })
-            .transpose()?
-            .unwrap_or_default(),
-        "macro-record" | "macro-play" => vec![text_argument("register")?],
-        "yank" => {
-            let source = optional_text_argument("source")?.unwrap_or_else(|| "url".into());
-            if !matches!(source.as_str(), "url" | "title" | "selection") {
-                return Err("yank source must be url, title, or selection".into());
-            }
-            if matches!(source.as_str(), "title" | "selection")
-                && arguments.is_some_and(|arguments| arguments.contains_key("input"))
-            {
-                return Err("title and selection copying do not accept an input URL".into());
-            }
-            if source != "url"
-                && arguments
-                    .and_then(|arguments| arguments.get("clean"))
-                    .and_then(Value::as_bool)
-                    == Some(true)
-            {
-                return Err("title and selection copying do not accept --clean".into());
-            }
-            let mut args = vec![source];
-            if let Some(input) = optional_text_argument("input")? {
-                args.push(input);
-            }
-            if arguments
-                .and_then(|arguments| arguments.get("clean"))
-                .is_some_and(|value| value.as_bool() == Some(true))
-            {
-                args.push("--clean".into());
-            }
-            if arguments
-                .and_then(|arguments| arguments.get("primary"))
-                .is_some_and(|value| value.as_bool() == Some(true))
-            {
-                args.push("--primary".into());
-            }
-            args
-        }
-        "paste-open" => {
-            let mut args = Vec::new();
-            if let Some(target) = optional_text_argument("target")? {
-                if !matches!(target.as_str(), "current" | "tab") {
-                    return Err("paste-open target must be current or tab".into());
-                }
-                args.extend(["--target".into(), target]);
-            }
-            if arguments
-                .and_then(|arguments| arguments.get("primary"))
-                .is_some_and(|value| value.as_bool() == Some(true))
-            {
-                args.push("--primary".into());
-            }
-            args
-        }
-        "action" => {
-            let mut args = vec![text_argument("subject")?, text_argument("verb")?];
-            let input = optional_text_argument("input")?;
-            let url = optional_text_argument("url")?;
-            if input.is_some() && url.is_some() {
-                return Err("action accepts one typed input or URL argument".into());
-            }
-            if let Some(value) = input.or(url) {
-                args.push(value);
-            }
-            args
-        }
-        "action-list" => optional_text_argument("subject")?
-            .map(|subject| vec![subject])
-            .unwrap_or_default(),
-        "session-save" | "session-delete" | "profile-open" | "profile-create"
-        | "profile-delete" | "context-create" | "context-delete" | "context-enter" => {
-            let mut args = vec![text_argument("name")?];
-            if name == "profile-open"
-                && let Some(input) = optional_text_argument("input")?
-            {
-                args.push(input);
-            }
-            if name == "profile-create"
-                && arguments
-                    .and_then(|arguments| arguments.get("ephemeral"))
-                    .is_some_and(|value| value.as_bool() == Some(true))
-            {
-                args.push("--ephemeral".into());
-            }
-            if name == "context-create" {
-                if let Some(label) = optional_text_argument("label")? {
-                    args.extend(["--label".into(), label]);
-                }
-                let profile = text_argument("profile")?;
-                args.extend(["--profile".into(), profile]);
-                if let Some(workspace) = optional_text_argument("workspace")? {
-                    args.extend(["--workspace".into(), workspace]);
-                }
-            }
-            if name == "context-delete"
-                && arguments
-                    .and_then(|arguments| arguments.get("confirmed"))
-                    .is_some_and(|value| value.as_bool() == Some(true))
-            {
-                args.push("--confirm".into());
-            }
-            args
-        }
-        "session-load" => {
-            let mut args = Vec::new();
-            if arguments
-                .and_then(|arguments| arguments.get("append"))
-                .is_some_and(|value| value.as_bool() == Some(true))
-            {
-                args.push("--append".into());
-            }
-            args.push(text_argument("name")?);
-            args
-        }
-        "context-save" => arguments
-            .and_then(|arguments| arguments.get("name"))
-            .map(|value| {
-                value
-                    .as_str()
-                    .filter(|value| is_bounded_untrusted_text(value))
-                    .map(|value| vec![value.to_owned()])
-                    .ok_or_else(|| "command argument name must be a nonempty string".to_owned())
-            })
-            .transpose()?
-            .unwrap_or_default(),
-        "context-route" => {
-            let action = text_argument("action")?;
-            if !matches!(action.as_str(), "add" | "remove" | "list") {
-                return Err("context-route action must be add, remove, or list".into());
-            }
-            match action.as_str() {
-                "list" => vec![action],
-                "add" => {
-                    let mut args =
-                        vec![action, text_argument("pattern")?, text_argument("context")?];
-                    if let Some(priority) =
-                        arguments.and_then(|arguments| arguments.get("priority"))
-                    {
-                        let priority = priority
-                            .as_i64()
-                            .and_then(|value| i32::try_from(value).ok())
-                            .ok_or_else(|| {
-                                "command argument priority must be a 32-bit integer".to_owned()
-                            })?;
-                        args.extend(["--priority".into(), priority.to_string()]);
-                    }
-                    if let Some(behavior) = optional_text_argument("behavior")? {
-                        if !matches!(behavior.as_str(), "prompt" | "suggest") {
-                            return Err(
-                                "command argument behavior must be prompt or suggest".into()
-                            );
-                        }
-                        args.extend(["--behavior".into(), behavior]);
-                    }
-                    if let Some(entry_points) =
-                        arguments.and_then(|arguments| arguments.get("entry_points"))
-                    {
-                        let entry_points = entry_points.as_array().ok_or_else(|| {
-                            "command argument entry_points must be an array".to_owned()
-                        })?;
-                        if entry_points.is_empty() || entry_points.len() > 3 {
-                            return Err(
-                                "command argument entry_points must contain 1..3 values".into()
-                            );
-                        }
-                        let mut seen = std::collections::BTreeSet::new();
-                        for entry_point in entry_points {
-                            let entry_point = entry_point
-                                .as_str()
-                                .filter(|value| is_bounded_untrusted_text(value))
-                                .ok_or_else(|| {
-                                    "command argument entry_points values must be nonempty strings"
-                                        .to_owned()
-                                })?;
-                            if !matches!(
-                                entry_point,
-                                "external-open" | "explicit-open" | "typed-initial-url"
-                            ) {
-                                return Err("command argument entry_points contains an unsupported entry point".into());
-                            }
-                            if !seen.insert(entry_point) {
-                                return Err(
-                                    "command argument entry_points must not contain duplicates"
-                                        .into(),
-                                );
-                            }
-                            args.extend(["--entry-point".into(), entry_point.into()]);
-                        }
-                    }
-                    args
-                }
-                "remove" => vec![action, text_argument("id")?],
-                _ => unreachable!("context-route action was validated"),
-            }
-        }
-        _ => Vec::new(),
-    };
-    if let Some(arguments) = arguments {
-        let expected: &[&str] = match name {
-            "open" => &["input", "target", "clean_link", "external"],
-            "open-current" => &["target"],
-            "back" | "forward" | "tab-next" | "tab-prev" => &["count"],
-            "tab-open" => &["input", "background"],
-            "fullscreen" => &["state"],
-            "reload" => &["bypass_cache"],
-            "search" => &["query", "backward", "case"],
-            "window-new" => &["profile", "private"],
-            "tab-give" => &["window_id"],
-            "set" => &["key", "value", "temporary", "pattern"],
-            "unset" => &["key", "temporary", "pattern"],
-            "get" => &["key", "url", "explain"],
-            "help" => &["topic"],
-            "config-export" | "config-write-defaults" | "print-pdf" | "save-page" => &["path"],
-            "config-edit" | "config-reload" | "config-check" | "theme-reload" => &[],
-            "bind" => &["mode", "keychain", "command"],
-            "unbind" => &["mode", "keychain"],
-            "binding-list" => &["mode"],
-            "binding-explain" => &["keychain", "mode"],
-            "learning-mode" => &["state"],
-            "bookmark-add" => &["title"],
-            "bookmark-edit" => &["id", "title"],
-            "bookmark-delete" | "bookmark-open" | "history-open" | "download-open"
-            | "download-show" | "download-cancel" | "download-pause" | "download-resume"
-            | "download-retry" | "site-doctor-undo" => &["id"],
-            "tab-select" => &["selector"],
-            "tab-focus" | "tab-suspend" | "tab-discard" | "tab-resume" => &["id"],
-            "tab-close" => &["id", "count"],
-            "tab-mute" => &["id", "state"],
-            "tab-pin" => &["id", "state"],
-            "tab-move" => &["id", "direction", "context"],
-            "zoom" => &["factor"],
-            "search-next" => &["direction", "count"],
-            "scroll" => &["direction", "count"],
-            "scroll-page" => &["direction", "half", "count"],
-            "scroll-to" => &["edge"],
-            "window-focus" => &["id"],
-            "window-move" => &["id", "workspace"],
-            "window-close" => &[],
-            "command-help" => &["id"],
-            "command-execute" => &["id", "arguments"],
-            "selection-search" => &["engine"],
-            "quickmark-add" => &["name", "url"],
-            "quickmark-edit" => &["name", "url"],
-            "journey" => &["current", "search", "expand"],
-            "switcher" => &["scope", "query"],
-            "journey-reopen" => &["node", "target"],
-            "profile-open" => &["name", "input"],
-            "quickmark-delete" | "quickmark-open" | "session-save" | "session-delete"
-            | "profile-delete" | "context-enter" | "context-save" => &["name"],
-            "session-load" => &["name", "append"],
-            "profile-create" => &["name", "ephemeral"],
-            "history-clear" => &["since", "origin", "confirmed"],
-            "url-clean" | "url-explain" => &["url"],
-            "hint" => &["kind", "target", "rapid", "script"],
-            "mode-enter" => &["mode"],
-            "caret-move" => &["direction", "count"],
-            "caret-select" => &["state"],
-            "download" => &["input"],
-            "permissions" => &["origin"],
-            "site-status" => &["tab"],
-            "permission-reset" => &["origin", "permission"],
-            "site-doctor" => &["experiment"],
-            "site-data-clear" => &["origin", "confirmed"],
-            "blocking-toggle" => &["site"],
-            "spawn" => &["argv", "userscript"],
-            "script-run" => &["name"],
-            "jseval" => &["world", "script"],
-            "devtools" => &["detach"],
-            "send" => &["target", "input", "url", "selection", "send_subject"],
-            "repeat" => &["count"],
-            "cancel" => &["operation_id"],
-            "macro-record" | "macro-play" => &["register"],
-            "yank" => &["source", "input", "clean", "primary"],
-            "paste-open" => &["target", "primary"],
-            "action" => &["subject", "verb", "input", "url"],
-            "action-list" => &["subject"],
-            "context-create" => &["name", "label", "profile", "workspace"],
-            "context-delete" => &["name", "confirmed"],
-            "context-route" => &[
-                "action",
-                "pattern",
-                "context",
-                "id",
-                "priority",
-                "behavior",
-                "entry_points",
-            ],
-            _ => &[],
-        };
-        if arguments
-            .keys()
-            .any(|key| !expected.contains(&key.as_str()))
-        {
-            return Err("command arguments contain an unknown field".into());
-        }
-        if name == "context-delete"
-            && arguments.contains_key("confirmed")
-            && arguments
-                .get("confirmed")
-                .and_then(Value::as_bool)
-                .is_none()
-        {
-            return Err("command argument confirmed must be a boolean".into());
-        }
-        if name == "session-load"
-            && arguments
-                .get("append")
-                .is_some_and(|value| value.as_bool().is_none())
-        {
-            return Err("command argument append must be a boolean".into());
-        }
-        if name == "command-execute"
-            && arguments
-                .get("arguments")
-                .is_some_and(|value| !value.is_object())
-        {
-            return Err("command argument arguments must be an object".into());
-        }
-        if name == "profile-create"
-            && arguments
-                .get("ephemeral")
-                .is_some_and(|value| value.as_bool().is_none())
-        {
-            return Err("command argument ephemeral must be a boolean".into());
-        }
-        if matches!(name, "set" | "unset")
-            && arguments
-                .get("temporary")
-                .is_some_and(|value| value.as_bool().is_none())
-        {
-            return Err("command argument temporary must be a boolean".into());
-        }
-        if name == "get"
-            && arguments
-                .get("explain")
-                .is_some_and(|value| value.as_bool().is_none())
-        {
-            return Err("command argument explain must be a boolean".into());
-        }
-        if name == "paste-open"
-            && arguments
-                .get("target")
-                .and_then(Value::as_str)
-                .is_some_and(|target| !matches!(target, "current" | "tab"))
-        {
-            return Err("command argument target must be current or tab".into());
-        }
-        if name == "paste-open"
-            && arguments
-                .get("primary")
-                .is_some_and(|value| value.as_bool().is_none())
-        {
-            return Err("command argument primary must be a boolean".into());
-        }
-        if name == "blocking-toggle"
-            && arguments.contains_key("site")
-            && arguments.get("site").and_then(Value::as_bool).is_none()
-        {
-            return Err("command argument site must be a boolean".into());
-        }
-        if name == "site-data-clear"
-            && arguments
-                .get("confirmed")
-                .is_some_and(|value| value.as_bool().is_none())
-        {
-            return Err("command argument confirmed must be a boolean".into());
-        }
-        if name == "history-clear"
-            && arguments.contains_key("confirmed")
-            && arguments
-                .get("confirmed")
-                .and_then(Value::as_bool)
-                .is_none()
-        {
-            return Err("command argument confirmed must be a boolean".into());
-        }
-        if name == "history-clear"
-            && arguments.contains_key("since")
-            && arguments
-                .get("since")
-                .and_then(Value::as_i64)
-                .is_none_or(|timestamp| timestamp < 0)
-        {
-            return Err("command argument since must be a nonnegative Unix timestamp".into());
-        }
-        if name == "journey"
-            && arguments
-                .get("current")
-                .is_some_and(|value| value.as_bool().is_none())
-        {
-            return Err("command argument current must be a boolean".into());
-        }
-        if name == "hint"
-            && arguments
-                .get("rapid")
-                .is_some_and(|value| value.as_bool().is_none())
-        {
-            return Err("command argument rapid must be a boolean".into());
-        }
-        if name == "hint"
-            && arguments
-                .get("target")
-                .and_then(Value::as_str)
-                .is_some_and(|target| {
-                    !matches!(
-                        target,
-                        "current"
-                            | "tab"
-                            | "tab-bg"
-                            | "window"
-                            | "yank"
-                            | "clean-yank"
-                            | "download"
-                            | "userscript"
-                            | "ephemeral"
-                    ) && external_hint_target(target).is_none()
-                })
-        {
-            return Err(
-                "command argument target must be current, tab, tab-bg, window, yank, clean-yank, download, userscript, ephemeral, or external:NAME"
-                    .into(),
-            );
-        }
-        if name == "hint"
-            && arguments
-                .get("target")
-                .and_then(Value::as_str)
-                .is_some_and(|target| matches!(target, "tab" | "window"))
-            && arguments.get("rapid").and_then(Value::as_bool) == Some(true)
-        {
-            return Err("hint target tab or window does not support rapid=true".into());
-        }
-        if name == "hint"
-            && arguments
-                .get("target")
-                .and_then(Value::as_str)
-                .is_some_and(|target| target == "ephemeral")
-            && arguments.get("rapid").and_then(Value::as_bool) == Some(true)
-        {
-            return Err("hint target ephemeral does not support rapid=true".into());
-        }
-        if name == "hint"
-            && arguments
-                .get("target")
-                .and_then(Value::as_str)
-                .is_some_and(|target| external_hint_target(target).is_some())
-            && arguments.get("rapid").and_then(Value::as_bool) == Some(true)
-        {
-            return Err("external hint targets do not support rapid=true".into());
-        }
-        if name == "hint"
-            && arguments
-                .get("target")
-                .and_then(Value::as_str)
-                .is_some_and(|target| target == "userscript")
-            && arguments.get("script").and_then(Value::as_str).is_none()
-        {
-            return Err("hint target userscript requires script".into());
-        }
-        if name == "hint"
-            && arguments
-                .get("target")
-                .and_then(Value::as_str)
-                .is_none_or(|target| target != "userscript")
-            && arguments.contains_key("script")
-        {
-            return Err("hint script is only valid with target userscript".into());
-        }
-        if name == "hint"
-            && arguments
-                .get("kind")
-                .and_then(Value::as_str)
-                .is_some_and(|kind| !matches!(kind, "links" | "all"))
-        {
-            return Err("command argument kind must be links or all".into());
-        }
-        if name == "yank" {
-            for key in ["clean", "primary"] {
-                if arguments
-                    .get(key)
-                    .is_some_and(|value| value.as_bool().is_none())
-                {
-                    return Err(format!("command argument {key} must be a boolean").into());
-                }
-            }
-            if arguments
-                .get("source")
-                .and_then(Value::as_str)
-                .is_some_and(|source| !matches!(source, "url" | "title" | "selection"))
-            {
-                return Err("command argument source must be url, title, or selection".into());
-            }
-            if arguments
-                .get("source")
-                .and_then(Value::as_str)
-                .is_some_and(|source| source == "selection" || source == "title")
-                && arguments.contains_key("input")
-            {
-                return Err("title and selection copying do not accept an input URL".into());
-            }
-            if arguments
-                .get("source")
-                .and_then(Value::as_str)
-                .is_some_and(|source| source == "selection" || source == "title")
-                && arguments
-                    .get("clean")
-                    .and_then(Value::as_bool)
-                    .is_some_and(|clean| clean)
-            {
-                return Err("title and selection copying do not accept --clean".into());
-            }
-        }
-        if name == "mode-enter"
-            && arguments
-                .get("mode")
-                .and_then(Value::as_str)
-                .is_some_and(|mode| {
-                    !matches!(
-                        mode,
-                        "normal" | "insert" | "caret" | "passthrough" | "pass-through"
-                    )
-                })
-        {
-            return Err("command argument mode is invalid".into());
-        }
-        if name == "caret-move"
-            && arguments
-                .get("direction")
-                .and_then(Value::as_str)
-                .is_some_and(|direction| {
-                    !matches!(
-                        direction,
-                        "left"
-                            | "right"
-                            | "up"
-                            | "down"
-                            | "word-next"
-                            | "word-prev"
-                            | "line-start"
-                            | "line-end"
-                    )
-                })
-        {
-            return Err("command argument direction is invalid".into());
-        }
-        if name == "caret-move"
-            && arguments
-                .get("count")
-                .is_some_and(|count| count.as_u64().is_none())
-        {
-            return Err("command argument count must be an integer".into());
-        }
-        if name == "caret-select"
-            && arguments
-                .get("state")
-                .and_then(Value::as_str)
-                .is_some_and(|state| !matches!(state, "on" | "off" | "toggle"))
-        {
-            return Err("command argument state is invalid".into());
-        }
-    }
-    if name == "open"
-        && arguments.is_some_and(|arguments| {
-            arguments.contains_key("clean_link")
-                && arguments
-                    .get("clean_link")
-                    .and_then(Value::as_bool)
-                    .is_none()
-        })
-    {
-        return Err("command argument clean_link must be a boolean".into());
-    }
-    Ok((
-        ParsedCommand {
-            name: name.to_owned(),
-            arguments: args,
-        },
-        route,
-    ))
-}
-
-fn typed_ipc_action(params: &Value) -> Result<(ParsedCommand, IpcRoute, String), IpcCommandError> {
-    let object = params
-        .as_object()
-        .ok_or_else(|| "action.execute params must be an object".to_owned())?;
-    let action = object
-        .get("action")
-        .and_then(Value::as_str)
-        .ok_or_else(|| "action.execute requires a string action".to_owned())?;
-    if object
-        .keys()
-        .any(|key| !matches!(key.as_str(), "action" | "arguments" | "context"))
-    {
-        return Err("action request contains an unknown field".into());
-    }
-    if let Some((target_name, subject)) = parse_external_action_id(action) {
-        let mut arguments = object
-            .get("arguments")
-            .cloned()
-            .unwrap_or_else(|| serde_json::json!({}))
-            .as_object()
-            .cloned()
-            .ok_or_else(|| "external action arguments must be an object".to_owned())?;
-        if arguments
-            .keys()
-            .any(|key| !matches!(key.as_str(), "target" | "url" | "input"))
-        {
-            return Err("external action contains an unknown argument".into());
-        }
-        if let Some(target) = arguments.remove("target")
-            && target.as_str() != Some(target_name.as_str())
-        {
-            return Err("external action target does not match its action ID".into());
-        }
-        let url = match (arguments.remove("url"), arguments.remove("input")) {
-            (Some(_), Some(_)) => {
-                return Err("external action arguments cannot contain both url and input".into());
-            }
-            (Some(value), None) | (None, Some(value)) => Some(
-                value
-                    .as_str()
-                    .filter(|value| is_bounded_untrusted_text(value))
-                    .ok_or_else(|| "external action URL must be bounded text".to_owned())?
-                    .to_owned(),
-            ),
-            (None, None) => None,
-        };
-        let mut command_arguments = serde_json::json!({
-            "target": target_name,
-            "send_subject": subject,
-        });
-        match subject.as_str() {
-            "link" => {
-                command_arguments["input"] = Value::String(
-                    url.ok_or_else(|| "external link action requires a URL".to_owned())?,
-                );
-            }
-            "url" => {
-                if let Some(url) = url {
-                    command_arguments["url"] = Value::String(url);
-                }
-            }
-            "tab" | "selection" if url.is_some() => {
-                return Err(format!("external {subject} action does not accept a URL").into());
-            }
-            "tab" | "selection" => {}
-            _ => unreachable!("external action ID parser validated subject"),
-        }
-        let mut command = serde_json::json!({
-            "command": "send",
-            "arguments": command_arguments
-        });
-        if let Some(context) = object.get("context") {
-            command["context"] = context.clone();
-        }
-        return typed_ipc_command(&command)
-            .map(|(command, route)| (command, route, action.to_owned()));
-    }
-    let action_registry = ActionRegistry::default_v1();
-    let (command_name, action_id) = if let Some(definition) = action_registry.resolve(action) {
-        (definition.command.clone(), definition.id.clone())
-    } else if CommandRegistry::default_v1().resolve(action).is_ok() {
-        (action.to_owned(), format!("legacy.command.{action}"))
-    } else {
-        return Err(format!("unknown action: {action}").into());
-    };
-    let definition = action_registry.resolve(action);
-    if let Some(definition) = definition {
-        let arguments = object
-            .get("arguments")
-            .cloned()
-            .unwrap_or_else(|| serde_json::json!({}));
-        validate_action_arguments(definition, &arguments)?;
-    }
-    let mut command = serde_json::json!({
-        "command": command_name,
-        "arguments": object.get("arguments").cloned().unwrap_or_else(|| serde_json::json!({}))
-    });
-    let link_action = action_registry
-        .resolve(action)
-        .is_some_and(|definition| definition.subject == ActionSubject::Link);
-    if let Some(definition) = action_registry.resolve(action)
-        && definition.command == "yank"
-        && let Some(arguments) = command["arguments"].as_object_mut()
-    {
-        arguments
-            .entry("source")
-            .or_insert_with(|| Value::String(definition.subject.as_str().into()));
-        if definition.verb == "clean-copy" {
-            arguments.insert("clean".into(), Value::Bool(true));
-        }
-    }
-    if link_action
-        && let Some(arguments) = command["arguments"].as_object_mut()
-        && let Some(url) = arguments.remove("url")
-    {
-        if arguments.contains_key("input") {
-            return Err("link action arguments cannot contain both url and input".into());
-        }
-        arguments.insert("input".into(), url);
-    }
-    if let Some(definition) = action_registry.resolve(action)
-        && definition.command == "send"
-        && let Some(arguments) = command["arguments"].as_object_mut()
-    {
-        arguments.insert(
-            "send_subject".into(),
-            Value::String(definition.subject.as_str().into()),
-        );
-    }
-    if let Some(context) = object.get("context") {
-        command["context"] = context.clone();
-    }
-    typed_ipc_command(&command).map(|(command, route)| (command, route, action_id))
-}
-
-fn validate_action_arguments(
-    definition: &ActionDefinition,
-    arguments: &Value,
-) -> Result<(), String> {
-    let arguments = arguments
-        .as_object()
-        .ok_or_else(|| format!("action {} arguments must be an object", definition.id))?;
-    for key in arguments.keys() {
-        if !definition
-            .arguments
-            .iter()
-            .any(|argument| argument.name == *key)
-        {
-            return Err(format!(
-                "action {} does not accept argument {key}",
-                definition.id
-            ));
-        }
-    }
-    for argument in &definition.arguments {
-        if argument.required && !arguments.contains_key(&argument.name) {
-            return Err(format!(
-                "action {} requires argument {}",
-                definition.id, argument.name
-            ));
-        }
-        if let Some(value) = arguments.get(&argument.name) {
-            let valid = match argument.kind {
-                ArgumentKind::Text | ArgumentKind::Enum => {
-                    value.as_str().is_some_and(is_bounded_untrusted_text)
-                }
-                ArgumentKind::Url => value.as_str().is_some_and(|value| {
-                    is_bounded_untrusted_text(value) && ValidatedUrl::parse(value).is_ok()
-                }),
-                ArgumentKind::Boolean => value.is_boolean(),
-                ArgumentKind::Integer => value.as_i64().is_some(),
-                ArgumentKind::Object => value.is_object(),
-            };
-            if !valid {
-                return Err(format!(
-                    "action {} argument {} has the wrong type",
-                    definition.id, argument.name
-                ));
-            }
-        }
-    }
-    Ok(())
-}
-
-fn userscript_action_argument_name(subject: &str) -> Option<&'static str> {
-    match subject {
-        "link" => Some("url"),
-        "selection" => Some("selection"),
-        "download" => Some("download_id"),
-        "history-entry" => Some("history_id"),
-        "bookmark" => Some("bookmark_id"),
-        "quickmark" => Some("quickmark_name"),
-        "session" => Some("session_name"),
-        "command" => Some("command_id"),
-        "url" => None,
-        "tab" => Some("tab_id"),
-        "window" => Some("window_id"),
-        "context" => Some("context_name"),
-        _ => None,
-    }
-}
-
-fn userscript_action_is_hint_only(action: &userscript::RegisteredAction) -> bool {
-    action.subject == "link"
-        && action
-            .required_fields
-            .iter()
-            .any(|field| field == "hint_url")
-        && !action.required_fields.iter().any(|field| field == "url")
-}
-
-fn typed_ipc_route(
-    object: &serde_json::Map<String, Value>,
-    arguments: Option<&serde_json::Map<String, Value>>,
-    command: &str,
-) -> Result<IpcRoute, String> {
-    if object
-        .keys()
-        .any(|key| !matches!(key.as_str(), "command" | "arguments" | "context"))
-    {
-        return Err("command request contains an unknown field".into());
-    }
-    let context = object
-        .get("context")
-        .map(|value| {
-            value
-                .as_object()
-                .ok_or_else(|| "command context must be an object".to_owned())
-        })
-        .transpose()?;
-    if context.is_some_and(|context| {
-        context
-            .keys()
-            .any(|key| !matches!(key.as_str(), "window" | "profile" | "context" | "source"))
-    }) {
-        return Err("command context contains an unknown field".into());
-    }
-    let string_context = |key: &str| -> Result<Option<String>, String> {
-        context
-            .and_then(|context| context.get(key))
-            .map(|value| {
-                value
-                    .as_str()
-                    .filter(|value| is_bounded_untrusted_text(value))
-                    .map(ToOwned::to_owned)
-                    .ok_or_else(|| format!("command context {key} must be a nonempty string"))
-            })
-            .transpose()
-    };
-    let window = string_context("window")?;
-    let profile = string_context("profile")?;
-    let context_name = string_context("context")?;
-    let source = context
-        .and_then(|context| context.get("source"))
-        .map(|value| {
-            let value = value
-                .as_str()
-                .filter(|value| is_bounded_untrusted_text(value))
-                .ok_or_else(|| "command context source must be a nonempty string".to_owned())?;
-            CommandSource::parse(value)
-                .ok_or_else(|| format!("command context source is unsupported: {value}"))
-        })
-        .transpose()?
-        .unwrap_or(CommandSource::Ipc);
-    let external_open = arguments
-        .and_then(|arguments| arguments.get("external"))
-        .map(|value| {
-            value
-                .as_bool()
-                .ok_or_else(|| "command external must be a boolean".to_owned())
-        })
-        .transpose()?
-        .unwrap_or(false);
-    if external_open && command != "open" {
-        return Err("command external is only valid for open".into());
-    }
-    let selector = match window.as_deref() {
-        None | Some("active") => DispatchTarget::Active,
-        Some("last-focused") => DispatchTarget::LastFocused,
-        Some(window) => WindowId::from_display(window)
-            .map(DispatchTarget::Window)
-            .ok_or_else(|| {
-                "window must be active, last-focused, or a valid window ID".to_owned()
-            })?,
-    };
-    let open_target = if command == "open" {
-        match arguments
-            .and_then(|arguments| arguments.get("target"))
-            .and_then(Value::as_str)
-            .unwrap_or("tab")
-        {
-            "tab" => IpcOpenTarget::Tab,
-            "tab-bg" => IpcOpenTarget::BackgroundTab,
-            "window" => IpcOpenTarget::Window,
-            "private-window" => IpcOpenTarget::PrivateWindow,
-            _ => return Err("open target must be tab, tab-bg, window, or private-window".into()),
-        }
-    } else if command == "tab-open" {
-        if profile.is_some() || context_name.is_some() {
-            return Err("tab-open does not accept profile or context routing".into());
-        }
-        if arguments
-            .and_then(|arguments| arguments.get("background"))
-            .is_some_and(|value| value.as_bool() == Some(true))
-        {
-            IpcOpenTarget::BackgroundTab
-        } else {
-            IpcOpenTarget::Tab
-        }
-    } else {
-        IpcOpenTarget::Tab
-    };
-    if command == "open" {
-        validate_open_target(
-            (open_target == IpcOpenTarget::BackgroundTab).then_some("tab-bg"),
-            arguments
-                .and_then(|arguments| arguments.get("clean_link"))
-                .is_some_and(|value| value.as_bool() == Some(true)),
-        )
-        .map_err(str::to_owned)?;
-    }
-    Ok(IpcRoute {
-        selector,
-        open_target,
-        profile,
-        context: context_name,
-        external_open,
-        source,
-    })
-}
-
-fn safe_ipc_url(url: &str) -> String {
-    let without_fragment = url.split('#').next().unwrap_or_default();
-    let without_userinfo = strip_url_userinfo(without_fragment);
-    let Some((base, query)) = without_userinfo.split_once('?') else {
-        return without_userinfo;
-    };
-    let safe_query = query
-        .split('&')
-        .filter(|part| {
-            let key = part.split('=').next().unwrap_or_default();
-            !sensitive_ipc_query_key(key)
-        })
-        .collect::<Vec<_>>();
-    if safe_query.is_empty() {
-        base.to_owned()
-    } else {
-        format!("{base}?{}", safe_query.join("&"))
-    }
-}
-
-fn sensitive_ipc_query_key(key: &str) -> bool {
-    let Some(key) = percent_decode_query_key(key) else {
-        return true;
-    };
-    matches!(
-        key.as_str(),
-        "access-token"
-            | "access_token"
-            | "api-key"
-            | "api_key"
-            | "apikey"
-            | "auth"
-            | "authorization"
-            | "bearer"
-            | "client-secret"
-            | "client_secret"
-            | "code"
-            | "credential"
-            | "credentials"
-            | "jwt"
-            | "key"
-            | "nonce"
-            | "password"
-            | "passwd"
-            | "private-key"
-            | "private_key"
-            | "refresh-token"
-            | "refresh_token"
-            | "secret"
-            | "session"
-            | "sig"
-            | "signature"
-            | "token"
-    )
-}
-
-fn percent_decode_query_key(key: &str) -> Option<String> {
-    let bytes = key.as_bytes();
-    let mut decoded = Vec::with_capacity(bytes.len());
-    let mut index = 0;
-    while index < bytes.len() {
-        if bytes[index] == b'%' {
-            let high = bytes.get(index + 1).and_then(|value| hex_value(*value))?;
-            let low = bytes.get(index + 2).and_then(|value| hex_value(*value))?;
-            decoded.push((high << 4) | low);
-            index += 3;
-        } else {
-            decoded.push(bytes[index]);
-            index += 1;
-        }
-    }
-    String::from_utf8(decoded)
-        .ok()
-        .map(|key| key.to_ascii_lowercase())
-}
-
-fn hex_value(value: u8) -> Option<u8> {
-    match value {
-        b'0'..=b'9' => Some(value - b'0'),
-        b'a'..=b'f' => Some(value - b'a' + 10),
-        b'A'..=b'F' => Some(value - b'A' + 10),
-        _ => None,
-    }
-}
-
-fn safe_site_origin(url: &str) -> Option<String> {
-    let origin = canonical_origin(url)?;
-    ferric_browser_storage::normalize_permission_origin(&origin).ok()
-}
-
-fn safe_site_host(origin: &str) -> Option<String> {
-    let authority = origin.split_once("//")?.1;
-    let authority = authority.split('/').next()?;
-    if let Some(host) = authority.strip_prefix('[') {
-        return host.split(']').next().map(ToOwned::to_owned);
-    }
-    Some(authority.split(':').next()?.to_owned())
-}
-
-fn strip_url_fragment(url: &str) -> &str {
-    url.split_once('#')
-        .map_or(url, |(without_fragment, _)| without_fragment)
-}
-
-fn recordable_same_document_change(
-    pending_navigation: bool,
-    previous: Option<&str>,
-    url: &str,
-) -> bool {
-    !pending_navigation && previous.is_some_and(|previous| previous != url)
-}
-
-fn journey_transition_after_load(
-    explicit: Option<(JourneyEdgeKind, String)>,
-    was_traversal: bool,
-    redirect_hops: Option<u8>,
-) -> Option<(JourneyEdgeKind, String)> {
-    let redirect_source = redirect_hops.map(|hops| {
-        if hops <= 1 {
-            "redirect".to_owned()
-        } else {
-            format!("redirect-chain:{hops}")
-        }
-    });
-    if let Some((transition, source)) = explicit {
-        return Some((
-            transition,
-            redirect_source.map_or(source.clone(), |redirect| format!("{source};{redirect}")),
-        ));
-    }
-    if was_traversal {
-        None
-    } else {
-        redirect_source.map(|source| (JourneyEdgeKind::Redirect, source))
-    }
-}
-
-fn canonical_engine_url(url: QString) -> Result<String, String> {
-    let raw_url = url.to_string();
-    let rust_raw_url = ValidatedUrl::parse(raw_url)
-        .map(|url| url.to_string())
-        .map_err(|error| format!("Rust rejected the engine URL: {error}"))?;
-    let qt_url = qobject::ferric_browser_canonicalize_url(&url).to_string();
-    if qt_url.is_empty() {
-        return Err("Qt rejected the engine URL".into());
-    }
-    drop(url);
-    let rust_qt_url = ValidatedUrl::parse(qt_url)
-        .map(|url| url.to_string())
-        .map_err(|error| format!("Qt/Rust URL canonicalization failed: {error}"))?;
-    let rust_origin = canonical_origin(&rust_raw_url);
-    let qt_origin = canonical_origin(&rust_qt_url);
-    if rust_origin != qt_origin {
-        let describe = |origin: Option<String>| origin.unwrap_or_else(|| "opaque".into());
-        return Err(format!(
-            "URL normalization mismatch; Rust origin={} Qt origin={}",
-            describe(rust_origin),
-            describe(qt_origin)
-        ));
-    }
-    Ok(rust_qt_url)
-}
-
-fn sanitize_display_text(value: &str, ascii_only: bool) -> String {
-    let mut display = String::with_capacity(value.len());
-    for character in value.chars() {
-        if matches!(
-            character,
-            '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}'
-        ) {
-            display.push_str("[bidi]");
-        } else if character.is_control() {
-            display.push('�');
-        } else if ascii_only && !character.is_ascii() {
-            let _ = write!(display, "\\u{{{:x}}}", character as u32);
-        } else {
-            display.push(character);
-        }
-    }
-    display
-}
-
-fn sanitize_userscript_stderr(bytes: &[u8]) -> String {
-    const MAX_STDERR_BYTES: usize = 64 * 1024;
-    let text = String::from_utf8_lossy(bytes);
-    let mut sanitized = String::with_capacity(text.len().min(MAX_STDERR_BYTES));
-    for character in text.chars() {
-        let replacement = if matches!(character, '\n' | '\r' | '\t') {
-            character
-        } else if character.is_control() {
-            '�'
-        } else {
-            character
-        };
-        if sanitized.len() + replacement.len_utf8() > MAX_STDERR_BYTES {
-            break;
-        }
-        sanitized.push(replacement);
-    }
-    sanitized
-        .split_whitespace()
-        .map(redact_userscript_stderr_token)
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-fn redact_userscript_stderr_token(token: &str) -> String {
-    if token.starts_with("http://") || token.starts_with("https://") {
-        return safe_ipc_url(token);
-    }
-    let Some((key, value)) = token.split_once('=') else {
-        return token.to_owned();
-    };
-    if sensitive_ipc_query_key(key) {
-        return format!("{key}=[redacted]");
-    }
-    if value.starts_with("http://") || value.starts_with("https://") {
-        return format!("{key}={}", safe_ipc_url(value));
-    }
-    token.to_owned()
-}
-
-fn display_authority(authority: &str) -> String {
-    let (prefix, host, suffix) = if let Some(value) = authority.strip_prefix('[')
-        && let Some(close) = value.find(']')
-    {
-        ("[", &value[..close], format!("]{}", &value[close + 1..]))
-    } else if let Some((host, port)) = authority.rsplit_once(':')
-        && !port.is_empty()
-        && port.chars().all(|character| character.is_ascii_digit())
-    {
-        ("", host, format!(":{port}"))
-    } else {
-        ("", authority, String::new())
-    };
-    let ascii_host = qobject::ferric_browser_to_ascii_host(&QString::from(host)).to_string();
-    format!(
-        "{}{}{}",
-        sanitize_display_text(prefix, false),
-        sanitize_display_text(&ascii_host, true),
-        sanitize_display_text(&suffix, false)
-    )
-}
-
-fn display_url(url: &str) -> String {
-    let safe = safe_ipc_url(url);
-    let Some(scheme_end) = safe.find("://") else {
-        return sanitize_display_text(&safe, false);
-    };
-    let authority_start = scheme_end + 3;
-    let authority_end = safe[authority_start..]
-        .find(['/', '?'])
-        .map_or(safe.len(), |offset| authority_start + offset);
-    let prefix = format!(
-        "{}{}",
-        sanitize_display_text(&safe[..authority_start], false),
-        display_authority(&safe[authority_start..authority_end])
-    );
-    let tail = sanitize_display_text(&safe[authority_end..], false);
-    if tail.is_empty() {
-        prefix
-    } else {
-        format!("{prefix}\u{2068}{tail}\u{2069}")
-    }
-}
-
-fn sanitize_untrusted_title(value: &str) -> String {
-    let sanitized = sanitize_display_text(value, false);
-    let mut title = String::new();
-    for character in sanitized.chars() {
-        if title.len() + character.len_utf8() > MAX_PAGE_TITLE_BYTES {
-            break;
-        }
-        title.push(character);
-    }
-    title
-}
-
-fn query_parameter_names(url: &str) -> Vec<String> {
-    let Some((_, query_and_fragment)) = url.split_once('?') else {
-        return Vec::new();
-    };
-    let query = query_and_fragment.split('#').next().unwrap_or_default();
-    query
-        .split('&')
-        .filter_map(|component| {
-            let name = component
-                .split_once('=')
-                .map_or(component, |(name, _)| name);
-            (!name.is_empty()).then(|| name.to_owned())
-        })
-        .collect()
-}
-
-fn link_result_value(
-    command: &str,
-    result: &ferric_browser_core::CleanLinkResult,
-    rules: &ferric_browser_core::CleaningRules,
-) -> Value {
-    let retained_parameters = if result.changed {
-        result.retained_parameters.clone()
-    } else {
-        query_parameter_names(&result.original)
-    };
-    serde_json::json!({
-        "status": "preview",
-        "command": command,
-        "revision": rules.revision,
-        "source": rules.source,
-        "changed": result.changed,
-        "original": safe_ipc_url(&result.original),
-        "cleaned": safe_ipc_url(&result.cleaned),
-        "applied_rules": result.applied_rules,
-        "removed_parameters": result.removed_parameters,
-        "retained_parameters": retained_parameters,
-        "explanation": result.explanation,
-    })
-}
-
-fn strip_url_userinfo(url: &str) -> String {
-    let Some(scheme_end) = url.find("://") else {
-        return url.to_owned();
-    };
-    let authority_start = scheme_end + 3;
-    let authority_end = url[authority_start..]
-        .find(['/', '?'])
-        .map_or(url.len(), |offset| authority_start + offset);
-    let authority = &url[authority_start..authority_end];
-    let Some(at) = authority.rfind('@') else {
-        return url.to_owned();
-    };
-    format!(
-        "{}{}{}",
-        &url[..authority_start],
-        &authority[at + 1..],
-        &url[authority_end..]
-    )
-}
-
-fn blocking_site_host(url: &str) -> Option<String> {
-    let (scheme, rest) = url.split_once("://")?;
-    if !matches!(scheme.to_ascii_lowercase().as_str(), "http" | "https") {
-        return None;
-    }
-    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
-    if authority.is_empty() || authority.contains('@') {
-        return None;
-    }
-    let (host, bracketed_ipv6) = if authority.starts_with('[') {
-        let close = authority.find(']')?;
-        let suffix = &authority[close + 1..];
-        if !suffix.is_empty() {
-            let port = suffix.strip_prefix(':')?;
-            if port.is_empty() || !port.chars().all(|c| c.is_ascii_digit()) {
-                return None;
-            }
-        }
-        (&authority[1..close], true)
-    } else {
-        match authority.rsplit_once(':') {
-            Some((host, port)) if !port.is_empty() && port.chars().all(|c| c.is_ascii_digit()) => {
-                (host, false)
-            }
-            Some((_, _)) => return None,
-            None => (authority, false),
-        }
-    };
-    if host.is_empty()
-        || host.len() > 253
-        || host.contains("..")
-        || host.chars().any(char::is_control)
-        || (!bracketed_ipv6 && host.contains(':'))
-        || (!host.contains(':')
-            && !host
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'.' || byte == b'-'))
-    {
-        return None;
-    }
-    Some(host.trim_end_matches('.').to_ascii_lowercase())
-}
-
-fn toml_string_array_literal(values: &[String]) -> String {
-    toml::Value::Array(values.iter().cloned().map(toml::Value::String).collect()).to_string()
-}
-
-/// Starts the authenticated local IPC accept loop used by the Qt-thread
-/// request queue.
-pub fn spawn_ipc_server(listener: UnixListener, instance_id: String) {
-    let _ = IPC_INSTANCE_ID.set(instance_id.clone());
-    let connections = Arc::new(AtomicUsize::new(0));
-    thread::spawn(move || {
-        for stream in listener.incoming() {
-            let Ok(stream) = stream else {
-                break;
-            };
-            let accepted = connections
-                .fetch_update(Ordering::AcqRel, Ordering::Acquire, |count| {
-                    (count < ferric_browser_ipc::MAX_IPC_CONNECTIONS).then_some(count + 1)
-                })
-                .is_ok();
-            if !accepted {
-                continue;
-            }
-            let instance_id = instance_id.clone();
-            let connection_counter = Arc::clone(&connections);
-            let started = thread::Builder::new()
-                .name("ferric-browser-ipc-client".into())
-                .spawn(move || {
-                    serve_ipc_connection(stream, &instance_id);
-                    connection_counter.fetch_sub(1, Ordering::AcqRel);
-                });
-            if started.is_err() {
-                connections.fetch_sub(1, Ordering::AcqRel);
-            }
-        }
-    });
-}
-
-fn serve_ipc_connection(mut stream: UnixStream, instance_id: &str) {
-    if peer_uid(&stream)
-        .zip(current_uid())
-        .is_some_and(|(peer, current)| peer != current)
-    {
-        return;
-    }
-    let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
-    let Some(request) = read_ipc_request(&mut stream) else {
-        return;
-    };
-    let (is_hello, response) = ipc_handshake_response(request, instance_id);
-    if !write_ipc_response(&mut stream, &response) || !is_hello || response.error.is_some() {
-        return;
-    }
-    // The five-second timeout is a handshake deadline only. Once the peer is
-    // authenticated, an idle subscription connection is allowed to remain
-    // open until the peer or the browser closes it.
-    let _ = stream.set_read_timeout(None);
-    let cache = std::sync::Arc::new(std::sync::Mutex::new(RequestCache::new()));
-    let outstanding = Arc::new(AtomicUsize::new(0));
-    while let Some(request) = read_ipc_request(&mut stream) {
-        let lookup = cache.lock().map_or(CacheLookup::Miss, |mut cache| {
-            cache.reserve(&request, Instant::now())
-        });
-        match lookup {
-            CacheLookup::Hit(response) => {
-                if !write_ipc_response(&mut stream, &response) {
-                    return;
-                }
-                continue;
-            }
-            CacheLookup::IdReuse => {
-                let response = Response::failure(
-                    request.id,
-                    ProtocolError {
-                        code: "E_ID_REUSE".into(),
-                        message: "request ID was reused with a different payload".into(),
-                        details: None,
-                    },
-                );
-                if !write_ipc_response(&mut stream, &response) {
-                    return;
-                }
-                continue;
-            }
-            CacheLookup::InFlight => {
-                let response = Response::failure(
-                    request.id,
-                    ProtocolError {
-                        code: "E_IN_FLIGHT".into(),
-                        message: "request with this ID is already being processed".into(),
-                        details: None,
-                    },
-                );
-                if !write_ipc_response(&mut stream, &response) {
-                    return;
-                }
-                continue;
-            }
-            CacheLookup::Miss => {}
-        }
-        if outstanding
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |count| {
-                (count < ferric_browser_ipc::MAX_OUTSTANDING_REQUESTS).then_some(count + 1)
-            })
-            .is_err()
-        {
-            let _ = write_ipc_response(
-                &mut stream,
-                &Response::failure(
-                    request.id,
-                    ProtocolError {
-                        code: "E_BUSY".into(),
-                        message: "connection outstanding-request limit reached".into(),
-                        details: None,
-                    },
-                ),
-            );
-            continue;
-        }
-        let Ok(response_stream) = stream.try_clone() else {
-            outstanding.fetch_sub(1, Ordering::AcqRel);
-            return;
-        };
-        let pending = PendingRequest::with_cache_and_outstanding(
-            request,
-            response_stream,
-            cache.clone(),
-            Arc::clone(&outstanding),
-        );
-        if let Err(pending) = enqueue_request(pending) {
-            let id = pending.request().id.clone();
-            let _ = pending.respond(&Response::failure(
-                id,
-                ProtocolError {
-                    code: "E_BUSY".into(),
-                    message: "IPC request queue is full".into(),
-                    details: None,
-                },
-            ));
-        }
-    }
-}
-
-fn write_ipc_response(stream: &mut UnixStream, response: &Response) -> bool {
-    let Ok(payload) = serialize_response(response) else {
-        return false;
-    };
-    write_frame(stream, &payload).is_ok()
-}
-
-fn read_ipc_request(stream: &mut UnixStream) -> Option<Request> {
-    let payload = read_frame(stream).ok()??;
-    parse_request(&payload).ok()
-}
-
-fn ipc_handshake_response(request: Request, instance_id: &str) -> (bool, Response) {
-    let is_hello = request.method == "hello";
-    let response = if is_hello {
-        match serde_json::from_value::<HelloParams>(request.params) {
-            Ok(params) if params.protocol_major == ferric_browser_ipc::PROTOCOL_MAJOR => {
-                Response::success(
-                    request.id,
-                    serde_json::to_value(HelloResult {
-                        protocol_major: ferric_browser_ipc::PROTOCOL_MAJOR,
-                        protocol_minor: ferric_browser_ipc::PROTOCOL_MINOR,
-                        instance_id: instance_id.to_owned(),
-                        capabilities: vec![
-                            "command.execute".into(),
-                            "action.execute".into(),
-                            "actions.query".into(),
-                            "windows.query".into(),
-                            "window.focus".into(),
-                            "tabs.query".into(),
-                            "profiles.query".into(),
-                            "downloads.query".into(),
-                            "permissions.query".into(),
-                            "contexts.query".into(),
-                            "switcher.query".into(),
-                            "switcher.activate".into(),
-                            "site.status".into(),
-                            "blocking.status".into(),
-                            "bindings.query".into(),
-                            "bindings.explain".into(),
-                            "operations.query".into(),
-                            "operations.cancel".into(),
-                            "config.get".into(),
-                            "diagnostics.get".into(),
-                            "events.subscribe".into(),
-                        ],
-                    })
-                    .unwrap_or_else(|_| serde_json::json!({})),
-                )
-            }
-            Ok(_) => Response::failure(
-                request.id,
-                ProtocolError {
-                    code: "E_PROTOCOL_VERSION".into(),
-                    message: "unsupported IPC protocol version".into(),
-                    details: None,
-                },
-            ),
-            Err(error) => Response::failure(
-                request.id,
-                ProtocolError {
-                    code: "E_INVALID_PARAMS".into(),
-                    message: error.to_string(),
-                    details: None,
-                },
-            ),
-        }
-    } else {
-        Response::failure(
-            request.id,
-            ProtocolError {
-                code: "E_UNSUPPORTED".into(),
-                message: "first IPC request must be hello".into(),
-                details: None,
-            },
-        )
-    };
-    (is_hello, response)
-}
-
-fn configured_editor_argv(config: &Value, file: &Path) -> Result<(String, Vec<String>), String> {
-    let editor = config
-        .get("tools")
-        .and_then(Value::as_object)
-        .and_then(|tools| tools.get("editor"))
-        .and_then(Value::as_array)
-        .ok_or_else(|| "tools.editor is not configured".to_owned())?;
-    if editor.is_empty() {
-        return Err("tools.editor is not configured".into());
-    }
-    let arguments = editor
-        .iter()
-        .map(|argument| {
-            argument
-                .as_str()
-                .filter(|value| is_bounded_untrusted_text(value))
-                .map(ToOwned::to_owned)
-                .ok_or_else(|| {
-                    "tools.editor contains an empty, oversized, or invalid argv value".to_owned()
-                })
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let placeholders = arguments
-        .iter()
-        .filter(|argument| argument.as_str() == "{file}")
-        .count();
-    if placeholders != 1 {
-        return Err("tools.editor must contain exactly one complete {file} argument".into());
-    }
-    let executable = arguments
-        .first()
-        .filter(|value| !value.starts_with('-') && value.as_str() != "{file}")
-        .cloned()
-        .ok_or_else(|| "tools.editor executable is invalid".to_owned())?;
-    let file = file.to_string_lossy().into_owned();
-    if !is_bounded_untrusted_text(&file) {
-        return Err("tools.editor file path is empty, oversized, or invalid".into());
-    }
-    let arguments = arguments
-        .into_iter()
-        .skip(1)
-        .map(|argument| {
-            if argument == "{file}" {
-                file.clone()
-            } else {
-                argument
-            }
-        })
-        .collect();
-    Ok((executable, arguments))
-}
-
-fn config_json_to_toml(value: &Value) -> Result<toml::Value, String> {
-    let config = serde_json::from_value::<Config>(value.clone())
-        .map_err(|error| format!("configuration candidate is not typed: {error}"))?;
-    toml::Value::try_from(&config)
-        .map_err(|error| format!("configuration candidate could not be encoded: {error}"))
-}
-
-fn config_value_at_path<'a>(root: &'a Value, key: &str) -> Option<&'a Value> {
-    key.split('.')
-        .try_fold(root, |value, part| value.as_object()?.get(part))
-}
-
-fn runtime_override_value(overrides: &RuntimeOverrides, key: &str) -> Option<Value> {
-    overrides
-        .settings
-        .get(key)
-        .and_then(|value| serde_json::to_value(value).ok())
-}
-
 impl qobject::BrowserUi {
+    /// Collects typed application effects. Qt never borrows the storage worker
+    /// or any of its response channels.
+    fn poll_storage_effects(mut self: Pin<&mut Self>) -> Vec<StorageEffect> {
+        let mut rust = self.as_mut().rust_mut();
+        let this = rust.as_mut().get_mut();
+        Option::as_mut(&mut this.state)
+            .map(BrowserApplication::poll_storage_effects)
+            .unwrap_or_default()
+    }
+
+    fn storage_is_open(&self) -> bool {
+        self.rust()
+            .state
+            .as_ref()
+            .is_some_and(BrowserApplication::storage_is_open)
+    }
+
+    fn close_storage(mut self: Pin<&mut Self>) {
+        let mut rust = self.as_mut().rust_mut();
+        let this = rust.as_mut().get_mut();
+        if let Some(state) = Option::as_mut(&mut this.state) {
+            state.close_storage();
+        }
+    }
+
+    fn submit_storage(
+        mut self: Pin<&mut Self>,
+        request: StorageRequest,
+    ) -> Result<(), StorageWorkerError> {
+        let mut rust = self.as_mut().rust_mut();
+        let this = rust.as_mut().get_mut();
+        Option::as_mut(&mut this.state)
+            .ok_or(StorageWorkerError::Stopped)?
+            .submit_storage(request)
+            .map(|_| ())
+    }
+
+    fn submit_storage_with_ticket(
+        mut self: Pin<&mut Self>,
+        request: StorageRequest,
+    ) -> Result<StorageTicket, StorageWorkerError> {
+        let mut rust = self.as_mut().rust_mut();
+        let this = rust.as_mut().get_mut();
+        Option::as_mut(&mut this.state)
+            .ok_or(StorageWorkerError::Stopped)?
+            .submit_storage(request)
+    }
+
     fn navigation_context(&self) -> NavigationContext {
         navigation_context_from_config_and_quickmarks(
             &self.rust().config,
@@ -8868,29 +2666,56 @@ impl qobject::BrowserUi {
             .is_some_and(PrivacyKind::is_transient)
     }
 
-    fn site_rule_settings(self: Pin<&mut Self>, url: &QString) -> QString {
-        let config = serde_json::from_value::<Config>(self.as_ref().rust().config.clone())
-            .unwrap_or_default();
-        let mut values = serde_json::Map::new();
-        let mut matched_rules = Vec::new();
+    fn select_site_rule_settings(mut self: Pin<&mut Self>, url: &QString) -> bool {
+        let config = match serde_json::from_value::<Config>(self.as_ref().rust().config.clone()) {
+            Ok(config) => config,
+            Err(error) => {
+                self.as_mut()
+                    .set_status_text(QString::from(format!("Site rules unavailable: {error}")));
+                return false;
+            }
+        };
+        let mut javascript = None;
+        let mut images = None;
+        let mut force_dark = None;
+        let mut autoplay = None;
+        let mut zoom = None;
         for rule in matching_site_rules(&config, &url.to_string()) {
-            matched_rules.push(serde_json::json!({
-                "id": rule.id,
-                "priority": rule.priority
-            }));
             for (key, value) in &rule.set {
-                if let Ok(value) = serde_json::to_value(value) {
-                    values.insert(key.clone(), value);
+                match key.as_str() {
+                    "content.javascript" => javascript = value.as_bool(),
+                    "content.images" => images = value.as_bool(),
+                    "content.force_dark" => force_dark = value.as_bool(),
+                    "content.autoplay" => autoplay = value.as_str().map(ToOwned::to_owned),
+                    "content.zoom" => {
+                        zoom = value.as_float().or_else(|| {
+                            value
+                                .as_integer()
+                                .and_then(|value| i32::try_from(value).ok())
+                                .map(f64::from)
+                        });
+                    }
+                    _ => {}
                 }
             }
         }
-        QString::from(
-            serde_json::json!({
-                "values": values,
-                "matched_rules": matched_rules
-            })
-            .to_string(),
-        )
+        self.as_mut()
+            .set_site_rule_javascript_set(javascript.is_some());
+        self.as_mut()
+            .set_site_rule_javascript_enabled(javascript.unwrap_or_default());
+        self.as_mut().set_site_rule_images_set(images.is_some());
+        self.as_mut()
+            .set_site_rule_images_enabled(images.unwrap_or_default());
+        self.as_mut()
+            .set_site_rule_force_dark_set(force_dark.is_some());
+        self.as_mut()
+            .set_site_rule_force_dark_enabled(force_dark.unwrap_or_default());
+        self.as_mut().set_site_rule_autoplay_set(autoplay.is_some());
+        self.as_mut()
+            .set_site_rule_autoplay(QString::from(autoplay.unwrap_or_default()));
+        self.as_mut().set_site_rule_zoom_set(zoom.is_some());
+        self.as_mut().set_site_rule_zoom(zoom.unwrap_or_default());
+        true
     }
 
     fn clear_focus_observation_state(mut self: Pin<&mut Self>, index: i32) {
@@ -8920,15 +2745,14 @@ impl qobject::BrowserUi {
     }
 
     fn configured_site_entry_mode(&self, url: &str) -> Option<String> {
-        if serde_json::from_str::<Value>(&self.rust().site_experiment_json.to_string()).is_ok_and(
-            |experiment| {
-                experiment.get("kind").and_then(Value::as_str) == Some("compiled-defaults")
-                    && experiment
-                        .get("url")
-                        .and_then(Value::as_str)
-                        .is_some_and(|experiment_url| safe_ipc_url(url) == experiment_url)
-            },
-        ) {
+        if self
+            .rust()
+            .active_site_experiment
+            .as_ref()
+            .is_some_and(|experiment| {
+                experiment.kind == "compiled-defaults" && safe_ipc_url(url) == experiment.url
+            })
+        {
             return None;
         }
         let config = serde_json::from_value::<Config>(self.rust().config.clone()).ok()?;
@@ -8965,27 +2789,37 @@ impl qobject::BrowserUi {
         runtime_overrides: &RuntimeOverrides,
         temporary_overrides: &RuntimeOverrides,
     ) -> Result<Value, String> {
-        config_value_with_layers(
-            base_value,
-            profile_overrides,
-            runtime_overrides,
-            &self.rust().cli_overrides,
-            temporary_overrides,
-        )
+        let layers = ConfigurationLayers {
+            base: serde_json::from_value(base_value.clone())
+                .map_err(|error| format!("base configuration is invalid: {error}"))?,
+            profile: profile_overrides.clone(),
+            runtime: runtime_overrides.clone(),
+            command_line: self.rust().cli_overrides.clone(),
+            temporary: temporary_overrides.clone(),
+        };
+        serde_json::to_value(layers.resolve().map_err(|error| error.to_string())?)
+            .map_err(|error| format!("could not serialize resolved configuration: {error}"))
     }
 
     fn commit_runtime_config(
         mut self: Pin<&mut Self>,
         candidate: Value,
+        layers: ConfigurationLayers,
         status: &str,
     ) -> Result<Value, String> {
-        let current_config = self.as_ref().rust().config.clone();
-        let current_toml = config_json_to_toml(&current_config)?;
-        let candidate_toml = config_json_to_toml(&candidate)?;
-        let active_toml = apply_immediate_config_changes(&current_toml, &candidate_toml);
-        let active_config = serde_json::to_value(&active_toml)
+        let snapshot = {
+            let mut rust = self.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            this.state
+                .as_mut()
+                .ok_or_else(|| "application state is unavailable".to_owned())?
+                .update_configuration(layers)
+                .map_err(|error| error.to_string())?
+        };
+        let active_settings = snapshot.effective;
+        let active_config = serde_json::to_value(&active_settings)
             .map_err(|error| format!("could not serialize active configuration: {error}"))?;
-        let pending = pending_config_changes(&current_toml, &candidate_toml);
+        let pending = snapshot.pending_changes;
         let pending_summary = pending
             .iter()
             .map(|change| {
@@ -9016,6 +2850,13 @@ impl qobject::BrowserUi {
             let mut rust = self.as_mut().rust_mut();
             rust.as_mut().get_mut().bindings = bindings;
         }
+        self.as_mut()
+            .set_desktop_portal_mode(QString::from(desktop_portals::mode_name(
+                &active_settings.desktop.portals,
+            )));
+        self.as_mut().update_chrome_preferences(&active_settings);
+        self.as_mut().update_feature_preferences(&active_settings);
+        self.as_mut().update_settings_presentation(&active_config);
         self.as_mut().set_config_json(QString::from(config_json));
         let learning_mode = self.as_ref().rust().learning_mode;
         self.as_mut().set_learning_mode(learning_mode);
@@ -9038,6 +2879,89 @@ impl qobject::BrowserUi {
             }),
         );
         Ok(active_config)
+    }
+
+    fn update_chrome_preferences(mut self: Pin<&mut Self>, config: &Config) {
+        let preferences: ChromePreferences = chrome_preferences::project(config);
+        self.as_mut()
+            .set_chrome_font_family(QString::from(preferences.font_family));
+        self.as_mut()
+            .set_chrome_font_size_pt(preferences.font_size_pt);
+        self.as_mut()
+            .set_chrome_statusbar_mode(QString::from(preferences.statusbar_mode));
+        self.as_mut()
+            .set_chrome_tabs_mode(QString::from(preferences.tabs_mode));
+        self.as_mut()
+            .set_chrome_tab_position(QString::from(preferences.tab_position));
+        self.as_mut()
+            .set_chrome_reduced_motion(QString::from(preferences.reduced_motion));
+    }
+
+    fn update_feature_preferences(mut self: Pin<&mut Self>, config: &Config) {
+        let preferences: FeaturePreferences = feature_preferences::project(config);
+        self.as_mut()
+            .set_feature_switcher_max_results(preferences.switcher_max_results);
+        self.as_mut()
+            .set_feature_downloads_ask_destination(preferences.downloads_ask_destination);
+        self.as_mut()
+            .set_feature_desktop_notifications_enabled(preferences.desktop_notifications_enabled);
+        self.as_mut()
+            .set_feature_desktop_media_keys_enabled(preferences.desktop_media_keys_enabled);
+        self.as_mut()
+            .set_feature_push_service_enabled(preferences.push_service_enabled);
+        self.as_mut()
+            .set_feature_spellcheck_enabled(preferences.spellcheck_enabled);
+        self.as_mut().set_feature_spellcheck_languages(
+            preferences
+                .spellcheck_languages
+                .into_iter()
+                .map(QString::from)
+                .collect(),
+        );
+        self.as_mut().set_feature_blocking_list_ids(
+            preferences
+                .blocking_list_ids
+                .into_iter()
+                .map(QString::from)
+                .collect(),
+        );
+        self.as_mut()
+            .set_feature_blocking_update_interval_hours(preferences.blocking_update_interval_hours);
+        self.as_mut()
+            .set_feature_link_cleaning_update_source(QString::from(
+                preferences.link_cleaning_update_source,
+            ));
+        self.as_mut()
+            .set_feature_link_cleaning_update_sha256(QString::from(
+                preferences.link_cleaning_update_sha256,
+            ));
+    }
+
+    fn update_settings_presentation(mut self: Pin<&mut Self>, config: &Value) {
+        let rows = settings_presentation::project(config);
+        self.as_mut()
+            .set_settings_row_keys(rows.iter().map(|row| QString::from(row.key)).collect());
+        self.as_mut()
+            .set_settings_row_labels(rows.iter().map(|row| QString::from(row.label)).collect());
+        self.as_mut().set_settings_row_types(
+            rows.iter()
+                .map(|row| QString::from(row.editor_type))
+                .collect(),
+        );
+        self.as_mut()
+            .set_settings_row_scopes(rows.iter().map(|row| QString::from(&row.scope)).collect());
+        self.as_mut().set_settings_row_applies(
+            rows.iter()
+                .map(|row| QString::from(row.apply_time))
+                .collect(),
+        );
+        self.as_mut()
+            .set_settings_row_values(rows.iter().map(|row| QString::from(&row.value)).collect());
+        self.as_mut().set_settings_row_options(
+            rows.iter()
+                .map(|row| QString::from(row.options.join("\u{1f}")))
+                .collect(),
+        );
     }
 
     fn update_theme_palette(mut self: Pin<&mut Self>, config_value: &Value) -> bool {
@@ -9064,14 +2988,42 @@ impl qobject::BrowserUi {
                 .theme_watch
                 .set_sources(Path::new(""), &watch_paths);
         }
-        let json = serde_json::to_string(&palette).unwrap_or_else(|_| {
-            serde_json::to_string(&ThemePalette::default()).unwrap_or_else(|_| "{}".into())
-        });
-        let contrast_json = serde_json::to_string(&theme_contrast_report(&palette))
-            .unwrap_or_else(|_| "{\"status\":\"unknown\",\"checks\":[],\"failing\":[],\"reason\":\"contrast report unavailable\"}".into());
-        self.as_mut().set_theme_palette_json(QString::from(json));
+        let presentation = theme_presentation::project(&palette);
         self.as_mut()
-            .set_theme_contrast_json(QString::from(contrast_json));
+            .set_theme_background_color(QString::from(presentation.background));
+        self.as_mut()
+            .set_theme_surface_color(QString::from(presentation.surface));
+        self.as_mut()
+            .set_theme_panel_color(QString::from(presentation.panel));
+        self.as_mut()
+            .set_theme_primary_text_color(QString::from(presentation.primary_text));
+        self.as_mut()
+            .set_theme_secondary_text_color(QString::from(presentation.secondary_text));
+        self.as_mut()
+            .set_theme_muted_text_color(QString::from(presentation.muted_text));
+        self.as_mut()
+            .set_theme_border_color(QString::from(presentation.border));
+        self.as_mut()
+            .set_theme_accent_color(QString::from(presentation.accent));
+        self.as_mut()
+            .set_theme_warning_color(QString::from(presentation.warning));
+        self.as_mut()
+            .set_theme_error_color(QString::from(presentation.error));
+        self.as_mut()
+            .set_theme_success_color(QString::from(presentation.success));
+        self.as_mut()
+            .set_theme_private_color(QString::from(presentation.private));
+        self.as_mut()
+            .set_theme_mode_insert_color(QString::from(presentation.mode_insert));
+        self.as_mut()
+            .set_theme_selection_color(QString::from(presentation.selection));
+        self.as_mut()
+            .set_theme_selection_text_color(QString::from(presentation.selection_text));
+        self.as_mut()
+            .set_theme_contrast_status(QString::from(presentation.contrast_status));
+        self.as_mut()
+            .set_theme_contrast_reason(QString::from(presentation.contrast_reason));
+        self.as_mut().rust_mut().as_mut().get_mut().theme_palette = palette;
         true
     }
 
@@ -9157,7 +3109,7 @@ impl qobject::BrowserUi {
             .as_ref()
             .runtime_config_candidate(&persistent, &temporary_layer)?;
         let persistent_storage = !temporary
-            && self.as_ref().rust().store.is_some()
+            && self.as_ref().rust().profile_persistence.is_durable()
             && self.as_ref().rust().storage_roots.is_some();
         if persistent_storage {
             let path = self
@@ -9170,12 +3122,14 @@ impl qobject::BrowserUi {
             save_runtime_overrides_atomic(&path, &persistent)
                 .map_err(|error| format!("could not save runtime overrides: {error}"))?;
         }
-        {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.runtime_overrides = persistent;
-            this.temporary_overrides = temporary_layer;
-        }
+        let layers = ConfigurationLayers {
+            base: serde_json::from_value(self.as_ref().rust().base_config.clone())
+                .map_err(|error| format!("base configuration is invalid: {error}"))?,
+            profile: self.as_ref().rust().profile_overrides.clone(),
+            runtime: persistent.clone(),
+            command_line: self.as_ref().rust().cli_overrides.clone(),
+            temporary: temporary_layer.clone(),
+        };
         let scope = if temporary {
             "temporary"
         } else if persistent_storage {
@@ -9197,7 +3151,15 @@ impl qobject::BrowserUi {
             || format!("{action} {key} ({scope}){detail}"),
             |pattern| format!("{action} {key} for {pattern} ({scope}){detail}"),
         );
-        let result = self.as_mut().commit_runtime_config(candidate, &status)?;
+        let result = self
+            .as_mut()
+            .commit_runtime_config(candidate, layers, &status)?;
+        {
+            let mut rust = self.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            this.runtime_overrides = persistent;
+            this.temporary_overrides = temporary_layer;
+        }
         let value = key
             .split('.')
             .try_fold(&result, |value, part| value.as_object()?.get(part))
@@ -9223,7 +3185,10 @@ impl qobject::BrowserUi {
             .validate(command, self.as_ref().rust().core_mode)
             .map_err(|error| error.to_string())?;
         let params = config_get_command_parameters(command)?;
-        let result = self.as_ref().ipc_config_get(&params)?;
+        let result = self
+            .as_ref()
+            .ipc_config_get(&params)
+            .map_err(|error| error.message().to_owned())?;
         let key = result.get("key").and_then(Value::as_str).unwrap_or("?");
         let source = result
             .get("source")
@@ -9433,7 +3398,7 @@ impl qobject::BrowserUi {
         }
         {
             let mut rust = self.as_mut().rust_mut();
-            rust.as_mut().get_mut().config_watch.pending_since = Some(
+            rust.as_mut().get_mut().config_watch.mark_pending(
                 Instant::now()
                     .checked_sub(Duration::from_millis(200))
                     .unwrap_or_else(Instant::now),
@@ -9499,33 +3464,17 @@ impl qobject::BrowserUi {
         ));
         self.as_mut()
             .set_status_text(QString::from("Theme palette reloaded"));
-        let palette =
-            serde_json::from_str::<Value>(&self.as_ref().rust().theme_palette_json.to_string())
-                .unwrap_or(Value::Null);
-        let provider_status = palette
-            .as_object()
-            .map(|palette| {
-                serde_json::json!({
-                    "source": palette.get("source").cloned().unwrap_or(Value::Null),
-                    "path": palette.get("path").cloned().unwrap_or(Value::Null),
-                    "layout": palette
-                        .get("provider_layout")
-                        .cloned()
-                        .unwrap_or(Value::Null),
-                    "version": palette
-                        .get("provider_version")
-                        .cloned()
-                        .unwrap_or(Value::Null),
-                    "commit": palette
-                        .get("provider_commit")
-                        .cloned()
-                        .unwrap_or(Value::Null),
-                })
-            })
-            .unwrap_or(Value::Null);
+        let palette = self.as_ref().rust().theme_palette.clone();
+        let provider_status = serde_json::json!({
+            "source": palette.source,
+            "path": palette.path,
+            "layout": palette.provider_layout,
+            "version": palette.provider_version,
+            "commit": palette.provider_commit,
+        });
         Ok(serde_json::json!({
             "status": "reloaded",
-            "palette": palette,
+            "palette": serde_json::to_value(&palette).unwrap_or(Value::Null),
             "provider_status": provider_status
         }))
     }
@@ -9589,7 +3538,7 @@ impl qobject::BrowserUi {
             };
             match result {
                 Ok(bytes) => {
-                    let text = sanitize_userscript_stderr(&bytes);
+                    let text = sanitize_process_stderr(&bytes);
                     (!text.is_empty()).then_some(text)
                 }
                 Err(error) => Some(error),
@@ -9615,7 +3564,7 @@ impl qobject::BrowserUi {
                     .map_or_else(String::new, |text| format!(" (stderr: {text})"));
                 if status.success() {
                     let mut rust = self.as_mut().rust_mut();
-                    rust.as_mut().get_mut().config_watch.pending_since = Some(
+                    rust.as_mut().get_mut().config_watch.mark_pending(
                         Instant::now()
                             .checked_sub(Duration::from_millis(200))
                             .unwrap_or_else(Instant::now),
@@ -9647,21 +3596,29 @@ impl qobject::BrowserUi {
             )
         };
         if let Err(error) = request_result {
-            self.as_mut().set_desktop_portal_status(QString::from(
-                serde_json::json!({
-                    "service": {
-                        "status": "unavailable",
-                        "reason": error
-                    }
-                })
-                .to_string(),
-            ));
+            let _ = error;
+            self.as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .portal_capabilities = PortalCapabilities::unavailable();
             return false;
         }
-        self.as_mut().set_desktop_portal_status(QString::from(
-            "{\"service\":{\"status\":\"pending\",\"reason\":\"portal capability probe is running\"}}",
-        ));
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .portal_capabilities = PortalCapabilities::pending();
         true
+    }
+
+    fn portal_capability_status(self: Pin<&mut Self>, capability: &QString) -> QString {
+        let status = self
+            .as_ref()
+            .rust()
+            .portal_capabilities
+            .capability_status(&capability.to_string());
+        QString::from(status)
     }
 
     fn poll_config(mut self: Pin<&mut Self>) {
@@ -9679,10 +3636,11 @@ impl qobject::BrowserUi {
             }
         };
         if let Some(result) = reduced_motion_result {
-            let serialized = serde_json::to_string(&result)
-                .unwrap_or_else(|_| "{\"status\":\"unknown\"}".into());
+            let presentation = desktop_preferences::reduced_motion(&result);
             self.as_mut()
-                .set_system_reduced_motion_json(QString::from(serialized));
+                .set_system_reduced_motion_status(QString::from(presentation.status));
+            self.as_mut()
+                .set_system_reduced_motion_enabled(presentation.enabled);
         }
         let font_scale_result = {
             let mut rust = self.as_mut().rust_mut();
@@ -9698,10 +3656,10 @@ impl qobject::BrowserUi {
             }
         };
         if let Some(result) = font_scale_result {
-            let serialized = serde_json::to_string(&result)
-                .unwrap_or_else(|_| "{\"status\":\"unknown\"}".into());
+            let presentation = desktop_preferences::font_scale(&result);
             self.as_mut()
-                .set_system_font_scale_json(QString::from(serialized));
+                .set_system_font_scale_status(QString::from(presentation.status));
+            self.as_mut().set_system_font_scale(presentation.scale);
         }
         let portal_result = self
             .as_mut()
@@ -9712,10 +3670,11 @@ impl qobject::BrowserUi {
             .as_mut()
             .and_then(PortalProbeWorker::poll);
         if let Some(result) = portal_result {
-            let serialized = serde_json::to_string(&result)
-                .unwrap_or_else(|_| "{\"service\":{\"status\":\"unknown\"}}".into());
             self.as_mut()
-                .set_desktop_portal_status(QString::from(serialized));
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .portal_capabilities = desktop_portals::project(&result);
         }
         let hyprland_result = {
             let mut rust = self.as_mut().rust_mut();
@@ -9829,13 +3788,10 @@ impl qobject::BrowserUi {
             match result {
                 UserscriptManagerResult::Inventory(result) => match result {
                     Ok(scripts) => {
-                        let encoded =
-                            serde_json::to_string(&scripts).unwrap_or_else(|_| "[]".to_owned());
-                        self.as_mut()
-                            .set_userscript_inventory(QString::from(encoded));
+                        self.as_mut().set_userscript_inventory_rows(&scripts);
                     }
                     Err(error) => {
-                        self.as_mut().set_userscript_inventory(QString::from("[]"));
+                        self.as_mut().clear_userscript_inventory_rows();
                         self.as_mut().set_status_text(QString::from(format!(
                             "Userscript inventory unavailable: {error}"
                         )));
@@ -9843,10 +3799,7 @@ impl qobject::BrowserUi {
                 },
                 UserscriptManagerResult::Installed(result) => match result {
                     Ok(scripts) => {
-                        let encoded =
-                            serde_json::to_string(&scripts).unwrap_or_else(|_| "[]".to_owned());
-                        self.as_mut()
-                            .set_userscript_inventory(QString::from(encoded));
+                        self.as_mut().set_userscript_inventory_rows(&scripts);
                         self.as_mut()
                             .set_status_text(QString::from("Userscript installed"));
                         self.as_mut()
@@ -9862,10 +3815,7 @@ impl qobject::BrowserUi {
                 },
                 UserscriptManagerResult::Removed(result) => match result {
                     Ok(scripts) => {
-                        let encoded =
-                            serde_json::to_string(&scripts).unwrap_or_else(|_| "[]".to_owned());
-                        self.as_mut()
-                            .set_userscript_inventory(QString::from(encoded));
+                        self.as_mut().set_userscript_inventory_rows(&scripts);
                         self.as_mut()
                             .set_status_text(QString::from("Userscript removed"));
                         self.as_mut()
@@ -9881,10 +3831,7 @@ impl qobject::BrowserUi {
                 },
                 UserscriptManagerResult::SetEnabled { enabled, result } => match result {
                     Ok(scripts) => {
-                        let encoded =
-                            serde_json::to_string(&scripts).unwrap_or_else(|_| "[]".to_owned());
-                        self.as_mut()
-                            .set_userscript_inventory(QString::from(encoded));
+                        self.as_mut().set_userscript_inventory_rows(&scripts);
                         self.as_mut().set_status_text(QString::from(if enabled {
                             "Userscript enabled; it applies on the next navigation"
                         } else {
@@ -9970,8 +3917,7 @@ impl qobject::BrowserUi {
                                 .as_mut()
                                 .get_mut()
                                 .pending_engine_action = Some(format!(
-                                "new-window\t{}\t{}\tabout:blank",
-                                private, profile_name
+                                "new-window\t{private}\t{profile_name}\tabout:blank"
                             ));
                             self.as_mut().set_status_text(QString::from(if private {
                                 "Private window requested"
@@ -10158,15 +4104,15 @@ impl qobject::BrowserUi {
         let should_reload = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            if this.config_watch.changed() && this.config_watch.pending_since.is_none() {
-                this.config_watch.pending_since = Some(now);
+            if this.config_watch.changed() && this.config_watch.pending_since().is_none() {
+                this.config_watch.mark_pending(now);
             }
             let ready = this
                 .config_watch
-                .pending_since
+                .pending_since()
                 .is_some_and(|since| now.duration_since(since) >= Duration::from_millis(150));
             if ready {
-                this.config_watch.pending_since = None;
+                this.config_watch.clear_pending();
             }
             ready
         };
@@ -10222,10 +4168,18 @@ impl qobject::BrowserUi {
                             return;
                         }
                     };
-                    if let Err(error) = self
-                        .as_mut()
-                        .commit_runtime_config(candidate, "Configuration reloaded")
-                    {
+                    let layers = ConfigurationLayers {
+                        base: result.loaded.config.clone(),
+                        profile: profile_overrides.clone(),
+                        runtime: self.as_ref().rust().runtime_overrides.clone(),
+                        command_line: self.as_ref().rust().cli_overrides.clone(),
+                        temporary: self.as_ref().rust().temporary_overrides.clone(),
+                    };
+                    if let Err(error) = self.as_mut().commit_runtime_config(
+                        candidate,
+                        layers,
+                        "Configuration reloaded",
+                    ) {
                         self.set_status_text(QString::from(format!(
                             "Configuration reload rejected: {error}"
                         )));
@@ -10279,7 +4233,7 @@ impl qobject::BrowserUi {
         key: &QString,
         literal: &QString,
         temporary: bool,
-    ) -> QString {
+    ) -> bool {
         let mut arguments = Vec::with_capacity(if temporary { 2 } else { 1 });
         if temporary {
             arguments.push("--temp".into());
@@ -10290,15 +4244,20 @@ impl qobject::BrowserUi {
             arguments,
         };
         match self.as_mut().execute_runtime_config_command(&command) {
-            Ok(value) => QString::from(value.to_string()),
+            Ok(_) => {
+                self.as_mut().set_runtime_setting_error(QString::default());
+                true
+            }
             Err(error) => {
                 self.as_mut().set_status_text(QString::from(error.clone()));
-                QString::from(serde_json::json!({"error": error}).to_string())
+                self.as_mut()
+                    .set_runtime_setting_error(QString::from(error));
+                false
             }
         }
     }
 
-    fn unset_runtime_setting(mut self: Pin<&mut Self>, key: &QString, temporary: bool) -> QString {
+    fn unset_runtime_setting(mut self: Pin<&mut Self>, key: &QString, temporary: bool) -> bool {
         let arguments = if temporary {
             vec!["--temp".into(), key.to_string()]
         } else {
@@ -10309,12 +4268,41 @@ impl qobject::BrowserUi {
             arguments,
         };
         match self.as_mut().execute_runtime_config_command(&command) {
-            Ok(value) => QString::from(value.to_string()),
+            Ok(_) => {
+                self.as_mut().set_runtime_setting_error(QString::default());
+                true
+            }
             Err(error) => {
                 self.as_mut().set_status_text(QString::from(error.clone()));
-                QString::from(serde_json::json!({"error": error}).to_string())
+                self.as_mut()
+                    .set_runtime_setting_error(QString::from(error));
+                false
             }
         }
+    }
+
+    fn clear_site_experiment_presentation(mut self: Pin<&mut Self>) {
+        self.as_mut().set_site_experiment_active(false);
+        self.as_mut().set_site_experiment_id(QString::default());
+        self.as_mut().set_site_experiment_kind(QString::default());
+        self.as_mut().set_site_experiment_url(QString::default());
+        self.as_mut().set_site_experiment_remaining_seconds(0);
+    }
+
+    fn publish_site_experiment_presentation(
+        mut self: Pin<&mut Self>,
+        experiment: &SiteExperiment,
+        remaining_seconds: u64,
+    ) {
+        self.as_mut().set_site_experiment_active(true);
+        self.as_mut()
+            .set_site_experiment_id(QString::from(&experiment.id));
+        self.as_mut()
+            .set_site_experiment_kind(QString::from(&experiment.kind));
+        self.as_mut()
+            .set_site_experiment_url(QString::from(&experiment.url));
+        self.as_mut()
+            .set_site_experiment_remaining_seconds(i64::try_from(remaining_seconds).unwrap_or(0));
     }
 
     #[allow(clippy::too_many_lines)]
@@ -10392,8 +4380,8 @@ impl qobject::BrowserUi {
         if configured_bindings(&self.as_ref().rust().registry, &candidate).is_none() {
             return Err("effective binding configuration is invalid".into());
         }
-        let persistent_storage =
-            self.as_ref().rust().store.is_some() && self.as_ref().rust().storage_roots.is_some();
+        let persistent_storage = self.as_ref().rust().profile_persistence.is_durable()
+            && self.as_ref().rust().storage_roots.is_some();
         if persistent_storage {
             let path = self
                 .as_ref()
@@ -10405,19 +4393,28 @@ impl qobject::BrowserUi {
             save_runtime_overrides_atomic(&path, &persistent)
                 .map_err(|error| format!("could not save runtime overrides: {error}"))?;
         }
-        self.as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .runtime_overrides = persistent;
+        let layers = ConfigurationLayers {
+            base: serde_json::from_value(self.as_ref().rust().base_config.clone())
+                .map_err(|error| format!("base configuration is invalid: {error}"))?,
+            profile: self.as_ref().rust().profile_overrides.clone(),
+            runtime: persistent.clone(),
+            command_line: self.as_ref().rust().cli_overrides.clone(),
+            temporary: temporary_layer,
+        };
         let result = self.as_mut().commit_runtime_config(
             candidate,
+            layers,
             if binding_command.is_some() {
                 "Binding saved"
             } else {
                 "Binding removed"
             },
         )?;
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .runtime_overrides = persistent;
         Ok(serde_json::json!({
             "status": "accepted",
             "mode": mode_name,
@@ -10532,7 +4529,7 @@ impl qobject::BrowserUi {
     }
 
     fn refresh_site_status(mut self: Pin<&mut Self>) -> QString {
-        if self.as_ref().rust().store.is_some()
+        if self.as_ref().rust().profile_persistence.is_durable()
             && (self.as_ref().rust().storage_library.is_none()
                 || self.as_ref().rust().storage_library_dirty.get())
         {
@@ -10554,7 +4551,7 @@ impl qobject::BrowserUi {
     }
 
     fn site_report(mut self: Pin<&mut Self>, include_host: bool) -> QString {
-        if self.as_ref().rust().store.is_some()
+        if self.as_ref().rust().profile_persistence.is_durable()
             && (self.as_ref().rust().storage_library.is_none()
                 || self.as_ref().rust().storage_library_dirty.get())
         {
@@ -10613,7 +4610,13 @@ impl qobject::BrowserUi {
             ));
             return false;
         }
-        if self.as_ref().rust().store.is_none() || self.as_ref().rust().storage_roots.is_none() {
+        if self
+            .as_ref()
+            .rust()
+            .profile_persistence
+            .lacks_durable_storage()
+            || self.as_ref().rust().storage_roots.is_none()
+        {
             self.set_status_text(QString::from(
                 "Durable Site Doctor fixes require a normal profile with storage",
             ));
@@ -10873,11 +4876,12 @@ impl qobject::BrowserUi {
         QString::from(serialized)
     }
 
-    fn spellcheck_dictionaries(self: Pin<&mut Self>) -> QString {
+    fn spellcheck_dictionaries(self: Pin<&mut Self>) -> QStringList {
         let _ = self;
-        serde_json::to_string(&diagnostics::installed_dictionary_names())
+        diagnostics::installed_dictionary_names()
+            .into_iter()
             .map(QString::from)
-            .unwrap_or_else(|_| QString::from("[]"))
+            .collect()
     }
 
     fn export_diagnostics(mut self: Pin<&mut Self>, path: &QString) -> bool {
@@ -10967,16 +4971,6 @@ impl qobject::BrowserUi {
             .entry((kind, outcome))
             .or_default();
         *entry = entry.saturating_add(1);
-    }
-
-    fn bindings_json(self: Pin<&mut Self>) -> QString {
-        let result = self.ipc_bindings_query(&serde_json::json!({}));
-        let serialized = match result {
-            Ok(value) => serde_json::to_string(&value)
-                .unwrap_or_else(|_| "{\"error\":\"binding map serialization failed\"}".into()),
-            Err(error) => serde_json::json!({"error": error}).to_string(),
-        };
-        QString::from(serialized)
     }
 
     #[allow(clippy::too_many_lines)]
@@ -11094,10 +5088,13 @@ impl qobject::BrowserUi {
         } else {
             (None, None)
         };
-        let mut sites = serde_json::from_str::<Vec<String>>(
-            &self.as_ref().rust().blocking_bypass_sites.to_string(),
-        )
-        .unwrap_or_default();
+        let mut sites = self
+            .as_ref()
+            .rust()
+            .blocking_bypass_sites
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
         let prior_bypass_sites = sites.clone();
         if kind == "blocking-bypass" {
             if sites.iter().any(|site| site == &origin) {
@@ -11139,6 +5136,10 @@ impl qobject::BrowserUi {
             "timeout_seconds": SITE_DOCTOR_EXPERIMENT_TIMEOUT.as_secs()
         })
         .to_string();
+        self.as_mut().publish_site_experiment_presentation(
+            &experiment,
+            SITE_DOCTOR_EXPERIMENT_TIMEOUT.as_secs(),
+        );
         {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
@@ -11155,12 +5156,9 @@ impl qobject::BrowserUi {
             });
         }
         if blocking_experiment {
-            self.as_mut().set_blocking_bypass_sites(QString::from(
-                serde_json::to_string(&sites).unwrap_or_else(|_| "[]".into()),
-            ));
+            self.as_mut()
+                .set_blocking_bypass_sites(sites.iter().map(QString::from).collect());
         }
-        self.as_mut()
-            .set_site_experiment_json(QString::from(&payload));
         self.as_mut()
             .set_status_text(QString::from(if blocking_experiment {
                 "Site Doctor: reload with blocker bypass"
@@ -11191,10 +5189,13 @@ impl qobject::BrowserUi {
         let same_tab = self.as_ref().rust().tab == Some(expected_tab);
         let same_url =
             safe_ipc_url(&self.as_ref().rust().current_url.to_string()) == experiment.url;
-        let sites = serde_json::from_str::<Vec<String>>(
-            &self.as_ref().rust().blocking_bypass_sites.to_string(),
-        )
-        .unwrap_or_default();
+        let sites = self
+            .as_ref()
+            .rust()
+            .blocking_bypass_sites
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
         if experiment.kind == "blocking-bypass" {
             let temporary_state = experiment
                 .prior_bypass_sites
@@ -11203,10 +5204,13 @@ impl qobject::BrowserUi {
                 .chain(std::iter::once(experiment.origin.clone()))
                 .collect::<Vec<_>>();
             if sites == temporary_state {
-                self.as_mut().set_blocking_bypass_sites(QString::from(
-                    serde_json::to_string(&experiment.prior_bypass_sites)
-                        .unwrap_or_else(|_| "[]".into()),
-                ));
+                self.as_mut().set_blocking_bypass_sites(
+                    experiment
+                        .prior_bypass_sites
+                        .iter()
+                        .map(QString::from)
+                        .collect(),
+                );
             }
         }
         let cleanup_index = experiment.temporary_tab.and_then(|tab| {
@@ -11224,7 +5228,7 @@ impl qobject::BrowserUi {
                 this.pending_engine_action = Some(format!("site-doctor-close\t{index}"));
             }
         }
-        self.as_mut().set_site_experiment_json(QString::from("{}"));
+        self.as_mut().clear_site_experiment_presentation();
         if succeeded && same_tab && same_url {
             let proposal = if experiment.kind == "blocking-bypass" {
                 let mut durable_sites = experiment.prior_bypass_sites.clone();
@@ -11294,17 +5298,13 @@ impl qobject::BrowserUi {
             let _ = self.finish_site_doctor_experiment(&QString::from(id), false);
             return;
         };
-        let Ok(Value::Object(mut payload)) =
-            serde_json::from_str::<Value>(&self.as_ref().rust().site_experiment_json.to_string())
-        else {
-            return;
-        };
-        if payload.get("remaining_seconds").and_then(Value::as_u64) == Some(remaining_seconds) {
+        if self.as_ref().rust().site_experiment_remaining_seconds
+            == i64::try_from(remaining_seconds).unwrap_or(i64::MAX)
+        {
             return;
         }
-        payload.insert("remaining_seconds".into(), Value::from(remaining_seconds));
         self.as_mut()
-            .set_site_experiment_json(QString::from(Value::Object(payload).to_string()));
+            .set_site_experiment_remaining_seconds(i64::try_from(remaining_seconds).unwrap_or(0));
     }
 
     fn recover_session(mut self: Pin<&mut Self>) -> QString {
@@ -11319,14 +5319,10 @@ impl qobject::BrowserUi {
                 }
             }
         };
-        let result = {
-            let mut rust = self.as_mut().rust_mut();
-            rust.as_mut()
-                .get_mut()
-                .storage_worker
-                .as_mut()
-                .map(|worker| worker.request_session_recovery(root, profile_id))
-        };
+        let result = Some(
+            self.as_mut()
+                .submit_storage(StorageRequest::SessionRecovery { root, profile_id }),
+        );
         match result {
             Some(Ok(())) => {
                 let mut rust = self.as_mut().rust_mut();
@@ -11794,14 +5790,10 @@ impl qobject::BrowserUi {
         else {
             return false;
         };
-        let result = {
-            let mut rust = self.as_mut().rust_mut();
-            rust.as_mut()
-                .get_mut()
-                .storage_worker
-                .as_mut()
-                .map(|worker| worker.request_session_save(path, snapshot))
-        };
+        let result = Some(
+            self.as_mut()
+                .submit_storage(StorageRequest::SessionSave { path, snapshot }),
+        );
         match result {
             Some(Ok(())) => {
                 let mut rust = self.as_mut().rust_mut();
@@ -11860,14 +5852,10 @@ impl qobject::BrowserUi {
             self.set_status_text(QString::from("Invalid session name or profile"));
             return false;
         };
-        let result = {
-            let mut rust = self.as_mut().rust_mut();
-            rust.as_mut()
-                .get_mut()
-                .storage_worker
-                .as_mut()
-                .map(|worker| worker.request_session_restore(path))
-        };
+        let result = Some(
+            self.as_mut()
+                .submit_storage(StorageRequest::SessionRestore { paths: vec![path] }),
+        );
         match result {
             Some(Ok(())) => {
                 let mut rust = self.as_mut().rust_mut();
@@ -11916,13 +5904,10 @@ impl qobject::BrowserUi {
             self.set_status_text(QString::from("Invalid session name or profile"));
             return false;
         };
-        let result = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.storage_worker
-                .as_mut()
-                .map(|worker| worker.request_session_restore(path))
-        };
+        let result = Some(
+            self.as_mut()
+                .submit_storage(StorageRequest::SessionRestore { paths: vec![path] }),
+        );
         match result {
             Some(Ok(())) => {
                 let mut rust = self.as_mut().rust_mut();
@@ -11979,14 +5964,11 @@ impl qobject::BrowserUi {
             self.set_status_text(QString::from("No durable session profile"));
             return false;
         };
-        let result = self
-            .as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .storage_worker
-            .as_mut()
-            .map(|worker| worker.request_session_delete(path_root, profile_id, name.to_string()));
+        let result = Some(self.as_mut().submit_storage(StorageRequest::SessionDelete {
+            root: path_root,
+            profile_id,
+            name: name.to_string(),
+        }));
         match result {
             Some(Ok(())) => {
                 self.set_status_text(QString::from("Session deletion queued"));
@@ -12016,13 +5998,68 @@ impl qobject::BrowserUi {
     }
 
     fn clear_link_preview(mut self: Pin<&mut Self>) {
-        self.as_mut().set_link_preview(QString::default());
+        self.as_mut().clear_link_preview_presentation();
         self.as_mut().set_link_preview_visible(false);
         self.as_mut()
             .rust_mut()
             .as_mut()
             .get_mut()
             .pending_link_navigation = None;
+    }
+
+    fn clear_link_preview_presentation(mut self: Pin<&mut Self>) {
+        self.as_mut().set_link_preview_command(QString::default());
+        self.as_mut().set_link_preview_original(QString::default());
+        self.as_mut().set_link_preview_cleaned(QString::default());
+        self.as_mut()
+            .set_link_preview_applied_rules(QStringList::default());
+        self.as_mut()
+            .set_link_preview_removed_parameters(QStringList::default());
+        self.as_mut()
+            .set_link_preview_retained_parameters(QStringList::default());
+        self.as_mut()
+            .set_link_preview_explanation(QString::default());
+        self.as_mut().set_link_preview_requires_confirmation(false);
+    }
+
+    fn publish_link_preview(
+        mut self: Pin<&mut Self>,
+        command: &str,
+        result: &CleanLinkResult,
+        requires_confirmation: bool,
+    ) {
+        let presentation = link_preview_presentation(command, result, requires_confirmation);
+        self.as_mut()
+            .set_link_preview_command(QString::from(presentation.command));
+        self.as_mut()
+            .set_link_preview_original(QString::from(presentation.original));
+        self.as_mut()
+            .set_link_preview_cleaned(QString::from(presentation.cleaned));
+        self.as_mut().set_link_preview_applied_rules(
+            presentation
+                .applied_rules
+                .into_iter()
+                .map(QString::from)
+                .collect(),
+        );
+        self.as_mut().set_link_preview_removed_parameters(
+            presentation
+                .removed_parameters
+                .into_iter()
+                .map(QString::from)
+                .collect(),
+        );
+        self.as_mut().set_link_preview_retained_parameters(
+            presentation
+                .retained_parameters
+                .into_iter()
+                .map(QString::from)
+                .collect(),
+        );
+        self.as_mut()
+            .set_link_preview_explanation(QString::from(presentation.explanation));
+        self.as_mut()
+            .set_link_preview_requires_confirmation(presentation.requires_confirmation);
     }
 
     fn request_external_navigation(mut self: Pin<&mut Self>, scheme: String, url: String) -> bool {
@@ -12144,196 +6181,10 @@ impl qobject::BrowserUi {
             return false;
         }
         self.as_mut().set_link_preview_visible(false);
-        self.as_mut().set_link_preview(QString::default());
+        self.as_mut().clear_link_preview_presentation();
         self.as_mut().sync_core_tabs();
         self.set_status_text(QString::from("Clean-link navigation confirmed"));
         true
-    }
-
-    fn list_profiles(self: Pin<&mut Self>) -> QString {
-        self.as_ref().rust().profile_values.clone()
-    }
-
-    fn request_profile_list_with_mode(mut self: Pin<&mut Self>, command_request: bool) -> bool {
-        self.as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .profile_list_command_pending = command_request;
-        let Some(roots) = self
-            .as_ref()
-            .rust()
-            .profile_registry_roots
-            .clone()
-            .or_else(|| self.as_ref().rust().storage_roots.clone())
-        else {
-            self.as_mut()
-                .rust_mut()
-                .as_mut()
-                .get_mut()
-                .profile_list_command_pending = false;
-            self.as_mut().set_profile_values(QString::default());
-            self.as_mut().set_profile_values_pending(false);
-            return false;
-        };
-        let result = {
-            let mut rust = self.as_mut().rust_mut();
-            rust.as_mut()
-                .get_mut()
-                .profile_list_worker
-                .as_mut()
-                .ok_or_else(|| "profile reader is unavailable".to_owned())
-                .and_then(|worker| worker.request(roots))
-        };
-        match result {
-            Ok(()) => {
-                self.as_mut().set_profile_values_pending(true);
-                true
-            }
-            Err(error) => {
-                self.as_mut()
-                    .rust_mut()
-                    .as_mut()
-                    .get_mut()
-                    .profile_list_command_pending = false;
-                self.as_mut().set_profile_values_pending(false);
-                self.as_mut()
-                    .set_status_text(QString::from(format!("Profile list failed: {error}")));
-                false
-            }
-        }
-    }
-
-    fn request_profile_list(self: Pin<&mut Self>) -> bool {
-        self.request_profile_list_with_mode(false)
-    }
-
-    fn create_profile(mut self: Pin<&mut Self>, name: &QString, label: &QString) -> bool {
-        let Some(roots) = self.as_ref().rust().storage_roots.clone() else {
-            self.set_status_text(QString::from(
-                "Private profiles cannot create durable profiles",
-            ));
-            return false;
-        };
-        let result = self
-            .as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .profile_delete_worker
-            .as_mut()
-            .ok_or_else(|| "profile mutation worker is unavailable".to_owned())
-            .and_then(|worker| worker.request_create(roots, name.to_string(), label.to_string()));
-        match result {
-            Ok(()) => {
-                self.set_status_text(QString::from("Profile creation queued"));
-                true
-            }
-            Err(error) => {
-                self.set_status_text(QString::from(format!("Profile creation failed: {error}")));
-                false
-            }
-        }
-    }
-
-    fn rename_profile(mut self: Pin<&mut Self>, name: &QString, label: &QString) -> bool {
-        let Some(roots) = self.as_ref().rust().storage_roots.clone() else {
-            self.set_status_text(QString::from(
-                "Private profiles cannot rename durable profiles",
-            ));
-            return false;
-        };
-        let result = self
-            .as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .profile_delete_worker
-            .as_mut()
-            .ok_or_else(|| "profile mutation worker is unavailable".to_owned())
-            .and_then(|worker| worker.request_rename(roots, name.to_string(), label.to_string()));
-        match result {
-            Ok(()) => {
-                self.set_status_text(QString::from("Profile rename queued"));
-                true
-            }
-            Err(error) => {
-                self.set_status_text(QString::from(format!("Profile rename failed: {error}")));
-                false
-            }
-        }
-    }
-
-    fn profile_delete_preview(self: Pin<&mut Self>, _name: &QString) -> QString {
-        self.as_ref().rust().profile_preview_text.clone()
-    }
-
-    fn request_profile_delete_preview(mut self: Pin<&mut Self>, name: &QString) -> bool {
-        let Some(roots) = self.as_ref().rust().storage_roots.clone() else {
-            self.as_mut().set_profile_preview_pending(false);
-            self.as_mut().set_profile_preview_text(QString::default());
-            return false;
-        };
-        self.as_mut()
-            .set_profile_preview_text(QString::from("Loading validated profile deletion preview…"));
-        let result = {
-            let mut rust = self.as_mut().rust_mut();
-            rust.as_mut()
-                .get_mut()
-                .profile_preview_worker
-                .as_mut()
-                .ok_or_else(|| "profile preview reader is unavailable".to_owned())
-                .and_then(|worker| worker.request(roots, name.to_string()))
-        };
-        match result {
-            Ok(()) => {
-                self.as_mut().set_profile_preview_pending(true);
-                true
-            }
-            Err(error) => {
-                self.as_mut().set_profile_preview_pending(false);
-                self.as_mut().set_profile_preview_text(QString::default());
-                self.as_mut()
-                    .set_status_text(QString::from(format!("Profile preview failed: {error}")));
-                false
-            }
-        }
-    }
-
-    fn delete_profile(mut self: Pin<&mut Self>, name: &QString, confirmed: bool) -> bool {
-        if !confirmed {
-            self.set_status_text(QString::from(
-                "Profile deletion requires preview and confirmation",
-            ));
-            return false;
-        }
-        let Some(roots) = self.as_ref().rust().storage_roots.clone() else {
-            self.set_status_text(QString::from(
-                "Private profiles cannot delete durable profiles",
-            ));
-            return false;
-        };
-        let active_profile_id = self.as_ref().rust().profile_id;
-        let name = name.to_string();
-        let result = self
-            .as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .profile_delete_worker
-            .as_mut()
-            .ok_or_else(|| "profile deletion worker is unavailable".to_owned())
-            .and_then(|worker| worker.request_delete(roots, name, active_profile_id));
-        match result {
-            Ok(()) => {
-                self.set_status_text(QString::from("Profile deletion queued"));
-                true
-            }
-            Err(error) => {
-                self.set_status_text(QString::from(format!("Profile deletion failed: {error}")));
-                false
-            }
-        }
     }
 
     fn default_download_directory(self: Pin<&mut Self>) -> QString {
@@ -12355,7 +6206,7 @@ impl qobject::BrowserUi {
             .ok()
             .filter(|url| is_safe_history_url(url.as_str()))
             .map_or_else(|| "[redacted]".into(), |url| url.to_string());
-        if self.as_ref().rust().store.is_some() {
+        if self.as_ref().rust().profile_persistence.is_durable() {
             let result = self.as_mut().create_download_via_worker(
                 id.to_string(),
                 source,
@@ -12411,7 +6262,7 @@ impl qobject::BrowserUi {
                 return QString::default();
             }
         };
-        if self.as_ref().rust().store.is_some() {
+        if self.as_ref().rust().profile_persistence.is_durable() {
             if let Err(error) = self.as_mut().set_download_destination_via_worker(
                 id.to_string(),
                 path.to_string_lossy().into_owned(),
@@ -12473,7 +6324,7 @@ impl qobject::BrowserUi {
                 self.as_ref().rust().session_id,
                 &path,
             )?;
-            if self.as_ref().rust().store.is_some() {
+            if self.as_ref().rust().profile_persistence.is_durable() {
                 if let Err(error) = self.as_mut().set_download_destination_via_worker(
                     id.to_string(),
                     path.to_string_lossy().into_owned(),
@@ -12517,7 +6368,7 @@ impl qobject::BrowserUi {
             .staged_downloads
             .get(&id.to_string())
             .map_or_else(QString::default, |staged| {
-                QString::from(staged.staging_directory.to_string_lossy().as_ref())
+                QString::from(staged.staging_directory().to_string_lossy().as_ref())
             })
     }
 
@@ -12599,7 +6450,12 @@ impl qobject::BrowserUi {
             bytes_received,
             completed_at,
         };
-        if self.as_ref().rust().store.is_none() {
+        if self
+            .as_ref()
+            .rust()
+            .profile_persistence
+            .lacks_durable_storage()
+        {
             return true;
         }
         self.as_mut().queue_download_update(update)
@@ -12638,13 +6494,17 @@ impl qobject::BrowserUi {
         )
     }
 
-    fn download_desktop_action(mut self: Pin<&mut Self>, id: &QString, reveal: bool) -> QString {
+    fn resolve_download_desktop_uri(
+        mut self: Pin<&mut Self>,
+        id: &QString,
+        reveal: bool,
+    ) -> Result<String, String> {
         if self.as_ref().rust().storage_library.is_none()
             || self.as_ref().rust().storage_library_dirty.get()
         {
             self.as_mut().request_storage_library();
         }
-        let result = (|| {
+        (|| {
             let binding = self.as_ref();
             let rust = binding.rust();
             if rust.storage_library_dirty.get() {
@@ -12684,17 +6544,20 @@ impl qobject::BrowserUi {
             {
                 return Err("download containing path is not a directory".to_owned());
             }
-            Ok(serde_json::json!({
-                "id": id.to_string(),
-                "uri": path_to_file_url(&target)?,
-                "reveal": reveal
-            }))
-        })();
-        match result {
-            Ok(value) => QString::from(value.to_string()),
+            path_to_file_url(&target)
+        })()
+    }
+
+    fn download_desktop_action(mut self: Pin<&mut Self>, id: &QString, reveal: bool) -> bool {
+        match self.as_mut().resolve_download_desktop_uri(id, reveal) {
+            Ok(uri) => {
+                self.as_mut().set_download_desktop_uri(QString::from(uri));
+                true
+            }
             Err(error) => {
+                self.as_mut().set_download_desktop_uri(QString::default());
                 self.set_status_text(QString::from(error));
-                QString::default()
+                false
             }
         }
     }
@@ -12769,7 +6632,12 @@ impl qobject::BrowserUi {
         id: &str,
         action: &str,
     ) -> Result<(), String> {
-        if self.as_ref().rust().store.is_none() {
+        if self
+            .as_ref()
+            .rust()
+            .profile_persistence
+            .lacks_durable_storage()
+        {
             return Err("download metadata is unavailable in a private session".to_owned());
         }
         if self.as_ref().rust().storage_library_dirty.get() {
@@ -12852,88 +6720,6 @@ impl qobject::BrowserUi {
         }
     }
 
-    fn request_shutdown(mut self: Pin<&mut Self>) -> bool {
-        match self.as_mut().reduce_event(Event::RequestShutdown) {
-            Ok(_) => {
-                self.set_status_text(QString::from("Shutdown requested"));
-                true
-            }
-            Err(error) => {
-                self.set_status_text(QString::from(format!("Shutdown rejected: {error}")));
-                false
-            }
-        }
-    }
-
-    fn begin_shutdown_gate(mut self: Pin<&mut Self>) -> bool {
-        let mut rust = self.as_mut().rust_mut();
-        let this = rust.as_mut().get_mut();
-        if this.ipc_shutdown_gate {
-            return true;
-        }
-        this.ipc_shutdown_gate = true;
-        self.set_status_text(QString::from("Shutdown gate active"));
-        true
-    }
-
-    fn end_shutdown_gate(mut self: Pin<&mut Self>) {
-        let mut rust = self.as_mut().rust_mut();
-        rust.as_mut().get_mut().ipc_shutdown_gate = false;
-    }
-
-    fn force_quit(self: Pin<&mut Self>) {
-        mark_forced_shutdown();
-        self.set_status_text(QString::from(
-            "Forced quit requested; crash marker preserved",
-        ));
-    }
-
-    fn restart_software_rendering(
-        self: Pin<&mut Self>,
-        lock_path: &QString,
-        storage_base: &QString,
-        temporary_profile: bool,
-        safe_mode: bool,
-        userscripts_off: bool,
-        instance_selector: &QString,
-    ) -> bool {
-        let _ = self;
-        let lock_path = lock_path.to_string();
-        if lock_path.is_empty() {
-            return false;
-        }
-        let Ok(executable) = std::env::current_exe() else {
-            return false;
-        };
-        let mut arguments = vec!["--software-rendering".to_owned()];
-        if safe_mode {
-            arguments.push("--safe-mode".to_owned());
-        } else if userscripts_off {
-            arguments.push("--userscripts-off".to_owned());
-        } else if temporary_profile {
-            arguments.push("--temp-basedir".to_owned());
-        } else if !storage_base.is_empty() {
-            arguments.extend(["--basedir".to_owned(), storage_base.to_string()]);
-        }
-        if !instance_selector.is_empty() {
-            arguments.extend(["--instance".to_owned(), instance_selector.to_string()]);
-        }
-        let spawned = thread::Builder::new()
-            .name("ferric-browser-software-restart".into())
-            .spawn(move || {
-                let lock_path = PathBuf::from(lock_path);
-                let deadline = Instant::now() + Duration::from_secs(5);
-                while lock_path.exists() && Instant::now() < deadline {
-                    thread::sleep(Duration::from_millis(25));
-                }
-                if lock_path.exists() {
-                    return;
-                }
-                let _ = Command::new(executable).args(arguments).spawn();
-            });
-        spawned.is_ok()
-    }
-
     fn permission_decision(
         mut self: Pin<&mut Self>,
         origin: &QString,
@@ -12949,7 +6735,7 @@ impl qobject::BrowserUi {
             return QString::from("ask");
         }
         let normalized_origin = ferric_browser_storage::normalize_permission_origin(&origin).ok();
-        let normal_profile = self.as_ref().rust().store.is_some();
+        let normal_profile = self.as_ref().rust().profile_persistence.is_durable();
         let permission_scope_id = self
             .as_ref()
             .rust()
@@ -13104,7 +6890,12 @@ impl qobject::BrowserUi {
             }
             Ok(())
         } else if lifetime == "site" {
-            if self.as_ref().rust().store.is_none() {
+            if self
+                .as_ref()
+                .rust()
+                .profile_persistence
+                .lacks_durable_storage()
+            {
                 Err(ferric_browser_storage::StoreError::PrivateNoDurableState)
             } else {
                 let normalized = ferric_browser_storage::normalize_permission_origin(&origin);
@@ -13179,7 +6970,11 @@ impl qobject::BrowserUi {
 
     fn list_permissions(mut self: Pin<&mut Self>, origin: &QString) -> QString {
         let origin = (!origin.to_string().is_empty()).then(|| origin.to_string());
-        let private = self.as_ref().rust().store.is_none();
+        let private = self
+            .as_ref()
+            .rust()
+            .profile_persistence
+            .lacks_durable_storage();
         if !private
             && (self.as_ref().rust().storage_library.is_none()
                 || self.as_ref().rust().storage_library_dirty.get())
@@ -13307,7 +7102,12 @@ impl qobject::BrowserUi {
             ));
             return false;
         };
-        if self.as_ref().rust().store.is_none() {
+        if self
+            .as_ref()
+            .rust()
+            .profile_persistence
+            .lacks_durable_storage()
+        {
             self.as_mut()
                 .set_status_text(QString::from(if session_removed {
                     "Permission decision reset"
@@ -13324,13 +7124,13 @@ impl qobject::BrowserUi {
             }
             return session_removed;
         }
-        let request_result = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.storage_worker
-                .as_mut()
-                .map(|worker| worker.request_permission_reset(normalized, permissions))
-        };
+        let request_result = Some(
+            self.as_mut()
+                .submit_storage(StorageRequest::PermissionReset {
+                    origin: normalized,
+                    permissions,
+                }),
+        );
         match request_result {
             Some(Ok(())) => {
                 let mut rust = self.as_mut().rust_mut();
@@ -13359,36 +7159,70 @@ impl qobject::BrowserUi {
         }
     }
 
-    fn matching_page_scripts(
-        self: Pin<&mut Self>,
+    fn select_matching_page_scripts(
+        mut self: Pin<&mut Self>,
         url: &QString,
         private_profile: bool,
-    ) -> QString {
+    ) -> bool {
         let Some(roots) = self.as_ref().rust().userscript_roots.clone() else {
-            return QString::from("[]");
+            self.as_mut()
+                .set_page_userscript_names(QStringList::default());
+            self.as_mut()
+                .set_page_userscript_sources(QStringList::default());
+            self.as_mut()
+                .set_page_userscript_run_at(QStringList::default());
+            self.as_mut()
+                .set_page_userscript_runs_on_sub_frames(QStringList::default());
+            return true;
         };
         match userscript::matching_page_scripts(&roots.config, &url.to_string(), private_profile) {
-            Ok(scripts) => serde_json::to_string(&scripts).map_or_else(
-                |error| {
-                    self.set_status_text(QString::from(format!(
-                        "Page userscript serialization failed: {error}"
-                    )));
-                    QString::from("[]")
-                },
-                QString::from,
-            ),
+            Ok(scripts) => {
+                self.as_mut().set_page_userscript_names(
+                    scripts
+                        .iter()
+                        .map(|script| QString::from(&script.name))
+                        .collect(),
+                );
+                self.as_mut().set_page_userscript_sources(
+                    scripts
+                        .iter()
+                        .map(|script| QString::from(&script.source))
+                        .collect(),
+                );
+                self.as_mut().set_page_userscript_run_at(
+                    scripts
+                        .iter()
+                        .map(|script| QString::from(script.run_at))
+                        .collect(),
+                );
+                self.as_mut().set_page_userscript_runs_on_sub_frames(
+                    scripts
+                        .iter()
+                        .map(|script| QString::from(script.runs_on_sub_frames.to_string()))
+                        .collect(),
+                );
+                true
+            }
             Err(error) => {
+                self.as_mut()
+                    .set_page_userscript_names(QStringList::default());
+                self.as_mut()
+                    .set_page_userscript_sources(QStringList::default());
+                self.as_mut()
+                    .set_page_userscript_run_at(QStringList::default());
+                self.as_mut()
+                    .set_page_userscript_runs_on_sub_frames(QStringList::default());
                 self.set_status_text(QString::from(format!(
                     "Page userscripts unavailable: {error}"
                 )));
-                QString::from("[]")
+                false
             }
         }
     }
 
     fn refresh_userscript_inventory(mut self: Pin<&mut Self>) -> bool {
         if self.as_ref().active_profile_is_transient() {
-            self.as_mut().set_userscript_inventory(QString::from("[]"));
+            self.as_mut().clear_userscript_inventory_rows();
             return true;
         }
         let Some(root) = self
@@ -13398,7 +7232,7 @@ impl qobject::BrowserUi {
             .as_ref()
             .map(|roots| roots.config.clone())
         else {
-            self.as_mut().set_userscript_inventory(QString::from("[]"));
+            self.as_mut().clear_userscript_inventory_rows();
             self.as_mut().set_status_text(QString::from(
                 "Userscripts are unavailable without configured storage",
             ));
@@ -13686,7 +7520,9 @@ impl qobject::BrowserUi {
         true
     }
 
-    fn take_download_request(mut self: Pin<&mut Self>) -> QString {
+    fn take_download_request(mut self: Pin<&mut Self>) -> bool {
+        self.as_mut().set_download_request_token(QString::default());
+        self.as_mut().set_download_request_url(QString::default());
         let request_target = self
             .as_ref()
             .rust()
@@ -13699,18 +7535,24 @@ impl qobject::BrowserUi {
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
         let Some(request) = this.pending_download.as_mut() else {
-            return QString::default();
+            return false;
         };
         if request_is_stale {
             this.pending_download = None;
             self.set_status_text(QString::from("Download request is stale"));
-            return QString::default();
+            return false;
         }
         if request.issued {
-            return QString::default();
+            return false;
         }
         request.issued = true;
-        QString::from(serde_json::json!({"token": request.token, "url": request.url}).to_string())
+        let token = request.token.clone();
+        let url = request.url.clone();
+        drop(rust);
+        self.as_mut()
+            .set_download_request_token(QString::from(token));
+        self.as_mut().set_download_request_url(QString::from(url));
+        true
     }
 
     fn complete_download_request(
@@ -13749,7 +7591,7 @@ impl qobject::BrowserUi {
     }
 
     #[allow(clippy::too_many_lines)]
-    fn switcher_query(mut self: Pin<&mut Self>, query: &QString, scope: &QString) -> QString {
+    fn switcher_query(mut self: Pin<&mut Self>, query: &QString, scope: &QString) -> bool {
         if self.as_ref().rust().storage_library.is_none()
             || self.as_ref().rust().storage_library_dirty.get()
         {
@@ -13776,50 +7618,67 @@ impl qobject::BrowserUi {
                 })
                 .flatten()
         });
-        if let Some(cache) = self.as_ref().rust().switcher_cache.as_ref()
-            && cache.matches(self.as_ref().rust(), &params)
+        if let Some(result) = self
+            .as_ref()
+            .rust()
+            .switcher_cache
+            .as_ref()
+            .filter(|cache| cache.matches(self.as_ref().rust(), &params))
+            .map(|cache| cache.result.clone())
         {
-            return QString::from(cache.result.clone());
+            return match self.as_mut().publish_switcher_rows(&result) {
+                Ok(()) => true,
+                Err(error) => {
+                    self.set_status_text(QString::from(format!(
+                        "Switcher presentation failed: {error}"
+                    )));
+                    false
+                }
+            };
         }
         match self.as_ref().get_ref().ipc_switcher_query(&params) {
             Ok(result) => {
-                let serialized = serde_json::to_string(&result).unwrap_or_else(|_| "{}".into());
+                if let Err(error) = self.as_mut().publish_switcher_rows(&result) {
+                    self.set_status_text(QString::from(format!(
+                        "Switcher presentation failed: {error}"
+                    )));
+                    return false;
+                }
                 let mut rust = self.as_mut().rust_mut();
                 let this = rust.as_mut().get_mut();
                 this.switcher_cache = Some(SwitcherQueryCache {
                     params,
-                    state_revision: this.state.as_ref().map_or(0, ApplicationState::revision),
+                    state_revision: this.state.as_ref().map_or(0, BrowserApplication::revision),
                     storage_library_revision: this.storage_library_revision,
                     session_names: this.session_names.clone(),
                     contexts_json: this.contexts_json.to_string(),
                     config_fingerprint: serde_json::to_string(&this.config).unwrap_or_default(),
                     profile_name: this.profile_name.clone(),
-                    result: serialized.clone(),
+                    result,
                 });
-                drop(rust);
-                QString::from(serialized)
+                true
             }
             Err(error) => {
                 self.set_status_text(QString::from(format!("Switcher query rejected: {error}")));
-                QString::default()
+                false
             }
         }
     }
 
     fn request_storage_library(mut self: Pin<&mut Self>) {
         self.as_mut().ensure_storage_worker();
-        let result = {
+        let should_request = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
             if this.storage_library.is_some() && !this.storage_library_dirty.get() {
                 return;
             }
-            let result = this
-                .storage_worker
-                .as_mut()
-                .map(|worker| worker.request_library(1_000));
-            result
+            true
         };
+        let result = should_request.then(|| {
+            self.as_mut()
+                .submit_storage(StorageRequest::Library { limit: 1_000 })
+        });
         if let Some(Err(error)) = result
             && !matches!(error, ferric_browser_storage::StorageWorkerError::Busy)
         {
@@ -13933,21 +7792,24 @@ impl qobject::BrowserUi {
     }
 
     fn ensure_storage_worker(mut self: Pin<&mut Self>) -> bool {
-        if self.as_ref().rust().storage_worker.is_some() {
+        if self.as_ref().storage_is_open() {
             return true;
         }
-        let path = self
-            .as_ref()
-            .rust()
-            .store
-            .as_ref()
-            .map(|store| store.path().to_owned());
-        let Some(path) = path else {
-            return false;
+        let restart = {
+            let mut rust = self.as_mut().rust_mut();
+            rust.as_mut()
+                .get_mut()
+                .state
+                .as_mut()
+                .ok_or_else(|| "profile application is unavailable".to_owned())
+                .and_then(|application| {
+                    application
+                        .restart_storage()
+                        .map_err(|error| error.to_string())
+                })
         };
-        match ProfileStoreWorker::spawn(path) {
-            Ok(worker) => {
-                self.as_mut().rust_mut().as_mut().get_mut().storage_worker = Some(worker);
+        match restart {
+            Ok(()) => {
                 self.set_status_text(QString::from("Profile metadata worker restarted"));
                 true
             }
@@ -13990,9 +7852,11 @@ impl qobject::BrowserUi {
                 this.session_names_dirty.set(false);
                 return;
             };
-            this.storage_worker
-                .as_mut()
-                .map(|worker| worker.request_session_list(root, profile_id))
+            drop(rust);
+            Some(
+                self.as_mut()
+                    .submit_storage(StorageRequest::SessionList { root, profile_id }),
+            )
         };
         if let Some(Err(error)) = request
             && !matches!(
@@ -14010,27 +7874,96 @@ impl qobject::BrowserUi {
     fn poll_storage_library(mut self: Pin<&mut Self>) -> bool {
         self.as_mut().ensure_storage_worker();
         let mut consumed = self.as_mut().poll_switcher_library_index();
-        let library_result = {
+        let effects = self.as_mut().poll_storage_effects();
+        let mut journey_ticket = None;
+        let mut library_result = None;
+        let mut session_result = None;
+        let mut session_restore_result = None;
+        let mut session_save_result = None;
+        let mut session_delete_result = None;
+        let mut session_checkpoint_clear_result = None;
+        let mut history_result = None;
+        let mut permission_result = None;
+        let mut permission_reset_result = None;
+        let mut download_result = None;
+        let mut download_destination_result = None;
+        let mut download_create_result = None;
+        let mut journey_result = None;
+        let mut journey_node_result = None;
+        let mut journey_query_result = None;
+        let mut journey_export_result = None;
+        let mut mark_result = None;
+        let mut history_clear_result = None;
+        let mut flush_result = None;
+        for effect in effects {
+            match effect.completion {
+                StorageCompletion::Library(result) => {
+                    library_result = Some(result.map_err(|error| error.message));
+                }
+                StorageCompletion::SessionList(result) => {
+                    session_result = Some(result.map_err(|error| error.message));
+                }
+                StorageCompletion::SessionRestore(result) => {
+                    session_restore_result = Some(result.map_err(|error| error.message));
+                }
+                StorageCompletion::SessionSave(result) => {
+                    session_save_result = Some(result.map_err(|error| error.message));
+                }
+                StorageCompletion::SessionDelete(result) => {
+                    session_delete_result = Some(result.map_err(|error| error.message));
+                }
+                StorageCompletion::SessionCheckpointClear(result) => {
+                    session_checkpoint_clear_result = Some(result.map_err(|error| error.message));
+                }
+                StorageCompletion::HistoryBatch(result) => {
+                    history_result = Some(result.map_err(|error| error.message));
+                }
+                StorageCompletion::PermissionBatch(result) => {
+                    permission_result = Some(result.map_err(|error| error.message));
+                }
+                StorageCompletion::PermissionReset(result) => {
+                    permission_reset_result = Some(result.map_err(|error| error.message));
+                }
+                StorageCompletion::DownloadBatch(result) => {
+                    download_result = Some(result.map_err(|error| error.message));
+                }
+                StorageCompletion::DownloadDestination(result) => {
+                    download_destination_result = Some(result.map_err(|error| error.message));
+                }
+                StorageCompletion::DownloadCreate(result) => {
+                    download_create_result = Some(result.map_err(|error| error.message));
+                }
+                StorageCompletion::JourneyWrite(result) => {
+                    journey_ticket = Some(effect.ticket);
+                    journey_result = Some(result.map_err(|error| error.message));
+                }
+                StorageCompletion::JourneyNode(result) => {
+                    journey_node_result = Some(result.map_err(|error| error.message));
+                }
+                StorageCompletion::JourneyQuery(result) => {
+                    journey_query_result = Some(result.map_err(|error| error.message));
+                }
+                StorageCompletion::JourneyExport(result) => {
+                    journey_export_result = Some(result.map_err(|error| error.message));
+                }
+                StorageCompletion::MarkWrite(result) => {
+                    mark_result = Some(result.map_err(|error| error.message));
+                }
+                StorageCompletion::HistoryClear(result) => {
+                    history_clear_result = Some(result.map_err(|error| error.message));
+                }
+                StorageCompletion::Flush(result) => {
+                    flush_result = Some(result.map_err(|error| error.message));
+                }
+            }
+        }
+        if let Some(result) = flush_result {
+            consumed = true;
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            this.storage_worker
-                .as_mut()
-                .and_then(ProfileStoreWorker::poll_library)
-        };
-        let history_result = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.storage_worker
-                .as_mut()
-                .and_then(ProfileStoreWorker::poll_history_batch)
-        };
-        let session_checkpoint_clear_result = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.storage_worker
-                .as_mut()
-                .and_then(ProfileStoreWorker::poll_session_checkpoint_clear)
-        };
+            this.storage_flush_pending = false;
+            this.storage_flush_error = result.err();
+        }
         if let Some(result) = session_checkpoint_clear_result {
             consumed = true;
             let mut rust = self.as_mut().rust_mut();
@@ -14043,13 +7976,6 @@ impl qobject::BrowserUi {
                 )));
             }
         }
-        let session_delete_result = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.storage_worker
-                .as_mut()
-                .and_then(ProfileStoreWorker::poll_session_delete)
-        };
         if let Some(result) = session_delete_result {
             consumed = true;
             match result {
@@ -14066,13 +7992,6 @@ impl qobject::BrowserUi {
                 }
             }
         }
-        let session_save_result = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.storage_worker
-                .as_mut()
-                .and_then(ProfileStoreWorker::poll_session_save)
-        };
         if let Some(result) = session_save_result {
             consumed = true;
             let checkpoint_save = {
@@ -14107,13 +8026,6 @@ impl qobject::BrowserUi {
                 }
             }
         }
-        let session_restore_result = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.storage_worker
-                .as_mut()
-                .and_then(ProfileStoreWorker::poll_session_restore)
-        };
         if let Some(result) = session_restore_result {
             consumed = true;
             let recovery_pending = {
@@ -14220,13 +8132,6 @@ impl qobject::BrowserUi {
                 }
             }
         }
-        let session_result = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.storage_worker
-                .as_mut()
-                .and_then(ProfileStoreWorker::poll_session_list)
-        };
         if let Some(result) = session_result {
             consumed = true;
             match result {
@@ -14251,24 +8156,16 @@ impl qobject::BrowserUi {
                     let this = rust.as_mut().get_mut();
                     this.storage_library = Some(snapshot);
                     this.storage_library_revision = this.storage_library_revision.saturating_add(1);
-                    this.storage_library_dirty.set(
-                        this.inflight_history_writes.is_some()
-                            || !this.pending_history_writes.is_empty()
-                            || this.inflight_permission_writes.is_some()
-                            || !this.pending_permission_writes.is_empty()
-                            || this.inflight_mark_writes.is_some()
-                            || !this.pending_mark_writes.is_empty()
-                            || this.inflight_download_writes.is_some()
-                            || !this.pending_download_writes.is_empty(),
-                    );
+                    this.storage_library_dirty.set(false);
                 }
                 Err(error) => {
-                    let mut rust = self.as_mut().rust_mut();
-                    let this = rust.as_mut().get_mut();
-                    this.storage_worker = None;
-                    this.storage_library = None;
-                    this.storage_library_dirty.set(false);
-                    drop(rust);
+                    {
+                        let mut rust = self.as_mut().rust_mut();
+                        let this = rust.as_mut().get_mut();
+                        this.storage_library = None;
+                        this.storage_library_dirty.set(false);
+                    }
+                    self.as_mut().close_storage();
                     self.as_mut().set_status_text(QString::from(format!(
                         "Profile metadata query failed: {error}"
                     )));
@@ -14276,13 +8173,6 @@ impl qobject::BrowserUi {
             }
         }
         self.as_mut().request_switcher_library_index();
-        let journey_node_result = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.storage_worker
-                .as_mut()
-                .and_then(ProfileStoreWorker::poll_journey_node)
-        };
         if let Some(result) = journey_node_result {
             consumed = true;
             let pending = self
@@ -14328,13 +8218,6 @@ impl qobject::BrowserUi {
                     .set_status_text(QString::from("Journey reopen request expired")),
             }
         }
-        let journey_query_result = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.storage_worker
-                .as_mut()
-                .and_then(ProfileStoreWorker::poll_journey_query)
-        };
         if let Some(result) = journey_query_result {
             consumed = true;
             match result {
@@ -14348,13 +8231,6 @@ impl qobject::BrowserUi {
                     .set_status_text(QString::from(format!("Journey query failed: {error}"))),
             }
         }
-        let journey_export_result = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.storage_worker
-                .as_mut()
-                .and_then(ProfileStoreWorker::poll_journey_export)
-        };
         if let Some(result) = journey_export_result {
             consumed = true;
             match result {
@@ -14404,24 +8280,10 @@ impl qobject::BrowserUi {
             consumed = true;
             self.as_mut().apply_history_batch_result(result);
         }
-        let permission_result = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.storage_worker
-                .as_mut()
-                .and_then(ProfileStoreWorker::poll_permission_batch)
-        };
         if let Some(result) = permission_result {
             consumed = true;
             self.as_mut().apply_permission_batch_result(result);
         }
-        let permission_reset_result = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.storage_worker
-                .as_mut()
-                .and_then(ProfileStoreWorker::poll_permission_reset)
-        };
         if let Some(result) = permission_reset_result {
             consumed = true;
             let session_removed = self
@@ -14454,74 +8316,25 @@ impl qobject::BrowserUi {
                 ))),
             }
         }
-        let download_result = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.storage_worker
-                .as_mut()
-                .and_then(ProfileStoreWorker::poll_download_batch)
-        };
         if let Some(result) = download_result {
             consumed = true;
             self.as_mut().apply_download_batch_result(result);
         }
-        let mark_result = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.storage_worker
-                .as_mut()
-                .and_then(ProfileStoreWorker::poll_mark_write)
-        };
         if let Some(result) = mark_result {
             consumed = true;
-            let batch = self
-                .as_mut()
-                .rust_mut()
-                .as_mut()
-                .get_mut()
-                .inflight_mark_writes
-                .take();
             match result {
-                Ok(committed) if batch.as_ref().is_some_and(|batch| committed == batch.len()) => {
+                Ok(_) => {
                     self.as_ref().rust().storage_library_dirty.set(true);
                     self.as_mut()
                         .set_status_text(QString::from("Bookmark/quickmark write committed"));
                 }
-                Ok(committed) => {
-                    if let Some(batch) = batch {
-                        let mut rust = self.as_mut().rust_mut();
-                        let this = rust.as_mut().get_mut();
-                        for write in batch.into_iter().rev() {
-                            this.pending_mark_writes.push_front(write);
-                        }
-                    }
-                    self.as_mut().rust_mut().as_mut().get_mut().storage_worker = None;
-                    self.as_mut().set_status_text(QString::from(format!(
-                        "Bookmark/quickmark worker committed an unexpected count ({committed})"
-                    )));
-                }
                 Err(error) => {
-                    if let Some(batch) = batch {
-                        let mut rust = self.as_mut().rust_mut();
-                        let this = rust.as_mut().get_mut();
-                        for write in batch.into_iter().rev() {
-                            this.pending_mark_writes.push_front(write);
-                        }
-                    }
-                    self.as_mut().rust_mut().as_mut().get_mut().storage_worker = None;
                     self.as_mut().set_status_text(QString::from(format!(
-                        "Bookmark/quickmark worker write failed; retry retained: {error}"
+                        "Bookmark/quickmark worker write failed: {error}"
                     )));
                 }
             }
         }
-        let history_clear_result = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.storage_worker
-                .as_mut()
-                .and_then(ProfileStoreWorker::poll_history_clear)
-        };
         if let Some(result) = history_clear_result {
             consumed = true;
             let clear_filter = self
@@ -14568,15 +8381,13 @@ impl qobject::BrowserUi {
                 }
             }
         }
-        let download_destination_result = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.storage_worker
-                .as_mut()
-                .and_then(ProfileStoreWorker::poll_download_destination)
-        };
         if let Some(result) = download_destination_result {
             consumed = true;
+            self.as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .download_destination_pending = false;
             match result {
                 Ok(()) => {
                     self.as_ref().rust().storage_library_dirty.set(true);
@@ -14588,15 +8399,13 @@ impl qobject::BrowserUi {
                 }
             }
         }
-        let download_create_result = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.storage_worker
-                .as_mut()
-                .and_then(ProfileStoreWorker::poll_download_create)
-        };
         if let Some(result) = download_create_result {
             consumed = true;
+            self.as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .download_create_pending = false;
             match result {
                 Ok(()) => {
                     self.as_ref().rust().storage_library_dirty.set(true);
@@ -14608,22 +8417,16 @@ impl qobject::BrowserUi {
                 }
             }
         }
-        let journey_result = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.storage_worker
-                .as_mut()
-                .and_then(ProfileStoreWorker::poll_journey_write)
-        };
         if let Some(result) = journey_result {
             consumed = true;
-            let mapping = self
-                .as_mut()
-                .rust_mut()
-                .as_mut()
-                .get_mut()
-                .pending_journey_mapping
-                .take();
+            let mapping = journey_ticket.and_then(|ticket| {
+                self.as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .pending_journey_mappings
+                    .remove(&ticket)
+            });
             match result {
                 Ok(true) => {
                     if let Some((core_id, durable_id)) = mapping {
@@ -14650,12 +8453,7 @@ impl qobject::BrowserUi {
                     )));
                 }
             }
-            self.as_mut().flush_journey_writes();
         }
-        // A journey request may have been deferred while another storage
-        // mutation occupied the worker. Retry it on every storage poll so the
-        // bounded queue cannot wait for a journey response that never arrives.
-        self.as_mut().flush_journey_writes();
         self.as_mut().flush_history_writes();
         self.as_mut().flush_permission_writes();
         self.as_mut().flush_mark_writes();
@@ -14664,20 +8462,15 @@ impl qobject::BrowserUi {
     }
 
     fn apply_mark_write(mut self: Pin<&mut Self>, write: MarkWrite) -> Result<(), String> {
-        if self.as_ref().rust().storage_worker.is_none() {
+        if !self.as_ref().storage_is_open() {
             return Err("profile metadata worker is unavailable".to_owned());
         }
-        if self.as_ref().rust().pending_mark_writes.len() >= MAX_PENDING_MARK_WRITES {
-            return Err("bookmark/quickmark write queue is full; retry the mark command".into());
-        }
         self.as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .pending_mark_writes
-            .push_back(write);
+            .submit_storage(StorageRequest::MarkBatch {
+                writes: vec![write],
+            })
+            .map_err(|error| error.to_string())?;
         self.as_ref().rust().storage_library_dirty.set(true);
-        self.as_mut().flush_mark_writes();
         self.set_status_text(QString::from("Bookmark/quickmark write queued"));
         Ok(())
     }
@@ -14716,13 +8509,10 @@ impl qobject::BrowserUi {
         since: Option<i64>,
         origin: Option<String>,
     ) -> Result<(), String> {
-        let result = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.storage_worker
-                .as_mut()
-                .map(|worker| worker.request_history_clear(since, origin.clone()))
-        };
+        let result = Some(self.as_mut().submit_storage(StorageRequest::HistoryClear {
+            since,
+            origin: origin.clone(),
+        }));
         match result {
             Some(Ok(())) => {
                 self.as_mut()
@@ -14749,16 +8539,21 @@ impl qobject::BrowserUi {
         id: String,
         destination: String,
     ) -> Result<(), String> {
-        let result = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.storage_worker
-                .as_mut()
-                .map(|worker| worker.request_download_destination(id.clone(), destination.clone()))
-        };
+        let result = Some(
+            self.as_mut()
+                .submit_storage(StorageRequest::DownloadDestination {
+                    id: id.clone(),
+                    destination: destination.clone(),
+                }),
+        );
         match result {
             Some(Ok(())) => {
                 self.as_ref().rust().storage_library_dirty.set(true);
+                self.as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .download_destination_pending = true;
                 self.as_mut()
                     .set_status_text(QString::from("Download destination update queued"));
                 Ok(())
@@ -14780,22 +8575,24 @@ impl qobject::BrowserUi {
         state: DownloadState,
         created_at: i64,
     ) -> Result<(), String> {
-        let result = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.storage_worker.as_mut().map(|worker| {
-                worker.request_download_create(
-                    id.clone(),
-                    source_url.clone(),
-                    destination.clone(),
+        let result = Some(
+            self.as_mut()
+                .submit_storage(StorageRequest::DownloadCreate {
+                    id: id.clone(),
+                    source_url: source_url.clone(),
+                    destination: destination.clone(),
                     state,
                     created_at,
-                )
-            })
-        };
+                }),
+        );
         match result {
             Some(Ok(())) => {
                 self.as_ref().rust().storage_library_dirty.set(true);
+                self.as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .download_create_pending = true;
                 self.as_mut()
                     .set_status_text(QString::from("Download index creation queued"));
                 Ok(())
@@ -14809,181 +8606,58 @@ impl qobject::BrowserUi {
         }
     }
 
-    fn apply_journey_write(mut self: Pin<&mut Self>, write: JourneyWrite) -> Result<(), String> {
-        let result = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.storage_worker
-                .as_mut()
-                .map(|worker| worker.request_journey_write(write.clone()))
-        };
-        match result {
-            Some(Ok(())) => {
+    fn apply_journey_write(
+        mut self: Pin<&mut Self>,
+        write: JourneyWrite,
+    ) -> Result<StorageTicket, String> {
+        match self
+            .as_mut()
+            .submit_storage_with_ticket(StorageRequest::JourneyWrite { write })
+        {
+            Ok(ticket) => {
                 self.as_ref().rust().storage_library_dirty.set(true);
                 self.as_mut()
                     .set_status_text(QString::from("Journey write queued"));
-                Ok(())
+                Ok(ticket)
             }
-            Some(Err(
-                ferric_browser_storage::StorageWorkerError::Busy
-                | ferric_browser_storage::StorageWorkerError::QueueFull,
-            )) => Err("profile metadata worker is busy; retry journey write".into()),
-            Some(Err(error)) => Err(error.to_string()),
-            None => Err("profile metadata worker is unavailable".to_owned()),
-        }
-    }
-
-    fn flush_journey_writes(mut self: Pin<&mut Self>) {
-        if self.as_ref().rust().pending_journey_mapping.is_some()
-            || self
-                .as_ref()
-                .rust()
-                .storage_worker
-                .as_ref()
-                .is_some_and(ProfileStoreWorker::journey_pending)
-        {
-            return;
-        }
-        let Some((write, mapping)) = self.as_ref().rust().pending_journey_writes.front().cloned()
-        else {
-            return;
-        };
-        match self.as_mut().apply_journey_write(write) {
-            Ok(()) => {
-                self.as_mut()
-                    .rust_mut()
-                    .as_mut()
-                    .get_mut()
-                    .pending_journey_writes
-                    .pop_front();
-                self.as_mut()
-                    .rust_mut()
-                    .as_mut()
-                    .get_mut()
-                    .pending_journey_mapping = mapping;
-            }
-            Err(error) if error.contains("busy") || error.contains("queue is full") => {}
-            Err(error) => {
-                self.as_mut()
-                    .rust_mut()
-                    .as_mut()
-                    .get_mut()
-                    .pending_journey_writes
-                    .pop_front();
-                self.as_mut().set_status_text(QString::from(format!(
-                    "Journey worker write failed; history retained: {error}"
-                )));
-            }
+            Err(error) => Err(error.to_string()),
         }
     }
 
     fn apply_history_batch_result(mut self: Pin<&mut Self>, result: Result<usize, String>) {
-        let batch = self
-            .as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .inflight_history_writes
-            .take();
-        let Some(batch) = batch else {
-            return;
-        };
         match result {
             Ok(_) => {
                 self.as_ref().rust().storage_library_dirty.set(true);
-                self.as_mut().flush_history_writes();
             }
             Err(error) => {
-                let mut rust = self.as_mut().rust_mut();
-                let this = rust.as_mut().get_mut();
-                for visit in batch.into_iter().rev() {
-                    this.pending_history_writes.push_front(visit);
-                }
-                drop(rust);
                 self.as_mut().set_status_text(QString::from(format!(
-                    "History worker write failed; pending entries retained: {error}"
+                    "History worker write failed: {error}"
                 )));
             }
         }
     }
 
     fn apply_permission_batch_result(mut self: Pin<&mut Self>, result: Result<usize, String>) {
-        let batch = self
-            .as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .inflight_permission_writes
-            .take();
-        let Some(batch) = batch else {
-            return;
-        };
         match result {
-            Ok(committed) if committed == batch.len() => {
+            Ok(_) => {
                 self.as_ref().rust().storage_library_dirty.set(true);
-                self.as_mut().flush_permission_writes();
-            }
-            Ok(committed) => {
-                let mut rust = self.as_mut().rust_mut();
-                let this = rust.as_mut().get_mut();
-                for rule in batch.into_iter().rev() {
-                    this.pending_permission_writes.push_front(rule);
-                }
-                drop(rust);
-                self.as_mut().set_status_text(QString::from(format!(
-                    "Permission worker committed an incomplete batch ({committed}); pending rules retained"
-                )));
             }
             Err(error) => {
-                let mut rust = self.as_mut().rust_mut();
-                let this = rust.as_mut().get_mut();
-                for rule in batch.into_iter().rev() {
-                    this.pending_permission_writes.push_front(rule);
-                }
-                drop(rust);
                 self.as_mut().set_status_text(QString::from(format!(
-                    "Permission worker write failed; pending rules retained: {error}"
+                    "Permission worker write failed: {error}"
                 )));
             }
         }
     }
 
     fn apply_download_batch_result(mut self: Pin<&mut Self>, result: Result<usize, String>) {
-        let batch = self
-            .as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .inflight_download_writes
-            .take();
-        let Some(batch) = batch else {
-            return;
-        };
         match result {
-            Ok(committed) if committed == batch.len() => {
+            Ok(_) => {
                 self.as_ref().rust().storage_library_dirty.set(true);
-                self.as_mut().flush_download_writes();
-            }
-            Ok(committed) => {
-                let mut rust = self.as_mut().rust_mut();
-                let this = rust.as_mut().get_mut();
-                for update in batch.into_iter().rev() {
-                    this.pending_download_writes.push_front(update);
-                }
-                drop(rust);
-                self.as_mut().set_status_text(QString::from(format!(
-                    "Download worker committed an incomplete batch ({committed}); updates retained"
-                )));
             }
             Err(error) => {
-                let mut rust = self.as_mut().rust_mut();
-                let this = rust.as_mut().get_mut();
-                for update in batch.into_iter().rev() {
-                    this.pending_download_writes.push_front(update);
-                }
-                drop(rust);
                 self.as_mut().set_status_text(QString::from(format!(
-                    "Download worker write failed; updates retained: {error}"
+                    "Download worker write failed: {error}"
                 )));
             }
         }
@@ -15483,17 +9157,16 @@ impl qobject::BrowserUi {
                 ));
                 return false;
             }
-            match self.as_mut().execute_ui_action_with_source(
+            if self.as_mut().execute_ui_action_with_source(
                 &QString::from("browser.context.enter"),
                 &QString::from(context.name),
                 CommandSource::Switcher,
             ) {
-                true => {
-                    self.as_mut().sync_core_tabs();
-                    self.set_status_text(QString::from("Context entered"));
-                    true
-                }
-                false => false,
+                self.as_mut().sync_core_tabs();
+                self.set_status_text(QString::from("Context entered"));
+                true
+            } else {
+                false
             }
         } else if kind == "session" {
             let Some(profile_id) = self.as_ref().rust().profile_id else {
@@ -15524,15 +9197,13 @@ impl qobject::BrowserUi {
                 self.set_status_text(QString::from("Downloads manager requested"));
                 true
             } else {
-                let payload = self
-                    .as_mut()
-                    .download_desktop_action(&QString::from(id), false);
-                let Ok(value) = serde_json::from_str::<Value>(&payload.to_string()) else {
-                    return false;
-                };
-                let Some(uri) = value.get("uri").and_then(Value::as_str) else {
-                    self.set_status_text(QString::from("Download has no safe desktop URI"));
-                    return false;
+                let id = QString::from(id);
+                let uri = match self.as_mut().resolve_download_desktop_uri(&id, false) {
+                    Ok(uri) => uri,
+                    Err(error) => {
+                        self.set_status_text(QString::from(error));
+                        return false;
+                    }
                 };
                 self.as_mut()
                     .rust_mut()
@@ -15652,6 +9323,21 @@ impl qobject::BrowserUi {
     fn wait_for_storage_flush(mut self: Pin<&mut Self>) -> bool {
         let deadline = Instant::now() + Duration::from_secs(2);
         loop {
+            self.as_mut().poll_storage_library();
+            let (pending, error) = {
+                let this = self.as_ref();
+                let rust = this.rust();
+                (rust.storage_flush_pending, rust.storage_flush_error.clone())
+            };
+            if let Some(error) = error {
+                self.set_status_text(QString::from(format!(
+                    "Durable metadata flush failed: {error}"
+                )));
+                return false;
+            }
+            if !pending {
+                return true;
+            }
             let now = Instant::now();
             if now >= deadline {
                 self.set_status_text(QString::from(
@@ -15659,30 +9345,13 @@ impl qobject::BrowserUi {
                 ));
                 return false;
             }
-            let timeout = (deadline - now).min(Duration::from_millis(50));
-            let result = {
-                let mut rust = self.as_mut().rust_mut();
-                let this = rust.as_mut().get_mut();
-                this.storage_worker
-                    .as_mut()
-                    .and_then(|worker| worker.wait_flush(timeout))
-            };
-            if let Some(result) = result {
-                match result {
-                    Ok(()) => return true,
-                    Err(error) => {
-                        self.set_status_text(QString::from(format!(
-                            "Durable metadata flush failed: {error}"
-                        )));
-                        return false;
-                    }
-                }
-            } else if self.as_ref().rust().storage_worker.is_none() {
+            if !self.as_ref().storage_is_open() {
                 self.set_status_text(QString::from(
                     "Durable metadata flush unavailable; worker stopped",
                 ));
                 return false;
             }
+            thread::sleep(Duration::from_millis(5));
         }
     }
 
@@ -15725,30 +9394,31 @@ impl qobject::BrowserUi {
         if !self.as_mut().wait_for_journey_write() {
             return false;
         }
-        let request_result = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.storage_worker
-                .as_mut()
-                .map(ProfileStoreWorker::request_flush)
-        };
+        let request_result = self.as_mut().submit_storage(StorageRequest::Flush);
         match request_result {
-            Some(Ok(())) if self.as_mut().wait_for_storage_flush() => {}
-            Some(Ok(())) => return false,
-            Some(Err(error)) => {
+            Ok(()) => {
+                let mut rust = self.as_mut().rust_mut();
+                let this = rust.as_mut().get_mut();
+                this.storage_flush_pending = true;
+                this.storage_flush_error = None;
+                drop(rust);
+                if !self.as_mut().wait_for_storage_flush() {
+                    return false;
+                }
+            }
+            Err(error) => {
                 self.set_status_text(QString::from(format!(
                     "Durable metadata flush unavailable: {error}"
                 )));
                 return false;
             }
-            None => {
-                self.set_status_text(QString::from(
-                    "Durable metadata flush unavailable; worker is stopped",
-                ));
-                return false;
-            }
         }
-        if self.as_ref().rust().store.is_none() {
+        if self
+            .as_ref()
+            .rust()
+            .profile_persistence
+            .lacks_durable_storage()
+        {
             self.set_status_text(QString::from("Durable profile store is unavailable"));
             return false;
         }
@@ -15775,25 +9445,18 @@ impl qobject::BrowserUi {
         };
         let result = self
             .as_ref()
-            .rust()
-            .storage_worker
-            .as_ref()
-            .map(|_| (root, profile_id));
+            .storage_is_open()
+            .then_some((root, profile_id));
         let Some((root, profile_id)) = result else {
             self.set_status_text(QString::from(
                 "Stale session checkpoint cleanup unavailable; recovery data was retained",
             ));
             return false;
         };
-        match self
-            .as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .storage_worker
-            .as_mut()
-            .map(|worker| worker.request_session_checkpoint_clear(root, profile_id))
-        {
+        match Some(
+            self.as_mut()
+                .submit_storage(StorageRequest::SessionCheckpointClear { root, profile_id }),
+        ) {
             Some(Ok(())) => {
                 self.as_mut()
                     .rust_mut()
@@ -15812,115 +9475,6 @@ impl qobject::BrowserUi {
                 self.set_status_text(QString::from(
                     "Stale session checkpoint cleanup unavailable; recovery data was retained",
                 ));
-                false
-            }
-        }
-    }
-
-    fn reduce_event(mut self: Pin<&mut Self>, event: Event) -> Result<Vec<Effect>, String> {
-        let event_type = ipc_event_type(&event);
-        let mut rust = self.as_mut().rust_mut();
-        let this = rust.as_mut().get_mut();
-        let previous_revision = this.state.as_ref().map_or(0, ApplicationState::revision);
-        let result = this
-            .state
-            .as_mut()
-            .ok_or_else(|| "Core state unavailable".to_owned())
-            .and_then(|state| {
-                BrowserRuntime::handle_with_state(state, RuntimeInput::EngineFact(event.clone()))
-                    .map(|effects| {
-                        effects
-                            .into_iter()
-                            .filter_map(|effect| match effect {
-                                RuntimeEffect::Engine(effect) => Some(Effect::Engine(effect)),
-                                RuntimeEffect::Storage(effect) => Some(Effect::Persist(effect)),
-                                RuntimeEffect::Diagnostic(effect) => {
-                                    Some(Effect::Diagnostic(effect))
-                                }
-                                RuntimeEffect::UiModelUpdated(_)
-                                | RuntimeEffect::WorkerObserved { .. } => None,
-                            })
-                            .collect::<Vec<Effect>>()
-                    })
-                    .map_err(|error| {
-                        format!("{}: {}", error.code().as_str(), error.diagnostic_context())
-                    })
-            });
-        let accepted = result.as_ref().is_ok_and(|effects| {
-            !effects.iter().any(|effect| {
-                matches!(
-                    effect,
-                    Effect::Diagnostic(Diagnostic::IgnoredStaleTarget { .. })
-                )
-            })
-        });
-        if accepted {
-            this.checkpoint.dirty = true;
-            if this.checkpoint.dirty_since_ms.is_none() {
-                this.checkpoint.dirty_since_ms = Some(elapsed_ms(this.binding_clock));
-            }
-            this.ipc_sequence = this.ipc_sequence.max(previous_revision).saturating_add(1);
-            if let Some(instance_id) = IPC_INSTANCE_ID.get() {
-                publish_event(&EventNotification {
-                    instance_id: instance_id.clone(),
-                    sequence: this.ipc_sequence,
-                    event_type: event_type.into(),
-                    payload: this.state.as_ref().map_or_else(
-                        || serde_json::json!({}),
-                        |state| ipc_event_payload(&event, state),
-                    ),
-                });
-            }
-        }
-        result
-    }
-
-    fn note_renderer_process_terminated(mut self: Pin<&mut Self>, tab_index: i32) -> bool {
-        let tab = if tab_index >= 0 {
-            self.as_ref().tab_for_index(tab_index)
-        } else {
-            self.as_ref().rust().tab
-        };
-        let Some(target) = current_target(self.as_ref().rust().state.as_ref(), tab) else {
-            self.set_status_text(QString::from("Renderer termination target is stale"));
-            return false;
-        };
-        match self
-            .as_mut()
-            .reduce_event(Event::RendererTerminated { target })
-        {
-            Ok(_) => {
-                self.set_status_text(QString::from("Renderer terminated; recovery required"));
-                true
-            }
-            Err(error) => {
-                self.set_status_text(QString::from(format!(
-                    "Renderer termination was not recorded: {error}"
-                )));
-                false
-            }
-        }
-    }
-
-    fn prepare_renderer_recovery(mut self: Pin<&mut Self>, tab_index: i32) -> bool {
-        let tab = if tab_index >= 0 {
-            self.as_ref().tab_for_index(tab_index)
-        } else {
-            self.as_ref().rust().tab
-        };
-        let Some(target) = current_target(self.as_ref().rust().state.as_ref(), tab) else {
-            self.set_status_text(QString::from("Renderer recovery target is stale"));
-            return false;
-        };
-        match self.as_mut().reduce_event(Event::Reload {
-            target,
-            bypass_cache: false,
-        }) {
-            Ok(_) => true,
-            Err(error) => {
-                self.set_status_text(QString::from(format!(
-                    "Renderer recovery was not prepared: {error}"
-                )));
                 false
             }
         }
@@ -16193,150 +9747,6 @@ impl qobject::BrowserUi {
         true
     }
 
-    fn target_for_index(&self, index: i32) -> Option<Target> {
-        current_target(self.rust().state.as_ref(), self.tab_for_index(index))
-    }
-
-    fn sync_active_tab_properties(mut self: Pin<&mut Self>) {
-        let (index, tab) = {
-            let rust = self.as_ref().get_ref().rust();
-            let Some(state) = rust.state.as_ref() else {
-                return;
-            };
-            let Some(window) = rust.window else {
-                return;
-            };
-            let Some(tab) = state
-                .windows()
-                .get(&window)
-                .and_then(|window| window.active_tab)
-            else {
-                return;
-            };
-            let Some(index) = rust.tab_ids.iter().position(|candidate| *candidate == tab) else {
-                return;
-            };
-            (i32::try_from(index).unwrap_or(i32::MAX), tab)
-        };
-        {
-            let mut rust = self.as_mut().rust_mut();
-            rust.as_mut().get_mut().tab = Some(tab);
-        }
-        self.as_mut().set_active_tab_properties(index, tab);
-    }
-
-    fn sync_core_tabs(mut self: Pin<&mut Self>) {
-        let active_tab = {
-            let rust = self.as_ref().get_ref().rust();
-            let Some(window) = rust.window else {
-                return;
-            };
-            rust.state
-                .as_ref()
-                .and_then(|state| state.windows().get(&window))
-                .and_then(|window| window.active_tab)
-        };
-        let Some(active_tab) = active_tab else {
-            self.as_mut().sync_context_metadata();
-            return;
-        };
-        let (index, count) = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            if !this.tab_ids.contains(&active_tab) && !this.popup_tab_ids.contains(&active_tab) {
-                this.tab_ids.push(active_tab);
-            }
-            let Some(index) = this.tab_ids.iter().position(|tab| *tab == active_tab) else {
-                return;
-            };
-            this.tab = Some(active_tab);
-            (
-                i32::try_from(index).unwrap_or(i32::MAX),
-                i32::try_from(this.tab_ids.len()).unwrap_or(i32::MAX),
-            )
-        };
-        self.as_mut().set_tab_count(count);
-        self.as_mut().set_active_tab_properties(index, active_tab);
-        self.as_mut().sync_context_metadata();
-    }
-
-    fn sync_tab_order_from_core(mut self: Pin<&mut Self>) {
-        let (tab_ids, active_tab) = {
-            let rust = self.as_ref().get_ref().rust();
-            let Some(window) = rust.window else {
-                return;
-            };
-            let Some(window_state) = rust
-                .state
-                .as_ref()
-                .and_then(|state| state.windows().get(&window))
-            else {
-                return;
-            };
-            (window_state.tabs.clone(), window_state.active_tab)
-        };
-        let active_index = active_tab
-            .and_then(|tab| tab_ids.iter().position(|candidate| *candidate == tab))
-            .unwrap_or(0);
-        let active_index = i32::try_from(active_index).unwrap_or(i32::MAX);
-        let tab_count = i32::try_from(tab_ids.len()).unwrap_or(i32::MAX);
-        {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.tab_ids = tab_ids;
-            this.tab = active_tab;
-            this.focus_observations.clear();
-            this.focus_suppressions.clear();
-        }
-        self.as_mut().set_tab_count(tab_count);
-        if let Some(tab) = active_tab {
-            self.as_mut().set_active_tab_properties(active_index, tab);
-        } else {
-            self.as_mut().set_active_tab_index(0);
-        }
-        self.as_mut().sync_context_metadata();
-    }
-
-    fn sync_context_metadata(mut self: Pin<&mut Self>) {
-        let (name, label, workspace, accent) = {
-            let binding = self.as_ref();
-            let rust = binding.rust();
-            let context = rust
-                .window
-                .and_then(|window_id| {
-                    rust.state
-                        .as_ref()?
-                        .windows()
-                        .get(&window_id)?
-                        .context
-                        .as_deref()
-                })
-                .and_then(|name| {
-                    rust.contexts
-                        .as_ref()?
-                        .contexts()
-                        .iter()
-                        .find(|context| context.name == name)
-                });
-            context.map_or_else(
-                || (String::new(), String::new(), String::new(), String::new()),
-                |context| {
-                    (
-                        context.name.clone(),
-                        context.label.clone(),
-                        context.workspace.clone().unwrap_or_default(),
-                        context.accent.clone().unwrap_or_default(),
-                    )
-                },
-            )
-        };
-        self.as_mut().set_context_name(QString::from(name));
-        self.as_mut().set_context_label(QString::from(label));
-        self.as_mut()
-            .set_context_workspace(QString::from(workspace));
-        self.as_mut().set_context_accent(QString::from(accent));
-    }
-
     fn clear_completion(mut self: Pin<&mut Self>) {
         self.as_mut().set_completion_text(QString::default());
         self.as_mut().set_completion_values(QString::default());
@@ -16354,8 +9764,11 @@ impl qobject::BrowserUi {
                 insert_text: metadata.key.to_owned(),
                 label: metadata.key.to_owned(),
                 detail: format!(
-                    "{} · default {}",
-                    metadata.value_type, metadata.default_value
+                    "{} · {} · {} · default {}",
+                    metadata.value_type,
+                    metadata.apply_time,
+                    metadata.supported_scopes.join("/"),
+                    metadata.default_value
                 ),
                 category: CompletionCategory::Setting,
                 recency: 0,
@@ -16922,36 +10335,30 @@ impl qobject::BrowserUi {
                     return;
                 }
                 self.as_mut().note_repeatable_command(&parsed);
-                let Some(state) = self.as_ref().rust().state.clone() else {
-                    self.set_status_text(QString::from("Core state unavailable"));
-                    return;
+                let effects = {
+                    if self.as_ref().rust().state.is_none() {
+                        self.set_status_text(QString::from("Core state unavailable"));
+                        return;
+                    }
+                    let navigation = self.as_ref().navigation_context();
+                    self.as_mut().dispatch_runtime(RuntimeDispatch {
+                        invocation: CommandInvocation::with_count(parsed, count),
+                        navigation,
+                        target: DispatchTarget::Active,
+                    })
                 };
-                let events = match dispatch_command(
-                    &state,
-                    &registry,
-                    CommandInvocation::with_count(parsed, count),
-                    &self.as_ref().navigation_context(),
-                ) {
-                    Ok(events) => events,
+                let effects = match effects {
+                    Ok(effects) => effects,
                     Err(error) => {
                         self.set_status_text(QString::from(error.to_string()));
                         return;
                     }
                 };
-                for event in events {
-                    let effects = match self.as_mut().reduce_event(event) {
-                        Ok(effects) => effects,
-                        Err(error) => {
-                            self.set_status_text(QString::from(error));
-                            return;
-                        }
-                    };
-                    if let Some(action) = effects.iter().find_map(engine_action_name) {
-                        let mut rust = self.as_mut().rust_mut();
-                        rust.as_mut().get_mut().pending_engine_action = Some(action.to_owned());
-                    }
-                    self.as_mut().sync_core_tabs();
+                if let Some(action) = effects.iter().find_map(engine_action_name) {
+                    let mut rust = self.as_mut().rust_mut();
+                    rust.as_mut().get_mut().pending_engine_action = Some(action.to_owned());
                 }
+                self.as_mut().sync_core_tabs();
                 let learning_mode = self.as_ref().rust().learning_mode;
                 self.set_status_text(QString::from(if learning_mode {
                     format!("Binding executed: {command}")
@@ -17345,17 +10752,18 @@ impl qobject::BrowserUi {
                 "Action target selection is too large or invalid".into(),
             );
         }
-        let state = match self.as_ref().rust().state.clone() {
-            Some(state) => state,
-            None => return fail(self, "core state unavailable".into()),
+        let url = {
+            let binding = self.as_ref();
+            let Some(state) = binding.rust().state.as_ref() else {
+                return fail(self, "core state unavailable".into());
+            };
+            let Some(tab) = state.tabs().get(&pending.target.tab) else {
+                return fail(self, "current tab is unavailable".into());
+            };
+            tab.url
+                .as_deref()
+                .map_or_else(|| "about:blank".into(), safe_ipc_url)
         };
-        let Some(tab) = state.tabs().get(&pending.target.tab) else {
-            return fail(self, "current tab is unavailable".into());
-        };
-        let url = tab
-            .url
-            .as_deref()
-            .map_or_else(|| "about:blank".into(), safe_ipc_url);
         let title = self
             .page_title
             .to_string()
@@ -17570,23 +10978,27 @@ impl qobject::BrowserUi {
         }
     }
 
-    fn take_caret_request(mut self: Pin<&mut Self>) -> QString {
-        let mut rust = self.as_mut().rust_mut();
-        let this = rust.as_mut().get_mut();
-        let Some(request) = this.pending_caret.as_mut() else {
-            return QString::default();
+    fn take_caret_request(mut self: Pin<&mut Self>) -> bool {
+        self.as_mut().set_caret_request_token(QString::default());
+        self.as_mut()
+            .set_caret_request_operation(QString::default());
+        let request = {
+            let mut rust = self.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            let Some(request) = this.pending_caret.as_mut() else {
+                return false;
+            };
+            if request.issued {
+                return false;
+            }
+            request.issued = true;
+            (request.token.clone(), request.operation.clone())
         };
-        if request.issued {
-            return QString::default();
-        }
-        request.issued = true;
-        QString::from(
-            serde_json::json!({
-                "token": request.token,
-                "operation": request.operation
-            })
-            .to_string(),
-        )
+        self.as_mut()
+            .set_caret_request_token(QString::from(request.0));
+        self.as_mut()
+            .set_caret_request_operation(QString::from(request.1));
+        true
     }
 
     fn deliver_caret(mut self: Pin<&mut Self>, token: &QString, result: &QString) -> bool {
@@ -17939,32 +11351,45 @@ impl qobject::BrowserUi {
         }
     }
 
-    fn take_editor_completion(mut self: Pin<&mut Self>) -> QString {
-        let mut rust = self.as_mut().rust_mut();
-        let this = rust.as_mut().get_mut();
-        let completion = this.editor_completions.lock().ok().and_then(|mut queue| {
-            let token = this
-                .pending_editor
-                .as_ref()
-                .map(|request| request.token.as_str());
-            queue
-                .iter()
-                .position(|completion| Some(completion.token.as_str()) == token)
-                .map(|index| queue.remove(index))
-        });
-        let Some(completion) = completion else {
-            return QString::default();
-        };
-        QString::from(
-            serde_json::json!({
-                "token": completion.token,
-                "original": completion.original,
-                "updated": completion.updated,
-                "error": completion.error,
-                "stderr": completion.stderr,
+    fn take_editor_completion(mut self: Pin<&mut Self>) -> bool {
+        self.as_mut()
+            .set_editor_completion_token(QString::default());
+        self.as_mut()
+            .set_editor_completion_original(QString::default());
+        self.as_mut()
+            .set_editor_completion_updated(QString::default());
+        self.as_mut()
+            .set_editor_completion_error(QString::default());
+        self.as_mut()
+            .set_editor_completion_stderr(QString::default());
+        let completion = {
+            let mut rust = self.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            this.editor_completions.lock().ok().and_then(|mut queue| {
+                let token = this
+                    .pending_editor
+                    .as_ref()
+                    .map(|request| request.token.as_str());
+                queue
+                    .iter()
+                    .position(|completion| Some(completion.token.as_str()) == token)
+                    .map(|index| queue.remove(index))
             })
-            .to_string(),
-        )
+        };
+        let Some(completion) = completion else {
+            return false;
+        };
+        self.as_mut()
+            .set_editor_completion_token(QString::from(completion.token));
+        self.as_mut()
+            .set_editor_completion_original(QString::from(completion.original));
+        self.as_mut()
+            .set_editor_completion_updated(QString::from(completion.updated.unwrap_or_default()));
+        self.as_mut()
+            .set_editor_completion_error(QString::from(completion.error.unwrap_or_default()));
+        self.as_mut()
+            .set_editor_completion_stderr(QString::from(completion.stderr.unwrap_or_default()));
+        true
     }
 
     fn deliver_editor_apply(mut self: Pin<&mut Self>, token: &QString, result: &QString) -> bool {
@@ -18253,11 +11678,11 @@ impl qobject::BrowserUi {
             self.as_ref().rust().tab,
         )
         .ok_or_else(|| "current document is unavailable".to_owned())?;
-        let state = self
-            .as_ref()
+        let binding = self.as_ref();
+        let state = binding
             .rust()
             .state
-            .clone()
+            .as_ref()
             .ok_or_else(|| "core state unavailable".to_owned())?;
         let tab = state
             .tabs()
@@ -18550,18 +11975,9 @@ impl qobject::BrowserUi {
             return Err(format!("{} requires exactly one download ID", command.name));
         }
         let id = QString::from(command.arguments[0].clone());
-        let payload = self
+        let uri = self
             .as_mut()
-            .download_desktop_action(&id, command.name == "download-show");
-        if payload.is_empty() {
-            return Err(self.as_ref().rust().status_text.to_string());
-        }
-        let value: Value = serde_json::from_str(&payload.to_string())
-            .map_err(|_| "download desktop action produced invalid data".to_owned())?;
-        let uri = value
-            .get("uri")
-            .and_then(Value::as_str)
-            .ok_or_else(|| "download desktop action omitted its URI".to_owned())?;
+            .resolve_download_desktop_uri(&id, command.name == "download-show")?;
         self.as_mut()
             .rust_mut()
             .as_mut()
@@ -18623,11 +12039,11 @@ impl qobject::BrowserUi {
         }) {
             return Err("userscript argv is oversized or contains an invalid value".into());
         }
-        let state = self
-            .as_ref()
+        let binding = self.as_ref();
+        let state = binding
             .rust()
             .state
-            .clone()
+            .as_ref()
             .ok_or_else(|| "core state unavailable".to_owned())?;
         let tab = state
             .tabs()
@@ -18722,11 +12138,11 @@ impl qobject::BrowserUi {
         }) {
             return Err("userscript argv is oversized or contains an invalid value".into());
         }
-        let state = self
-            .as_ref()
+        let binding = self.as_ref();
+        let state = binding
             .rust()
             .state
-            .clone()
+            .as_ref()
             .ok_or_else(|| "core state unavailable".to_owned())?;
         let tab = state
             .tabs()
@@ -18956,7 +12372,7 @@ impl qobject::BrowserUi {
                 .join()
                 .ok()
                 .and_then(Result::ok)
-                .map(|output| sanitize_userscript_stderr(&output))
+                .map(|output| sanitize_process_stderr(&output))
                 .unwrap_or_default();
             if let Ok(mut values) = cancellations.lock() {
                 values.remove(&completion_id);
@@ -19297,10 +12713,14 @@ impl qobject::BrowserUi {
         Ok(serde_json::json!({
             "sequence": self.rust().ipc_sequence,
             "windows": windows,
-            "live_registry": serde_json::from_str::<Value>(
-                &self.rust().window_registry_json.to_string(),
-            )
-            .unwrap_or_else(|_| Value::Array(Vec::new()))
+            "live_registry": self.rust().live_window_registry.iter().map(|entry| serde_json::json!({
+                "id": entry.id,
+                "owner_token": entry.owner_token,
+                "profile": entry.profile,
+                "private": entry.private,
+                "ephemeral": entry.ephemeral,
+                "tab_count": entry.tab_count,
+            })).collect::<Vec<_>>(),
         }))
     }
 
@@ -19329,7 +12749,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
-            .pending_engine_action = Some(format!("window-focus\t{}\t{}", window_id, operation_id));
+            .pending_engine_action = Some(format!("window-focus\t{window_id}\t{operation_id}"));
         result["operation_id"] = Value::String(operation_id);
         result["status"] = Value::String("accepted".into());
         Ok(serde_json::json!({
@@ -19396,7 +12816,7 @@ impl qobject::BrowserUi {
                 .map(|roots| roots.config.as_path()),
             None,
             self.rust().state.is_some(),
-            self.rust().store.is_some(),
+            self.rust().profile_persistence.is_durable(),
             self.active_profile_is_transient(),
         )?);
         Ok(serde_json::json!({
@@ -19426,7 +12846,7 @@ impl qobject::BrowserUi {
                 if capabilities.contains(&"durable-profile-storage")
                     || capabilities.contains(&"durable-download-index") =>
             {
-                let available = self.rust().store.is_some();
+                let available = self.rust().profile_persistence.is_durable();
                 (
                     available,
                     if available {
@@ -19437,7 +12857,8 @@ impl qobject::BrowserUi {
                 )
             }
             capabilities if capabilities.contains(&"durable-context-registry") => {
-                let available = self.rust().store.is_some() && self.rust().contexts.is_some();
+                let available =
+                    self.rust().profile_persistence.is_durable() && self.rust().contexts.is_some();
                 (
                     available,
                     if available {
@@ -19940,18 +13361,21 @@ impl qobject::BrowserUi {
     }
 
     #[allow(clippy::too_many_lines)]
-    fn ipc_config_get(&self, params: &Value) -> Result<Value, String> {
-        let object = query_object(params, "config.get", &["key", "url", "explain"])?;
+    fn ipc_config_get(&self, params: &Value) -> Result<Value, IpcQueryError> {
+        let object = query_object(params, "config.get", &["key", "url", "explain"])
+            .map_err(IpcQueryError::Invalid)?;
         let key = object
             .get("key")
             .and_then(Value::as_str)
             .filter(|key| !key.is_empty() && key.len() <= 256 && !key.chars().any(char::is_control))
-            .ok_or_else(|| "config.get requires a nonempty key".to_owned())?;
+            .ok_or_else(|| IpcQueryError::Invalid("config.get requires a nonempty key".into()))?;
         if let Some(url) = object.get("url")
             && !url.is_null()
             && url.as_str().is_none()
         {
-            return Err("config.get url must be a string or null".into());
+            return Err(IpcQueryError::Invalid(
+                "config.get url must be a string or null".into(),
+            ));
         }
         let requested_url = object
             .get("url")
@@ -19962,28 +13386,37 @@ impl qobject::BrowserUi {
                 || url.chars().any(char::is_control)
                 || !url.starts_with("http://") && !url.starts_with("https://")
         }) {
-            return Err("config.get url must be a bounded HTTP(S) URL".into());
+            return Err(IpcQueryError::Invalid(
+                "config.get url must be a bounded HTTP(S) URL".into(),
+            ));
         }
         if let Some(explain) = object.get("explain")
             && explain.as_bool().is_none()
         {
-            return Err("config.get explain must be a boolean".into());
+            return Err(IpcQueryError::Invalid(
+                "config.get explain must be a boolean".into(),
+            ));
         }
         let mut value = &self.rust().config;
         for part in key.split('.') {
             value = value
                 .as_object()
                 .and_then(|object| object.get(part))
-                .ok_or_else(|| format!("configuration key not found: {key}"))?;
+                .ok_or_else(|| {
+                    IpcQueryError::NotFound(format!("configuration key not found: {key}"))
+                })?;
         }
         if requested_url.is_some() && !setting_supports_site_scope(key) {
-            return Err(format!(
+            return Err(IpcQueryError::Invalid(format!(
                 "configuration key {key} does not support site scope"
-            ));
+            )));
         }
         let base_value = value.clone();
-        let metadata = setting_metadata(key)
-            .ok_or_else(|| format!("configuration key is not in the setting registry: {key}"))?;
+        let metadata = setting_metadata(key).ok_or_else(|| {
+            IpcQueryError::Invalid(format!(
+                "configuration key is not in the setting registry: {key}"
+            ))
+        })?;
         let pending_value = self
             .rust()
             .pending_config
@@ -20022,7 +13455,9 @@ impl qobject::BrowserUi {
         if let Some(url) = requested_url {
             let config =
                 serde_json::from_value::<Config>(self.rust().config.clone()).map_err(|error| {
-                    format!("validated configuration could not be decoded: {error}")
+                    IpcQueryError::Invalid(format!(
+                        "validated configuration could not be decoded: {error}"
+                    ))
                 })?;
             for rule in matching_site_rules(&config, url) {
                 if let Some(site_value) = rule.set.get(key)
@@ -20102,21 +13537,25 @@ impl qobject::BrowserUi {
         Ok(result)
     }
 
-    fn ipc_permissions_query(&self, params: &Value) -> Result<Value, String> {
-        let object = params
-            .as_object()
-            .ok_or_else(|| "permissions.query params must be an object".to_owned())?;
+    fn ipc_permissions_query(&self, params: &Value) -> Result<Value, IpcQueryError> {
+        let object = params.as_object().ok_or_else(|| {
+            IpcQueryError::Invalid("permissions.query params must be an object".into())
+        })?;
         if object.keys().any(|key| key != "origin") {
-            return Err("permissions.query contains an unknown field".into());
+            return Err(IpcQueryError::Invalid(
+                "permissions.query contains an unknown field".into(),
+            ));
         }
         let origin = object.get("origin").and_then(Value::as_str);
         if object
             .get("origin")
             .is_some_and(|value| !value.is_null() && origin.is_none_or(str::is_empty))
         {
-            return Err("permissions.query origin must be a nonempty string or null".into());
+            return Err(IpcQueryError::Invalid(
+                "permissions.query origin must be a nonempty string or null".into(),
+            ));
         }
-        if self.rust().store.is_none() {
+        if self.rust().profile_persistence.lacks_durable_storage() {
             return Ok(serde_json::json!({
                 "private": true,
                 "ready": true,
@@ -20125,17 +13564,19 @@ impl qobject::BrowserUi {
             }));
         }
         if self.rust().storage_library_dirty.get() || self.rust().storage_library.is_none() {
-            return Err("permission metadata is still loading; retry".into());
+            return Err(IpcQueryError::Busy(
+                "permission metadata is still loading; retry".into(),
+            ));
         }
         let normalized_origin = origin
             .map(ferric_browser_storage::normalize_permission_origin)
             .transpose()
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| IpcQueryError::Invalid(error.to_string()))?;
         let rules = self
             .rust()
             .storage_library
             .as_ref()
-            .ok_or_else(|| "permission metadata is unavailable".to_owned())?
+            .ok_or_else(|| IpcQueryError::Unavailable("permission metadata is unavailable".into()))?
             .permissions
             .iter()
             .filter(|rule| {
@@ -20160,14 +13601,17 @@ impl qobject::BrowserUi {
         }))
     }
 
-    fn ipc_downloads_query(&self, params: &Value) -> Result<Value, String> {
-        let object = query_object(params, "downloads.query", &["include_private"])?;
-        let include_private =
-            query_bool_param(object, "downloads.query", "include_private", false)?;
+    fn ipc_downloads_query(&self, params: &Value) -> Result<Value, IpcQueryError> {
+        let object = query_object(params, "downloads.query", &["include_private"])
+            .map_err(IpcQueryError::Invalid)?;
+        let include_private = query_bool_param(object, "downloads.query", "include_private", false)
+            .map_err(IpcQueryError::Invalid)?;
         if include_private && !self.ipc_private_queries_enabled() {
-            return Err("private download queries are disabled by configuration".into());
+            return Err(IpcQueryError::Invalid(
+                "private download queries are disabled by configuration".into(),
+            ));
         }
-        if self.rust().store.is_none() {
+        if self.rust().profile_persistence.lacks_durable_storage() {
             return Ok(serde_json::json!({
                 "downloads": [],
                 "private": true,
@@ -20176,10 +13620,14 @@ impl qobject::BrowserUi {
             }));
         }
         if self.rust().storage_library_dirty.get() || self.rust().storage_library.is_none() {
-            return Err("download metadata is still loading; retry".into());
+            return Err(IpcQueryError::Busy(
+                "download metadata is still loading; retry".into(),
+            ));
         }
         let Some(library) = self.rust().storage_library.as_ref() else {
-            return Err("download metadata is unavailable".into());
+            return Err(IpcQueryError::Unavailable(
+                "download metadata is unavailable".into(),
+            ));
         };
         let downloads = library.downloads.clone();
         let downloads = downloads
@@ -20368,7 +13816,12 @@ impl qobject::BrowserUi {
                 "match_fields": fields,
                 "actions": actions
             });
-            candidates.push((rank, kind.to_owned(), recency, value));
+            candidates.push(SwitcherCandidate {
+                rank,
+                kind: kind.to_owned(),
+                recency,
+                value,
+            });
         };
 
         if scope == "all" || scope == "tabs" {
@@ -20451,7 +13904,7 @@ impl qobject::BrowserUi {
             }
         }
         if (scope == "all" || scope == "contexts") && contexts.is_some() {
-            for context in contexts.into_iter().flat_map(ContextRegistry::contexts) {
+            for context in contexts.into_iter().flat_map(ContextSnapshot::contexts) {
                 let private = state
                     .profiles()
                     .values()
@@ -20988,11 +14441,25 @@ impl qobject::BrowserUi {
         if !private && origin.is_some() {
             site_doctor_experiments.push("fresh-view");
         }
-        let active_site_experiment =
-            serde_json::from_str::<Value>(&self.rust().site_experiment_json.to_string())
-                .ok()
-                .filter(Value::is_object)
-                .unwrap_or(Value::Null);
+        let active_site_experiment = self
+            .rust()
+            .active_site_experiment
+            .as_ref()
+            .map(|experiment| {
+                serde_json::json!({
+                    "id": experiment.id,
+                    "kind": experiment.kind,
+                    "tab": experiment.tab.to_string(),
+                    "temporary_tab": experiment.temporary_tab.map(|tab| tab.to_string()),
+                    "origin": experiment.origin,
+                    "url": experiment.url,
+                    "state": "pending",
+                    "timeout_seconds": SITE_DOCTOR_EXPERIMENT_TIMEOUT.as_secs(),
+                    "remaining_seconds": site_doctor_remaining_seconds(experiment.created_at, Instant::now())
+                        .unwrap_or(0),
+                })
+            })
+            .unwrap_or(Value::Null);
         let mut diagnostics = diagnostics::snapshot_with_primary_selection(Some(
             qobject::ferric_browser_primary_selection_available(),
         ));
@@ -21261,33 +14728,33 @@ impl qobject::BrowserUi {
 
     fn ipc_blocking_status(&self, params: &Value) -> Result<Value, String> {
         query_empty_object_or_null(params, "blocking.status")?;
-        let parse_array = |value: &QString| {
+        let list_value = |value: &QStringList| {
+            Value::Array(
+                value
+                    .iter()
+                    .map(|entry| Value::String(entry.to_string()))
+                    .collect(),
+            )
+        };
+        let json_array = |value: &QString| {
             serde_json::from_str::<Value>(&value.to_string())
                 .ok()
                 .filter(Value::is_array)
                 .unwrap_or_else(|| Value::Array(Vec::new()))
         };
-        let blocked_rules = parse_array(&self.rust().blocking_hosts);
-        let exception_rules = parse_array(&self.rust().blocking_exceptions);
-        let active_explanation =
-            serde_json::from_str::<Value>(&self.rust().blocking_active_explanation.to_string())
-                .ok()
-                .filter(Value::is_object)
-                .unwrap_or_else(|| serde_json::json!({}));
-        let active_decisions =
-            serde_json::from_str::<Value>(&self.rust().blocking_active_decisions.to_string())
-                .ok()
-                .filter(Value::is_array)
-                .unwrap_or_else(|| serde_json::json!([]));
+        let blocked_rules = list_value(&self.rust().blocking_hosts);
+        let exception_rules = list_value(&self.rust().blocking_exceptions);
+        let (active_explanation, active_decisions) =
+            self.rust().blocking_active_evidence.json_values();
         let security_deny_rules = security_deny_rule_count(&self.rust().config_json.to_string());
         Ok(serde_json::json!({
             "sequence": self.rust().ipc_sequence,
             "enabled": self.rust().blocking_enabled,
             "status": self.rust().status_text.to_string(),
-            "bypass_sites": parse_array(&self.rust().blocking_bypass_sites),
-            "loaded_lists": parse_array(&self.rust().blocking_loaded_lists),
-            "list_metadata": parse_array(&self.rust().blocking_list_metadata),
-            "skipped_lists": parse_array(&self.rust().blocking_skipped_lists),
+            "bypass_sites": list_value(&self.rust().blocking_bypass_sites),
+            "loaded_lists": json_array(&self.rust().blocking_loaded_lists),
+            "list_metadata": json_array(&self.rust().blocking_list_metadata),
+            "skipped_lists": json_array(&self.rust().blocking_skipped_lists),
             "blocked_rules": blocked_rules.as_array().map_or(0, Vec::len),
             "exception_rules": exception_rules.as_array().map_or(0, Vec::len),
             "blocked_requests": self.rust().blocking_blocked_count.max(0),
@@ -21822,8 +15289,7 @@ impl qobject::BrowserUi {
             .as_mut()
             .get_mut()
             .pending_link_navigation = Some(pending);
-        self.as_mut()
-            .set_link_preview(QString::from(value.to_string()));
+        self.as_mut().publish_link_preview("open", &result, true);
         self.as_mut().set_link_preview_visible(true);
         self.as_mut().sync_core_tabs();
         self.set_status_text(QString::from("Clean-link navigation awaits confirmation"));
@@ -21835,11 +15301,11 @@ impl qobject::BrowserUi {
             return Ok(());
         };
         let window = {
-            let state = self
-                .as_ref()
+            let binding = self.as_ref();
+            let state = binding
                 .rust()
                 .state
-                .clone()
+                .as_ref()
                 .ok_or_else(|| "core state unavailable".to_owned())?;
             match route.selector {
                 DispatchTarget::Active => state.active_window(),
@@ -21871,18 +15337,21 @@ impl qobject::BrowserUi {
             .validate(command, self.as_ref().rust().core_mode)
             .map_err(|error| error.to_string())?;
         let (scope, query) = parse_switcher_command(&command.arguments)?;
-        let payload = serde_json::json!({"scope": scope, "query": query});
+        self.as_mut()
+            .set_switcher_request_scope(QString::from(&scope));
+        self.as_mut()
+            .set_switcher_request_query(QString::from(&query));
         self.as_mut()
             .rust_mut()
             .as_mut()
             .get_mut()
-            .pending_engine_action = Some(format!("show-switcher\t{payload}"));
+            .pending_engine_action = Some("show-switcher".into());
         self.as_mut()
             .set_status_text(QString::from("Universal switcher requested"));
         Ok(serde_json::json!({
             "status": "accepted",
-            "scope": payload["scope"],
-            "query": payload["query"]
+            "scope": scope,
+            "query": query
         }))
     }
 
@@ -22221,7 +15690,12 @@ impl qobject::BrowserUi {
             if !command.arguments.is_empty() {
                 return Err("blocklist-update does not accept arguments".into());
             }
-            if self.as_ref().rust().store.is_none() {
+            if self
+                .as_ref()
+                .rust()
+                .profile_persistence
+                .lacks_durable_storage()
+            {
                 return Err(
                     "blocklist updates require a normal profile with durable storage".into(),
                 );
@@ -22243,7 +15717,12 @@ impl qobject::BrowserUi {
             if !command.arguments.is_empty() {
                 return Err("link-cleaning-update does not accept arguments".into());
             }
-            if self.as_ref().rust().store.is_none() {
+            if self
+                .as_ref()
+                .rust()
+                .profile_persistence
+                .lacks_durable_storage()
+            {
                 return Err(
                     "clean-link updates require a normal profile with durable storage".into(),
                 );
@@ -22595,9 +16074,13 @@ impl qobject::BrowserUi {
                 return Err("context routing is not valid for hints".into());
             }
             self.as_ref().validate_ipc_route(route)?;
-            let (links_only, rapid, target, script) = hint_options(&command)?;
-            self.as_mut()
-                .set_hint_options(links_only, rapid, &target, script.as_deref());
+            let options = parse_hint_options(&command)?;
+            self.as_mut().set_hint_options(
+                options.links_only,
+                options.rapid,
+                &options.target,
+                options.script.as_deref(),
+            );
             return Ok(serde_json::json!({"status": "accepted", "mode": "hint"}));
         }
         if command.name == "action-list" {
@@ -22635,35 +16118,34 @@ impl qobject::BrowserUi {
             }
             self.as_ref().validate_ipc_route(route)?;
             self.as_mut().note_repeatable_command(&command);
-            let state = self
-                .as_ref()
-                .rust()
-                .state
-                .clone()
-                .ok_or_else(|| "core state unavailable".to_owned())?;
-            let events = dispatch_command_for(
-                &state,
-                &self.as_ref().rust().registry,
-                ipc_command_invocation(&state, command, route.selector, route.source, operation_id),
-                &self.as_ref().navigation_context_for_source(route.source),
-                route.selector,
-            )
-            .map_err(|error| error.to_string())?;
-            let mut tab_id = None;
-            for event in events {
-                let effects = self
-                    .as_mut()
-                    .reduce_event(event)
-                    .map_err(|error| error.clone())?;
-                if let Some(target) = effects.iter().find_map(|effect| match effect {
-                    Effect::Engine(EngineEffect::Navigate { target, .. }) => Some(*target),
-                    _ => None,
-                }) {
-                    tab_id = Some(target.tab.to_string());
+            let dispatch = {
+                let binding = self.as_ref();
+                let rust = binding.rust();
+                let state = rust
+                    .state
+                    .as_ref()
+                    .ok_or_else(|| "core state unavailable".to_owned())?;
+                RuntimeDispatch {
+                    invocation: ipc_command_invocation(
+                        state,
+                        command,
+                        route.selector,
+                        route.source,
+                        operation_id,
+                    ),
+                    navigation: binding.navigation_context_for_source(route.source),
+                    target: route.selector,
                 }
-                self.as_mut().sync_tab_order_from_core();
-                self.as_mut().set_pending_engine_action(&effects);
-            }
+            };
+            let effects = self.as_mut().dispatch_runtime(dispatch)?;
+            let tab_id = effects.iter().find_map(|effect| match effect {
+                Effect::Engine(EngineEffect::Navigate { target, .. }) => {
+                    Some(target.tab.to_string())
+                }
+                _ => None,
+            });
+            self.as_mut().sync_tab_order_from_core();
+            self.as_mut().set_pending_engine_action(&effects);
             return Ok(serde_json::json!({
                 "status": "accepted",
                 "tab_id": tab_id
@@ -22868,45 +16350,32 @@ impl qobject::BrowserUi {
                 "target_window": window.to_string()
             }));
         }
-        let state = self
-            .as_ref()
-            .rust()
-            .state
-            .clone()
-            .ok_or_else(|| "core state unavailable".to_owned())?;
-        let events = dispatch_command_for(
-            &state,
-            &self.as_ref().rust().registry,
-            ipc_command_invocation(&state, command, route.selector, route.source, operation_id),
-            &self.as_ref().navigation_context_for_source(route.source),
-            route.selector,
-        )
-        .map_err(|error| error.to_string())?;
-        let mut target = None;
-        for event in events {
-            if let Event::StartNavigation {
-                target: event_target,
-                url,
-            } = event
-            {
-                target = Some(event_target);
-                let effects = self
-                    .as_mut()
-                    .reduce_event(Event::StartNavigation {
-                        target: event_target,
-                        url,
-                    })
-                    .map_err(|error| error.clone())?;
-                self.as_mut().set_pending_engine_action(&effects);
-            } else {
-                let effects = self
-                    .as_mut()
-                    .reduce_event(event)
-                    .map_err(|error| error.clone())?;
-                self.as_mut().set_pending_engine_action(&effects);
+        let dispatch = {
+            let binding = self.as_ref();
+            let rust = binding.rust();
+            let state = rust
+                .state
+                .as_ref()
+                .ok_or_else(|| "core state unavailable".to_owned())?;
+            RuntimeDispatch {
+                invocation: ipc_command_invocation(
+                    state,
+                    command,
+                    route.selector,
+                    route.source,
+                    operation_id,
+                ),
+                navigation: binding.navigation_context_for_source(route.source),
+                target: route.selector,
             }
-            self.as_mut().sync_core_tabs();
-        }
+        };
+        let effects = self.as_mut().dispatch_runtime(dispatch)?;
+        let target = effects.iter().find_map(|effect| match effect {
+            Effect::Engine(EngineEffect::Navigate { target, .. }) => Some(*target),
+            _ => None,
+        });
+        self.as_mut().set_pending_engine_action(&effects);
+        self.as_mut().sync_core_tabs();
         Ok(serde_json::json!({
             "status": "accepted",
             "tab_id": target.map(|target| target.tab.to_string())
@@ -23261,7 +16730,7 @@ impl qobject::BrowserUi {
                 Err(error) => ipc_failure(&request.id, "E_INVALID_PARAMS", error),
             },
             "downloads.query" => {
-                if self.as_ref().rust().store.is_some()
+                if self.as_ref().rust().profile_persistence.is_durable()
                     && (self.as_ref().rust().storage_library.is_none()
                         || self.as_ref().rust().storage_library_dirty.get())
                 {
@@ -23270,19 +16739,13 @@ impl qobject::BrowserUi {
                 match self.as_ref().ipc_downloads_query(&request.params) {
                     Ok(result) => Response::success(request.id.clone(), result),
                     Err(error) => {
-                        let code = if error.contains("still loading") {
-                            "E_BUSY"
-                        } else if error.contains("unavailable") {
-                            "E_ENGINE"
-                        } else {
-                            "E_INVALID_PARAMS"
-                        };
-                        ipc_failure(&request.id, code, error)
+                        let (code, message) = error.into_public_parts();
+                        ipc_failure(&request.id, code, message)
                     }
                 }
             }
             "permissions.query" => {
-                if self.as_ref().rust().store.is_some()
+                if self.as_ref().rust().profile_persistence.is_durable()
                     && (self.as_ref().rust().storage_library.is_none()
                         || self.as_ref().rust().storage_library_dirty.get())
                 {
@@ -23291,14 +16754,8 @@ impl qobject::BrowserUi {
                 match self.as_ref().ipc_permissions_query(&request.params) {
                     Ok(result) => Response::success(request.id.clone(), result),
                     Err(error) => {
-                        let code = if error.contains("still loading") {
-                            "E_BUSY"
-                        } else if error.contains("unavailable") {
-                            "E_ENGINE"
-                        } else {
-                            "E_INVALID_PARAMS"
-                        };
-                        ipc_failure(&request.id, code, error)
+                        let (code, message) = error.into_public_parts();
+                        ipc_failure(&request.id, code, message)
                     }
                 }
             }
@@ -23307,7 +16764,7 @@ impl qobject::BrowserUi {
                 Err(error) => ipc_failure(&request.id, "E_INVALID_PARAMS", error),
             },
             "switcher.query" => {
-                if self.as_ref().rust().store.is_some()
+                if self.as_ref().rust().profile_persistence.is_durable()
                     && (self.as_ref().rust().storage_library.is_none()
                         || self.as_ref().rust().storage_library_dirty.get())
                 {
@@ -23324,7 +16781,7 @@ impl qobject::BrowserUi {
                 Err(error) => ipc_failure(&request.id, "E_INVALID_PARAMS", error),
             },
             "site.status" => {
-                if self.as_ref().rust().store.is_some()
+                if self.as_ref().rust().profile_persistence.is_durable()
                     && (self.as_ref().rust().storage_library.is_none()
                         || self.as_ref().rust().storage_library_dirty.get())
                 {
@@ -23354,14 +16811,8 @@ impl qobject::BrowserUi {
             "config.get" => match self.as_ref().ipc_config_get(&request.params) {
                 Ok(result) => Response::success(request.id.clone(), result),
                 Err(error) => {
-                    let code = if error.starts_with("configuration key not found") {
-                        "E_NOT_FOUND"
-                    } else if error.contains("not yet supported") {
-                        "E_UNSUPPORTED"
-                    } else {
-                        "E_INVALID_PARAMS"
-                    };
-                    ipc_failure(&request.id, code, error)
+                    let (code, message) = error.into_public_parts();
+                    ipc_failure(&request.id, code, message)
                 }
             },
             "events.subscribe" => match self.as_ref().ipc_events_subscribe(&request.params) {
@@ -23407,11 +16858,11 @@ impl qobject::BrowserUi {
         let worker_pending = rust
             .config_reload_worker
             .as_ref()
-            .is_some_and(|worker| worker.inner.is_pending())
+            .is_some_and(ConfigReloadWorker::is_pending)
             || rust
                 .config_write_worker
                 .as_ref()
-                .is_some_and(|worker| worker.inner.is_pending())
+                .is_some_and(ConfigWriteWorker::is_pending)
             || rust
                 .print_worker
                 .as_ref()
@@ -23423,7 +16874,7 @@ impl qobject::BrowserUi {
             || rust
                 .profile_delete_worker
                 .as_ref()
-                .is_some_and(|worker| worker.inner.is_pending())
+                .is_some_and(ProfileDeleteWorker::is_pending)
             || rust
                 .profile_setup_worker
                 .as_ref()
@@ -23439,23 +16890,23 @@ impl qobject::BrowserUi {
             || rust
                 .portal_probe_worker
                 .as_ref()
-                .is_some_and(|worker| worker.inner.is_pending())
+                .is_some_and(PortalProbeWorker::is_pending)
             || rust
                 .reduced_motion_probe_worker
                 .as_ref()
-                .is_some_and(|worker| worker.inner.is_pending())
+                .is_some_and(ReducedMotionProbeWorker::is_pending)
             || rust
                 .font_scale_probe_worker
                 .as_ref()
-                .is_some_and(|worker| worker.inner.is_pending())
+                .is_some_and(SystemFontScaleProbeWorker::is_pending)
             || rust
                 .profile_list_worker
                 .as_ref()
-                .is_some_and(|worker| worker.inner.is_pending())
+                .is_some_and(ProfileListWorker::is_pending)
             || rust
                 .profile_preview_worker
                 .as_ref()
-                .is_some_and(|worker| worker.inner.is_pending())
+                .is_some_and(ProfilePreviewWorker::is_pending)
             || rust
                 .userscript_manager_worker
                 .as_ref()
@@ -23472,10 +16923,7 @@ impl qobject::BrowserUi {
             || rust.session_restore_recovery_pending
             || rust.session_save_pending
             || rust.session_checkpoint_clear_pending
-            || rust.inflight_history_writes.is_some()
-            || rust.inflight_permission_writes.is_some()
-            || rust.inflight_mark_writes.is_some()
-            || rust.inflight_download_writes.is_some();
+            || rust.storage_flush_pending;
         if worker_pending || operation_pending {
             return 50;
         }
@@ -23491,8 +16939,7 @@ impl qobject::BrowserUi {
             });
             return i32::try_from(500_u64.saturating_sub(elapsed).max(1)).unwrap_or(500);
         }
-        if !rust.config_watch.watched_paths.is_empty() || !rust.theme_watch.watched_paths.is_empty()
-        {
+        if rust.config_watch.is_watching() || rust.theme_watch.is_watching() {
             return 1_000;
         }
         -1
@@ -25149,20 +18596,21 @@ impl qobject::BrowserUi {
                 url: url.as_str().to_owned(),
             }
         };
-        let payload = serde_json::json!({
-            "route_id": pending.route_id,
-            "behavior": pending.behavior,
-            "context": pending.context_name,
-            "profile": pending.profile_name,
-            "url": safe_ipc_url(&pending.url),
-        });
+        let route_id = QString::from(&pending.route_id);
+        let behavior = QString::from(&pending.behavior);
+        let context = QString::from(&pending.context_name);
+        let profile = QString::from(&pending.profile_name);
+        let url = QString::from(safe_ipc_url(&pending.url));
         self.as_mut()
             .rust_mut()
             .as_mut()
             .get_mut()
             .pending_context_route = Some(pending);
-        self.as_mut()
-            .set_context_route_json(QString::from(payload.to_string()));
+        self.as_mut().set_context_route_id(route_id);
+        self.as_mut().set_context_route_behavior(behavior);
+        self.as_mut().set_context_route_context(context);
+        self.as_mut().set_context_route_profile(profile);
+        self.as_mut().set_context_route_url(url);
         true
     }
 
@@ -25191,7 +18639,11 @@ impl qobject::BrowserUi {
             .get_mut()
             .pending_context_route
             .take();
-        self.as_mut().set_context_route_json(QString::from("{}"));
+        self.as_mut().set_context_route_id(QString::default());
+        self.as_mut().set_context_route_behavior(QString::default());
+        self.as_mut().set_context_route_context(QString::default());
+        self.as_mut().set_context_route_profile(QString::default());
+        self.as_mut().set_context_route_url(QString::default());
         pending
     }
 
@@ -25608,8 +19060,7 @@ impl qobject::BrowserUi {
             .as_mut()
             .get_mut()
             .pending_engine_action = Some(format!(
-            "new-window\t{}\t{}\tabout:blank",
-            private, profile_name
+            "new-window\t{private}\t{profile_name}\tabout:blank"
         ));
         self.as_mut().set_status_text(QString::from(if private {
             "Private window requested"
@@ -25726,7 +19177,7 @@ impl qobject::BrowserUi {
                     .rust_mut()
                     .as_mut()
                     .get_mut()
-                    .pending_engine_action = Some(format!("profile-delete\t{}", name));
+                    .pending_engine_action = Some(format!("profile-delete\t{name}"));
                 self.set_status_text(QString::from(
                     "Profile deletion preview requested; confirmation is required",
                 ));
@@ -25844,6 +19295,74 @@ impl qobject::BrowserUi {
             .map_err(|error| format!("contexts configuration is unavailable: {error}"))
     }
 
+    fn set_contexts_configuration(mut self: Pin<&mut Self>, input: &QString) -> bool {
+        match serde_json::from_str::<ContextsConfig>(&input.to_string()) {
+            Ok(config) => match self.as_mut().publish_contexts_config(&config) {
+                Ok(()) => true,
+                Err(error) => {
+                    self.set_status_text(QString::from(error));
+                    false
+                }
+            },
+            Err(error) => {
+                self.set_status_text(QString::from(format!(
+                    "contexts configuration is invalid: {error}"
+                )));
+                false
+            }
+        }
+    }
+
+    /// Records an explicit bootstrap decision before context-enter is dispatched.
+    ///
+    /// QML owns window construction, but cannot write application policy state
+    /// directly. Keeping this at the bridge boundary makes the one-shot reuse
+    /// decision visible and keeps context entry under the normal command path.
+    fn set_context_entry_reuse(mut self: Pin<&mut Self>, force_reuse: bool) {
+        self.as_mut().set_context_entry_force_reuse(force_reuse);
+    }
+
+    fn set_startup_configuration(
+        mut self: Pin<&mut Self>,
+        config: &QString,
+        base_config: &QString,
+        cli_overrides: &QString,
+        profile_overrides: &QString,
+        path: &QString,
+        source: &QString,
+    ) -> bool {
+        let config_text = config.to_string();
+        let base_config_text = base_config.to_string();
+        let cli_overrides_text = cli_overrides.to_string();
+        let profile_overrides_text = profile_overrides.to_string();
+        let path = path.to_string();
+        let source = source.to_string();
+        let valid_metadata = |value: &str| {
+            value.len() <= MAX_UNTRUSTED_ARGUMENT_BYTES && !value.chars().any(char::is_control)
+        };
+        let valid = serde_json::from_str::<Config>(&config_text)
+            .and_then(|_| serde_json::from_str::<Config>(&base_config_text))
+            .and_then(|_| serde_json::from_str::<RuntimeOverrides>(&cli_overrides_text))
+            .and_then(|_| serde_json::from_str::<RuntimeOverrides>(&profile_overrides_text))
+            .is_ok()
+            && valid_metadata(&path)
+            && valid_metadata(&source);
+        if !valid {
+            self.set_status_text(QString::from("Startup configuration is invalid"));
+            return false;
+        }
+        self.as_mut().set_config_json(QString::from(config_text));
+        self.as_mut()
+            .set_config_base_json(QString::from(base_config_text));
+        self.as_mut()
+            .set_cli_overrides_json(QString::from(cli_overrides_text));
+        self.as_mut()
+            .set_profile_overrides_json(QString::from(profile_overrides_text));
+        self.as_mut().set_config_path(QString::from(path));
+        self.as_mut().set_config_source(QString::from(source));
+        true
+    }
+
     fn publish_contexts_config(
         mut self: Pin<&mut Self>,
         config: &ContextsConfig,
@@ -25851,6 +19370,27 @@ impl qobject::BrowserUi {
         let json = serde_json::to_string(config)
             .map_err(|error| format!("could not serialize contexts configuration: {error}"))?;
         self.as_mut().set_contexts_json(QString::from(json));
+        self.as_mut().set_context_choice_names(
+            config
+                .contexts
+                .iter()
+                .map(|context| QString::from(&context.name))
+                .collect(),
+        );
+        self.as_mut().set_context_choice_labels(
+            config
+                .contexts
+                .iter()
+                .map(|context| QString::from(&context.label))
+                .collect(),
+        );
+        self.as_mut().set_context_choice_profiles(
+            config
+                .contexts
+                .iter()
+                .map(|context| QString::from(&context.profile))
+                .collect(),
+        );
         Ok(())
     }
 
@@ -26146,7 +19686,7 @@ impl qobject::BrowserUi {
             clean_link(navigation.url.as_str(), &rules).map_err(|error| error.to_string())?;
         let value = link_result_value(&command.name, &result, &rules);
         self.as_mut()
-            .set_link_preview(QString::from(value.to_string()));
+            .publish_link_preview(&command.name, &result, false);
         self.as_mut().set_link_preview_visible(true);
         self.set_status_text(QString::from(if result.changed {
             "Clean-link preview ready"
@@ -26742,17 +20282,15 @@ impl qobject::BrowserUi {
             .rust()
             .tab
             .ok_or_else(|| "jseval requires an active tab".to_owned())?;
-        let action = serde_json::to_string(&serde_json::json!({
-            "tab_id": tab_id.to_string(),
-            "world": world,
-            "script": script,
-        }))
-        .map_err(|error| format!("could not encode jseval request: {error}"))?;
+        self.as_mut()
+            .set_jseval_tab_id(QString::from(tab_id.to_string()));
+        self.as_mut().set_jseval_world(QString::from(world));
+        self.as_mut().set_jseval_script(QString::from(script));
         self.as_mut()
             .rust_mut()
             .as_mut()
             .get_mut()
-            .pending_engine_action = Some(format!("jseval\t{action}"));
+            .pending_engine_action = Some("jseval".into());
         self.as_mut().set_status_text(QString::from(format!(
             "JavaScript evaluation requested in {world} world"
         )));
@@ -26847,8 +20385,7 @@ impl qobject::BrowserUi {
             url: cleaned,
         });
         value["requires_confirmation"] = Value::Bool(true);
-        self.as_mut()
-            .set_link_preview(QString::from(value.to_string()));
+        self.as_mut().publish_link_preview("open", &result, true);
         self.as_mut().set_link_preview_visible(true);
         self.set_status_text(QString::from("Clean-link navigation awaits confirmation"));
         Ok(value)
@@ -27121,7 +20658,7 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
-            .pending_engine_action = Some(format!("zoom\t{}\t{zoom:.2}", tab));
+            .pending_engine_action = Some(format!("zoom\t{tab}\t{zoom:.2}"));
         self.as_mut().set_status_text(QString::from(format!(
             "Zoom set to {}%",
             (zoom * 100.0).round()
@@ -27369,7 +20906,7 @@ impl qobject::BrowserUi {
             let binding = self.as_ref();
             let rust = binding.rust();
             let profile_name = rust.profile_name.clone();
-            let private = rust.store.is_none();
+            let private = rust.profile_persistence.lacks_durable_storage();
             if private {
                 return Err(
                     "window-target journey reopening is unavailable for transient profiles".into(),
@@ -27455,19 +20992,19 @@ impl qobject::BrowserUi {
         let (current_tab, profile_id, durable) = {
             let binding = self.as_ref();
             let rust = binding.rust();
-            (rust.tab, rust.profile_id, rust.store.is_some())
+            (
+                rust.tab,
+                rust.profile_id,
+                rust.profile_persistence.is_durable(),
+            )
         };
         if durable {
             let profile_id =
                 profile_id.ok_or_else(|| "durable profile identity is unavailable".to_owned())?;
             self.as_mut()
-                .rust_mut()
-                .as_mut()
-                .get_mut()
-                .storage_worker
-                .as_mut()
-                .ok_or_else(|| "profile metadata worker is unavailable".to_owned())?
-                .request_journey_node(node_id.to_owned())
+                .submit_storage(StorageRequest::JourneyNode {
+                    id: node_id.to_owned(),
+                })
                 .map_err(|error| error.to_string())?;
             self.as_mut()
                 .rust_mut()
@@ -27557,10 +21094,15 @@ impl qobject::BrowserUi {
     }
 
     fn apply_journey_query_snapshot(mut self: Pin<&mut Self>, snapshot: JourneyQuerySnapshot) {
-        let node_ids = snapshot
-            .nodes
+        let graph_edges = snapshot
+            .edges
             .iter()
-            .map(|node| node.id.clone())
+            .take(1_000)
+            .map(|edge| JourneyGraphEdgePresentation {
+                source: edge.source_id.clone(),
+                target: edge.target_id.clone(),
+                transition: edge.transition.clone(),
+            })
             .collect::<Vec<_>>();
         let values = snapshot
             .nodes
@@ -27578,25 +21120,10 @@ impl qobject::BrowserUi {
                 )
             })
             .collect::<Vec<_>>();
-        let graph = serde_json::json!({
-            "durability": "durable",
-            "nodes": node_ids,
-            "edges": snapshot
-                .edges
-                .into_iter()
-                .map(|edge| serde_json::json!({
-                    "source": edge.source_id,
-                    "target": edge.target_id,
-                    "transition": edge.transition,
-                    "created_at": edge.created_at
-                }))
-                .collect::<Vec<_>>()
-        })
-        .to_string();
         self.as_mut().set_library_kind(QString::from("journey"));
         self.as_mut()
             .set_library_values(QString::from(values.join("\n")));
-        self.as_mut().set_library_graph_values(QString::from(graph));
+        self.as_mut().set_library_graph_edges(&graph_edges);
     }
 
     fn execute_memory_journey_command(
@@ -27668,7 +21195,7 @@ impl qobject::BrowserUi {
                 .take(1_000)
                 .collect::<Vec<_>>()
         };
-        let graph_values = {
+        let graph_edges = {
             let binding = self.as_ref();
             let rust = binding.rust();
             let Some(state) = rust.state.as_ref() else {
@@ -27679,28 +21206,28 @@ impl qobject::BrowserUi {
                 .filter_map(|value| value.split('\t').next())
                 .map(ToOwned::to_owned)
                 .collect::<BTreeSet<_>>();
-            serde_json::json!({
-                "durability": "memory-only",
-                "nodes": values.iter().map(|value| value.split('\t').next().unwrap_or_default()).collect::<Vec<_>>(),
-                "edges": state.journey().edges().iter().filter_map(|edge| {
+            state
+                .journey()
+                .edges()
+                .iter()
+                .filter_map(|edge| {
                     let source = edge.source.to_string();
                     let target = edge.target.to_string();
-                    (visible_ids.contains(&source) && visible_ids.contains(&target)).then(|| serde_json::json!({
-                    "source": source,
-                    "target": target,
-                    "transition": edge.kind.name(),
-                    "created_at": edge.created_at
-                }))
+                    (visible_ids.contains(&source) && visible_ids.contains(&target)).then(|| {
+                        JourneyGraphEdgePresentation {
+                            source,
+                            target,
+                            transition: edge.kind.name().to_owned(),
+                        }
+                    })
                 })
                 .take(1_000)
                 .collect::<Vec<_>>()
-            }).to_string()
         };
         self.as_mut().set_library_kind(QString::from("journey"));
         self.as_mut()
             .set_library_values(QString::from(values.join("\n")));
-        self.as_mut()
-            .set_library_graph_values(QString::from(graph_values));
+        self.as_mut().set_library_graph_edges(&graph_edges);
         Ok(serde_json::json!({
             "status": "listed",
             "kind": "journey",
@@ -27720,7 +21247,13 @@ impl qobject::BrowserUi {
         if command.name == "journey-reopen" {
             return self.execute_journey_reopen(command);
         }
-        if command.name == "journey" && self.as_ref().rust().store.is_none() {
+        if command.name == "journey"
+            && self
+                .as_ref()
+                .rust()
+                .profile_persistence
+                .lacks_durable_storage()
+        {
             return self.execute_memory_journey_command(command);
         }
         self.as_ref()
@@ -27746,7 +21279,13 @@ impl qobject::BrowserUi {
                     command.name.as_str(),
                     "history" | "history-open" | "history-clear"
                 );
-            if self.as_ref().rust().store.is_none() && !private_history_command {
+            if self
+                .as_ref()
+                .rust()
+                .profile_persistence
+                .lacks_durable_storage()
+                && !private_history_command
+            {
                 return Err("private profiles have no durable history or marks".into());
             }
             if !private_history_command
@@ -27771,17 +21310,15 @@ impl qobject::BrowserUi {
                 None
             };
             self.as_mut()
-                .rust_mut()
-                .as_mut()
-                .get_mut()
-                .storage_worker
-                .as_mut()
-                .ok_or_else(|| "profile metadata worker is unavailable".to_owned())?
-                .request_journey_query(current_tab_id, search, expand)
+                .submit_storage(StorageRequest::JourneyQuery {
+                    current_tab_id,
+                    search,
+                    expand,
+                })
                 .map_err(|error| error.to_string())?;
             self.as_mut().set_library_kind(QString::from("journey"));
             self.as_mut().set_library_values(QString::default());
-            self.as_mut().set_library_graph_values(QString::default());
+            self.as_mut().clear_library_graph_edges();
             return Ok(serde_json::json!({"status": "queued", "kind": "journey"}));
         }
         let binding = self.as_ref();
@@ -27922,7 +21459,6 @@ impl qobject::BrowserUi {
         }
         let mut listed_kind = None;
         let mut listed_values = Vec::new();
-        let listed_graph_values = String::new();
         let result = match command_name {
             "history-open" | "bookmark-open" | "quickmark-open" => {
                 let [entry_id] = command.arguments.as_slice() else {
@@ -27930,7 +21466,12 @@ impl qobject::BrowserUi {
                 };
                 let stored_url = match command_name {
                     "history-open" => {
-                        let history = if self.as_ref().rust().store.is_none() {
+                        let history = if self
+                            .as_ref()
+                            .rust()
+                            .profile_persistence
+                            .lacks_durable_storage()
+                        {
                             self.as_ref().private_history_records()
                         } else {
                             self.as_ref()
@@ -28046,7 +21587,12 @@ impl qobject::BrowserUi {
                     return Err("history does not accept arguments".into());
                 }
                 listed_kind = Some("history");
-                let history = if self.as_ref().rust().store.is_none() {
+                let history = if self
+                    .as_ref()
+                    .rust()
+                    .profile_persistence
+                    .lacks_durable_storage()
+                {
                     self.as_ref().private_history_records()
                 } else {
                     self.as_ref()
@@ -28091,12 +21637,11 @@ impl qobject::BrowserUi {
             self.as_mut().set_library_kind(QString::from(kind));
             self.as_mut()
                 .set_library_values(QString::from(listed_values.join("\n")));
-            self.as_mut()
-                .set_library_graph_values(QString::from(listed_graph_values));
+            self.as_mut().clear_library_graph_edges();
         } else {
             self.as_mut().set_library_kind(QString::default());
             self.as_mut().set_library_values(QString::default());
-            self.as_mut().set_library_graph_values(QString::default());
+            self.as_mut().clear_library_graph_edges();
         }
         Ok(result)
     }
@@ -28109,31 +21654,48 @@ impl qobject::BrowserUi {
         profile: &str,
         workspace: Option<&str>,
     ) -> Result<Value, String> {
-        let mut registry = self
-            .as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .contexts
-            .take()
-            .ok_or_else(|| "context registry unavailable".to_owned())?;
-        let result = registry
-            .create_with_workspace(name, label, profile, workspace)
-            .map(|context| {
-                serde_json::json!({
-                    "status": "created",
-                    "context": {
-                        "id": context.id.to_string(),
-                        "name": context.name,
-                        "label": context.label,
-                        "profile": context.profile,
-                        "workspace": context.workspace
-                    }
-                })
-            })
-            .map_err(|error| error.to_string());
-        self.as_mut().rust_mut().as_mut().get_mut().contexts = Some(registry);
-        result
+        let effect = self.as_mut().apply_context_change(ContextCommand::Create {
+            name: name.to_owned(),
+            label: label.to_owned(),
+            profile: profile.to_owned(),
+            workspace: workspace.map(ToOwned::to_owned),
+        })?;
+        let context = effect.context;
+        Ok(serde_json::json!({
+            "status": "created",
+            "context": {
+                "id": context.id.to_string(),
+                "name": context.name,
+                "label": context.label,
+                "profile": context.profile,
+                "workspace": context.workspace
+            }
+        }))
+    }
+
+    fn apply_context_change(
+        mut self: Pin<&mut Self>,
+        command: ContextCommand,
+    ) -> Result<ferric_browser_application::ContextEffect, String> {
+        let effect = {
+            let mut rust = self.as_mut().rust_mut();
+            rust.as_mut()
+                .get_mut()
+                .state
+                .as_mut()
+                .ok_or_else(|| "application state is unavailable".to_owned())?
+                .change_context(command)
+                .map_err(|error| error.to_string())?
+        };
+        let snapshot = self
+            .as_ref()
+            .rust()
+            .state
+            .as_ref()
+            .and_then(BrowserApplication::contexts)
+            .map(ContextSnapshot::from_records);
+        self.as_mut().rust_mut().as_mut().get_mut().contexts = snapshot;
+        Ok(effect)
     }
 
     #[allow(clippy::too_many_lines)]
@@ -28165,11 +21727,11 @@ impl qobject::BrowserUi {
         }
         if matches!(command.name.as_str(), "context-enter" | "context-save") {
             let context_name = if command.name == "context-save" && name.is_empty() {
-                let state = self
-                    .as_ref()
+                let binding = self.as_ref();
+                let state = binding
                     .rust()
                     .state
-                    .clone()
+                    .as_ref()
                     .ok_or_else(|| "core state unavailable".to_owned())?;
                 let window = self
                     .as_ref()
@@ -28367,11 +21929,11 @@ impl qobject::BrowserUi {
                 });
                 return Ok(result);
             }
-            let state = self
-                .as_ref()
+            let binding = self.as_ref();
+            let state = binding
                 .rust()
                 .state
-                .clone()
+                .as_ref()
                 .ok_or_else(|| "core state unavailable".to_owned())?;
             let window = state
                 .windows()
@@ -28422,14 +21984,10 @@ impl qobject::BrowserUi {
                 selected_index,
             }];
             self.as_mut()
-                .rust_mut()
-                .as_mut()
-                .get_mut()
-                .contexts
-                .as_mut()
-                .ok_or_else(|| "context registry unavailable".to_owned())?
-                .save_membership(&context_name, members)
-                .map_err(|error| error.to_string())?;
+                .apply_context_change(ContextCommand::SaveMembership {
+                    name: context_name.clone(),
+                    members,
+                })?;
             let result = serde_json::json!({
                 "status": "saved",
                 "context": {"id": context.id.to_string(), "name": context.name},
@@ -28461,26 +22019,20 @@ impl qobject::BrowserUi {
                 "profile": self.as_ref().rust().pending_context_create.as_ref().map(|value| value.2.clone())
             }));
         }
-        let mut registry = self
-            .as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .contexts
-            .take()
-            .ok_or_else(|| "context registry unavailable".to_owned())?;
         let result = match command.name.as_str() {
             "context-create" => unreachable!("context-create is handled by the profile worker"),
-            "context-delete" => registry.remove(&name).map(|context| {
-                serde_json::json!({
-                    "status": "deleted",
-                    "context": {"id": context.id.to_string(), "name": context.name}
-                })
-            }),
+            "context-delete" => self
+                .as_mut()
+                .apply_context_change(ContextCommand::Remove { name: name.clone() })
+                .map(|effect| effect.context)
+                .map(|context| {
+                    serde_json::json!({
+                        "status": "deleted",
+                        "context": {"id": context.id.to_string(), "name": context.name}
+                    })
+                }),
             _ => unreachable!("context-list returned above"),
-        }
-        .map_err(|error| error.to_string());
-        self.as_mut().rust_mut().as_mut().get_mut().contexts = Some(registry);
+        };
         result
     }
 
@@ -28525,7 +22077,7 @@ impl qobject::BrowserUi {
                     .map(|roots| roots.config.as_path()),
                 subject,
                 self.as_ref().rust().state.is_some(),
-                self.as_ref().rust().store.is_some(),
+                self.as_ref().rust().profile_persistence.is_durable(),
                 self.as_ref().active_profile_is_transient(),
             )?);
         }
@@ -28594,12 +22146,13 @@ impl qobject::BrowserUi {
                 "Macro recording stopped at the 1000-command limit",
             ));
         }
-        self.as_mut().sync_macro_status();
+        self.as_mut().clear_site_experiment_presentation();
+        self.as_mut().sync_macro_status_text();
     }
 
-    fn sync_macro_status(mut self: Pin<&mut Self>) {
-        let state = macro_state_json(self.as_ref().rust());
-        self.as_mut().set_macro_status(QString::from(state));
+    fn sync_macro_status_text(mut self: Pin<&mut Self>) {
+        let status = macro_status_text(self.as_ref().rust());
+        self.as_mut().set_macro_status_text(QString::from(status));
     }
 
     fn execute_repeat_command(self: Pin<&mut Self>, command: &ParsedCommand) -> bool {
@@ -28638,7 +22191,7 @@ impl qobject::BrowserUi {
                 }
                 let mut rust = self.as_mut().rust_mut();
                 rust.as_mut().get_mut().recording_macro = Some((register.clone(), Vec::new()));
-                self.as_mut().sync_macro_status();
+                self.as_mut().sync_macro_status_text();
                 self.set_status_text(QString::from(format!("Recording macro {register}")));
                 true
             }
@@ -28664,7 +22217,7 @@ impl qobject::BrowserUi {
                     .get_mut()
                     .macro_registers
                     .insert(register.clone(), commands);
-                self.as_mut().sync_macro_status();
+                self.as_mut().sync_macro_status_text();
                 self.set_status_text(QString::from(format!("Recorded macro {register}")));
                 true
             }
@@ -28712,7 +22265,7 @@ impl qobject::BrowserUi {
                         .get_mut()
                         .macro_expanded_commands = 0;
                 }
-                self.as_mut().sync_macro_status();
+                self.as_mut().sync_macro_status_text();
                 result
             }
             _ => false,
@@ -29181,7 +22734,12 @@ impl qobject::BrowserUi {
                     ));
                     return false;
                 }
-                if self.as_ref().rust().store.is_none() {
+                if self
+                    .as_ref()
+                    .rust()
+                    .profile_persistence
+                    .lacks_durable_storage()
+                {
                     self.set_status_text(QString::from(
                         "Blocklist updates require a normal profile with durable storage",
                     ));
@@ -29208,7 +22766,12 @@ impl qobject::BrowserUi {
                     ));
                     return false;
                 }
-                if self.as_ref().rust().store.is_none() {
+                if self
+                    .as_ref()
+                    .rust()
+                    .profile_persistence
+                    .lacks_durable_storage()
+                {
                     self.set_status_text(QString::from(
                         "Clean-link updates require a normal profile with durable storage",
                     ));
@@ -29311,7 +22874,7 @@ impl qobject::BrowserUi {
                     self.set_status_text(QString::from(error.to_string()));
                     return false;
                 }
-                let options = match hint_options(&command) {
+                let options = match parse_hint_options(&command) {
                     Ok(options) => options,
                     Err(error) => {
                         self.set_status_text(QString::from(error));
@@ -29319,10 +22882,10 @@ impl qobject::BrowserUi {
                     }
                 };
                 self.as_mut().set_hint_options(
-                    options.0,
-                    options.1,
-                    &options.2,
-                    options.3.as_deref(),
+                    options.links_only,
+                    options.rapid,
+                    &options.target,
+                    options.script.as_deref(),
                 );
                 continue;
             }
@@ -29937,33 +23500,27 @@ impl qobject::BrowserUi {
                 continue;
             }
             self.as_mut().note_repeatable_command(&command);
-            let Some(state) = self.as_ref().rust().state.clone() else {
-                self.set_status_text(QString::from("Core state unavailable"));
-                return false;
+            let effects = {
+                if self.as_ref().rust().state.is_none() {
+                    self.set_status_text(QString::from("Core state unavailable"));
+                    return false;
+                }
+                let navigation = self.as_ref().navigation_context();
+                self.as_mut().dispatch_runtime(RuntimeDispatch {
+                    invocation: CommandInvocation::new(command),
+                    navigation,
+                    target: DispatchTarget::Active,
+                })
             };
-            let events = match dispatch_command(
-                &state,
-                &registry,
-                CommandInvocation::new(command),
-                &self.as_ref().navigation_context(),
-            ) {
-                Ok(events) => events,
+            let effects = match effects {
+                Ok(effects) => effects,
                 Err(error) => {
                     self.set_status_text(QString::from(error.to_string()));
                     return false;
                 }
             };
-            for event in events {
-                let effects = match self.as_mut().reduce_event(event) {
-                    Ok(effects) => effects,
-                    Err(error) => {
-                        self.set_status_text(QString::from(error));
-                        return false;
-                    }
-                };
-                self.as_mut().sync_tab_order_from_core();
-                self.as_mut().set_pending_engine_action(&effects);
-            }
+            self.as_mut().sync_tab_order_from_core();
+            self.as_mut().set_pending_engine_action(&effects);
         }
         self.set_status_text(QString::from("Command executed"));
         true
@@ -30108,84 +23665,62 @@ impl qobject::BrowserUi {
         }
     }
 
-    fn userscript_actions(self: Pin<&mut Self>, subject: &QString) -> QString {
-        let values = userscript_action_values(
-            self.as_ref()
-                .rust()
-                .userscript_roots
-                .as_ref()
-                .map(|roots| roots.config.as_path()),
-            Some(subject.to_string().as_str()),
-            self.as_ref().rust().state.is_some(),
-            self.as_ref().rust().store.is_some(),
+    fn select_external_action_subject(mut self: Pin<&mut Self>, subject: &QString) -> bool {
+        let values = external_action_presentations(
+            &self.as_ref().rust().config,
+            &subject.to_string(),
             self.as_ref().active_profile_is_transient(),
         );
         match values {
             Ok(values) => {
-                QString::from(serde_json::to_string(&values).unwrap_or_else(|_| "[]".to_owned()))
+                self.as_mut().set_external_action_ids(
+                    values
+                        .iter()
+                        .map(|action| QString::from(&action.id))
+                        .collect(),
+                );
+                self.as_mut().set_external_action_labels(
+                    values
+                        .iter()
+                        .map(|action| QString::from(&action.label))
+                        .collect(),
+                );
+                self.as_mut().set_external_action_availability(
+                    values
+                        .iter()
+                        .map(|action| QString::from(action.available.to_string()))
+                        .collect(),
+                );
+                true
             }
             Err(error) => {
+                self.as_mut()
+                    .set_external_action_ids(QStringList::default());
+                self.as_mut()
+                    .set_external_action_labels(QStringList::default());
+                self.as_mut()
+                    .set_external_action_availability(QStringList::default());
                 self.set_status_text(QString::from(format!(
-                    "Userscript actions unavailable: {error}"
+                    "External actions unavailable: {error}"
                 )));
-                QString::from("[]")
+                false
             }
         }
     }
 
-    fn external_action_values(self: Pin<&mut Self>, subject: &QString) -> QString {
-        let subject = subject.to_string();
-        if !matches!(subject.as_str(), "url" | "link" | "selection" | "tab") {
-            return QString::from("[]");
-        }
-        let Ok(targets) = configured_action_targets(&self.as_ref().rust().config) else {
-            return QString::from("[]");
-        };
-        let values = targets
-            .iter()
-            .filter(|(_, target)| {
-                target
-                    .subject_types
-                    .iter()
-                    .any(|declared| declared == &subject)
-            })
-            .flat_map(|(name, target)| {
-                configured_action_target_values(
-                    name,
-                    target,
-                    self.as_ref().active_profile_is_transient(),
-                )
-            })
-            .filter(|value| value.get("subject").and_then(Value::as_str) == Some(subject.as_str()))
-            .filter(|value| {
-                value
-                    .get("availability")
-                    .and_then(|availability| availability.get("state"))
-                    .and_then(Value::as_str)
-                    == Some("available")
-            })
-            .collect::<Vec<_>>();
-        QString::from(serde_json::to_string(&values).unwrap_or_else(|_| "[]".into()))
-    }
-
-    fn install_userscript_manifest(mut self: Pin<&mut Self>, path: &QString) -> QString {
+    fn install_userscript_manifest(mut self: Pin<&mut Self>, path: &QString) -> bool {
         let path = path.to_string();
         if path.is_empty() || path.len() > 4096 || path.chars().any(char::is_control) {
             self.as_mut().set_userscript_install_state(QString::from(
                 "error:userscript manifest path is empty or invalid",
             ));
-            return QString::from(
-                json!({"error": "userscript manifest path is empty or invalid"}).to_string(),
-            );
+            return false;
         }
         if self.as_ref().active_profile_is_transient() {
             self.as_mut().set_userscript_install_state(QString::from(
                 "error:userscript installation is unavailable in private or ephemeral profiles",
             ));
-            return QString::from(json!({
-                "error": "userscript installation is unavailable in private or ephemeral profiles"
-            })
-            .to_string());
+            return false;
         }
         let Some(root) = self
             .as_ref()
@@ -30197,10 +23732,7 @@ impl qobject::BrowserUi {
             self.as_mut().set_userscript_install_state(QString::from(
                 "error:userscripts are unavailable without configured storage",
             ));
-            return QString::from(
-                json!({"error": "userscripts are unavailable without configured storage"})
-                    .to_string(),
-            );
+            return false;
         };
         let result = self
             .as_mut()
@@ -30222,7 +23754,7 @@ impl qobject::BrowserUi {
                     .set_userscript_install_state(QString::from("pending"));
                 self.as_mut()
                     .set_status_text(QString::from("Installing userscript…"));
-                QString::from(json!({"pending": true}).to_string())
+                true
             }
             Err(error) => {
                 self.as_mut()
@@ -30230,7 +23762,7 @@ impl qobject::BrowserUi {
                 self.as_mut().set_status_text(QString::from(format!(
                     "Userscript installation failed: {error}"
                 )));
-                QString::from(json!({"error": error}).to_string())
+                false
             }
         }
     }
@@ -30985,7 +24517,7 @@ impl qobject::BrowserUi {
     fn journey_export_json(self: Pin<&mut Self>) -> Result<String, String> {
         let binding = self.as_ref();
         let rust = binding.rust();
-        if rust.store.is_some() {
+        if rust.profile_persistence.is_durable() {
             return rust
                 .journey_export_payload
                 .clone()
@@ -31046,22 +24578,13 @@ impl qobject::BrowserUi {
         let durable_without_payload = {
             let binding = self.as_ref();
             let rust = binding.rust();
-            rust.store.is_some() && rust.journey_export_payload.is_none()
+            rust.profile_persistence.is_durable() && rust.journey_export_payload.is_none()
         };
         if durable_without_payload {
             let result = self
                 .as_mut()
-                .rust_mut()
-                .as_mut()
-                .get_mut()
-                .storage_worker
-                .as_mut()
-                .ok_or_else(|| "profile metadata worker is unavailable".to_owned())
-                .and_then(|worker| {
-                    worker
-                        .request_journey_export()
-                        .map_err(|error| error.to_string())
-                });
+                .submit_storage(StorageRequest::JourneyExport)
+                .map_err(|error| error.to_string());
             if let Err(error) = result {
                 self.as_mut().set_status_text(QString::from(format!(
                     "Journey export is already loading or unavailable: {error}"
@@ -31151,28 +24674,24 @@ impl qobject::BrowserUi {
     }
 
     fn queue_download_update(mut self: Pin<&mut Self>, update: DownloadUpdate) -> bool {
-        let queue_full =
-            self.as_ref().rust().pending_download_writes.len() >= MAX_PENDING_DOWNLOAD_WRITES;
         let event_payload = serde_json::json!({
             "download_id": update.id.clone(),
             "state": update.state.as_str(),
             "bytes_received": update.bytes_received
         });
-        let accepted = if queue_full {
-            self.as_mut().set_status_text(QString::from(
-                "Download update queue is full; update retained in the engine view",
-            ));
-            false
-        } else {
-            self.as_mut()
-                .rust_mut()
-                .as_mut()
-                .get_mut()
-                .pending_download_writes
-                .push_back(update);
-            self.as_ref().rust().storage_library_dirty.set(true);
-            self.as_mut().flush_download_writes();
-            true
+        let accepted = match self.as_mut().submit_storage(StorageRequest::DownloadBatch {
+            updates: vec![update],
+        }) {
+            Ok(()) => {
+                self.as_ref().rust().storage_library_dirty.set(true);
+                true
+            }
+            Err(error) => {
+                self.as_mut().set_status_text(QString::from(format!(
+                    "Download update could not be scheduled: {error}"
+                )));
+                false
+            }
         };
         if accepted {
             let mut rust = self.as_mut().rust_mut();
@@ -31182,498 +24701,82 @@ impl qobject::BrowserUi {
         accepted
     }
 
-    fn flush_download_writes(mut self: Pin<&mut Self>) {
-        let batch = {
-            let pinned = self.as_ref();
-            let rust = pinned.rust();
-            if rust.inflight_download_writes.is_some() {
-                return;
-            }
-            rust.pending_download_writes
-                .iter()
-                .take(32)
-                .cloned()
-                .collect::<Vec<_>>()
-        };
-        if batch.is_empty() {
-            return;
-        }
-        let result = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.storage_worker
-                .as_mut()
-                .map(|worker| worker.request_download_batch(batch.clone()))
-        };
-        match result {
-            Some(Ok(())) => {
-                let mut rust = self.as_mut().rust_mut();
-                let this = rust.as_mut().get_mut();
-                for _ in 0..batch.len() {
-                    this.pending_download_writes.pop_front();
-                }
-                this.inflight_download_writes = Some(batch);
-            }
-            Some(Err(error))
-                if matches!(
-                    error,
-                    ferric_browser_storage::StorageWorkerError::Busy
-                        | ferric_browser_storage::StorageWorkerError::QueueFull
-                ) => {}
-            Some(Err(error)) => {
-                self.as_mut().rust_mut().as_mut().get_mut().storage_worker = None;
-                self.as_mut().set_status_text(QString::from(format!(
-                    "Download worker unavailable; updates retained for retry: {error}"
-                )));
-            }
-            None => {
-                self.as_mut().set_status_text(QString::from(
-                    "Download worker unavailable; updates retained for retry",
-                ));
-            }
-        }
+    fn flush_download_writes(self: Pin<&mut Self>) {
+        let _ = self;
     }
 
-    fn flush_mark_writes(mut self: Pin<&mut Self>) {
-        let batch = {
-            let pinned = self.as_ref();
-            let rust = pinned.rust();
-            if rust.inflight_mark_writes.is_some() {
-                return;
-            }
-            rust.pending_mark_writes
-                .iter()
-                .take(16)
-                .cloned()
-                .collect::<Vec<_>>()
-        };
-        if batch.is_empty() {
-            return;
-        }
-        let result = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.storage_worker
-                .as_mut()
-                .map(|worker| worker.request_mark_writes(batch.clone()))
-        };
-        match result {
-            Some(Ok(())) => {
-                let mut rust = self.as_mut().rust_mut();
-                let this = rust.as_mut().get_mut();
-                for _ in 0..batch.len() {
-                    this.pending_mark_writes.pop_front();
-                }
-                this.inflight_mark_writes = Some(batch);
-            }
-            Some(Err(error))
-                if matches!(
-                    error,
-                    ferric_browser_storage::StorageWorkerError::Busy
-                        | ferric_browser_storage::StorageWorkerError::QueueFull
-                ) => {}
-            Some(Err(error)) => {
-                self.as_mut().rust_mut().as_mut().get_mut().storage_worker = None;
-                self.as_mut().set_status_text(QString::from(format!(
-                    "Bookmark/quickmark worker unavailable; writes retained for retry: {error}"
-                )));
-            }
-            None => {
-                self.as_mut().set_status_text(QString::from(
-                    "Bookmark/quickmark worker unavailable; writes retained for retry",
-                ));
-            }
-        }
+    fn flush_mark_writes(self: Pin<&mut Self>) {
+        let _ = self;
     }
 
     fn queue_permission_writes(mut self: Pin<&mut Self>, rules: Vec<PermissionRule>) -> bool {
-        let queue_full = self.as_ref().rust().pending_permission_writes.len() + rules.len()
-            > MAX_PENDING_PERMISSION_WRITES;
-        if queue_full || rules.is_empty() {
-            self.set_status_text(QString::from(
-                "Permission write queue is full or the batch is empty",
-            ));
+        if rules.is_empty() {
+            self.set_status_text(QString::from("Permission write batch is empty"));
             return false;
         }
+        match self
+            .as_mut()
+            .submit_storage(StorageRequest::PermissionBatch { rules })
         {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.pending_permission_writes.extend(rules);
-            this.storage_library_dirty.set(true);
+            Ok(()) => {
+                self.as_ref().rust().storage_library_dirty.set(true);
+                true
+            }
+            Err(error) => {
+                self.set_status_text(QString::from(format!(
+                    "Permission write could not be scheduled: {error}"
+                )));
+                false
+            }
         }
-        self.as_mut().flush_permission_writes();
-        true
     }
 
-    fn flush_permission_writes(mut self: Pin<&mut Self>) {
-        let batch = {
-            let pinned = self.as_ref();
-            let rust = pinned.rust();
-            if rust.inflight_permission_writes.is_some() {
-                return;
-            }
-            rust.pending_permission_writes
-                .iter()
-                .take(16)
-                .cloned()
-                .collect::<Vec<_>>()
-        };
-        if batch.is_empty() {
-            return;
-        }
-        let result = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.storage_worker
-                .as_mut()
-                .map(|worker| worker.request_permission_batch(batch.clone()))
-        };
-        match result {
-            Some(Ok(())) => {
-                let mut rust = self.as_mut().rust_mut();
-                let this = rust.as_mut().get_mut();
-                for _ in 0..batch.len() {
-                    this.pending_permission_writes.pop_front();
-                }
-                this.inflight_permission_writes = Some(batch);
-            }
-            Some(Err(error))
-                if matches!(
-                    error,
-                    ferric_browser_storage::StorageWorkerError::Busy
-                        | ferric_browser_storage::StorageWorkerError::QueueFull
-                ) => {}
-            Some(Err(error)) => {
-                self.as_mut().rust_mut().as_mut().get_mut().storage_worker = None;
-                self.as_mut().set_status_text(QString::from(format!(
-                    "Permission worker unavailable; rules retained for retry: {error}"
-                )));
-            }
-            None => {
-                self.as_mut().set_status_text(QString::from(
-                    "Permission worker unavailable; rules retained for retry",
-                ));
-            }
-        }
+    fn flush_permission_writes(self: Pin<&mut Self>) {
+        let _ = self;
     }
 
     fn queue_history_visit(mut self: Pin<&mut Self>, visit: VisitInput) {
-        let queue_full =
-            self.as_ref().rust().pending_history_writes.len() >= MAX_PENDING_HISTORY_WRITES;
-        if queue_full {
-            self.set_status_text(QString::from(
-                "History write queue is full; visit retained only by the engine",
-            ));
-            return;
+        match self.as_mut().submit_storage(StorageRequest::HistoryBatch {
+            visits: vec![visit],
+        }) {
+            Ok(()) => self.as_ref().rust().storage_library_dirty.set(true),
+            Err(error) => self.set_status_text(QString::from(format!(
+                "History write could not be scheduled: {error}"
+            ))),
         }
-        self.as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .pending_history_writes
-            .push_back(visit);
-        self.as_ref().rust().storage_library_dirty.set(true);
-        self.as_mut().flush_history_writes();
     }
 
-    fn flush_history_writes(mut self: Pin<&mut Self>) {
-        let batch = {
-            let pinned = self.as_ref();
-            let rust = pinned.rust();
-            if rust.inflight_history_writes.is_some() {
-                return;
-            }
-            rust.pending_history_writes
-                .iter()
-                .take(128)
-                .cloned()
-                .collect::<Vec<_>>()
-        };
-        if batch.is_empty() {
-            return;
-        }
-        let result = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.storage_worker
-                .as_mut()
-                .map(|worker| worker.request_history_batch(batch.clone()))
-        };
-        match result {
-            Some(Ok(())) => {
-                let mut rust = self.as_mut().rust_mut();
-                let this = rust.as_mut().get_mut();
-                for _ in 0..batch.len() {
-                    this.pending_history_writes.pop_front();
-                }
-                this.inflight_history_writes = Some(batch);
-            }
-            Some(Err(error))
-                if matches!(
-                    error,
-                    ferric_browser_storage::StorageWorkerError::Busy
-                        | ferric_browser_storage::StorageWorkerError::QueueFull
-                ) => {}
-            Some(Err(error)) => {
-                self.as_mut().rust_mut().as_mut().get_mut().storage_worker = None;
-                self.as_mut().set_status_text(QString::from(format!(
-                    "History worker unavailable; write retained for retry: {error}"
-                )));
-            }
-            None => {
-                self.as_mut().set_status_text(QString::from(
-                    "History worker unavailable; write retained for retry",
-                ));
-            }
-        }
+    fn flush_history_writes(self: Pin<&mut Self>) {
+        let _ = self;
     }
 
     fn wait_for_history_writes(mut self: Pin<&mut Self>) -> bool {
-        let deadline = Instant::now() + Duration::from_secs(2);
-        loop {
-            self.as_mut().poll_storage_library();
-            self.as_mut().flush_history_writes();
-            let (pending, inflight) = {
-                let pinned = self.as_ref();
-                let rust = pinned.rust();
-                (
-                    !rust.pending_history_writes.is_empty(),
-                    rust.inflight_history_writes.is_some(),
-                )
-            };
-            if !pending && !inflight {
-                return true;
-            }
-            let now = Instant::now();
-            if now >= deadline {
-                self.set_status_text(QString::from(
-                    "History writes did not drain before shutdown; pending entries retained",
-                ));
-                return false;
-            }
-            if inflight {
-                let timeout = (deadline - now).min(Duration::from_millis(50));
-                let result = {
-                    let mut rust = self.as_mut().rust_mut();
-                    let this = rust.as_mut().get_mut();
-                    this.storage_worker
-                        .as_mut()
-                        .and_then(|worker| worker.wait_history_batch(timeout))
-                };
-                if let Some(result) = result {
-                    self.as_mut().apply_history_batch_result(result);
-                } else if self.as_ref().rust().storage_worker.is_none() {
-                    let mut rust = self.as_mut().rust_mut();
-                    let this = rust.as_mut().get_mut();
-                    if let Some(batch) = this.inflight_history_writes.take() {
-                        for visit in batch.into_iter().rev() {
-                            this.pending_history_writes.push_front(visit);
-                        }
-                    }
-                }
-            } else {
-                self.set_status_text(QString::from(
-                    "History worker unavailable; pending entries retained",
-                ));
-                return false;
-            }
-        }
+        self.as_mut().poll_storage_library();
+        self.as_ref().storage_is_open()
     }
 
     fn wait_for_permission_writes(mut self: Pin<&mut Self>) -> bool {
-        let deadline = Instant::now() + Duration::from_secs(2);
-        loop {
-            self.as_mut().poll_storage_library();
-            self.as_mut().flush_permission_writes();
-            let (pending, inflight) = {
-                let pinned = self.as_ref();
-                let rust = pinned.rust();
-                (
-                    !rust.pending_permission_writes.is_empty(),
-                    rust.inflight_permission_writes.is_some(),
-                )
-            };
-            if !pending && !inflight {
-                return true;
-            }
-            let now = Instant::now();
-            if now >= deadline {
-                self.set_status_text(QString::from(
-                    "Permission writes did not drain before shutdown; pending rules retained",
-                ));
-                return false;
-            }
-            if inflight {
-                let timeout = (deadline - now).min(Duration::from_millis(50));
-                let result = {
-                    let mut rust = self.as_mut().rust_mut();
-                    let this = rust.as_mut().get_mut();
-                    this.storage_worker
-                        .as_mut()
-                        .and_then(|worker| worker.wait_permission_batch(timeout))
-                };
-                if let Some(result) = result {
-                    self.as_mut().apply_permission_batch_result(result);
-                } else if self.as_ref().rust().storage_worker.is_none() {
-                    let mut rust = self.as_mut().rust_mut();
-                    let this = rust.as_mut().get_mut();
-                    if let Some(batch) = this.inflight_permission_writes.take() {
-                        for rule in batch.into_iter().rev() {
-                            this.pending_permission_writes.push_front(rule);
-                        }
-                    }
-                }
-            } else {
-                self.set_status_text(QString::from(
-                    "Permission worker unavailable; pending rules retained",
-                ));
-                return false;
-            }
-        }
+        self.as_mut().poll_storage_library();
+        self.as_ref().storage_is_open()
     }
 
     fn wait_for_download_writes(mut self: Pin<&mut Self>) -> bool {
-        let deadline = Instant::now() + Duration::from_secs(2);
-        loop {
-            self.as_mut().poll_storage_library();
-            self.as_mut().flush_download_writes();
-            let (pending, inflight) = {
-                let pinned = self.as_ref();
-                let rust = pinned.rust();
-                (
-                    !rust.pending_download_writes.is_empty(),
-                    rust.inflight_download_writes.is_some(),
-                )
-            };
-            if !pending && !inflight {
-                return true;
-            }
-            let now = Instant::now();
-            if now >= deadline {
-                self.set_status_text(QString::from(
-                    "Download writes did not drain before shutdown; pending updates retained",
-                ));
-                return false;
-            }
-            if inflight {
-                let timeout = (deadline - now).min(Duration::from_millis(50));
-                let result = {
-                    let mut rust = self.as_mut().rust_mut();
-                    let this = rust.as_mut().get_mut();
-                    this.storage_worker
-                        .as_mut()
-                        .and_then(|worker| worker.wait_download_batch(timeout))
-                };
-                if let Some(result) = result {
-                    self.as_mut().apply_download_batch_result(result);
-                } else if self.as_ref().rust().storage_worker.is_none() {
-                    let mut rust = self.as_mut().rust_mut();
-                    let this = rust.as_mut().get_mut();
-                    if let Some(batch) = this.inflight_download_writes.take() {
-                        for update in batch.into_iter().rev() {
-                            this.pending_download_writes.push_front(update);
-                        }
-                    }
-                }
-            } else {
-                self.set_status_text(QString::from(
-                    "Download worker unavailable; pending updates retained",
-                ));
-                return false;
-            }
-        }
+        self.as_mut().poll_storage_library();
+        self.as_ref().storage_is_open()
     }
 
     fn wait_for_mark_writes(mut self: Pin<&mut Self>) -> bool {
-        let deadline = Instant::now() + Duration::from_secs(2);
-        loop {
-            self.as_mut().flush_mark_writes();
-            let (queued, inflight) = {
-                let pinned = self.as_ref();
-                let rust = pinned.rust();
-                (
-                    !rust.pending_mark_writes.is_empty(),
-                    rust.inflight_mark_writes.is_some(),
-                )
-            };
-            if !queued && !inflight {
-                return true;
-            }
-            let now = Instant::now();
-            if now >= deadline {
-                self.set_status_text(QString::from(
-                    "Bookmark/quickmark writes did not drain before shutdown",
-                ));
-                return false;
-            }
-            let timeout = (deadline - now).min(Duration::from_millis(50));
-            let result = {
-                let mut rust = self.as_mut().rust_mut();
-                let this = rust.as_mut().get_mut();
-                this.storage_worker
-                    .as_mut()
-                    .and_then(|worker| worker.wait_mark_write(timeout))
-            };
-            match result {
-                Some(Ok(committed)) => {
-                    let batch = self
-                        .as_mut()
-                        .rust_mut()
-                        .as_mut()
-                        .get_mut()
-                        .inflight_mark_writes
-                        .take();
-                    if batch.as_ref().is_none_or(|batch| committed != batch.len()) {
-                        self.set_status_text(QString::from(format!(
-                            "Bookmark/quickmark worker committed an unexpected count ({committed})"
-                        )));
-                        return false;
-                    }
-                }
-                Some(Err(error)) => {
-                    let batch = self
-                        .as_mut()
-                        .rust_mut()
-                        .as_mut()
-                        .get_mut()
-                        .inflight_mark_writes
-                        .take();
-                    if let Some(batch) = batch {
-                        let mut rust = self.as_mut().rust_mut();
-                        let this = rust.as_mut().get_mut();
-                        for write in batch.into_iter().rev() {
-                            this.pending_mark_writes.push_front(write);
-                        }
-                    }
-                    self.set_status_text(QString::from(format!(
-                        "Bookmark/quickmark write failed during shutdown; pending write retained: {error}"
-                    )));
-                    return false;
-                }
-                None if self.as_ref().rust().storage_worker.is_none() => {
-                    self.set_status_text(QString::from(
-                        "Bookmark/quickmark worker unavailable; pending write retained",
-                    ));
-                    return false;
-                }
-                None => {}
-            }
-        }
+        self.as_mut().poll_storage_library();
+        self.as_ref().storage_is_open()
     }
 
     fn wait_for_history_clear(mut self: Pin<&mut Self>) -> bool {
         let deadline = Instant::now() + Duration::from_secs(2);
         loop {
-            self.as_mut().flush_journey_writes();
-            let pending = self
-                .as_ref()
-                .rust()
-                .storage_worker
-                .as_ref()
-                .is_some_and(ProfileStoreWorker::history_clear_pending);
-            let mapping_pending = self.as_ref().rust().pending_journey_mapping.is_some();
-            let queued = !self.as_ref().rust().pending_journey_writes.is_empty();
-            if !pending && !mapping_pending && !queued {
+            self.as_mut().poll_storage_library();
+            let pending = self.as_ref().rust().pending_history_clear.is_some();
+            let journey_pending = !self.as_ref().rust().pending_journey_mappings.is_empty();
+            if !pending && !journey_pending {
                 return true;
             }
             let now = Instant::now();
@@ -31683,39 +24786,15 @@ impl qobject::BrowserUi {
                 ));
                 return false;
             }
-            let timeout = (deadline - now).min(Duration::from_millis(50));
-            let result = {
-                let mut rust = self.as_mut().rust_mut();
-                let this = rust.as_mut().get_mut();
-                this.storage_worker
-                    .as_mut()
-                    .and_then(|worker| worker.wait_history_clear(timeout))
-            };
-            match result {
-                Some(Ok(_)) => {
-                    self.as_ref().rust().storage_library_dirty.set(true);
-                    return true;
-                }
-                Some(Err(error)) => {
-                    self.set_status_text(QString::from(format!(
-                        "History clear failed during shutdown: {error}"
-                    )));
-                    return false;
-                }
-                None => {}
-            }
+            thread::sleep(Duration::from_millis(5));
         }
     }
 
     fn wait_for_download_destination(mut self: Pin<&mut Self>) -> bool {
         let deadline = Instant::now() + Duration::from_secs(2);
         loop {
-            let pending = self
-                .as_ref()
-                .rust()
-                .storage_worker
-                .as_ref()
-                .is_some_and(ProfileStoreWorker::download_destination_pending);
+            self.as_mut().poll_storage_library();
+            let pending = self.as_ref().rust().download_destination_pending;
             if !pending {
                 return true;
             }
@@ -31726,39 +24805,15 @@ impl qobject::BrowserUi {
                 ));
                 return false;
             }
-            let timeout = (deadline - now).min(Duration::from_millis(50));
-            let result = {
-                let mut rust = self.as_mut().rust_mut();
-                let this = rust.as_mut().get_mut();
-                this.storage_worker
-                    .as_mut()
-                    .and_then(|worker| worker.wait_download_destination(timeout))
-            };
-            match result {
-                Some(Ok(())) => {
-                    self.as_ref().rust().storage_library_dirty.set(true);
-                    return true;
-                }
-                Some(Err(error)) => {
-                    self.set_status_text(QString::from(format!(
-                        "Download destination update failed during shutdown: {error}"
-                    )));
-                    return false;
-                }
-                None => {}
-            }
+            thread::sleep(Duration::from_millis(5));
         }
     }
 
     fn wait_for_download_create(mut self: Pin<&mut Self>) -> bool {
         let deadline = Instant::now() + Duration::from_secs(2);
         loop {
-            let pending = self
-                .as_ref()
-                .rust()
-                .storage_worker
-                .as_ref()
-                .is_some_and(ProfileStoreWorker::download_create_pending);
+            self.as_mut().poll_storage_library();
+            let pending = self.as_ref().rust().download_create_pending;
             if !pending {
                 return true;
             }
@@ -31769,43 +24824,15 @@ impl qobject::BrowserUi {
                 ));
                 return false;
             }
-            let timeout = (deadline - now).min(Duration::from_millis(50));
-            let result = {
-                let mut rust = self.as_mut().rust_mut();
-                let this = rust.as_mut().get_mut();
-                this.storage_worker
-                    .as_mut()
-                    .and_then(|worker| worker.wait_download_create(timeout))
-            };
-            match result {
-                Some(Ok(())) => {
-                    self.as_ref().rust().storage_library_dirty.set(true);
-                    return true;
-                }
-                Some(Err(error)) => {
-                    self.set_status_text(QString::from(format!(
-                        "Download index creation failed during shutdown: {error}"
-                    )));
-                    return false;
-                }
-                None => {}
-            }
+            thread::sleep(Duration::from_millis(5));
         }
     }
 
     fn wait_for_journey_write(mut self: Pin<&mut Self>) -> bool {
         let deadline = Instant::now() + Duration::from_secs(2);
         loop {
-            self.as_mut().flush_journey_writes();
-            let pending = self
-                .as_ref()
-                .rust()
-                .storage_worker
-                .as_ref()
-                .is_some_and(ProfileStoreWorker::journey_pending);
-            let mapping_pending = self.as_ref().rust().pending_journey_mapping.is_some();
-            let queued = !self.as_ref().rust().pending_journey_writes.is_empty();
-            if !pending && !mapping_pending && !queued {
+            self.as_mut().poll_storage_library();
+            if self.as_ref().rust().pending_journey_mappings.is_empty() {
                 return true;
             }
             let now = Instant::now();
@@ -31815,45 +24842,7 @@ impl qobject::BrowserUi {
                 ));
                 return false;
             }
-            let timeout = (deadline - now).min(Duration::from_millis(50));
-            let result = {
-                let mut rust = self.as_mut().rust_mut();
-                let this = rust.as_mut().get_mut();
-                this.storage_worker
-                    .as_mut()
-                    .and_then(|worker| worker.wait_journey_write(timeout))
-            };
-            match result {
-                Some(Ok(true)) => {
-                    let mapping = self
-                        .as_mut()
-                        .rust_mut()
-                        .as_mut()
-                        .get_mut()
-                        .pending_journey_mapping
-                        .take();
-                    if let Some((core_id, durable_id)) = mapping {
-                        self.as_ref()
-                            .rust()
-                            .journey_durable_ids
-                            .borrow_mut()
-                            .insert(core_id, durable_id);
-                    }
-                    self.as_ref().rust().storage_library_dirty.set(true);
-                }
-                Some(Ok(false)) => {}
-                Some(Err(error)) => {
-                    self.as_mut()
-                        .rust_mut()
-                        .as_mut()
-                        .get_mut()
-                        .pending_journey_mapping = None;
-                    self.as_mut().set_status_text(QString::from(format!(
-                        "Journey write failed during shutdown: {error}"
-                    )));
-                }
-                None => {}
-            }
+            thread::sleep(Duration::from_millis(5));
         }
     }
 
@@ -31960,7 +24949,13 @@ impl qobject::BrowserUi {
         if !is_safe_history_url(url) {
             return;
         }
-        if self.as_ref().rust().store.is_none() && self.as_ref().active_profile_is_transient() {
+        if self
+            .as_ref()
+            .rust()
+            .profile_persistence
+            .lacks_durable_storage()
+            && self.as_ref().active_profile_is_transient()
+        {
             self.as_mut()
                 .record_private_history_visit(url, title, unix_timestamp());
             return;
@@ -32035,20 +25030,22 @@ impl qobject::BrowserUi {
         };
         let _ = (retention_days, profile_id);
         if let Some((write, mapping)) = journey_write {
-            let queued =
-                self.as_ref().rust().pending_journey_writes.len() >= MAX_PENDING_JOURNEY_WRITES;
-            if queued {
-                self.as_mut().set_status_text(QString::from(
-                    "Journey worker queue is full; history retained",
-                ));
-            } else {
-                self.as_mut()
-                    .rust_mut()
-                    .as_mut()
-                    .get_mut()
-                    .pending_journey_writes
-                    .push_back((write, mapping));
-                self.as_mut().flush_journey_writes();
+            match self.as_mut().apply_journey_write(write) {
+                Ok(ticket) => {
+                    if let Some(mapping) = mapping {
+                        self.as_mut()
+                            .rust_mut()
+                            .as_mut()
+                            .get_mut()
+                            .pending_journey_mappings
+                            .insert(ticket, mapping);
+                    }
+                }
+                Err(error) => {
+                    self.as_mut().set_status_text(QString::from(format!(
+                        "Journey write could not be scheduled; history retained: {error}"
+                    )));
+                }
             }
         }
         if !was_traversal {
@@ -32089,7 +25086,7 @@ impl qobject::BrowserUi {
             (
                 title,
                 retention_days,
-                rust.store.is_some() && rust.profile_id.is_some(),
+                rust.profile_persistence.is_durable() && rust.profile_id.is_some(),
             )
         };
         if retention_days == 0 {
@@ -32133,7 +25130,7 @@ impl qobject::BrowserUi {
         } else {
             PrivacyKind::Normal
         };
-        let Some((state, window, tab)) = bootstrap_core(privacy, &profile_label) else {
+        let Some((runtime, window, tab)) = bootstrap_runtime(privacy, &profile_label) else {
             self.as_mut().set_profile_bootstrap_pending(false);
             self.set_status_text(QString::from("Core profile setup failed"));
             return;
@@ -32171,7 +25168,7 @@ impl qobject::BrowserUi {
             profile_label,
             profile_name,
             storage_base,
-            state,
+            state: BrowserApplication::from_runtime(runtime, Config::default()),
             window,
             tab,
         });
@@ -32192,7 +25189,13 @@ impl qobject::BrowserUi {
             worker_config_sources,
             worker_contexts,
         ) = match setup {
-            Ok((storage, profile_overrides, runtime_overrides, config_sources, contexts)) => (
+            Ok(ProfileBootstrapSetup {
+                storage,
+                profile_overrides,
+                runtime_overrides,
+                config_sources,
+                contexts,
+            }) => (
                 Ok(storage),
                 profile_overrides,
                 runtime_overrides,
@@ -32206,7 +25209,7 @@ impl qobject::BrowserUi {
             profile_label: _profile_label,
             profile_name,
             storage_base,
-            state,
+            mut state,
             window,
             tab,
         } = pending;
@@ -32223,15 +25226,15 @@ impl qobject::BrowserUi {
             storage_ready,
             storage_error,
         ) = match storage {
-            Ok((
+            Ok(ProfileStoreSetup {
                 store,
                 profile_id,
                 session_path,
                 session_state_root,
                 profile_lock,
-                storage_roots,
-                _,
-            )) => (
+                roots: storage_roots,
+                profile_names: _,
+            }) => (
                 store,
                 profile_id,
                 session_path,
@@ -32242,13 +25245,6 @@ impl qobject::BrowserUi {
                 None,
             ),
             Err(error) => (None, None, None, None, None, None, false, Some(error)),
-        };
-        let (storage_worker, storage_worker_error) = match store.as_ref() {
-            Some(store) => match ProfileStoreWorker::spawn(store.path()) {
-                Ok(worker) => (Some(worker), None),
-                Err(error) => (None, Some(error.to_string())),
-            },
-            None => (None, None),
         };
         let base_config =
             serde_json::from_str::<Value>(&self.as_ref().rust().config_base_json.to_string())
@@ -32287,13 +25283,23 @@ impl qobject::BrowserUi {
                 }
             }
         }
-        let config = match config_value_with_layers(
-            &base_config,
-            &profile_overrides,
-            &runtime_overrides,
-            &cli_overrides,
-            &RuntimeOverrides::default(),
-        ) {
+        let bootstrap_layers = serde_json::from_value::<Config>(base_config.clone())
+            .map(|base| ConfigurationLayers {
+                base,
+                profile: profile_overrides.clone(),
+                runtime: runtime_overrides.clone(),
+                command_line: cli_overrides.clone(),
+                temporary: RuntimeOverrides::default(),
+            })
+            .map_err(|error| format!("base configuration is invalid: {error}"));
+        let config = match bootstrap_layers
+            .as_ref()
+            .map_err(Clone::clone)
+            .and_then(|layers| layers.resolve().map_err(|error| error.to_string()))
+            .and_then(|config| {
+                serde_json::to_value(config)
+                    .map_err(|error| format!("could not serialize resolved configuration: {error}"))
+            }) {
             Ok(value) => value,
             Err(error) => {
                 config_layer_error.get_or_insert(error);
@@ -32301,6 +25307,27 @@ impl qobject::BrowserUi {
             }
         };
         self.as_mut().update_theme_palette(&config);
+        let mut presentation_config =
+            serde_json::from_value::<Config>(config.clone()).unwrap_or_default();
+        match bootstrap_layers {
+            Ok(layers) => match state.activate_configuration(layers) {
+                Ok(snapshot) => presentation_config = snapshot.effective,
+                Err(error) => {
+                    config_layer_error.get_or_insert_with(|| error.to_string());
+                    let _ = state.replace_configuration(presentation_config.clone());
+                }
+            },
+            Err(error) => {
+                config_layer_error
+                    .get_or_insert_with(|| format!("base configuration is invalid: {error}"));
+                let _ = state.replace_configuration(presentation_config.clone());
+            }
+        }
+        self.as_mut()
+            .update_chrome_preferences(&presentation_config);
+        self.as_mut()
+            .update_feature_preferences(&presentation_config);
+        self.as_mut().update_settings_presentation(&config);
         let hyprland_config = serde_json::from_value::<ferric_browser_config::HyprlandConfig>(
             config.get("hyprland").cloned().unwrap_or(Value::Null),
         )
@@ -32330,6 +25357,7 @@ impl qobject::BrowserUi {
             }
         }
         let effective_config_json = serde_json::to_string(&config).unwrap_or_else(|_| "{}".into());
+        let desktop_portal_mode = desktop_portals::mode_name(&presentation_config.desktop.portals);
         let profile_overrides_json =
             serde_json::to_string(&profile_overrides).unwrap_or_else(|_| "{}".into());
         let (contexts, context_config_error) = match worker_contexts {
@@ -32337,6 +25365,22 @@ impl qobject::BrowserUi {
             Some(Err(error)) => (None, Some(error)),
             None => (None, None),
         };
+        let storage_path = store.as_ref().map(|store| store.path().to_owned());
+        let privacy = state
+            .profiles()
+            .values()
+            .next()
+            .map_or(PrivacyKind::Normal, |profile| profile.privacy);
+        let profile_snapshot = state.activate_profile(ProfileActivation {
+            name: profile_name.clone(),
+            id: profile_id,
+            privacy,
+            roots: storage_roots.clone(),
+            lock: profile_lock,
+            contexts,
+            storage_path,
+        });
+        let storage_worker_error = profile_snapshot.as_ref().err().map(ToString::to_string);
         let status = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
@@ -32346,13 +25390,13 @@ impl qobject::BrowserUi {
             this.journey_export_preview_text = QString::default();
             this.pending_journey_transitions.clear();
             this.pending_journey_parent = None;
-            this.pending_journey_mapping = None;
+            this.pending_journey_mappings.clear();
             this.pending_history_clear = None;
             this.pending_journey_reopen = None;
             this.pending_navigation_urls.clear();
             this.pending_redirect_tabs.clear();
             this.pending_redirect_hops.clear();
-            this.ipc_sequence = this.state.as_ref().map_or(0, ApplicationState::revision);
+            this.ipc_sequence = this.state.as_ref().map_or(0, BrowserApplication::revision);
             this.window = Some(window);
             this.core_window_id = QString::from(window.to_string());
             this.tab = Some(tab);
@@ -32379,8 +25423,9 @@ impl qobject::BrowserUi {
             this.profile_preview_pending = false;
             this.library_kind = QString::default();
             this.library_values = QString::default();
-            this.library_graph_values = QString::default();
-            this.storage_worker = storage_worker;
+            this.library_graph_edge_sources = QStringList::default();
+            this.library_graph_edge_targets = QStringList::default();
+            this.library_graph_edge_transitions = QStringList::default();
             this.storage_library = None;
             this.storage_library_revision = 0;
             this.storage_library_dirty.set(false);
@@ -32394,16 +25439,17 @@ impl qobject::BrowserUi {
             this.session_save_pending = false;
             this.session_save_checkpoint = false;
             this.session_checkpoint_clear_pending = false;
-            this.pending_history_writes.clear();
-            this.inflight_history_writes = None;
-            this.pending_permission_writes.clear();
-            this.inflight_permission_writes = None;
-            this.pending_mark_writes.clear();
-            this.inflight_mark_writes = None;
-            this.pending_download_writes.clear();
-            this.inflight_download_writes = None;
+            this.storage_flush_pending = false;
+            this.storage_flush_error = None;
             this.action_audit.clear();
-            this.link_preview = QString::default();
+            this.link_preview_command = QString::default();
+            this.link_preview_original = QString::default();
+            this.link_preview_cleaned = QString::default();
+            this.link_preview_applied_rules = QStringList::default();
+            this.link_preview_removed_parameters = QStringList::default();
+            this.link_preview_retained_parameters = QStringList::default();
+            this.link_preview_explanation = QString::default();
+            this.link_preview_requires_confirmation = false;
             this.link_preview_visible = false;
             this.active_site_experiment = None;
             this.clipboard_request = QString::default();
@@ -32482,9 +25528,17 @@ impl qobject::BrowserUi {
             this.focus_observations.clear();
             this.focus_suppressions.clear();
             this.profile_name.clone_from(&profile_name);
-            this.contexts = contexts;
+            this.contexts = this
+                .state
+                .as_ref()
+                .and_then(BrowserApplication::contexts)
+                .map(ContextSnapshot::from_records);
             this.pending_context_route = None;
-            this.context_route_json = QString::from("{}");
+            this.context_route_id = QString::default();
+            this.context_route_behavior = QString::default();
+            this.context_route_context = QString::default();
+            this.context_route_profile = QString::default();
+            this.context_route_url = QString::default();
             // Context membership is loaded above; publish the metadata only
             // after the profile/context affinity has been validated.
             this.context_name = QString::default();
@@ -32496,10 +25550,13 @@ impl qobject::BrowserUi {
                 this.bindings = Some(bindings);
             }
             this.profile_id = profile_id;
-            this.store = store;
+            this.profile_persistence = match profile_snapshot {
+                Ok(profile) if profile.durable => ProfilePersistence::Durable,
+                Ok(_) => ProfilePersistence::Transient,
+                Err(_) => ProfilePersistence::Unavailable,
+            };
             this.session_permissions.clear();
             this.pending_permission_reset_session = None;
-            this.profile_lock = profile_lock;
             let logging_config = serde_json::from_value::<LoggingConfig>(
                 this.config.get("logging").cloned().unwrap_or(Value::Null),
             )
@@ -32544,26 +25601,39 @@ impl qobject::BrowserUi {
         };
         self.as_mut()
             .set_config_json(QString::from(effective_config_json));
+        self.as_mut()
+            .set_desktop_portal_mode(QString::from(desktop_portal_mode));
         let learning_mode = self.as_ref().rust().learning_mode;
         self.as_mut().set_learning_mode(learning_mode);
         self.as_mut()
             .set_profile_overrides_json(QString::from(profile_overrides_json));
-        self.as_mut().set_blocking_hosts(QString::from("[]"));
-        self.as_mut().set_blocking_exceptions(QString::from("[]"));
-        self.as_mut().set_blocking_rule_lists(QString::from("{}"));
+        self.as_mut().set_blocking_hosts(QStringList::default());
         self.as_mut()
-            .set_blocking_exception_rule_lists(QString::from("{}"));
+            .set_blocking_exceptions(QStringList::default());
+        self.as_mut()
+            .set_blocking_rule_hosts(QStringList::default());
+        self.as_mut()
+            .set_blocking_rule_list_ids(QStringList::default());
+        self.as_mut()
+            .set_blocking_exception_rule_hosts(QStringList::default());
+        self.as_mut()
+            .set_blocking_exception_rule_list_ids(QStringList::default());
         self.as_mut().set_blocking_loaded_lists(QString::from("[]"));
         self.as_mut()
             .set_blocking_list_metadata(QString::from("[]"));
         self.as_mut()
-            .set_blocking_cosmetic_rules(QString::from("[]"));
+            .set_blocking_cosmetic_rule_hosts(QStringList::default());
         self.as_mut()
-            .set_blocking_cosmetic_exceptions(QString::from("[]"));
+            .set_blocking_cosmetic_rule_selectors(QStringList::default());
+        self.as_mut()
+            .set_blocking_cosmetic_exception_hosts(QStringList::default());
+        self.as_mut()
+            .set_blocking_cosmetic_exception_selectors(QStringList::default());
         self.as_mut()
             .set_blocking_skipped_lists(QString::from("[]"));
-        self.as_mut().set_blocking_bypass_sites(QString::from("[]"));
-        self.as_mut().set_site_experiment_json(QString::from("{}"));
+        self.as_mut()
+            .set_blocking_bypass_sites(QStringList::default());
+        self.as_mut().clear_site_experiment_presentation();
         self.as_mut()
             .rust_mut()
             .as_mut()
@@ -32573,10 +25643,7 @@ impl qobject::BrowserUi {
         self.as_mut().set_blocking_blocked_count(0);
         self.as_mut().set_blocking_active_site_count(0);
         self.as_mut().set_blocking_unknown_context_count(0);
-        self.as_mut()
-            .set_blocking_active_explanation(QString::from("{}"));
-        self.as_mut()
-            .set_blocking_active_decisions(QString::from("[]"));
+        self.as_mut().clear_blocking_active_evidence();
         self.as_mut().set_active_tab_index(0);
         self.as_mut().set_tab_count(1);
         self.as_mut().set_status_text(status);
@@ -32686,136 +25753,6 @@ impl qobject::BrowserUi {
                 false
             }
         }
-    }
-
-    fn apply_network_policy_snapshot(
-        mut self: Pin<&mut Self>,
-        policy: network_policy::PolicySnapshot,
-    ) {
-        if policy.compile_failures.is_empty() {
-            self.as_mut().set_blocking_hosts(QString::from(
-                serde_json::to_string(&policy.blocked_hosts).unwrap_or_else(|_| "[]".into()),
-            ));
-            self.as_mut().set_blocking_exceptions(QString::from(
-                serde_json::to_string(&policy.exception_hosts).unwrap_or_else(|_| "[]".into()),
-            ));
-            self.as_mut().set_blocking_rule_lists(QString::from(
-                serde_json::to_string(&policy.blocked_rule_lists).unwrap_or_else(|_| "{}".into()),
-            ));
-            self.as_mut()
-                .set_blocking_exception_rule_lists(QString::from(
-                    serde_json::to_string(&policy.exception_rule_lists)
-                        .unwrap_or_else(|_| "{}".into()),
-                ));
-            self.as_mut().set_blocking_loaded_lists(QString::from(
-                serde_json::to_string(&policy.loaded_lists).unwrap_or_else(|_| "[]".into()),
-            ));
-            self.as_mut().set_blocking_list_metadata(QString::from(
-                serde_json::to_string(&policy.list_metadata).unwrap_or_else(|_| "[]".into()),
-            ));
-            self.as_mut().set_blocking_cosmetic_rules(QString::from(
-                serde_json::to_string(&policy.cosmetic_rules).unwrap_or_else(|_| "[]".into()),
-            ));
-            self.as_mut()
-                .set_blocking_cosmetic_exceptions(QString::from(
-                    serde_json::to_string(&policy.cosmetic_exceptions)
-                        .unwrap_or_else(|_| "[]".into()),
-                ));
-            self.as_mut().set_blocking_adblock_source_ids(QString::from(
-                serde_json::to_string(&policy.adblock_source_ids).unwrap_or_else(|_| "[]".into()),
-            ));
-            let handle = policy
-                .adblock_engine
-                .map_or(0, |engine| engine.into_raw() as u64);
-            self.as_mut().set_blocking_adblock_handle(handle);
-            self.as_mut()
-                .set_blocking_security_deny_hosts(QString::from(
-                    serde_json::to_string(&policy.security_deny_hosts)
-                        .unwrap_or_else(|_| "[]".into()),
-                ));
-        } else {
-            self.as_mut().set_status_text(QString::from(format!(
-                "Blocklist compilation failed; current rules retained: {}",
-                policy.compile_failures.join(", ")
-            )));
-        }
-        self.as_mut().set_blocking_skipped_lists(QString::from(
-            serde_json::to_string(&policy.skipped_lists).unwrap_or_else(|_| "[]".into()),
-        ));
-        self.as_mut().set_blocking_bypass_sites(QString::from(
-            serde_json::to_string(&policy.bypass_sites).unwrap_or_else(|_| "[]".into()),
-        ));
-        if !policy.compile_failures.is_empty() {
-            self.as_mut().set_status_text(QString::from(format!(
-                "Blocklist compilation failed; current rules retained: {}",
-                policy.compile_failures.join(", ")
-            )));
-        }
-    }
-
-    fn reload_blocking_policy(mut self: Pin<&mut Self>) -> bool {
-        let roots = self.as_ref().rust().userscript_roots.clone();
-        let config = self.as_ref().rust().config.clone();
-        let request = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            if this.network_policy_worker.is_none() {
-                this.network_policy_worker = NetworkPolicyWorker::spawn().ok();
-            }
-            this.network_policy_worker
-                .as_mut()
-                .map(|worker| worker.request(roots, config))
-        };
-        if !matches!(request, Some(Ok(()))) {
-            self.as_mut()
-                .set_status_text(QString::from("Blocklist policy worker unavailable"));
-            return false;
-        }
-        self.as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .network_policy_reload_pending = true;
-        self.as_mut()
-            .set_status_text(QString::from("Blocklist policy reload requested"));
-        true
-    }
-
-    fn toggle_blocking_site(mut self: Pin<&mut Self>) -> bool {
-        let Some(host) = blocking_site_host(&self.as_ref().rust().current_url.to_string()) else {
-            self.set_status_text(QString::from(
-                "Site blocker bypass requires an HTTP(S) document",
-            ));
-            return false;
-        };
-        let mut sites = serde_json::from_str::<Vec<String>>(
-            &self.as_ref().rust().blocking_bypass_sites.to_string(),
-        )
-        .unwrap_or_default();
-        if let Some(index) = sites.iter().position(|site| site == &host) {
-            sites.remove(index);
-            self.as_mut().set_blocking_bypass_sites(QString::from(
-                serde_json::to_string(&sites).unwrap_or_else(|_| "[]".into()),
-            ));
-            self.set_status_text(QString::from(format!(
-                "Site blocker bypass disabled for {host}"
-            )));
-        } else {
-            if sites.len() >= 64 {
-                self.set_status_text(QString::from(
-                    "Site blocker bypass limit reached (64 sites)",
-                ));
-                return false;
-            }
-            sites.push(host.clone());
-            self.as_mut().set_blocking_bypass_sites(QString::from(
-                serde_json::to_string(&sites).unwrap_or_else(|_| "[]".into()),
-            ));
-            self.set_status_text(QString::from(format!(
-                "Site blocker bypass enabled for {host}"
-            )));
-        }
-        true
     }
 
     fn clear_navigation_failure(mut self: Pin<&mut Self>) {
@@ -33166,137 +26103,6 @@ impl qobject::BrowserUi {
         }
     }
 
-    fn navigation_completed(mut self: Pin<&mut Self>) {
-        let target = current_target(
-            self.as_ref().rust().state.as_ref(),
-            self.as_ref().rust().tab,
-        );
-        if let Some(target) = target {
-            let _ = self
-                .as_mut()
-                .reduce_event(Event::CompleteNavigation { target });
-        }
-        self.as_mut().set_load_state(QString::from("complete"));
-        self.set_status_text(QString::from("Ready"));
-    }
-
-    fn navigation_completed_for(mut self: Pin<&mut Self>, index: i32) {
-        let target = self.as_ref().get_ref().target_for_index(index);
-        if let Some(target) = target {
-            let _ = self
-                .as_mut()
-                .reduce_event(Event::CompleteNavigation { target });
-        }
-        if self.as_ref().get_ref().tab_for_index(index)
-            == self.as_ref().rust().checkpoint.restore_pending
-        {
-            let mut rust = self.as_mut().rust_mut();
-            rust.as_mut().get_mut().checkpoint.restore_pending = None;
-        }
-        if index == self.as_ref().rust().active_tab_index {
-            self.as_mut().set_load_state(QString::from("complete"));
-            self.set_status_text(QString::from("Ready"));
-        }
-    }
-
-    fn navigation_failed(mut self: Pin<&mut Self>) {
-        let target = current_target(
-            self.as_ref().rust().state.as_ref(),
-            self.as_ref().rust().tab,
-        );
-        if let Some(target) = target {
-            let _ = self.as_mut().take_journey_redirect(target);
-            let _ = self.as_mut().take_journey_transition(target);
-            let _ = self.as_mut().take_journey_parent(target);
-            let _ = self.as_mut().reduce_event(Event::FailNavigation { target });
-        }
-        self.as_mut().set_load_state(QString::from("failed"));
-        self.set_status_text(QString::from("Load failed"));
-    }
-
-    fn navigation_failed_for(mut self: Pin<&mut Self>, index: i32) {
-        let target = self.as_ref().get_ref().target_for_index(index);
-        if let Some(target) = target {
-            let _ = self.as_mut().take_journey_redirect(target);
-            let _ = self.as_mut().take_journey_transition(target);
-            let _ = self.as_mut().take_journey_parent(target);
-            let _ = self.as_mut().reduce_event(Event::FailNavigation { target });
-        }
-        if self.as_ref().get_ref().tab_for_index(index)
-            == self.as_ref().rust().checkpoint.restore_pending
-        {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.checkpoint.restore_pending = None;
-            this.checkpoint.dirty = false;
-            this.checkpoint.dirty_since_ms = None;
-        }
-        if index == self.as_ref().rust().active_tab_index {
-            self.as_mut().set_load_state(QString::from("failed"));
-            self.set_status_text(QString::from("Load failed"));
-        }
-    }
-
-    fn navigation_failed_with_details(
-        mut self: Pin<&mut Self>,
-        index: i32,
-        url: &QString,
-        kind: &QString,
-        detail: &QString,
-    ) {
-        self.as_mut().navigation_failed_for(index);
-        if index != self.as_ref().rust().active_tab_index {
-            return;
-        }
-        let safe_url = ValidatedUrl::parse(url.to_string())
-            .map_or_else(|_| "[unavailable]".into(), |url| safe_ipc_url(url.as_str()));
-        let kind = normalized_navigation_failure_kind(&kind.to_string());
-        let detail = bounded_navigation_failure_detail(&detail.to_string());
-        self.as_mut()
-            .set_navigation_failure_kind(QString::from(kind));
-        self.as_mut()
-            .set_navigation_failure_url(QString::from(safe_url));
-        self.as_mut()
-            .set_navigation_failure_detail(QString::from(&detail));
-        self.as_mut().set_navigation_failure_visible(true);
-        let status = if detail.is_empty() {
-            format!("{} failure", kind.to_ascii_uppercase())
-        } else {
-            format!("{} failure: {detail}", kind.to_ascii_uppercase())
-        };
-        self.set_status_text(QString::from(status));
-    }
-
-    fn view_closed(mut self: Pin<&mut Self>) {
-        self.as_mut().clear_hint_session_state();
-        {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.focus_observations.clear();
-            this.focus_suppressions.clear();
-        }
-        if let Some(id) = self
-            .as_ref()
-            .rust()
-            .active_site_experiment
-            .as_ref()
-            .map(|experiment| experiment.id.clone())
-        {
-            let _ = self
-                .as_mut()
-                .finish_site_doctor_experiment(&QString::from(id), false);
-        }
-        if self.as_ref().rust().checkpoint.restore_pending.is_none() {
-            if let Some(path) = self.as_ref().rust().session_path.clone() {
-                let _ = self
-                    .as_mut()
-                    .request_session_snapshot_save("last-session", path, true);
-            }
-        }
-        self.as_mut().set_view_alive(false);
-        self.set_load_state(QString::from("closed"));
-    }
-
     fn release_transient_resources(mut self: Pin<&mut Self>) -> bool {
         let has_state = self.as_ref().rust().state.is_some();
         if has_state && !self.as_ref().active_profile_is_transient() {
@@ -33365,7 +26171,7 @@ impl qobject::BrowserUi {
             this.font_scale_probe_worker = None;
             this.pending_journey_transitions.clear();
             this.pending_journey_parent = None;
-            this.pending_journey_mapping = None;
+            this.pending_journey_mappings.clear();
             this.pending_history_clear = None;
             this.pending_journey_traversal = None;
             this.pending_journey_reopen = None;
@@ -33393,25 +26199,15 @@ impl qobject::BrowserUi {
             this.active_site_experiment = None;
             this.last_site_doctor_result = None;
             this.contexts = None;
-            this.storage_worker = None;
             this.userscript_manager_worker = None;
             this.storage_library = None;
             this.storage_library_revision = 0;
             this.storage_library_dirty.set(false);
-            this.pending_history_writes.clear();
-            this.inflight_history_writes = None;
-            this.pending_permission_writes.clear();
-            this.inflight_permission_writes = None;
             this.pending_permission_reset_session = None;
-            this.pending_mark_writes.clear();
-            this.inflight_mark_writes = None;
-            this.pending_download_writes.clear();
-            this.inflight_download_writes = None;
             this.request_resolution_counts.clear();
-            this.store = None;
+            this.profile_persistence = ProfilePersistence::Unavailable;
             this.private_history.clear();
             this.private_history_next_id = -1;
-            this.profile_lock = None;
             this.structured_log = None;
             this.storage_roots = None;
             this.profile_registry_roots = None;
@@ -33425,7 +26221,7 @@ impl qobject::BrowserUi {
             this.state = None;
             this.window = None;
             this.core_window_id = QString::default();
-            this.window_registry_json = QString::from("[]");
+            this.live_window_registry.clear();
             this.tab = None;
             this.bindings = None;
             this.learning_mode = false;
@@ -33450,7 +26246,7 @@ impl qobject::BrowserUi {
                 cancellations.clear();
             }
         }
-        self.as_mut().sync_macro_status();
+        self.as_mut().sync_macro_status_text();
         self.as_mut().set_active_tab_index(0);
         self.as_mut().set_tab_count(0);
         self.as_mut().set_current_url(QString::from("about:blank"));
@@ -33742,44 +26538,6 @@ impl qobject::BrowserUi {
     }
 }
 
-fn macro_state_value(rust: &BrowserUiRust) -> Value {
-    let recording = rust.recording_macro.as_ref().map(|(register, commands)| {
-        serde_json::json!({
-            "register": register,
-            "command_count": commands.len()
-        })
-    });
-    let registers = rust
-        .macro_registers
-        .iter()
-        .map(|(register, commands)| {
-            serde_json::json!({
-                "register": register,
-                "command_count": commands.len()
-            })
-        })
-        .collect::<Vec<_>>();
-    serde_json::json!({
-        "recording": recording,
-        "registers": registers,
-        "replay": {
-            "depth": rust.macro_depth,
-            "expanded_command_count": rust.macro_expanded_commands
-        },
-        "limits": {
-            "recording_commands": MAX_MACRO_COMMANDS,
-            "expanded_commands": MAX_MACRO_COMMANDS,
-            "nested_depth": MAX_MACRO_DEPTH
-        },
-        "persistence": "memory-only"
-    })
-}
-
-fn macro_state_json(rust: &BrowserUiRust) -> String {
-    serde_json::to_string(&macro_state_value(rust))
-        .unwrap_or_else(|_| "{\"recording\":null,\"registers\":[]}".into())
-}
-
 impl Default for BrowserUiRust {
     #[allow(clippy::too_many_lines)]
     fn default() -> Self {
@@ -33787,20 +26545,28 @@ impl Default for BrowserUiRust {
         let bindings = BindingTrie::default_v1(registry.clone())
             .ok()
             .map(|trie| BindingResolver::new(trie, Mode::Normal));
-        let core = bootstrap_core(PrivacyKind::Normal, "default");
+        let core = bootstrap_runtime(PrivacyKind::Normal, "default");
         let (state, window, tab) = match core {
-            Some((state, window, tab)) => (Some(state), Some(window), Some(tab)),
+            Some((runtime, window, tab)) => (
+                Some(BrowserApplication::from_runtime(runtime, Config::default())),
+                Some(window),
+                Some(tab),
+            ),
             None => (None, None, None),
         };
+        let theme_palette = ThemePalette::default();
+        let chrome_theme = theme_presentation::project(&theme_palette);
+        let chrome_preferences = chrome_preferences::project(&Config::default());
+        let feature_preferences = feature_preferences::project(&Config::default());
+        let settings_config = serde_json::to_value(Config::default()).unwrap_or(Value::Null);
+        let settings_rows = settings_presentation::project(&settings_config);
         Self {
             initial_url: QString::from("about:blank"),
             current_url: QString::from("about:blank"),
             display_url: QString::from("about:blank"),
             page_title: QString::default(),
             status_text: QString::from("Ready"),
-            macro_status: QString::from(
-                "{\"recording\":null,\"registers\":[],\"replay\":{\"depth\":0,\"expanded_command_count\":0},\"limits\":{\"recording_commands\":1000,\"expanded_commands\":1000,\"nested_depth\":8},\"persistence\":\"memory-only\"}",
-            ),
+            macro_status_text: QString::default(),
             load_state: QString::from("idle"),
             navigation_failure_kind: QString::default(),
             navigation_failure_requested_url: QString::default(),
@@ -33823,8 +26589,7 @@ impl Default for BrowserUiRust {
             pending_journey_transitions: Vec::new(),
             pending_journey_parent: None,
             pending_journey_traversal: None,
-            pending_journey_mapping: None,
-            pending_journey_writes: VecDeque::new(),
+            pending_journey_mappings: BTreeMap::new(),
             pending_history_clear: None,
             pending_journey_reopen: None,
             pending_navigation_urls: BTreeMap::new(),
@@ -33843,14 +26608,60 @@ impl Default for BrowserUiRust {
             completion_selected: 0,
             completion_visible: false,
             binding_overlay: QString::default(),
+            binding_help_row_kinds: QStringList::default(),
+            binding_help_row_titles: QStringList::default(),
+            binding_help_row_modes: QStringList::default(),
+            binding_help_row_commands: QStringList::default(),
+            binding_help_row_descriptions: QStringList::default(),
+            binding_help_row_keys: QStringList::default(),
+            binding_help_row_sources: QStringList::default(),
+            binding_help_row_counts: QStringList::default(),
+            switcher_result_kinds: QStringList::default(),
+            switcher_result_ids: QStringList::default(),
+            switcher_result_generations: QStringList::default(),
+            switcher_result_labels: QStringList::default(),
+            switcher_result_secondaries: QStringList::default(),
+            switcher_result_profiles: QStringList::default(),
+            switcher_result_workspaces: QStringList::default(),
+            switcher_result_actions: QStringList::default(),
+            switcher_result_ranks: QStringList::default(),
+            switcher_result_recencies: QStringList::default(),
+            switcher_request_scope: QString::default(),
+            switcher_request_query: QString::default(),
             search_text: QString::default(),
             search_backward: false,
             session_restore_values: QString::default(),
             session_preview: QString::default(),
             profile_values: QString::default(),
             profile_values_pending: false,
-            userscript_inventory: QString::from("[]"),
+            userscript_names: QStringList::default(),
+            userscript_enabled_values: QStringList::default(),
+            userscript_page_world_values: QStringList::default(),
+            userscript_action_counts: QStringList::default(),
+            userscript_action_ids: QStringList::default(),
+            userscript_action_labels: QStringList::default(),
+            userscript_action_availability: QStringList::default(),
+            external_action_ids: QStringList::default(),
+            external_action_labels: QStringList::default(),
+            external_action_availability: QStringList::default(),
+            page_userscript_names: QStringList::default(),
+            page_userscript_sources: QStringList::default(),
+            page_userscript_run_at: QStringList::default(),
+            page_userscript_runs_on_sub_frames: QStringList::default(),
+            site_rule_javascript_set: false,
+            site_rule_javascript_enabled: false,
+            site_rule_images_set: false,
+            site_rule_images_enabled: false,
+            site_rule_force_dark_set: false,
+            site_rule_force_dark_enabled: false,
+            site_rule_autoplay_set: false,
+            site_rule_autoplay: QString::default(),
+            site_rule_zoom_set: false,
+            site_rule_zoom: 0.0,
             userscript_install_state: QString::from("idle"),
+            download_desktop_uri: QString::default(),
+            download_request_token: QString::default(),
+            download_request_url: QString::default(),
             profile_bootstrap_pending: false,
             profile_list_command_pending: false,
             pending_profile_open: None,
@@ -33860,10 +26671,11 @@ impl Default for BrowserUiRust {
             profile_preview_pending: false,
             library_kind: QString::default(),
             library_values: QString::default(),
-            library_graph_values: QString::default(),
+            library_graph_edge_sources: QStringList::default(),
+            library_graph_edge_targets: QStringList::default(),
+            library_graph_edge_transitions: QStringList::default(),
             journey_export_preview_text: QString::default(),
             journey_export_payload: None,
-            storage_worker: None,
             storage_library: None,
             storage_library_revision: 0,
             storage_library_dirty: Cell::new(false),
@@ -33881,16 +26693,19 @@ impl Default for BrowserUiRust {
             session_save_pending: false,
             session_save_checkpoint: false,
             session_checkpoint_clear_pending: false,
-            pending_history_writes: VecDeque::new(),
-            inflight_history_writes: None,
-            pending_permission_writes: VecDeque::new(),
-            inflight_permission_writes: None,
+            storage_flush_pending: false,
+            storage_flush_error: None,
+            download_destination_pending: false,
+            download_create_pending: false,
             pending_permission_reset_session: None,
-            pending_mark_writes: VecDeque::new(),
-            inflight_mark_writes: None,
-            pending_download_writes: VecDeque::new(),
-            inflight_download_writes: None,
-            link_preview: QString::default(),
+            link_preview_command: QString::default(),
+            link_preview_original: QString::default(),
+            link_preview_cleaned: QString::default(),
+            link_preview_applied_rules: QStringList::default(),
+            link_preview_removed_parameters: QStringList::default(),
+            link_preview_retained_parameters: QStringList::default(),
+            link_preview_explanation: QString::default(),
+            link_preview_requires_confirmation: false,
             link_preview_visible: false,
             pending_link_navigation: None,
             external_navigation_uri: QString::default(),
@@ -33906,6 +26721,16 @@ impl Default for BrowserUiRust {
             hint_rapid_tabs_created: 0,
             pending_hint_action: None,
             caret_selecting: false,
+            caret_request_token: QString::default(),
+            caret_request_operation: QString::default(),
+            editor_completion_token: QString::default(),
+            editor_completion_original: QString::default(),
+            editor_completion_updated: QString::default(),
+            editor_completion_error: QString::default(),
+            editor_completion_stderr: QString::default(),
+            jseval_tab_id: QString::default(),
+            jseval_world: QString::default(),
+            jseval_script: QString::default(),
             clipboard_request: QString::default(),
             clipboard_request_sensitive: false,
             clipboard_request_primary: false,
@@ -33931,6 +26756,66 @@ impl Default for BrowserUiRust {
             config_json: QString::from(
                 serde_json::to_string(&Config::default()).unwrap_or_else(|_| "{}".into()),
             ),
+            settings_row_keys: settings_rows
+                .iter()
+                .map(|row| QString::from(row.key))
+                .collect(),
+            settings_row_labels: settings_rows
+                .iter()
+                .map(|row| QString::from(row.label))
+                .collect(),
+            settings_row_types: settings_rows
+                .iter()
+                .map(|row| QString::from(row.editor_type))
+                .collect(),
+            settings_row_scopes: settings_rows
+                .iter()
+                .map(|row| QString::from(&row.scope))
+                .collect(),
+            settings_row_applies: settings_rows
+                .iter()
+                .map(|row| QString::from(row.apply_time))
+                .collect(),
+            settings_row_values: settings_rows
+                .iter()
+                .map(|row| QString::from(&row.value))
+                .collect(),
+            settings_row_options: settings_rows
+                .iter()
+                .map(|row| QString::from(row.options.join("\u{1f}")))
+                .collect(),
+            runtime_setting_error: QString::default(),
+            chrome_font_family: QString::from(chrome_preferences.font_family),
+            chrome_font_size_pt: chrome_preferences.font_size_pt,
+            chrome_statusbar_mode: QString::from(chrome_preferences.statusbar_mode),
+            chrome_tabs_mode: QString::from(chrome_preferences.tabs_mode),
+            chrome_tab_position: QString::from(chrome_preferences.tab_position),
+            chrome_reduced_motion: QString::from(chrome_preferences.reduced_motion),
+            feature_switcher_max_results: feature_preferences.switcher_max_results,
+            feature_downloads_ask_destination: feature_preferences.downloads_ask_destination,
+            feature_desktop_notifications_enabled: feature_preferences
+                .desktop_notifications_enabled,
+            feature_desktop_media_keys_enabled: feature_preferences.desktop_media_keys_enabled,
+            feature_push_service_enabled: feature_preferences.push_service_enabled,
+            feature_spellcheck_enabled: feature_preferences.spellcheck_enabled,
+            feature_spellcheck_languages: feature_preferences
+                .spellcheck_languages
+                .into_iter()
+                .map(QString::from)
+                .collect(),
+            feature_blocking_list_ids: feature_preferences
+                .blocking_list_ids
+                .into_iter()
+                .map(QString::from)
+                .collect(),
+            feature_blocking_update_interval_hours: feature_preferences
+                .blocking_update_interval_hours,
+            feature_link_cleaning_update_source: QString::from(
+                feature_preferences.link_cleaning_update_source,
+            ),
+            feature_link_cleaning_update_sha256: QString::from(
+                feature_preferences.link_cleaning_update_sha256,
+            ),
             config_base_json: QString::from(
                 serde_json::to_string(&Config::default()).unwrap_or_else(|_| "{}".into()),
             ),
@@ -33941,55 +26826,78 @@ impl Default for BrowserUiRust {
             contexts_json: QString::from(
                 serde_json::to_string(&ContextsConfig::default()).unwrap_or_else(|_| "{}".into()),
             ),
+            context_choice_names: QStringList::default(),
+            context_choice_labels: QStringList::default(),
+            context_choice_profiles: QStringList::default(),
             context_name: QString::default(),
             context_label: QString::default(),
             context_workspace: QString::default(),
             context_accent: QString::default(),
             context_entry_force_reuse: false,
-            context_route_json: QString::from("{}"),
+            context_route_id: QString::default(),
+            context_route_behavior: QString::default(),
+            context_route_context: QString::default(),
+            context_route_profile: QString::default(),
+            context_route_url: QString::default(),
             window_token: QString::from(Uuid::new_v4().to_string()),
             core_window_id: QString::default(),
-            window_registry_json: QString::from("[]"),
             hyprland_status: QString::from("disabled"),
             hyprland_clients_json: QString::from("[]"),
-            desktop_portal_status: QString::from("{\"service\":{\"status\":\"not-probed\"}}"),
-            system_reduced_motion_json: QString::from(
-                "{\"status\":\"pending\",\"value\":null,\"reason\":\"desktop preference probe is running\"}",
-            ),
-            system_font_scale_json: QString::from(
-                "{\"status\":\"pending\",\"value\":null,\"reason\":\"desktop preference probe is running\"}",
-            ),
-            theme_palette_json: QString::from(
-                serde_json::to_string(&ThemePalette::default()).unwrap_or_else(|_| "{}".into()),
-            ),
-            theme_contrast_json: QString::from(
-                serde_json::to_string(&theme_contrast_report(&ThemePalette::default()))
-                    .unwrap_or_else(|_| "{}".into()),
-            ),
+            desktop_portal_mode: QString::from("auto"),
+            system_reduced_motion_status: QString::from("pending"),
+            system_reduced_motion_enabled: false,
+            system_font_scale_status: QString::from("pending"),
+            system_font_scale: 1.0,
+            theme_background_color: QString::from(chrome_theme.background),
+            theme_surface_color: QString::from(chrome_theme.surface),
+            theme_panel_color: QString::from(chrome_theme.panel),
+            theme_primary_text_color: QString::from(chrome_theme.primary_text),
+            theme_secondary_text_color: QString::from(chrome_theme.secondary_text),
+            theme_muted_text_color: QString::from(chrome_theme.muted_text),
+            theme_border_color: QString::from(chrome_theme.border),
+            theme_accent_color: QString::from(chrome_theme.accent),
+            theme_warning_color: QString::from(chrome_theme.warning),
+            theme_error_color: QString::from(chrome_theme.error),
+            theme_success_color: QString::from(chrome_theme.success),
+            theme_private_color: QString::from(chrome_theme.private),
+            theme_mode_insert_color: QString::from(chrome_theme.mode_insert),
+            theme_selection_color: QString::from(chrome_theme.selection),
+            theme_selection_text_color: QString::from(chrome_theme.selection_text),
+            theme_contrast_status: QString::from(chrome_theme.contrast_status),
+            theme_contrast_reason: QString::from(chrome_theme.contrast_reason),
             site_status: QString::from("{}"),
-            site_experiment_json: QString::from("{}"),
-            blocking_hosts: QString::from("[]"),
-            blocking_exceptions: QString::from("[]"),
-            blocking_rule_lists: QString::from("{}"),
-            blocking_exception_rule_lists: QString::from("{}"),
+            site_experiment_active: false,
+            site_experiment_id: QString::default(),
+            site_experiment_kind: QString::default(),
+            site_experiment_url: QString::default(),
+            site_experiment_remaining_seconds: 0,
+            blocking_hosts: QStringList::default(),
+            blocking_exceptions: QStringList::default(),
+            blocking_rule_hosts: QStringList::default(),
+            blocking_rule_list_ids: QStringList::default(),
+            blocking_exception_rule_hosts: QStringList::default(),
+            blocking_exception_rule_list_ids: QStringList::default(),
             blocking_loaded_lists: QString::from("[]"),
             blocking_list_metadata: QString::from("[]"),
             blocking_skipped_lists: QString::from("[]"),
-            blocking_bypass_sites: QString::from("[]"),
-            blocking_cosmetic_rules: QString::from("[]"),
-            blocking_cosmetic_exceptions: QString::from("[]"),
+            blocking_bypass_sites: QStringList::default(),
+            blocking_cosmetic_rule_hosts: QStringList::default(),
+            blocking_cosmetic_rule_selectors: QStringList::default(),
+            blocking_cosmetic_exception_hosts: QStringList::default(),
+            blocking_cosmetic_exception_selectors: QStringList::default(),
             blocking_adblock_source_ids: QString::from("[]"),
             blocking_adblock_handle: 0,
-            blocking_security_deny_hosts: QString::from("[]"),
+            blocking_security_deny_hosts: QStringList::default(),
             blocking_enabled: false,
             blocking_blocked_count: 0,
             blocking_active_site_count: 0,
             blocking_unknown_context_count: 0,
-            blocking_active_explanation: QString::from("{}"),
-            blocking_active_decisions: QString::from("[]"),
+            blocking_active_evidence: blocking_evidence::BlockingEvidence::default(),
             focus_observations: BTreeMap::new(),
             focus_suppressions: BTreeMap::new(),
             config: serde_json::to_value(Config::default()).unwrap_or(Value::Null),
+            portal_capabilities: PortalCapabilities::pending(),
+            theme_palette,
             base_config: serde_json::to_value(Config::default()).unwrap_or(Value::Null),
             pending_config: None,
             profile_overrides: RuntimeOverrides::default(),
@@ -34021,11 +26929,10 @@ impl Default for BrowserUiRust {
             profile_name: "default".into(),
             profile_id: None,
             journey_durable_ids: RefCell::new(BTreeMap::new()),
-            store: None,
+            profile_persistence: ProfilePersistence::Unavailable,
             session_permissions: BTreeMap::new(),
             private_history: Vec::new(),
             private_history_next_id: -1,
-            profile_lock: None,
             storage_roots: None,
             profile_registry_roots: None,
             userscript_roots: None,
@@ -34050,6505 +26957,10 @@ impl Default for BrowserUiRust {
             macro_key_started_ms: None,
             macro_depth: 0,
             macro_expanded_commands: 0,
+            live_window_registry: Vec::new(),
         }
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::qobject::BrowserUi;
-    use ferric_browser_ipc::{
-        bind_listener, instance_paths, read_frame, take_pending_request, write_frame,
-    };
-    use std::os::unix::net::UnixStream;
-    use std::thread;
-
-    #[test]
-    fn chromium_runtime_facts_are_bounded_and_explicit_when_unavailable() {
-        let available = chromium_fact("140.0.7339.225".into(), "runtime API");
-        assert_eq!(available["status"], "available");
-        assert_eq!(available["value"], "140.0.7339.225");
-        assert_eq!(available["provenance"], "runtime-qtwebengine");
-
-        let unavailable = chromium_fact(String::new(), "runtime API");
-        assert_eq!(unavailable["status"], "unknown");
-        assert!(unavailable["value"].is_null());
-        assert_eq!(unavailable["provenance"], "runtime-qtwebengine");
-
-        let malformed = chromium_fact("140.0.7339.225\nsecret".into(), "runtime API");
-        assert_eq!(malformed["status"], "unknown");
-        assert!(malformed["value"].is_null());
-    }
-
-    #[test]
-    fn interactive_open_options_preserve_typed_url_and_route() {
-        let command = ParsedCommand {
-            name: "open".into(),
-            arguments: vec![
-                "--target".into(),
-                "window".into(),
-                "--profile".into(),
-                "work".into(),
-                "--".into(),
-                "https://example.test/a".into(),
-            ],
-        };
-        let (parsed, route) = interactive_open_command(&command)
-            .expect("interactive open options")
-            .expect("open options should use typed routing");
-        assert_eq!(parsed.arguments, ["https://example.test/a"]);
-        assert_eq!(route.open_target, IpcOpenTarget::Window);
-        assert_eq!(route.profile.as_deref(), Some("work"));
-    }
-
-    #[test]
-    fn modal_navigation_bindings_open_an_editable_command_line() {
-        let command = |name: &str, arguments: &[&str]| ParsedCommand {
-            name: name.into(),
-            arguments: arguments.iter().map(|value| (*value).into()).collect(),
-        };
-        assert_eq!(
-            modal_command_prefill(&command("open", &[]), "https://example.test/page"),
-            Some("open ".into())
-        );
-        assert_eq!(
-            modal_command_prefill(&command("open-current", &[]), "https://example.test/page"),
-            Some("open https://example.test/page".into())
-        );
-        assert_eq!(
-            modal_command_prefill(&command("tab-open", &[]), "https://example.test/page"),
-            Some("tab-open ".into())
-        );
-        assert_eq!(
-            modal_command_prefill(
-                &command("open-current", &["--target", "tab"]),
-                "https://example.test/page"
-            ),
-            Some("tab-open https://example.test/page".into())
-        );
-        assert_eq!(
-            modal_command_prefill(&command("tab-clone", &[]), "https://example.test/page"),
-            None
-        );
-        assert_eq!(
-            modal_command_prefill(&command("quickmark-add", &[]), "about:blank"),
-            Some("quickmark-add ".into())
-        );
-        assert_eq!(
-            modal_command_prefill(&command("quickmark-open", &[]), "about:blank"),
-            Some("quickmark-open ".into())
-        );
-        assert_eq!(
-            modal_command_prefill(&command("bookmark-open", &[]), "about:blank"),
-            Some("bookmark-open ".into())
-        );
-        assert_eq!(
-            modal_command_prefill(&command("open", &["example.test"]), "about:blank"),
-            None
-        );
-        assert_eq!(
-            modal_command_prefill(&command("reload", &[]), "about:blank"),
-            None
-        );
-
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains("action.indexOf(\"command-prefill\\t\") === 0"));
-        assert!(qml.contains("commandLine.cursorPosition = commandLine.text.length"));
-    }
-
-    #[test]
-    fn local_empty_binding_commands_use_the_full_executor() {
-        let command = |name: &str, arguments: &[&str]| ParsedCommand {
-            name: name.into(),
-            arguments: arguments.iter().map(|value| (*value).into()).collect(),
-        };
-        for name in [
-            "binding-list",
-            "bookmark-add",
-            "bookmark-list",
-            "devtools",
-            "fullscreen",
-            "history",
-            "print",
-            "tab-clone",
-            "tab-move",
-            "tab-mute",
-            "tab-pin",
-            "tab-undo",
-            "view-source",
-            "window-close",
-            "window-new",
-        ] {
-            assert!(
-                binding_uses_full_command_executor(&command(name, &[])),
-                "{name} must not be sent to the core-only dispatcher"
-            );
-        }
-        assert!(binding_uses_full_command_executor(&command(
-            "tab-open",
-            &["about:blank"]
-        )));
-        assert!(!binding_uses_full_command_executor(&command("back", &[])));
-        assert!(!binding_uses_full_command_executor(&command(
-            "tab-next",
-            &[]
-        )));
-
-        for (name, arguments, expected) in [
-            ("tab-pin", vec![], vec!["tab-1", "toggle"]),
-            ("tab-mute", vec!["off"], vec!["tab-1", "off"]),
-            ("tab-move", vec!["right"], vec!["tab-1", "right"]),
-        ] {
-            let mut parsed = command(name, &arguments);
-            normalize_active_tab_command(&mut parsed, Some("tab-1".into()))
-                .expect("active-tab shorthand should normalize");
-            assert_eq!(parsed.arguments, expected);
-        }
-        let mut explicit = command("tab-pin", &["tab-2", "on"]);
-        normalize_active_tab_command(&mut explicit, Some("tab-1".into()))
-            .expect("explicit target should remain valid");
-        assert_eq!(explicit.arguments, vec!["tab-2", "on"]);
-    }
-
-    #[test]
-    fn interactive_clean_link_rejects_background_target() {
-        let command = ParsedCommand {
-            name: "open".into(),
-            arguments: vec![
-                "--target".into(),
-                "tab-bg".into(),
-                "--clean-link".into(),
-                "https://example.test/?utm_source=demo".into(),
-            ],
-        };
-        let error = interactive_open_command(&command)
-            .expect_err("clean-link background open must be rejected");
-        assert!(
-            error
-                .to_string()
-                .contains("cannot be combined with --target tab-bg")
-        );
-    }
-
-    #[test]
-    fn repeat_and_macro_policy_is_bounded_and_excludes_sensitive_flows() {
-        assert_eq!(MAX_MACRO_COMMANDS, 1_000);
-        assert_eq!(MAX_MACRO_DEPTH, 8);
-        for command in [
-            "open",
-            "scroll",
-            "scroll-page",
-            "scroll-to",
-            "zoom",
-            "search-next",
-            "tab-next",
-        ] {
-            assert!(
-                is_repeatable_command(command),
-                "{command} should be eligible"
-            );
-        }
-        for command in [
-            "paste-open",
-            "permission-decision",
-            "yank",
-            "spawn",
-            "download-open",
-            "site-data-clear",
-        ] {
-            assert!(
-                !is_repeatable_command(command),
-                "{command} must stay ineligible"
-            );
-        }
-        assert!(valid_macro_register("a"));
-        assert!(valid_macro_register("9"));
-        assert!(!valid_macro_register(""));
-        assert!(!valid_macro_register("aa"));
-        assert!(!valid_macro_register("é"));
-    }
-
-    #[test]
-    fn macro_register_gestures_are_native_and_timeout_bounded() {
-        let source = include_str!("lib.rs");
-        assert!(source.contains("matches!(key, \"q\" | \"@\")"));
-        assert!(source.contains("Macro recording: waiting for register"));
-        assert!(source.contains("Macro replay: waiting for register"));
-        assert!(source.contains("Macro register prefix timed out"));
-        assert!(source.contains("this.macro_key_prefix = None"));
-        assert!(source.contains("this.macro_key_started_ms = None"));
-    }
-
-    #[test]
-    fn switcher_command_parsing_is_scoped_and_bounded() {
-        let args = vec![
-            "--scope".into(),
-            "history".into(),
-            "ferric".into(),
-            "browser".into(),
-        ];
-        assert_eq!(
-            parse_switcher_command(&args).expect("valid switcher command"),
-            ("history".into(), "ferric browser".into())
-        );
-        assert!(parse_switcher_command(&["--scope".into(), "unknown".into()]).is_err());
-        assert!(
-            parse_switcher_command(&[
-                "--scope".into(),
-                "tabs".into(),
-                "--scope".into(),
-                "history".into()
-            ])
-            .is_err()
-        );
-        let oversized = vec!["x".repeat(4_097)];
-        assert!(parse_switcher_command(&oversized).is_err());
-    }
-
-    #[test]
-    fn switcher_input_coalesces_refreshes_and_cancels_on_close() {
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains("id: switcherRefreshTimer"));
-        assert!(qml.contains("interval: 35"));
-        assert!(qml.contains("switcherRefreshTimer.restart()"));
-        assert!(qml.contains("switcherRefreshTimer.stop()"));
-        assert!(qml.contains("id: switcherBatchTimer"));
-        assert!(qml.contains("switcherBatchTimer.start()"));
-        assert!(qml.contains("switcherBatchGeneration += 1"));
-        assert!(qml.contains("switcherBatchQuery !== switcherInput.text"));
-        assert!(qml.contains("function switcherMaxResults()"));
-        assert!(qml.contains("config.switcher && config.switcher.max_results"));
-        assert!(qml.contains("Search up to \" + window.switcherMaxResults()"));
-        assert!(qml.contains("Number(right.rank || 0)"));
-        assert!(qml.contains("String(left.id || \"\").localeCompare"));
-        assert!(qml.contains("if (window.switcherVisible)"));
-    }
-
-    #[test]
-    fn switcher_context_boost_is_bounded_and_neutral_without_a_context() {
-        assert_eq!(switcher_context_boost(None, Some("research")), 0);
-        assert_eq!(switcher_context_boost(Some("research"), None), 0);
-        assert_eq!(
-            switcher_context_boost(Some("research"), Some("personal")),
-            0
-        );
-        assert_eq!(
-            switcher_context_boost(Some("research"), Some("research")),
-            25
-        );
-    }
-
-    #[test]
-    fn switcher_result_limit_uses_the_validated_setting_and_safe_fallback() {
-        assert_eq!(
-            switcher_max_results(&serde_json::json!({"switcher": {"max_results": 250}})),
-            250
-        );
-        assert_eq!(
-            switcher_max_results(&serde_json::json!({"switcher": {"max_results": 1}})),
-            10
-        );
-        assert_eq!(
-            switcher_max_results(&serde_json::json!({"switcher": {"max_results": 5000}})),
-            1000
-        );
-        assert_eq!(switcher_max_results(&serde_json::json!({})), 100);
-    }
-
-    #[test]
-    fn switcher_page_selection_preserves_order_and_total() {
-        let candidate = |rank: i64, kind: &str, recency: i64, id: &str| {
-            (
-                rank,
-                kind.to_owned(),
-                recency,
-                serde_json::json!({"id": id}),
-            )
-        };
-        let (total, page) = select_switcher_page(
-            vec![
-                candidate(80, "tab", 0, "d"),
-                candidate(90, "history", 5, "c"),
-                candidate(100, "tab", 0, "a"),
-                candidate(90, "history", 10, "b"),
-                candidate(70, "tab", 0, "e"),
-            ],
-            1,
-            2,
-        );
-        assert_eq!(total, 5);
-        let ids = page
-            .iter()
-            .filter_map(|value| value.get("id").and_then(Value::as_str))
-            .collect::<Vec<_>>();
-        assert_eq!(ids, vec!["b", "c"]);
-    }
-
-    #[test]
-    fn closed_tab_undo_limit_respects_configured_zero_and_spec_cap() {
-        assert_eq!(
-            configured_undo_limit(&serde_json::json!({"tabs": {"undo_limit": 0}})),
-            0
-        );
-        assert_eq!(
-            configured_undo_limit(&serde_json::json!({"tabs": {"undo_limit": 75}})),
-            75
-        );
-        assert_eq!(
-            configured_undo_limit(&serde_json::json!({"tabs": {"undo_limit": 1000}})),
-            100
-        );
-        assert_eq!(configured_undo_limit(&serde_json::json!({})), 100);
-    }
-
-    #[test]
-    fn switcher_cache_requires_the_same_revisions_and_snapshot_inputs() {
-        let rust = BrowserUiRust::default();
-        let params = serde_json::json!({"query": "tabs", "scope": "tabs"});
-        let cache = SwitcherQueryCache {
-            params: params.clone(),
-            state_revision: rust.state.as_ref().map_or(0, ApplicationState::revision),
-            storage_library_revision: rust.storage_library_revision,
-            session_names: rust.session_names.clone(),
-            contexts_json: rust.contexts_json.to_string(),
-            config_fingerprint: serde_json::to_string(&rust.config).expect("config snapshot"),
-            profile_name: rust.profile_name.clone(),
-            result: "{}".into(),
-        };
-        assert!(cache.matches(&rust, &params));
-
-        let mut changed = rust;
-        let tab = changed
-            .state
-            .as_ref()
-            .and_then(ApplicationState::active_tab)
-            .map(|tab| tab.id)
-            .expect("active tab");
-        reduce(
-            changed.state.as_mut().expect("bootstrap state"),
-            Event::SetTabMuted { tab, muted: true },
-        )
-        .expect("revision-changing event");
-        assert!(!cache.matches(&changed, &params));
-    }
-
-    #[test]
-    fn switcher_library_index_is_profile_scoped_and_query_ready() {
-        let snapshot = ProfileLibrarySnapshot {
-            history: Vec::new(),
-            bookmarks: Vec::new(),
-            quickmarks: vec![Quickmark {
-                name: "docs".into(),
-                url: "https://example.test/docs".into(),
-            }],
-            downloads: Vec::new(),
-            permissions: Vec::new(),
-        };
-        let index = build_switcher_library_index(&snapshot, "work".into(), &AtomicBool::new(false))
-            .expect("uncancelled index builds");
-        assert_eq!(index.profile_name, "work");
-        assert_eq!(index.candidates.len(), 1);
-        assert_eq!(index.candidates[0].kind, "quickmark");
-        assert_eq!(index.candidates[0].fields[1], "https://example.test/docs");
-        let cancelled = AtomicBool::new(true);
-        assert!(build_switcher_library_index(&snapshot, "work".into(), &cancelled).is_none());
-    }
-
-    #[test]
-    fn hint_payload_carries_unique_bounded_element_ids() {
-        let payload = serde_json::json!({
-            "candidates": [{
-                "element_id": 1,
-                "kind": "link",
-                "frame_path": "0",
-                "text": "Example",
-                "href": "https://example.test/",
-                "geometry": {"x": 1.0, "y": 2.0, "width": 10.0, "height": 10.0}
-            }]
-        });
-        let candidates = parse_hint_payload(&payload.to_string()).expect("hint payload");
-        assert_eq!(candidates.len(), 1);
-        assert_eq!(candidates[0].element_id, 1);
-        assert_eq!(candidates[0].frame_path, "0");
-        assert!(valid_hint_frame_path("0.2.3"));
-        assert!(!valid_hint_frame_path("1.0"));
-        assert!(!valid_hint_frame_path("0.1.2.3.4.5.6.7.8.9"));
-
-        let source = include_str!("lib.rs");
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains("__ferric_browserHintElements"));
-        assert!(qml.contains("element_id"));
-        assert!(qml.contains("frame.contentDocument"));
-        assert!(qml.contains("function hintFocusScript"));
-        assert!(qml.contains("record.element.isConnected"));
-        assert!(qml.contains("record.framePath!==path"));
-        assert!(source.contains("candidate.element_id == fresh.element_id"));
-
-        let duplicate = serde_json::json!({
-            "candidates": [payload["candidates"][0].clone(), payload["candidates"][0].clone()]
-        });
-        assert!(parse_hint_payload(&duplicate.to_string()).is_err());
-    }
-
-    #[test]
-    #[allow(clippy::field_reassign_with_default)]
-    fn macro_status_is_redacted_and_reports_session_state_and_limits() {
-        let mut ui = BrowserUiRust::default();
-        ui.recording_macro = Some((
-            "a".into(),
-            vec![ParsedCommand {
-                name: "open".into(),
-                arguments: vec!["https://private.example/path".into()],
-            }],
-        ));
-        ui.macro_registers.insert(
-            "b".into(),
-            vec![ParsedCommand {
-                name: "scroll".into(),
-                arguments: vec!["--amount".into(), "3".into()],
-            }],
-        );
-
-        let state = macro_state_value(&ui);
-        assert_eq!(state["recording"]["register"], "a");
-        assert_eq!(state["recording"]["command_count"], 1);
-        assert_eq!(state["registers"][0]["register"], "b");
-        assert_eq!(state["registers"][0]["command_count"], 1);
-        assert_eq!(state["limits"]["recording_commands"], 1_000);
-        assert_eq!(state["limits"]["expanded_commands"], 1_000);
-        assert_eq!(state["limits"]["nested_depth"], 8);
-        assert_eq!(state["persistence"], "memory-only");
-        assert!(!state.to_string().contains("private.example"));
-
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains("function macroStatusText(raw)"));
-        assert!(qml.contains("browserUi.macro_status"));
-    }
-
-    #[test]
-    fn shutdown_gate_only_blocks_mutating_ipc_methods() {
-        assert!(is_mutating_ipc_method("command.execute"));
-        assert!(is_mutating_ipc_method("action.execute"));
-        assert!(is_mutating_ipc_method("switcher.activate"));
-        assert!(is_mutating_ipc_method("window.focus"));
-        assert!(!is_mutating_ipc_method("tabs.query"));
-        assert!(!is_mutating_ipc_method("diagnostics.get"));
-        assert!(!is_mutating_ipc_method("events.subscribe"));
-    }
-
-    #[test]
-    fn current_session_paths_prefer_window_snapshots_and_retain_legacy_fallback() {
-        let root = std::env::temp_dir().join(format!(
-            "ferric-browser-current-sessions-{}",
-            Uuid::new_v4()
-        ));
-        let profile = Uuid::new_v4();
-        let directory = root.join("sessions").join(profile.to_string());
-        fs::create_dir_all(&directory).expect("create session directory");
-        fs::write(directory.join("current.json"), b"legacy").expect("legacy fixture");
-        fs::write(
-            directory.join(format!("current-{}.json", Uuid::new_v4())),
-            b"window",
-        )
-        .expect("window fixture");
-        fs::write(directory.join("current-not-a-uuid.json"), b"ignored").expect("invalid fixture");
-        let paths = ferric_browser_storage::current_session_paths(&root, profile);
-        assert_eq!(paths.len(), 1);
-        assert!(
-            paths[0]
-                .file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(|name| name.starts_with("current-") && name.ends_with(".json"))
-        );
-        let _ = fs::remove_dir_all(root);
-    }
-
-    #[test]
-    fn redirect_observation_is_distinct_from_fragment_changes_and_traversal() {
-        assert_eq!(
-            strip_url_fragment("https://example.test/page#one"),
-            "https://example.test/page"
-        );
-        assert_eq!(
-            strip_url_fragment("https://example.test/page"),
-            "https://example.test/page"
-        );
-        assert_eq!(
-            journey_transition_after_load(None, false, Some(1)),
-            Some((JourneyEdgeKind::Redirect, "redirect".into()))
-        );
-        assert_eq!(
-            journey_transition_after_load(None, false, Some(3)),
-            Some((JourneyEdgeKind::Redirect, "redirect-chain:3".into()))
-        );
-        assert_eq!(journey_transition_after_load(None, true, Some(3)), None);
-        assert_eq!(
-            journey_transition_after_load(
-                Some((JourneyEdgeKind::Hint, "hint".into())),
-                false,
-                Some(2),
-            ),
-            Some((JourneyEdgeKind::Hint, "hint;redirect-chain:2".into()))
-        );
-    }
-
-    #[test]
-    fn same_document_history_avoids_pending_load_duplicates() {
-        assert!(recordable_same_document_change(
-            false,
-            Some("https://example.test/page"),
-            "https://example.test/page#section"
-        ));
-        assert!(!recordable_same_document_change(
-            true,
-            Some("https://example.test/page"),
-            "https://example.test/page#section"
-        ));
-        assert!(!recordable_same_document_change(
-            false,
-            Some("https://example.test/page#section"),
-            "https://example.test/page#section"
-        ));
-        assert!(!recordable_same_document_change(
-            false,
-            None,
-            "https://example.test/page#section"
-        ));
-    }
-
-    #[test]
-    fn editor_process_termination_reaps_the_child() {
-        let mut command = Command::new("/bin/sleep");
-        command.arg("30").process_group(0);
-        let child = command.spawn().expect("start editor fixture");
-        let process = Arc::new(Mutex::new(Some(child)));
-        terminate_editor_process(&process);
-        assert!(process.lock().expect("editor process lock").is_none());
-    }
-
-    #[test]
-    fn private_editor_artifact_cleanup_removes_only_its_managed_directory() {
-        let root = std::env::temp_dir().join(format!(
-            "ferric-browser-private-editor-cleanup-{}",
-            Uuid::new_v4()
-        ));
-        let directory = root.join("scratch");
-        let path = directory.join("editor.txt");
-        fs::create_dir_all(&directory).expect("create private editor directory");
-        fs::write(&path, b"private text").expect("write private editor fixture");
-        cleanup_editor_artifact(&path, true);
-        assert!(!directory.exists());
-        assert!(
-            root.exists(),
-            "cleanup must not remove an enclosing directory"
-        );
-        fs::remove_dir(root).expect("remove test enclosing directory");
-    }
-
-    #[test]
-    fn process_group_termination_stops_a_child_descendant() {
-        let pid_path = std::env::temp_dir().join(format!(
-            "ferric-browser-process-group-{}.pid",
-            Uuid::new_v4()
-        ));
-        let script = format!("sleep 30 & printf '%s' $! > {}; exit 0", pid_path.display());
-        let mut command = Command::new("/bin/sh");
-        command.args(["-c", &script]).process_group(0);
-        let mut child = command.spawn().expect("start process-group fixture");
-        let descendant_pid = (0..100).find_map(|_| {
-            thread::sleep(Duration::from_millis(10));
-            let value = fs::read_to_string(&pid_path).ok()?;
-            let pid = value.trim().parse::<libc::pid_t>().ok()?;
-            Some(pid)
-        });
-        assert!(
-            descendant_pid.is_some(),
-            "fixture did not start a descendant"
-        );
-
-        terminate_child_process(&mut child);
-        let descendant_pid = descendant_pid.expect("descendant pid checked");
-        let descendant_gone = (0..50).any(|_| {
-            let gone = unsafe { libc::kill(descendant_pid, 0) == -1 };
-            if !gone {
-                thread::sleep(Duration::from_millis(10));
-            }
-            gone
-        });
-        let _ = fs::remove_file(pid_path);
-        assert!(
-            descendant_gone,
-            "process-group descendant survived cancellation"
-        );
-    }
-
-    #[test]
-    fn clipboard_navigation_input_is_bounded_and_rejects_failures() {
-        assert_eq!(
-            validate_clipboard_navigation_input("  https://example.test/path  ").unwrap(),
-            "https://example.test/path"
-        );
-        for invalid in [
-            "",
-            "   ",
-            "https://example.test/path\nmore",
-            "https://example.test\u{0000}more",
-        ] {
-            assert!(validate_clipboard_navigation_input(invalid).is_err());
-        }
-        assert!(validate_clipboard_navigation_input(&"x".repeat(64 * 1024 + 1)).is_err());
-        assert!(validate_clipboard_navigation_input(&"x".repeat(64 * 1024)).is_ok());
-    }
-
-    #[test]
-    fn ipc_profile_create_preserves_ephemeral_flag_as_typed_data() {
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "profile-create",
-            "arguments": {"name": "task", "ephemeral": true}
-        }))
-        .expect("typed ephemeral profile command");
-        assert_eq!(command.arguments, ["task", "--ephemeral"]);
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "profile-create",
-                "arguments": {"name": "task", "ephemeral": "yes"}
-            }))
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn ipc_window_move_requires_bounded_id_and_workspace_arguments() {
-        let (command, route, action_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.window.move",
-            "arguments": {"id": "window-42", "workspace": "name:research"}
-        }))
-        .expect("typed window move action");
-        assert_eq!(action_id, "browser.window.move");
-        assert_eq!(command.name, "window-move");
-        assert_eq!(command.arguments, vec!["window-42", "name:research"]);
-        assert_eq!(route.open_target, IpcOpenTarget::Tab);
-        assert!(
-            typed_ipc_action(&serde_json::json!({
-                "action": "browser.window.move",
-                "arguments": {"id": "window-42", "workspace": "name:research", "extra": "reject"}
-            }))
-            .is_err()
-        );
-        assert!(
-            typed_ipc_action(&serde_json::json!({
-                "action": "browser.window.move",
-                "arguments": {"id": "window-42", "workspace": "bad\nworkspace"}
-            }))
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn typed_actions_enforce_their_registry_argument_schema() {
-        assert!(
-            typed_ipc_action(&serde_json::json!({
-                "action": "browser.url.copy",
-                "arguments": {"source": "title"}
-            }))
-            .is_err()
-        );
-        assert!(
-            typed_ipc_action(&serde_json::json!({
-                "action": "browser.link.open",
-                "arguments": {"url": "https://example.test", "profile": "other"}
-            }))
-            .is_err()
-        );
-        assert!(
-            typed_ipc_action(&serde_json::json!({
-                "action": "browser.window.move",
-                "arguments": {"id": "window-42"}
-            }))
-            .is_err()
-        );
-        let (command, _, action_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.window.move",
-            "arguments": {"id": "window-42", "workspace": "name:research"}
-        }))
-        .expect("declared action arguments remain accepted");
-        assert_eq!(action_id, "browser.window.move");
-        assert_eq!(command.arguments, vec!["window-42", "name:research"]);
-    }
-
-    #[test]
-    fn typed_actions_enforce_declared_argument_types() {
-        for arguments in [
-            serde_json::json!({"private": "true"}),
-            serde_json::json!({"private": 1}),
-        ] {
-            assert!(
-                typed_ipc_action(&serde_json::json!({
-                    "action": "browser.window.new",
-                    "arguments": arguments
-                }))
-                .is_err()
-            );
-        }
-        assert!(
-            typed_ipc_action(&serde_json::json!({
-                "action": "browser.tab.scroll",
-                "arguments": {"count": "2"}
-            }))
-            .is_err()
-        );
-        assert!(
-            typed_ipc_action(&serde_json::json!({
-                "action": "browser.command.execute",
-                "arguments": {"arguments": []}
-            }))
-            .is_err()
-        );
-
-        let (command, _, action_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.window.new",
-            "arguments": {"private": true}
-        }))
-        .expect("well-typed boolean action argument");
-        assert_eq!(action_id, "browser.window.new");
-        assert_eq!(command.arguments, vec!["--private"]);
-    }
-
-    #[test]
-    fn typed_actions_validate_url_arguments_at_the_action_boundary() {
-        for url in ["javascript:alert(1)", "not a URL", "https://"] {
-            assert!(
-                typed_ipc_action(&serde_json::json!({
-                    "action": "browser.quickmark.add",
-                    "arguments": {"name": "unsafe", "url": url}
-                }))
-                .is_err()
-            );
-        }
-        let (command, _, action_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.quickmark.add",
-            "arguments": {"name": "docs", "url": "https://docs.example.test/"}
-        }))
-        .expect("safe URL action argument");
-        assert_eq!(action_id, "browser.quickmark.add");
-        assert_eq!(
-            command.arguments,
-            vec!["docs", "https://docs.example.test/"]
-        );
-    }
-
-    #[test]
-    fn ipc_commands_use_typed_arguments_without_shell_parsing() {
-        let (command, route) = typed_ipc_command(&serde_json::json!({
-            "command": "open",
-            "arguments": {"input": "https://example.test/a?x=$(touch nope)"}
-        }))
-        .expect("typed command");
-        assert_eq!(command.name, "open");
-        assert_eq!(route.open_target, IpcOpenTarget::Tab);
-        assert!(!route.external_open);
-        assert_eq!(
-            command.arguments[0],
-            "https://example.test/a?x=$(touch nope)"
-        );
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "open",
-                "arguments": {"input": "https://example.test", "extra": "reject"}
-            }))
-            .is_err()
-        );
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "open-current",
-            "arguments": {"target": "tab"}
-        }))
-        .expect("typed current-URL new-tab command");
-        assert_eq!(command.arguments, vec!["--target", "tab"]);
-        let (command, route) = typed_ipc_command(&serde_json::json!({
-            "command": "tab-clone",
-            "arguments": {}
-        }))
-        .expect("typed tab-clone command");
-        assert_eq!(command.name, "tab-clone");
-        assert!(command.arguments.is_empty());
-        assert_eq!(route.open_target, IpcOpenTarget::Tab);
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-            "command": "tab-clone",
-            "arguments": {"unexpected": true}
-            }))
-            .is_err()
-        );
-        let (command, route) = typed_ipc_command(&serde_json::json!({
-            "command": "tab-select",
-            "arguments": {"selector": "2"}
-        }))
-        .expect("typed tab-select command");
-        assert_eq!(command.name, "tab-select");
-        assert_eq!(command.arguments, vec!["2"]);
-        assert_eq!(route.open_target, IpcOpenTarget::Tab);
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "tab-select",
-                "arguments": {"selector": 2}
-            }))
-            .is_err()
-        );
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "tab-select",
-                "arguments": {"selector": "2", "extra": true}
-            }))
-            .is_err()
-        );
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "tab-suspend",
-            "arguments": {"id": "tab-42"}
-        }))
-        .expect("typed tab-suspend command");
-        assert_eq!(command.name, "tab-suspend");
-        assert_eq!(command.arguments, vec!["tab-42"]);
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "tab-discard",
-            "arguments": {"id": "tab-42"}
-        }))
-        .expect("typed tab-discard command");
-        assert_eq!(command.name, "tab-discard");
-        assert_eq!(command.arguments, vec!["tab-42"]);
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "tab-resume",
-            "arguments": {"id": "tab-42"}
-        }))
-        .expect("typed tab-resume command");
-        assert_eq!(command.name, "tab-resume");
-        assert_eq!(command.arguments, vec!["tab-42"]);
-        for command_name in ["tab-pin", "tab-mute"] {
-            let (command, _) = typed_ipc_command(&serde_json::json!({
-                "command": command_name,
-                "arguments": {"state": "toggle"}
-            }))
-            .expect("typed active-tab state command");
-            assert_eq!(command.name, command_name);
-            assert_eq!(command.arguments, vec!["toggle"]);
-        }
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "tab-move",
-            "arguments": {"direction": "right"}
-        }))
-        .expect("typed active-tab move command");
-        assert_eq!(command.arguments, vec!["right"]);
-        let (command, route) = typed_ipc_command(&serde_json::json!({
-            "command": "window-close",
-            "arguments": {}
-        }))
-        .expect("typed window-close command");
-        assert_eq!(command.name, "window-close");
-        assert!(command.arguments.is_empty());
-        assert_eq!(route.open_target, IpcOpenTarget::Tab);
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "window-close",
-                "arguments": {"unexpected": true}
-            }))
-            .is_err()
-        );
-        for command_name in ["reopen-in-window", "tab-detach"] {
-            let (command, route) = typed_ipc_command(&serde_json::json!({
-                "command": command_name,
-                "arguments": {}
-            }))
-            .expect("typed window movement command");
-            assert_eq!(command.name, command_name);
-            assert!(command.arguments.is_empty());
-            assert_eq!(route.open_target, IpcOpenTarget::Tab);
-            assert!(
-                typed_ipc_command(&serde_json::json!({
-                    "command": command_name,
-                    "arguments": {"unexpected": true}
-                }))
-                .is_err()
-            );
-        }
-        let (command, route) = typed_ipc_command(&serde_json::json!({
-            "command": "zoom",
-            "arguments": {"factor": "1.25"}
-        }))
-        .expect("typed zoom command");
-        assert_eq!(command.name, "zoom");
-        assert_eq!(command.arguments, vec!["1.25"]);
-        assert_eq!(route.open_target, IpcOpenTarget::Tab);
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "zoom",
-                "arguments": {"factor": 1.25}
-            }))
-            .is_err()
-        );
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "search-next",
-            "arguments": {"direction": "backward", "count": 3}
-        }))
-        .expect("typed search-next command");
-        assert_eq!(command.name, "search-next");
-        assert_eq!(command.arguments, vec!["--backward", "--count", "3"]);
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "search-next",
-                "arguments": {"direction": "sideways"}
-            }))
-            .is_err()
-        );
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "search-next",
-                "arguments": {"count": 101}
-            }))
-            .is_err()
-        );
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "scroll",
-            "arguments": {"direction": "down", "count": 3}
-        }))
-        .expect("typed scroll command");
-        assert_eq!(command.name, "scroll");
-        assert_eq!(command.arguments, vec!["down", "--count", "3"]);
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "scroll-page",
-            "arguments": {"direction": "up", "half": true, "count": 2}
-        }))
-        .expect("typed page scroll command");
-        assert_eq!(command.name, "scroll-page");
-        assert_eq!(command.arguments, vec!["up", "--half", "--count", "2"]);
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "scroll-to",
-            "arguments": {"edge": "bottom"}
-        }))
-        .expect("typed scroll-to command");
-        assert_eq!(command.name, "scroll-to");
-        assert_eq!(command.arguments, vec!["bottom"]);
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "scroll-page",
-                "arguments": {"direction": "left"}
-            }))
-            .is_err()
-        );
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "scroll-to",
-                "arguments": {"edge": "middle"}
-            }))
-            .is_err()
-        );
-        let (_, route) = typed_ipc_command(&serde_json::json!({
-            "command": "open",
-            "arguments": {"input": "https://example.test", "external": true}
-        }))
-        .expect("external open source");
-        assert!(route.external_open);
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "open",
-                "arguments": {"input": "https://example.test", "external": "yes"}
-            }))
-            .is_err()
-        );
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "set",
-            "arguments": {
-                "key": "content.zoom",
-                "value": "1.25",
-                "temporary": true
-            }
-        }))
-        .expect("typed set command");
-        assert_eq!(command.arguments, vec!["--temp", "content.zoom=1.25"]);
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "set",
-            "arguments": {
-                "key": "input.entry_mode",
-                "value": "insert",
-                "pattern": "https://docs.example/*"
-            }
-        }))
-        .expect("typed site set command");
-        assert_eq!(
-            command.arguments,
-            vec![
-                "--pattern",
-                "https://docs.example/*",
-                "input.entry_mode=insert"
-            ]
-        );
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "unset",
-            "arguments": {"key": "content.zoom"}
-        }))
-        .expect("typed unset command");
-        assert_eq!(command.arguments, vec!["content.zoom"]);
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "unset",
-            "arguments": {
-                "key": "input.entry_mode",
-                "pattern": "https://docs.example/*",
-                "temporary": true
-            }
-        }))
-        .expect("typed site unset command");
-        assert_eq!(
-            command.arguments,
-            vec![
-                "--temp",
-                "--pattern",
-                "https://docs.example/*",
-                "input.entry_mode"
-            ]
-        );
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "bind",
-            "arguments": {
-                "mode": "normal",
-                "keychain": "g,g",
-                "command": "open https://example.test"
-            }
-        }))
-        .expect("typed bind command");
-        assert_eq!(
-            command.arguments,
-            vec!["--mode", "normal", "g,g", "open https://example.test"]
-        );
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "unbind",
-            "arguments": {"mode": "normal", "keychain": "g,g"}
-        }))
-        .expect("typed unbind command");
-        assert_eq!(command.arguments, vec!["--mode", "normal", "g,g"]);
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "config-export",
-            "arguments": {"path": "/tmp/reviewed-config.toml"}
-        }))
-        .expect("typed config export command");
-        assert_eq!(command.arguments, vec!["/tmp/reviewed-config.toml"]);
-        let (_, route) = typed_ipc_command(&serde_json::json!({
-            "command": "open",
-            "arguments": {"input": "https://example.test", "target": "tab-bg"},
-            "context": {"window": "last-focused"}
-        }))
-        .expect("background route");
-        assert_eq!(route.open_target, IpcOpenTarget::BackgroundTab);
-        assert_eq!(route.selector, DispatchTarget::LastFocused);
-        let (_, route) = typed_ipc_command(&serde_json::json!({
-            "command": "open",
-            "arguments": {"input": "https://example.test"},
-            "context": {"window": "windowid-42"}
-        }))
-        .expect("stable window route");
-        assert_eq!(
-            route.selector,
-            DispatchTarget::Window(WindowId::from_display("windowid-42").expect("window ID"))
-        );
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "open",
-                "arguments": {"input": "https://example.test"},
-                "context": {"window": "window-42"}
-            }))
-            .is_err()
-        );
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "open",
-            "arguments": {
-                "input": "https://example.test/?utm_source=demo",
-                "clean_link": true
-            }
-        }))
-        .expect("typed clean-link open");
-        assert_eq!(
-            command.arguments,
-            vec!["--clean-link", "https://example.test/?utm_source=demo"]
-        );
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "open",
-                "arguments": {"input": "https://example.test", "clean_link": "yes"}
-            }))
-            .is_err()
-        );
-        let error = typed_ipc_command(&serde_json::json!({
-            "command": "open",
-            "arguments": {
-                "input": "https://example.test/?utm_source=demo",
-                "target": "tab-bg",
-                "clean_link": true
-            }
-        }))
-        .expect_err("typed clean-link background open must be rejected");
-        assert!(
-            error
-                .to_string()
-                .contains("cannot be combined with --target tab-bg")
-        );
-    }
-
-    #[test]
-    fn ipc_blocking_toggle_uses_typed_site_flag() {
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "blocking-toggle",
-            "arguments": {"site": true}
-        }))
-        .expect("site toggle command");
-        assert_eq!(command.arguments, ["--site"]);
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "blocking-toggle",
-            "arguments": {}
-        }))
-        .expect("global toggle command");
-        assert!(command.arguments.is_empty());
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "blocking-toggle",
-                "arguments": {"site": "yes"}
-            }))
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn blocking_site_host_accepts_safe_http_authorities() {
-        assert_eq!(
-            blocking_site_host("HTTPS://Example.test:443/path"),
-            Some("example.test".into())
-        );
-        assert_eq!(blocking_site_host("http://[::1]:8080/"), Some("::1".into()));
-        assert_eq!(
-            blocking_site_host("https://example.test./"),
-            Some("example.test".into())
-        );
-        assert!(blocking_site_host("about:blank").is_none());
-        assert!(blocking_site_host("https://user@example.test/").is_none());
-        assert!(blocking_site_host("https://example.test:bad/").is_none());
-        assert!(blocking_site_host("https://example.test:80:90/").is_none());
-    }
-
-    #[test]
-    fn durable_site_doctor_override_uses_a_typed_toml_array() {
-        assert_eq!(
-            toml_string_array_literal(&["example.test".into(), "*.sub.test".into()]),
-            "[\"example.test\", \"*.sub.test\"]"
-        );
-    }
-
-    #[test]
-    fn site_doctor_experiment_deadline_is_bounded() {
-        let now = Instant::now();
-        assert_eq!(site_doctor_remaining_seconds(now, now), Some(30));
-        assert_eq!(
-            site_doctor_remaining_seconds(now, now + Duration::from_secs(29)),
-            Some(1)
-        );
-        assert_eq!(
-            site_doctor_remaining_seconds(now, now + Duration::from_secs(30)),
-            None
-        );
-    }
-
-    #[test]
-    fn ipc_print_pdf_command_uses_a_typed_path_field() {
-        let (command, route) = typed_ipc_command(&serde_json::json!({
-            "command": "print-pdf",
-            "arguments": {"path": "/tmp/page.pdf"}
-        }))
-        .expect("typed print-pdf command");
-        assert_eq!(command.name, "print-pdf");
-        assert_eq!(command.arguments, vec!["/tmp/page.pdf"]);
-        assert_eq!(route.open_target, IpcOpenTarget::Tab);
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "print-pdf",
-                "arguments": {"path": "relative.pdf"}
-            }))
-            .is_ok()
-        );
-    }
-
-    #[test]
-    fn search_next_options_accept_flags_in_any_order_and_reject_duplicates() {
-        assert_eq!(
-            parse_search_next_options(&[], true).expect("retained direction"),
-            (true, 1)
-        );
-        assert_eq!(
-            parse_search_next_options(&["--backward".into(), "--count".into(), "4".into()], false)
-                .expect("ordered search-next options"),
-            (true, 4)
-        );
-        assert_eq!(
-            parse_search_next_options(&["--count".into(), "4".into(), "--backward".into()], false)
-                .expect("flags in either order"),
-            (true, 4)
-        );
-        assert!(
-            parse_search_next_options(&["--backward".into(), "--backward".into()], false).is_err()
-        );
-        assert!(
-            parse_search_next_options(
-                &["--count".into(), "2".into(), "--count".into(), "3".into()],
-                false
-            )
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn scroll_command_options_reject_duplicates_and_wrong_order() {
-        assert_eq!(
-            parse_scroll_options("scroll", &["--count".into(), "3".into()])
-                .expect("single scroll count"),
-            (false, 3)
-        );
-        assert_eq!(
-            parse_scroll_options(
-                "scroll-page",
-                &["--half".into(), "--count".into(), "2".into()]
-            )
-            .expect("ordered page options"),
-            (true, 2)
-        );
-        assert!(
-            parse_scroll_options(
-                "scroll",
-                &["--count".into(), "1".into(), "--count".into(), "2".into()]
-            )
-            .is_err()
-        );
-        assert!(
-            parse_scroll_options(
-                "scroll-page",
-                &["--count".into(), "2".into(), "--half".into()]
-            )
-            .is_err()
-        );
-        assert!(parse_scroll_options("scroll-page", &["--half".into(), "--half".into()]).is_err());
-    }
-
-    #[test]
-    fn ipc_save_page_command_uses_a_typed_path_field() {
-        let (command, route) = typed_ipc_command(&serde_json::json!({
-            "command": "save-page",
-            "arguments": {"path": "/tmp/page.html"}
-        }))
-        .expect("typed save-page command");
-        assert_eq!(command.name, "save-page");
-        assert_eq!(command.arguments, vec!["/tmp/page.html"]);
-        assert_eq!(route.open_target, IpcOpenTarget::Tab);
-    }
-
-    #[test]
-    fn ipc_view_source_command_is_typed_without_arguments() {
-        let (command, route) = typed_ipc_command(&serde_json::json!({
-            "command": "view-source",
-            "arguments": {}
-        }))
-        .expect("typed view-source command");
-        assert_eq!(command.name, "view-source");
-        assert!(command.arguments.is_empty());
-        assert_eq!(route.open_target, IpcOpenTarget::Tab);
-    }
-
-    #[test]
-    fn ipc_script_run_command_uses_a_typed_name_field() {
-        let (command, route) = typed_ipc_command(&serde_json::json!({
-            "command": "script-run",
-            "arguments": {"name": "video"}
-        }))
-        .expect("typed script-run command");
-        assert_eq!(command.name, "script-run");
-        assert_eq!(command.arguments, vec!["video"]);
-        assert_eq!(route.open_target, IpcOpenTarget::Tab);
-    }
-
-    #[test]
-    fn ipc_jseval_command_uses_typed_world_and_script_fields() {
-        let (command, route) = typed_ipc_command(&serde_json::json!({
-            "command": "jseval",
-            "arguments": {
-                "world": "page",
-                "script": "document.title"
-            }
-        }))
-        .expect("typed jseval command");
-        assert_eq!(command.name, "jseval");
-        assert_eq!(command.arguments, vec!["--world", "page", "document.title"]);
-        assert_eq!(route.open_target, IpcOpenTarget::Tab);
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "jseval",
-                "arguments": {"world": "main", "script": "1 + 1"}
-            }))
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn ipc_support_commands_use_typed_help_and_empty_arguments() {
-        let (command, route) = typed_ipc_command(&serde_json::json!({
-            "command": "help",
-            "arguments": {"topic": "content.zoom"}
-        }))
-        .expect("typed help command");
-        assert_eq!(command.name, "help");
-        assert_eq!(command.arguments, vec!["content.zoom"]);
-        assert_eq!(route.open_target, IpcOpenTarget::Tab);
-        for name in ["version", "diagnostics"] {
-            let (command, _) = typed_ipc_command(&serde_json::json!({
-                "command": name,
-                "arguments": {}
-            }))
-            .expect("typed support command");
-            assert_eq!(command.name, name);
-            assert!(command.arguments.is_empty());
-        }
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "help",
-                "arguments": {"topic": "content.zoom", "extra": true}
-            }))
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn jseval_script_validation_allows_js_whitespace_but_bounds_controls_and_size() {
-        assert!(validate_jseval_script("function f() {\n\treturn 1\n}").is_ok());
-        assert!(validate_jseval_script("1\u{0007}").is_err());
-        assert!(validate_jseval_script(&"x".repeat(MAX_JSEVAL_SCRIPT_BYTES + 1)).is_err());
-    }
-
-    #[test]
-    fn ipc_print_command_is_typed_without_arguments() {
-        let (command, route) = typed_ipc_command(&serde_json::json!({
-            "command": "print",
-            "arguments": {}
-        }))
-        .expect("typed print command");
-        assert_eq!(command.name, "print");
-        assert!(command.arguments.is_empty());
-        assert_eq!(route.open_target, IpcOpenTarget::Tab);
-    }
-
-    #[test]
-    fn ipc_devtools_command_uses_typed_detach_flag() {
-        let (command, route) = typed_ipc_command(&serde_json::json!({
-            "command": "devtools",
-            "arguments": {"detach": true}
-        }))
-        .expect("typed devtools command");
-        assert_eq!(command.name, "devtools");
-        assert_eq!(command.arguments, vec!["--detach"]);
-        assert_eq!(route.open_target, IpcOpenTarget::Tab);
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "devtools",
-                "arguments": {"detach": "true"}
-            }))
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn ipc_get_command_uses_typed_key_url_and_explain_fields() {
-        let (command, route) = typed_ipc_command(&serde_json::json!({
-            "command": "get",
-            "arguments": {
-                "key": "content.zoom",
-                "url": "https://example.test/docs",
-                "explain": true
-            }
-        }))
-        .expect("typed get command");
-        assert_eq!(command.name, "get");
-        assert_eq!(
-            command.arguments,
-            vec![
-                "content.zoom",
-                "--url",
-                "https://example.test/docs",
-                "--explain"
-            ]
-        );
-        assert_eq!(route.open_target, IpcOpenTarget::Tab);
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "get",
-                "arguments": {"key": "content.zoom", "explain": "yes"}
-            }))
-            .is_err()
-        );
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "get",
-                "arguments": {"key": "content.zoom", "unknown": true}
-            }))
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn ipc_configuration_lifecycle_commands_use_typed_paths_and_no_arguments() {
-        for name in [
-            "config-edit",
-            "config-reload",
-            "config-check",
-            "theme-reload",
-        ] {
-            let (command, _) = typed_ipc_command(&serde_json::json!({
-                "command": name,
-                "arguments": {}
-            }))
-            .expect("typed configuration lifecycle command");
-            assert_eq!(command.name, name);
-            assert!(command.arguments.is_empty());
-            assert!(
-                typed_ipc_command(&serde_json::json!({
-                    "command": name,
-                    "arguments": {"unexpected": true}
-                }))
-                .is_err()
-            );
-        }
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "config-write-defaults",
-            "arguments": {"path": "/tmp/ferric-browser-defaults.toml"}
-        }))
-        .expect("typed default configuration path");
-        assert_eq!(command.arguments, vec!["/tmp/ferric-browser-defaults.toml"]);
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "config-write-defaults",
-                "arguments": {}
-            }))
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn configured_editor_argv_replaces_only_the_complete_file_argument() {
-        let config = serde_json::json!({
-            "tools": {"editor": ["foot", "-e", "nvim", "{file}"]}
-        });
-        let (executable, arguments) =
-            configured_editor_argv(&config, Path::new("/tmp/ferric-browser-config.toml"))
-                .expect("configured editor argv");
-        assert_eq!(executable, "foot");
-        assert_eq!(
-            arguments,
-            vec!["-e", "nvim", "/tmp/ferric-browser-config.toml"]
-        );
-
-        let invalid = serde_json::json!({"tools": {"editor": ["nvim", "--cmd={file}"]}});
-        assert!(configured_editor_argv(&invalid, Path::new("/tmp/config")).is_err());
-
-        let oversized = "x".repeat(MAX_UNTRUSTED_ARGUMENT_BYTES + 1);
-        let invalid = serde_json::json!({"tools": {"editor": [oversized, "{file}"]}});
-        assert!(configured_editor_argv(&invalid, Path::new("/tmp/config")).is_err());
-    }
-
-    #[test]
-    fn config_editor_captures_bounded_stderr() {
-        let source = include_str!("lib.rs");
-        assert!(source.contains("configuration editor stderr"));
-        assert!(source.contains("read_bounded(stderr, 64 * 1024)"));
-        assert!(source.contains("exit_status: Option<ExitStatus>"));
-    }
-
-    #[test]
-    fn external_editor_rejects_rich_contenteditable_controls() {
-        let qml = [
-            include_str!("../qml/Main.qml"),
-            include_str!("../qml/scripts/BrowserScripts.js"),
-        ]
-        .concat();
-        assert!(qml.contains("e.contentEditable==='plaintext-only'"));
-        assert!(
-            qml.contains("return {error:'focused control is not a supported plain-text editor'}")
-        );
-        assert!(qml.contains("else e.textContent=next"));
-        assert!(!qml.contains("if(e.isContentEditable)return {ok:true"));
-    }
-
-    #[test]
-    fn primary_web_engine_profile_uses_selected_profile_namespace() {
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains(
-            "storageName: window.temporaryProfile ? \"\" : \"ferric-browser-\" + window.profileName"
-        ));
-        assert!(
-            !qml.contains(
-                "storageName: window.temporaryProfile ? \"\" : \"ferric-browser-default\""
-            )
-        );
-        assert!(qml.contains(
-            "storageName: secondaryWindow.windowTransientProfile ? \"\" : \"ferric-browser-\" + secondaryWindow.windowProfileName"
-        ));
-        assert!(qml.contains("window.storageBasePath + \"/webengine/\" + window.profileName"));
-        assert!(qml.contains("secondaryWindow.windowStorageBasePath + \"/webengine/\""));
-        assert!(qml.contains("property string windowStorageBasePath: window.storageBasePath"));
-    }
-
-    #[test]
-    fn startup_profile_overrides_reach_the_browser_ui() {
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains("property string startupProfileOverridesJson: \"{}\""));
-        assert!(
-            qml.contains("browserUi.profile_overrides_json = window.startupProfileOverridesJson")
-        );
-    }
-
-    #[test]
-    fn command_completion_popup_has_accessible_popup_semantics() {
-        let qml = include_str!("../qml/Main.qml");
-        let popup = qml
-            .split("id: completionPopup")
-            .nth(1)
-            .expect("completion popup");
-        assert!(popup.contains("Accessible.role: Accessible.PopupMenu"));
-        assert!(popup.contains("Accessible.name: \"Command completion popup\""));
-        assert!(popup.contains("Accessible.description:"));
-        assert!(popup.contains("? window.selectionColor : window.panelColor"));
-        assert!(popup.contains("? window.selectionTextColor"));
-        assert!(popup.contains("window.readableTextColor(window.primaryTextColor,"));
-        assert!(
-            !popup
-                .split("id: searchBar")
-                .next()
-                .expect("completion popup body")
-                .contains(": \"transparent\"")
-        );
-    }
-
-    #[test]
-    fn ipc_permission_commands_use_typed_origin_and_permission_fields() {
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "permissions",
-            "arguments": {"origin": "https://example.test"}
-        }))
-        .expect("typed permissions command");
-        assert_eq!(command.arguments, vec!["https://example.test"]);
-
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "permission-reset",
-            "arguments": {
-                "origin": "https://example.test",
-                "permission": "notifications"
-            }
-        }))
-        .expect("typed permission reset command");
-        assert_eq!(
-            command.arguments,
-            vec!["https://example.test", "notifications"]
-        );
-    }
-
-    #[test]
-    fn ipc_site_status_accepts_an_optional_stable_tab_target() {
-        let (active, _) = typed_ipc_command(&serde_json::json!({
-            "command": "site-status",
-            "arguments": {}
-        }))
-        .expect("active site status command");
-        assert!(active.arguments.is_empty());
-
-        let (targeted, _) = typed_ipc_command(&serde_json::json!({
-            "command": "site-status",
-            "arguments": {"tab": "tab-42"}
-        }))
-        .expect("targeted site status command");
-        assert_eq!(targeted.arguments, vec!["--tab", "tab-42"]);
-
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "site-status",
-                "arguments": {"tab": "bad\nid"}
-            }))
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn permission_session_key_is_scoped_to_profile_uuid_and_lifetime() {
-        let first_profile = Uuid::from_u128(1);
-        let second_profile = Uuid::from_u128(2);
-        let first = permission_session_key(first_profile, "https://example.test", "camera");
-        let same = permission_session_key(first_profile, "https://example.test", "camera");
-        let other_profile =
-            permission_session_key(second_profile, "https://example.test", "camera");
-
-        assert_eq!(first, same);
-        assert_ne!(first, other_profile);
-        assert_eq!(first.lifetime, PermissionLifetimeKey::ProfileSession);
-    }
-
-    #[test]
-    fn ipc_site_doctor_commands_use_typed_experiment_fields() {
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "site-doctor",
-            "arguments": {"experiment": "blocking-bypass"}
-        }))
-        .expect("typed Site Doctor command");
-        assert_eq!(command.arguments, vec!["blocking-bypass"]);
-
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "site-doctor",
-            "arguments": {"experiment": "userscripts-off"}
-        }))
-        .expect("typed userscript experiment command");
-        assert_eq!(command.arguments, vec!["userscripts-off"]);
-
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "site-doctor",
-            "arguments": {"experiment": "fresh-view"}
-        }))
-        .expect("typed fresh-view experiment command");
-        assert_eq!(command.arguments, vec!["fresh-view"]);
-
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "site-doctor",
-            "arguments": {"experiment": "compiled-defaults"}
-        }))
-        .expect("typed compiled-default experiment command");
-        assert_eq!(command.arguments, vec!["compiled-defaults"]);
-
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "site-doctor-undo",
-            "arguments": {"id": "site-experiment-123"}
-        }))
-        .expect("typed Site Doctor undo command");
-        assert_eq!(command.arguments, vec!["site-experiment-123"]);
-
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "site-data-clear",
-            "arguments": {"origin": "https://example.test", "confirmed": true}
-        }))
-        .expect("typed site-data clear command");
-        assert_eq!(command.arguments, vec!["https://example.test", "--confirm"]);
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "site-doctor",
-                "arguments": {"kind": "blocking-bypass"}
-            }))
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn focus_observation_only_changes_normal_and_insert_modes() {
-        assert_eq!(
-            focus_mode_transition(Mode::Normal, true, true, None),
-            Some(Mode::Insert)
-        );
-        assert_eq!(focus_mode_transition(Mode::Normal, true, false, None), None);
-        assert_eq!(
-            focus_mode_transition(Mode::Normal, false, false, Some("insert")),
-            Some(Mode::Insert)
-        );
-        assert_eq!(
-            focus_mode_transition(Mode::Insert, false, false, None),
-            Some(Mode::Normal)
-        );
-        assert_eq!(focus_mode_transition(Mode::Caret, true, true, None), None);
-    }
-
-    #[test]
-    fn page_focus_requires_a_recent_user_gesture_before_insert_mode() {
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains("userGestureUntil=performance.now()+1500"));
-        assert!(qml.contains("__ferric_browserAuthorizeExplicitFocus"));
-        assert!(qml.contains("user_activated:!!userActivated"));
-        assert!(qml.contains("!!state.user_activated"));
-        assert!(qml.contains("publish(false);})();"));
-    }
-
-    #[test]
-    fn hint_collection_accepts_qt_variant_candidate_lists() {
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains("value && value.candidates !== undefined"));
-        assert!(!qml.contains("Array.isArray(value.candidates)"));
-    }
-
-    #[test]
-    fn all_hints_cover_qutebrowser_control_families_and_activate_controls() {
-        let qml = include_str!("../qml/Main.qml");
-        for selector in [
-            "input:not([type='hidden'])",
-            "summary",
-            "[onclick]",
-            "[role='checkbox']",
-            "[role='menuitem']",
-            "[aria-haspopup]",
-            "[tabindex]:not([tabindex='-1'])",
-        ] {
-            assert!(qml.contains(selector), "missing hint selector {selector}");
-        }
-        assert!(qml.contains("function hintClickScript(elementId)"));
-        assert!(qml.contains("result.action === \"click\""));
-        assert!(qml.contains("window.__ferric_browserHintElements=elements"));
-        assert!(qml.contains("record&&record.element"));
-        assert!(qml.contains("el.click();return true"));
-    }
-
-    #[test]
-    fn profile_configuration_is_rebuilt_before_runtime_layers() {
-        let mut profile = RuntimeOverrides::default();
-        profile
-            .set_literal("content.zoom", "1.1")
-            .expect("profile override");
-        let mut runtime = RuntimeOverrides::default();
-        runtime
-            .set_literal("content.zoom", "1.2")
-            .expect("runtime override");
-        let mut cli = RuntimeOverrides::default();
-        cli.set_literal("content.zoom", "1.3")
-            .expect("CLI override");
-        let mut temporary = RuntimeOverrides::default();
-        temporary
-            .set_literal("content.zoom", "1.4")
-            .expect("temporary override");
-
-        let value = config_value_with_layers(
-            &serde_json::to_value(Config::default()).expect("base configuration"),
-            &profile,
-            &runtime,
-            &cli,
-            &temporary,
-        )
-        .expect("effective configuration");
-        let config = serde_json::from_value::<Config>(value).expect("typed configuration");
-        assert!((config.content.zoom - 1.4).abs() < f64::EPSILON);
-    }
-
-    #[test]
-    fn config_watcher_notifies_after_atomic_file_replacement_with_polling_fallback() {
-        let directory = std::env::temp_dir().join(format!(
-            "ferric-browser-config-watch-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        fs::create_dir_all(&directory).expect("watch directory");
-        let path = directory.join("config.toml");
-        fs::write(&path, "[ui]\nfont_size_pt = 10.0\n").expect("initial config");
-
-        let mut watch = ConfigWatch::default();
-        watch.set_sources(&path, std::slice::from_ref(&path));
-        // Force the portable polling path even on Linux, where inotify is
-        // normally available. This also covers environments where native
-        // notification setup fails or a directory cannot be watched.
-        #[cfg(target_os = "linux")]
-        watch.stop_inotify();
-        let temporary = directory.join(".config.toml.tmp");
-        fs::write(&temporary, "[ui]\nfont_size_pt = 11.0\n").expect("replacement");
-        fs::rename(&temporary, &path).expect("atomic replacement");
-
-        let deadline = Instant::now() + Duration::from_secs(1);
-        let mut notified = false;
-        while !notified && Instant::now() < deadline {
-            notified = watch.changed();
-            if notified {
-                break;
-            }
-            thread::sleep(Duration::from_millis(10));
-        }
-        assert!(notified, "inotify did not report the replacement");
-        drop(watch);
-        let _ = fs::remove_file(&path);
-        let _ = fs::remove_dir(&directory);
-    }
-
-    #[test]
-    fn config_reload_worker_loads_and_validates_off_thread() {
-        let directory = std::env::temp_dir().join(format!(
-            "ferric-browser-config-worker-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        fs::create_dir_all(&directory).expect("worker directory");
-        let path = directory.join("config.toml");
-        fs::write(&path, "[ui]\nfont_size_pt = 11.0\n").expect("worker config");
-
-        let mut worker = ConfigReloadWorker::spawn().expect("config worker");
-        worker
-            .request(path.clone(), "default".into())
-            .expect("reload request");
-        let result = (0..100).find_map(|_| {
-            let value = worker.poll();
-            if value.is_none() {
-                thread::sleep(Duration::from_millis(1));
-            }
-            value
-        });
-        let result = result
-            .expect("reload response")
-            .expect("valid configuration");
-        assert_eq!(result.operation, ConfigReadOperation::Reload);
-        assert!((result.loaded.config.ui.font_size_pt - 11.0).abs() < f64::EPSILON);
-        assert!(result.profile_overrides.settings.is_empty());
-
-        let contexts_path = directory.join("contexts.toml");
-        fs::write(&contexts_path, "unknown = true\n").expect("invalid contexts document");
-        worker
-            .request(path.clone(), "default".into())
-            .expect("reload with invalid contexts request");
-        let invalid_contexts = (0..100).find_map(|_| {
-            let value = worker.poll();
-            if value.is_none() {
-                thread::sleep(Duration::from_millis(1));
-            }
-            value
-        });
-        let invalid_contexts = match invalid_contexts.expect("invalid contexts response") {
-            Err(error) => error,
-            Ok(_) => panic!("invalid contexts must reject reload"),
-        };
-        assert!(invalid_contexts.contains("contexts configuration is invalid"));
-        let _ = fs::remove_file(&contexts_path);
-
-        worker
-            .request_check(path.clone())
-            .expect("configuration check request");
-        let check = (0..100).find_map(|_| {
-            let value = worker.poll();
-            if value.is_none() {
-                thread::sleep(Duration::from_millis(1));
-            }
-            value
-        });
-        let check = check
-            .expect("check response")
-            .expect("valid checked configuration");
-        assert_eq!(check.operation, ConfigReadOperation::Check);
-        assert_eq!(check.loaded.sources.len(), 1);
-
-        drop(worker);
-        let _ = fs::remove_file(&path);
-        let _ = fs::remove_dir(&directory);
-    }
-
-    #[test]
-    fn config_write_worker_creates_private_non_overwriting_file() {
-        let directory = std::env::temp_dir().join(format!(
-            "ferric-browser-config-writer-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        fs::create_dir_all(&directory).expect("writer directory");
-        let path = directory.join("export.toml");
-        let contents = b"[ui]\nfont_size_pt = 11.0\n";
-
-        let mut worker = ConfigWriteWorker::spawn().expect("config writer");
-        worker
-            .request(path.clone(), contents.to_vec())
-            .expect("write request");
-        let result = (0..100).find_map(|_| {
-            let value = worker.poll();
-            if value.is_none() {
-                thread::sleep(Duration::from_millis(1));
-            }
-            value
-        });
-        let result = result
-            .expect("write response")
-            .expect("private configuration write");
-        assert_eq!(result.path, path);
-        assert_eq!(result.bytes, contents.len());
-        assert_eq!(fs::read(&path).expect("written configuration"), contents);
-        #[cfg(unix)]
-        assert_eq!(
-            std::os::unix::fs::PermissionsExt::mode(
-                &fs::metadata(&path).expect("written metadata").permissions(),
-            ) & 0o777,
-            0o600
-        );
-
-        worker
-            .request(path.clone(), b"replacement".to_vec())
-            .expect("second write request");
-        let second = (0..100).find_map(|_| {
-            let value = worker.poll();
-            if value.is_none() {
-                thread::sleep(Duration::from_millis(1));
-            }
-            value
-        });
-        let collision = second.expect("collision response");
-        assert!(collision.is_err(), "create-new must refuse overwrite");
-        assert_eq!(fs::read(&path).expect("original configuration"), contents);
-
-        drop(worker);
-        let _ = fs::remove_file(&path);
-        let _ = fs::remove_dir(&directory);
-    }
-
-    #[test]
-    fn userscript_manager_worker_reads_and_updates_off_thread() {
-        let root = std::env::temp_dir().join(format!(
-            "ferric-browser-userscript-worker-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        let directory = root.join("userscripts");
-        fs::create_dir_all(&directory).expect("userscript worker directory");
-        fs::write(
-            directory.join("worker.toml"),
-            r#"
-schema_version = 1
-name = "worker"
-executable = "/bin/true"
-enabled = true
-matches = ["https://example.test/*"]
-"#,
-        )
-        .expect("userscript worker manifest");
-
-        let mut worker = UserscriptManagerWorker::spawn().expect("userscript manager");
-        worker
-            .request(UserscriptManagerRequest::Refresh { root: root.clone() })
-            .expect("inventory request");
-        let inventory = (0..100).find_map(|_| {
-            let value = worker.poll();
-            if value.is_none() {
-                thread::sleep(Duration::from_millis(1));
-            }
-            value
-        });
-        match inventory.expect("inventory response") {
-            UserscriptManagerResult::Inventory(Ok(scripts)) => {
-                assert_eq!(scripts.len(), 1);
-                assert!(scripts[0].enabled);
-            }
-            other => panic!("unexpected inventory result: {other:?}"),
-        }
-
-        worker
-            .request(UserscriptManagerRequest::SetEnabled {
-                root: root.clone(),
-                name: "worker".into(),
-                enabled: false,
-            })
-            .expect("toggle request");
-        let toggled = (0..100).find_map(|_| {
-            let value = worker.poll();
-            if value.is_none() {
-                thread::sleep(Duration::from_millis(1));
-            }
-            value
-        });
-        match toggled.expect("toggle response") {
-            UserscriptManagerResult::SetEnabled {
-                enabled: false,
-                result: Ok(scripts),
-            } => assert!(!scripts[0].enabled),
-            other => panic!("unexpected toggle result: {other:?}"),
-        }
-
-        let source = root.join("installed.toml");
-        fs::write(
-            &source,
-            r#"
-schema_version = 1
-name = "installed"
-executable = "/bin/true"
-"#,
-        )
-        .expect("source userscript manifest");
-        worker
-            .request(UserscriptManagerRequest::Install {
-                root: root.clone(),
-                source,
-            })
-            .expect("install request");
-        let installed = (0..100).find_map(|_| {
-            let value = worker.poll();
-            if value.is_none() {
-                thread::sleep(Duration::from_millis(1));
-            }
-            value
-        });
-        match installed.expect("install response") {
-            UserscriptManagerResult::Installed(Ok(scripts)) => {
-                assert_eq!(scripts.len(), 2);
-            }
-            other => panic!("unexpected install result: {other:?}"),
-        }
-
-        worker
-            .request(UserscriptManagerRequest::Remove {
-                root: root.clone(),
-                name: "installed".into(),
-            })
-            .expect("remove request");
-        let removed = (0..100).find_map(|_| {
-            let value = worker.poll();
-            if value.is_none() {
-                thread::sleep(Duration::from_millis(1));
-            }
-            value
-        });
-        match removed.expect("remove response") {
-            UserscriptManagerResult::Removed(Ok(scripts)) => assert_eq!(scripts.len(), 1),
-            other => panic!("unexpected remove result: {other:?}"),
-        }
-        assert!(!root.join("userscripts/installed.toml").exists());
-
-        drop(worker);
-        let _ = fs::remove_dir_all(root);
-    }
-
-    #[test]
-    fn editor_write_worker_creates_private_scratch_file_off_thread() {
-        let directory = std::env::temp_dir().join(format!(
-            "ferric-browser-editor-writer-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        let path = directory.join("editor").join("scratch.txt");
-        let contents = b"editor text";
-        let mut worker = EditorWriteWorker::spawn().expect("editor writer");
-        worker
-            .request(path.clone(), contents.to_vec())
-            .expect("scratch request");
-        let result = (0..100).find_map(|_| {
-            let value = worker.poll();
-            if value.is_none() {
-                thread::sleep(Duration::from_millis(1));
-            }
-            value
-        });
-        assert_eq!(
-            result.expect("scratch response").expect("scratch write"),
-            path
-        );
-        assert_eq!(fs::read(&path).expect("scratch contents"), contents);
-        #[cfg(unix)]
-        assert_eq!(
-            std::os::unix::fs::PermissionsExt::mode(
-                &fs::metadata(&path).expect("scratch metadata").permissions(),
-            ) & 0o777,
-            0o600
-        );
-        drop(worker);
-        let _ = fs::remove_file(&path);
-        let _ = fs::remove_dir(path.parent().expect("scratch parent"));
-        let _ = fs::remove_dir(&directory);
-    }
-
-    #[test]
-    fn profile_delete_worker_removes_data_and_registry_off_thread() {
-        let roots = StorageRoots::resolve(RootSpec::Temporary).expect("temporary roots");
-        roots.ensure().expect("root directories");
-        let mut registry = ProfileRegistry::open(&roots).expect("profile registry");
-        let profile = registry
-            .create("worker-delete", "Worker delete", ProfilePrivacy::Normal)
-            .expect("profile record")
-            .clone();
-        let profile_data = roots.data.join("profiles").join(profile.id.to_string());
-        fs::create_dir_all(&profile_data).expect("profile data");
-        fs::write(profile_data.join("marker"), b"delete me").expect("profile marker");
-
-        let mut worker = ProfileDeleteWorker::spawn().expect("profile delete worker");
-        worker
-            .request_create(
-                roots.clone(),
-                "worker-create".to_owned(),
-                "Worker create".to_owned(),
-            )
-            .expect("create request");
-        let create_result = (0..100).find_map(|_| {
-            let value = worker.poll();
-            if value.is_none() {
-                thread::sleep(Duration::from_millis(1));
-            }
-            value
-        });
-        assert!(matches!(
-            create_result
-                .expect("create response")
-                .expect("profile creation"),
-            ProfileMutationResult::Created
-        ));
-        worker
-            .request_rename(
-                roots.clone(),
-                "worker-create".to_owned(),
-                "Worker renamed".to_owned(),
-            )
-            .expect("rename request");
-        let rename_result = (0..100).find_map(|_| {
-            let value = worker.poll();
-            if value.is_none() {
-                thread::sleep(Duration::from_millis(1));
-            }
-            value
-        });
-        assert!(matches!(
-            rename_result
-                .expect("rename response")
-                .expect("profile rename"),
-            ProfileMutationResult::Renamed
-        ));
-        assert_eq!(
-            ProfileRegistry::open(&roots)
-                .expect("reopen after rename")
-                .profiles()
-                .iter()
-                .find(|record| record.name == "worker-create")
-                .expect("created profile")
-                .label,
-            "Worker renamed"
-        );
-        worker
-            .request_delete(roots.clone(), profile.name.clone(), None)
-            .expect("delete request");
-        let result = (0..100).find_map(|_| {
-            let value = worker.poll();
-            if value.is_none() {
-                thread::sleep(Duration::from_millis(1));
-            }
-            value
-        });
-        assert_eq!(
-            match result.expect("delete response").expect("profile deletion") {
-                ProfileMutationResult::Deleted(outcome) => outcome.profile_name,
-                _ => panic!("unexpected profile mutation response"),
-            },
-            profile.name
-        );
-        assert!(!profile_data.exists());
-        assert!(
-            !ProfileRegistry::open(&roots)
-                .expect("reopen profile registry")
-                .profiles()
-                .iter()
-                .any(|record| record.id == profile.id)
-        );
-        drop(worker);
-        roots.cleanup().expect("temporary cleanup");
-    }
-
-    #[test]
-    fn profile_list_worker_reads_registry_off_thread() {
-        let roots = StorageRoots::resolve(RootSpec::Temporary).expect("temporary roots");
-        roots.ensure().expect("root directories");
-        let mut registry = ProfileRegistry::open(&roots).expect("profile registry");
-        registry
-            .create("worker-list", "Worker list", ProfilePrivacy::Normal)
-            .expect("profile record");
-
-        let mut worker = ProfileListWorker::spawn().expect("profile list worker");
-        worker.request(roots.clone()).expect("list request");
-        let result = (0..100).find_map(|_| {
-            let value = worker.poll();
-            if value.is_none() {
-                thread::sleep(Duration::from_millis(1));
-            }
-            value
-        });
-        let values = result.expect("list response").expect("profile list");
-        assert!(values.contains("worker-list\tWorker list\t"));
-        assert_eq!(
-            profile_from_list_values(&values, "worker-list"),
-            Some(("worker-list".into(), "Worker list".into()))
-        );
-        assert!(profile_from_list_values(&values, "missing").is_none());
-        drop(worker);
-        roots.cleanup().expect("temporary cleanup");
-    }
-
-    #[test]
-    fn profile_setup_worker_opens_profile_store_off_thread() {
-        let roots = StorageRoots::resolve(RootSpec::Temporary).expect("temporary roots");
-        let base = roots
-            .temporary_root()
-            .expect("temporary root")
-            .display()
-            .to_string();
-        let mut worker = ProfileSetupWorker::spawn().expect("profile setup worker");
-        worker
-            .request(
-                false,
-                "worker-setup".into(),
-                "Worker setup".into(),
-                base,
-                String::new(),
-                String::from(
-                    r#"{"contexts":[{"name":"worker-context","label":"Worker context","profile":"worker-setup"}]}"#,
-                ),
-            )
-            .expect("setup request");
-        let result = (0..100).find_map(|_| {
-            let value = worker.poll();
-            if value.is_none() {
-                thread::sleep(Duration::from_millis(1));
-            }
-            value
-        });
-        let (setup, profile_overrides, runtime_overrides, config_sources, contexts) =
-            result.expect("setup response").expect("profile setup");
-        assert!(profile_overrides.is_none());
-        assert!(runtime_overrides.is_some());
-        assert!(config_sources.is_none());
-        let (contexts, context_error) = contexts
-            .expect("context registry result")
-            .expect("context registry");
-        assert!(context_error.is_none());
-        assert_eq!(contexts.contexts().len(), 1);
-        assert_eq!(contexts.contexts()[0].name, "worker-context");
-        let (
-            store,
-            profile_id,
-            session_path,
-            session_state_root,
-            profile_lock,
-            storage_roots,
-            names,
-        ) = setup;
-        assert!(store.is_some());
-        assert!(profile_id.is_some());
-        assert!(session_path.is_some());
-        assert!(session_state_root.is_some());
-        assert!(profile_lock.is_some());
-        assert!(storage_roots.is_some());
-        assert_eq!(names, vec!["worker-setup"]);
-        drop((store, profile_lock));
-        drop(worker);
-        roots.cleanup().expect("temporary cleanup");
-    }
-
-    #[test]
-    fn private_history_is_bounded_deduplicated_and_origin_clearable() {
-        let mut records = Vec::new();
-        let mut next_id = -1;
-        BrowserUi::upsert_private_history(
-            &mut records,
-            &mut next_id,
-            "https://example.test/one",
-            "One",
-            10,
-        );
-        BrowserUi::upsert_private_history(
-            &mut records,
-            &mut next_id,
-            "https://other.test/two",
-            "Two",
-            20,
-        );
-        BrowserUi::upsert_private_history(
-            &mut records,
-            &mut next_id,
-            "https://example.test/one",
-            "Updated",
-            30,
-        );
-        assert_eq!(records.len(), 2);
-        assert_eq!(records[0].url, "https://example.test/one");
-        assert_eq!(records[0].visit_count, 2);
-        assert_eq!(records[0].title, "Updated");
-        assert!(records.iter().all(|record| record.id < 0));
-
-        let deleted = BrowserUi::clear_private_history_records(
-            &mut records,
-            None,
-            Some("https://example.test"),
-        );
-        assert_eq!(deleted, 1);
-        assert_eq!(records[0].url, "https://other.test/two");
-        assert_eq!(
-            BrowserUi::clear_private_history_records(&mut records, None, None),
-            1
-        );
-        assert!(records.is_empty());
-    }
-
-    #[test]
-    fn profile_setup_worker_keeps_private_sessions_memory_only() {
-        let roots = StorageRoots::resolve(RootSpec::Temporary).expect("temporary roots");
-        let base = roots
-            .temporary_root()
-            .expect("temporary root")
-            .display()
-            .to_string();
-        let mut worker = ProfileSetupWorker::spawn().expect("profile setup worker");
-        worker
-            .request(
-                true,
-                "private-worker".into(),
-                "Private worker".into(),
-                base,
-                String::new(),
-                String::new(),
-            )
-            .expect("private setup request");
-        let result = (0..100).find_map(|_| {
-            let value = worker.poll();
-            if value.is_none() {
-                thread::sleep(Duration::from_millis(1));
-            }
-            value
-        });
-        let (
-            (
-                store,
-                profile_id,
-                session_path,
-                session_state_root,
-                profile_lock,
-                storage_roots,
-                names,
-            ),
-            profile_overrides,
-            runtime_overrides,
-            config_sources,
-            contexts,
-        ) = result
-            .expect("private setup response")
-            .expect("private profile setup");
-        assert!(store.is_none());
-        assert!(profile_id.is_none());
-        assert!(session_path.is_none());
-        assert!(session_state_root.is_none());
-        assert!(profile_lock.is_none());
-        assert!(storage_roots.is_none());
-        assert!(names.is_empty());
-        assert!(profile_overrides.is_none());
-        assert!(runtime_overrides.is_none());
-        assert!(config_sources.is_none());
-        assert!(contexts.is_none());
-        drop(worker);
-        roots.cleanup().expect("temporary cleanup");
-    }
-
-    #[test]
-    fn network_policy_worker_loads_cached_policy_off_thread() {
-        let roots = StorageRoots::resolve(RootSpec::Temporary).expect("temporary roots");
-        let mut worker = NetworkPolicyWorker::spawn().expect("network policy worker");
-        worker
-            .request(
-                Some(roots.clone()),
-                serde_json::json!({
-                    "blocking": {
-                        "enabled": true,
-                        "network_filtering": true,
-                        "lists": [],
-                    }
-                }),
-            )
-            .expect("policy request");
-        let result = (0..100).find_map(|_| {
-            let value = worker.poll();
-            if value.is_none() {
-                thread::sleep(Duration::from_millis(1));
-            }
-            value
-        });
-        let policy = result.expect("policy response").expect("policy load");
-        assert!(policy.blocked_hosts.is_empty());
-        assert!(policy.compile_failures.is_empty());
-        drop(worker);
-        roots.cleanup().expect("temporary cleanup");
-    }
-
-    #[test]
-    fn profile_preview_worker_reads_delete_metadata_off_thread() {
-        let roots = StorageRoots::resolve(RootSpec::Temporary).expect("temporary roots");
-        roots.ensure().expect("root directories");
-        let mut registry = ProfileRegistry::open(&roots).expect("profile registry");
-        registry
-            .create("worker-preview", "Worker preview", ProfilePrivacy::Normal)
-            .expect("profile record");
-
-        let mut worker = ProfilePreviewWorker::spawn().expect("profile preview worker");
-        worker
-            .request(roots.clone(), "worker-preview".into())
-            .expect("preview request");
-        let result = (0..100).find_map(|_| {
-            let value = worker.poll();
-            if value.is_none() {
-                thread::sleep(Duration::from_millis(1));
-            }
-            value
-        });
-        let preview = result.expect("preview response").expect("profile preview");
-        assert!(preview.contains("Profile: worker-preview"));
-        assert!(preview.contains("QtWebEngine storage is not deleted"));
-        drop(worker);
-        roots.cleanup().expect("temporary cleanup");
-    }
-
-    #[test]
-    fn ipc_copy_commands_use_safe_typed_url_arguments() {
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "yank",
-            "arguments": {"source": "url", "input": "https://example.test/?x=$(safe)"}
-        }))
-        .expect("typed URL copy");
-        assert_eq!(
-            command.arguments,
-            vec!["url", "https://example.test/?x=$(safe)"]
-        );
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "yank",
-            "arguments": {"source": "url", "clean": true}
-        }))
-        .expect("typed clean URL copy");
-        assert_eq!(command.arguments, vec!["url", "--clean"]);
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "yank",
-                "arguments": {"source": "selection"}
-            }))
-            .is_ok()
-        );
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "yank",
-            "arguments": {"source": "selection", "primary": true}
-        }))
-        .expect("typed primary selection copy");
-        assert_eq!(command.arguments, vec!["selection", "--primary"]);
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "yank",
-            "arguments": {"source": "title", "primary": true}
-        }))
-        .expect("typed title copy");
-        assert_eq!(command.arguments, vec!["title", "--primary"]);
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "yank",
-                "arguments": {"source": "title", "clean": true}
-            }))
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn ipc_caret_commands_use_typed_fields() {
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "mode-enter",
-            "arguments": {"mode": "caret"}
-        }))
-        .expect("typed mode command");
-        assert_eq!(command.arguments, vec!["caret"]);
-
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "caret-move",
-            "arguments": {"direction": "word-next", "count": 2}
-        }))
-        .expect("typed caret movement");
-        assert_eq!(command.arguments, vec!["word-next", "--count", "2"]);
-
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "caret-select",
-            "arguments": {"state": "toggle"}
-        }))
-        .expect("typed caret selection");
-        assert_eq!(command.arguments, vec!["toggle"]);
-    }
-
-    #[test]
-    fn ipc_profile_open_uses_a_typed_name_and_optional_input() {
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "profile-open",
-            "arguments": {"name": "work", "input": "https://example.test"}
-        }))
-        .expect("typed profile-open command");
-        assert_eq!(command.arguments, vec!["work", "https://example.test"]);
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "profile-open",
-            "arguments": {"name": "work"}
-        }))
-        .expect("typed profile-open without input");
-        assert_eq!(command.arguments, vec!["work"]);
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "profile-open",
-                "arguments": {"name": "work", "input": "https://example.test", "extra": true}
-            }))
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn profile_delete_command_uses_the_existing_preview_boundary() {
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains("action.indexOf(\"profile-delete\\t\") === 0"));
-        assert!(qml.contains("window.showProfileDeletePreview(profileDeleteAction"));
-        assert!(qml.contains("browserUi.delete_profile(window.profileDeleteName, true)"));
-        assert!(!qml.contains("delete_profile(window.profileDeleteName, false)"));
-    }
-
-    #[test]
-    fn fullscreen_command_and_page_request_share_the_window_boundary() {
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "fullscreen",
-            "arguments": {"state": "toggle"}
-        }))
-        .expect("typed fullscreen command");
-        assert_eq!(command.arguments, vec!["toggle"]);
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains("action.indexOf(\"fullscreen\\t\") === 0"));
-        assert!(qml.contains("onFullScreenRequested: function(request)"));
-        assert!(qml.contains("request.accept()"));
-        assert!(qml.contains("window.showFullScreen()"));
-        assert!(qml.contains("window.showNormal()"));
-    }
-
-    #[test]
-    fn window_new_command_uses_typed_profile_and_private_options() {
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "window-new",
-            "arguments": {"profile": "work", "private": true}
-        }))
-        .expect("typed window-new command");
-        assert_eq!(command.arguments, vec!["--profile", "work", "--private"]);
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "window-new",
-            "arguments": {"private": false}
-        }))
-        .expect("typed normal window-new command");
-        assert!(command.arguments.is_empty());
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "window-new",
-                "arguments": {"private": "yes"}
-            }))
-            .is_err()
-        );
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains("action.indexOf(\"new-window\\t\") === 0"));
-        assert!(qml.contains("windowPrivateProfile: windowAction[1] === \"true\""));
-        assert!(qml.contains("windowStartupUrl: windowAction.slice(3).join(\"\\t\")"));
-    }
-
-    #[test]
-    fn external_window_focus_reports_bounded_activation_outcome() {
-        let source = include_str!("../src/lib.rs");
-        let qml = include_str!("../qml/Main.qml");
-        assert!(source.contains(
-            "operation_states\n            .insert(operation_id.clone(), \"running\".into())"
-        ));
-        assert!(source.contains("fn complete_window_focus("));
-        assert!(source.contains("\"activation\": outcome"));
-        assert!(
-            qml.contains("var focusOperationId = focusParts.length >= 3 ? focusParts[2] : \"\"")
-        );
-        assert!(qml.contains("complete_window_focus(focusOperationId, \"activated\")"));
-        assert!(qml.contains("complete_window_focus(operationId, \"unknown\")"));
-        assert!(qml.contains("complete_window_focus(focusOperationId, \"stale\")"));
-    }
-
-    #[test]
-    fn tab_give_command_preserves_target_and_queues_live_transfer() {
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "tab-give",
-            "arguments": {"window_id": "window-42"}
-        }))
-        .expect("typed tab-give command");
-        assert_eq!(command.arguments, vec!["window-42"]);
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "tab-move",
-            "arguments": {"id": "tab-42", "context": "research"}
-        }))
-        .expect("typed context tab-move command");
-        assert_eq!(command.arguments, vec!["tab-42", "--context", "research"]);
-        let (command, _, action_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.tab.move",
-            "arguments": {"id": "tab-42", "context": "research"}
-        }))
-        .expect("typed context tab-move action");
-        assert_eq!(action_id, "browser.tab.move");
-        assert_eq!(command.arguments, vec!["tab-42", "--context", "research"]);
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "tab-move",
-                "arguments": {"id": "tab-42", "context": "research", "extra": true}
-            }))
-            .is_err()
-        );
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "tab-move",
-                "arguments": {"id": "tab-42", "context": "research", "direction": "left"}
-            }))
-            .is_err()
-        );
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "tab-give",
-                "arguments": {"window_id": "window-42", "extra": true}
-            }))
-            .is_err()
-        );
-        let source = include_str!("../src/lib.rs");
-        assert!(source.contains("tab-give requires a bounded target window ID"));
-        assert!(source.contains("format!(\"tab-give\\t{window_id}\\t{operation_id}\")"));
-        assert!(source.contains("format!(\"tab-detach\\t{operation_id}\")"));
-        assert!(source.contains("fn complete_transfer_operation("));
-        let qml = [
-            include_str!("../qml/Main.qml"),
-            include_str!("../qml/components/FerricContextMoveDialog.qml"),
-        ]
-        .concat();
-        assert!(qml.contains("windowTransferView"));
-        assert!(qml.contains("completeDetachedSource"));
-        assert!(qml.contains("rollback_tab_transfer(adoptedTabId)"));
-        assert!(qml.contains("prepareTransferFallback"));
-        assert!(qml.contains("discardPreparedTransferFallback"));
-        assert!(qml.contains("browserWindowEntryForTarget"));
-        assert!(qml.contains("browserWindowEntryForContext"));
-        assert!(qml.contains("showContextMovePicker"));
-        assert!(qml.contains("chooseContextMove"));
-        assert!(qml.contains("contextMoveChoices"));
-        assert!(qml.contains("Move tab to context"));
-        assert!(qml.contains("tab-move-context\\t"));
-        assert!(qml.contains("attachTransferredView"));
-        assert!(qml.contains("focusedBrowserWindowEntry"));
-        assert!(qml.contains("detachActiveViewForTransfer"));
-        assert!(qml.contains("openDetachedWindow(sourceUi, sourceHost, transferAction, view)"));
-        assert!(qml.contains("windowTransferOperationId"));
-        assert!(qml.contains("complete_transfer_operation"));
-        assert!(qml.contains("fields[2].indexOf(\"op-\") === 0"));
-        assert!(
-            source.contains("format!(\"tab-move-context\\t{context}\\t{id}\\t{operation_id}\")")
-        );
-        assert!(qml.contains("fields[3].indexOf(\"op-\") === 0"));
-        assert!(qml.contains("sourceUi.complete_transfer_operation(arguments[4], true)"));
-        assert!(qml.contains("operationId))"));
-        assert!(qml.contains("complete_tab_transfer() creates the reducer's mandatory"));
-        assert!(!qml.contains("secondaryUi.new_tab()"));
-        assert!(qml.contains("action.indexOf(\"window-focus\\t\") === 0"));
-        assert!(source.contains("pending_engine_action = Some(format!(\"window-focus\\t{id}\"))"));
-    }
-
-    #[test]
-    fn tab_open_command_uses_typed_input_and_background_target() {
-        let (command, route) = typed_ipc_command(&serde_json::json!({
-            "command": "tab-open",
-            "arguments": {"input": "Ferric Browser", "background": true}
-        }))
-        .expect("typed background tab-open command");
-        assert_eq!(command.arguments, vec!["--background", "Ferric Browser"]);
-        assert_eq!(route.open_target, IpcOpenTarget::BackgroundTab);
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "tab-open",
-                "arguments": {"input": "https://example.test", "background": "yes"}
-            }))
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn search_command_uses_typed_query_direction_and_case() {
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "search",
-            "arguments": {
-                "query": "Ferric Browser",
-                "backward": true,
-                "case": "sensitive"
-            }
-        }))
-        .expect("typed search command");
-        assert_eq!(
-            command.arguments,
-            vec!["--backward", "--case", "sensitive", "Ferric Browser"]
-        );
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "search",
-            "arguments": {"query": "example"}
-        }))
-        .expect("typed default search command");
-        assert_eq!(command.arguments, vec!["example"]);
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "search",
-                "arguments": {"query": "example", "case": "unicode"}
-            }))
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn reload_command_uses_typed_bypass_cache() {
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "reload",
-            "arguments": {"bypass_cache": true}
-        }))
-        .expect("typed bypass-cache reload command");
-        assert_eq!(command.arguments, vec!["--bypass-cache"]);
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "reload",
-            "arguments": {"bypass_cache": false}
-        }))
-        .expect("typed ordinary reload command");
-        assert!(command.arguments.is_empty());
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "reload",
-                "arguments": {"bypass_cache": "yes"}
-            }))
-            .is_err()
-        );
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains("reloadAndBypassCache"));
-    }
-
-    #[test]
-    fn tab_close_command_uses_optional_typed_id_and_count() {
-        assert!(binding_uses_full_command_executor(&ParsedCommand {
-            name: "tab-close".into(),
-            arguments: Vec::new(),
-        }));
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "tab-close",
-            "arguments": {"id": "tab-42"}
-        }))
-        .expect("typed targeted tab-close command");
-        assert_eq!(command.arguments, vec!["--id", "tab-42"]);
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "tab-close",
-            "arguments": {"count": 3}
-        }))
-        .expect("typed bulk tab-close command");
-        assert_eq!(command.arguments, vec!["--count", "3"]);
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "tab-close",
-                "arguments": {"id": "tab-42", "count": 2}
-            }))
-            .is_err()
-        );
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains("action.indexOf(\"tab-close-active\\t\") === 0"));
-        assert!(qml.contains("function closeTabAtIndex(index)"));
-        assert!(
-            include_str!("lib.rs")
-                .contains(".finish_tab_close(index, target.tab, target.generation)")
-        );
-        assert!(!qml.contains("browserUi.view_closed_for(index)"));
-        assert!(qml.contains("view.visible = false"));
-        assert!(qml.contains("view.parent = null"));
-        assert!(qml.contains("Qt.callLater(function()"));
-    }
-
-    #[test]
-    fn ipc_spawn_commands_use_a_typed_argv_vector() {
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "spawn",
-            "arguments": {"argv": ["/usr/bin/printf", "{title}"]}
-        }))
-        .expect("typed spawn command");
-        assert_eq!(command.arguments, vec!["/usr/bin/printf", "{title}"]);
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "spawn",
-                "arguments": {"argv": ["/usr/bin/printf", "\0"]}
-            }))
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn history_commands_use_typed_bounded_counts() {
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "back",
-            "arguments": {"count": 4}
-        }))
-        .expect("typed counted back command");
-        assert_eq!(command.arguments, vec!["--count", "4"]);
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "forward",
-            "arguments": {}
-        }))
-        .expect("typed default forward command");
-        assert!(command.arguments.is_empty());
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "forward",
-                "arguments": {"count": 101}
-            }))
-            .is_err()
-        );
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "tab-next",
-            "arguments": {"count": 3}
-        }))
-        .expect("typed counted tab-next command");
-        assert_eq!(command.arguments, vec!["--count", "3"]);
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "tab-prev",
-            "arguments": {}
-        }))
-        .expect("typed default tab-prev command");
-        assert!(command.arguments.is_empty());
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "tab-prev",
-                "arguments": {"count": 101}
-            }))
-            .is_err()
-        );
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains("function executeHistoryTraversal(view, backwards, requestedCount)"));
-        assert!(qml.contains("History boundary reached"));
-    }
-
-    #[test]
-    fn download_destination_uses_encoded_file_urls() {
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains("function fileUrlForPath(path)"));
-        assert!(qml.contains("segments[i] = encodeURIComponent(segments[i])"));
-        assert!(qml.contains(
-            "downloadChooser.currentFile = window.fileUrlForPath(directory + \"/\" + safeName)"
-        ));
-        assert!(qml.contains("function downloadStagingDirectory(ui, id)"));
-        assert!(qml.contains("download.downloadDirectory = stagingDirectory"));
-        assert!(qml.contains("browserUi.finalize_download(id)"));
-        assert!(qml.contains("discard_download_staging(id)"));
-        assert!(!qml.contains("downloadChooser.currentFile = \"file://\" + directory"));
-    }
-
-    #[test]
-    fn staged_download_finalization_is_exclusive_and_cross_filesystem_safe() {
-        let session_id = Uuid::new_v4();
-        let destination_root =
-            std::env::temp_dir().join(format!("ferric-browser-download-test-{session_id}"));
-        fs::create_dir_all(&destination_root).expect("download test destination");
-        let destination = destination_root.join("report.txt");
-        let staged = stage_download_path(None, session_id, &destination)
-            .expect("create private staging directory");
-        fs::write(&staged.staging_path, b"download body").expect("write staged body");
-        finalize_staged_download(&staged).expect("finalize staged body");
-        assert_eq!(
-            fs::read(&destination).expect("read finalized body"),
-            b"download body"
-        );
-
-        let second = stage_download_path(None, session_id, &destination)
-            .expect("create second private staging directory");
-        fs::write(&second.staging_path, b"replacement").expect("write second staged body");
-        assert!(finalize_staged_download(&second).is_err());
-        cleanup_staged_download(&second);
-        let _ = fs::remove_dir_all(&destination_root);
-        let _ = fs::remove_dir_all(
-            std::env::temp_dir()
-                .join("ferric-browser-download-staging")
-                .join(session_id.to_string()),
-        );
-    }
-
-    #[test]
-    fn binding_commands_use_typed_mode_and_keychain_arguments() {
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "binding-list",
-            "arguments": {"mode": "normal"}
-        }))
-        .expect("typed binding list command");
-        assert_eq!(command.arguments, vec!["--mode", "normal"]);
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "binding-explain",
-            "arguments": {"keychain": "gg", "mode": "normal"}
-        }))
-        .expect("typed binding explanation command");
-        assert_eq!(command.arguments, vec!["gg", "--mode", "normal"]);
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "binding-list",
-                "arguments": {"mode": "invalid"}
-            }))
-            .is_err()
-        );
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "binding-explain",
-                "arguments": {}
-            }))
-            .is_err()
-        );
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "learning-mode",
-            "arguments": {"state": "toggle"}
-        }))
-        .expect("typed learning mode command");
-        assert_eq!(command.arguments, vec!["toggle"]);
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "learning-mode",
-                "arguments": {"state": "invalid"}
-            }))
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn learning_mode_requests_are_per_window_state_transitions() {
-        let command = ParsedCommand {
-            name: "learning-mode".into(),
-            arguments: vec!["toggle".into()],
-        };
-        assert_eq!(learning_mode_request(&command, false).unwrap(), Some(true));
-        assert_eq!(learning_mode_request(&command, true).unwrap(), Some(false));
-        assert_eq!(
-            learning_mode_request(
-                &ParsedCommand {
-                    name: "learning-mode".into(),
-                    arguments: Vec::new(),
-                },
-                false,
-            )
-            .unwrap(),
-            None
-        );
-        assert!(
-            learning_mode_request(
-                &ParsedCommand {
-                    name: "learning-mode".into(),
-                    arguments: vec!["invalid".into()],
-                },
-                false,
-            )
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn ipc_spawn_commands_accept_one_userscript_name() {
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "spawn",
-            "arguments": {"userscript": "video"}
-        }))
-        .expect("typed userscript command");
-        assert_eq!(command.arguments, vec!["--userscript", "video"]);
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "spawn",
-                "arguments": {"argv": ["/bin/true"], "userscript": "video"}
-            }))
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn copy_actions_map_to_yank_and_preserve_clean_intent() {
-        let (command, action_id) = parse_action_invocation(
-            &parse_chain("action url clean-copy", ParseInput::Interactive)
-                .expect("clean-copy action")
-                .remove(0),
-        )
-        .expect("mapped clean-copy action");
-        assert_eq!(action_id, "browser.url.clean-copy");
-        assert_eq!(command.arguments, vec!["url", "--clean"]);
-
-        let (command, action_id) = parse_action_invocation(
-            &parse_chain(
-                "action link copy https://example.test/?utm_source=demo",
-                ParseInput::Interactive,
-            )
-            .expect("link copy action")
-            .remove(0),
-        )
-        .expect("mapped link copy action");
-        assert_eq!(action_id, "browser.link.copy");
-        assert_eq!(
-            command.arguments,
-            vec!["url", "https://example.test/?utm_source=demo"]
-        );
-
-        let (command, action_id) = parse_action_invocation(
-            &parse_chain("action selection copy", ParseInput::Interactive)
-                .expect("selection copy action")
-                .remove(0),
-        )
-        .expect("mapped selection copy action");
-        assert_eq!(action_id, "browser.selection.copy");
-        assert_eq!(command.arguments, vec!["selection"]);
-    }
-
-    #[test]
-    fn action_url_inputs_use_the_shared_untrusted_argument_bound() {
-        let oversized = "x".repeat(MAX_UNTRUSTED_ARGUMENT_BYTES + 1);
-        for arguments in [
-            vec!["url".to_owned(), "open".to_owned(), oversized.clone()],
-            vec!["link".to_owned(), "open".to_owned(), oversized.clone()],
-            vec!["url".to_owned(), "clean-copy".to_owned(), oversized.clone()],
-            vec!["link".to_owned(), "copy".to_owned(), oversized.clone()],
-            vec!["link".to_owned(), "download".to_owned(), oversized.clone()],
-            vec!["url".to_owned(), "clean".to_owned(), oversized.clone()],
-            vec!["url".to_owned(), "explain".to_owned(), oversized.clone()],
-            vec![
-                "link".to_owned(),
-                "send".to_owned(),
-                "--to".to_owned(),
-                oversized.clone(),
-            ],
-            vec![
-                "url".to_owned(),
-                "send".to_owned(),
-                "--to".to_owned(),
-                oversized.clone(),
-            ],
-            vec![
-                "tab".to_owned(),
-                "send".to_owned(),
-                "--to".to_owned(),
-                oversized.clone(),
-            ],
-            vec![
-                "selection".to_owned(),
-                "send".to_owned(),
-                "--to".to_owned(),
-                oversized.clone(),
-            ],
-        ] {
-            assert!(
-                parse_action_invocation(&ParsedCommand {
-                    name: "action".into(),
-                    arguments,
-                })
-                .is_err()
-            );
-        }
-
-        let mapped = parse_action_invocation(&ParsedCommand {
-            name: "action".into(),
-            arguments: vec![
-                "url".into(),
-                "open".into(),
-                "https://example.test/?utm_source=demo".into(),
-            ],
-        })
-        .expect("bounded URL action");
-        assert_eq!(
-            mapped.0.arguments,
-            vec!["https://example.test/?utm_source=demo".to_owned()]
-        );
-    }
-
-    #[test]
-    fn tab_open_action_maps_foreground_and_background_inputs() {
-        for (arguments, expected) in [
-            (
-                vec!["tab", "open", "https://example.test"],
-                vec!["https://example.test".to_owned()],
-            ),
-            (
-                vec!["tab", "open", "--background", "https://example.test"],
-                vec!["--background".to_owned(), "https://example.test".to_owned()],
-            ),
-        ] {
-            let (mapped, action_id) = parse_action_invocation(&ParsedCommand {
-                name: "action".into(),
-                arguments: arguments.into_iter().map(str::to_owned).collect(),
-            })
-            .expect("tab-open action mapping");
-            assert_eq!(action_id, "browser.tab.open");
-            assert_eq!(mapped.name, "tab-open");
-            assert_eq!(mapped.arguments, expected);
-        }
-
-        let (typed, _, action_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.tab.open",
-            "arguments": {"input": "https://example.test", "background": true}
-        }))
-        .expect("typed background tab-open action");
-        assert_eq!(action_id, "browser.tab.open");
-        assert_eq!(typed.name, "tab-open");
-        assert_eq!(
-            typed.arguments,
-            vec!["--background", "https://example.test"]
-        );
-    }
-
-    #[test]
-    fn window_new_action_maps_profile_and_private_options() {
-        for (arguments, expected) in [
-            (vec!["window", "new"], Vec::<String>::new()),
-            (
-                vec!["window", "new", "--profile", "work", "--private"],
-                vec!["--profile".into(), "work".into(), "--private".into()],
-            ),
-            (
-                vec!["window", "new", "--private", "--profile", "work"],
-                vec!["--private".into(), "--profile".into(), "work".into()],
-            ),
-        ] {
-            let (mapped, action_id) = parse_action_invocation(&ParsedCommand {
-                name: "action".into(),
-                arguments: arguments.into_iter().map(str::to_owned).collect(),
-            })
-            .expect("window-new action mapping");
-            assert_eq!(action_id, "browser.window.new");
-            assert_eq!(mapped.name, "window-new");
-            assert_eq!(mapped.arguments, expected);
-        }
-
-        let (typed, _, action_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.window.new",
-            "arguments": {"profile": "work", "private": true}
-        }))
-        .expect("typed private window-new action");
-        assert_eq!(action_id, "browser.window.new");
-        assert_eq!(typed.name, "window-new");
-        assert_eq!(typed.arguments, vec!["--profile", "work", "--private"]);
-    }
-
-    #[test]
-    fn tab_give_action_maps_the_validated_target_window() {
-        let (mapped, action_id) = parse_action_invocation(&ParsedCommand {
-            name: "action".into(),
-            arguments: vec!["tab".into(), "give".into(), "window-2".into()],
-        })
-        .expect("tab-give action mapping");
-        assert_eq!(action_id, "browser.tab.give");
-        assert_eq!(mapped.name, "tab-give");
-        assert_eq!(mapped.arguments, vec!["window-2"]);
-
-        let (typed, _, action_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.tab.give",
-            "arguments": {"window_id": "window-2"}
-        }))
-        .expect("typed tab-give action");
-        assert_eq!(action_id, "browser.tab.give");
-        assert_eq!(typed.name, "tab-give");
-        assert_eq!(typed.arguments, vec!["window-2"]);
-    }
-
-    #[test]
-    fn bookmark_and_quickmark_creation_actions_map_typed_arguments() {
-        let (bookmark, bookmark_id) = parse_action_invocation(&ParsedCommand {
-            name: "action".into(),
-            arguments: vec![
-                "bookmark".into(),
-                "add".into(),
-                "--title".into(),
-                "Reference".into(),
-            ],
-        })
-        .expect("bookmark add action mapping");
-        assert_eq!(bookmark_id, "browser.bookmark.add");
-        assert_eq!(bookmark.name, "bookmark-add");
-        assert_eq!(bookmark.arguments, vec!["--title", "Reference"]);
-
-        let (quickmark, quickmark_id) = parse_action_invocation(&ParsedCommand {
-            name: "action".into(),
-            arguments: vec![
-                "quickmark".into(),
-                "add".into(),
-                "work".into(),
-                "https://work.example".into(),
-            ],
-        })
-        .expect("quickmark add action mapping");
-        assert_eq!(quickmark_id, "browser.quickmark.add");
-        assert_eq!(quickmark.name, "quickmark-add");
-        assert_eq!(quickmark.arguments, vec!["work", "https://work.example"]);
-
-        let (typed, _, typed_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.quickmark.add",
-            "arguments": {"name": "work", "url": "https://work.example"}
-        }))
-        .expect("typed quickmark add action");
-        assert_eq!(typed_id, "browser.quickmark.add");
-        assert_eq!(typed.name, "quickmark-add");
-        assert_eq!(typed.arguments, vec!["work", "https://work.example"]);
-    }
-
-    #[test]
-    fn session_management_actions_map_typed_arguments() {
-        let (saved, saved_id) = parse_action_invocation(&ParsedCommand {
-            name: "action".into(),
-            arguments: vec!["session".into(), "save".into(), "work".into()],
-        })
-        .expect("session save action mapping");
-        assert_eq!(saved_id, "browser.session.save");
-        assert_eq!(saved.name, "session-save");
-        assert_eq!(saved.arguments, vec!["work"]);
-
-        let (deleted, deleted_id) = parse_action_invocation(&ParsedCommand {
-            name: "action".into(),
-            arguments: vec!["session".into(), "delete".into(), "work".into()],
-        })
-        .expect("session delete action mapping");
-        assert_eq!(deleted_id, "browser.session.delete");
-        assert_eq!(deleted.name, "session-delete");
-        assert_eq!(deleted.arguments, vec!["work"]);
-
-        let (typed, _, typed_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.session.save",
-            "arguments": {"name": "work"}
-        }))
-        .expect("typed session save action");
-        assert_eq!(typed_id, "browser.session.save");
-        assert_eq!(typed.name, "session-save");
-        assert_eq!(typed.arguments, vec!["work"]);
-    }
-
-    #[test]
-    fn library_listing_actions_map_without_arguments() {
-        for (subject, verb, expected_id, expected_command) in [
-            ("bookmark", "list", "browser.bookmark.list", "bookmark-list"),
-            (
-                "quickmark",
-                "list",
-                "browser.quickmark.list",
-                "quickmark-list",
-            ),
-            ("session", "list", "browser.session.list", "session-list"),
-        ] {
-            let (mapped, action_id) = parse_action_invocation(&ParsedCommand {
-                name: "action".into(),
-                arguments: vec![subject.into(), verb.into()],
-            })
-            .expect("library list action mapping");
-            assert_eq!(action_id, expected_id);
-            assert_eq!(mapped.name, expected_command);
-            assert!(mapped.arguments.is_empty());
-        }
-
-        let (typed, _, typed_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.session.list",
-            "arguments": {}
-        }))
-        .expect("typed session list action");
-        assert_eq!(typed_id, "browser.session.list");
-        assert_eq!(typed.name, "session-list");
-        assert!(typed.arguments.is_empty());
-    }
-
-    #[test]
-    fn history_clear_action_preserves_bounded_filters_and_confirmation() {
-        let (mapped, action_id) = parse_action_invocation(&ParsedCommand {
-            name: "action".into(),
-            arguments: vec![
-                "history-entry".into(),
-                "clear".into(),
-                "--origin".into(),
-                "https://example.test".into(),
-                "--confirm".into(),
-            ],
-        })
-        .expect("history clear action mapping");
-        assert_eq!(action_id, "browser.history-entry.clear");
-        assert_eq!(mapped.name, "history-clear");
-        assert_eq!(
-            mapped.arguments,
-            vec!["--origin", "https://example.test", "--confirm"]
-        );
-
-        let (typed, _, typed_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.history-entry.clear",
-            "arguments": {"since": 123, "confirmed": true}
-        }))
-        .expect("typed history clear action");
-        assert_eq!(typed_id, "browser.history-entry.clear");
-        assert_eq!(typed.name, "history-clear");
-        assert_eq!(typed.arguments, vec!["--since", "123", "--confirm"]);
-    }
-
-    #[test]
-    fn ui_action_values_use_the_shared_typed_argument_boundary() {
-        assert_eq!(
-            ui_action_arguments("browser.url.copy", "").unwrap(),
-            serde_json::json!({})
-        );
-        assert_eq!(
-            ui_action_arguments("browser.url.open", "https://example.test").unwrap(),
-            serde_json::json!({"input": "https://example.test"})
-        );
-        assert_eq!(
-            ui_action_arguments("browser.link.send", "mpv\thttps://example.test").unwrap(),
-            serde_json::json!({"target": "mpv", "url": "https://example.test"})
-        );
-        assert_eq!(
-            ui_action_arguments("browser.selection.send", "mpv").unwrap(),
-            serde_json::json!({"target": "mpv"})
-        );
-        assert_eq!(
-            ui_action_arguments("browser.bookmark.add", "Reference").unwrap(),
-            serde_json::json!({"title": "Reference"})
-        );
-        assert_eq!(
-            ui_action_arguments("browser.bookmark.edit", "bookmark-1\tEdited").unwrap(),
-            serde_json::json!({"id": "bookmark-1", "title": "Edited"})
-        );
-        assert_eq!(
-            ui_action_arguments("browser.quickmark.add", "work\thttps://work.example").unwrap(),
-            serde_json::json!({"name": "work", "url": "https://work.example"})
-        );
-        assert_eq!(
-            ui_action_arguments("browser.tab.mute", "tab-1\toff").unwrap(),
-            serde_json::json!({"id": "tab-1", "state": "off"})
-        );
-        assert_eq!(
-            ui_action_arguments("browser.tab.focus", "tab-1").unwrap(),
-            serde_json::json!({"id": "tab-1"})
-        );
-        assert!(ui_action_arguments("browser.tab.move", "tab-1").is_err());
-        assert!(ui_action_arguments("browser.bookmark.edit", "tab-1\t").is_err());
-    }
-
-    #[test]
-    fn ipc_url_output_removes_credentials_auth_secrets_and_fragments() {
-        assert_eq!(
-            safe_ipc_url("https://user:password@example.test/path?keep=1&token=secret#private"),
-            "https://example.test/path?keep=1"
-        );
-        for key in [
-            "refresh_token",
-            "client_secret",
-            "credential",
-            "jwt",
-            "%61ccess_token",
-            "access%5Ftoken",
-        ] {
-            let url = format!("https://example.test/path?keep=1&{key}=secret");
-            assert_eq!(safe_ipc_url(&url), "https://example.test/path?keep=1");
-        }
-        assert_eq!(
-            safe_ipc_url("https://example.test/path?access%ZZtoken=secret&keep=1"),
-            "https://example.test/path?keep=1"
-        );
-        assert_eq!(
-            redact_userscript_stderr_token("refresh_token=secret"),
-            "refresh_token=[redacted]"
-        );
-    }
-
-    #[test]
-    fn display_url_redacts_credentials_secrets_and_directional_controls() {
-        assert_eq!(
-            display_url("https://user:password@example.test/path?keep=1&token=secret#private"),
-            "https://example.test\u{2068}/path?keep=1\u{2069}"
-        );
-        assert_eq!(
-            display_url("https://example.test/a\u{202e}b\u{0007}"),
-            "https://example.test\u{2068}/a[bidi]b�\u{2069}"
-        );
-        assert_eq!(
-            display_url("https://раypal.example/path"),
-            "https://xn--ypal-43d9g.example\u{2068}/path\u{2069}"
-        );
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains("function addressPresentation(value, maxCharacters)"));
-        assert!(qml.contains("var origin = safe.slice(0, authorityEnd)"));
-        assert!(qml.contains("var separator = tail.charAt(0) === \"/\" ? \"/…\" : \"…\""));
-        assert!(qml.contains("Accessible.description: browserUi.display_url"));
-        assert!(qml.contains("Accessible.description: secondaryUi.display_url"));
-        assert!(qml.contains("addressEditing = activeFocus"));
-        assert!(display_url("https://example.test/path").contains('\u{2068}'));
-        assert!(display_url("https://example.test/path").contains('\u{2069}'));
-    }
-
-    #[test]
-    fn site_origin_is_normalized_and_never_keeps_path_or_credentials() {
-        assert_eq!(
-            safe_site_origin("HTTPS://user:password@Example.test:443/private?token=secret"),
-            Some("https://example.test".into())
-        );
-        assert_eq!(safe_site_origin("file:///tmp/private"), None);
-        assert_eq!(
-            safe_site_origin("https://[::1]:443/path"),
-            Some("https://[::1]".into())
-        );
-    }
-
-    #[test]
-    fn qt_url_conversion_is_strict_before_rust_policy_canonicalization() {
-        assert_eq!(
-            canonical_engine_url(QString::from(
-                "HTTPS://Example.TEST.:443/a%2Fb?q=%2F#frag%23",
-            ))
-            .expect("canonical Qt URL"),
-            "https://example.test/a%2Fb?q=%2F#frag%23"
-        );
-        assert_eq!(
-            canonical_engine_url(QString::from(
-                "https://login.example.test/return?next=https%3A%2F%2Fapp.example.test%2F#state",
-            ))
-            .expect("redirect URL"),
-            "https://login.example.test/return?next=https%3A%2F%2Fapp.example.test%2F#state"
-        );
-        assert!(canonical_engine_url(QString::from("https://example.test/a b")).is_err());
-        assert!(canonical_engine_url(QString::from("javascript:alert(1)")).is_err());
-        assert!(canonical_engine_url(QString::from("rb://settings")).is_err());
-    }
-
-    #[test]
-    fn page_titles_are_sanitized_and_bounded_before_storage() {
-        let title = sanitize_untrusted_title(&format!(
-            "line\n{}\u{202e}tail",
-            "x".repeat(MAX_PAGE_TITLE_BYTES)
-        ));
-        assert!(title.len() <= MAX_PAGE_TITLE_BYTES);
-        assert!(!title.chars().any(char::is_control));
-        assert!(!title.contains('\u{202e}'));
-    }
-
-    #[test]
-    fn page_authority_boundary_has_no_web_channel_or_privileged_page_object() {
-        let qml = include_str!("../qml/Main.qml");
-        assert!(!qml.contains("WebChannel"));
-        assert!(!qml.contains("contextProperty"));
-        assert!(qml.contains("WebEngineScript.ApplicationWorld"));
-        assert!(qml.contains("runJavaScript"));
-        assert!(qml.contains("page_focus_observed_for"));
-    }
-
-    #[test]
-    fn external_navigation_has_a_native_confirmation_boundary() {
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains("external_navigation_visible"));
-        assert!(qml.contains("confirm_external_navigation"));
-        assert!(qml.contains("cancel_external_navigation"));
-        assert!(qml.contains("external-open\\t"));
-        assert!(qml.contains("function externalUriAllowed(uri)"));
-        assert!(qml.contains("External URI rejected by scheme policy"));
-        assert!(qml.contains("return /^file:\\/\\/\\/[^/]/i.test(value)"));
-        assert!(qml.contains("Qt.openUrlExternally"));
-    }
-
-    #[test]
-    fn navigation_failure_surface_keeps_safe_context_without_retry_action() {
-        let qml = [
-            include_str!("../qml/Main.qml"),
-            include_str!("../qml/components/FerricNavigationFailure.qml"),
-        ]
-        .concat();
-        assert!(qml.contains("navigation_failure_requested_url"));
-        assert!(qml.contains("navigation_failure_url"));
-        assert!(qml.contains("navigation_failure_kind"));
-        assert!(qml.contains("navigation_failed_with_details"));
-        assert!(qml.contains("Retry is intentionally not offered"));
-    }
-
-    #[test]
-    fn switcher_surface_exposes_selection_state_and_scaled_keyboard_navigation() {
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains("Accessible.role: Accessible.List"));
-        assert!(qml.contains("Accessible.role: Accessible.ListItem"));
-        assert!(qml.contains("Accessible.selected: index === switcherList.currentIndex"));
-        assert!(qml.contains("Qt.Key_PageDown"));
-        assert!(qml.contains("Qt.Key_PageUp"));
-        assert!(qml.contains("window.chromeRowHeight"));
-    }
-
-    #[test]
-    fn accessibility_surface_reports_theme_contrast_and_reduced_motion() {
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains("theme_contrast_json"));
-        assert!(qml.contains("themeContrastWarning"));
-        assert!(qml.contains("renderedContrastReport"));
-        assert!(qml.contains("renderedThemeContrastStatus"));
-        assert!(qml.contains("system_reduced_motion_json"));
-        assert!(qml.contains("system_font_scale_json"));
-        assert!(qml.contains("systemMotion.status === \"available\""));
-        assert!(qml.contains("ui.reduced_motion === \"on\""));
-        assert!(qml.contains("Optional interface motion is disabled"));
-    }
-
-    #[test]
-    fn normal_input_uses_logical_unmodified_text_and_preserves_unicode_fields() {
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains("function logicalNormalKeyText(event)"));
-        assert!(qml.contains("event.key === Qt.Key_D"));
-        assert!(qml.contains("event.key === Qt.Key_U"));
-        assert!(qml.contains("return \"Ctrl+d\""));
-        assert!(qml.contains("return \"Ctrl+u\""));
-        assert!(qml.contains("return \"Ctrl+p\""));
-        assert!(qml.contains("return \"Ctrl+Space\""));
-        assert!(qml.contains("return \"Ctrl+v\""));
-        assert!(qml.contains("return \"Ctrl+Shift+t\""));
-        assert!(qml.contains("return \"Alt+m\""));
-        assert!(qml.contains("return \"Ctrl+Alt+p\""));
-        assert!(qml.contains("return \"Ctrl+PgDown\""));
-        assert!(qml.contains("return \"Ctrl+F5\""));
-        assert!(qml.contains("return \"F11\""));
-        assert!(qml.contains("browserUi.binding_overlay.length > 0"));
-        assert!(qml.contains("event.modifiers & Qt.AltModifier"));
-        assert!(qml.contains("event.modifiers & Qt.MetaModifier"));
-        assert!(qml.contains("event.text || \"\""));
-        assert!(qml.contains("ui.handle_key(logicalText)"));
-        assert!(qml.contains("function handleBrowserKey(ui, host, event)"));
-        assert!(qml.matches("BrowserKeyRouter {").count() >= 2);
-        assert!(qml.contains("browserKeyRouter.acceptCurrentEvent()"));
-        assert!(qml.contains("secondaryKeyRouter.acceptCurrentEvent()"));
-        assert!(qml.contains("readonly property bool browserChromeInputActive:"));
-        assert!(qml.contains("browserUi.external_navigation_visible"));
-        assert!(qml.contains("window.pendingContextMenuRequest !== null"));
-        assert!(qml.contains("browserUi.mode === \"insert\""));
-        assert!(qml.contains("browserUi.mode === \"pass-through\""));
-        assert!(qml.contains("? window.modeFocusReturnTarget : window.activeWebView()"));
-        assert!(!qml.contains("globalKeyHandler"));
-        assert!(!qml.contains("window.handleBrowserKey(viewUi, viewHost, event)"));
-        assert!(qml.contains("Accessible.role: Accessible.EditableText"));
-    }
-
-    #[test]
-    fn browser_key_router_filters_before_webengine_and_requires_explicit_acceptance() {
-        let header = include_str!("browser_key_router.h");
-        let source = include_str!("browser_key_router.cpp");
-        assert!(header.contains("QML_NAMED_ELEMENT(BrowserKeyRouter)"));
-        assert!(header.contains("Q_PROPERTY(QWindow *targetWindow"));
-        assert!(header.contains("Q_INVOKABLE void acceptCurrentEvent()"));
-        assert!(source.contains("application->installEventFilter(this)"));
-        assert!(source.contains("event->type() == QEvent::KeyPress"));
-        assert!(source.contains("event->type() == QEvent::ShortcutOverride"));
-        assert!(source.contains("QGuiApplication::focusWindow() != targetWindow_"));
-        assert!(source.contains("emit keyPressed("));
-        assert!(source.contains("return handled;"));
-    }
-
-    #[test]
-    fn scaling_uses_qt_logical_units_and_bounds_large_font_overlays() {
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains("Screen.devicePixelRatio"));
-        assert!(qml.contains("Screen.logicalPixelDensity"));
-        assert!(qml.contains("readonly property real chromeScale"));
-        assert!(qml.contains("Math.min(760 * window.chromeScale"));
-        assert!(qml.contains("parent.height - 32"));
-        assert!(qml.contains("anchors.bottom: parent.bottom"));
-        assert!(qml.contains("double-scale high-DPI"));
-    }
-
-    #[test]
-    fn activation_uses_qt_request_and_reports_unknown_compositor_outcomes() {
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains("hostWindow.requestActivate()"));
-        assert!(qml.contains("activationOutcomeTimer"));
-        assert!(qml.contains("Window activation outcome unknown"));
-        assert!(qml.contains("hostWindow.active"));
-        assert!(!qml.contains("xdotool"));
-        assert!(!qml.contains("wmctrl"));
-    }
-
-    #[test]
-    fn authentication_and_client_certificates_stay_in_native_engine_prompts() {
-        let qml = [
-            include_str!("../qml/Main.qml"),
-            include_str!("../qml/components/FerricPageDialog.qml"),
-        ]
-        .concat();
-        assert!(qml.contains("request.proxyHost"));
-        assert!(qml.contains("HTTP authentication"));
-        assert!(qml.contains("Proxy authentication"));
-        assert!(qml.contains("authentication ? \"authentication\" : \"page-dialog\""));
-        assert!(qml.contains("\"dialogAccept\", [username, password]"));
-        assert!(qml.contains("pageDialogPopup.passwordText = \"\""));
-        assert!(qml.contains("onSelectClientCertificate"));
-        assert!(qml.contains("selection.certificates"));
-        assert!(qml.contains("\"client-certificate\", \"select\", [index]"));
-        assert!(qml.contains("\"client-certificate\", \"selectNone\", []"));
-        assert!(qml.contains("Private keys are never exposed here."));
-        assert!(!qml.contains("console.log(username"));
-        assert!(!qml.contains("console.log(password"));
-    }
-
-    #[test]
-    fn qml_qt_request_resolution_is_centralized_and_bounded() {
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains("function resolveQtRequest(ui, request, kind, method, args)"));
-        assert!(qml.contains("resolved.length > 256"));
-        assert!(qml.contains("record_request_resolution"));
-        assert!(!qml.contains("request.dialogReject()"));
-        assert!(!qml.contains("request.dialogAccept("));
-        assert!(!qml.contains("permissionRequest.deny()"));
-    }
-
-    #[test]
-    fn account_flows_keep_tabs_and_popups_on_the_opener_profile() {
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains("profile: viewProfile"));
-        assert!(qml.contains("property var viewProfile: secondaryWindow.windowWebEngineProfile"));
-        assert!(qml.contains("popupProfile: viewProfile"));
-        assert!(qml.contains("viewProfile: secondaryWindow.windowWebEngineProfile"));
-        assert!(qml.contains("popupPrivateProfile: viewTransientProfile"));
-        assert!(qml.contains("viewTransientProfile: secondaryWindow.windowTransientProfile"));
-        assert!(qml.contains("storageName: window.temporaryProfile ? \"\""));
-        assert!(qml.contains("storageName: secondaryWindow.windowTransientProfile ? \"\""));
-        assert!(!qml.contains("new WebEngineProfile"));
-    }
-
-    #[test]
-    fn context_routes_validate_before_assigning_window_membership() {
-        let source = include_str!("lib.rs");
-        let command_start = source
-            .find("fn execute_ipc_command(")
-            .expect("IPC command executor exists");
-        let command_source = &source[command_start..];
-        let assign = command_source
-            .find("self.as_mut().assign_ipc_context(route)?;")
-            .expect("context assignment exists");
-        let validate = command_source
-            .find("self.as_ref().validate_ipc_route(route)?;")
-            .expect("route validation exists");
-        assert!(validate < assign);
-        assert!(source.contains("A rejected cross-profile route must not leave"));
-    }
-
-    #[test]
-    fn context_routes_are_pre_navigation_and_browser_confirmed() {
-        let source = include_str!("lib.rs");
-        let qml = [
-            include_str!("../qml/Main.qml"),
-            include_str!("../qml/components/FerricContextRouteDialog.qml"),
-        ]
-        .concat();
-        assert!(source.contains("matching_context_routes"));
-        assert!(source.contains("queue_context_route_for_input"));
-        assert!(source.contains("execute_context_route_command"));
-        assert!(source.contains("save_contexts_atomic"));
-        assert!(source.contains("fn navigate_initial"));
-        assert!(source.contains("NavigationSource::ExplicitUrl"));
-        assert!(source.contains("fn accept_context_route"));
-        assert!(source.contains("fn dismiss_context_route"));
-        assert!(source.contains("fn sync_context_metadata"));
-        assert!(source.contains("context_workspace"));
-        assert!(qml.contains("context_route_json"));
-        assert!(qml.contains("Context route confirmation"));
-        assert!(qml.contains("contextStatus"));
-        assert!(qml.contains("contextStatusColor"));
-        assert!(qml.contains("function routeContextWorkspace(ui)"));
-        assert!(qml.contains("entry.host.active !== true"));
-        assert!(qml.contains("Workspace routing pending until the browser window is active"));
-        assert!(qml.contains("pendingWorkspaceRouteHost"));
-        assert!(qml.contains("onContext_workspaceChanged"));
-        assert!(qml.contains(
-            "Existing redirects, popups, forms, permissions, and authentication chains are never moved automatically."
-        ));
-        assert!(qml.contains("windowStartupContext"));
-    }
-
-    #[test]
-    fn desktop_multiple_url_launches_open_separate_startup_tabs() {
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains("property string startupAdditionalUrlsJson: \"[]\""));
-        assert!(qml.contains("property bool startupBackground: false"));
-        assert!(qml.contains("function openAdditionalStartupUrls()"));
-        assert!(qml.contains("startupAdditionalUrlsJson"));
-        assert!(qml.contains("browserUi.new_tab()"));
-        assert!(qml.contains("browserUi.navigate_initial(url, \"external-open\", true)"));
-        assert!(qml.contains("Qt.callLater(window.openAdditionalStartupUrls)"));
-        assert!(qml.contains("if (window.startupBackground)"));
-    }
-
-    #[test]
-    fn tab_projection_changes_use_qt_property_setters() {
-        let source = include_str!("lib.rs");
-        let direct_tab_count_assignment = ["this.", "tab_count", " ="].concat();
-        let direct_active_index_assignment = ["this.", "active_tab_index", " ="].concat();
-
-        assert!(!source.contains(&direct_tab_count_assignment));
-        assert!(!source.contains(&direct_active_index_assignment));
-        assert!(source.contains("self.as_mut().set_tab_count(tab_count)"));
-        assert!(source.contains("self.as_mut().set_active_tab_properties(active_index, tab)"));
-    }
-
-    #[test]
-    fn status_surfaces_report_bounded_navigation_and_activity_state() {
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains("function statusTransport(view)"));
-        assert!(qml.contains("HTTPS transport (site trust separate)"));
-        assert!(qml.contains("HTTP transport (not secure)"));
-        assert!(qml.contains("function statusLoad(view)"));
-        assert!(qml.contains("function statusMedia(view)"));
-        assert!(qml.contains("function statusPermission(ui)"));
-        assert!(qml.contains("function statusCapture(hostWindow)"));
-        assert!(qml.contains("function statusDownloads(hostWindow)"));
-        assert!(qml.contains("function statusTabBlocking(view)"));
-        assert!(qml.contains("function statusDetails(ui, hostWindow, view"));
-        assert!(qml.contains("browserUi, window, window.activeWebView()"));
-        assert!(qml.contains("secondaryUi, secondaryWindow,"));
-        assert!(qml.contains("secondaryWindow.activeView,"));
-        assert!(qml.matches("window.statusDetails(").count() >= 3);
-        assert!(qml.contains("siteDoctorBadge(ui)"));
-    }
-
-    #[test]
-    fn default_chrome_is_compact_modal_and_content_first() {
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains("height: window.tabPosition === \"top\" && window.tabStripVisible"));
-        assert!(qml.contains("visible: window.tabStripVisible"));
-        assert!(qml.contains("text: (tabIndex + 1) + \"  \""));
-        assert!(qml.contains("text: browserUi.mode.toUpperCase()"));
-        assert!(qml.contains("id: statusUrl"));
-        assert!(qml.contains("id: commandPrefix"));
-        assert!(qml.contains("text: \":\""));
-        assert!(qml.contains("background: Rectangle { color: \"transparent\" }"));
-        assert!(qml.contains(
-            "header: ToolBar {\n                height: 0\n                visible: false"
-        ));
-        assert!(qml.contains("palette.buttonText: window.primaryTextColor"));
-        assert!(qml.contains("function colorChannels(value)"));
-        assert!(qml.contains("function readableTextColor(candidate, background)"));
-        assert!(qml.contains("window.contrastText(parent.color)"));
-    }
-
-    #[test]
-    fn context_entry_restores_safe_descriptors_lazily_and_focuses_live_members() {
-        let source = include_str!("lib.rs");
-        let qml = include_str!("../qml/Main.qml");
-        assert!(source.contains("fn restore_context_membership"));
-        assert!(source.contains("focused_member"));
-        assert!(source.contains("restored_tab_descriptors"));
-        assert!(source.contains("Runtime tab IDs are deliberately not reused"));
-        assert!(source.contains("selected_effects = Some(effects)"));
-        assert!(source.contains("context_entry_force_reuse"));
-        assert!(source.contains("context-window\\tfalse\\t"));
-        assert!(source.contains("let live_member_window = self"));
-        assert!(source.contains("window-focus\\t{member_window}"));
-        assert!(qml.contains("function applyRestorePayload(payload, hasModeLine)"));
-        assert!(qml.contains("tabIndex === browserUi.active_tab_index"));
-        assert!(qml.contains("fields.length > 4 && fields[4].length > 0"));
-        assert!(qml.contains("function focusExistingContextWindow(commandText, sourceUi)"));
-        assert!(qml.contains("windowStartupContextRestore: true"));
-        assert!(qml.contains("secondaryUi.context_entry_force_reuse"));
-    }
-
-    #[test]
-    fn popup_windows_capture_opener_context_identity() {
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains("property string popupContextName"));
-        assert!(qml.contains("property string popupContextLabel"));
-        assert!(qml.contains("property string popupJourneyToken"));
-        assert!(qml.contains("take_popup_journey_token"));
-        assert!(qml.contains("popup_navigation_started"));
-        assert!(qml.contains("popup_navigation_committed"));
-        assert!(qml.contains("release_popup_journey_token"));
-        assert!(qml.contains("popupContextName: viewUi.context_name"));
-        assert!(qml.contains("property string popupProfileName"));
-        assert!(qml.contains("popupWindow.popupProfileName"));
-        assert!(qml.contains("popupWindow.popupEphemeralProfile"));
-        assert!(
-            qml.contains(
-                "popupView,\n                              popupWindow.popupPrivateProfile"
-            )
-        );
-        assert!(qml.contains("property var viewUi: secondaryUi"));
-        assert!(qml.contains("Ferric Browser popup · context"));
-        assert!(qml.contains("popupPermissionUi: viewUi"));
-    }
-
-    #[test]
-    fn journey_export_requires_preview_and_explicit_local_destination() {
-        let source = include_str!("lib.rs");
-        let qml = include_str!("../qml/Main.qml");
-        assert!(source.contains("fn journey_export_preview"));
-        assert!(source.contains("memory-only"));
-        assert!(source.contains("refuses to overwrite an existing file"));
-        assert!(source.contains("atomic_write_private(path_ref"));
-        assert!(qml.contains("journey_export_preview"));
-        assert!(qml.contains("property bool journeyExportPreviewVisible"));
-        assert!(qml.contains("property bool journeyExportAwaiting"));
-        assert!(source.contains("journey_export_preview_text"));
-        assert!(qml.contains("Choose journey export destination"));
-        assert!(qml.contains("Export journey records"));
-    }
-
-    #[test]
-    fn diagnostics_export_requires_explicit_local_save_and_never_overwrites() {
-        let source = include_str!("lib.rs");
-        let qml = include_str!("../qml/Main.qml");
-        assert!(source.contains("fn export_diagnostics"));
-        assert!(source.contains("Diagnostics export requires reviewing the visible preview first"));
-        assert!(source.contains("diagnostics_preview_ready = false"));
-        assert!(source.contains("diagnostics_preview_payload = Some(serialized.clone())"));
-        assert!(source.contains("MAX_DIAGNOSTICS_EXPORT_BYTES"));
-        assert!(source.contains("Diagnostics export requires an absolute local file path"));
-        assert!(source.contains("Diagnostics export refuses to overwrite an existing file"));
-        assert!(source.contains("atomic_write_private(path_ref, payload.as_bytes())"));
-        assert!(qml.contains("Choose diagnostics export destination"));
-        assert!(qml.contains("Save diagnostics preview"));
-        assert!(qml.contains("browserUi.export_diagnostics(path)"));
-    }
-
-    #[test]
-    fn required_desktop_portals_gate_file_selection_asynchronously() {
-        let source = include_str!("lib.rs");
-        let qml = include_str!("../qml/Main.qml");
-        assert!(source.contains("struct PortalProbeWorker"));
-        assert!(source.contains("portal_probe_worker"));
-        assert!(source.contains("portal capability probe is running"));
-        assert!(qml.contains("desktop.portals"));
-        assert!(qml.contains("probe_desktop_portals()"));
-        assert!(qml.contains("desktopPortalCapabilityStatus(requestUi, \"file_chooser\")"));
-        assert!(qml.contains("pendingFileDialogWaitingForPortal"));
-        assert!(qml.contains("pendingFileDialogWaitingForPortal = true"));
-        assert!(qml.contains("pendingFileDialogPortalDeadlineMs"));
-        assert!(qml.contains("Desktop portal check timed out; file selection cancelled"));
-        assert!(qml.contains("pendingDesktopMediaPortalDeadlineMs"));
-        assert!(qml.contains("popupFilePortalTimer"));
-        assert!(qml.contains("function maybeOpenPendingFileDialog()"));
-        assert!(qml.contains("popupWindow.maybeOpenPendingFileDialog()"));
-        assert!(qml.contains("secondaryWindow.maybeOpenPendingFileDialog()"));
-        assert!(qml.contains("secondaryWindow.pendingFileDialogWaitingForPortal = true"));
-        assert!(qml.contains("secondaryWindow.pendingFileDialogPortalDeadlineMs"));
-        assert!(qml.contains("Required desktop portal unavailable; file selection cancelled"));
-        assert!(qml.contains("window.openPendingEngineFileDialog()"));
-        assert!(qml.contains("desktopPortalCapabilityStatus(ui, \"screen_cast\")"));
-        assert!(qml.contains("Required ScreenCast portal unavailable; screen sharing cancelled"));
-        assert!(qml.contains("maybeOpenPendingDesktopMediaRequest"));
-        assert!(qml.contains("desktopPortalCapabilityStatus(targetUi, \"open_uri\")"));
-        assert!(qml.contains("pendingExternalUris"));
-        assert!(qml.contains("processPendingExternalUris"));
-        assert!(qml.contains("Desktop portal check timed out; external action cancelled"));
-        assert!(qml.contains("Required OpenURI portal unavailable; external action cancelled"));
-        assert!(qml.contains("function openExternalUri(ui, uri)"));
-        assert!(qml.contains("desktopPortalCapabilityStatus(ui, \"notifications\")"));
-        assert!(qml.contains("pendingPortalNotifications"));
-        assert!(qml.contains("deferNotificationUntilPortal"));
-        assert!(qml.contains("processPendingPortalNotifications"));
-        assert!(qml.contains("closeWebNotificationsForOrigin"));
-        assert!(qml.contains("pendingOrigin"));
-        assert!(qml.contains("Desktop portal check timed out; notification cancelled"));
-        assert!(qml.contains("Required Notification portal unavailable; notification cancelled"));
-    }
-
-    #[test]
-    fn security_deny_hosts_are_separate_from_adblock_bypasses() {
-        let qml = include_str!("../qml/Main.qml");
-        let interceptor = include_str!("request_interceptor.cpp");
-        assert!(qml.contains("securityDenyHosts"));
-        assert!(qml.contains("security_deny_hosts"));
-        assert!(interceptor.contains("securityDenyHosts"));
-        assert!(interceptor.contains("security deny rule"));
-        assert!(include_str!("lib.rs").contains("blocking.security-deny-host"));
-        assert!(include_str!("lib.rs").contains("security_deny_rules"));
-        let config = serde_json::to_value(Config::default()).expect("default config serializes");
-        assert_eq!(
-            config["blocking"]["security_deny_hosts"],
-            serde_json::json!([])
-        );
-    }
-
-    #[test]
-    fn request_interceptor_uses_bounded_engine_context_without_ui_fallback() {
-        let interceptor = include_str!("request_interceptor.cpp");
-        let header = include_str!("request_interceptor.h");
-        let qml = include_str!("../qml/Main.qml");
-        assert!(header.contains("std::shared_ptr<const PolicySnapshot> policy_"));
-        assert!(interceptor.contains("info.requestUrl()"));
-        assert!(interceptor.contains("info.firstPartyUrl()"));
-        assert!(interceptor.contains("info.initiator()"));
-        assert!(interceptor.contains("info.resourceType()"));
-        assert!(interceptor.contains("info.navigationType()"));
-        assert!(interceptor.contains("NavigationTypeRedirect"));
-        assert!(interceptor.contains("contextKnown"));
-        assert!(interceptor.contains("blockedRuleLists"));
-        assert!(interceptor.contains("ferric_browser_adblock_check"));
-        assert!(interceptor.contains("adblockResourceType"));
-        assert!(header.contains("adblockEngineHandle"));
-        assert!(qml.contains("blocking_adblock_handle"));
-        assert!(interceptor.contains("list_id"));
-        assert!(interceptor.contains("exception_list_id"));
-        assert!(qml.contains("blocking_rule_lists"));
-        assert!(qml.contains("blocking_exception_rule_lists"));
-        assert!(interceptor.contains("normalized.size() > 253"));
-        assert!(!interceptor.contains("activeWebView"));
-        assert!(interceptor.contains("scheduleEvidenceChanged()"));
-        assert!(interceptor.contains("evidenceSignalPending_.exchange"));
-        assert!(interceptor.contains("QMetaObject::invokeMethod"));
-        assert!(interceptor.contains("Qt::QueuedConnection"));
-    }
-
-    #[test]
-    fn renderer_termination_is_reduced_before_qml_recovery_surface() {
-        let source = include_str!("lib.rs");
-        let qml = include_str!("../qml/Main.qml");
-        assert!(source.contains("fn note_renderer_process_terminated"));
-        assert!(source.contains("fn prepare_renderer_recovery"));
-        assert!(source.contains("Event::RendererTerminated { target }"));
-        assert!(qml.contains("ui.note_renderer_process_terminated(tabIndex)"));
-        assert!(qml.contains("ui.prepare_renderer_recovery"));
-        assert!(qml.contains("onRenderProcessTerminated"));
-    }
-
-    #[test]
-    fn blocking_status_counts_security_deny_rules_without_exposing_hosts() {
-        let config = serde_json::json!({
-            "blocking": {
-                "security_deny_hosts": ["one.example", "*.two.example"]
-            }
-        });
-        let serialized = serde_json::to_string(&config).expect("config serializes");
-        assert_eq!(security_deny_rule_count(&serialized), 2);
-        assert_eq!(security_deny_rule_count("{\"blocking\":{}}"), 0);
-        assert_eq!(security_deny_rule_count("not json"), 0);
-    }
-
-    #[test]
-    fn background_link_navigation_captures_the_source_journey_node() {
-        let source = include_str!("lib.rs");
-        assert!(source.contains("journey_parent: Option<JourneyNodeId>"));
-        assert!(source.contains("let journey_parent = state"));
-        assert!(source.contains("self.as_mut().mark_journey_parent(&effects, parent)"));
-    }
-
-    #[test]
-    fn ephemeral_profile_uses_off_the_record_memory_only_setup() {
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains("property bool ephemeralProfile"));
-        assert!(qml.contains("WebEngineProfilePrototype {"));
-        assert!(qml.contains("storageName: window.temporaryProfile ? \"\""));
-        assert!(qml.contains("persistentStoragePath: window.temporaryProfile"));
-        assert!(qml.contains("cachePath: window.temporaryProfile"));
-        assert!(qml.contains("window.browserProfile = browserProfilePrototype.instance()"));
-        assert!(qml.contains("title: window.ephemeralProfile"));
-        assert!(qml.contains("? \"Ferric Browser · \" + window.profileLabel"));
-        assert!(qml.contains("window.temporaryProfile && !window.ephemeralProfile"));
-        assert!(qml.contains("window.ephemeralProfile,"));
-        let source = include_str!("lib.rs");
-        assert!(source.contains("PrivacyKind::Ephemeral"));
-        assert!(source.contains("active_profile_is_transient"));
-        assert!(source.contains("release_transient_resources"));
-        assert!(source.contains("pending_profile_configuration = None"));
-        assert!(source.contains("profile_setup_worker = None"));
-        assert!(source.contains("network_policy_worker = None"));
-        assert!(source.contains("set_blocking_rule_lists(QString::from(\"{}\"))"));
-        assert!(source.contains("set_blocking_exception_rule_lists(QString::from(\"{}\"))"));
-        assert!(source.contains("Durable profile resources remain owned"));
-        assert!(source.contains("this.session_permissions.clear()"));
-        assert!(source.contains("this.profile_lock = None"));
-        assert!(source.contains("cannot save durable sessions"));
-        assert!(source.contains("cannot use durable contexts"));
-        assert!(source.contains("private or ephemeral switcher activation is disabled"));
-        assert!(source.contains("Created a fresh ephemeral profile window; it is not durable"));
-    }
-
-    #[test]
-    fn ephemeral_hint_target_creates_a_typed_new_window_action() {
-        let source = include_str!("lib.rs");
-        let qml = include_str!("../qml/Main.qml");
-        assert!(source.contains("target == \"ephemeral\""));
-        assert!(source.contains("ephemeral-window\\t{}"));
-        assert!(qml.contains("function openEphemeralWindow(url, requestedToken)"));
-        assert!(qml.contains("function ephemeralProfileForToken(token)"));
-        assert!(qml.contains("property var ephemeralProfileOwners"));
-        assert!(qml.contains("function retainEphemeralProfileOwner(profile, token)"));
-        assert!(qml.contains("function releaseEphemeralProfileOwner(profile, token)"));
-        assert!(qml.contains("Ephemeral profile owner token is already bound"));
-        assert!(qml.contains("ephemeralInvocationToken"));
-        assert!(qml.contains("windowSharedProfile: sharedProfile"));
-        assert!(qml.contains("property var viewProfile: secondaryWindow.windowWebEngineProfile"));
-        assert!(qml.contains("action.indexOf(\"ephemeral-window\\t\") === 0"));
-        assert!(qml.contains("window.registerBrowserWindow("));
-        assert!(qml.contains("windowEphemeralProfile: true"));
-        assert!(qml.contains("result.action === \"ephemeral\""));
-        assert!(qml.contains("onClosing: function(close)"));
-        assert!(qml.contains("windowShutdownPromptVisible"));
-        assert!(qml.contains("secondaryUi.request_shutdown()"));
-        assert!(qml.contains("hasActiveShutdownRequestsFor"));
-        assert!(qml.contains("windowSharedProfile || secondaryProfile"));
-    }
-
-    #[test]
-    fn tls_errors_are_blocked_by_default_and_only_allow_scoped_confirmation() {
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains("onCertificateError"));
-        assert!(qml.contains("!error.overridable"));
-        assert!(qml.contains("!error.isMainFrame"));
-        assert!(qml.contains("ui, error, \"client-certificate\", \"rejectCertificate\", []"));
-        assert!(qml.contains("ui, error, \"client-certificate\", \"acceptCertificate\", []"));
-        assert!(qml.contains("Accept once"));
-        assert!(qml.contains("for this request only"));
-        assert!(qml.contains("googleCertificateHost"));
-        assert!(!qml.contains("ignoreCertificateErrors"));
-        assert!(!qml.contains("setIgnoreCertificateErrors"));
-    }
-
-    #[test]
-    fn webauthn_uses_engine_state_and_clears_pin_input() {
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains("onWebAuthUxRequested"));
-        assert!(qml.contains("WebEngineWebAuthUxRequest.SelectAccount"));
-        assert!(qml.contains("WebEngineWebAuthUxRequest.CollectPin"));
-        assert!(qml.contains("request.setSelectedAccount"));
-        assert!(qml.contains("request.setPin(pin)"));
-        assert!(qml.contains("webAuthPinField.text = \"\""));
-        assert!(qml.contains("ui, request, \"webauth\", \"cancel\", []"));
-        assert!(qml.contains("request.retry()"));
-        assert!(qml.contains("request.relyingPartyId"));
-        assert!(!qml.contains("pinRequest.password"));
-        assert!(!qml.contains("console.log(pin"));
-    }
-
-    #[test]
-    fn context_menus_use_engine_actions_and_bound_spellcheck_data() {
-        let source = include_str!("lib.rs");
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains("onContextMenuRequested"));
-        assert!(qml.contains("request.accepted = true"));
-        assert!(qml.contains("appendUserscriptActions"));
-        assert!(qml.contains("ui.userscript_actions(subject)"));
-        assert!(qml.contains("action.availability.state === \"available\""));
-        assert!(qml.contains("function showHintActions(label)"));
-        assert!(qml.contains("hint-userscript-action"));
-        assert!(qml.contains("select_hint_action"));
-        assert!(qml.contains("Qt.RightButton"));
-        assert!(source.contains("execute_registered_userscript_action_for_hint"));
-        assert!(source.contains("if hint_activation"));
-        assert!(qml.contains("view.triggerWebAction(webAction)"));
-        assert!(qml.contains("replaceMisspelledWord"));
-        assert!(qml.contains("spellCheckerSuggestions"));
-        assert!(qml.contains("Download link"));
-        assert!(qml.contains("browser.link.open"));
-        assert!(qml.contains("browser.link.download"));
-        assert!(qml.contains("browser.download.pause"));
-        assert!(qml.contains("browser.download.resume"));
-        assert!(qml.contains("browser.download.cancel"));
-        assert!(qml.contains("browser.download.retry"));
-        assert!(qml.contains("browser.selection.copy"));
-        assert!(qml.contains("browser.selection.search"));
-        assert!(qml.contains("browser.tab.pin"));
-        assert!(qml.contains("browser.tab.mute"));
-        assert!(qml.contains("browser.tab.undo"));
-        assert!(qml.contains(":tab-clone"));
-        assert!(qml.contains("function scrollScript"));
-        assert!(qml.contains("function searchFindFlags(query, caseMode, backward)"));
-        assert!(qml.contains("var characters = Array.from(text)"));
-        assert!(qml.contains("character.toUpperCase()"));
-        assert!(qml.contains("scroll-page\\t"));
-        assert!(qml.contains("scroll-to\\t"));
-        assert!(qml.contains("tab_id_for_index"));
-        assert!(qml.contains("execute_ui_action"));
-        assert!(qml.contains("Inspect element"));
-        assert!(qml.contains("spellCheckLanguages"));
-        assert!(qml.contains("function spellcheckLanguageIsValid(language)"));
-        assert!(qml.contains("i-klingon"));
-        assert!(qml.contains("zh-min-nan"));
-        assert!(qml.contains("(?:[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*|x(?:-[A-Za-z0-9]{1,8})+)"));
-        assert!(qml.contains("function safeContextUrl(value)"));
-        assert!(qml.contains("decodeURIComponent(key)"));
-        assert!(qml.contains("private[_-]?key"));
-        assert!(qml.contains("client[_-]?secret"));
-        assert!(!qml.contains("Qt.openUrlExternally(link"));
-    }
-
-    #[test]
-    fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
-        let qml = include_str!("../qml/Main.qml");
-        let script = include_str!("../qml/scripts/BrowserScripts.js");
-        assert!(qml.contains("import \"scripts/BrowserScripts.js\" as BrowserScripts"));
-        assert!(qml.contains("return BrowserScripts.scroll(kind, direction, half, count)"));
-        assert!(qml.contains("return BrowserScripts.selection()"));
-        assert!(qml.contains("return BrowserScripts.editor()"));
-        assert!(qml.contains("return BrowserScripts.editorApply(original, updated)"));
-        assert!(qml.contains("return BrowserScripts.caret(operation, selecting)"));
-        assert!(qml.contains("return BrowserScripts.downloadLink(url)"));
-        assert!(qml.contains("return BrowserScripts.clearSiteData()"));
-        assert!(qml.contains("return BrowserScripts.focusProbe()"));
-        assert!(qml.contains("return BrowserScripts.shutdownPageProbe()"));
-        assert!(script.contains("var VERSION = \"1\""));
-        assert!(script.contains("function boundedCount(value)"));
-        assert!(script.contains("Math.max(1, Math.min(9999"));
-        assert!(script.contains("password fields are not copied"));
-        assert!(script.contains("password fields are not editable externally"));
-        assert!(script.contains("field changed while editor was open"));
-        assert!(script.contains("invalid caret movement"));
-        assert!(script.contains("a.rel='noreferrer'"));
-        assert!(script.contains("service_workers:'unavailable'"));
-        assert!(script.contains("window.__ferric_browserFocusState"));
-        assert!(script.contains("elements.length > 128"));
-    }
-
-    #[test]
-    fn screen_capture_keeps_scoped_indicator_and_reload_stop_boundary() {
-        let qml = include_str!("../qml/Main.qml");
-        let source = include_str!("lib.rs");
-        assert!(qml.contains("onDesktopMediaRequested"));
-        assert!(qml.contains("\"desktop-media\", \"selectScreen\""));
-        assert!(qml.contains("\"desktop-media\", \"selectWindow\""));
-        assert!(qml.contains("function recordCaptureSession"));
-        assert!(qml.contains("browser-owned capture ledger"));
-        assert!(qml.contains("activeCapture.status"));
-        assert!(qml.contains("Capture indicator"));
-        assert!(qml.contains("function stopCaptureSession"));
-        assert!(qml.contains("target.view.reload()"));
-        assert!(qml.contains("clearCaptureSessionsForHost"));
-        assert!(!qml.contains("PipeWire"));
-        assert!(source.contains("if permission == \"screen-capture\""));
-        assert!(source.contains("Screen-capture consent reset; active captures will be stopped"));
-    }
-
-    #[test]
-    fn site_ledger_exposes_bounded_userscript_metadata_without_sources() {
-        let source = include_str!("lib.rs");
-        assert!(source.contains("profile-userscript-manifests"));
-        assert!(source.contains("matching_active_site"));
-    }
-
-    #[test]
-    fn site_data_clear_is_bound_to_its_originating_view() {
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains("property var siteDataClearView"));
-        assert!(qml.contains("var view = window.siteDataClearView"));
-        assert!(qml.contains("clearSiteDataClearForView"));
-        assert!(qml.contains("site-data clear cancelled by navigation"));
-        assert!(qml.contains("window.siteDataClearUi = browserUi"));
-    }
-
-    #[test]
-    fn notifications_require_consent_and_push_is_explicitly_opt_in() {
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains("onPresentNotification"));
-        assert!(qml.contains("notification.show()"));
-        assert!(qml.contains("notification.close()"));
-        assert!(qml.contains("permission_decision(origin, \"notifications\")"));
-        assert!(qml.contains("activeWebNotifications"));
-        assert!(qml.contains("notification.closed.connect"));
-        assert!(qml.contains("previous.close()"));
-        assert!(qml.contains("function notificationProfileScope(ui, privateProfile)"));
-        assert!(qml.contains("window.notificationProfileScope(ui, privateProfile)"));
-        assert!(qml.contains("function closeWebNotificationsForOrigin(origin)"));
-        assert!(qml.contains("permissionParts[2] === \"notifications\""));
-        assert!(qml.contains("NotificationPresenter"));
-        assert!(qml.contains("notificationPresenter.present(notification, profileScope, origin)"));
-        assert!(qml.contains("onNotificationUnavailable"));
-        assert!(qml.contains("property var notificationOwners"));
-        assert!(qml.contains("function notificationOwnerFor(notification)"));
-        assert!(qml.contains("window.notificationOwnerFor(notification)"));
-        assert!(qml.contains("rememberNotificationOwner(notification, ui)"));
-        assert!(qml.contains("function activeWebNotification(notification)"));
-        assert!(qml.contains("window.activeWebNotification(notification)"));
-        assert!(qml.contains("Desktop notification service unavailable; using Qt fallback"));
-        assert!(qml.contains("focusNotificationOrigin(profileScope, origin)"));
-        assert!(qml.contains("closeWebNotifications()"));
-        assert!(qml.contains("config.privacy.push_service === true"));
-        assert!(qml.contains("if (privateProfile)"));
-        assert!(!qml.contains("Qt.openUrlExternally(notification"));
-    }
-
-    #[test]
-    fn permission_revocation_reloads_all_registered_matching_views() {
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains("function permissionOriginForView(view)"));
-        assert!(qml.contains("function reloadViewsForPermission(origin)"));
-        assert!(qml.contains("entry.view"));
-        assert!(qml.contains("window.removePermissionGroups"));
-        assert!(qml.contains("candidates[k].view.reload()"));
-        assert!(qml.contains("secondaryWindow, secondaryUi, secondaryWindow.activeView,"));
-        assert!(qml.contains("Permission revoked; reloaded "));
-    }
-
-    #[test]
-    fn media_keys_and_mpris_use_one_engine_toggle_path() {
-        let qml = include_str!("../qml/Main.qml");
-        let mpris = include_str!("mpris_controller.cpp");
-        let mpris_header = include_str!("mpris_controller.h");
-        assert!(qml.contains("Qt.Key_MediaTogglePlayPause"));
-        assert!(qml.contains("WebEngineView.ToggleMediaPlayPause"));
-        assert!(qml.contains("function triggerMediaToggle(view)"));
-        assert!(qml.contains("view.recentlyAudible !== true"));
-        assert!(qml.contains("!/^https?:\\/\\//i.test(url)"));
-        assert!(qml.contains("desktop.media_keys !== false"));
-        assert!(qml.contains("Media play/pause toggle sent to the page"));
-        assert!(qml.contains("MprisController"));
-        assert!(qml.contains("onMediaToggleRequested"));
-        assert!(qml.contains("mprisController.update"));
-        assert!(qml.contains("var url = view.url ? view.url.toString() : \"\""));
-        assert!(qml.contains("browserUi.current_url"));
-        assert!(qml.contains("function updateMprisForPrimaryView(view)"));
-        assert!(qml.contains("window.updateMprisForPrimaryView(webView)"));
-        assert!(qml.contains("onRecentlyAudibleChanged"));
-        assert!(qml.contains("onAudioMutedChanged"));
-        assert!(mpris.contains("org.mpris.MediaPlayer2.Player"));
-        assert!(mpris.contains("PlayPause"));
-        assert!(mpris.contains("org.mpris.MediaPlayer2.ferric-browser.instance"));
-        assert!(mpris.contains("privateProfile"));
-        assert!(mpris.contains("safeMetadataUrl"));
-        assert!(mpris.contains("sensitiveQueryKey"));
-        assert!(mpris.contains("access_token"));
-        assert!(mpris.contains("refresh_token"));
-        assert!(mpris.contains("client_secret"));
-        assert!(mpris.contains("setFragment({})"));
-        assert!(mpris_header.contains("QML_NAMED_ELEMENT(MprisController)"));
-        assert!(!mpris_header.contains("void Stop()"));
-        assert!(!qml.contains("Key_MediaNext"));
-        assert!(!qml.contains("Key_MediaPrevious"));
-    }
-
-    #[test]
-    fn file_urls_encode_download_paths_without_leaking_raw_delimiters() {
-        assert_eq!(
-            path_to_file_url(Path::new("/home/tom/Downloads/a file#1.txt")),
-            Ok("file:///home/tom/Downloads/a%20file%231.txt".into())
-        );
-        assert!(path_to_file_url(Path::new("relative/file.txt")).is_err());
-        assert_eq!(
-            configured_download_directory_path(&serde_json::json!({
-                "downloads": {"directory": {"path": "/tmp/ferric-browser-downloads"}}
-            })),
-            PathBuf::from("/tmp/ferric-browser-downloads")
-        );
-        assert_eq!(
-            configured_download_directory_path(&serde_json::json!({
-                "downloads": {"directory": {"Path": "/tmp/ferric-browser-downloads"}}
-            })),
-            PathBuf::from("/tmp/ferric-browser-downloads")
-        );
-    }
-
-    #[test]
-    fn xdg_user_dirs_resolve_downloads_without_shell_expansion() {
-        let home = Path::new("/home/test-user");
-        assert_eq!(
-            parse_user_dirs_download("XDG_DOWNLOAD_DIR=\"$HOME/Downloads\"\n", home),
-            Some(PathBuf::from("/home/test-user/Downloads"))
-        );
-        assert_eq!(
-            parse_user_dirs_download("XDG_DOWNLOAD_DIR=\"$HOME/Work\\x20Downloads\"\n", home),
-            Some(PathBuf::from("/home/test-user/Work Downloads"))
-        );
-        assert_eq!(
-            parse_user_dirs_download("XDG_DOWNLOAD_DIR=\"relative/Downloads\"\n", home),
-            None
-        );
-        assert_eq!(
-            parse_user_dirs_download(
-                "XDG_DOWNLOAD_DIR=\"$HOME/Downloads; touch /tmp/pwned\"\n",
-                home
-            ),
-            Some(PathBuf::from("/home/test-user/Downloads; touch /tmp/pwned"))
-        );
-        assert!(
-            parse_user_dirs_download("XDG_DOWNLOAD_DIR=\"$HOME/Down\\qloads\"\n", home).is_none()
-        );
-    }
-
-    #[test]
-    fn ipc_context_commands_use_explicit_typed_fields() {
-        let (command, route) = typed_ipc_command(&serde_json::json!({
-            "command": "context-create",
-            "arguments": {
-                "name": "work",
-                "label": "Work",
-                "profile": "default",
-                "workspace": "3"
-            }
-        }))
-        .expect("typed context command");
-        assert_eq!(route.open_target, IpcOpenTarget::Tab);
-        let (_, cli_route) = typed_ipc_command(&serde_json::json!({
-            "command": "back",
-            "context": {"source": "cli"}
-        }))
-        .expect("CLI source metadata");
-        assert_eq!(cli_route.source, CommandSource::Cli);
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "back",
-                "context": {"source": "automation"}
-            }))
-            .is_err()
-        );
-        assert_eq!(
-            command.arguments,
-            vec![
-                "work",
-                "--label",
-                "Work",
-                "--profile",
-                "default",
-                "--workspace",
-                "3"
-            ]
-        );
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "context-create",
-                "arguments": {"name": "work"}
-            }))
-            .is_err()
-        );
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "context-delete",
-            "arguments": {"name": "work", "confirmed": true}
-        }))
-        .expect("typed delete command");
-        assert_eq!(command.arguments, vec!["work", "--confirm"]);
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "context-delete",
-                "arguments": {"name": "work", "confirmed": "yes"}
-            }))
-            .is_err()
-        );
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "context-route",
-            "arguments": {
-                "action": "add",
-                "pattern": "https://*.company.test/*",
-                "context": "work"
-            }
-        }))
-        .expect("typed route add command");
-        assert_eq!(
-            command.arguments,
-            vec!["add", "https://*.company.test/*", "work"]
-        );
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "context-route",
-            "arguments": {
-                "action": "add",
-                "pattern": "https://*.company.test/*",
-                "context": "work",
-                "priority": -4,
-                "behavior": "suggest",
-                "entry_points": ["explicit-open", "typed-initial-url"]
-            }
-        }))
-        .expect("typed configured route add command");
-        assert_eq!(
-            command.arguments,
-            vec![
-                "add",
-                "https://*.company.test/*",
-                "work",
-                "--priority",
-                "-4",
-                "--behavior",
-                "suggest",
-                "--entry-point",
-                "explicit-open",
-                "--entry-point",
-                "typed-initial-url"
-            ]
-        );
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "context-route",
-                "arguments": {
-                    "action": "add",
-                    "pattern": "https://*.company.test/*",
-                    "context": "work",
-                    "entry_points": ["address-bar"]
-                }
-            }))
-            .is_err()
-        );
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "context-route",
-            "arguments": {"action": "remove", "id": "company-work"}
-        }))
-        .expect("typed route remove command");
-        assert_eq!(command.arguments, vec!["remove", "company-work"]);
-    }
-
-    #[test]
-    fn typed_history_clear_preserves_bounded_filters() {
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "history-clear",
-            "arguments": {
-                "since": 1_757_894_400,
-                "origin": "HTTPS://Example.Test:443",
-                "confirmed": true
-            }
-        }))
-        .expect("typed history clear");
-        assert_eq!(
-            command.arguments,
-            vec![
-                "--since",
-                "1757894400",
-                "--origin",
-                "https://example.test",
-                "--confirm"
-            ]
-        );
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "history-clear",
-                "arguments": {"since": -1, "confirmed": true}
-            }))
-            .is_err()
-        );
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "history-clear",
-                "arguments": {"origin": "https://example.test/path", "confirmed": true}
-            }))
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn typed_paste_open_preserves_target_and_primary_channel() {
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "paste-open",
-            "arguments": {"target": "tab", "primary": true}
-        }))
-        .expect("typed paste-open command");
-        assert_eq!(command.arguments, vec!["--target", "tab", "--primary"]);
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "paste-open",
-                "arguments": {"target": "window"}
-            }))
-            .is_err()
-        );
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "paste-open",
-                "arguments": {"primary": "yes"}
-            }))
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn typed_tab_move_context_allows_active_or_indexed_targets() {
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "tab-move",
-            "arguments": {"context": "work"}
-        }))
-        .expect("active context move command");
-        assert_eq!(command.arguments, vec!["--context", "work"]);
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "tab-move",
-            "arguments": {"id": "2", "context": "work"}
-        }))
-        .expect("indexed context move command");
-        assert_eq!(command.arguments, vec!["2", "--context", "work"]);
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "tab-move",
-                "arguments": {"context": "work", "direction": "left"}
-            }))
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn ipc_open_context_routes_preserve_new_window_context_metadata() {
-        let (command, route) = typed_ipc_command(&serde_json::json!({
-            "command": "open",
-            "arguments": {
-                "input": "https://work.example.test/",
-                "target": "window"
-            },
-            "context": {"context": "work"}
-        }))
-        .expect("typed context-routed window open");
-        assert_eq!(command.arguments, vec!["https://work.example.test/"]);
-        assert_eq!(route.open_target, IpcOpenTarget::Window);
-        assert_eq!(route.context.as_deref(), Some("work"));
-        assert!(include_str!("../qml/Main.qml").contains("windowStartupContext: windowAction[3]"));
-        assert!(include_str!("lib.rs").contains("private-window cannot use a durable context"));
-    }
-
-    #[test]
-    fn ipc_library_commands_use_typed_fields() {
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "quickmark-add",
-            "arguments": {"name": "work", "url": "https://work.example.test/"}
-        }))
-        .expect("typed quickmark command");
-        assert_eq!(
-            command.arguments,
-            vec!["work", "https://work.example.test/"]
-        );
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "bookmark-add",
-            "arguments": {"title": "Example"}
-        }))
-        .expect("typed bookmark command");
-        assert_eq!(command.arguments, vec!["--title", "Example"]);
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "history-clear",
-            "arguments": {"confirmed": true}
-        }))
-        .expect("typed history command");
-        assert_eq!(command.arguments, vec!["--confirm"]);
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "journey",
-            "arguments": {"current": true}
-        }))
-        .expect("typed journey command");
-        assert_eq!(command.arguments, vec!["--current"]);
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "journey",
-            "arguments": {"search": "example.test"}
-        }))
-        .expect("typed journey search command");
-        assert_eq!(command.arguments, vec!["--search", "example.test"]);
-        for search in ["", "bad\nsearch", &"x".repeat(257)] {
-            assert!(
-                typed_ipc_command(&serde_json::json!({
-                    "command": "journey",
-                    "arguments": {"search": search}
-                }))
-                .is_err()
-            );
-        }
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "journey",
-            "arguments": {"expand": "123e4567-e89b-12d3-a456-426614174000"}
-        }))
-        .expect("typed journey expansion command");
-        assert_eq!(
-            command.arguments,
-            vec!["--expand", "123e4567-e89b-12d3-a456-426614174000"]
-        );
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "journey-reopen",
-            "arguments": {
-                "node": "123e4567-e89b-12d3-a456-426614174000",
-                "target": "tab"
-            }
-        }))
-        .expect("typed journey reopen command");
-        assert_eq!(
-            command.arguments,
-            vec!["123e4567-e89b-12d3-a456-426614174000", "--target", "tab"]
-        );
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "journey",
-                "arguments": {"expand": "not-a-uuid"}
-            }))
-            .is_err()
-        );
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "journey-reopen",
-                "arguments": {"node": "not-a-uuid"}
-            }))
-            .is_err()
-        );
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "journey-reopen",
-            "arguments": {
-                "node": "123e4567-e89b-12d3-a456-426614174000",
-                "target": "window"
-            }
-        }))
-        .expect("typed window journey reopen command");
-        assert_eq!(command.arguments.last().map(String::as_str), Some("window"));
-    }
-
-    #[test]
-    fn ipc_link_commands_use_one_optional_typed_url() {
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "url-explain",
-            "arguments": {"url": "https://example.test/?utm_source=demo&keep=1"}
-        }))
-        .expect("typed URL explanation command");
-        assert_eq!(
-            command.arguments,
-            vec!["https://example.test/?utm_source=demo&keep=1"]
-        );
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "url-clean"
-        }))
-        .expect("current URL cleaning command");
-        assert!(command.arguments.is_empty());
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "url-clean",
-                "arguments": {"url": "https://example.test", "extra": "reject"}
-            }))
-            .is_err()
-        );
-        let (command, _, action_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.url.explain",
-            "arguments": {"url": "https://example.test/?utm_source=demo"}
-        }))
-        .expect("typed namespaced action");
-        assert_eq!(action_id, "browser.url.explain");
-        assert_eq!(command.name, "url-explain");
-        let (command, _, action_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.link.open",
-            "arguments": {"url": "https://example.test/link"}
-        }))
-        .expect("typed link action");
-        assert_eq!(action_id, "browser.link.open");
-        assert_eq!(command.name, "open");
-        assert_eq!(command.arguments, vec!["https://example.test/link"]);
-        let (command, route, action_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.link.open",
-            "arguments": {
-                "url": "https://example.test/link",
-                "target": "tab-bg"
-            }
-        }))
-        .expect("typed background link action");
-        assert_eq!(action_id, "browser.link.open");
-        assert_eq!(command.name, "open");
-        assert_eq!(command.arguments, vec!["https://example.test/link"]);
-        assert_eq!(route.open_target, IpcOpenTarget::BackgroundTab);
-        for name in [
-            "download-open",
-            "download-show",
-            "download-cancel",
-            "download-retry",
-        ] {
-            let (command, _) = typed_ipc_command(&serde_json::json!({
-                "command": name,
-                "arguments": {"id": "download-1"}
-            }))
-            .expect("typed download management command");
-            assert_eq!(command.arguments, vec!["download-1"]);
-        }
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "session-load",
-            "arguments": {"name": "work", "append": true}
-        }))
-        .expect("typed session load command");
-        assert_eq!(command.arguments, vec!["--append", "work"]);
-    }
-
-    #[test]
-    fn ipc_hint_commands_use_a_bounded_kind_selector() {
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "hint",
-            "arguments": {"kind": "links"}
-        }))
-        .expect("typed hint command");
-        assert_eq!(command.arguments, vec!["links"]);
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "hint",
-                "arguments": {"kind": "scripts"}
-            }))
-            .is_err()
-        );
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "hint",
-            "arguments": {"rapid": true, "target": "yank", "kind": "links"}
-        }))
-        .expect("typed rapid hint command");
-        assert_eq!(
-            command.arguments,
-            vec!["--rapid", "--target", "yank", "links"]
-        );
-        for target in ["tab", "window"] {
-            let (command, _) = typed_ipc_command(&serde_json::json!({
-                "command": "hint",
-                "arguments": {"target": target, "kind": "links"}
-            }))
-            .expect("typed foreground hint target");
-            assert_eq!(command.arguments, vec!["--target", target, "links"]);
-            assert!(
-                typed_ipc_command(&serde_json::json!({
-                    "command": "hint",
-                    "arguments": {"target": target, "rapid": true}
-                }))
-                .is_err()
-            );
-        }
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "hint",
-            "arguments": {"target": "clean-yank", "rapid": true}
-        }))
-        .expect("typed clean rapid hint command");
-        assert_eq!(command.arguments, vec!["--rapid", "--target", "clean-yank"]);
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "hint",
-            "arguments": {"target": "download", "rapid": true, "kind": "links"}
-        }))
-        .expect("typed rapid download hint command");
-        assert_eq!(
-            command.arguments,
-            vec!["--rapid", "--target", "download", "links"]
-        );
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "hint",
-            "arguments": {"target": "clean-yank"}
-        }))
-        .expect("typed one-shot clean-yank hint command");
-        assert_eq!(command.arguments, vec!["--target", "clean-yank"]);
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "hint",
-            "arguments": {"target": "userscript", "script": "video", "kind": "links"}
-        }))
-        .expect("typed userscript hint command");
-        assert_eq!(
-            command.arguments,
-            vec!["--target", "userscript", "--script", "video", "links"]
-        );
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "hint",
-            "arguments": {"target": "external:mpv", "kind": "links"}
-        }))
-        .expect("typed external hint command");
-        assert_eq!(command.arguments, vec!["--target", "external:mpv", "links"]);
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "hint",
-            "arguments": {
-                "rapid": true,
-                "target": "userscript",
-                "script": "video",
-                "kind": "links"
-            }
-        }))
-        .expect("typed rapid userscript hint command");
-        assert_eq!(
-            command.arguments,
-            vec![
-                "--rapid",
-                "--target",
-                "userscript",
-                "--script",
-                "video",
-                "links"
-            ]
-        );
-        let (command, _) = typed_ipc_command(&serde_json::json!({
-            "command": "hint",
-            "arguments": {"target": "tab-bg"}
-        }))
-        .expect("typed one-shot background-tab hint command");
-        assert_eq!(command.arguments, vec!["--target", "tab-bg"]);
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "hint",
-                "arguments": {"rapid": true, "target": "external:mpv"}
-            }))
-            .is_err()
-        );
-        assert!(
-            typed_ipc_command(&serde_json::json!({
-                "command": "hint",
-                "arguments": {"target": "external:Bad Name"}
-            }))
-            .is_err()
-        );
-        for action in ["clean-yank", "tab-bg", "userscript", "download"] {
-            assert!(rapid_hint_keeps_mode(true, Some(action)));
-        }
-        assert!(rapid_hint_keeps_mode(true, Some("yank")));
-        for action in ["navigate", "ephemeral"] {
-            assert!(!rapid_hint_keeps_mode(true, Some(action)));
-        }
-        assert!(!rapid_hint_keeps_mode(false, Some("tab-bg")));
-    }
-
-    #[test]
-    fn action_command_maps_subject_and_verb_to_a_registered_executor() {
-        for (verb, command_name) in [
-            ("back", "back"),
-            ("forward", "forward"),
-            ("reload", "reload"),
-            ("stop", "stop"),
-        ] {
-            let (mapped, action_id) = parse_action_invocation(&ParsedCommand {
-                name: "action".into(),
-                arguments: vec!["tab".into(), verb.into()],
-            })
-            .expect("navigation action mapping");
-            assert_eq!(action_id, format!("browser.tab.{verb}"));
-            assert_eq!(mapped.name, command_name);
-            assert!(mapped.arguments.is_empty());
-            let (typed, _, typed_id) = typed_ipc_action(&serde_json::json!({
-                "action": format!("browser.tab.{verb}"),
-                "arguments": {}
-            }))
-            .expect("typed navigation action");
-            assert_eq!(typed_id, format!("browser.tab.{verb}"));
-            assert_eq!(typed.name, command_name);
-            assert!(typed.arguments.is_empty());
-        }
-        for (verb, command_name) in [("back", "back"), ("forward", "forward")] {
-            let (mapped, action_id) = parse_action_invocation(&ParsedCommand {
-                name: "action".into(),
-                arguments: vec!["tab".into(), verb.into(), "2".into()],
-            })
-            .expect("counted history action mapping");
-            assert_eq!(action_id, format!("browser.tab.{verb}"));
-            assert_eq!(mapped.name, command_name);
-            assert_eq!(mapped.arguments, vec!["--count", "2"]);
-            let (typed, _, typed_id) = typed_ipc_action(&serde_json::json!({
-                "action": format!("browser.tab.{verb}"),
-                "arguments": {"count": 2}
-            }))
-            .expect("typed counted history action");
-            assert_eq!(typed_id, format!("browser.tab.{verb}"));
-            assert_eq!(typed.name, command_name);
-            assert_eq!(typed.arguments, vec!["--count", "2"]);
-        }
-        let (mapped, action_id) = parse_action_invocation(&ParsedCommand {
-            name: "action".into(),
-            arguments: vec!["tab".into(), "reload".into(), "--bypass-cache".into()],
-        })
-        .expect("reload bypass action mapping");
-        assert_eq!(action_id, "browser.tab.reload");
-        assert_eq!(mapped.name, "reload");
-        assert_eq!(mapped.arguments, vec!["--bypass-cache"]);
-        let (typed, _, typed_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.tab.reload",
-            "arguments": {"bypass_cache": true}
-        }))
-        .expect("typed reload bypass action");
-        assert_eq!(typed_id, "browser.tab.reload");
-        assert_eq!(typed.name, "reload");
-        assert_eq!(typed.arguments, vec!["--bypass-cache"]);
-        for (verb, command_name, input, expected) in [
-            (
-                "scroll",
-                "scroll",
-                vec!["down", "3"],
-                vec!["down", "--count", "3"],
-            ),
-            (
-                "scroll-page",
-                "scroll-page",
-                vec!["up", "--half", "--count", "2"],
-                vec!["up", "--half", "--count", "2"],
-            ),
-            ("scroll-to", "scroll-to", vec!["bottom"], vec!["bottom"]),
-        ] {
-            let mut action_arguments = vec!["tab".into(), verb.into()];
-            action_arguments.extend(input.iter().map(|value| (*value).to_owned()));
-            let (mapped, action_id) = parse_action_invocation(&ParsedCommand {
-                name: "action".into(),
-                arguments: action_arguments,
-            })
-            .expect("scroll action mapping");
-            assert_eq!(action_id, format!("browser.tab.{verb}"));
-            assert_eq!(mapped.name, command_name);
-            assert_eq!(mapped.arguments, expected);
-        }
-        let (command, _, action_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.tab.scroll-page",
-            "arguments": {"direction": "down", "half": true, "count": 2}
-        }))
-        .expect("typed page scroll action");
-        assert_eq!(action_id, "browser.tab.scroll-page");
-        assert_eq!(command.name, "scroll-page");
-        assert_eq!(command.arguments, vec!["down", "--half", "--count", "2"]);
-        for (verb, command_name) in [("next", "tab-next"), ("previous", "tab-prev")] {
-            let (mapped, action_id) = parse_action_invocation(&ParsedCommand {
-                name: "action".into(),
-                arguments: vec!["tab".into(), verb.into(), "2".into()],
-            })
-            .expect("tab traversal action mapping");
-            assert_eq!(action_id, format!("browser.tab.{verb}"));
-            assert_eq!(mapped.name, command_name);
-            assert_eq!(mapped.arguments, vec!["--count", "2"]);
-            let (typed, _, typed_id) = typed_ipc_action(&serde_json::json!({
-                "action": format!("browser.tab.{verb}"),
-                "arguments": {"count": 2}
-            }))
-            .expect("typed tab traversal action");
-            assert_eq!(typed_id, format!("browser.tab.{verb}"));
-            assert_eq!(typed.name, command_name);
-            assert_eq!(typed.arguments, vec!["--count", "2"]);
-        }
-        let (mapped, action_id) = parse_action_invocation(&ParsedCommand {
-            name: "action".into(),
-            arguments: vec!["tab".into(), "clone".into()],
-        })
-        .expect("tab clone action mapping");
-        assert_eq!(action_id, "browser.tab.clone");
-        assert_eq!(mapped.name, "tab-clone");
-        assert!(mapped.arguments.is_empty());
-        let (command, _, action_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.window.fullscreen",
-            "arguments": {"state": "on"}
-        }))
-        .expect("typed fullscreen action");
-        assert_eq!(action_id, "browser.window.fullscreen");
-        assert_eq!(command.name, "fullscreen");
-        assert_eq!(command.arguments, vec!["on"]);
-        let (mapped, mapped_id) = parse_action_invocation(&ParsedCommand {
-            name: "action".into(),
-            arguments: vec![
-                "bookmark".into(),
-                "edit".into(),
-                "bookmark-1".into(),
-                "--title".into(),
-                "Edited title".into(),
-            ],
-        })
-        .expect("bookmark edit action mapping");
-        assert_eq!(mapped_id, "browser.bookmark.edit");
-        assert_eq!(mapped.name, "bookmark-edit");
-        assert_eq!(
-            mapped.arguments,
-            vec!["bookmark-1", "--title", "Edited title"]
-        );
-        let (typed, _, typed_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.bookmark.edit",
-            "arguments": {"id": "bookmark-1", "title": "Edited title"},
-        }))
-        .expect("typed bookmark edit action");
-        assert_eq!(typed_id, "browser.bookmark.edit");
-        assert_eq!(typed.name, "bookmark-edit");
-        assert_eq!(
-            typed.arguments,
-            vec!["bookmark-1", "--title", "Edited title"]
-        );
-        let (mapped, mapped_id) = parse_action_invocation(&ParsedCommand {
-            name: "action".into(),
-            arguments: vec![
-                "quickmark".into(),
-                "edit".into(),
-                "work".into(),
-                "https://edited.example/".into(),
-            ],
-        })
-        .expect("quickmark edit action mapping");
-        assert_eq!(mapped_id, "browser.quickmark.edit");
-        assert_eq!(mapped.name, "quickmark-edit");
-        assert_eq!(mapped.arguments, vec!["work", "https://edited.example/"]);
-        let (typed, _, typed_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.quickmark.edit",
-            "arguments": {"name": "work", "url": "https://edited.example/"},
-        }))
-        .expect("typed quickmark edit action");
-        assert_eq!(typed_id, "browser.quickmark.edit");
-        assert_eq!(typed.name, "quickmark-edit");
-        assert_eq!(typed.arguments, vec!["work", "https://edited.example/"]);
-        let command = ParsedCommand {
-            name: "action".into(),
-            arguments: vec!["url".into(), "open".into(), "https://example.test".into()],
-        };
-        let (mapped, action_id) = parse_action_invocation(&command).expect("action mapping");
-        assert_eq!(action_id, "browser.url.open");
-        assert_eq!(mapped.name, "open");
-        assert_eq!(mapped.arguments, vec!["https://example.test"]);
-        let (mapped, action_id) = parse_action_invocation(&ParsedCommand {
-            name: "action".into(),
-            arguments: vec![
-                "link".into(),
-                "open".into(),
-                "--target".into(),
-                "tab-bg".into(),
-                "https://example.test/docs".into(),
-            ],
-        })
-        .expect("link background action mapping");
-        assert_eq!(action_id, "browser.link.open");
-        assert_eq!(mapped.name, "open");
-        assert_eq!(
-            mapped.arguments,
-            vec!["--target", "tab-bg", "https://example.test/docs"]
-        );
-        let (mapped, action_id) = parse_action_invocation(&ParsedCommand {
-            name: "action".into(),
-            arguments: vec![
-                "url".into(),
-                "open".into(),
-                "--target".into(),
-                "tab-bg".into(),
-                "https://example.test".into(),
-            ],
-        })
-        .expect("URL background action mapping");
-        assert_eq!(action_id, "browser.url.open");
-        assert_eq!(
-            mapped.arguments,
-            vec!["--target", "tab-bg", "https://example.test"]
-        );
-        assert!(
-            parse_action_invocation(&ParsedCommand {
-                name: "action".into(),
-                arguments: vec![
-                    "url".into(),
-                    "open".into(),
-                    "--target".into(),
-                    "not-a-target".into(),
-                    "https://example.test".into(),
-                ],
-            })
-            .is_err()
-        );
-        let (mapped, action_id) = parse_action_invocation(&ParsedCommand {
-            name: "action".into(),
-            arguments: vec!["link".into(), "send".into(), "--to".into(), "mpv".into()],
-        })
-        .expect("external action mapping");
-        assert_eq!(action_id, "browser.link.send");
-        assert_eq!(mapped.name, "send");
-        assert_eq!(mapped.arguments, vec!["mpv"]);
-        let (command, _, action_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.link.send",
-            "arguments": {"target": "mpv", "url": "https://example.test/docs"}
-        }))
-        .expect("typed external action");
-        assert_eq!(action_id, "browser.link.send");
-        assert_eq!(command.name, "send");
-        assert_eq!(command.arguments, vec!["mpv", "https://example.test/docs"]);
-        let (command, _, action_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.url.send",
-            "arguments": {"target": "mpv"}
-        }))
-        .expect("typed URL target action");
-        assert_eq!(action_id, "browser.url.send");
-        assert_eq!(command.name, "send");
-        assert_eq!(command.arguments, vec!["mpv", "--url"]);
-        let (command, _, action_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.tab.send",
-            "arguments": {"target": "mpv"}
-        }))
-        .expect("typed tab target action");
-        assert_eq!(action_id, "browser.tab.send");
-        assert_eq!(command.name, "send");
-        assert_eq!(command.arguments, vec!["mpv", "--tab"]);
-        let (command, _, action_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.selection.send",
-            "arguments": {"target": "mpv"}
-        }))
-        .expect("typed selection target action");
-        assert_eq!(action_id, "browser.selection.send");
-        assert_eq!(command.name, "send");
-        assert_eq!(command.arguments, vec!["mpv", "--selection"]);
-        let (command, _, action_id) = typed_ipc_action(&serde_json::json!({
-            "action": "external.mpv.url.send",
-            "arguments": {"url": "https://example.test/current"}
-        }))
-        .expect("typed configured URL action");
-        assert_eq!(action_id, "external.mpv.url.send");
-        assert_eq!(command.name, "send");
-        assert_eq!(
-            command.arguments,
-            vec!["mpv", "--url", "https://example.test/current"]
-        );
-        let (command, _, action_id) = typed_ipc_action(&serde_json::json!({
-            "action": "external.mpv.link.send",
-            "arguments": {"target": "mpv", "url": "https://example.test/link"}
-        }))
-        .expect("typed configured link action");
-        assert_eq!(action_id, "external.mpv.link.send");
-        assert_eq!(command.arguments, vec!["mpv", "https://example.test/link"]);
-        assert!(
-            typed_ipc_action(&serde_json::json!({
-                "action": "external.mpv.link.send",
-                "arguments": {}
-            }))
-            .is_err()
-        );
-        assert!(
-            typed_ipc_action(&serde_json::json!({
-                "action": "external.mpv.tab.send",
-                "arguments": {"url": "https://example.test/not-allowed"}
-            }))
-            .is_err()
-        );
-        let (mapped, action_id) = parse_action_invocation(&ParsedCommand {
-            name: "action".into(),
-            arguments: vec![
-                "selection".into(),
-                "search".into(),
-                "--engine".into(),
-                "ddg".into(),
-            ],
-        })
-        .expect("selection search action mapping");
-        assert_eq!(action_id, "browser.selection.search");
-        assert_eq!(mapped.name, "selection-search");
-        assert_eq!(mapped.arguments, vec!["ddg"]);
-        let (command, _, action_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.selection.search",
-            "arguments": {"engine": "ddg"}
-        }))
-        .expect("typed selection search action");
-        assert_eq!(action_id, "browser.selection.search");
-        assert_eq!(command.name, "selection-search");
-        assert_eq!(command.arguments, vec!["ddg"]);
-        let (mapped, action_id) = parse_action_invocation(&ParsedCommand {
-            name: "action".into(),
-            arguments: vec![
-                "link".into(),
-                "download".into(),
-                "https://example.test/file.zip".into(),
-            ],
-        })
-        .expect("download action mapping");
-        assert_eq!(action_id, "browser.link.download");
-        assert_eq!(mapped.name, "download");
-        assert_eq!(mapped.arguments, vec!["https://example.test/file.zip"]);
-        for (verb, command_name, action_id) in [
-            ("open", "download-open", "browser.download.open"),
-            ("show", "download-show", "browser.download.show"),
-            ("cancel", "download-cancel", "browser.download.cancel"),
-            ("pause", "download-pause", "browser.download.pause"),
-            ("resume", "download-resume", "browser.download.resume"),
-            ("retry", "download-retry", "browser.download.retry"),
-        ] {
-            let (mapped, mapped_id) = parse_action_invocation(&ParsedCommand {
-                name: "action".into(),
-                arguments: vec!["download".into(), verb.into(), "download-1".into()],
-            })
-            .expect("download action mapping");
-            assert_eq!(mapped_id, action_id);
-            assert_eq!(mapped.name, command_name);
-            assert_eq!(mapped.arguments, vec!["download-1"]);
-        }
-        for (verb, command_name, expected_arguments) in [
-            ("focus", "tab-focus", vec!["tabid-42".to_owned()]),
-            ("select", "tab-select", vec!["tabid-42".to_owned()]),
-            ("close", "tab-close", vec!["tabid-42".to_owned()]),
-            ("suspend", "tab-suspend", vec!["tabid-42".to_owned()]),
-            ("discard", "tab-discard", vec!["tabid-42".to_owned()]),
-            ("resume", "tab-resume", vec!["tabid-42".to_owned()]),
-            (
-                "move",
-                "tab-move",
-                vec!["tabid-42".to_owned(), "left".to_owned()],
-            ),
-            ("mute", "tab-mute", vec!["tabid-42".to_owned()]),
-        ] {
-            let (mapped, action_id) = parse_action_invocation(&ParsedCommand {
-                name: "action".into(),
-                arguments: {
-                    let mut arguments = vec!["tab".into(), verb.into(), "tabid-42".into()];
-                    if verb == "move" {
-                        arguments.push("left".into());
-                    }
-                    arguments
-                },
-            })
-            .expect("tab action mapping");
-            assert_eq!(action_id, format!("browser.tab.{verb}"));
-            assert_eq!(mapped.name, command_name);
-            assert_eq!(mapped.arguments, expected_arguments);
-        }
-        let (mapped, action_id) = parse_action_invocation(&ParsedCommand {
-            name: "action".into(),
-            arguments: vec!["tab".into(), "pin".into(), "tabid-42".into(), "on".into()],
-        })
-        .expect("tab pin action mapping");
-        assert_eq!(action_id, "browser.tab.pin");
-        assert_eq!(mapped.name, "tab-pin");
-        assert_eq!(mapped.arguments, vec!["tabid-42", "on"]);
-        let (mapped, action_id) = parse_action_invocation(&ParsedCommand {
-            name: "action".into(),
-            arguments: vec!["tab".into(), "mute".into(), "tabid-42".into(), "on".into()],
-        })
-        .expect("tab mute action mapping");
-        assert_eq!(action_id, "browser.tab.mute");
-        assert_eq!(mapped.name, "tab-mute");
-        assert_eq!(mapped.arguments, vec!["tabid-42", "on"]);
-        let (command, _, action_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.tab.pin",
-            "arguments": {"id": "tabid-42", "state": "off"}
-        }))
-        .expect("typed tab pin action");
-        assert_eq!(action_id, "browser.tab.pin");
-        assert_eq!(command.name, "tab-pin");
-        assert_eq!(command.arguments, vec!["tabid-42", "off"]);
-        assert!(
-            typed_ipc_action(&serde_json::json!({
-                "action": "browser.tab.pin",
-                "arguments": {"id": "tabid-42", "state": "invalid"}
-            }))
-            .is_err()
-        );
-        let (command, _, action_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.tab.mute",
-            "arguments": {"id": "tabid-42", "state": "off"}
-        }))
-        .expect("typed tab mute action");
-        assert_eq!(action_id, "browser.tab.mute");
-        assert_eq!(command.name, "tab-mute");
-        assert_eq!(command.arguments, vec!["tabid-42", "off"]);
-        assert!(
-            typed_ipc_action(&serde_json::json!({
-                "action": "browser.tab.mute",
-                "arguments": {"id": "tabid-42", "state": "invalid"}
-            }))
-            .is_err()
-        );
-        let (command, _, action_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.tab.undo",
-            "arguments": {}
-        }))
-        .expect("typed tab undo action");
-        assert_eq!(action_id, "browser.tab.undo");
-        assert_eq!(command.name, "tab-undo");
-        assert!(command.arguments.is_empty());
-        let (command, _, action_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.tab.move",
-            "arguments": {"id": "tabid-42", "direction": "right"}
-        }))
-        .expect("typed tab action");
-        assert_eq!(action_id, "browser.tab.move");
-        assert_eq!(command.name, "tab-move");
-        assert_eq!(command.arguments, vec!["tabid-42", "right"]);
-        let (command, _, action_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.tab.select",
-            "arguments": {"selector": "2"}
-        }))
-        .expect("typed tab select action");
-        assert_eq!(action_id, "browser.tab.select");
-        assert_eq!(command.name, "tab-select");
-        assert_eq!(command.arguments, vec!["2"]);
-        assert!(
-            typed_ipc_action(&serde_json::json!({
-                "action": "browser.tab.select",
-                "arguments": {"selector": 2}
-            }))
-            .is_err()
-        );
-        let (command, _, action_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.tab.discard",
-            "arguments": {"id": "tabid-42"}
-        }))
-        .expect("typed tab discard action");
-        assert_eq!(action_id, "browser.tab.discard");
-        assert_eq!(command.name, "tab-discard");
-        assert_eq!(command.arguments, vec!["tabid-42"]);
-        for (verb, command_name) in [
-            ("reopen-window", "reopen-in-window"),
-            ("detach", "tab-detach"),
-        ] {
-            let (mapped, action_id) = parse_action_invocation(&ParsedCommand {
-                name: "action".into(),
-                arguments: vec!["tab".into(), verb.into()],
-            })
-            .expect("tab window action mapping");
-            assert_eq!(action_id, format!("browser.tab.{verb}"));
-            assert_eq!(mapped.name, command_name);
-            assert!(mapped.arguments.is_empty());
-        }
-        let (command, _, action_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.tab.reopen-window",
-            "arguments": {}
-        }))
-        .expect("typed tab reopen action");
-        assert_eq!(action_id, "browser.tab.reopen-window");
-        assert_eq!(command.name, "reopen-in-window");
-        assert!(command.arguments.is_empty());
-        let (command, _, action_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.tab.detach",
-            "arguments": {}
-        }))
-        .expect("typed tab detach action");
-        assert_eq!(action_id, "browser.tab.detach");
-        assert_eq!(command.name, "tab-detach");
-        assert!(command.arguments.is_empty());
-        let (mapped, action_id) = parse_action_invocation(&ParsedCommand {
-            name: "action".into(),
-            arguments: vec!["tab".into(), "zoom".into(), "1.25".into()],
-        })
-        .expect("tab zoom action mapping");
-        assert_eq!(action_id, "browser.tab.zoom");
-        assert_eq!(mapped.name, "zoom");
-        assert_eq!(mapped.arguments, vec!["1.25"]);
-        let (command, _, action_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.tab.zoom",
-            "arguments": {"factor": "in"}
-        }))
-        .expect("typed tab zoom action");
-        assert_eq!(action_id, "browser.tab.zoom");
-        assert_eq!(command.name, "zoom");
-        assert_eq!(command.arguments, vec!["in"]);
-        let (mapped, action_id) = parse_action_invocation(&ParsedCommand {
-            name: "action".into(),
-            arguments: vec![
-                "tab".into(),
-                "search-next".into(),
-                "backward".into(),
-                "3".into(),
-            ],
-        })
-        .expect("tab search-next action mapping");
-        assert_eq!(action_id, "browser.tab.search-next");
-        assert_eq!(mapped.name, "search-next");
-        assert_eq!(mapped.arguments, vec!["--backward", "--count", "3"]);
-        let (command, _, action_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.tab.search-next",
-            "arguments": {"direction": "forward", "count": 2}
-        }))
-        .expect("typed tab search-next action");
-        assert_eq!(action_id, "browser.tab.search-next");
-        assert_eq!(command.name, "search-next");
-        assert_eq!(command.arguments, vec!["--count", "2"]);
-        let qml = include_str!("../qml/Main.qml");
-        let source = include_str!("lib.rs");
-        assert!(qml.contains("browser.tab.move"));
-        assert!(qml.contains("browser.tab.select"));
-        assert!(qml.contains("audioMuted: !!viewModel.muted"));
-        assert!(qml.contains("action.indexOf(\"tab-mute\\t\") === 0"));
-        assert!(qml.contains("tabs.setProperty(muteIndex, \"muted\", muted)"));
-        assert!(
-            source
-                .contains(".pending_engine_action = Some(format!(\"tab-mute\\t{tab}\\t{muted}\"))")
-        );
-        assert!(source.contains("\"muted\": muted"));
-        assert!(!source.contains("\"muted\": !muted"));
-        assert!(qml.contains("window.executePendingEngineAction()"));
-        assert!(qml.contains("tabId + \"\\tleft\""));
-        assert!(qml.contains("tabId + \"\\tright\""));
-        assert!(qml.contains("browser.tab.reopen-window"));
-        assert!(qml.contains("browser.tab.suspend"));
-        assert!(qml.contains("browser.tab.discard"));
-        assert!(qml.contains("browser.tab.resume"));
-        assert!(qml.contains("close_popup_tab"));
-        assert!(qml.contains("WebEngineView.LifecycleState.Frozen"));
-        assert!(qml.contains("WebEngineView.LifecycleState.Discarded"));
-        assert!(qml.contains("recommendedState"));
-        assert!(qml.contains("tabSuspensionBlockReason"));
-        assert!(qml.contains("tabDiscardBlockReason"));
-        assert!(qml.contains("discarded page reload requested"));
-        assert!(qml.contains("reopen-window\\t"));
-        assert!(qml.contains("reopen-window-confirm\\t"));
-        assert!(qml.contains("showReopenWindowConfirmation"));
-        assert!(qml.contains("confirmReopenWindow"));
-        assert!(qml.contains("Reopen tab in a same-profile window?"));
-        assert!(source.contains("reopen-window-confirm\\t{source_url}"));
-        assert!(qml.contains("browser.tab.zoom"));
-        assert!(qml.contains("zoom\\t"));
-        assert!(qml.contains("function refreshEffectiveSiteSettings()"));
-        assert!(qml.contains("Navigation-scoped content settings are snapshotted"));
-        assert!(!qml.contains("var configGeneration = viewUi.config_json"));
-        assert!(qml.contains("browser.tab.search-next"));
-        assert!(qml.contains("function openLibraryEntry(entryKind, entryId)"));
-        assert!(qml.contains("function deleteLibraryEntry(entryKind, entryId)"));
-        assert!(qml.contains("function editLibraryEntry(entryKind, entryId, value)"));
-        assert!(qml.contains("bookmark-edit"));
-        assert!(qml.contains("quickmark-edit"));
-        assert!(qml.contains("function changeLibraryPage(delta)"));
-        assert!(qml.contains("function runJourneyCurrentQuery()"));
-        assert!(qml.contains("Show current journey node only"));
-        assert!(qml.contains("window.runJourneyQuery(\"--current\")"));
-        assert!(qml.contains("Choose reopen target for journey node"));
-        assert!(qml.contains("--target \" + target"));
-        assert!(qml.contains("Previous library page"));
-        assert!(qml.contains("Next library page"));
-        assert!(qml.contains("Confirm delete"));
-        assert!(qml.contains("entryKind === \"bookmark\""));
-        assert!(qml.contains("window-close-request"));
-        assert!(qml.contains("beginApplicationShutdown"));
-        assert!(qml.contains("applicationShutdownForcePromptVisible"));
-        assert!(qml.contains("registerPopupWindow"));
-        assert!(qml.contains("begin_shutdown_gate"));
-        assert!(qml.contains("force_quit"));
-        assert!(qml.contains("flush_durable_state"));
-        assert!(qml.contains("poll_storage_library"));
-        assert!(qml.contains("storageLibraryPollTimer"));
-        assert!(qml.contains("request_session_preview"));
-        assert!(qml.contains("request_named_session_load"));
-        assert!(qml.contains("sessionPreviewPollTimer"));
-        assert!(qml.contains("Loading validated session descriptors"));
-        assert!(source.contains("request_session_preview(&name)"));
-        assert!(source.contains("session_restore_load_append = Some(append)"));
-        assert!(qml.contains("update_completion(commandLine.text"));
-        assert!(qml.contains("window.downloadManagerVisible"));
-        assert!(qml.contains("clear_current_session_checkpoints"));
-        assert!(qml.contains("windowShutdownStoragePromptVisible"));
-        assert!(qml.contains("cancelShutdownRequestsFor"));
-        assert!(qml.contains("shutdownPageProbeScript"));
-        assert!(qml.contains("shutdownPageProbeTimer"));
-        assert!(qml.contains("shutdownPagePromptVisible"));
-        assert!(qml.contains("Close anyway despite page state"));
-        assert!(qml.contains("release_transient_resources()"));
-        assert!(qml.contains("find-next\\t"));
-        assert!(qml.contains("WebEngineDownloadRequest.MimeHtmlSaveFormat"));
-        assert!(qml.contains("prepare_save_page"));
-        assert!(qml.contains("take_save_page_path"));
-        assert!(qml.contains("id: secondaryDownloadChooser"));
-        assert!(qml.contains("secondaryProfile.acceptPendingDownload()"));
-        assert!(qml.contains("secondaryProfile.cancelPendingDownload()"));
-        assert!(qml.contains("secondaryWindow.pendingDownloadRequests"));
-        assert!(qml.contains("secondaryDownloadChooser.open()"));
-        assert!(qml.contains("secondaryWindow.pendingDownloadRequests = ({})"));
-        assert!(qml.contains("download.view"));
-        assert!(qml.contains("function downloadOwnerFor(download)"));
-        assert!(qml.contains("id: popupDownloadChooser"));
-        assert!(qml.contains("owner.handleDownloadRequested(download)"));
-        assert!(qml.contains("popupWindow.cancelPendingDownload()"));
-        assert!(qml.contains("download.totalBytes"));
-        assert!(qml.contains("download.interruptReasonString"));
-        assert!(qml.contains("function downloadMetrics(id, download)"));
-        assert!(qml.contains("Failure reason: "));
-        assert!(qml.contains("function formatDownloadRate(bytesPerSecond)"));
-        assert!(qml.contains("id: downloadMetricsTimer"));
-        assert!(qml.contains("function spellcheckDictionaryStatus(ui)"));
-        assert!(qml.contains("spellcheck_dictionaries"));
-        assert!(qml.contains("no download was attempted"));
-        assert!(qml.contains("spellcheck.languages"));
-        assert!(qml.contains("rowData.type === \"languages\""));
-        assert!(qml.contains("view-source:"));
-        assert!(qml.contains("Viewing page source"));
-        assert!(qml.contains("action.indexOf(\"jseval\\t\") === 0"));
-        assert!(qml.contains("WebEngineScript.MainWorld"));
-        assert!(source.contains("validate_jseval_script"));
-        assert!(qml.contains("prepare_print_job"));
-        assert!(qml.contains("finish_print_job"));
-        assert!(qml.contains("printToPdf(function(success)"));
-        assert!(qml.contains("devToolsView: window.devToolsVisible"));
-        assert!(qml.contains("function toggleDevTools(detach)"));
-        assert!(qml.contains("inspectedView: window.activeWebView()"));
-        assert!(qml.contains("id: secondaryDevToolsLoader"));
-        assert!(qml.contains("active: secondaryWindow.devToolsVisible"));
-        assert!(qml.contains("devToolsView: secondaryWindow.devToolsVisible"));
-        assert!(qml.contains("secondaryWindow.devToolsWindow"));
-        assert!(qml.contains("action === \"show-binding-help\""));
-        assert!(qml.contains("action === \"show-diagnostics\""));
-        assert!(qml.contains("action.indexOf(\"show-settings\\t\") === 0"));
-        assert!(qml.contains("function showSettings(search)"));
-        assert!(qml.contains("function installUserscriptManifest()"));
-        assert!(qml.contains("Install userscript manifest"));
-        assert!(source.contains("fn install_userscript_manifest"));
-        assert!(qml.contains("function refreshEngineUpdateNotice()"));
-        assert!(
-            qml.contains("QtWebEngine build is blocked; update it with the system package manager")
-        );
-        assert!(qml.contains("engine_update_policy"));
-        assert!(qml.contains("result.action === \"clean-yank\""));
-        assert!(qml.contains("Clean-copy link"));
-        assert!(qml.contains("\"browser.link.clean-copy\""));
-        assert!(qml.contains("ui.take_clipboard_request()"));
-        assert!(source.contains(
-            "Some(\"yank\" | \"clean-yank\" | \"tab-bg\" | \"userscript\" | \"download\")"
-        ));
-        let (mapped, action_id) = parse_action_invocation(&ParsedCommand {
-            name: "action".into(),
-            arguments: vec!["window".into(), "focus".into(), "window-42".into()],
-        })
-        .expect("window action mapping");
-        assert_eq!(action_id, "browser.window.focus");
-        assert_eq!(mapped.name, "window-focus");
-        assert_eq!(mapped.arguments, vec!["window-42"]);
-        let (command, _, action_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.window.focus",
-            "arguments": {"id": "window-42"}
-        }))
-        .expect("typed window action");
-        assert_eq!(action_id, "browser.window.focus");
-        assert_eq!(command.name, "window-focus");
-        assert_eq!(command.arguments, vec!["window-42"]);
-        let (mapped, action_id) = parse_action_invocation(&ParsedCommand {
-            name: "action".into(),
-            arguments: vec!["window".into(), "close".into()],
-        })
-        .expect("window close action mapping");
-        assert_eq!(action_id, "browser.window.close");
-        assert_eq!(mapped.name, "window-close");
-        assert!(mapped.arguments.is_empty());
-        let (command, _, action_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.window.close",
-            "arguments": {}
-        }))
-        .expect("typed window close action");
-        assert_eq!(action_id, "browser.window.close");
-        assert_eq!(command.name, "window-close");
-        assert!(command.arguments.is_empty());
-        let (mapped, action_id) = parse_action_invocation(&ParsedCommand {
-            name: "action".into(),
-            arguments: vec![
-                "session".into(),
-                "load".into(),
-                "--append".into(),
-                "work".into(),
-            ],
-        })
-        .expect("session action mapping");
-        assert_eq!(action_id, "browser.session.load");
-        assert_eq!(mapped.name, "session-load");
-        assert_eq!(mapped.arguments, vec!["--append", "work"]);
-        let (command, _, action_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.session.load",
-            "arguments": {"name": "work", "append": true}
-        }))
-        .expect("typed session action");
-        assert_eq!(action_id, "browser.session.load");
-        assert_eq!(command.name, "session-load");
-        assert_eq!(command.arguments, vec!["--append", "work"]);
-        for (subject, verb, id, command_name) in [
-            ("history-entry", "open", "history-42", "history-open"),
-            ("bookmark", "open", "bookmark-42", "bookmark-open"),
-            ("bookmark", "delete", "bookmark-42", "bookmark-delete"),
-            ("quickmark", "open", "work", "quickmark-open"),
-            ("quickmark", "delete", "work", "quickmark-delete"),
-        ] {
-            let (mapped, mapped_id) = parse_action_invocation(&ParsedCommand {
-                name: "action".into(),
-                arguments: vec![subject.into(), verb.into(), id.into()],
-            })
-            .expect("stored entry action mapping");
-            assert_eq!(mapped_id, format!("browser.{subject}.{verb}"));
-            assert_eq!(mapped.name, command_name);
-            assert_eq!(mapped.arguments, vec![id.to_owned()]);
-        }
-        for (verb, command_name) in [("help", "command-help"), ("execute", "command-execute")] {
-            let (mapped, mapped_id) = parse_action_invocation(&ParsedCommand {
-                name: "action".into(),
-                arguments: vec!["command".into(), verb.into(), "command-42".into()],
-            })
-            .expect("command action mapping");
-            assert_eq!(mapped_id, format!("browser.command.{verb}"));
-            assert_eq!(mapped.name, command_name);
-            assert_eq!(mapped.arguments, vec!["command-42"]);
-        }
-        let open_id = CommandRegistry::default_v1()
-            .definitions()
-            .iter()
-            .find(|definition| definition.name == "open")
-            .expect("open command definition")
-            .action
-            .to_string();
-        let (command, _, action_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.command.execute",
-            "arguments": {
-                "id": open_id.clone(),
-                "arguments": {"input": "https://example.test"}
-            }
-        }))
-        .expect("typed argument-bearing command action");
-        assert_eq!(action_id, "browser.command.execute");
-        assert_eq!(command.name, "command-execute");
-        assert_eq!(command.arguments.len(), 2);
-        assert_eq!(command.arguments[0], open_id);
-        assert_eq!(
-            serde_json::from_str::<Value>(&command.arguments[1]).expect("encoded arguments"),
-            serde_json::json!({"input": "https://example.test"})
-        );
-        assert!(
-            typed_ipc_action(&serde_json::json!({
-                "action": "browser.command.execute",
-                "arguments": {"id": open_id, "arguments": "not-an-object"}
-            }))
-            .is_err()
-        );
-        let (mapped, action_id) = parse_action_invocation(&ParsedCommand {
-            name: "action".into(),
-            arguments: vec!["context".into(), "enter".into(), "research".into()],
-        })
-        .expect("context action mapping");
-        assert_eq!(action_id, "browser.context.enter");
-        assert_eq!(mapped.name, "context-enter");
-        assert_eq!(mapped.arguments, vec!["research"]);
-        let (command, _, action_id) = typed_ipc_action(&serde_json::json!({
-            "action": "browser.context.save",
-            "arguments": {"name": "research"}
-        }))
-        .expect("typed context action");
-        assert_eq!(action_id, "browser.context.save");
-        assert_eq!(command.name, "context-save");
-        assert_eq!(command.arguments, vec!["research"]);
-        assert!(
-            parse_action_invocation(&ParsedCommand {
-                name: "action".into(),
-                arguments: vec!["tab".into(), "undo".into(), "unexpected".into()],
-            })
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn configured_selection_search_uses_https_data_only_templates() {
-        let config = serde_json::to_value(Config::default()).expect("default config");
-        let (engine, url) = configured_search_url(&config, Some("ddg"), "$() `quoted` ;; ")
-            .expect("configured search URL");
-        assert_eq!(engine, "ddg");
-        assert_eq!(
-            url,
-            "https://duckduckgo.com/?q=%24%28%29%20%60quoted%60%20%3B%3B%20"
-        );
-        assert!(configured_search_url(&config, Some("missing"), "query").is_err());
-    }
-
-    #[test]
-    fn navigation_uses_configured_search_engines_for_keywords_and_fallback() {
-        let mut config = Config::default();
-        config.navigation.default_search = "g".into();
-        config
-            .search_engines
-            .insert("g".into(), "https://search.example/?q={query}".into());
-        let value = serde_json::to_value(config).expect("navigation config");
-        let context = navigation_context_from_config_and_quickmarks(
-            &value,
-            &[Quickmark {
-                name: "docs".into(),
-                url: "https://docs.example/".into(),
-            }],
-            false,
-        );
-        assert_eq!(
-            resolve_input("docs", &context)
-                .expect("configured quickmark")
-                .url
-                .as_str(),
-            "https://docs.example/"
-        );
-        assert_eq!(
-            resolve_input("g ferric browser", &context)
-                .expect("configured keyword")
-                .url
-                .as_str(),
-            "https://search.example/?q=ferric%20browser"
-        );
-        assert_eq!(
-            resolve_input("ferric browser", &context)
-                .expect("configured fallback")
-                .url
-                .as_str(),
-            "https://search.example/?q=ferric%20browser"
-        );
-        let trusted = navigation_context_from_config_and_quickmarks(&value, &[], true);
-        assert_eq!(
-            resolve_input("/tmp/report.html", &trusted)
-                .expect("trusted CLI local path")
-                .source,
-            NavigationSource::LocalPath
-        );
-        let untrusted = navigation_context_from_config_and_quickmarks(&value, &[], false);
-        assert_eq!(
-            resolve_input("/tmp/report.html", &untrusted)
-                .expect("untrusted local-looking input")
-                .source,
-            NavigationSource::Search
-        );
-    }
-
-    #[test]
-    fn configured_target_discovery_preserves_declared_subjects() {
-        let target = ActionTargetConfig {
-            subject_types: vec!["link".into(), "selection".into()],
-            executable: "tool".into(),
-            argv: vec!["{url}".into()],
-            detach: true,
-            allow_private: false,
-        };
-        let values = configured_action_target_values("tool", &target, false);
-        assert_eq!(values.len(), 2);
-        assert_eq!(values[0]["id"], "external.tool.link.send");
-        assert_eq!(values[0]["subject"], "link");
-        assert_eq!(values[0]["arguments"][1]["name"], "url");
-        assert_eq!(values[0]["availability"]["state"], "available");
-        assert_eq!(values[0]["completion_provider"], "url");
-        assert_eq!(values[0]["availability_predicate"], "captured-link");
-        assert_eq!(values[0]["availability"]["predicate"], "captured-link");
-        assert_eq!(
-            values[0]["availability"]["requires_subject_revalidation"],
-            true
-        );
-        assert_eq!(values[1]["id"], "external.tool.selection.send");
-        assert_eq!(values[1]["completion_provider"], "text");
-        assert_eq!(values[1]["availability_predicate"], "live-selection");
-        assert_eq!(values[1]["subject"], "selection");
-        assert_eq!(values[1]["examples"][0], "action selection send --to tool");
-        let private_values = configured_action_target_values("tool", &target, true);
-        assert_eq!(private_values[0]["availability"]["state"], "unavailable");
-        assert_eq!(
-            private_values[0]["availability"]["reason"],
-            "private-profile"
-        );
-    }
-
-    #[test]
-    fn configured_target_availability_is_subject_specific() {
-        let mut config = Config::default();
-        config.action_targets.insert(
-            "selection-tool".into(),
-            ActionTargetConfig {
-                subject_types: vec!["selection".into()],
-                executable: "tool".into(),
-                argv: vec!["{selection}".into()],
-                detach: false,
-                allow_private: false,
-            },
-        );
-        let config = serde_json::to_value(config).expect("action target config");
-        assert!(
-            configured_action_target_supports_subject(&config, ActionSubject::Selection)
-                .expect("selection target availability")
-        );
-        assert!(
-            !configured_action_target_supports_subject(&config, ActionSubject::Link)
-                .expect("link target availability")
-        );
-    }
-
-    #[test]
-    fn configured_target_discovery_exposes_url_and_tab_subjects() {
-        let target = ActionTargetConfig {
-            subject_types: vec!["url".into(), "tab".into()],
-            executable: "tool".into(),
-            argv: vec!["{url}".into(), "{title}".into()],
-            detach: false,
-            allow_private: true,
-        };
-        let values = configured_action_target_values("tool", &target, false);
-        assert_eq!(values.len(), 2);
-        assert_eq!(values[0]["id"], "external.tool.url.send");
-        assert_eq!(values[0]["arguments"][1]["name"], "url");
-        assert_eq!(values[1]["id"], "external.tool.tab.send");
-        assert_eq!(values[1]["arguments"].as_array().unwrap().len(), 1);
-        assert_eq!(
-            values[0]["required_capabilities"],
-            serde_json::json!(["configured-action-target"])
-        );
-    }
-
-    #[test]
-    fn userscript_discovery_exposes_shared_action_metadata() {
-        let action = userscript::RegisteredAction {
-            script: "annotate".into(),
-            id: "userscript.annotate.link".into(),
-            subject: "link".into(),
-            verb: "annotate".into(),
-            label: "Annotate link".into(),
-            required_fields: vec!["url".into()],
-            allow_private: false,
-        };
-        let value = userscript_action_value(&action, true);
-        assert_eq!(value["completion_provider"], "url");
-        assert_eq!(value["availability_predicate"], "captured-link");
-        assert_eq!(value["availability"]["predicate"], "captured-link");
-        assert_eq!(
-            value["required_capabilities"],
-            serde_json::json!(["installed-userscript"])
-        );
-    }
-
-    #[test]
-    fn userscript_discovery_matches_storage_capability_to_subject() {
-        let action = userscript::RegisteredAction {
-            script: "library".into(),
-            id: "userscript.library.open-history".into(),
-            subject: "history-entry".into(),
-            verb: "open".into(),
-            label: "Open history entry".into(),
-            required_fields: vec!["history_id".into()],
-            allow_private: false,
-        };
-        assert!(!userscript_action_is_available(&action, true, false, false));
-        assert!(userscript_action_is_available(&action, true, true, false));
-        assert!(!userscript_action_is_available(&action, true, true, true));
-    }
-
-    #[test]
-    fn switcher_external_actions_share_bounded_available_target_policy() {
-        let config = serde_json::json!({
-            "action_targets": {
-                "player": {
-                    "subject_types": ["url", "link", "selection", "tab"],
-                    "executable": "player",
-                    "argv": ["{url}"],
-                    "detach": false,
-                    "allow_private": false
-                }
-            }
-        });
-        let values = configured_switcher_action_values(&config, false).expect("valid targets");
-        assert_eq!(
-            values
-                .iter()
-                .filter_map(|value| value.get("subject").and_then(Value::as_str))
-                .collect::<Vec<_>>(),
-            vec!["url", "tab"]
-        );
-        assert!(values.iter().all(|value| {
-            value["availability"]["state"] == "available" && value["target"] == "player"
-        }));
-        assert!(
-            configured_switcher_action_values(&config, true)
-                .expect("valid private target")
-                .is_empty()
-        );
-    }
-
-    #[test]
-    fn external_action_ids_are_strictly_bounded_and_typed() {
-        assert_eq!(
-            parse_external_action_id("external.mpv.link.send"),
-            Some(("mpv".into(), "link".into()))
-        );
-        assert_eq!(
-            parse_external_action_id("external.player.tab.send"),
-            Some(("player".into(), "tab".into()))
-        );
-        for value in [
-            "external.MPV.link.send",
-            "external.mpv.link.open",
-            "external.mpv.command.send",
-            "external.mpv.link.send.extra",
-        ] {
-            assert_eq!(parse_external_action_id(value), None);
-        }
-    }
-
-    #[test]
-    fn action_failures_have_structured_redacted_details() {
-        assert_eq!(
-            action_failure_category(ErrorCode::InvalidArgument),
-            "invalid-subject-or-parameters"
-        );
-        assert_eq!(
-            action_failure_category(ErrorCode::StaleTarget),
-            "stale-target"
-        );
-        assert_eq!(
-            action_failure_category(ErrorCode::Unsupported),
-            "missing-capability"
-        );
-        assert_eq!(
-            action_failure_category(ErrorCode::Denied),
-            "denied-source-or-privacy"
-        );
-        let response = ipc_action_failure(
-            "req-1",
-            "browser.tab.close",
-            "op-1",
-            PublicError::new(
-                ErrorCode::StaleTarget,
-                "The captured tab is no longer available.",
-                "tab id tab-1 no longer belongs to the selected window",
-            ),
-        );
-        let error = response.error.expect("structured action error");
-        assert_eq!(error.code, "E_STALE_TARGET");
-        let details = error.details.expect("action error details");
-        assert_eq!(details["action_id"], "browser.tab.close");
-        assert_eq!(details["operation_id"], "op-1");
-        assert_eq!(details["category"], "stale-target");
-        assert!(details.get("url").is_none());
-    }
-
-    #[test]
-    fn action_audit_event_is_structured_and_contains_only_bounded_ledger_fields() {
-        let record =
-            action_audit_record("browser.tab.reload", "op-7", "failed", Some("stale-target"));
-        assert_eq!(
-            record,
-            serde_json::json!({
-                "action_id": "browser.tab.reload",
-                "operation_id": "op-7",
-                "outcome": "failed",
-                "category": "stale-target"
-            })
-        );
-        assert_eq!(record.as_object().expect("object").len(), 4);
-        assert!(!record.to_string().contains("url"));
-        assert!(!record.to_string().contains("subject"));
-    }
-
-    #[test]
-    fn ipc_command_context_captures_route_and_privacy_metadata() {
-        let (state, window, tab) =
-            bootstrap_core(PrivacyKind::Normal, "default").expect("default core state");
-        let route = IpcRoute {
-            selector: DispatchTarget::Active,
-            open_target: IpcOpenTarget::Tab,
-            profile: Some("default".into()),
-            context: Some("research".into()),
-            external_open: false,
-            source: CommandSource::Ipc,
-        };
-        let context = ipc_command_context(Some(&state), &route, "op-1", 3);
-        assert_eq!(context["source"], "ipc");
-        assert_eq!(context["operation_id"], "op-1");
-        assert_eq!(context["count"], 3);
-        assert_eq!(context["window_id"], window.to_string());
-        assert_eq!(context["tab_id"], tab.to_string());
-        assert_eq!(context["privacy"], "normal");
-        assert_eq!(context["profile"], "default");
-        assert_eq!(context["requested_profile"], "default");
-        assert_eq!(context["requested_context"], "research");
-        assert_eq!(context["target"], "tab");
-        let invocation = ipc_command_invocation(
-            &state,
-            ParsedCommand {
-                name: "back".into(),
-                arguments: vec!["--count".into(), "3".into()],
-            },
-            DispatchTarget::Active,
-            CommandSource::Ipc,
-            Some("op-1"),
-        );
-        assert_eq!(invocation.context.source, CommandSource::Ipc);
-        assert_eq!(invocation.context.count, 3);
-        assert_eq!(invocation.context.operation_id.as_deref(), Some("op-1"));
-        assert_eq!(invocation.context.window, Some(window));
-        assert_eq!(invocation.context.tab, Some(tab));
-        assert_eq!(
-            ipc_command_count(&ParsedCommand {
-                name: "scroll".into(),
-                arguments: vec!["--count".into(), "7".into()],
-            }),
-            7
-        );
-        assert_eq!(
-            ipc_command_count(&ParsedCommand {
-                name: "scroll".into(),
-                arguments: vec!["--count".into(), "not-a-count".into()],
-            }),
-            1
-        );
-    }
-
-    #[test]
-    fn ipc_command_failure_preserves_context_without_sensitive_details() {
-        let context = serde_json::json!({
-            "source": "ipc",
-            "operation_id": "op-1",
-            "count": 1,
-            "privacy": "normal",
-        });
-        let response = ipc_command_failure_with_context(
-            "req-1",
-            PublicError::new(
-                ErrorCode::StaleTarget,
-                "The captured tab is no longer available.",
-                "captured tab id tab-1 was removed before execution",
-            ),
-            context,
-        );
-        let error = response.error.expect("structured command error");
-        assert_eq!(error.code, "E_STALE_TARGET");
-        let details = error.details.expect("command error details");
-        assert_eq!(details["command_context"]["operation_id"], "op-1");
-        assert_eq!(details["command_context"]["privacy"], "normal");
-        assert!(details.get("url").is_none());
-        assert!(details.get("title").is_none());
-    }
-
-    #[test]
-    fn action_capabilities_are_declared_and_subjects_revalidate() {
-        let registry = ActionRegistry::default_v1();
-        assert_eq!(
-            registry
-                .resolve("browser.bookmark.open")
-                .expect("bookmark action")
-                .required_capabilities(),
-            &["durable-profile-storage"]
-        );
-        assert!(
-            registry
-                .resolve("browser.url.open")
-                .expect("URL action")
-                .required_capabilities()
-                .is_empty()
-        );
-        assert_eq!(
-            registry
-                .resolve("browser.tab.detach")
-                .expect("detach action")
-                .required_capabilities(),
-            &["live-window-reparent"]
-        );
-
-        let actions = action_list_value(Some("bookmark")).expect("bookmark action list");
-        let bookmark = actions
-            .as_array()
-            .and_then(|actions| actions.first())
-            .expect("bookmark action row");
-        assert_eq!(
-            bookmark["required_capabilities"],
-            serde_json::json!(["durable-profile-storage"])
-        );
-        assert_eq!(bookmark["availability"]["predicate"], "stored-bookmark");
-        assert_eq!(
-            bookmark["availability"]["requires_subject_revalidation"],
-            serde_json::json!(true)
-        );
-        let tab_actions = action_list_value(Some("tab")).expect("tab action list");
-        let reload = tab_actions
-            .as_array()
-            .expect("tab actions array")
-            .iter()
-            .find(|action| action["id"] == "browser.tab.reload")
-            .expect("reload action");
-        assert_eq!(reload["arguments"][0]["name"], "bypass_cache");
-        assert_eq!(reload["arguments"][0]["kind"], "boolean");
-        assert!(
-            reload["sources"]
-                .as_array()
-                .is_some_and(|sources| { sources.iter().any(|source| source == "ipc") })
-        );
-        assert_eq!(reload["sensitive"], false);
-    }
-
-    #[test]
-    fn userscript_action_arguments_follow_subject_schema() {
-        assert_eq!(userscript_action_argument_name("link"), Some("url"));
-        assert_eq!(
-            userscript_action_argument_name("download"),
-            Some("download_id")
-        );
-        assert_eq!(
-            userscript_action_argument_name("history-entry"),
-            Some("history_id")
-        );
-        assert_eq!(
-            userscript_action_argument_name("selection"),
-            Some("selection")
-        );
-        assert_eq!(userscript_action_argument_name("tab"), Some("tab_id"));
-        assert_eq!(userscript_action_argument_name("window"), Some("window_id"));
-        assert_eq!(
-            userscript_action_argument_name("context"),
-            Some("context_name")
-        );
-        assert_eq!(userscript_action_argument_name("url"), None);
-        let hint_only = userscript::RegisteredAction {
-            script: "hint".into(),
-            id: "userscript.hint.send".into(),
-            subject: "link".into(),
-            verb: "send".into(),
-            label: "Send hinted link".into(),
-            required_fields: vec!["hint_url".into()],
-            allow_private: false,
-        };
-        assert!(userscript_action_is_hint_only(&hint_only));
-        let regular_link = userscript::RegisteredAction {
-            required_fields: vec!["url".into()],
-            ..hint_only
-        };
-        assert!(!userscript_action_is_hint_only(&regular_link));
-    }
-
-    #[test]
-    fn userscript_live_subjects_capture_stable_targets() {
-        let (mut state, window, tab) = bootstrap_core(PrivacyKind::Normal, "default")
-            .expect("bootstrap userscript target state");
-        let target = state.capture_target(tab).expect("current target");
-        assert_eq!(
-            userscript_subject_target(&state, target, "tab", &tab.to_string()),
-            Ok(target)
-        );
-        assert_eq!(
-            userscript_subject_target(&state, target, "window", &window.to_string()),
-            Ok(target)
-        );
-        reduce(
-            &mut state,
-            Event::SetWindowContext {
-                window,
-                context: Some("research".into()),
-            },
-        )
-        .expect("window context");
-        assert_eq!(
-            userscript_subject_target(&state, target, "context", "research"),
-            Ok(target)
-        );
-        assert!(userscript_subject_target(&state, target, "tab", "tabid-999").is_err());
-        assert!(userscript_subject_target(&state, target, "context", "missing").is_err());
-    }
-
-    #[test]
-    fn every_builtin_action_example_maps_through_typed_parser() {
-        let registry = ActionRegistry::default_v1();
-        for definition in registry.definitions() {
-            assert!(
-                !definition.examples.is_empty(),
-                "action {} has no example",
-                definition.id
-            );
-            for example in &definition.examples {
-                let commands =
-                    parse_chain(example, ParseInput::Interactive).unwrap_or_else(|error| {
-                        panic!("{} example does not parse: {error}", definition.id)
-                    });
-                assert_eq!(
-                    commands.len(),
-                    1,
-                    "{} example must be one command",
-                    definition.id
-                );
-                let (mapped, action_id) =
-                    parse_action_invocation(&commands[0]).unwrap_or_else(|error| {
-                        panic!("{} example does not map: {error}", definition.id)
-                    });
-                assert_eq!(action_id, definition.id);
-                assert_eq!(mapped.name, definition.command);
-            }
-        }
-    }
-
-    #[test]
-    fn live_document_capability_requires_a_healthy_current_tab() {
-        let mut state = ApplicationState::new();
-        reduce(
-            &mut state,
-            Event::CreateProfile {
-                label: "default".into(),
-                privacy: PrivacyKind::Normal,
-            },
-        )
-        .expect("profile");
-        let profile = *state.profiles().keys().next().expect("profile ID");
-        reduce(&mut state, Event::CreateWindow { profile }).expect("window");
-        let window = *state.windows().keys().next().expect("window ID");
-        reduce(&mut state, Event::OpenTab { window }).expect("tab");
-        let tab = state.windows()[&window].active_tab.expect("active tab");
-
-        assert!(live_document_available(Some(&state), Some(tab)));
-        let target = state.capture_target(tab).expect("target");
-        reduce(&mut state, Event::RendererTerminated { target }).expect("renderer termination");
-        assert!(!live_document_available(Some(&state), Some(tab)));
-        assert!(!live_document_available(Some(&state), None));
-    }
-
-    #[test]
-    fn captured_target_validation_is_not_limited_to_the_focused_tab() {
-        let (mut state, window, background_tab) =
-            bootstrap_core(PrivacyKind::Normal, "default").expect("core bootstrap");
-        reduce(&mut state, Event::OpenTab { window }).expect("second tab");
-        let focused_tab = state.windows()[&window].active_tab.expect("focused tab");
-        assert_ne!(background_tab, focused_tab);
-
-        let background_target = state.capture_target(background_tab).expect("target");
-        assert!(captured_target_is_current(Some(&state), background_target));
-
-        reduce(
-            &mut state,
-            Event::StartNavigation {
-                target: background_target,
-                url: ValidatedUrl::parse("https://example.test/background").expect("URL"),
-            },
-        )
-        .expect("background navigation");
-        assert!(!captured_target_is_current(Some(&state), background_target));
-    }
-
-    #[test]
-    fn switcher_actions_have_safe_defaults_and_kind_allowlists() {
-        let source = include_str!("lib.rs");
-        let qml = include_str!("../qml/Main.qml");
-        assert!(source.contains("browser.context.enter"));
-        assert!(source.contains("browser.window.focus"));
-        assert!(source.contains("browser.bookmark.delete"));
-        assert!(source.contains("browser.session.load"));
-        assert!(source.contains("browser.command.execute"));
-        assert_eq!(switcher_default_action("tab"), Some("focus"));
-        assert_eq!(switcher_default_action("history"), Some("open"));
-        assert_eq!(switcher_default_action("session"), Some("load-preview"));
-        assert_eq!(switcher_default_action("download"), Some("show"));
-        assert_eq!(switcher_default_action("action"), Some("execute"));
-        assert_eq!(switcher_default_action("unknown"), None);
-        assert_eq!(parse_switcher_generation(""), Ok(None));
-        assert_eq!(parse_switcher_generation("7"), Ok(Some(7)));
-        assert!(parse_switcher_generation("stale").is_err());
-        assert_eq!(validate_switcher_generation(None, None), Ok(()));
-        assert_eq!(validate_switcher_generation(Some(7), Some(7)), Ok(()));
-        assert_eq!(
-            validate_switcher_generation(Some(7), Some(8)),
-            Err("Switcher tab target is stale; refresh the results")
-        );
-        assert_eq!(
-            validate_switcher_generation(Some(7), None),
-            Err("Switcher target generation is only valid for tabs")
-        );
-
-        assert!(switcher_action_allowed("history", "open"));
-        assert!(switcher_action_allowed("session", "load"));
-        assert!(switcher_action_allowed("command", "help"));
-        assert!(switcher_action_allowed("download", "open"));
-        assert!(switcher_action_allowed("action", "execute"));
-        assert!(!switcher_action_allowed("history", "delete"));
-        assert!(!switcher_action_allowed("context", "open"));
-        assert!(!switcher_action_allowed("command", "shell"));
-        assert!(source.contains("\"actions\""));
-        assert!(source.contains("definition.sources.contains(&ActionSource::Switcher)"));
-        assert!(
-            source.contains("configured_action_target_values(&name, &target, private_profile)")
-        );
-        assert!(source.contains("configured_switcher_action_values"));
-        assert!(source.contains("validate_action_availability(id, CommandSource::Switcher)"));
-        assert!(source.contains("no-live-tab-to-transfer"));
-        assert!(source.contains("Configured switcher action is stale or unavailable"));
-        assert!(
-            source
-                .contains("validate_action_availability(&definition.id, CommandSource::Switcher)")
-        );
-        assert!(source.contains("route.source = CommandSource::Switcher"));
-        assert!(source.contains("switcher.activate generation"));
-        assert!(source.contains("Switcher tab target is stale; refresh the results"));
-        assert!(qml.contains("resultData.actions || []"));
-        assert!(qml.contains("window.activateSwitcherAction(resultIndex, modelData)"));
-        assert!(qml.contains("String(result.generation)"));
-        assert!(qml.contains("window.switcherOwner(result)"));
-        assert!(qml.contains("property string switcherScope: \"all\""));
-        assert!(qml.contains("window.switcherScope)"));
-        assert!(qml.contains("function setSwitcherScope(scope)"));
-        assert!(qml.contains("\"actions\", \"history\""));
-        assert!(qml.contains("Accessible.role: Accessible.PageTab"));
-    }
-
-    #[test]
-    fn ipc_event_payloads_identify_targets_without_sensitive_navigation_data() {
-        let mut state = ApplicationState::new();
-        reduce(
-            &mut state,
-            Event::CreateProfile {
-                label: "Normal".into(),
-                privacy: PrivacyKind::Normal,
-            },
-        )
-        .expect("profile");
-        let profile = *state.profiles().keys().next().expect("profile ID");
-        reduce(&mut state, Event::CreateWindow { profile }).expect("window");
-        let window = *state.windows().keys().next().expect("window ID");
-        reduce(&mut state, Event::OpenTab { window }).expect("tab");
-        let tab = *state.tabs().keys().next().expect("tab ID");
-        let target = state.capture_target(tab).expect("target");
-        let payload = ipc_event_payload(
-            &Event::CommitNavigation {
-                target,
-                url: ValidatedUrl::parse("https://example.test/private?token=secret").expect("URL"),
-                title: "private title".into(),
-            },
-            &state,
-        );
-        assert_eq!(payload["target"]["tab_id"], tab.to_string());
-        assert_eq!(payload["target"]["window_id"], window.to_string());
-        assert!(payload.get("url").is_none());
-        assert!(payload.get("title").is_none());
-        assert!(payload.to_string().contains("document_id"));
-        assert!(!payload.to_string().contains("secret"));
-    }
-
-    #[test]
-    fn operation_events_publish_only_bounded_status_categories() {
-        assert_eq!(operation_status_kind("running"), "completed");
-        assert_eq!(operation_status_kind("sent to editor: op-1"), "completed");
-        assert_eq!(operation_status_kind("failed (timeout)"), "failed");
-        assert_eq!(operation_status_kind("cancelled"), "cancelled");
-    }
-
-    #[test]
-    fn terminal_operation_states_cannot_be_cancelled_again() {
-        for status in [
-            "completed",
-            "completed: message",
-            "failed (child)",
-            "cancelled",
-            "detached",
-        ] {
-            assert!(operation_is_terminal(status), "{status}");
-        }
-        for status in ["running", "selection pending", "accepted"] {
-            assert!(!operation_is_terminal(status), "{status}");
-        }
-    }
-
-    #[test]
-    fn userscript_stderr_is_bounded_redacted_and_explicit() {
-        let stderr = sanitize_userscript_stderr(
-            b"password=secret https://example.test/?token=hidden\nmessage\x01",
-        );
-        assert!(stderr.contains("password=[redacted]"));
-        assert!(!stderr.contains("secret"));
-        assert!(!stderr.contains("token=hidden"));
-        assert!(stderr.contains("message"));
-
-        let mut rust = BrowserUiRust::default();
-        rust.operation_states
-            .insert("op-stderr".into(), "failed (child)".into());
-        rust.operation_stderr
-            .insert("op-stderr".into(), stderr.clone());
-        let hidden =
-            operations_query_value(&rust, &serde_json::json!({})).expect("default operation query");
-        assert!(hidden["operations"][0].get("stderr").is_none());
-        let visible = operations_query_value(
-            &rust,
-            &serde_json::json!({
-                "operation_id": "op-stderr",
-                "include_stderr": true
-            }),
-        )
-        .expect("explicit stderr operation query");
-        assert_eq!(visible["operations"][0]["stderr"], stderr);
-        assert!(
-            operations_query_value(&rust, &serde_json::json!({"include_stderr": "yes"})).is_err()
-        );
-    }
-
-    #[test]
-    fn ipc_query_boundaries_reject_unknown_and_mistyped_fields() {
-        let tabs = serde_json::json!({"include_private": "yes"});
-        let tabs_object = query_object(
-            &tabs,
-            "tabs.query",
-            &["include_private", "active_only", "window"],
-        )
-        .expect("tabs object");
-        assert!(query_bool_param(tabs_object, "tabs.query", "include_private", false).is_err());
-        assert!(query_object(&serde_json::json!({"unexpected": true}), "tabs.query", &[]).is_err());
-
-        let windows = serde_json::json!({"window": 1});
-        let windows_object =
-            query_object(&windows, "windows.query", &["window"]).expect("windows object");
-        assert!(query_optional_string(windows_object, "windows.query", "window").is_err());
-        assert!(
-            query_empty_object_or_null(
-                &serde_json::json!({"include_private": true}),
-                "profiles.query"
-            )
-            .is_err()
-        );
-
-        let downloads = serde_json::json!({"include_private": "yes"});
-        let downloads_object = query_object(&downloads, "downloads.query", &["include_private"])
-            .expect("downloads object");
-        assert!(
-            query_bool_param(
-                downloads_object,
-                "downloads.query",
-                "include_private",
-                false
-            )
-            .is_err()
-        );
-
-        let contexts = serde_json::json!({"include_members": "yes"});
-        let contexts_object = query_object(&contexts, "contexts.query", &["include_members"])
-            .expect("contexts object");
-        assert!(
-            query_bool_param(contexts_object, "contexts.query", "include_members", false).is_err()
-        );
-
-        let switcher = serde_json::json!({"limit": 0});
-        let switcher_object = query_object(
-            &switcher,
-            "switcher.query",
-            &["query", "scope", "limit", "offset", "include_private"],
-        )
-        .expect("switcher object");
-        assert!(query_limit(switcher_object, "switcher.query", 50).is_err());
-        let offset_object = serde_json::json!({"offset": 100_001});
-        assert!(
-            query_offset(
-                offset_object.as_object().expect("offset object"),
-                "switcher.query"
-            )
-            .is_err()
-        );
-        let query = serde_json::json!({"query": false});
-        let query_object = query_object(
-            &query,
-            "switcher.query",
-            &["query", "scope", "limit", "offset", "include_private"],
-        )
-        .expect("query object");
-        assert!(query_optional_string(query_object, "switcher.query", "query").is_err());
-    }
-
-    #[test]
-    fn ipc_server_queues_on_the_same_library_as_the_qt_poller() {
-        let root = std::env::temp_dir().join(format!("rb-engine-ipc-{}", Uuid::new_v4()));
-        let paths = instance_paths(&root, Path::new("/tmp/ferric-browser"), "test");
-        // AF_UNIX creation is denied by some restricted CI/sandbox runners.
-        // Keep this as an explicit capability skip; native Wayland runs still
-        // exercise the listener and the IPC unit suite covers framing and
-        // request handling without requiring a socket bind.
-        let listener = match bind_listener(&paths) {
-            Ok(listener) => listener,
-            Err(ferric_browser_ipc::InstanceError::Io { message, .. })
-                if message.contains("Operation not permitted")
-                    || message.contains("Permission denied")
-                    || message.contains("Not supported") =>
-            {
-                eprintln!("skipping Qt IPC socket test: AF_UNIX creation is unavailable");
-                let _ = fs::remove_dir_all(root);
-                return;
-            }
-            Err(error) => panic!("listener: {error}"),
-        };
-        let socket = paths.socket.clone();
-        let server = thread::spawn(move || {
-            let (stream, _) = listener.accept().expect("accept");
-            serve_ipc_connection(stream, "instance-test");
-        });
-        let mut client = UnixStream::connect(socket).expect("client");
-        let hello = serde_json::to_vec(&Request {
-            id: "hello-1".into(),
-            method: "hello".into(),
-            params: serde_json::json!({
-                "protocol_major": ferric_browser_ipc::PROTOCOL_MAJOR,
-                "protocol_minor": ferric_browser_ipc::PROTOCOL_MINOR,
-                "client": "test"
-            }),
-        })
-        .expect("hello");
-        write_frame(&mut client, &hello).expect("write hello");
-        let _ = read_frame(&mut client)
-            .expect("hello frame")
-            .expect("hello response");
-        let request = serde_json::to_vec(&Request {
-            id: "query-1".into(),
-            method: "tabs.query".into(),
-            params: serde_json::json!({}),
-        })
-        .expect("query");
-        write_frame(&mut client, &request).expect("write query");
-        let deadline = Instant::now() + Duration::from_secs(2);
-        let pending = loop {
-            if let Some(pending) = take_pending_request() {
-                break pending;
-            }
-            assert!(Instant::now() < deadline, "queued query");
-            thread::sleep(Duration::from_millis(1));
-        };
-        assert_eq!(pending.request().id, "query-1");
-        pending
-            .respond(&Response::success(
-                "query-1",
-                serde_json::json!({"tabs": []}),
-            ))
-            .expect("response");
-        let response = read_frame(&mut client)
-            .expect("response frame")
-            .expect("response");
-        let response: Response = serde_json::from_slice(&response).expect("response JSON");
-        assert_eq!(response.id, "query-1");
-        drop(client);
-        server.join().expect("server");
-        let _ = fs::remove_dir_all(root);
-    }
-
-    #[test]
-    fn ipc_hello_advertises_discoverable_query_and_activation_methods() {
-        let request = Request {
-            id: "hello-capabilities".into(),
-            method: "hello".into(),
-            params: serde_json::json!({
-                "protocol_major": ferric_browser_ipc::PROTOCOL_MAJOR,
-                "protocol_minor": ferric_browser_ipc::PROTOCOL_MINOR,
-                "client": "test"
-            }),
-        };
-        let (is_hello, response) = ipc_handshake_response(request, "instance-test");
-        assert!(is_hello);
-        let result = response.result.expect("hello result");
-        let capabilities = result["capabilities"].as_array().expect("capability array");
-        for method in [
-            "window.focus",
-            "permissions.query",
-            "switcher.activate",
-            "bindings.query",
-            "bindings.explain",
-            "blocking.status",
-        ] {
-            assert!(
-                capabilities
-                    .iter()
-                    .any(|value| value.as_str() == Some(method)),
-                "hello must advertise {method}"
-            );
-        }
-        assert!(
-            !capabilities
-                .iter()
-                .any(|value| value.as_str() == Some("blocklist.update"))
-        );
-    }
-
-    #[test]
-    fn qml_idle_path_is_event_driven_and_devtools_are_lazy() {
-        let qml = include_str!("../qml/Main.qml");
-        assert!(qml.contains("onRuntime_work_available: window.scheduleRuntimeWork(0)"));
-        assert!(qml.contains("id: runtimeWorkTimer"));
-        assert!(qml.contains("repeat: false"));
-        assert!(qml.contains("browserUi.maintenance_delay_ms()"));
-        assert!(!qml.contains("interval: 120\n        repeat: true\n        running: true"));
-        assert!(qml.contains("id: attachedDevToolsLoader"));
-        assert!(qml.contains("id: secondaryDevToolsLoader"));
-        assert!(!qml.contains("id: attachedDevToolsView"));
-        assert!(!qml.contains("id: secondaryDevToolsView"));
-        assert!(qml.contains("if(!root)return null"));
-        assert!(qml.contains("WebEngineProfilePrototype {\n        id: browserProfilePrototype"));
-    }
-}
+mod tests;

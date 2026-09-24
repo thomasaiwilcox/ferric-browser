@@ -16,13 +16,17 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-const CURRENT_SCHEMA_VERSION: u64 = 1;
+/// Clean-break configuration schema. Earlier files are intentionally refused
+/// instead of being partially interpreted by the pre-alpha runtime.
+/// Configuration documents prior to v3 belong to the pre-application-layer
+/// layout and are intentionally not interpreted by this clean break.
+const CURRENT_SCHEMA_VERSION: u64 = 3;
 const MAX_INCLUDE_DEPTH: usize = 8;
 const MAX_TOTAL_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_RUNTIME_SETTINGS: usize = 256;
 const MAX_RUNTIME_KEY_BYTES: usize = 256;
 const MAX_RUNTIME_VALUE_BYTES: usize = 16 * 1024;
-const RUNTIME_SCHEMA_VERSION: u64 = 1;
+const RUNTIME_SCHEMA_VERSION: u64 = 3;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -2196,7 +2200,6 @@ pub struct ProfileDefinition {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProfilesConfig {
-    #[serde(default = "default_schema_version")]
     pub schema_version: u64,
     #[serde(default)]
     pub profiles: Vec<ProfileDefinition>,
@@ -2514,7 +2517,6 @@ pub struct ContextRoute {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ContextsConfig {
-    #[serde(default = "default_schema_version")]
     pub schema_version: u64,
     #[serde(default)]
     pub contexts: Vec<ContextDefinition>,
@@ -2753,7 +2755,6 @@ impl Default for ContextsConfig {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
-    #[serde(default = "default_schema_version")]
     pub schema_version: u64,
     #[serde(default)]
     pub include: Vec<String>,
@@ -2901,7 +2902,6 @@ pub struct ConfigStore {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RuntimeOverrides {
-    #[serde(default = "default_runtime_schema_version")]
     pub schema_version: u64,
     #[serde(default)]
     pub settings: BTreeMap<String, toml::Value>,
@@ -3226,6 +3226,68 @@ pub fn apply_runtime_overrides(
     Ok(updated)
 }
 
+/// Resolves the effective configuration in the documented layer order.
+///
+/// Profile defaults are applied first, followed by persisted runtime changes,
+/// command-line overrides, and finally temporary overrides. Keeping this
+/// precedence in the configuration crate prevents a presentation adapter from
+/// becoming the source of configuration policy.
+///
+/// # Errors
+///
+/// Returns an error when any layer is invalid or the resulting configuration
+/// fails typed validation.
+pub fn resolve_runtime_override_layers(
+    base: &Config,
+    profile: &RuntimeOverrides,
+    runtime: &RuntimeOverrides,
+    command_line: &RuntimeOverrides,
+    temporary: &RuntimeOverrides,
+) -> Result<Config, ConfigError> {
+    let profile = apply_runtime_overrides(base, profile)?;
+    let runtime = apply_runtime_overrides(&profile, runtime)?;
+    let command_line = apply_runtime_overrides(&runtime, command_line)?;
+    apply_runtime_overrides(&command_line, temporary)
+}
+
+/// Returns the profile definition file adjacent to a primary configuration
+/// file.
+#[must_use]
+pub fn profile_config_path(config_path: &Path) -> PathBuf {
+    config_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("profiles.toml")
+}
+
+/// Loads the generated override layer for a named profile.
+///
+/// A missing profile document, or a profile absent from that document, is the
+/// normal no-overrides state.
+///
+/// # Errors
+///
+/// Returns an error when the profile document cannot be loaded or its selected
+/// profile cannot be converted to runtime overrides.
+pub fn load_profile_runtime_overrides(
+    config_path: &Path,
+    profile_name: &str,
+) -> Result<RuntimeOverrides, ConfigError> {
+    let path = profile_config_path(config_path);
+    if !path.exists() {
+        return Ok(RuntimeOverrides::default());
+    }
+    let profiles = load_profiles(&path)?;
+    let Some(profile) = profiles
+        .profiles
+        .iter()
+        .find(|profile| profile.name == profile_name)
+    else {
+        return Ok(RuntimeOverrides::default());
+    };
+    profile_override_layer(profile)
+}
+
 fn set_config_value(
     cursor: &mut toml::Value,
     parts: &[&str],
@@ -3522,8 +3584,14 @@ fn merge(destination: &mut toml::Value, source: &toml::Value) {
 }
 
 #[allow(clippy::too_many_lines)]
-fn validate(config: &Config) -> Result<(), ConfigError> {
-    if config.schema_version > CURRENT_SCHEMA_VERSION {
+/// Validates an in-memory configuration candidate before it becomes effective.
+///
+/// # Errors
+///
+/// Returns an error when a value violates the supported configuration schema
+/// or one of its cross-field invariants.
+pub fn validate(config: &Config) -> Result<(), ConfigError> {
+    if config.schema_version != CURRENT_SCHEMA_VERSION {
         return Err(ConfigError::Validation(format!(
             "unsupported schema_version {}",
             config.schema_version
@@ -3949,7 +4017,7 @@ fn validate_profile_definition(profile: &ProfileDefinition) -> Result<(), Config
 }
 
 fn validate_profiles(config: &ProfilesConfig) -> Result<(), ConfigError> {
-    if config.schema_version > CURRENT_SCHEMA_VERSION {
+    if config.schema_version != CURRENT_SCHEMA_VERSION {
         return Err(ConfigError::Validation(format!(
             "unsupported profiles schema_version {}",
             config.schema_version
@@ -3986,7 +4054,7 @@ fn validate_profiles(config: &ProfilesConfig) -> Result<(), ConfigError> {
 fn validate_contexts(config: &ContextsConfig) -> Result<(), ConfigError> {
     const ALLOWED_ROUTE_ENTRY_POINTS: [&str; 3] =
         ["external-open", "explicit-open", "typed-initial-url"];
-    if config.schema_version > CURRENT_SCHEMA_VERSION {
+    if config.schema_version != CURRENT_SCHEMA_VERSION {
         return Err(ConfigError::Validation(format!(
             "unsupported contexts schema_version {}",
             config.schema_version
@@ -4396,7 +4464,7 @@ fn validate_runtime_key(key: &str) -> Result<(), ConfigError> {
 }
 
 fn validate_runtime_overrides(overrides: &RuntimeOverrides) -> Result<(), ConfigError> {
-    if overrides.schema_version > RUNTIME_SCHEMA_VERSION {
+    if overrides.schema_version != RUNTIME_SCHEMA_VERSION {
         return Err(ConfigError::Validation(format!(
             "unsupported runtime override schema_version {}",
             overrides.schema_version
@@ -4510,12 +4578,6 @@ fn io_error(path: &Path, error: &std::io::Error) -> ConfigError {
 }
 fn default_true() -> bool {
     true
-}
-fn default_schema_version() -> u64 {
-    CURRENT_SCHEMA_VERSION
-}
-fn default_runtime_schema_version() -> u64 {
-    RUNTIME_SCHEMA_VERSION
 }
 fn default_context_target() -> String {
     "reuse-or-window".into()
@@ -4644,6 +4706,16 @@ mod tests {
         validate(&config).expect("defaults validate");
         assert_eq!(config.navigation.default_search, "ddg");
         assert_eq!(config.tabs.undo_limit, 100);
+    }
+
+    #[test]
+    fn v3_documents_require_an_explicit_schema_marker() {
+        assert!(toml::from_str::<Config>("[ui]\nfont_size_pt = 12.0\n").is_err());
+        assert!(
+            toml::from_str::<ProfilesConfig>("[[profiles]]\nname = 'work'\nlabel = 'Work'\n")
+                .is_err()
+        );
+        assert!(toml::from_str::<RuntimeOverrides>("[settings]\n").is_err());
     }
 
     #[test]
@@ -5201,10 +5273,11 @@ red = "#aa0000"
             std::env::temp_dir().join(format!("ferric-browser-config-{}", std::process::id()));
         fs::create_dir_all(&directory).expect("temp directory");
         let path = directory.join("config.toml");
-        fs::write(&path, "[ui]\nfont_size_pt = 12.0\n").expect("valid config");
+        fs::write(&path, "schema_version = 3\n[ui]\nfont_size_pt = 12.0\n").expect("valid config");
         let mut store = ConfigStore::new();
         store.reload(&path).expect("first reload");
-        fs::write(&path, "[ui]\nfont_size_pt = 99.0\n").expect("invalid config");
+        fs::write(&path, "schema_version = 3\n[ui]\nfont_size_pt = 99.0\n")
+            .expect("invalid config");
         assert!(store.reload(&path).is_err());
         assert_eq!(store.revision(), 1);
         assert!(
@@ -5260,7 +5333,7 @@ red = "#aa0000"
         fs::write(
             &path,
             r#"
-schema_version = 1
+schema_version = 3
 
 [[profiles]]
 name = "work"
@@ -5333,7 +5406,7 @@ overrides = { "content.zoom" = 1.25, "input.entry_mode" = "insert" }
         .expect("base");
         fs::write(
             directory.join("config.toml"),
-            "include = [\"base.toml\"]\n[ui]\nfont_size_pt = 13.0\n",
+            "schema_version = 3\ninclude = [\"base.toml\"]\n[ui]\nfont_size_pt = 13.0\n",
         )
         .expect("root");
         let loaded = load(directory.join("config.toml")).expect("include");
@@ -5387,6 +5460,37 @@ overrides = { "content.zoom" = 1.25, "input.entry_mode" = "insert" }
 
         let _ = fs::remove_file(&path);
         let _ = fs::remove_dir(&directory);
+    }
+
+    #[test]
+    fn runtime_override_layers_apply_in_documented_precedence_order() {
+        let mut profile = RuntimeOverrides::default();
+        profile
+            .set_literal("content.zoom", "1.1")
+            .expect("profile override");
+        let mut runtime = RuntimeOverrides::default();
+        runtime
+            .set_literal("content.zoom", "1.2")
+            .expect("runtime override");
+        let mut command_line = RuntimeOverrides::default();
+        command_line
+            .set_literal("content.zoom", "1.3")
+            .expect("command-line override");
+        let mut temporary = RuntimeOverrides::default();
+        temporary
+            .set_literal("content.zoom", "1.4")
+            .expect("temporary override");
+
+        let effective = resolve_runtime_override_layers(
+            &Config::default(),
+            &profile,
+            &runtime,
+            &command_line,
+            &temporary,
+        )
+        .expect("resolve layers");
+
+        assert!((effective.content.zoom - 1.4).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -5491,7 +5595,7 @@ overrides = { "content.zoom" = 1.25, "input.entry_mode" = "insert" }
         let path = directory.join("contexts.toml");
         fs::write(
             &path,
-            r##"schema_version = 1
+            r##"schema_version = 3
 
 [[contexts]]
 name = "work"

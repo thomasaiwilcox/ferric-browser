@@ -1,8 +1,8 @@
 extern crate ferric_browser_engine_qt;
 
 use cxx_qt_lib::{
-    QGuiApplication, QMap, QMapPair_QString_QVariant, QQmlApplicationEngine, QString, QUrl,
-    QVariant,
+    QGuiApplication, QMap, QMapPair_QString_QVariant, QQmlApplicationEngine, QString, QStringList,
+    QUrl, QVariant,
 };
 use ferric_browser_config::{
     Config, ContextsConfig, ProfilesConfig, RuntimeOverrides, apply_runtime_overrides, load,
@@ -16,8 +16,7 @@ use ferric_browser_ipc::{
     PROTOCOL_MINOR, Request, Response, current_uid, instance_paths, read_frame, write_frame,
 };
 use ferric_browser_storage::{
-    CrashMarker, LEGACY_MIGRATION_FLAG, RootSpec, StorageRoots, crash_diagnostics, inspect_store,
-    migrate_legacy_xdg, transient_marker_scan,
+    CrashMarker, RootSpec, StorageRoots, crash_diagnostics, inspect_store, transient_marker_scan,
 };
 use std::{
     collections::BTreeSet,
@@ -91,7 +90,7 @@ enum CliAction {
         format: String,
     },
     ConfigCheck,
-    MigrateFromLegacy,
+    ResetData,
     DefaultBrowser {
         operation: DefaultBrowserOperation,
     },
@@ -117,6 +116,9 @@ const MAX_STARTUP_SETTINGS: usize = 256;
 struct CliError {
     code: ErrorCode,
     user_message: &'static str,
+    // Kept separate from the public message so future local diagnostics can
+    // retain cause context without turning that prose into a public protocol.
+    #[allow(dead_code)]
     diagnostic_context: String,
 }
 
@@ -277,7 +279,7 @@ fn run(arguments: &[String]) -> Result<(), CliError> {
         println!("ferric-browser {}", env!("CARGO_PKG_VERSION"));
         return Ok(());
     }
-    parse_cli(arguments).map_err(|error| CliError::invalid(error))?;
+    parse_cli(arguments).map_err(CliError::invalid)?;
     run_untyped(arguments).map_err(CliError::engine)
 }
 
@@ -362,7 +364,7 @@ fn run_untyped(arguments: &[String]) -> Result<(), String> {
         check_config(config_path.as_deref())?;
         return Ok(());
     }
-    if let CliAction::MigrateFromLegacy = action {
+    if let CliAction::ResetData = action {
         if options.temp_basedir
             || options.ephemeral
             || options.safe_mode
@@ -376,12 +378,19 @@ fn run_untyped(arguments: &[String]) -> Result<(), String> {
             || !options.settings.is_empty()
             || options.log_level.is_some()
         {
-            return Err("migration does not accept browser startup or profile options".into());
+            return Err("reset-data does not accept browser startup or profile options".into());
         }
-        let report = migrate_legacy_xdg().map_err(|error| format!("E_STORAGE: {error}"))?;
+        let roots = StorageRoots::resolve(RootSpec::Xdg)
+            .map_err(|error| format!("could not resolve Ferric storage roots: {error}"))?;
+        let report = roots
+            .reset_owned_contents()
+            .map_err(|error| format!("could not reset Ferric data: {error}"))?;
+        roots
+            .initialize_current_schema()
+            .map_err(|error| format!("could not initialize Ferric data: {error}"))?;
         println!(
-            "Migrated {} files ({} bytes); validated {} profile databases. The legacy data was left untouched.",
-            report.files_copied, report.bytes_copied, report.databases_validated
+            "Reset Ferric Browser data: cleared {} roots and removed {} entries. Legacy browser data was not modified.",
+            report.roots_cleared, report.entries_removed
         );
         return Ok(());
     }
@@ -404,6 +413,41 @@ fn run_untyped(arguments: &[String]) -> Result<(), String> {
             );
         }
         return run_default_browser_operation(*operation);
+    }
+    let temporary_storage = options.temp_basedir
+        || options.safe_mode
+        || matches!(
+            &action,
+            CliAction::Open {
+                ephemeral: true,
+                ..
+            }
+        )
+        || matches!(
+            &action,
+            CliAction::Open {
+                target: Some(target),
+                ..
+            } if target == "private-window"
+        );
+    if !temporary_storage {
+        let roots = if let Some(base) = options.basedir.as_deref() {
+            StorageRoots::resolve(RootSpec::Base(base.into()))
+        } else {
+            StorageRoots::resolve(RootSpec::Xdg)
+        }
+        .map_err(|error| format!("could not resolve Ferric storage roots: {error}"))?;
+        if roots.requires_schema_reset().map_err(|error| {
+            format!("could not inspect Ferric data for the clean-break schema: {error}")
+        })? {
+            return Err(
+                "existing Ferric Browser data is incompatible with this pre-alpha release; run `ferric-browser reset-data --confirm` to erase Ferric-owned data before starting. Legacy browser data will not be touched"
+                    .into(),
+            );
+        }
+        roots
+            .initialize_current_schema()
+            .map_err(|error| format!("could not initialize Ferric data schema: {error}"))?;
     }
     let (
         mut config,
@@ -710,7 +754,7 @@ fn run_untyped(arguments: &[String]) -> Result<(), String> {
         CliAction::Open { .. }
         | CliAction::Diagnostics { .. }
         | CliAction::ConfigCheck
-        | CliAction::MigrateFromLegacy => {
+        | CliAction::ResetData => {
             unreachable!("non-open CLI actions were handled above")
         }
         CliAction::DefaultBrowser { .. } => {
@@ -962,10 +1006,12 @@ fn parse_subcommand(
             ))
         }
         "config" if tail == ["check"] => Ok((std::mem::take(options), CliAction::ConfigCheck)),
-        "migrate" if tail == [LEGACY_MIGRATION_FLAG] => {
-            Ok((std::mem::take(options), CliAction::MigrateFromLegacy))
+        "reset-data" if tail == ["--confirm"] => {
+            Ok((std::mem::take(options), CliAction::ResetData))
         }
-        "migrate" => Err(format!("migrate requires {LEGACY_MIGRATION_FLAG}")),
+        "reset-data" => {
+            Err("reset-data requires --confirm because it erases Ferric-owned data".into())
+        }
         value => {
             if CommandRegistry::default_v1().resolve(value).is_ok() {
                 let mut command_arguments = Vec::with_capacity(tail.len() + 1);
@@ -1155,7 +1201,7 @@ fn cli_action_name(action: &CliAction) -> &'static str {
         CliAction::Diagnostics { .. } => "diagnostics",
         CliAction::DefaultBrowser { .. } => "default-browser",
         CliAction::ConfigCheck => "config-check",
-        CliAction::MigrateFromLegacy => "migrate",
+        CliAction::ResetData => "reset-data",
     }
 }
 
@@ -3836,12 +3882,12 @@ fn run_gui(
         let initial_url = QString::from(initial_url);
         let mut initial_properties: QMap<QMapPair_QString_QVariant> = QMap::default();
         initial_properties.insert(QString::from("startupUrl"), QVariant::from(&initial_url));
-        let additional_inputs =
-            QString::from(serde_json::to_string(additional_inputs).map_err(|error| {
-                format!("could not serialize additional startup inputs: {error}")
-            })?);
+        let additional_inputs = additional_inputs
+            .iter()
+            .map(|input| QString::from(input.as_str()))
+            .collect::<QStringList>();
         initial_properties.insert(
-            QString::from("startupAdditionalUrlsJson"),
+            QString::from("startupAdditionalUrls"),
             QVariant::from(&additional_inputs),
         );
         let initial_entry_point = QString::from(initial_entry_point);
@@ -4012,7 +4058,7 @@ fn print_help() {
     println!("  activate tab TAB_ID");
     println!("  diagnostics --format json");
     println!("  default-browser status|set");
-    println!("  migrate {LEGACY_MIGRATION_FLAG}  copy and verify legacy XDG data");
+    println!("  reset-data --confirm  erase incompatible Ferric-owned data");
     println!("  command -- blocking-toggle [--site]");
     println!("  config check    validate configuration without starting the GUI");
     println!("  -h, --help      show this help");
@@ -4237,12 +4283,12 @@ mod tests {
     }
 
     #[test]
-    fn legacy_migration_requires_the_explicit_copy_flag() {
-        let (_, action) = parse_cli(&["migrate".into(), LEGACY_MIGRATION_FLAG.into()])
-            .expect("explicit migration command");
-        assert!(matches!(action, CliAction::MigrateFromLegacy));
-        assert!(parse_cli(&["migrate".into()]).is_err());
-        assert!(parse_cli(&["migrate".into(), "--move".into()]).is_err());
+    fn reset_data_requires_explicit_confirmation() {
+        let (_, action) =
+            parse_cli(&["reset-data".into(), "--confirm".into()]).expect("explicit reset command");
+        assert!(matches!(action, CliAction::ResetData));
+        assert!(parse_cli(&["reset-data".into()]).is_err());
+        assert!(parse_cli(&["reset-data".into(), "--force".into()]).is_err());
     }
 
     #[test]

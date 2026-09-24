@@ -9,6 +9,7 @@
 )]
 
 use std::{
+    collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
     sync::mpsc::{self, Receiver, SyncSender, TryRecvError, TrySendError},
     thread::{self, JoinHandle},
@@ -25,6 +26,7 @@ use super::{
 use uuid::Uuid;
 
 const QUEUE_CAPACITY: usize = 1;
+const COMPLETION_CAPACITY: usize = 32;
 const MAX_LIBRARY_LIMIT: usize = 1_000;
 const MAX_HISTORY_BATCH: usize = 128;
 const MAX_PERMISSION_BATCH: usize = 16;
@@ -78,7 +80,8 @@ impl std::fmt::Display for StorageWorkerError {
 
 impl std::error::Error for StorageWorkerError {}
 
-enum Request {
+#[derive(Clone, Debug, PartialEq)]
+pub enum StorageCommand {
     Library {
         limit: usize,
     },
@@ -149,20 +152,12 @@ enum Request {
         since: Option<i64>,
         origin: Option<String>,
     },
-    Shutdown,
     Flush,
 }
 
-struct LibraryResponse {
-    library: Result<ProfileLibrarySnapshot, String>,
-}
-
-struct SessionListResponse {
-    sessions: Result<Vec<String>, String>,
-}
-
-struct SessionRestoreResponse {
-    snapshot: Result<SessionRestoreSnapshot, String>,
+enum WorkerMessage {
+    Execute(Box<StorageCommand>),
+    Shutdown,
 }
 
 /// Validated restore data returned by the metadata worker. Closed-tab
@@ -174,70 +169,203 @@ pub struct SessionRestoreSnapshot {
     pub closed_tabs: Vec<ClosedTabSnapshot>,
 }
 
-struct SessionSaveResponse {
-    saved: Result<(), String>,
-}
-
-struct SessionDeleteResponse {
-    deleted: Result<(), String>,
-}
-
-struct SessionCheckpointClearResponse {
-    cleared: Result<(), String>,
-}
-
-struct HistoryResponse {
-    committed: Result<usize, String>,
-}
-
-struct PermissionResponse {
-    committed: Result<usize, String>,
-}
-
-struct PermissionResetResponse {
-    removed: Result<bool, String>,
-}
-
-struct DownloadResponse {
-    committed: Result<usize, String>,
-}
-
-struct DownloadDestinationResponse {
-    updated: Result<(), String>,
-}
-
-struct DownloadCreateResponse {
-    created: Result<(), String>,
-}
-
-struct JourneyResponse {
-    applied: Result<bool, String>,
-}
-
-struct JourneyNodeResponse {
-    node: Result<Option<JourneyNodeRecord>, String>,
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct JourneyQuerySnapshot {
     pub nodes: Vec<JourneyNodeRecord>,
     pub edges: Vec<super::JourneyEdgeRecord>,
 }
 
-struct JourneyQueryResponse {
-    result: Result<JourneyQuerySnapshot, String>,
+/// One typed storage outcome emitted by the single profile metadata owner.
+///
+/// Application code consumes this stream instead of coupling to the worker's
+/// internal response channel.
+/// The durable operation that produced a completion or failure.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum StorageOperation {
+    Library,
+    SessionList,
+    SessionRestore,
+    SessionSave,
+    SessionDelete,
+    SessionCheckpointClear,
+    HistoryBatch,
+    PermissionBatch,
+    PermissionReset,
+    DownloadBatch,
+    DownloadDestination,
+    DownloadCreate,
+    JourneyWrite,
+    JourneyNode,
+    JourneyQuery,
+    JourneyExport,
+    MarkWrite,
+    HistoryClear,
+    Flush,
 }
 
-struct MarkResponse {
-    committed: Result<usize, String>,
+impl StorageCommand {
+    #[must_use]
+    pub const fn operation(&self) -> StorageOperation {
+        match self {
+            Self::Library { .. } => StorageOperation::Library,
+            Self::SessionList { .. } => StorageOperation::SessionList,
+            Self::SessionRestore { .. } | Self::SessionRecovery { .. } => {
+                StorageOperation::SessionRestore
+            }
+            Self::SessionSave { .. } => StorageOperation::SessionSave,
+            Self::SessionDelete { .. } => StorageOperation::SessionDelete,
+            Self::SessionCheckpointClear { .. } => StorageOperation::SessionCheckpointClear,
+            Self::HistoryBatch { .. } => StorageOperation::HistoryBatch,
+            Self::PermissionBatch { .. } => StorageOperation::PermissionBatch,
+            Self::PermissionReset { .. } => StorageOperation::PermissionReset,
+            Self::DownloadBatch { .. } => StorageOperation::DownloadBatch,
+            Self::DownloadDestination { .. } => StorageOperation::DownloadDestination,
+            Self::DownloadCreate { .. } => StorageOperation::DownloadCreate,
+            Self::JourneyWrite { .. } => StorageOperation::JourneyWrite,
+            Self::JourneyNode { .. } => StorageOperation::JourneyNode,
+            Self::JourneyQuery { .. } => StorageOperation::JourneyQuery,
+            Self::JourneyExport => StorageOperation::JourneyExport,
+            Self::MarkBatch { .. } => StorageOperation::MarkWrite,
+            Self::HistoryClear { .. } => StorageOperation::HistoryClear,
+            Self::Flush => StorageOperation::Flush,
+        }
+    }
+
+    fn validate(&self) -> Result<(), StorageWorkerError> {
+        match self {
+            Self::Library { limit } if !(1..=MAX_LIBRARY_LIMIT).contains(limit) => {
+                Err(StorageWorkerError::InvalidLimit)
+            }
+            Self::HistoryBatch { visits }
+                if visits.is_empty() || visits.len() > MAX_HISTORY_BATCH =>
+            {
+                Err(StorageWorkerError::InvalidBatch)
+            }
+            Self::PermissionBatch { rules }
+                if rules.is_empty() || rules.len() > MAX_PERMISSION_BATCH =>
+            {
+                Err(StorageWorkerError::InvalidPermissionBatch)
+            }
+            Self::PermissionReset {
+                origin,
+                permissions,
+            } if origin.is_empty() || permissions.is_empty() || permissions.len() > 2 => {
+                Err(StorageWorkerError::InvalidPermissionBatch)
+            }
+            Self::DownloadBatch { updates }
+                if updates.is_empty() || updates.len() > MAX_DOWNLOAD_BATCH =>
+            {
+                Err(StorageWorkerError::InvalidDownloadBatch)
+            }
+            Self::MarkBatch { writes } if writes.is_empty() || writes.len() > MAX_MARK_BATCH => {
+                Err(StorageWorkerError::InvalidMarkBatch)
+            }
+            Self::SessionRestore { paths } if paths.is_empty() => {
+                Err(StorageWorkerError::InvalidBatch)
+            }
+            _ => Ok(()),
+        }
+    }
 }
 
-struct HistoryClearResponse {
-    deleted: Result<u64, String>,
+/// A structured storage failure surfaced by the application completion stream.
+///
+/// The message remains suitable for diagnostics, while `operation` lets
+/// callers choose recovery and presentation behavior without parsing prose.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StorageOperationError {
+    pub operation: StorageOperation,
+    pub message: String,
 }
 
-struct FlushResponse {
-    flushed: Result<(), String>,
+impl std::fmt::Display for StorageOperationError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{:?}: {}", self.operation, self.message)
+    }
+}
+
+impl std::error::Error for StorageOperationError {}
+
+#[derive(Debug)]
+pub enum StorageCompletion {
+    Library(Result<ProfileLibrarySnapshot, StorageOperationError>),
+    SessionList(Result<Vec<String>, StorageOperationError>),
+    SessionRestore(Result<SessionRestoreSnapshot, StorageOperationError>),
+    SessionSave(Result<(), StorageOperationError>),
+    SessionDelete(Result<(), StorageOperationError>),
+    SessionCheckpointClear(Result<(), StorageOperationError>),
+    HistoryBatch(Result<usize, StorageOperationError>),
+    PermissionBatch(Result<usize, StorageOperationError>),
+    PermissionReset(Result<bool, StorageOperationError>),
+    DownloadBatch(Result<usize, StorageOperationError>),
+    DownloadDestination(Result<(), StorageOperationError>),
+    DownloadCreate(Result<(), StorageOperationError>),
+    JourneyWrite(Result<bool, StorageOperationError>),
+    JourneyNode(Result<Option<JourneyNodeRecord>, StorageOperationError>),
+    JourneyQuery(Result<JourneyQuerySnapshot, StorageOperationError>),
+    JourneyExport(Result<JourneyQuerySnapshot, StorageOperationError>),
+    MarkWrite(Result<usize, StorageOperationError>),
+    HistoryClear(Result<u64, StorageOperationError>),
+    Flush(Result<(), StorageOperationError>),
+}
+
+impl StorageCompletion {
+    /// Identifies the durable operation that produced this completion.
+    #[must_use]
+    pub const fn operation(&self) -> StorageOperation {
+        match self {
+            Self::Library(_) => StorageOperation::Library,
+            Self::SessionList(_) => StorageOperation::SessionList,
+            Self::SessionRestore(_) => StorageOperation::SessionRestore,
+            Self::SessionSave(_) => StorageOperation::SessionSave,
+            Self::SessionDelete(_) => StorageOperation::SessionDelete,
+            Self::SessionCheckpointClear(_) => StorageOperation::SessionCheckpointClear,
+            Self::HistoryBatch(_) => StorageOperation::HistoryBatch,
+            Self::PermissionBatch(_) => StorageOperation::PermissionBatch,
+            Self::PermissionReset(_) => StorageOperation::PermissionReset,
+            Self::DownloadBatch(_) => StorageOperation::DownloadBatch,
+            Self::DownloadDestination(_) => StorageOperation::DownloadDestination,
+            Self::DownloadCreate(_) => StorageOperation::DownloadCreate,
+            Self::JourneyWrite(_) => StorageOperation::JourneyWrite,
+            Self::JourneyNode(_) => StorageOperation::JourneyNode,
+            Self::JourneyQuery(_) => StorageOperation::JourneyQuery,
+            Self::JourneyExport(_) => StorageOperation::JourneyExport,
+            Self::MarkWrite(_) => StorageOperation::MarkWrite,
+            Self::HistoryClear(_) => StorageOperation::HistoryClear,
+            Self::Flush(_) => StorageOperation::Flush,
+        }
+    }
+
+    /// Builds the operation-specific failure used when an accepted request
+    /// terminates before the worker can execute it.
+    #[must_use]
+    pub fn failed(operation: StorageOperation, message: impl Into<String>) -> Self {
+        let error = StorageOperationError {
+            operation,
+            message: message.into(),
+        };
+        match operation {
+            StorageOperation::Library => Self::Library(Err(error)),
+            StorageOperation::SessionList => Self::SessionList(Err(error)),
+            StorageOperation::SessionRestore => Self::SessionRestore(Err(error)),
+            StorageOperation::SessionSave => Self::SessionSave(Err(error)),
+            StorageOperation::SessionDelete => Self::SessionDelete(Err(error)),
+            StorageOperation::SessionCheckpointClear => Self::SessionCheckpointClear(Err(error)),
+            StorageOperation::HistoryBatch => Self::HistoryBatch(Err(error)),
+            StorageOperation::PermissionBatch => Self::PermissionBatch(Err(error)),
+            StorageOperation::PermissionReset => Self::PermissionReset(Err(error)),
+            StorageOperation::DownloadBatch => Self::DownloadBatch(Err(error)),
+            StorageOperation::DownloadDestination => Self::DownloadDestination(Err(error)),
+            StorageOperation::DownloadCreate => Self::DownloadCreate(Err(error)),
+            StorageOperation::JourneyWrite => Self::JourneyWrite(Err(error)),
+            StorageOperation::JourneyNode => Self::JourneyNode(Err(error)),
+            StorageOperation::JourneyQuery => Self::JourneyQuery(Err(error)),
+            StorageOperation::JourneyExport => Self::JourneyExport(Err(error)),
+            StorageOperation::MarkWrite => Self::MarkWrite(Err(error)),
+            StorageOperation::HistoryClear => Self::HistoryClear(Err(error)),
+            StorageOperation::Flush => Self::Flush(Err(error)),
+        }
+    }
 }
 
 /// Owns one SQLite connection on one bounded background thread.
@@ -246,50 +374,17 @@ struct FlushResponse {
 /// previous result before submitting another query. This prevents a fast UI
 /// typing sequence from growing an unbounded database backlog.
 pub struct ProfileStoreWorker {
-    sender: Option<SyncSender<Request>>,
-    library_receiver: Receiver<LibraryResponse>,
-    session_list_receiver: Receiver<SessionListResponse>,
-    session_restore_receiver: Receiver<SessionRestoreResponse>,
-    session_save_receiver: Receiver<SessionSaveResponse>,
-    session_delete_receiver: Receiver<SessionDeleteResponse>,
-    session_checkpoint_clear_receiver: Receiver<SessionCheckpointClearResponse>,
-    history_receiver: Receiver<HistoryResponse>,
-    permission_receiver: Receiver<PermissionResponse>,
-    permission_reset_receiver: Receiver<PermissionResetResponse>,
-    download_receiver: Receiver<DownloadResponse>,
-    download_destination_receiver: Receiver<DownloadDestinationResponse>,
-    download_create_receiver: Receiver<DownloadCreateResponse>,
-    journey_receiver: Receiver<JourneyResponse>,
-    journey_node_receiver: Receiver<JourneyNodeResponse>,
-    journey_query_receiver: Receiver<JourneyQueryResponse>,
-    journey_export_receiver: Receiver<JourneyQueryResponse>,
-    mark_receiver: Receiver<MarkResponse>,
-    history_clear_receiver: Receiver<HistoryClearResponse>,
-    flush_receiver: Receiver<FlushResponse>,
+    sender: Option<SyncSender<WorkerMessage>>,
+    completion_receiver: Receiver<StorageCompletion>,
+    ready: BTreeMap<StorageOperation, StorageCompletion>,
+    pending: BTreeSet<StorageOperation>,
+    disconnected: bool,
     join: Option<JoinHandle<()>>,
-    library_pending: bool,
-    session_list_pending: bool,
-    session_restore_pending: bool,
-    session_save_pending: bool,
-    session_delete_pending: bool,
-    session_checkpoint_clear_pending: bool,
-    history_pending: bool,
-    permission_pending: bool,
-    permission_reset_pending: bool,
-    download_pending: bool,
-    download_destination_pending: bool,
-    download_create_pending: bool,
-    journey_pending: bool,
-    journey_node_pending: bool,
-    journey_query_pending: bool,
-    journey_export_pending: bool,
-    mark_pending: bool,
-    history_clear_pending: bool,
-    flush_pending: bool,
 }
 
 impl ProfileStoreWorker {
-    /// Starts the worker. Database opening occurs on the worker thread.
+    /// Starts the worker with one bounded command channel and one typed
+    /// completion channel. Database opening remains confined to the worker.
     ///
     /// # Errors
     ///
@@ -297,121 +392,33 @@ impl ProfileStoreWorker {
     pub fn spawn(path: impl AsRef<Path>) -> Result<Self, StorageWorkerError> {
         let path = path.as_ref().to_owned();
         let (sender, requests) = mpsc::sync_channel(QUEUE_CAPACITY);
-        let (library_responses, library_receiver) = mpsc::sync_channel(QUEUE_CAPACITY);
-        let (session_list_responses, session_list_receiver) = mpsc::sync_channel(QUEUE_CAPACITY);
-        let (session_restore_responses, session_restore_receiver) =
-            mpsc::sync_channel(QUEUE_CAPACITY);
-        let (session_save_responses, session_save_receiver) = mpsc::sync_channel(QUEUE_CAPACITY);
-        let (session_delete_responses, session_delete_receiver) =
-            mpsc::sync_channel(QUEUE_CAPACITY);
-        let (session_checkpoint_clear_responses, session_checkpoint_clear_receiver) =
-            mpsc::sync_channel(QUEUE_CAPACITY);
-        let (history_responses, history_receiver) = mpsc::sync_channel(QUEUE_CAPACITY);
-        let (permission_responses, permission_receiver) = mpsc::sync_channel(QUEUE_CAPACITY);
-        let (permission_reset_responses, permission_reset_receiver) =
-            mpsc::sync_channel(QUEUE_CAPACITY);
-        let (download_responses, download_receiver) = mpsc::sync_channel(QUEUE_CAPACITY);
-        let (download_destination_responses, download_destination_receiver) =
-            mpsc::sync_channel(QUEUE_CAPACITY);
-        let (download_create_responses, download_create_receiver) =
-            mpsc::sync_channel(QUEUE_CAPACITY);
-        let (journey_responses, journey_receiver) = mpsc::sync_channel(QUEUE_CAPACITY);
-        let (journey_node_responses, journey_node_receiver) = mpsc::sync_channel(QUEUE_CAPACITY);
-        let (journey_query_responses, journey_query_receiver) = mpsc::sync_channel(QUEUE_CAPACITY);
-        let (journey_export_responses, journey_export_receiver) =
-            mpsc::sync_channel(QUEUE_CAPACITY);
-        let (mark_responses, mark_receiver) = mpsc::sync_channel(QUEUE_CAPACITY);
-        let (history_clear_responses, history_clear_receiver) = mpsc::sync_channel(QUEUE_CAPACITY);
-        let (flush_responses, flush_receiver) = mpsc::sync_channel(QUEUE_CAPACITY);
+        let (completion_sender, completion_receiver) = mpsc::sync_channel(COMPLETION_CAPACITY);
         let join = thread::Builder::new()
             .name("ferric-browser-profile-metadata".into())
-            .spawn(move || {
-                run_worker(
-                    path,
-                    requests,
-                    library_responses,
-                    session_list_responses,
-                    session_restore_responses,
-                    session_save_responses,
-                    session_delete_responses,
-                    session_checkpoint_clear_responses,
-                    history_responses,
-                    permission_responses,
-                    permission_reset_responses,
-                    download_responses,
-                    download_destination_responses,
-                    download_create_responses,
-                    journey_responses,
-                    journey_node_responses,
-                    journey_query_responses,
-                    journey_export_responses,
-                    mark_responses,
-                    history_clear_responses,
-                    flush_responses,
-                );
-            })
+            .spawn(move || run_worker(path, requests, completion_sender))
             .map_err(|error| StorageWorkerError::Spawn(error.to_string()))?;
         Ok(Self {
             sender: Some(sender),
-            library_receiver,
-            session_list_receiver,
-            session_restore_receiver,
-            session_save_receiver,
-            session_delete_receiver,
-            session_checkpoint_clear_receiver,
-            history_receiver,
-            permission_receiver,
-            permission_reset_receiver,
-            download_receiver,
-            download_destination_receiver,
-            download_create_receiver,
-            journey_receiver,
-            journey_node_receiver,
-            journey_query_receiver,
-            journey_export_receiver,
-            mark_receiver,
-            history_clear_receiver,
-            flush_receiver,
+            completion_receiver,
+            ready: BTreeMap::new(),
+            pending: BTreeSet::new(),
+            disconnected: false,
             join: Some(join),
-            library_pending: false,
-            session_list_pending: false,
-            session_restore_pending: false,
-            session_save_pending: false,
-            session_delete_pending: false,
-            session_checkpoint_clear_pending: false,
-            history_pending: false,
-            permission_pending: false,
-            permission_reset_pending: false,
-            download_pending: false,
-            download_destination_pending: false,
-            download_create_pending: false,
-            journey_pending: false,
-            journey_node_pending: false,
-            journey_query_pending: false,
-            journey_export_pending: false,
-            mark_pending: false,
-            history_clear_pending: false,
-            flush_pending: false,
         })
     }
 
-    /// Queues one bounded library read if no prior request is outstanding.
-    ///
-    /// # Errors
-    ///
-    /// Returns a typed error when the limit is invalid, another request is
-    /// pending, the bounded queue is full, or the worker has stopped.
-    pub fn request_library(&mut self, limit: usize) -> Result<(), StorageWorkerError> {
-        if !(1..=MAX_LIBRARY_LIMIT).contains(&limit) {
-            return Err(StorageWorkerError::InvalidLimit);
-        }
-        if self.library_pending {
+    fn submit(
+        &mut self,
+        operation: StorageOperation,
+        request: StorageCommand,
+    ) -> Result<(), StorageWorkerError> {
+        if self.pending.contains(&operation) {
             return Err(StorageWorkerError::Busy);
         }
         let sender = self.sender.as_ref().ok_or(StorageWorkerError::Stopped)?;
-        match sender.try_send(Request::Library { limit }) {
+        match sender.try_send(WorkerMessage::Execute(Box::new(request))) {
             Ok(()) => {
-                self.library_pending = true;
+                self.pending.insert(operation);
                 Ok(())
             }
             Err(TrySendError::Full(_)) => Err(StorageWorkerError::QueueFull),
@@ -419,91 +426,162 @@ impl ProfileStoreWorker {
         }
     }
 
-    pub fn poll_library(&mut self) -> Option<Result<ProfileLibrarySnapshot, String>> {
-        match self.library_receiver.try_recv() {
-            Ok(response) => {
-                self.library_pending = false;
-                Some(response.library)
-            }
-            Err(TryRecvError::Empty) => None,
-            Err(TryRecvError::Disconnected) => {
-                self.library_pending = false;
-                Some(Err("profile metadata worker disconnected".into()))
+    /// Submits one validated command to the bounded worker.
+    pub fn try_submit(&mut self, command: StorageCommand) -> Result<(), StorageWorkerError> {
+        command.validate()?;
+        self.submit(command.operation(), command)
+    }
+
+    fn record_completion(&mut self, completion: StorageCompletion) {
+        let operation = completion.operation();
+        self.pending.remove(&operation);
+        self.ready.insert(operation, completion);
+    }
+
+    fn record_disconnect(&mut self) {
+        if self.disconnected {
+            return;
+        }
+        self.disconnected = true;
+        self.sender = None;
+        for operation in std::mem::take(&mut self.pending) {
+            self.ready.insert(
+                operation,
+                StorageCompletion::failed(operation, "profile metadata worker disconnected"),
+            );
+        }
+    }
+
+    #[cfg(test)]
+    fn poll_operation(&mut self, operation: StorageOperation) -> Option<StorageCompletion> {
+        if let Some(completion) = self.ready.remove(&operation) {
+            return Some(completion);
+        }
+        loop {
+            match self.completion_receiver.try_recv() {
+                Ok(completion) if completion.operation() == operation => {
+                    self.pending.remove(&operation);
+                    return Some(completion);
+                }
+                Ok(completion) => self.record_completion(completion),
+                Err(TryRecvError::Empty) => return None,
+                Err(TryRecvError::Disconnected) => {
+                    self.record_disconnect();
+                    return self.ready.remove(&operation);
+                }
             }
         }
     }
 
-    /// Queues a bounded session-name enumeration on the worker thread.
-    ///
-    /// Session files live beside, rather than inside, the metadata database;
-    /// the worker still owns this filesystem read so switcher queries never
-    /// scan the session directory on the Qt thread.
+    fn wait_operation(
+        &mut self,
+        operation: StorageOperation,
+        timeout: Duration,
+    ) -> Option<StorageCompletion> {
+        if !self.pending.contains(&operation) && !self.ready.contains_key(&operation) {
+            return None;
+        }
+        if let Some(completion) = self.ready.remove(&operation) {
+            return Some(completion);
+        }
+        let deadline = std::time::Instant::now() + timeout;
+        loop {
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            if remaining.is_zero() {
+                return None;
+            }
+            match self.completion_receiver.recv_timeout(remaining) {
+                Ok(completion) if completion.operation() == operation => {
+                    self.pending.remove(&operation);
+                    return Some(completion);
+                }
+                Ok(completion) => self.record_completion(completion),
+                Err(mpsc::RecvTimeoutError::Timeout) => return None,
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    self.record_disconnect();
+                    return self.ready.remove(&operation);
+                }
+            }
+        }
+    }
+
+    /// Drains all currently available typed completions exactly once.
+    #[must_use]
+    pub fn poll_events(&mut self) -> Vec<StorageCompletion> {
+        let mut completions = std::mem::take(&mut self.ready)
+            .into_values()
+            .collect::<Vec<_>>();
+        loop {
+            match self.completion_receiver.try_recv() {
+                Ok(completion) => {
+                    self.pending.remove(&completion.operation());
+                    completions.push(completion);
+                }
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => {
+                    self.record_disconnect();
+                    completions.extend(std::mem::take(&mut self.ready).into_values());
+                    break;
+                }
+            }
+        }
+        completions
+    }
+}
+
+#[cfg(test)]
+impl ProfileStoreWorker {
+    pub fn request_library(&mut self, limit: usize) -> Result<(), StorageWorkerError> {
+        if !(1..=MAX_LIBRARY_LIMIT).contains(&limit) {
+            return Err(StorageWorkerError::InvalidLimit);
+        }
+        self.submit(StorageOperation::Library, StorageCommand::Library { limit })
+    }
+
+    pub fn poll_library(&mut self) -> Option<Result<ProfileLibrarySnapshot, String>> {
+        match self.poll_operation(StorageOperation::Library)? {
+            StorageCompletion::Library(result) => Some(stringify_error(result)),
+            _ => unreachable!("operation-keyed completion changed variant"),
+        }
+    }
+
     pub fn request_session_list(
         &mut self,
         root: PathBuf,
         profile_id: Uuid,
     ) -> Result<(), StorageWorkerError> {
-        if self.session_list_pending {
-            return Err(StorageWorkerError::Busy);
-        }
-        let sender = self.sender.as_ref().ok_or(StorageWorkerError::Stopped)?;
-        match sender.try_send(Request::SessionList { root, profile_id }) {
-            Ok(()) => {
-                self.session_list_pending = true;
-                Ok(())
-            }
-            Err(TrySendError::Full(_)) => Err(StorageWorkerError::QueueFull),
-            Err(TrySendError::Disconnected(_)) => Err(StorageWorkerError::Stopped),
-        }
+        self.submit(
+            StorageOperation::SessionList,
+            StorageCommand::SessionList { root, profile_id },
+        )
     }
 
     pub fn poll_session_list(&mut self) -> Option<Result<Vec<String>, String>> {
-        match self.session_list_receiver.try_recv() {
-            Ok(response) => {
-                self.session_list_pending = false;
-                Some(response.sessions)
-            }
-            Err(TryRecvError::Empty) => None,
-            Err(TryRecvError::Disconnected) => {
-                self.session_list_pending = false;
-                Some(Err("profile metadata worker disconnected".into()))
-            }
+        match self.poll_operation(StorageOperation::SessionList)? {
+            StorageCompletion::SessionList(result) => Some(stringify_error(result)),
+            _ => unreachable!("operation-keyed completion changed variant"),
         }
     }
 
     pub fn session_list_pending(&self) -> bool {
-        self.session_list_pending
+        self.pending.contains(&StorageOperation::SessionList)
     }
 
-    /// Queues validation and restore-plan construction for one session file.
-    /// The returned plan contains only safe, bounded restore descriptors.
     pub fn request_session_restore(&mut self, path: PathBuf) -> Result<(), StorageWorkerError> {
         self.request_session_restore_paths(vec![path])
     }
 
-    /// Queues validation and restore-plan construction for one or more
-    /// checkpoint generations. The worker concatenates the validated plans in
-    /// path order, preserving the recovery fallback semantics without making
-    /// the GUI thread parse checkpoint files.
     pub fn request_session_restore_paths(
         &mut self,
         paths: Vec<PathBuf>,
     ) -> Result<(), StorageWorkerError> {
-        if self.session_restore_pending {
-            return Err(StorageWorkerError::Busy);
-        }
         if paths.is_empty() {
             return Err(StorageWorkerError::QueueFull);
         }
-        let sender = self.sender.as_ref().ok_or(StorageWorkerError::Stopped)?;
-        match sender.try_send(Request::SessionRestore { paths }) {
-            Ok(()) => {
-                self.session_restore_pending = true;
-                Ok(())
-            }
-            Err(TrySendError::Full(_)) => Err(StorageWorkerError::QueueFull),
-            Err(TrySendError::Disconnected(_)) => Err(StorageWorkerError::Stopped),
-        }
+        self.submit(
+            StorageOperation::SessionRestore,
+            StorageCommand::SessionRestore { paths },
+        )
     }
 
     pub fn request_session_recovery(
@@ -511,112 +589,65 @@ impl ProfileStoreWorker {
         root: PathBuf,
         profile_id: Uuid,
     ) -> Result<(), StorageWorkerError> {
-        if self.session_restore_pending {
-            return Err(StorageWorkerError::Busy);
-        }
-        let sender = self.sender.as_ref().ok_or(StorageWorkerError::Stopped)?;
-        match sender.try_send(Request::SessionRecovery { root, profile_id }) {
-            Ok(()) => {
-                self.session_restore_pending = true;
-                Ok(())
-            }
-            Err(TrySendError::Full(_)) => Err(StorageWorkerError::QueueFull),
-            Err(TrySendError::Disconnected(_)) => Err(StorageWorkerError::Stopped),
-        }
+        self.submit(
+            StorageOperation::SessionRestore,
+            StorageCommand::SessionRecovery { root, profile_id },
+        )
     }
 
     pub fn poll_session_restore(&mut self) -> Option<Result<SessionRestoreSnapshot, String>> {
-        match self.session_restore_receiver.try_recv() {
-            Ok(response) => {
-                self.session_restore_pending = false;
-                Some(response.snapshot)
-            }
-            Err(TryRecvError::Empty) => None,
-            Err(TryRecvError::Disconnected) => {
-                self.session_restore_pending = false;
-                Some(Err("profile metadata worker disconnected".into()))
-            }
+        match self.poll_operation(StorageOperation::SessionRestore)? {
+            StorageCompletion::SessionRestore(result) => Some(stringify_error(result)),
+            _ => unreachable!("operation-keyed completion changed variant"),
         }
     }
 
     pub fn session_restore_pending(&self) -> bool {
-        self.session_restore_pending
+        self.pending.contains(&StorageOperation::SessionRestore)
     }
 
-    /// Queues one atomic session snapshot write on the storage worker.
     pub fn request_session_save(
         &mut self,
         path: PathBuf,
         snapshot: SessionSnapshot,
     ) -> Result<(), StorageWorkerError> {
-        if self.session_save_pending {
-            return Err(StorageWorkerError::Busy);
-        }
-        let sender = self.sender.as_ref().ok_or(StorageWorkerError::Stopped)?;
-        match sender.try_send(Request::SessionSave { path, snapshot }) {
-            Ok(()) => {
-                self.session_save_pending = true;
-                Ok(())
-            }
-            Err(TrySendError::Full(_)) => Err(StorageWorkerError::QueueFull),
-            Err(TrySendError::Disconnected(_)) => Err(StorageWorkerError::Stopped),
-        }
+        self.submit(
+            StorageOperation::SessionSave,
+            StorageCommand::SessionSave { path, snapshot },
+        )
     }
 
     pub fn poll_session_save(&mut self) -> Option<Result<(), String>> {
-        match self.session_save_receiver.try_recv() {
-            Ok(response) => {
-                self.session_save_pending = false;
-                Some(response.saved)
-            }
-            Err(TryRecvError::Empty) => None,
-            Err(TryRecvError::Disconnected) => {
-                self.session_save_pending = false;
-                Some(Err("profile metadata worker disconnected".into()))
-            }
+        match self.poll_operation(StorageOperation::SessionSave)? {
+            StorageCompletion::SessionSave(result) => Some(stringify_error(result)),
+            _ => unreachable!("operation-keyed completion changed variant"),
         }
     }
 
     pub fn session_save_pending(&self) -> bool {
-        self.session_save_pending
+        self.pending.contains(&StorageOperation::SessionSave)
     }
 
-    /// Queues deletion of one validated named-session file on the worker.
     pub fn request_session_delete(
         &mut self,
         root: PathBuf,
         profile_id: Uuid,
         name: String,
     ) -> Result<(), StorageWorkerError> {
-        if self.session_delete_pending {
-            return Err(StorageWorkerError::Busy);
-        }
-        let sender = self.sender.as_ref().ok_or(StorageWorkerError::Stopped)?;
-        match sender.try_send(Request::SessionDelete {
-            root,
-            profile_id,
-            name,
-        }) {
-            Ok(()) => {
-                self.session_delete_pending = true;
-                Ok(())
-            }
-            Err(TrySendError::Full(_)) => Err(StorageWorkerError::QueueFull),
-            Err(TrySendError::Disconnected(_)) => Err(StorageWorkerError::Stopped),
-        }
+        self.submit(
+            StorageOperation::SessionDelete,
+            StorageCommand::SessionDelete {
+                root,
+                profile_id,
+                name,
+            },
+        )
     }
 
     pub fn poll_session_delete(&mut self) -> Option<Result<(), String>> {
-        match self.session_delete_receiver.try_recv() {
-            Ok(response) => {
-                self.session_delete_pending = false;
-                Some(response.deleted)
-            }
-            Err(TryRecvError::Empty) => None,
-            Err(TryRecvError::Disconnected) => {
-                self.session_delete_pending = false;
-                Some(Err("profile metadata worker disconnected".into()))
-            }
+        match self.poll_operation(StorageOperation::SessionDelete)? {
+            StorageCompletion::SessionDelete(result) => Some(stringify_error(result)),
+            _ => unreachable!("operation-keyed completion changed variant"),
         }
     }
 
@@ -625,40 +656,19 @@ impl ProfileStoreWorker {
         root: PathBuf,
         profile_id: Uuid,
     ) -> Result<(), StorageWorkerError> {
-        if self.session_checkpoint_clear_pending {
-            return Err(StorageWorkerError::Busy);
-        }
-        let sender = self.sender.as_ref().ok_or(StorageWorkerError::Stopped)?;
-        match sender.try_send(Request::SessionCheckpointClear { root, profile_id }) {
-            Ok(()) => {
-                self.session_checkpoint_clear_pending = true;
-                Ok(())
-            }
-            Err(TrySendError::Full(_)) => Err(StorageWorkerError::QueueFull),
-            Err(TrySendError::Disconnected(_)) => Err(StorageWorkerError::Stopped),
-        }
+        self.submit(
+            StorageOperation::SessionCheckpointClear,
+            StorageCommand::SessionCheckpointClear { root, profile_id },
+        )
     }
 
     pub fn poll_session_checkpoint_clear(&mut self) -> Option<Result<(), String>> {
-        match self.session_checkpoint_clear_receiver.try_recv() {
-            Ok(response) => {
-                self.session_checkpoint_clear_pending = false;
-                Some(response.cleared)
-            }
-            Err(TryRecvError::Empty) => None,
-            Err(TryRecvError::Disconnected) => {
-                self.session_checkpoint_clear_pending = false;
-                Some(Err("profile metadata worker disconnected".into()))
-            }
+        match self.poll_operation(StorageOperation::SessionCheckpointClear)? {
+            StorageCompletion::SessionCheckpointClear(result) => Some(stringify_error(result)),
+            _ => unreachable!("operation-keyed completion changed variant"),
         }
     }
 
-    /// Queues a bounded atomic history batch on the SQLite owner.
-    ///
-    /// # Errors
-    ///
-    /// Returns a typed error if the batch is empty/too large, another history
-    /// batch is pending, the bounded queue is full, or the worker stopped.
     pub fn request_history_batch(
         &mut self,
         visits: Vec<VisitInput>,
@@ -666,41 +676,19 @@ impl ProfileStoreWorker {
         if visits.is_empty() || visits.len() > MAX_HISTORY_BATCH {
             return Err(StorageWorkerError::InvalidBatch);
         }
-        if self.history_pending {
-            return Err(StorageWorkerError::Busy);
-        }
-        let sender = self.sender.as_ref().ok_or(StorageWorkerError::Stopped)?;
-        match sender.try_send(Request::HistoryBatch { visits }) {
-            Ok(()) => {
-                self.history_pending = true;
-                Ok(())
-            }
-            Err(TrySendError::Full(_)) => Err(StorageWorkerError::QueueFull),
-            Err(TrySendError::Disconnected(_)) => Err(StorageWorkerError::Stopped),
-        }
+        self.submit(
+            StorageOperation::HistoryBatch,
+            StorageCommand::HistoryBatch { visits },
+        )
     }
 
     pub fn poll_history_batch(&mut self) -> Option<Result<usize, String>> {
-        match self.history_receiver.try_recv() {
-            Ok(response) => {
-                self.history_pending = false;
-                Some(response.committed)
-            }
-            Err(TryRecvError::Empty) => None,
-            Err(TryRecvError::Disconnected) => {
-                self.history_pending = false;
-                Some(Err("profile metadata worker disconnected".into()))
-            }
+        match self.poll_operation(StorageOperation::HistoryBatch)? {
+            StorageCompletion::HistoryBatch(result) => Some(stringify_error(result)),
+            _ => unreachable!("operation-keyed completion changed variant"),
         }
     }
 
-    /// Queues a bounded atomic permission-rule batch on the SQLite owner.
-    ///
-    /// # Errors
-    ///
-    /// Returns a typed error if the batch is empty/too large, another
-    /// permission batch is pending, the bounded queue is full, or the worker
-    /// stopped.
     pub fn request_permission_batch(
         &mut self,
         rules: Vec<PermissionRule>,
@@ -708,35 +696,19 @@ impl ProfileStoreWorker {
         if rules.is_empty() || rules.len() > MAX_PERMISSION_BATCH {
             return Err(StorageWorkerError::InvalidPermissionBatch);
         }
-        if self.permission_pending {
-            return Err(StorageWorkerError::Busy);
-        }
-        let sender = self.sender.as_ref().ok_or(StorageWorkerError::Stopped)?;
-        match sender.try_send(Request::PermissionBatch { rules }) {
-            Ok(()) => {
-                self.permission_pending = true;
-                Ok(())
-            }
-            Err(TrySendError::Full(_)) => Err(StorageWorkerError::QueueFull),
-            Err(TrySendError::Disconnected(_)) => Err(StorageWorkerError::Stopped),
-        }
+        self.submit(
+            StorageOperation::PermissionBatch,
+            StorageCommand::PermissionBatch { rules },
+        )
     }
 
     pub fn poll_permission_batch(&mut self) -> Option<Result<usize, String>> {
-        match self.permission_receiver.try_recv() {
-            Ok(response) => {
-                self.permission_pending = false;
-                Some(response.committed)
-            }
-            Err(TryRecvError::Empty) => None,
-            Err(TryRecvError::Disconnected) => {
-                self.permission_pending = false;
-                Some(Err("profile metadata worker disconnected".into()))
-            }
+        match self.poll_operation(StorageOperation::PermissionBatch)? {
+            StorageCompletion::PermissionBatch(result) => Some(stringify_error(result)),
+            _ => unreachable!("operation-keyed completion changed variant"),
         }
     }
 
-    /// Queues one bounded permission reset on the SQLite owner.
     pub fn request_permission_reset(
         &mut self,
         origin: String,
@@ -745,38 +717,22 @@ impl ProfileStoreWorker {
         if origin.is_empty() || permissions.is_empty() || permissions.len() > 2 {
             return Err(StorageWorkerError::InvalidPermissionBatch);
         }
-        if self.permission_reset_pending {
-            return Err(StorageWorkerError::Busy);
-        }
-        let sender = self.sender.as_ref().ok_or(StorageWorkerError::Stopped)?;
-        match sender.try_send(Request::PermissionReset {
-            origin,
-            permissions,
-        }) {
-            Ok(()) => {
-                self.permission_reset_pending = true;
-                Ok(())
-            }
-            Err(TrySendError::Full(_)) => Err(StorageWorkerError::QueueFull),
-            Err(TrySendError::Disconnected(_)) => Err(StorageWorkerError::Stopped),
-        }
+        self.submit(
+            StorageOperation::PermissionReset,
+            StorageCommand::PermissionReset {
+                origin,
+                permissions,
+            },
+        )
     }
 
     pub fn poll_permission_reset(&mut self) -> Option<Result<bool, String>> {
-        match self.permission_reset_receiver.try_recv() {
-            Ok(response) => {
-                self.permission_reset_pending = false;
-                Some(response.removed)
-            }
-            Err(TryRecvError::Empty) => None,
-            Err(TryRecvError::Disconnected) => {
-                self.permission_reset_pending = false;
-                Some(Err("profile metadata worker disconnected".into()))
-            }
+        match self.poll_operation(StorageOperation::PermissionReset)? {
+            StorageCompletion::PermissionReset(result) => Some(stringify_error(result)),
+            _ => unreachable!("operation-keyed completion changed variant"),
         }
     }
 
-    /// Queues a bounded atomic download lifecycle batch on the SQLite owner.
     pub fn request_download_batch(
         &mut self,
         updates: Vec<DownloadUpdate>,
@@ -784,91 +740,49 @@ impl ProfileStoreWorker {
         if updates.is_empty() || updates.len() > MAX_DOWNLOAD_BATCH {
             return Err(StorageWorkerError::InvalidDownloadBatch);
         }
-        if self.download_pending {
-            return Err(StorageWorkerError::Busy);
-        }
-        let sender = self.sender.as_ref().ok_or(StorageWorkerError::Stopped)?;
-        match sender.try_send(Request::DownloadBatch { updates }) {
-            Ok(()) => {
-                self.download_pending = true;
-                Ok(())
-            }
-            Err(TrySendError::Full(_)) => Err(StorageWorkerError::QueueFull),
-            Err(TrySendError::Disconnected(_)) => Err(StorageWorkerError::Stopped),
-        }
+        self.submit(
+            StorageOperation::DownloadBatch,
+            StorageCommand::DownloadBatch { updates },
+        )
     }
 
     pub fn poll_download_batch(&mut self) -> Option<Result<usize, String>> {
-        match self.download_receiver.try_recv() {
-            Ok(response) => {
-                self.download_pending = false;
-                Some(response.committed)
-            }
-            Err(TryRecvError::Empty) => None,
-            Err(TryRecvError::Disconnected) => {
-                self.download_pending = false;
-                Some(Err("profile metadata worker disconnected".into()))
-            }
+        match self.poll_operation(StorageOperation::DownloadBatch)? {
+            StorageCompletion::DownloadBatch(result) => Some(stringify_error(result)),
+            _ => unreachable!("operation-keyed completion changed variant"),
         }
     }
 
-    /// Queues one acknowledged download destination update on the SQLite
-    /// owner.
     pub fn request_download_destination(
         &mut self,
         id: String,
         destination: String,
     ) -> Result<(), StorageWorkerError> {
-        if self.download_destination_pending {
-            return Err(StorageWorkerError::Busy);
-        }
-        let sender = self.sender.as_ref().ok_or(StorageWorkerError::Stopped)?;
-        match sender.try_send(Request::DownloadDestination { id, destination }) {
-            Ok(()) => {
-                self.download_destination_pending = true;
-                Ok(())
-            }
-            Err(TrySendError::Full(_)) => Err(StorageWorkerError::QueueFull),
-            Err(TrySendError::Disconnected(_)) => Err(StorageWorkerError::Stopped),
+        self.submit(
+            StorageOperation::DownloadDestination,
+            StorageCommand::DownloadDestination { id, destination },
+        )
+    }
+
+    pub fn poll_download_destination(&mut self) -> Option<Result<(), String>> {
+        match self.poll_operation(StorageOperation::DownloadDestination)? {
+            StorageCompletion::DownloadDestination(result) => Some(stringify_error(result)),
+            _ => unreachable!("operation-keyed completion changed variant"),
         }
     }
 
     pub fn wait_download_destination(&mut self, timeout: Duration) -> Option<Result<(), String>> {
-        if !self.download_destination_pending {
-            return None;
-        }
-        match self.download_destination_receiver.recv_timeout(timeout) {
-            Ok(response) => {
-                self.download_destination_pending = false;
-                Some(response.updated)
-            }
-            Err(mpsc::RecvTimeoutError::Timeout) => None,
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
-                self.download_destination_pending = false;
-                Some(Err("profile metadata worker disconnected".into()))
-            }
-        }
-    }
-
-    pub fn poll_download_destination(&mut self) -> Option<Result<(), String>> {
-        match self.download_destination_receiver.try_recv() {
-            Ok(response) => {
-                self.download_destination_pending = false;
-                Some(response.updated)
-            }
-            Err(TryRecvError::Empty) => None,
-            Err(TryRecvError::Disconnected) => {
-                self.download_destination_pending = false;
-                Some(Err("profile metadata worker disconnected".into()))
-            }
+        match self.wait_operation(StorageOperation::DownloadDestination, timeout)? {
+            StorageCompletion::DownloadDestination(result) => Some(stringify_error(result)),
+            _ => unreachable!("operation-keyed completion changed variant"),
         }
     }
 
     pub fn download_destination_pending(&self) -> bool {
-        self.download_destination_pending
+        self.pending
+            .contains(&StorageOperation::DownloadDestination)
     }
 
-    /// Queues one acknowledged download index creation on the SQLite owner.
     pub fn request_download_create(
         &mut self,
         id: String,
@@ -877,139 +791,72 @@ impl ProfileStoreWorker {
         state: super::DownloadState,
         created_at: i64,
     ) -> Result<(), StorageWorkerError> {
-        if self.download_create_pending {
-            return Err(StorageWorkerError::Busy);
-        }
-        let sender = self.sender.as_ref().ok_or(StorageWorkerError::Stopped)?;
-        match sender.try_send(Request::DownloadCreate {
-            id,
-            source_url,
-            destination,
-            state,
-            created_at,
-        }) {
-            Ok(()) => {
-                self.download_create_pending = true;
-                Ok(())
-            }
-            Err(TrySendError::Full(_)) => Err(StorageWorkerError::QueueFull),
-            Err(TrySendError::Disconnected(_)) => Err(StorageWorkerError::Stopped),
+        self.submit(
+            StorageOperation::DownloadCreate,
+            StorageCommand::DownloadCreate {
+                id,
+                source_url,
+                destination,
+                state,
+                created_at,
+            },
+        )
+    }
+
+    pub fn poll_download_create(&mut self) -> Option<Result<(), String>> {
+        match self.poll_operation(StorageOperation::DownloadCreate)? {
+            StorageCompletion::DownloadCreate(result) => Some(stringify_error(result)),
+            _ => unreachable!("operation-keyed completion changed variant"),
         }
     }
 
     pub fn wait_download_create(&mut self, timeout: Duration) -> Option<Result<(), String>> {
-        if !self.download_create_pending {
-            return None;
-        }
-        match self.download_create_receiver.recv_timeout(timeout) {
-            Ok(response) => {
-                self.download_create_pending = false;
-                Some(response.created)
-            }
-            Err(mpsc::RecvTimeoutError::Timeout) => None,
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
-                self.download_create_pending = false;
-                Some(Err("profile metadata worker disconnected".into()))
-            }
-        }
-    }
-
-    pub fn poll_download_create(&mut self) -> Option<Result<(), String>> {
-        match self.download_create_receiver.try_recv() {
-            Ok(response) => {
-                self.download_create_pending = false;
-                Some(response.created)
-            }
-            Err(TryRecvError::Empty) => None,
-            Err(TryRecvError::Disconnected) => {
-                self.download_create_pending = false;
-                Some(Err("profile metadata worker disconnected".into()))
-            }
+        match self.wait_operation(StorageOperation::DownloadCreate, timeout)? {
+            StorageCompletion::DownloadCreate(result) => Some(stringify_error(result)),
+            _ => unreachable!("operation-keyed completion changed variant"),
         }
     }
 
     pub fn download_create_pending(&self) -> bool {
-        self.download_create_pending
+        self.pending.contains(&StorageOperation::DownloadCreate)
     }
 
-    /// Queues one acknowledged journey mutation on the SQLite owner.
     pub fn request_journey_write(&mut self, write: JourneyWrite) -> Result<(), StorageWorkerError> {
-        if self.journey_pending {
-            return Err(StorageWorkerError::Busy);
-        }
-        let sender = self.sender.as_ref().ok_or(StorageWorkerError::Stopped)?;
-        match sender.try_send(Request::JourneyWrite { write }) {
-            Ok(()) => {
-                self.journey_pending = true;
-                Ok(())
-            }
-            Err(TrySendError::Full(_)) => Err(StorageWorkerError::QueueFull),
-            Err(TrySendError::Disconnected(_)) => Err(StorageWorkerError::Stopped),
+        self.submit(
+            StorageOperation::JourneyWrite,
+            StorageCommand::JourneyWrite { write },
+        )
+    }
+
+    pub fn poll_journey_write(&mut self) -> Option<Result<bool, String>> {
+        match self.poll_operation(StorageOperation::JourneyWrite)? {
+            StorageCompletion::JourneyWrite(result) => Some(stringify_error(result)),
+            _ => unreachable!("operation-keyed completion changed variant"),
         }
     }
 
     pub fn wait_journey_write(&mut self, timeout: Duration) -> Option<Result<bool, String>> {
-        if !self.journey_pending {
-            return None;
-        }
-        match self.journey_receiver.recv_timeout(timeout) {
-            Ok(response) => {
-                self.journey_pending = false;
-                Some(response.applied)
-            }
-            Err(mpsc::RecvTimeoutError::Timeout) => None,
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
-                self.journey_pending = false;
-                Some(Err("profile metadata worker disconnected".into()))
-            }
-        }
-    }
-
-    pub fn poll_journey_write(&mut self) -> Option<Result<bool, String>> {
-        match self.journey_receiver.try_recv() {
-            Ok(response) => {
-                self.journey_pending = false;
-                Some(response.applied)
-            }
-            Err(TryRecvError::Empty) => None,
-            Err(TryRecvError::Disconnected) => {
-                self.journey_pending = false;
-                Some(Err("profile metadata worker disconnected".into()))
-            }
+        match self.wait_operation(StorageOperation::JourneyWrite, timeout)? {
+            StorageCompletion::JourneyWrite(result) => Some(stringify_error(result)),
+            _ => unreachable!("operation-keyed completion changed variant"),
         }
     }
 
     pub fn journey_pending(&self) -> bool {
-        self.journey_pending
+        self.pending.contains(&StorageOperation::JourneyWrite)
     }
 
-    /// Queues one bounded durable journey-node lookup on the SQLite owner.
     pub fn request_journey_node(&mut self, id: String) -> Result<(), StorageWorkerError> {
-        if self.journey_node_pending {
-            return Err(StorageWorkerError::Busy);
-        }
-        let sender = self.sender.as_ref().ok_or(StorageWorkerError::Stopped)?;
-        match sender.try_send(Request::JourneyNode { id }) {
-            Ok(()) => {
-                self.journey_node_pending = true;
-                Ok(())
-            }
-            Err(TrySendError::Full(_)) => Err(StorageWorkerError::QueueFull),
-            Err(TrySendError::Disconnected(_)) => Err(StorageWorkerError::Stopped),
-        }
+        self.submit(
+            StorageOperation::JourneyNode,
+            StorageCommand::JourneyNode { id },
+        )
     }
 
     pub fn poll_journey_node(&mut self) -> Option<Result<Option<JourneyNodeRecord>, String>> {
-        match self.journey_node_receiver.try_recv() {
-            Ok(response) => {
-                self.journey_node_pending = false;
-                Some(response.node)
-            }
-            Err(TryRecvError::Empty) => None,
-            Err(TryRecvError::Disconnected) => {
-                self.journey_node_pending = false;
-                Some(Err("profile metadata worker disconnected".into()))
-            }
+        match self.poll_operation(StorageOperation::JourneyNode)? {
+            StorageCompletion::JourneyNode(result) => Some(stringify_error(result)),
+            _ => unreachable!("operation-keyed completion changed variant"),
         }
     }
 
@@ -1017,63 +864,36 @@ impl ProfileStoreWorker {
         &mut self,
         timeout: Duration,
     ) -> Option<Result<Option<JourneyNodeRecord>, String>> {
-        if !self.journey_node_pending {
-            return None;
-        }
-        match self.journey_node_receiver.recv_timeout(timeout) {
-            Ok(response) => {
-                self.journey_node_pending = false;
-                Some(response.node)
-            }
-            Err(mpsc::RecvTimeoutError::Timeout) => None,
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
-                self.journey_node_pending = false;
-                Some(Err("profile metadata worker disconnected".into()))
-            }
+        match self.wait_operation(StorageOperation::JourneyNode, timeout)? {
+            StorageCompletion::JourneyNode(result) => Some(stringify_error(result)),
+            _ => unreachable!("operation-keyed completion changed variant"),
         }
     }
 
     pub fn journey_node_pending(&self) -> bool {
-        self.journey_node_pending
+        self.pending.contains(&StorageOperation::JourneyNode)
     }
 
-    /// Queues one bounded durable journey list/search query on the SQLite
-    /// owner. The query parameters are validated by the store methods.
     pub fn request_journey_query(
         &mut self,
         current_tab_id: Option<String>,
         search: Option<String>,
         expand: Option<String>,
     ) -> Result<(), StorageWorkerError> {
-        if self.journey_query_pending {
-            return Err(StorageWorkerError::Busy);
-        }
-        let sender = self.sender.as_ref().ok_or(StorageWorkerError::Stopped)?;
-        match sender.try_send(Request::JourneyQuery {
-            current_tab_id,
-            search,
-            expand,
-        }) {
-            Ok(()) => {
-                self.journey_query_pending = true;
-                Ok(())
-            }
-            Err(TrySendError::Full(_)) => Err(StorageWorkerError::QueueFull),
-            Err(TrySendError::Disconnected(_)) => Err(StorageWorkerError::Stopped),
-        }
+        self.submit(
+            StorageOperation::JourneyQuery,
+            StorageCommand::JourneyQuery {
+                current_tab_id,
+                search,
+                expand,
+            },
+        )
     }
 
     pub fn poll_journey_query(&mut self) -> Option<Result<JourneyQuerySnapshot, String>> {
-        match self.journey_query_receiver.try_recv() {
-            Ok(response) => {
-                self.journey_query_pending = false;
-                Some(response.result)
-            }
-            Err(TryRecvError::Empty) => None,
-            Err(TryRecvError::Disconnected) => {
-                self.journey_query_pending = false;
-                Some(Err("profile metadata worker disconnected".into()))
-            }
+        match self.poll_operation(StorageOperation::JourneyQuery)? {
+            StorageCompletion::JourneyQuery(result) => Some(stringify_error(result)),
+            _ => unreachable!("operation-keyed completion changed variant"),
         }
     }
 
@@ -1081,53 +901,27 @@ impl ProfileStoreWorker {
         &mut self,
         timeout: Duration,
     ) -> Option<Result<JourneyQuerySnapshot, String>> {
-        if !self.journey_query_pending {
-            return None;
-        }
-        match self.journey_query_receiver.recv_timeout(timeout) {
-            Ok(response) => {
-                self.journey_query_pending = false;
-                Some(response.result)
-            }
-            Err(mpsc::RecvTimeoutError::Timeout) => None,
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
-                self.journey_query_pending = false;
-                Some(Err("profile metadata worker disconnected".into()))
-            }
+        match self.wait_operation(StorageOperation::JourneyQuery, timeout)? {
+            StorageCompletion::JourneyQuery(result) => Some(stringify_error(result)),
+            _ => unreachable!("operation-keyed completion changed variant"),
         }
     }
 
     pub fn journey_query_pending(&self) -> bool {
-        self.journey_query_pending
+        self.pending.contains(&StorageOperation::JourneyQuery)
     }
 
-    /// Queues a bounded full journey export on the SQLite owner.
     pub fn request_journey_export(&mut self) -> Result<(), StorageWorkerError> {
-        if self.journey_export_pending {
-            return Err(StorageWorkerError::Busy);
-        }
-        let sender = self.sender.as_ref().ok_or(StorageWorkerError::Stopped)?;
-        match sender.try_send(Request::JourneyExport) {
-            Ok(()) => {
-                self.journey_export_pending = true;
-                Ok(())
-            }
-            Err(TrySendError::Full(_)) => Err(StorageWorkerError::QueueFull),
-            Err(TrySendError::Disconnected(_)) => Err(StorageWorkerError::Stopped),
-        }
+        self.submit(
+            StorageOperation::JourneyExport,
+            StorageCommand::JourneyExport,
+        )
     }
 
     pub fn poll_journey_export(&mut self) -> Option<Result<JourneyQuerySnapshot, String>> {
-        match self.journey_export_receiver.try_recv() {
-            Ok(response) => {
-                self.journey_export_pending = false;
-                Some(response.result)
-            }
-            Err(TryRecvError::Empty) => None,
-            Err(TryRecvError::Disconnected) => {
-                self.journey_export_pending = false;
-                Some(Err("profile metadata worker disconnected".into()))
-            }
+        match self.poll_operation(StorageOperation::JourneyExport)? {
+            StorageCompletion::JourneyExport(result) => Some(stringify_error(result)),
+            _ => unreachable!("operation-keyed completion changed variant"),
         }
     }
 
@@ -1135,35 +929,20 @@ impl ProfileStoreWorker {
         &mut self,
         timeout: Duration,
     ) -> Option<Result<JourneyQuerySnapshot, String>> {
-        if !self.journey_export_pending {
-            return None;
-        }
-        match self.journey_export_receiver.recv_timeout(timeout) {
-            Ok(response) => {
-                self.journey_export_pending = false;
-                Some(response.result)
-            }
-            Err(mpsc::RecvTimeoutError::Timeout) => None,
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
-                self.journey_export_pending = false;
-                Some(Err("profile metadata worker disconnected".into()))
-            }
+        match self.wait_operation(StorageOperation::JourneyExport, timeout)? {
+            StorageCompletion::JourneyExport(result) => Some(stringify_error(result)),
+            _ => unreachable!("operation-keyed completion changed variant"),
         }
     }
 
     pub fn journey_export_pending(&self) -> bool {
-        self.journey_export_pending
+        self.pending.contains(&StorageOperation::JourneyExport)
     }
 
-    /// Queues one acknowledged bookmark/quickmark mutation on the SQLite
-    /// owner. The single-item bound preserves command-level result semantics.
     pub fn request_mark_write(&mut self, write: MarkWrite) -> Result<(), StorageWorkerError> {
         self.request_mark_writes(vec![write])
     }
 
-    /// Queues a bounded atomic group of bookmark/quickmark mutations on the
-    /// SQLite owner. The worker acknowledges the whole group only after one
-    /// SQLite transaction commits successfully.
     pub fn request_mark_writes(
         &mut self,
         writes: Vec<MarkWrite>,
@@ -1171,207 +950,113 @@ impl ProfileStoreWorker {
         if writes.is_empty() || writes.len() > MAX_MARK_BATCH {
             return Err(StorageWorkerError::InvalidMarkBatch);
         }
-        if self.mark_pending {
-            return Err(StorageWorkerError::Busy);
-        }
-        let sender = self.sender.as_ref().ok_or(StorageWorkerError::Stopped)?;
-        match sender.try_send(Request::MarkBatch { writes }) {
-            Ok(()) => {
-                self.mark_pending = true;
-                Ok(())
-            }
-            Err(TrySendError::Full(_)) => Err(StorageWorkerError::QueueFull),
-            Err(TrySendError::Disconnected(_)) => Err(StorageWorkerError::Stopped),
+        self.submit(
+            StorageOperation::MarkWrite,
+            StorageCommand::MarkBatch { writes },
+        )
+    }
+
+    pub fn poll_mark_write(&mut self) -> Option<Result<usize, String>> {
+        match self.poll_operation(StorageOperation::MarkWrite)? {
+            StorageCompletion::MarkWrite(result) => Some(stringify_error(result)),
+            _ => unreachable!("operation-keyed completion changed variant"),
         }
     }
 
     pub fn wait_mark_write(&mut self, timeout: Duration) -> Option<Result<usize, String>> {
-        if !self.mark_pending {
-            return None;
-        }
-        match self.mark_receiver.recv_timeout(timeout) {
-            Ok(response) => {
-                self.mark_pending = false;
-                Some(response.committed)
-            }
-            Err(mpsc::RecvTimeoutError::Timeout) => None,
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
-                self.mark_pending = false;
-                Some(Err("profile metadata worker disconnected".into()))
-            }
-        }
-    }
-
-    pub fn poll_mark_write(&mut self) -> Option<Result<usize, String>> {
-        match self.mark_receiver.try_recv() {
-            Ok(response) => {
-                self.mark_pending = false;
-                Some(response.committed)
-            }
-            Err(TryRecvError::Empty) => None,
-            Err(TryRecvError::Disconnected) => {
-                self.mark_pending = false;
-                Some(Err("profile metadata worker disconnected".into()))
-            }
+        match self.wait_operation(StorageOperation::MarkWrite, timeout)? {
+            StorageCompletion::MarkWrite(result) => Some(stringify_error(result)),
+            _ => unreachable!("operation-keyed completion changed variant"),
         }
     }
 
     pub fn mark_write_pending(&self) -> bool {
-        self.mark_pending
+        self.pending.contains(&StorageOperation::MarkWrite)
     }
 
-    /// Queues a confirmed history clear on the SQLite owner.
     pub fn request_history_clear(
         &mut self,
         since: Option<i64>,
         origin: Option<String>,
     ) -> Result<(), StorageWorkerError> {
-        if self.history_clear_pending {
-            return Err(StorageWorkerError::Busy);
-        }
-        let sender = self.sender.as_ref().ok_or(StorageWorkerError::Stopped)?;
-        match sender.try_send(Request::HistoryClear { since, origin }) {
-            Ok(()) => {
-                self.history_clear_pending = true;
-                Ok(())
-            }
-            Err(TrySendError::Full(_)) => Err(StorageWorkerError::QueueFull),
-            Err(TrySendError::Disconnected(_)) => Err(StorageWorkerError::Stopped),
+        self.submit(
+            StorageOperation::HistoryClear,
+            StorageCommand::HistoryClear { since, origin },
+        )
+    }
+
+    pub fn poll_history_clear(&mut self) -> Option<Result<u64, String>> {
+        match self.poll_operation(StorageOperation::HistoryClear)? {
+            StorageCompletion::HistoryClear(result) => Some(stringify_error(result)),
+            _ => unreachable!("operation-keyed completion changed variant"),
         }
     }
 
     pub fn wait_history_clear(&mut self, timeout: Duration) -> Option<Result<u64, String>> {
-        if !self.history_clear_pending {
-            return None;
-        }
-        match self.history_clear_receiver.recv_timeout(timeout) {
-            Ok(response) => {
-                self.history_clear_pending = false;
-                Some(response.deleted)
-            }
-            Err(mpsc::RecvTimeoutError::Timeout) => None,
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
-                self.history_clear_pending = false;
-                Some(Err("profile metadata worker disconnected".into()))
-            }
-        }
-    }
-
-    pub fn poll_history_clear(&mut self) -> Option<Result<u64, String>> {
-        match self.history_clear_receiver.try_recv() {
-            Ok(response) => {
-                self.history_clear_pending = false;
-                Some(response.deleted)
-            }
-            Err(TryRecvError::Empty) => None,
-            Err(TryRecvError::Disconnected) => {
-                self.history_clear_pending = false;
-                Some(Err("profile metadata worker disconnected".into()))
-            }
+        match self.wait_operation(StorageOperation::HistoryClear, timeout)? {
+            StorageCompletion::HistoryClear(result) => Some(stringify_error(result)),
+            _ => unreachable!("operation-keyed completion changed variant"),
         }
     }
 
     pub fn history_clear_pending(&self) -> bool {
-        self.history_clear_pending
+        self.pending.contains(&StorageOperation::HistoryClear)
+    }
+}
+
+impl ProfileStoreWorker {
+    pub fn request_flush(&mut self) -> Result<(), StorageWorkerError> {
+        self.submit(StorageOperation::Flush, StorageCommand::Flush)
     }
 
-    /// Queues a final WAL checkpoint on the SQLite owner.
-    pub fn request_flush(&mut self) -> Result<(), StorageWorkerError> {
-        if self.flush_pending {
-            return Err(StorageWorkerError::Busy);
-        }
-        let sender = self.sender.as_ref().ok_or(StorageWorkerError::Stopped)?;
-        match sender.try_send(Request::Flush) {
-            Ok(()) => {
-                self.flush_pending = true;
-                Ok(())
-            }
-            Err(TrySendError::Full(_)) => Err(StorageWorkerError::QueueFull),
-            Err(TrySendError::Disconnected(_)) => Err(StorageWorkerError::Stopped),
+    #[cfg(test)]
+    pub fn poll_flush(&mut self) -> Option<Result<(), String>> {
+        match self.poll_operation(StorageOperation::Flush)? {
+            StorageCompletion::Flush(result) => Some(stringify_error(result)),
+            _ => unreachable!("operation-keyed completion changed variant"),
         }
     }
 
     pub fn wait_flush(&mut self, timeout: Duration) -> Option<Result<(), String>> {
-        if !self.flush_pending {
-            return None;
-        }
-        match self.flush_receiver.recv_timeout(timeout) {
-            Ok(response) => {
-                self.flush_pending = false;
-                Some(response.flushed)
-            }
-            Err(mpsc::RecvTimeoutError::Timeout) => None,
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
-                self.flush_pending = false;
-                Some(Err("profile metadata worker disconnected".into()))
-            }
+        match self.wait_operation(StorageOperation::Flush, timeout)? {
+            StorageCompletion::Flush(result) => Some(stringify_error(result)),
+            _ => unreachable!("operation-keyed completion changed variant"),
         }
     }
+}
 
-    /// Waits briefly for the outstanding download batch during shutdown.
+#[cfg(test)]
+impl ProfileStoreWorker {
     pub fn wait_download_batch(&mut self, timeout: Duration) -> Option<Result<usize, String>> {
-        if !self.download_pending {
-            return None;
-        }
-        match self.download_receiver.recv_timeout(timeout) {
-            Ok(response) => {
-                self.download_pending = false;
-                Some(response.committed)
-            }
-            Err(mpsc::RecvTimeoutError::Timeout) => None,
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
-                self.download_pending = false;
-                Some(Err("profile metadata worker disconnected".into()))
-            }
+        match self.wait_operation(StorageOperation::DownloadBatch, timeout)? {
+            StorageCompletion::DownloadBatch(result) => Some(stringify_error(result)),
+            _ => unreachable!("operation-keyed completion changed variant"),
         }
     }
 
-    /// Waits briefly for the outstanding permission batch to finish during
-    /// bounded application shutdown.
     pub fn wait_permission_batch(&mut self, timeout: Duration) -> Option<Result<usize, String>> {
-        if !self.permission_pending {
-            return None;
-        }
-        match self.permission_receiver.recv_timeout(timeout) {
-            Ok(response) => {
-                self.permission_pending = false;
-                Some(response.committed)
-            }
-            Err(mpsc::RecvTimeoutError::Timeout) => None,
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
-                self.permission_pending = false;
-                Some(Err("profile metadata worker disconnected".into()))
-            }
+        match self.wait_operation(StorageOperation::PermissionBatch, timeout)? {
+            StorageCompletion::PermissionBatch(result) => Some(stringify_error(result)),
+            _ => unreachable!("operation-keyed completion changed variant"),
         }
     }
 
-    /// Waits briefly for the outstanding history batch to finish.
-    ///
-    /// This is reserved for the bounded application-shutdown path. Normal UI
-    /// work uses [`Self::poll_history_batch`] so the Qt thread never blocks on
-    /// SQLite.
     pub fn wait_history_batch(&mut self, timeout: Duration) -> Option<Result<usize, String>> {
-        if !self.history_pending {
-            return None;
-        }
-        match self.history_receiver.recv_timeout(timeout) {
-            Ok(response) => {
-                self.history_pending = false;
-                Some(response.committed)
-            }
-            Err(mpsc::RecvTimeoutError::Timeout) => None,
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
-                self.history_pending = false;
-                Some(Err("profile metadata worker disconnected".into()))
-            }
+        match self.wait_operation(StorageOperation::HistoryBatch, timeout)? {
+            StorageCompletion::HistoryBatch(result) => Some(stringify_error(result)),
+            _ => unreachable!("operation-keyed completion changed variant"),
         }
     }
+}
+
+fn stringify_error<T>(result: Result<T, StorageOperationError>) -> Result<T, String> {
+    result.map_err(|error| error.message)
 }
 
 impl Drop for ProfileStoreWorker {
     fn drop(&mut self) {
         if let Some(sender) = self.sender.take() {
-            let _ = sender.try_send(Request::Shutdown);
+            let _ = sender.try_send(WorkerMessage::Shutdown);
         }
         if let Some(join) = self.join.take() {
             let _ = join.join();
@@ -1382,138 +1067,64 @@ impl Drop for ProfileStoreWorker {
 #[allow(clippy::needless_pass_by_value)]
 fn run_worker(
     path: PathBuf,
-    requests: Receiver<Request>,
-    library_responses: SyncSender<LibraryResponse>,
-    session_list_responses: SyncSender<SessionListResponse>,
-    session_restore_responses: SyncSender<SessionRestoreResponse>,
-    session_save_responses: SyncSender<SessionSaveResponse>,
-    session_delete_responses: SyncSender<SessionDeleteResponse>,
-    session_checkpoint_clear_responses: SyncSender<SessionCheckpointClearResponse>,
-    history_responses: SyncSender<HistoryResponse>,
-    permission_responses: SyncSender<PermissionResponse>,
-    permission_reset_responses: SyncSender<PermissionResetResponse>,
-    download_responses: SyncSender<DownloadResponse>,
-    download_destination_responses: SyncSender<DownloadDestinationResponse>,
-    download_create_responses: SyncSender<DownloadCreateResponse>,
-    journey_responses: SyncSender<JourneyResponse>,
-    journey_node_responses: SyncSender<JourneyNodeResponse>,
-    journey_query_responses: SyncSender<JourneyQueryResponse>,
-    journey_export_responses: SyncSender<JourneyQueryResponse>,
-    mark_responses: SyncSender<MarkResponse>,
-    history_clear_responses: SyncSender<HistoryClearResponse>,
-    flush_responses: SyncSender<FlushResponse>,
+    requests: Receiver<WorkerMessage>,
+    completions: SyncSender<StorageCompletion>,
 ) {
     let store = ProfileStore::open(path, StoreMode::Normal).map_err(|error| error.to_string());
-    while let Ok(request) = requests.recv() {
-        match request {
-            Request::Library { limit } => {
-                let library = store.as_ref().map_or_else(
+    while let Ok(message) = requests.recv() {
+        let WorkerMessage::Execute(request) = message else {
+            break;
+        };
+        let completion = match *request {
+            StorageCommand::Library { limit } => StorageCompletion::Library(storage_result(
+                StorageOperation::Library,
+                store.as_ref().map_or_else(
                     |error| Err(error.clone()),
                     |store| load_library(store, limit),
-                );
-                if library_responses
-                    .try_send(LibraryResponse { library })
-                    .is_err()
-                {
-                    break;
-                }
+                ),
+            )),
+            StorageCommand::SessionList { root, profile_id } => {
+                StorageCompletion::SessionList(storage_result(
+                    StorageOperation::SessionList,
+                    list_named_sessions(&root, profile_id).map_err(|error| error.to_string()),
+                ))
             }
-            Request::SessionList { root, profile_id } => {
-                let sessions =
-                    list_named_sessions(&root, profile_id).map_err(|error| error.to_string());
-                if session_list_responses
-                    .try_send(SessionListResponse { sessions })
-                    .is_err()
-                {
-                    break;
-                }
+            StorageCommand::SessionRestore { paths } => {
+                let snapshot = restore_session_paths(paths);
+                StorageCompletion::SessionRestore(storage_result(
+                    StorageOperation::SessionRestore,
+                    snapshot,
+                ))
             }
-            Request::SessionRestore { paths } => {
-                let snapshot = paths.into_iter().try_fold(
-                    SessionRestoreSnapshot {
-                        entries: Vec::new(),
-                        closed_tabs: Vec::new(),
-                    },
-                    |mut restored, path| {
-                        let snapshot = load_session(&path).map_err(|error| error.to_string())?;
-                        let mut entries =
-                            snapshot.restore_plan().map_err(|error| error.to_string())?;
-                        restored.entries.append(&mut entries);
-                        if restored.closed_tabs.is_empty() {
-                            restored.closed_tabs = snapshot.closed_tabs;
-                        }
-                        Ok::<_, String>(restored)
-                    },
-                );
-                if session_restore_responses
-                    .try_send(SessionRestoreResponse { snapshot })
-                    .is_err()
-                {
-                    break;
-                }
+            StorageCommand::SessionRecovery { root, profile_id } => {
+                let snapshot = restore_session_paths(current_session_paths(&root, profile_id));
+                StorageCompletion::SessionRestore(storage_result(
+                    StorageOperation::SessionRestore,
+                    snapshot,
+                ))
             }
-            Request::SessionRecovery { root, profile_id } => {
-                let snapshot = current_session_paths(&root, profile_id)
-                    .into_iter()
-                    .try_fold(
-                        SessionRestoreSnapshot {
-                            entries: Vec::new(),
-                            closed_tabs: Vec::new(),
-                        },
-                        |mut restored, path| {
-                            let snapshot =
-                                load_session(&path).map_err(|error| error.to_string())?;
-                            let mut entries =
-                                snapshot.restore_plan().map_err(|error| error.to_string())?;
-                            restored.entries.append(&mut entries);
-                            if restored.closed_tabs.is_empty() {
-                                restored.closed_tabs = snapshot.closed_tabs;
-                            }
-                            Ok::<_, String>(restored)
-                        },
-                    );
-                if session_restore_responses
-                    .try_send(SessionRestoreResponse { snapshot })
-                    .is_err()
-                {
-                    break;
-                }
+            StorageCommand::SessionSave { path, snapshot } => {
+                StorageCompletion::SessionSave(storage_result(
+                    StorageOperation::SessionSave,
+                    save_session_atomic(&path, &snapshot).map_err(|error| error.to_string()),
+                ))
             }
-            Request::SessionSave { path, snapshot } => {
-                let saved =
-                    save_session_atomic(&path, &snapshot).map_err(|error| error.to_string());
-                if session_save_responses
-                    .try_send(SessionSaveResponse { saved })
-                    .is_err()
-                {
-                    break;
-                }
+            StorageCommand::SessionCheckpointClear { root, profile_id } => {
+                StorageCompletion::SessionCheckpointClear(storage_result(
+                    StorageOperation::SessionCheckpointClear,
+                    clear_current_session_checkpoints(&root, profile_id)
+                        .map_err(|error| error.to_string()),
+                ))
             }
-            Request::SessionCheckpointClear { root, profile_id } => {
-                let cleared = clear_current_session_checkpoints(&root, profile_id)
-                    .map_err(|error| error.to_string());
-                if session_checkpoint_clear_responses
-                    .try_send(SessionCheckpointClearResponse { cleared })
-                    .is_err()
-                {
-                    break;
-                }
-            }
-            Request::SessionDelete {
+            StorageCommand::SessionDelete {
                 root,
                 profile_id,
                 name,
-            } => {
-                let deleted = delete_named_session(&root, profile_id, &name)
-                    .map_err(|error| error.to_string());
-                if session_delete_responses
-                    .try_send(SessionDeleteResponse { deleted })
-                    .is_err()
-                {
-                    break;
-                }
-            }
-            Request::HistoryBatch { visits } => {
+            } => StorageCompletion::SessionDelete(storage_result(
+                StorageOperation::SessionDelete,
+                delete_named_session(&root, profile_id, &name).map_err(|error| error.to_string()),
+            )),
+            StorageCommand::HistoryBatch { visits } => {
                 let committed = store.as_ref().map_or_else(
                     |error| Err(error.clone()),
                     |store| {
@@ -1523,14 +1134,12 @@ fn run_worker(
                             .map_err(|error| error.to_string())
                     },
                 );
-                if history_responses
-                    .try_send(HistoryResponse { committed })
-                    .is_err()
-                {
-                    break;
-                }
+                StorageCompletion::HistoryBatch(storage_result(
+                    StorageOperation::HistoryBatch,
+                    committed,
+                ))
             }
-            Request::PermissionBatch { rules } => {
+            StorageCommand::PermissionBatch { rules } => {
                 let committed = store.as_ref().map_or_else(
                     |error| Err(error.clone()),
                     |store| {
@@ -1540,14 +1149,12 @@ fn run_worker(
                             .map_err(|error| error.to_string())
                     },
                 );
-                if permission_responses
-                    .try_send(PermissionResponse { committed })
-                    .is_err()
-                {
-                    break;
-                }
+                StorageCompletion::PermissionBatch(storage_result(
+                    StorageOperation::PermissionBatch,
+                    committed,
+                ))
             }
-            Request::PermissionReset {
+            StorageCommand::PermissionReset {
                 origin,
                 permissions,
             } => {
@@ -1559,14 +1166,12 @@ fn run_worker(
                             .map_err(|error| error.to_string())
                     },
                 );
-                if permission_reset_responses
-                    .try_send(PermissionResetResponse { removed })
-                    .is_err()
-                {
-                    break;
-                }
+                StorageCompletion::PermissionReset(storage_result(
+                    StorageOperation::PermissionReset,
+                    removed,
+                ))
             }
-            Request::DownloadBatch { updates } => {
+            StorageCommand::DownloadBatch { updates } => {
                 let committed = store.as_ref().map_or_else(
                     |error| Err(error.clone()),
                     |store| {
@@ -1576,14 +1181,12 @@ fn run_worker(
                             .map_err(|error| error.to_string())
                     },
                 );
-                if download_responses
-                    .try_send(DownloadResponse { committed })
-                    .is_err()
-                {
-                    break;
-                }
+                StorageCompletion::DownloadBatch(storage_result(
+                    StorageOperation::DownloadBatch,
+                    committed,
+                ))
             }
-            Request::DownloadDestination { id, destination } => {
+            StorageCommand::DownloadDestination { id, destination } => {
                 let updated = store.as_ref().map_or_else(
                     |error| Err(error.clone()),
                     |store| {
@@ -1592,14 +1195,12 @@ fn run_worker(
                             .map_err(|error| error.to_string())
                     },
                 );
-                if download_destination_responses
-                    .try_send(DownloadDestinationResponse { updated })
-                    .is_err()
-                {
-                    break;
-                }
+                StorageCompletion::DownloadDestination(storage_result(
+                    StorageOperation::DownloadDestination,
+                    updated,
+                ))
             }
-            Request::DownloadCreate {
+            StorageCommand::DownloadCreate {
                 id,
                 source_url,
                 destination,
@@ -1614,14 +1215,12 @@ fn run_worker(
                             .map_err(|error| error.to_string())
                     },
                 );
-                if download_create_responses
-                    .try_send(DownloadCreateResponse { created })
-                    .is_err()
-                {
-                    break;
-                }
+                StorageCompletion::DownloadCreate(storage_result(
+                    StorageOperation::DownloadCreate,
+                    created,
+                ))
             }
-            Request::JourneyWrite { write } => {
+            StorageCommand::JourneyWrite { write } => {
                 let applied = store.as_ref().map_or_else(
                     |error| Err(error.clone()),
                     |store| {
@@ -1630,26 +1229,19 @@ fn run_worker(
                             .map_err(|error| error.to_string())
                     },
                 );
-                if journey_responses
-                    .try_send(JourneyResponse { applied })
-                    .is_err()
-                {
-                    break;
-                }
+                StorageCompletion::JourneyWrite(storage_result(
+                    StorageOperation::JourneyWrite,
+                    applied,
+                ))
             }
-            Request::JourneyNode { id } => {
+            StorageCommand::JourneyNode { id } => {
                 let node = store.as_ref().map_or_else(
                     |error| Err(error.clone()),
                     |store| store.journey_node(&id).map_err(|error| error.to_string()),
                 );
-                if journey_node_responses
-                    .try_send(JourneyNodeResponse { node })
-                    .is_err()
-                {
-                    break;
-                }
+                StorageCompletion::JourneyNode(storage_result(StorageOperation::JourneyNode, node))
             }
-            Request::JourneyQuery {
+            StorageCommand::JourneyQuery {
                 current_tab_id,
                 search,
                 expand,
@@ -1665,25 +1257,21 @@ fn run_worker(
                         )
                     },
                 );
-                if journey_query_responses
-                    .try_send(JourneyQueryResponse { result })
-                    .is_err()
-                {
-                    break;
-                }
+                StorageCompletion::JourneyQuery(storage_result(
+                    StorageOperation::JourneyQuery,
+                    result,
+                ))
             }
-            Request::JourneyExport => {
+            StorageCommand::JourneyExport => {
                 let result = store
                     .as_ref()
                     .map_or_else(|error| Err(error.clone()), load_journey_export);
-                if journey_export_responses
-                    .try_send(JourneyQueryResponse { result })
-                    .is_err()
-                {
-                    break;
-                }
+                StorageCompletion::JourneyExport(storage_result(
+                    StorageOperation::JourneyExport,
+                    result,
+                ))
             }
-            Request::MarkBatch { writes } => {
+            StorageCommand::MarkBatch { writes } => {
                 let committed = store.as_ref().map_or_else(
                     |error| Err(error.clone()),
                     |store| {
@@ -1693,11 +1281,9 @@ fn run_worker(
                             .map_err(|error| error.to_string())
                     },
                 );
-                if mark_responses.try_send(MarkResponse { committed }).is_err() {
-                    break;
-                }
+                StorageCompletion::MarkWrite(storage_result(StorageOperation::MarkWrite, committed))
             }
-            Request::HistoryClear { since, origin } => {
+            StorageCommand::HistoryClear { since, origin } => {
                 let deleted = store.as_ref().map_or_else(
                     |error| Err(error.clone()),
                     |store| {
@@ -1706,25 +1292,48 @@ fn run_worker(
                             .map_err(|error| error.to_string())
                     },
                 );
-                if history_clear_responses
-                    .try_send(HistoryClearResponse { deleted })
-                    .is_err()
-                {
-                    break;
-                }
+                StorageCompletion::HistoryClear(storage_result(
+                    StorageOperation::HistoryClear,
+                    deleted,
+                ))
             }
-            Request::Flush => {
-                let flushed = match store.as_ref() {
-                    Ok(store) => store.flush().map_err(|error| error.to_string()),
-                    Err(error) => Err(error.clone()),
-                };
-                if flush_responses.try_send(FlushResponse { flushed }).is_err() {
-                    break;
-                }
+            StorageCommand::Flush => {
+                let flushed = store.as_ref().map_or_else(
+                    |error| Err(error.clone()),
+                    |store| store.flush().map_err(|error| error.to_string()),
+                );
+                StorageCompletion::Flush(storage_result(StorageOperation::Flush, flushed))
             }
-            Request::Shutdown => break,
+        };
+        if completions.try_send(completion).is_err() {
+            break;
         }
     }
+}
+
+fn storage_result<T>(
+    operation: StorageOperation,
+    result: Result<T, String>,
+) -> Result<T, StorageOperationError> {
+    result.map_err(|message| StorageOperationError { operation, message })
+}
+
+fn restore_session_paths(paths: Vec<PathBuf>) -> Result<SessionRestoreSnapshot, String> {
+    paths.into_iter().try_fold(
+        SessionRestoreSnapshot {
+            entries: Vec::new(),
+            closed_tabs: Vec::new(),
+        },
+        |mut restored, path| {
+            let snapshot = load_session(&path).map_err(|error| error.to_string())?;
+            let mut entries = snapshot.restore_plan().map_err(|error| error.to_string())?;
+            restored.entries.append(&mut entries);
+            if restored.closed_tabs.is_empty() {
+                restored.closed_tabs = snapshot.closed_tabs;
+            }
+            Ok(restored)
+        },
+    )
 }
 
 fn load_library(store: &ProfileStore, limit: usize) -> Result<ProfileLibrarySnapshot, String> {
@@ -1860,6 +1469,49 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(format!("{}-wal", path.display()));
         let _ = std::fs::remove_file(format!("{}-shm", path.display()));
+    }
+
+    #[test]
+    fn completion_batch_collects_each_ready_response_exactly_once() {
+        let path = temp_path("completion-batch");
+        let store = ProfileStore::open(&path, StoreMode::Normal).expect("open");
+        drop(store);
+
+        let mut worker = ProfileStoreWorker::spawn(&path).expect("worker");
+        worker.request_library(10).expect("request");
+        let snapshot = (0..100).find_map(|_| {
+            let completion =
+                worker
+                    .poll_events()
+                    .into_iter()
+                    .find_map(|completion| match completion {
+                        StorageCompletion::Library(result) => Some(result),
+                        _ => None,
+                    });
+            if completion.is_none() {
+                thread::sleep(std::time::Duration::from_millis(1));
+            }
+            completion
+        });
+        assert!(snapshot.is_some_and(|result| result.is_ok()));
+        assert!(worker.poll_events().is_empty());
+        drop(worker);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(format!("{}-wal", path.display()));
+        let _ = std::fs::remove_file(format!("{}-shm", path.display()));
+    }
+
+    #[test]
+    fn completion_events_preserve_the_operation_when_storage_fails() {
+        let completion =
+            StorageCompletion::failed(StorageOperation::HistoryClear, "database unavailable");
+        assert!(matches!(
+            completion,
+            StorageCompletion::HistoryClear(Err(StorageOperationError {
+                operation: StorageOperation::HistoryClear,
+                message,
+            })) if message == "database unavailable"
+        ));
     }
 
     #[test]

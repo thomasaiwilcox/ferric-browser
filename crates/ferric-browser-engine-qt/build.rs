@@ -24,6 +24,8 @@ fn main() {
             "src/notification_presenter.cpp",
             "src/mpris_controller.h",
             "src/mpris_controller.cpp",
+            "src/settings_model.h",
+            "src/settings_model.cpp",
             "src/url_display.h",
             "src/url_display.cpp",
         ])

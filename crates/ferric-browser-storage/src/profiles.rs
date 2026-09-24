@@ -17,6 +17,11 @@ use crate::{
 const MAX_NAME_LENGTH: usize = 32;
 const MAX_LABEL_LENGTH: usize = 128;
 const DELETION_MANIFEST_VERSION: u32 = 1;
+// `flock` release may lag very briefly behind the final `File` drop on some
+// filesystems. Only retry a lock record that names this process; an external
+// owner remains an immediate, authoritative busy result.
+const SELF_LOCK_RELEASE_RETRIES: u8 = 4;
+const SELF_LOCK_RELEASE_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(5);
 
 static HELD_PROFILE_LOCKS: OnceLock<
     Mutex<std::collections::HashMap<PathBuf, Weak<ProfileLockState>>>,
@@ -70,13 +75,23 @@ impl ProfileLock {
         let mut file = options
             .open(&path)
             .map_err(|error| lock_io(&path, &error))?;
-        match file.try_lock_exclusive() {
-            Ok(()) => {}
-            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
-                let owner = fs::read_to_string(&path).ok();
-                return Err(ProfileLockError::Busy { path, owner });
+        let mut retries = 0;
+        loop {
+            match file.try_lock_exclusive() {
+                Ok(()) => break,
+                Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                    let owner = fs::read_to_string(&path).ok();
+                    if owner.as_deref().is_some_and(lock_owner_is_current_process)
+                        && retries < SELF_LOCK_RELEASE_RETRIES
+                    {
+                        retries += 1;
+                        std::thread::sleep(SELF_LOCK_RELEASE_RETRY_DELAY);
+                        continue;
+                    }
+                    return Err(ProfileLockError::Busy { path, owner });
+                }
+                Err(error) => return Err(lock_io(&path, &error)),
             }
-            Err(error) => return Err(lock_io(&path, &error)),
         }
         if let Err(error) = set_private_file_permissions(&path) {
             return Err(lock_io(&path, &error));
@@ -109,6 +124,10 @@ impl ProfileLock {
             .and_then(|held| held.get(&path).and_then(Weak::upgrade))
             .is_some()
     }
+}
+
+fn lock_owner_is_current_process(owner: &str) -> bool {
+    owner.trim_end() == format!("pid={}", std::process::id())
 }
 
 #[derive(Debug)]

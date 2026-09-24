@@ -14,7 +14,7 @@ Status: in-progress
 - Observable result: `ProfileStore::open` creates a normal profile-local
   SQLite database, enables foreign keys/WAL/FULL synchronous mode, applies a
   five-second busy timeout, and installs the initial metadata tables in one
-  migration transaction. Rust-owned APIs record deduplicated page metadata and
+  clean-break schema initialization. Rust-owned APIs record deduplicated page metadata and
   visits, bookmarks, quickmarks, and explicitly eligible command history.
   Private mode is rejected before opening a database, so no private metadata
   can reach this durable owner. Root resolution supports XDG, an explicit
@@ -31,8 +31,7 @@ Status: in-progress
   query-key set (including OAuth access/refresh tokens and client secrets),
   percent-encoded spellings of those keys, and malformed percent-encoded query
   names rather than persisting ambiguous input.
-  Older schemas receive one bounded versioned SQLite pre-migration backup and
-  migration metadata is checksum-validated before writes; private profiles
+  Older schemas are refused without opening them for write; private profiles
   never open the store. `--basedir` and `--temp-basedir` are passed through to
   the same root selection and temporary roots are cleaned after the GUI exits.
 - Evidence: `cargo test -p ferric-browser-storage --locked` (55 tests),
@@ -44,7 +43,7 @@ Status: in-progress
 
 Migrations beyond version 1 and permission workers remain later slices.
 Kernel-backed crash-safe lock recovery, write-time retention pruning, command-history capping,
-bounded pre-migration backups, and migration checksum validation are covered;
+clean-break schema refusal and checksum validation are covered;
 long-running retention scheduling and repair/export remain future work.
 Corruption and future-schema refusal plus read-only inspection are
 covered separately in `docs/testing/m2-15-storage-recovery.md`. Download-index

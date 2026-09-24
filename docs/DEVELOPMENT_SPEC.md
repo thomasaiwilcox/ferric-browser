@@ -1362,7 +1362,7 @@ key below must be accepted by the V1 schema. Values represent product defaults
 unless commented as a customization example.
 
 ```toml
-schema_version = 1
+schema_version = 3
 include = []
 
 [ui]
@@ -1512,7 +1512,7 @@ override keys are errors. Removing a profile requires the explicit delete
 operation and its checks.
 
 ```toml
-schema_version = 1
+schema_version = 3
 
 [[profiles]]
 name = "work"
@@ -1529,7 +1529,7 @@ Routes cannot automatically re-home engine popups, redirects, submitted forms,
 or an active authentication chain.
 
 ```toml
-schema_version = 1
+schema_version = 3
 
 [[contexts]]
 name = "work"
@@ -2157,7 +2157,7 @@ Handshake request and response:
 {
   "id": "hello-1",
   "method": "hello",
-  "params": {"protocol_major": 1, "protocol_minor": 0, "client": "ferric-browser-cli"}
+  "params": {"protocol_major": 2, "protocol_minor": 0, "client": "ferric-browser-cli"}
 }
 ```
 
@@ -2165,7 +2165,7 @@ Handshake request and response:
 {
   "id": "hello-1",
   "result": {
-    "protocol_major": 1,
+    "protocol_major": 2,
     "protocol_minor": 0,
     "instance_id": "c6346caf-e69d-4919-99ca-510c89bb7d32",
     "capabilities": ["command.execute", "tabs.query", "events.subscribe"]
@@ -2274,7 +2274,7 @@ Relative executable paths resolve against that manifest's directory, never
 the current page or working directory. Example target contract:
 
 ```toml
-schema_version = 1
+schema_version = 3
 name = "video"
 executable = "./video"
 argv = []

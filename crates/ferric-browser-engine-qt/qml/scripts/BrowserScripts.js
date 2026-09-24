@@ -2,7 +2,20 @@
 
 // Browser-owned page scripts are versioned resources. The build manifest hashes
 // this file with the QML module, so script changes are explicit and auditable.
-var VERSION = "1"
+var VERSION = "4"
+
+// Page userscripts are trusted local content, but their failure boundary is
+// browser policy. Keeping the wrappers here prevents QML from assembling page
+// code and makes both execution paths use one reviewed contract.
+function pageUserscriptRun(source) {
+    return "(function(){try{" + String(source)
+        + "\n}catch(error){return false;}return true;})()"
+}
+
+function pageUserscriptInstall(source) {
+    return "(function(){try{" + String(source)
+        + "\n}catch(error){}})()"
+}
 
 function boundedCount(value) {
     return Math.max(1, Math.min(9999, Number(value) || 1))
@@ -34,6 +47,28 @@ function scroll(kind, direction, half, count) {
         + "var dy=(direction==='up'?-1:direction==='down'?1:0)*Math.max(40,height*step)*count;"
         + "target.scrollBy(dx,dy);}"
         + "return true;})()"
+}
+
+function scrollPosition() {
+    return "(function(){var root=document.scrollingElement||document.documentElement;"
+        + "if(!root)return null;return {x:Math.max(0,root.scrollLeft||0),y:Math.max(0,root.scrollTop||0)};})()"
+}
+
+function restoreScrollPosition(x, y) {
+    var left = Math.max(0, Number(x) || 0)
+    var top = Math.max(0, Number(y) || 0)
+    return "(function(){var root=document.scrollingElement||document.documentElement;"
+        + "if(!root)return false;root.scrollTo(" + left + "," + top + ");return true;})()"
+}
+
+function cosmeticFilter(css) {
+    return "(function(){try{"
+        + "var id='ferric-browser-cosmetic-filter';"
+        + "var old=document.getElementById(id);if(old)old.remove();"
+        + "var style=document.createElement('style');style.id=id;"
+        + "style.textContent=" + JSON.stringify(String(css)) + ";"
+        + "(document.head||document.documentElement).appendChild(style);"
+        + "}catch(error){return false;}return true;})()"
 }
 
 function selection() {
@@ -138,6 +173,51 @@ function focusProbe() {
         + ":{sequence:0,editable:false,user_activated:false,kind:'unknown'};})()"
 }
 
+function focusObserverSource() {
+    return "(function(){"
+        + "if(window.__ferric_browserFocusObserverInstalled)return;"
+        + "window.__ferric_browserFocusObserverInstalled=true;"
+        + "var sequence=0;var userGestureUntil=0;"
+        + "function classify(){"
+        + "var element=document.activeElement;var depth=0;"
+        + "while(element&&element.shadowRoot&&depth<16&&element.shadowRoot.activeElement){"
+        + "element=element.shadowRoot.activeElement;depth++;}"
+        + "var tag=element&&element.tagName?String(element.tagName).toLowerCase():'';"
+        + "var type=element&&element.type?String(element.type).toLowerCase():'';"
+        + "var excluded=['button','checkbox','file','hidden','image','radio','range','reset','submit'];"
+        + "var editable=!!element&&(element.isContentEditable===true||tag==='textarea'||tag==='select'||"
+        + "(tag==='input'&&excluded.indexOf(type)<0));"
+        + "var kind=editable?(tag==='textarea'?'textarea':element.isContentEditable?'contenteditable':"
+        + "tag==='input'&&type==='password'?'password':'input'):tag==='iframe'?'frame':'other';"
+        + "return {editable:editable,kind:kind};}"
+        + "function publish(userActivated){var state=classify();"
+        + "window.__ferric_browserFocusState={sequence:++sequence,editable:state.editable,user_activated:!!userActivated,kind:state.kind};}"
+        + "window.__ferric_browserAuthorizeExplicitFocus=function(){userGestureUntil=performance.now()+1500;};"
+        + "function noteGesture(event){if(event.isTrusted!==false){userGestureUntil=performance.now()+1500;publish(true);}}"
+        + "document.addEventListener('pointerdown',noteGesture,true);"
+        + "document.addEventListener('keydown',function(event){if(event.key==='Tab')noteGesture(event);},true);"
+        + "document.addEventListener('focusin',function(){publish(performance.now()<=userGestureUntil);},true);"
+        + "document.addEventListener('focusout',function(){setTimeout(function(){publish(false);},0);},true);"
+        + "publish(false);})();"
+}
+
+function formStateProbe() {
+    return "(function() {"
+        + "var elements = document.querySelectorAll('input,textarea,select,[contenteditable=\"true\"]');"
+        + "for (var i = 0; i < elements.length; ++i) {"
+        + "var e = elements[i];"
+        + "if (e.isContentEditable) return 'unknown';"
+        + "if (e.tagName === 'INPUT' && (e.type === 'checkbox' || e.type === 'radio')"
+        + " && e.checked !== e.defaultChecked) return 'dirty';"
+        + "if (e.tagName === 'SELECT' && e.selectedIndex !== e.defaultSelectedIndex) return 'dirty';"
+        + "if (e.tagName !== 'SELECT' && e.value !== e.defaultValue) return 'dirty';"
+        + "} return 'safe'; })()"
+}
+
+function siteDataClearResult() {
+    return "window.__ferric_browserSiteDataClearResult || ''"
+}
+
 function shutdownPageProbe() {
     return "(function() {"
         + "if (typeof window.onbeforeunload === 'function') return 'unknown';"
@@ -154,4 +234,76 @@ function shutdownPageProbe() {
         + " if (e.options[j].selected !== e.options[j].defaultSelected) return 'dirty';"
         + "} else if (e.value !== e.defaultValue) return 'dirty';"
         + "} return 'clean'; })()"
+}
+
+function hintSelector(linksOnly) {
+    if (linksOnly) {
+        return "a[href],area[href],link[href],[role='link'][href]"
+    }
+    return "a,area,textarea,select,input:not([type='hidden']),button,frame,iframe,img,link,summary,"
+        + "[contenteditable]:not([contenteditable='false']),[onclick],[onmousedown],"
+        + "[role='link'],[role='option'],[role='button'],[role='tab'],[role='checkbox'],"
+        + "[role='switch'],[role='menuitem'],[role='menuitemcheckbox'],"
+        + "[role='menuitemradio'],[role='treeitem'],[aria-haspopup],[ng-click],[ngClick],"
+        + "[data-ng-click],[x-ng-click],[tabindex]:not([tabindex='-1'])"
+}
+
+function hintCollector(linksOnly) {
+    var selector = hintSelector(linksOnly)
+    var linkSelector = hintSelector(true)
+    return "(function(){"
+        + "const out=[];const seen=new Set();const selector=" + JSON.stringify(selector) + ";"
+        + "const linkSelector=" + JSON.stringify(linkSelector) + ";"
+        + "const elements=new Map();window.__ferric_browserHintElements=elements;let nextElementId=1;"
+        + "function add(el,ox,oy,framePath){if(out.length>=5000||seen.has(el))return;seen.add(el);"
+        + "const s=getComputedStyle(el),r=el.getBoundingClientRect();"
+        + "if(s.display==='none'||s.visibility==='hidden'||s.pointerEvents==='none'||Number(s.opacity)===0||r.width<=0||r.height<=0)return;"
+        + "let kind='aria';if(el.matches(linkSelector))kind='link';else if(el.matches('button,[role=button]'))kind='button';"
+        + "else if(el.matches('input'))kind='input';else if(el.matches('select'))kind='select';"
+        + "else if(el.matches('textarea'))kind='textarea';else if(el.isContentEditable)kind='contenteditable';"
+        + "const text=String(el.getAttribute('aria-label')||el.getAttribute('title')||el.innerText||el.value||'').replace(/[\\n\\r]+/g,' ').trim().slice(0,512);"
+        + "const href=kind==='link'?String(el.href||el.getAttribute('href')||''):null;"
+        + "const elementId=nextElementId++;elements.set(elementId,{element:el,framePath:framePath});"
+        + "out.push({element_id:elementId,kind:kind,frame_path:framePath,text:text,href:href,geometry:{x:r.x+ox,y:r.y+oy,width:r.width,height:r.height}});}"
+        + "function visit(root,framePath,ox,oy,depth){if(out.length>=5000||depth>8)return;"
+        + "root.querySelectorAll(selector).forEach(function(el){add(el,ox,oy,framePath);});if(out.length>=5000)return;"
+        + "root.querySelectorAll('*').forEach(function(el){if(el.shadowRoot)visit(el.shadowRoot,framePath,ox,oy,depth);});"
+        + "if(root.nodeType!==9)return;root.querySelectorAll('iframe,frame').forEach(function(frame,index){if(out.length>=5000||depth>=8)return;"
+        + "const fs=getComputedStyle(frame),fr=frame.getBoundingClientRect();if(fs.display==='none'||fs.visibility==='hidden'||fr.width<=0||fr.height<=0)return;"
+        + "try{if(frame.contentDocument)visit(frame.contentDocument,framePath+'.'+index,ox+fr.x,oy+fr.y,depth+1);}catch(error){}});}"
+        + "visit(document,'0',0,0,0);return {candidates:out};})()"
+}
+
+function hintFresh(candidate) {
+    var selector = hintSelector(false)
+    var linkSelector = hintSelector(true)
+    return "(function(){const elementId=" + Number(candidate.element_id) + ",path=" + JSON.stringify(candidate.frame_path || "0") + ";"
+        + "const selector=" + JSON.stringify(selector) + ",linkSelector=" + JSON.stringify(linkSelector) + ";"
+        + "const elements=window.__ferric_browserHintElements,record=elements&&elements.get(elementId);"
+        + "if(!record||record.framePath!==path||!record.element||!record.element.isConnected)return {visible:false,element_id:elementId};"
+        + "const el=record.element;if(!el.matches(selector))return {visible:false,element_id:elementId};"
+        + "const ownerView=el.ownerDocument&&el.ownerDocument.defaultView;if(!ownerView)return {visible:false,element_id:elementId};"
+        + "const s=ownerView.getComputedStyle(el),r=el.getBoundingClientRect();let bx=0,by=0,view=ownerView;"
+        + "try{while(view&&view!==window){const frame=view.frameElement;if(!frame)return {visible:false,element_id:elementId};const fr=frame.getBoundingClientRect();bx+=fr.x;by+=fr.y;view=frame.ownerDocument.defaultView;}}catch(error){return {visible:false,element_id:elementId};}"
+        + "if(view!==window)return {visible:false,element_id:elementId};"
+        + "let kind='aria';if(el.matches(linkSelector))kind='link';else if(el.matches('button,[role=button]'))kind='button';"
+        + "else if(el.matches('input'))kind='input';else if(el.matches('select'))kind='select';else if(el.matches('textarea'))kind='textarea';else if(el.isContentEditable)kind='contenteditable';"
+        + "return {visible:s.display!=='none'&&s.visibility!=='hidden'&&s.pointerEvents!=='none'&&Number(s.opacity)!==0&&r.width>0&&r.height>0,element_id:elementId,kind:kind,frame_path:path,"
+        + "text:String(el.getAttribute('aria-label')||el.getAttribute('title')||el.innerText||el.value||'').replace(/[\\n\\r]+/g,' ').trim().slice(0,512),"
+        + "href:kind==='link'?String(el.href||el.getAttribute('href')||''):null,geometry:{x:r.x+bx,y:r.y+by,width:r.width,height:r.height}};})()"
+}
+
+function hintFocus(elementId) {
+    return "(function(){const elements=window.__ferric_browserHintElements,record=elements&&elements.get("
+        + Number(elementId) + ");const el=record&&record.element;"
+        + "if(!el||!el.isConnected||!el.matches('input,select,textarea,[contenteditable]:not([contenteditable=false])'))return false;"
+        + "const ownerView=el.ownerDocument&&el.ownerDocument.defaultView;if(ownerView&&typeof ownerView.__ferric_browserAuthorizeExplicitFocus==='function')ownerView.__ferric_browserAuthorizeExplicitFocus();"
+        + "el.focus();return true;})()"
+}
+
+function hintClick(elementId) {
+    var selector = hintSelector(false)
+    return "(function(){const selector=" + JSON.stringify(selector) + ",elements=window.__ferric_browserHintElements,record=elements&&elements.get("
+        + Number(elementId) + ");const el=record&&record.element;"
+        + "if(!el||!el.isConnected||!el.matches(selector)||typeof el.click!=='function')return false;el.click();return true;})()"
 }

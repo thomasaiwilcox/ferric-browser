@@ -399,7 +399,7 @@ fn bounded_text(value: &str, limit: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ApplicationState, Event, PrivacyKind, reduce};
+    use crate::IdSource;
 
     fn url(value: &str) -> ValidatedUrl {
         ValidatedUrl::parse(value).expect("test URL")
@@ -407,22 +407,12 @@ mod tests {
 
     #[test]
     fn records_profile_local_typed_edges_and_preserves_branch_nodes() {
-        let mut state = ApplicationState::new();
-        reduce(
-            &mut state,
-            Event::CreateProfile {
-                label: "normal".into(),
-                privacy: PrivacyKind::Normal,
-            },
-        )
-        .expect("profile");
-        let profile = *state.profiles.keys().next().expect("profile id");
-        reduce(&mut state, Event::CreateWindow { profile }).expect("window");
-        let window = *state.windows.keys().next().expect("window id");
-        reduce(&mut state, Event::OpenTab { window }).expect("tab");
-        let tab = *state.tabs.keys().next().expect("tab id");
-        let first = state.journey.record_navigation(
-            &mut state.ids,
+        let mut graph = JourneyGraph::new();
+        let mut ids = IdSource::new();
+        let profile = ids.profile();
+        let tab = ids.tab();
+        let first = graph.record_navigation(
+            &mut ids,
             profile,
             tab,
             &url("https://example.test/one"),
@@ -431,8 +421,8 @@ mod tests {
             JourneyEdgeKind::Navigate,
             Some("typed-initial-url"),
         );
-        let second = state.journey.record_navigation(
-            &mut state.ids,
+        let second = graph.record_navigation(
+            &mut ids,
             profile,
             tab,
             &url("https://example.test/two"),
@@ -441,18 +431,14 @@ mod tests {
             JourneyEdgeKind::BranchAfterBack,
             Some("open"),
         );
-        assert_eq!(state.journey.current_node(tab), Some(second));
-        assert_eq!(state.journey.node(first).expect("first").title, "Oneunsafe");
+        assert_eq!(graph.current_node(tab), Some(second));
+        assert_eq!(graph.node(first).expect("first").title, "Oneunsafe");
         assert_eq!(
-            state.journey.node(second).expect("second").title.len(),
+            graph.node(second).expect("second").title.len(),
             MAX_TITLE_BYTES
         );
-        assert_eq!(
-            state.journey.edges()[0].kind,
-            JourneyEdgeKind::BranchAfterBack
-        );
-        assert_eq!(state.journey.edges()[0].source, first);
-        assert!(state.validate().is_ok());
+        assert_eq!(graph.edges()[0].kind, JourneyEdgeKind::BranchAfterBack);
+        assert_eq!(graph.edges()[0].source, first);
     }
 
     #[test]

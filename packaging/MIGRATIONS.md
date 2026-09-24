@@ -1,21 +1,20 @@
-# Migration notes
+# Clean-break pre-alpha data policy
 
-Legacy pre-alpha XDG data is migrated only by the explicit command:
+This Ferric Browser pre-alpha release does not import legacy browser data or
+data from earlier Ferric builds. Existing legacy roots are never read, modified,
+or deleted.
+
+Schema v3 also refuses pre-v3 configuration, runtime overrides, session
+snapshots, and profile databases. Normal startup never attempts a migration,
+backup copy, or in-place rewrite of that data.
+
+If an earlier Ferric root is detected, normal startup refuses to interpret it.
+To start fresh, explicitly erase only Ferric-owned contents:
 
 ```sh
-ferric-browser migrate --from-rustbrowser
+ferric-browser reset-data --confirm
 ```
 
-The command copies into staging roots, verifies every copied file byte for
-byte, performs read-only SQLite integrity/schema checks, and commits only into
-empty Ferric roots. It never moves, edits, or deletes the source. First launch
-does not migrate silently.
-
-Ferric Browser migrations are versioned at the Rust storage boundary. Before an
-older SQLite schema is migrated, the application creates one bounded,
-versioned pre-migration backup beside the database and validates the known
-schema checksum. Session generations are replaced atomically.
-
-QtWebEngine profile data is not treated as downgrade-compatible. Do not open
-an upgraded profile with an older engine build as a repair procedure; restore
-the application-owned backup or use a separately copied profile.
+The command retains resolved root directories and their parents, rejects unsafe
+root symlinks and special filesystem entries, and writes the current schema
+marker only after the reset completes.

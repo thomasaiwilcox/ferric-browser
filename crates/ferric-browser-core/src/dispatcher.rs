@@ -82,9 +82,9 @@ impl CommandContext {
         let window = selected_window(state, selector);
         let tab = window.and_then(|window| selected_tab(state, selector, window).map(|tab| tab.id));
         let profile =
-            window.and_then(|window| state.windows.get(&window).map(|window| window.profile));
+            window.and_then(|window| state.windows().get(&window).map(|window| window.profile));
         let context = window
-            .and_then(|window| state.windows.get(&window))
+            .and_then(|window| state.windows().get(&window))
             .and_then(|window| window.context.clone());
         Self {
             source,
@@ -296,11 +296,11 @@ pub fn dispatch_command_for(
             let candidates = if let Some(selector) = selector {
                 vec![
                     state
-                        .windows
+                        .windows()
                         .get(&window)
                         .and_then(|window| {
                             window.tabs.iter().find_map(|tab| {
-                                state.tabs.get(tab).filter(|tab| {
+                                state.tabs().get(tab).filter(|tab| {
                                     tab.id.to_string() == selector
                                         && tab.existence == crate::ExistenceState::Live
                                 })
@@ -336,7 +336,7 @@ pub fn dispatch_command_for(
             let selector = &parsed.arguments[0];
             let tab = if selector == "last" {
                 state
-                    .windows
+                    .windows()
                     .get(&window)
                     .and_then(|window| window.tabs.last())
                     .copied()
@@ -345,20 +345,20 @@ pub fn dispatch_command_for(
                     return Err(DispatchError::NoActiveTab);
                 }
                 state
-                    .windows
+                    .windows()
                     .get(&window)
                     .and_then(|window| window.tabs.get(displayed_index - 1))
                     .copied()
             } else {
                 state
-                    .tabs
+                    .tabs()
                     .values()
                     .find(|tab| tab.window == window && tab.id.to_string() == *selector)
                     .map(|tab| tab.id)
             }
             .filter(|tab| {
                 state
-                    .tabs
+                    .tabs()
                     .get(tab)
                     .is_some_and(|tab| tab.existence == crate::ExistenceState::Live)
             })
@@ -410,7 +410,7 @@ pub fn dispatch_command_for(
                 search_next_arguments(&parsed, command, count)?;
             let backward = requested_backward.unwrap_or_else(|| {
                 state
-                    .tabs
+                    .tabs()
                     .get(&target.tab)
                     .and_then(|tab| tab.search.as_ref())
                     .is_some_and(|search| search.backward)
@@ -436,14 +436,14 @@ fn adjacent_tab(
     count: u32,
     forward: bool,
 ) -> Option<crate::TabId> {
-    let window = state.windows.get(&window)?;
+    let window = state.windows().get(&window)?;
     let live = window
         .tabs
         .iter()
         .copied()
         .filter(|tab| {
             state
-                .tabs
+                .tabs()
                 .get(tab)
                 .is_some_and(|tab| tab.existence == crate::ExistenceState::Live)
         })
@@ -574,7 +574,7 @@ fn close_candidates(
     window: crate::WindowId,
     count: u32,
 ) -> Vec<crate::TabId> {
-    let Some(window_state) = state.windows.get(&window) else {
+    let Some(window_state) = state.windows().get(&window) else {
         return Vec::new();
     };
     let mut ordered = Vec::with_capacity(window_state.tabs.len());
@@ -592,7 +592,7 @@ fn close_candidates(
         .into_iter()
         .filter(|tab| {
             state
-                .tabs
+                .tabs()
                 .get(tab)
                 .is_some_and(|tab| tab.existence == crate::ExistenceState::Live && !tab.pinned)
         })
@@ -602,7 +602,7 @@ fn close_candidates(
 
 fn mode_for_window(state: &ApplicationState, window: WindowId) -> Mode {
     state
-        .windows
+        .windows()
         .get(&window)
         .and_then(|window| window.modes.last().copied())
         .unwrap_or(Mode::Normal)
@@ -610,10 +610,10 @@ fn mode_for_window(state: &ApplicationState, window: WindowId) -> Mode {
 
 fn selected_window(state: &ApplicationState, selector: DispatchTarget) -> Option<WindowId> {
     match selector {
-        DispatchTarget::Active => state.active_window,
-        DispatchTarget::LastFocused => state.last_focused_window.or(state.active_window),
-        DispatchTarget::Window(window) => state.windows.contains_key(&window).then_some(window),
-        DispatchTarget::Tab(tab) => state.tabs.get(&tab).map(|tab| tab.window),
+        DispatchTarget::Active => state.active_window(),
+        DispatchTarget::LastFocused => state.last_focused_window().or(state.active_window()),
+        DispatchTarget::Window(window) => state.windows().contains_key(&window).then_some(window),
+        DispatchTarget::Tab(tab) => state.tabs().get(&tab).map(|tab| tab.window),
     }
 }
 
@@ -624,14 +624,14 @@ fn selected_tab(
 ) -> Option<&crate::TabState> {
     match selector {
         DispatchTarget::Tab(tab) => state
-            .tabs
+            .tabs()
             .get(&tab)
             .filter(|tab| tab.window == window && tab.existence == crate::ExistenceState::Live),
         DispatchTarget::Active | DispatchTarget::LastFocused | DispatchTarget::Window(_) => state
-            .windows
+            .windows()
             .get(&window)
             .and_then(|window| window.active_tab)
-            .and_then(|tab| state.tabs.get(&tab))
+            .and_then(|tab| state.tabs().get(&tab))
             .filter(|tab| tab.existence == crate::ExistenceState::Live),
     }
 }
@@ -770,9 +770,9 @@ mod tests {
             },
         )
         .unwrap();
-        let profile = *state.profiles.keys().next().unwrap();
+        let profile = *state.profiles().keys().next().unwrap();
         reduce(&mut state, Event::CreateWindow { profile }).unwrap();
-        let window = *state.windows.keys().next().unwrap();
+        let window = *state.windows().keys().next().unwrap();
         reduce(&mut state, Event::OpenTab { window }).unwrap();
         state
     }
@@ -815,9 +815,9 @@ mod tests {
     #[test]
     fn command_context_captures_the_selected_identity_once() {
         let state = state();
-        let window = state.active_window.expect("active window");
-        let tab = state.windows[&window].active_tab.expect("active tab");
-        let profile = state.windows[&window].profile;
+        let window = state.active_window().expect("active window");
+        let tab = state.windows()[&window].active_tab.expect("active tab");
+        let profile = state.windows()[&window].profile;
         let context = CommandContext::capture(
             &state,
             DispatchTarget::Active,
@@ -965,10 +965,10 @@ mod tests {
         }
 
         let mut tab_state = state.clone();
-        let tab_window = tab_state.active_window.unwrap();
+        let tab_window = tab_state.active_window().unwrap();
         reduce(&mut tab_state, Event::OpenTab { window: tab_window }).unwrap();
         reduce(&mut tab_state, Event::OpenTab { window: tab_window }).unwrap();
-        let expected = tab_state.windows[&tab_window].tabs[1];
+        let expected = tab_state.windows()[&tab_window].tabs[1];
         let events = dispatch_cli(&tab_state, &registry, "tab-next --count 2").unwrap();
         assert_eq!(
             events,
@@ -1026,10 +1026,10 @@ mod tests {
     #[test]
     fn tab_commands_use_ordered_live_window_tabs() {
         let mut state = state();
-        let window = state.active_window.unwrap();
+        let window = state.active_window().unwrap();
         reduce(&mut state, Event::OpenTab { window }).unwrap();
         let registry = CommandRegistry::default_v1();
-        let first_tab = state.windows[&window].tabs[0];
+        let first_tab = state.windows()[&window].tabs[0];
         let command = crate::parse_chain("tab-select 1", ParseInput::Cli)
             .unwrap()
             .remove(0);
@@ -1047,7 +1047,7 @@ mod tests {
                 tab: first_tab
             }]
         );
-        let last_tab = *state.windows[&window].tabs.last().expect("last tab");
+        let last_tab = *state.windows()[&window].tabs.last().expect("last tab");
         let events = dispatch_cli(&state, &registry, "tab-select last")
             .expect("last-tab selector should resolve");
         assert_eq!(
@@ -1096,7 +1096,7 @@ mod tests {
             &NavigationContext::default(),
         )
         .unwrap();
-        let active = state.windows[&window].active_tab.unwrap();
+        let active = state.windows()[&window].active_tab.unwrap();
         assert!(matches!(events.as_slice(), [Event::ActivateTab { tab, .. }] if *tab != active));
         let command = crate::parse_chain("tab-open example.test", ParseInput::Cli)
             .unwrap()
@@ -1120,8 +1120,8 @@ mod tests {
     #[test]
     fn tab_open_resolves_input_and_preserves_focus_for_background_tabs() {
         let mut state = state();
-        let window = state.active_window.unwrap();
-        let original_tab = state.windows[&window].active_tab.unwrap();
+        let window = state.active_window().unwrap();
+        let original_tab = state.windows()[&window].active_tab.unwrap();
         let registry = CommandRegistry::default_v1();
         let command = crate::parse_chain(
             "tab-open --background https://example.test/path",
@@ -1145,8 +1145,8 @@ mod tests {
             }] if url.as_str() == "https://example.test/path"
         ));
         let effects = reduce(&mut state, events.into_iter().next().unwrap()).unwrap();
-        assert_eq!(state.windows[&window].active_tab, Some(original_tab));
-        assert_eq!(state.windows[&window].tabs.len(), 2);
+        assert_eq!(state.windows()[&window].active_tab, Some(original_tab));
+        assert_eq!(state.windows()[&window].tabs.len(), 2);
         assert!(effects.iter().any(|effect| matches!(
             effect,
             crate::Effect::Engine(crate::EngineEffect::Navigate { url, .. })
@@ -1157,10 +1157,10 @@ mod tests {
     #[test]
     fn tab_close_supports_targeted_and_unpinned_bulk_forms() {
         let mut state = state();
-        let window = state.active_window.unwrap();
+        let window = state.active_window().unwrap();
         reduce(&mut state, Event::OpenTab { window }).unwrap();
         reduce(&mut state, Event::OpenTab { window }).unwrap();
-        let tabs = state.windows[&window].tabs.clone();
+        let tabs = state.windows()[&window].tabs.clone();
         reduce(
             &mut state,
             Event::SetTabPinned {
@@ -1205,9 +1205,9 @@ mod tests {
     #[test]
     fn explicit_dispatch_target_uses_last_focused_window() {
         let mut state = state();
-        let profile = *state.profiles.keys().next().unwrap();
+        let profile = *state.profiles().keys().next().unwrap();
         reduce(&mut state, Event::CreateWindow { profile }).unwrap();
-        let last_focused = state.last_focused_window.unwrap();
+        let last_focused = state.last_focused_window().unwrap();
         reduce(
             &mut state,
             Event::OpenTab {
@@ -1216,7 +1216,7 @@ mod tests {
         )
         .unwrap();
         let active = state
-            .windows
+            .windows()
             .keys()
             .copied()
             .find(|window| *window != last_focused)
@@ -1237,7 +1237,7 @@ mod tests {
         assert!(matches!(
             events.as_slice(),
             [Event::Reload { target, .. }]
-                if state.tabs[&target.tab].window == last_focused
+                if state.tabs()[&target.tab].window == last_focused
         ));
     }
 
