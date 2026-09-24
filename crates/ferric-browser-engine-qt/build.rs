@@ -99,11 +99,12 @@ fn write_manifest_qrc(qrc_path: &Path, manifest_path: &Path, resources: &[PathBu
         .iter()
         .filter(|path| path.extension().is_some_and(|extension| extension == "js"))
         .map(|path| {
-            let alias = path
+            let relative_alias = path
                 .strip_prefix("qml")
                 .expect("browser resource is beneath qml")
                 .to_string_lossy()
                 .replace('\\', "/");
+            let alias = format!("qml/{relative_alias}");
             let source = path
                 .canonicalize()
                 .expect("browser resource is readable before resource compilation");
@@ -117,7 +118,6 @@ fn write_manifest_qrc(qrc_path: &Path, manifest_path: &Path, resources: &[PathBu
         script_resources
     );
     fs::write(qrc_path, qrc).expect("write the generated browser script resource file");
-    println!("cargo::rerun-if-changed={}", qrc_path.display());
 }
 
 #[allow(clippy::too_many_lines)]

@@ -170,11 +170,11 @@ fn accessibility_surface_reports_theme_contrast_and_reduced_motion() {
     assert!(qml.contains("system_reduced_motion_enabled"));
     assert!(qml.contains("system_font_scale_status"));
     assert!(qml.contains("system_font_scale"));
-    assert!(qml.contains("browserUi.system_reduced_motion_status === \"available\""));
+    assert!(qml.contains("ui.system_reduced_motion_status === \"available\""));
     assert!(source.contains("chrome_reduced_motion"));
     assert!(preferences.contains("struct ChromePreferences"));
-    assert!(qml.contains("browserUi.chrome_reduced_motion === \"on\""));
-    assert!(qml.contains("window.chromeFontFamily = browserUi.chrome_font_family"));
+    assert!(qml.contains("ui.chrome_reduced_motion === \"on\""));
+    assert!(qml.contains("window.chromeFontFamily = ui.chrome_font_family"));
     assert!(qml.contains("Optional interface motion is disabled"));
 }
 
@@ -227,7 +227,7 @@ fn normal_input_uses_logical_unmodified_text_and_preserves_unicode_fields() {
     assert!(qml.contains("window.pendingContextMenuRequest !== null"));
     assert!(qml.contains("browserUi.mode === \"insert\""));
     assert!(qml.contains("browserUi.mode === \"pass-through\""));
-    assert!(qml.contains("? window.modeFocusReturnTarget : window.activeWebView()"));
+    assert!(qml.contains("? controller.modeFocusReturnTarget"));
     assert!(!qml.contains("globalKeyHandler"));
     assert!(!qml.contains("window.handleBrowserKey(viewUi, viewHost, event)"));
     assert!(qml.contains("Accessible.role: Accessible.EditableText"));
@@ -350,7 +350,7 @@ fn account_flows_keep_tabs_and_popups_on_the_opener_profile() {
 fn context_routes_validate_before_assigning_window_membership() {
     let source = ADAPTER_SOURCE;
     let command_start = source
-        .find("fn execute_ipc_command(")
+        .find("fn execute_ipc_command_with_operation(")
         .expect("IPC command executor exists");
     let command_source = &source[command_start..];
     let assign = command_source
@@ -1098,7 +1098,9 @@ fn ephemeral_profile_uses_off_the_record_memory_only_setup() {
     assert!(qml.contains("storageName: window.temporaryProfile ? \"\""));
     assert!(qml.contains("persistentStoragePath: window.temporaryProfile"));
     assert!(qml.contains("cachePath: window.temporaryProfile"));
-    assert!(qml.contains("window.browserProfile = browserProfilePrototype.instance()"));
+    assert!(qml.contains(
+        "window.browserProfile = window.browserProfilePrototypeObject.instance()"
+    ));
     assert!(qml.contains("title: window.ephemeralProfile"));
     assert!(qml.contains("? \"Ferric Browser · \" + window.profileLabel"));
     assert!(qml.contains("window.temporaryProfile && !window.ephemeralProfile"));
@@ -1252,7 +1254,7 @@ fn context_menus_use_engine_actions_and_bound_spellcheck_data() {
 fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     let qml = QML_SOURCE;
     let script = include_str!("../../qml/scripts/BrowserScripts.js");
-    assert!(qml.contains("import \"scripts/BrowserScripts.js\" as BrowserScripts"));
+    assert!(qml.contains("import \"../scripts/BrowserScripts.js\" as BrowserScripts"));
     assert!(qml.contains("return BrowserScripts.scroll(kind, direction, half, count)"));
     assert!(qml.contains("BrowserScripts.scrollPosition()"));
     assert!(qml.contains("BrowserScripts.restoreScrollPosition(x, y)"));
@@ -1299,6 +1301,15 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(script.contains("function cosmeticFilter(css)"));
     assert!(script.contains("out.length>=5000"));
     assert!(script.contains("depth>8"));
+}
+
+#[test]
+fn extracted_runtime_scripts_are_registered_beneath_the_qml_resource_root() {
+    // Characterization: the extracted components resolve ../scripts relative to
+    // qml/components. Registering scripts at the module prefix (the previous
+    // behavior) therefore made the packaged browser fail during QML startup.
+    let build_script = include_str!("../../build.rs");
+    assert!(build_script.contains("format!(\"qml/{relative_alias}\")"));
 }
 
 #[test]
@@ -1465,4 +1476,95 @@ fn xdg_user_dirs_resolve_downloads_without_shell_expansion() {
         Some(PathBuf::from("/home/test-user/Downloads; touch /tmp/pwned"))
     );
     assert!(parse_user_dirs_download("XDG_DOWNLOAD_DIR=\"$HOME/Down\\qloads\"\n", home).is_none());
+}
+
+#[test]
+fn focus_overlay_controller_owns_capture_state_and_only_restores_live_targets() {
+    let controller = include_str!("../../qml/components/FerricFocusOverlayController.qml");
+    let runtime = concat!(
+        include_str!("../../qml/components/FerricBrowserRuntimeBase.qml"),
+        include_str!("../../qml/components/FerricBrowserRuntimeServices.qml"),
+        include_str!("../../qml/components/FerricBrowserRuntimePresentation.qml"),
+        include_str!("../../qml/components/FerricBrowserRuntimeRequests.qml"),
+        include_str!("../../qml/components/FerricBrowserRuntimeChrome.qml"),
+        include_str!("../../qml/components/FerricBrowserRuntimeSurface.qml"),
+    );
+    assert!(controller.contains("required property var browserWindow"));
+    assert!(controller.contains("property var focusReturnStack"));
+    assert!(controller.contains("function captureOverlayFocus"));
+    assert!(controller.contains("function restoreOverlayFocus"));
+    assert!(controller.contains("function focusTargetAvailable"));
+    assert!(controller.contains("Qt.callLater"));
+    assert!(runtime.contains("FerricFocusOverlayController"));
+    assert!(runtime.contains("focusOverlayController.captureOverlayFocus"));
+    assert!(runtime.contains("focusOverlayController.restoreOverlayFocus"));
+}
+
+#[test]
+fn inherited_runtime_layers_cross_component_scopes_through_explicit_properties() {
+    // Characterization: QML ids are file-local. Direct references to ids from
+    // an ancestor runtime layer launch successfully only when exposed through
+    // an explicit alias/property boundary.
+    let runtime = QML_SOURCE;
+    assert!(runtime.contains(
+        "readonly property alias requestPresentationControllerObject: requestPresentationController"
+    ));
+    assert!(runtime.contains(
+        "readonly property alias browserProfilePrototypeObject: browserProfilePrototype"
+    ));
+    assert!(runtime.contains(
+        "readonly property var requestPresentationController: window.requestPresentationControllerObject"
+    ));
+    assert!(runtime.contains(
+        "readonly property var requestInterceptor: window.primaryRequestInterceptor"
+    ));
+    for boundary in [
+        "bindingOverlayTimer: window.bindingOverlayTimerObject",
+        "engineUpdateNoticeTimer: window.engineUpdateNoticeTimerObject",
+        "externalOpenPortalTimer: window.externalOpenPortalTimerObject",
+        "notificationPresenter: window.notificationPresenterObject",
+        "siteDataClearPollTimer: window.siteDataClearPollTimerObject",
+    ] {
+        assert!(runtime.contains(boundary), "missing QML boundary {boundary}");
+    }
+    assert!(runtime.contains("browserUi: window.browserUi"));
+    assert!(!runtime.contains("browserUi: browserUi"));
+    assert!(!runtime.contains("onContext_route_jsonChanged"));
+    assert!(!runtime.contains("onTheme_palette_jsonChanged"));
+    assert!(!runtime.contains("onSystem_font_scale_jsonChanged"));
+}
+
+#[test]
+fn chrome_presentation_controller_projects_browser_ui_facts_without_navigation_authority() {
+    let controller = include_str!("../../qml/components/FerricChromePresentationController.qml");
+    assert!(controller.contains("required property var browserWindow"));
+    assert!(controller.contains("required property var browserUi"));
+    assert!(controller.contains("function refreshChromeAppearance"));
+    assert!(controller.contains("ChromePresentation.contrastReport"));
+    assert!(!controller.contains("WebEngineView"));
+    assert!(!controller.contains("runJavaScript"));
+}
+
+#[test]
+fn window_registry_controller_keeps_ephemeral_owners_per_window_token() {
+    let controller = include_str!("../../qml/components/FerricWindowRegistryController.qml");
+    assert!(controller.contains("required property var browserWindow"));
+    assert!(controller.contains("required property var browserUi"));
+    assert!(controller.contains("function retainEphemeralProfileOwner"));
+    assert!(controller.contains("function releaseEphemeralProfileOwner"));
+    assert!(controller.contains("function ephemeralProfileForToken"));
+    assert!(controller.contains("current.profile !== profile"));
+    assert!(controller.contains("delete owners[requested]"));
+}
+
+#[test]
+fn request_presentation_controller_bounds_dialog_text_and_has_no_resolution_authority() {
+    let controller = include_str!("../../qml/components/FerricRequestPresentationController.qml");
+    assert!(controller.contains("required property var browserWindow"));
+    assert!(controller.contains("function boundedPageDialogText"));
+    assert!(controller.contains("text.length > 4096"));
+    assert!(controller.contains("function permissionCanRemember"));
+    assert!(controller.contains("function pageDialogType"));
+    assert!(!controller.contains("resolveQtRequest"));
+    assert!(!controller.contains("runJavaScript"));
 }

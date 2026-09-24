@@ -771,3 +771,12 @@ fn qml_idle_path_is_event_driven_and_devtools_are_lazy() {
     assert!(script.contains("if(!root)return null"));
     assert!(qml.contains("WebEngineProfilePrototype {\n        id: browserProfilePrototype"));
 }
+
+#[test]
+fn detached_devtools_imports_the_application_window_type_it_uses() {
+    // Characterization: relying on an import in the old monolithic parent did
+    // not work once this window became its own packaged QML component.
+    let devtools = include_str!("../../qml/components/FerricDevToolsWindow.qml");
+    assert!(devtools.contains("import QtQuick.Controls"));
+    assert!(devtools.contains("ApplicationWindow {"));
+}

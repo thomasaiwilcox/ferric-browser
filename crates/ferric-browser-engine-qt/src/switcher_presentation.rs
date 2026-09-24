@@ -6,6 +6,51 @@
 
 use super::{Pin, QString, Value, qobject};
 
+/// A ranked switcher row before pagination and JSON serialization.
+pub(super) struct SwitcherCandidate {
+    pub(super) rank: i64,
+    pub(super) kind: String,
+    pub(super) recency: i64,
+    pub(super) value: Value,
+}
+
+fn compare_candidates(left: &SwitcherCandidate, right: &SwitcherCandidate) -> std::cmp::Ordering {
+    right
+        .rank
+        .cmp(&left.rank)
+        .then_with(|| right.recency.cmp(&left.recency))
+        .then_with(|| left.kind.cmp(&right.kind))
+        .then_with(|| {
+            left.value
+                .get("id")
+                .and_then(Value::as_str)
+                .cmp(&right.value.get("id").and_then(Value::as_str))
+        })
+}
+
+pub(super) fn select_switcher_page(
+    mut candidates: Vec<SwitcherCandidate>,
+    offset: usize,
+    limit: usize,
+) -> (usize, Vec<Value>) {
+    let total = candidates.len();
+    let keep = offset.saturating_add(limit).min(total);
+    if keep > 0 && keep < total {
+        candidates.select_nth_unstable_by(keep - 1, compare_candidates);
+        candidates.truncate(keep);
+    }
+    candidates.sort_by(compare_candidates);
+    (
+        total,
+        candidates
+            .into_iter()
+            .skip(offset)
+            .take(limit)
+            .map(|candidate| candidate.value)
+            .collect(),
+    )
+}
+
 #[derive(Default)]
 struct SwitcherPresentationRows {
     kinds: Vec<QString>,

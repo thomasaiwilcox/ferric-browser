@@ -8,7 +8,7 @@ Rectangle {
     required property bool switcherVisible
     required property var results
     property alias query: switcherInput.text
-    signal queryChanged(string query)
+    signal queryChangeRequested(string query)
     signal closeRequested()
     signal activationRequested(int index)
     signal actionRequested(int index, string action)
@@ -64,7 +64,7 @@ Rectangle {
             Accessible.name: "Universal switcher search"
             Accessible.role: Accessible.EditableText
             Accessible.editable: true
-            onTextChanged: switcher.queryChanged(text)
+            onTextChanged: switcher.queryChangeRequested(text)
             Keys.onPressed: function(event) {
                 if (event.key === Qt.Key_Escape) {
                     switcher.closeRequested()

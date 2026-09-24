@@ -6,12 +6,16 @@
 
 #![allow(unsafe_code)]
 
+mod command_argument_decoder;
+mod command_argument_validation;
 mod command_codec;
 mod command_envelope;
+mod command_invocation;
 mod command_schema;
 
 pub use command_codec::encode_command;
 pub use command_envelope::{CommandContext, CommandEnvelope, decode_command_envelope};
+pub use command_invocation::{CommandInvocation, decode_command_invocation};
 pub use command_schema::{command_argument_names, validate_command_argument_fields};
 
 use std::{

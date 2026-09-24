@@ -547,6 +547,9 @@ fn check_qt_adapter_root() -> Result<(), String> {
     check_shared_ui_contracts(production_adapter)
 }
 
+// This is a deliberately linear audit checklist; keeping related boundary
+// assertions together makes the architectural contract reviewable.
+#[allow(clippy::too_many_lines)]
 fn check_shared_ui_contracts(production_adapter: &str) -> Result<(), String> {
     let config_projection =
         fs::read_to_string("crates/ferric-browser-engine-qt/src/config_projection.rs")
@@ -566,8 +569,8 @@ fn check_shared_ui_contracts(production_adapter: &str) -> Result<(), String> {
     let ipc_decoder =
         fs::read_to_string("crates/ferric-browser-engine-qt/src/ipc_command_decoder.rs")
             .map_err(|error| format!("could not inspect the Qt IPC command decoder: {error}"))?;
-    if !ipc_decoder.contains("ferric_browser_ipc::decode_command_envelope") {
-        return Err("Qt command decoding must use the shared typed IPC envelope".to_owned());
+    if !ipc_decoder.contains("ferric_browser_ipc::decode_command_invocation") {
+        return Err("Qt command decoding must use the shared typed IPC invocation".to_owned());
     }
     let cli = fs::read_to_string("crates/ferric-browser/src/main.rs")
         .map_err(|error| format!("could not inspect the CLI command encoder: {error}"))?;
@@ -579,19 +582,208 @@ fn check_shared_ui_contracts(production_adapter: &str) -> Result<(), String> {
     if !ipc_codec.contains("crate::CommandEnvelope::new") {
         return Err("IPC command encoding must produce the shared typed envelope".to_owned());
     }
+    for module in [
+        "command_codec_navigation.rs",
+        "command_codec_tabs_windows.rs",
+        "command_codec_configuration.rs",
+        "command_codec_library.rs",
+        "command_codec_content.rs",
+        "command_codec_contexts.rs",
+        "command_codec_automation.rs",
+        "command_argument_decoder.rs",
+        "command_argument_validation.rs",
+    ] {
+        let path = Path::new("crates/ferric-browser-ipc/src").join(module);
+        let source = fs::read_to_string(&path)
+            .map_err(|error| format!("could not inspect IPC family module {module}: {error}"))?;
+        if source.lines().count() > 1_000 {
+            return Err(format!(
+                "IPC family module {module} exceeds the 1,000-line implementation budget"
+            ));
+        }
+    }
     if production_adapter.contains("settings_row_") {
         return Err("Qt settings state must use structured rows, not parallel arrays".to_owned());
     }
-    let qml_root = fs::read_to_string("crates/ferric-browser-engine-qt/qml/Main.qml")
-        .map_err(|error| format!("could not inspect the QML root: {error}"))?;
-    if qml_root.lines().count() > 10_500
-        || !qml_root.contains("FerricPopupWindow")
-        || !qml_root.contains("FerricBrowserWindow")
+    let background_workers = fs::read_to_string(
+        "crates/ferric-browser-engine-qt/src/background_workers.rs",
+    )
+    .map_err(|error| format!("could not inspect extracted Qt background workers: {error}"))?;
+    if background_workers.lines().count() > 1_000
+        || !background_workers.contains("pub(super) struct PrintWorker")
+        || !background_workers.contains("pub(super) struct UserscriptManagerWorker")
+        || production_adapter.contains("struct PrintWorker")
+        || production_adapter.contains("struct UserscriptManagerWorker")
     {
         return Err(
-            "QML root must delegate popup and secondary-window responsibilities to components"
+            "Qt background workers must remain extracted from the QObject bridge root".to_owned(),
+        );
+    }
+    let browser_ui_state =
+        fs::read_to_string("crates/ferric-browser-engine-qt/src/browser_ui_state.rs")
+            .map_err(|error| format!("could not inspect extracted Qt browser state: {error}"))?;
+    if browser_ui_state.lines().count() > 1_000
+        || !browser_ui_state.contains("pub(super) enum ProfilePersistence")
+        || !browser_ui_state.contains("pub(super) struct SwitcherQueryCache")
+        || production_adapter.contains("enum ProfilePersistence")
+        || production_adapter.contains("struct SwitcherQueryCache")
+    {
+        return Err(
+            "Qt browser presentation state must remain extracted from the QObject bridge root"
                 .to_owned(),
         );
+    }
+    for module in [
+        "userscript.rs",
+        "userscript_discovery.rs",
+        "userscript_install.rs",
+        "userscript_manifest.rs",
+        "userscript_protocol.rs",
+        "userscript_storage.rs",
+    ] {
+        let path = Path::new("crates/ferric-browser-engine-qt/src").join(module);
+        let source = fs::read_to_string(&path).map_err(|error| {
+            format!("could not inspect extracted userscript module {module}: {error}")
+        })?;
+        if source.lines().count() > 1_000 {
+            return Err(format!(
+                "userscript module {module} exceeds the 1,000-line implementation budget"
+            ));
+        }
+    }
+    for entry in fs::read_dir("crates/ferric-browser-engine-qt/src")
+        .map_err(|error| format!("could not enumerate Qt implementation modules: {error}"))?
+    {
+        let path = entry
+            .map_err(|error| format!("could not inspect Qt implementation module: {error}"))?
+            .path();
+        if path.file_name().is_some_and(|name| name == "lib.rs")
+            || path.extension().is_none_or(|extension| extension != "rs")
+        {
+            continue;
+        }
+        let source = fs::read_to_string(&path)
+            .map_err(|error| format!("could not inspect {}: {error}", path.display()))?;
+        let implementation = source
+            .split_once("\n#[cfg(test)]\nmod tests")
+            .map_or(source.as_str(), |(implementation, _)| implementation);
+        if implementation.lines().count() > 1_000 {
+            return Err(format!(
+                "Qt implementation module {} exceeds the 1,000-line budget",
+                path.display()
+            ));
+        }
+    }
+    if !production_adapter.contains("Architecture budget exception:")
+        || !production_adapter.contains("#[cxx_qt::bridge]")
+    {
+        return Err(
+            "the over-budget Qt root exception must remain documented and bridge-only".to_owned(),
+        );
+    }
+    let qml_root = fs::read_to_string("crates/ferric-browser-engine-qt/qml/Main.qml")
+        .map_err(|error| format!("could not inspect the QML root: {error}"))?;
+    let primary_window = fs::read_to_string(
+        "crates/ferric-browser-engine-qt/qml/components/FerricPrimaryBrowserWindow.qml",
+    )
+    .map_err(|error| format!("could not inspect the primary browser window: {error}"))?;
+    let profile_session_surfaces = fs::read_to_string(
+        "crates/ferric-browser-engine-qt/qml/components/FerricProfileSessionSurfaces.qml",
+    )
+    .map_err(|error| format!("could not inspect profile/session surfaces: {error}"))?;
+    let focus_overlay_controller = fs::read_to_string(
+        "crates/ferric-browser-engine-qt/qml/components/FerricFocusOverlayController.qml",
+    )
+    .map_err(|error| format!("could not inspect focus overlay controller: {error}"))?;
+    let chrome_presentation_controller = fs::read_to_string(
+        "crates/ferric-browser-engine-qt/qml/components/FerricChromePresentationController.qml",
+    )
+    .map_err(|error| format!("could not inspect chrome presentation controller: {error}"))?;
+    let window_registry_controller = fs::read_to_string(
+        "crates/ferric-browser-engine-qt/qml/components/FerricWindowRegistryController.qml",
+    )
+    .map_err(|error| format!("could not inspect window registry controller: {error}"))?;
+    let request_presentation_controller = fs::read_to_string(
+        "crates/ferric-browser-engine-qt/qml/components/FerricRequestPresentationController.qml",
+    )
+    .map_err(|error| format!("could not inspect request presentation controller: {error}"))?;
+    for (module, root_type) in [
+        ("FerricBrowserRuntimeBase.qml", "ApplicationWindow"),
+        (
+            "FerricBrowserRuntimeServices.qml",
+            "FerricBrowserRuntimeBase",
+        ),
+        (
+            "FerricBrowserRuntimePresentation.qml",
+            "FerricBrowserRuntimeServices",
+        ),
+        (
+            "FerricBrowserRuntimeRequests.qml",
+            "FerricBrowserRuntimePresentation",
+        ),
+        (
+            "FerricBrowserRuntimeChrome.qml",
+            "FerricBrowserRuntimeRequests",
+        ),
+        (
+            "FerricBrowserRuntimeSurface.qml",
+            "FerricBrowserRuntimeChrome",
+        ),
+    ] {
+        let path = Path::new("crates/ferric-browser-engine-qt/qml/components").join(module);
+        let source = fs::read_to_string(&path)
+            .map_err(|error| format!("could not inspect QML runtime layer {module}: {error}"))?;
+        if source.lines().count() > 2_500 || !source.contains(root_type) {
+            return Err(format!(
+                "QML runtime layer {module} must inherit {root_type} and remain below 2,500 lines"
+            ));
+        }
+    }
+    if primary_window.lines().count() > 2_500
+        || !qml_root.contains("FerricPrimaryBrowserWindow")
+        || !primary_window.contains("FerricBrowserRuntimeSurface")
+        || !profile_session_surfaces.contains("FerricProfileManager")
+        || !profile_session_surfaces.contains("FerricSessionManager")
+        || !profile_session_surfaces.contains("signal createProfileRequested")
+        || !profile_session_surfaces.contains("signal saveSessionRequested")
+        || !focus_overlay_controller.contains("required property var browserWindow")
+        || !focus_overlay_controller.contains("function captureOverlayFocus")
+        || !focus_overlay_controller.contains("function restoreOverlayFocus")
+        || !chrome_presentation_controller.contains("required property var browserWindow")
+        || !chrome_presentation_controller.contains("required property var browserUi")
+        || !chrome_presentation_controller.contains("function refreshChromeAppearance")
+        || !window_registry_controller.contains("required property var browserWindow")
+        || !window_registry_controller.contains("function retainEphemeralProfileOwner")
+        || !window_registry_controller.contains("function releaseEphemeralProfileOwner")
+        || !request_presentation_controller.contains("required property var browserWindow")
+        || !request_presentation_controller.contains("function boundedPageDialogText")
+        || !request_presentation_controller.contains("function pageDialogType")
+        || request_presentation_controller.contains("resolveQtRequest")
+    {
+        return Err(
+            "the primary QML coordinator must remain below 2,500 lines and delegate presentation intents"
+                .to_owned(),
+        );
+    }
+
+    for module in [
+        "browser_ui_query_profiles.rs",
+        "browser_ui_query_bindings.rs",
+        "browser_ui_query_configuration.rs",
+        "browser_ui_query_permissions.rs",
+        "browser_ui_query_switcher.rs",
+        "browser_ui_query_site.rs",
+        "browser_ui_query_diagnostics.rs",
+    ] {
+        let path = Path::new("crates/ferric-browser-engine-qt/src").join(module);
+        let source = fs::read_to_string(&path).map_err(|error| {
+            format!("could not inspect extracted Qt query module {module}: {error}")
+        })?;
+        if source.lines().count() > 1_000 {
+            return Err(format!(
+                "Qt query module {module} exceeds the 1,000-line implementation budget"
+            ));
+        }
     }
 
     Ok(())
@@ -630,7 +822,7 @@ fn check_core_and_error_boundaries() -> Result<(), String> {
         }
     }
     let ipc_dispatch_source =
-        fs::read_to_string("crates/ferric-browser-engine-qt/src/browser_ui_ipc.rs")
+        fs::read_to_string("crates/ferric-browser-engine-qt/src/browser_ui_ipc_dispatch.rs")
             .map_err(|error| format!("could not inspect Qt IPC dispatch: {error}"))?;
     let ipc_dispatch = ipc_dispatch_source
         .split("fn handle_ipc_request")
@@ -803,9 +995,25 @@ fn check_accessibility_contract() -> Result<(), String> {
 }
 
 fn check_renderer_failure_contract() -> Result<(), String> {
-    let path = Path::new("crates/ferric-browser-engine-qt/qml/Main.qml");
-    let source = fs::read_to_string(path)
-        .map_err(|error| format!("could not read {}: {error}", path.display()))?;
+    let root = Path::new("crates/ferric-browser-engine-qt/qml/components");
+    let mut source = String::new();
+    for module in [
+        "FerricBrowserRuntimeBase.qml",
+        "FerricBrowserRuntimeServices.qml",
+        "FerricBrowserRuntimePresentation.qml",
+        "FerricBrowserRuntimeRequests.qml",
+        "FerricBrowserRuntimeChrome.qml",
+        "FerricBrowserRuntimeSurface.qml",
+    ] {
+        let path = root.join(module);
+        source.push_str(&fs::read_to_string(&path).map_err(|error| {
+            format!(
+                "could not read renderer contract module {}: {error}",
+                path.display()
+            )
+        })?);
+        source.push('\n');
+    }
     for marker in [
         "function rendererTerminationName(status)",
         "WebEngineView.CrashedTerminationStatus",
@@ -823,7 +1031,7 @@ fn check_renderer_failure_contract() -> Result<(), String> {
         if !source.contains(marker) {
             return Err(format!(
                 "renderer failure contract violation: {marker} is missing from {}",
-                path.display()
+                root.display()
             ));
         }
     }

@@ -8,6 +8,7 @@ Popup {
     // The composition root validates and applies routes. This component only
     // renders the explicit pre-navigation decision.
     required property var browserWindow
+    readonly property var routeUi: browserWindow.contextRouteUi || ({})
 
     parent: Overlay.overlay
     modal: true
@@ -44,28 +45,28 @@ Popup {
         Label {
             Layout.fillWidth: true
             text: "Use browsing context "
-                  + (popup.browserWindow.contextRouteUi.context_route_context || "") + "?"
+                  + (popup.routeUi.context_route_context || "") + "?"
             color: popup.browserWindow.primaryTextColor
             font.bold: true
             Accessible.name: "Context route title"
         }
         Label {
             Layout.fillWidth: true
-            text: "Route " + (popup.browserWindow.contextRouteUi.context_route_id || "")
-                  + " (" + (popup.browserWindow.contextRouteUi.context_route_behavior || "prompt") + ")"
+            text: "Route " + (popup.routeUi.context_route_id || "")
+                  + " (" + (popup.routeUi.context_route_behavior || "prompt") + ")"
             color: popup.browserWindow.mutedTextColor
             elide: Text.ElideRight
         }
         Label {
             Layout.fillWidth: true
             text: "Target profile: "
-                  + (popup.browserWindow.contextRouteUi.context_route_profile || "unavailable")
+                  + (popup.routeUi.context_route_profile || "unavailable")
             color: popup.browserWindow.secondaryTextColor
             elide: Text.ElideMiddle
         }
         Label {
             Layout.fillWidth: true
-            text: "Address: " + (popup.browserWindow.contextRouteUi.context_route_url || "unavailable")
+            text: "Address: " + (popup.routeUi.context_route_url || "unavailable")
             color: popup.browserWindow.primaryTextColor
             wrapMode: Text.WrapAnywhere
             maximumLineCount: 6

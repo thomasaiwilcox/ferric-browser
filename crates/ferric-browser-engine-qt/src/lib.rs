@@ -26,19 +26,23 @@
     clippy::single_match_else,
     clippy::too_many_lines
 )]
-// CXX-Qt generates the audited FFI and Qt meta-object glue for this crate.
-// Browser policy remains outside this boundary in ferric-browser-core.
+// Architecture budget exception: this root may exceed 1,000 lines only because
+// it contains the audited CXX-Qt bridge declarations and stable QObject-facing
+// state shape. Handwritten implementation logic belongs in the bounded modules
+// registered below.
 
 mod action_arguments;
 mod action_catalog;
 mod action_mapping;
 mod action_request_decoder;
+mod background_workers;
 mod binding_policy;
 mod binding_presentation;
 mod blocking_evidence;
 mod blocking_presentation;
 mod browser_ui_browsing_commands;
 mod browser_ui_command_dispatch;
+mod browser_ui_command_workflows;
 mod browser_ui_configuration;
 mod browser_ui_content_tools;
 mod browser_ui_context_commands;
@@ -48,20 +52,39 @@ mod browser_ui_downloads_permissions;
 mod browser_ui_edit_commands;
 mod browser_ui_external_actions;
 mod browser_ui_input;
+#[allow(clippy::too_many_lines)]
 mod browser_ui_ipc;
+mod browser_ui_ipc_dispatch;
+mod browser_ui_ipc_operations;
+mod browser_ui_ipc_preparation;
+mod browser_ui_ipc_route_validation;
+mod browser_ui_ipc_runtime_dispatch;
+mod browser_ui_ipc_switcher_actions;
+mod browser_ui_ipc_userscripts;
+mod browser_ui_journey_commands;
 mod browser_ui_library;
 mod browser_ui_maintenance;
 mod browser_ui_navigation;
 mod browser_ui_navigation_lifecycle;
 mod browser_ui_persistence;
 mod browser_ui_popups;
+mod browser_ui_process_actions;
 mod browser_ui_profile_setup;
 mod browser_ui_queries;
+mod browser_ui_query_bindings;
+mod browser_ui_query_configuration;
+mod browser_ui_query_diagnostics;
+mod browser_ui_query_permissions;
+mod browser_ui_query_profiles;
+mod browser_ui_query_site;
+mod browser_ui_query_switcher;
 mod browser_ui_repeat_macros;
 mod browser_ui_runtime;
 mod browser_ui_runtime_config;
 mod browser_ui_sessions;
 mod browser_ui_site;
+mod browser_ui_state;
+mod browser_ui_storage_writes;
 mod browser_ui_tab_state;
 mod browser_ui_tabs;
 mod browser_ui_ui_actions;
@@ -75,6 +98,8 @@ mod configuration_workers;
 mod desktop_portals;
 mod desktop_preferences;
 mod diagnostics;
+mod diagnostics_overview;
+mod diagnostics_snapshot;
 mod download_files;
 mod editor_process;
 mod effect_projection;
@@ -91,6 +116,7 @@ mod ipc_event_projection;
 mod ipc_params;
 mod ipc_response;
 mod ipc_route;
+#[cfg(test)]
 mod ipc_schema;
 mod ipc_transport;
 mod library_presentation;
@@ -126,8 +152,13 @@ mod url_presentation;
 mod url_safety;
 pub mod userscript;
 mod userscript_catalog;
+mod userscript_discovery;
+mod userscript_install;
 mod userscript_io;
+mod userscript_manifest;
 mod userscript_presentation;
+mod userscript_protocol;
+mod userscript_storage;
 mod view_lifecycle;
 mod window_registry;
 
@@ -139,11 +170,21 @@ use action_catalog::{
 };
 use action_mapping::parse_action_invocation;
 use action_request_decoder::typed_ipc_action;
+use background_workers::{
+    EditorWriteWorker, HyprlandRequest, HyprlandResponse, HyprlandWorker, NetworkPolicyWorker,
+    PrintWorker, UserscriptManagerRequest, UserscriptManagerResult, UserscriptManagerWorker,
+};
 use binding_policy::{
     binding_command_parameters, binding_uses_full_command_executor, config_get_command_parameters,
     configured_bindings, configured_undo_limit, ipc_mode_name, is_context_command,
     is_library_command, is_profile_command, is_session_command, learning_mode_request,
     modal_command_prefill, normalize_active_tab_command, parse_ipc_mode, switcher_max_results,
+};
+#[cfg(test)]
+use browser_ui_state::PermissionLifetimeKey;
+use browser_ui_state::{
+    ContextSnapshot, PendingContextRoute, PendingProfileConfiguration, PermissionDecisionKey,
+    ProfilePersistence, SessionCheckpoint, SwitcherQueryCache, permission_session_key,
 };
 use chrome_preferences::ChromePreferences;
 use command_options::{
@@ -236,6 +277,7 @@ use switcher_policy::{
     parse_generation as parse_switcher_generation,
     validate_generation as validate_switcher_generation,
 };
+use switcher_presentation::{SwitcherCandidate, select_switcher_page};
 use url_presentation::{
     blocking_site_host, canonical_engine_url, display_url, link_preview_presentation,
     link_result_value,
@@ -1417,8 +1459,6 @@ use serde_json::Value;
 use single_flight::{Poll as WorkerPoll, SingleFlightWorker, SubmitError};
 use std::cell::{Cell, RefCell};
 #[cfg(unix)]
-use std::os::unix::fs::OpenOptionsExt;
-#[cfg(unix)]
 use std::os::unix::process::CommandExt;
 use std::time::Instant;
 use std::{
@@ -1444,83 +1484,6 @@ const MAX_JOURNEY_REDIRECT_HOPS: u8 = 64;
 const MAX_ACTION_AUDIT_RECORDS: usize = 128;
 const MAX_DIAGNOSTICS_EXPORT_BYTES: usize = 256 * 1024;
 const MAX_PRIVATE_HISTORY: usize = 1_000;
-
-/// A ranked switcher row before pagination and JSON serialization.
-struct SwitcherCandidate {
-    rank: i64,
-    kind: String,
-    recency: i64,
-    value: Value,
-}
-
-fn compare_switcher_candidates(
-    left: &SwitcherCandidate,
-    right: &SwitcherCandidate,
-) -> std::cmp::Ordering {
-    right
-        .rank
-        .cmp(&left.rank)
-        .then_with(|| right.recency.cmp(&left.recency))
-        .then_with(|| left.kind.cmp(&right.kind))
-        .then_with(|| {
-            left.value
-                .get("id")
-                .and_then(Value::as_str)
-                .cmp(&right.value.get("id").and_then(Value::as_str))
-        })
-}
-
-fn select_switcher_page(
-    mut candidates: Vec<SwitcherCandidate>,
-    offset: usize,
-    limit: usize,
-) -> (usize, Vec<Value>) {
-    let total = candidates.len();
-    let keep = offset.saturating_add(limit).min(total);
-    if keep > 0 && keep < total {
-        candidates.select_nth_unstable_by(keep - 1, compare_switcher_candidates);
-        candidates.truncate(keep);
-    }
-    candidates.sort_by(compare_switcher_candidates);
-    let results = candidates
-        .into_iter()
-        .skip(offset)
-        .take(limit)
-        .map(|candidate| candidate.value)
-        .collect();
-    (total, results)
-}
-
-#[derive(Clone, Debug)]
-struct PendingContextRoute {
-    route_id: String,
-    behavior: String,
-    context_name: String,
-    profile_name: String,
-    url: String,
-}
-
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-enum PermissionLifetimeKey {
-    ProfileSession,
-}
-
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-struct PermissionDecisionKey {
-    scope_id: Uuid,
-    origin: String,
-    permission: String,
-    lifetime: PermissionLifetimeKey,
-}
-
-fn permission_session_key(scope_id: Uuid, origin: &str, permission: &str) -> PermissionDecisionKey {
-    PermissionDecisionKey {
-        scope_id,
-        origin: origin.to_owned(),
-        permission: permission.to_owned(),
-        lifetime: PermissionLifetimeKey::ProfileSession,
-    }
-}
 
 #[allow(clippy::struct_excessive_bools)]
 pub struct BrowserUiRust {
@@ -1875,395 +1838,6 @@ pub struct BrowserUiRust {
     macro_depth: u8,
     macro_expanded_commands: usize,
     live_window_registry: Vec<LiveWindowRegistryEntry>,
-}
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-enum ProfilePersistence {
-    #[default]
-    Unavailable,
-    Transient,
-    Durable,
-}
-
-impl ProfilePersistence {
-    const fn is_durable(self) -> bool {
-        matches!(self, Self::Durable)
-    }
-
-    const fn lacks_durable_storage(self) -> bool {
-        !self.is_durable()
-    }
-}
-
-#[derive(Clone, Debug, Default)]
-struct ContextSnapshot {
-    records: Vec<ferric_browser_storage::ContextRecord>,
-}
-
-impl ContextSnapshot {
-    fn from_records(records: &[ferric_browser_storage::ContextRecord]) -> Self {
-        Self {
-            records: records.to_vec(),
-        }
-    }
-
-    fn contexts(&self) -> &[ferric_browser_storage::ContextRecord] {
-        &self.records
-    }
-}
-
-struct PendingProfileConfiguration {
-    private_profile: bool,
-    profile_name: String,
-    storage_base: String,
-    state: BrowserApplication,
-    window: WindowId,
-    tab: TabId,
-}
-
-#[derive(Clone, Debug)]
-struct SwitcherQueryCache {
-    params: Value,
-    state_revision: u64,
-    storage_library_revision: i64,
-    session_names: Vec<String>,
-    contexts_json: String,
-    config_fingerprint: String,
-    profile_name: String,
-    result: Value,
-}
-
-impl SwitcherQueryCache {
-    fn matches(&self, rust: &BrowserUiRust, params: &Value) -> bool {
-        self.params == *params
-            && !rust.storage_library_dirty.get()
-            && self.state_revision == rust.state.as_ref().map_or(0, BrowserApplication::revision)
-            && self.storage_library_revision == rust.storage_library_revision
-            && self.session_names == rust.session_names
-            && self.contexts_json == rust.contexts_json.to_string()
-            && self.config_fingerprint == serde_json::to_string(&rust.config).unwrap_or_default()
-            && self.profile_name == rust.profile_name
-    }
-}
-
-#[derive(Debug, Default)]
-struct SessionCheckpoint {
-    dirty: bool,
-    dirty_since_ms: Option<u64>,
-    last_saved_ms: u64,
-    restore_pending: Option<TabId>,
-}
-
-struct PrintWorker {
-    inner: SingleFlightWorker<PathBuf, Result<PathBuf, String>>,
-}
-
-struct EditorWriteWorker {
-    inner: SingleFlightWorker<(PathBuf, Vec<u8>), Result<PathBuf, String>>,
-}
-
-struct NetworkPolicyRequest {
-    roots: Option<StorageRoots>,
-    config: Value,
-}
-
-struct NetworkPolicyWorker {
-    inner: SingleFlightWorker<NetworkPolicyRequest, Result<network_policy::PolicySnapshot, String>>,
-}
-
-enum HyprlandRequest {
-    RouteWorkspace {
-        config: HyprlandConfig,
-        workspace: String,
-    },
-    MoveActiveWindow {
-        config: HyprlandConfig,
-        workspace: String,
-    },
-    BrowserClients {
-        config: HyprlandConfig,
-    },
-}
-
-enum HyprlandResponse {
-    RouteWorkspace(Result<(), String>),
-    MoveActiveWindow(Result<(), String>),
-    BrowserClients(Result<Vec<hyprland::BrowserClient>, String>),
-}
-
-struct HyprlandWorker {
-    inner: SingleFlightWorker<HyprlandRequest, HyprlandResponse>,
-}
-
-impl HyprlandWorker {
-    fn spawn() -> Result<Self, String> {
-        let inner =
-            SingleFlightWorker::spawn("ferric-browser-hyprland-ipc", |request| match request {
-                HyprlandRequest::RouteWorkspace { config, workspace } => {
-                    let adapter = hyprland::HyprlandAdapter::from_config(&config);
-                    HyprlandResponse::RouteWorkspace(
-                        adapter
-                            .route_workspace(&workspace)
-                            .map_err(|error| error.to_string()),
-                    )
-                }
-                HyprlandRequest::MoveActiveWindow { config, workspace } => {
-                    let adapter = hyprland::HyprlandAdapter::from_config(&config);
-                    HyprlandResponse::MoveActiveWindow(
-                        adapter
-                            .move_active_window_to_workspace(&workspace)
-                            .map_err(|error| error.to_string()),
-                    )
-                }
-                HyprlandRequest::BrowserClients { config } => {
-                    let adapter = hyprland::HyprlandAdapter::from_config(&config);
-                    HyprlandResponse::BrowserClients(
-                        adapter.browser_clients().map_err(|error| error.to_string()),
-                    )
-                }
-            })
-            .map_err(|error| error.to_string())?;
-        Ok(Self { inner })
-    }
-
-    fn request(&mut self, request: HyprlandRequest) -> Result<(), SubmitError> {
-        self.inner.submit(request)
-    }
-
-    fn poll(&mut self) -> Option<HyprlandResponse> {
-        match self.inner.poll() {
-            WorkerPoll::Ready(response) => Some(response),
-            WorkerPoll::Pending | WorkerPoll::Stopped => None,
-        }
-    }
-}
-
-enum UserscriptManagerRequest {
-    Refresh {
-        root: PathBuf,
-    },
-    Install {
-        root: PathBuf,
-        source: PathBuf,
-    },
-    Remove {
-        root: PathBuf,
-        name: String,
-    },
-    SetEnabled {
-        root: PathBuf,
-        name: String,
-        enabled: bool,
-    },
-}
-
-#[derive(Debug)]
-enum UserscriptManagerResult {
-    Inventory(Result<Vec<userscript::InstalledScript>, String>),
-    Installed(Result<Vec<userscript::InstalledScript>, String>),
-    Removed(Result<Vec<userscript::InstalledScript>, String>),
-    SetEnabled {
-        enabled: bool,
-        result: Result<Vec<userscript::InstalledScript>, String>,
-    },
-}
-
-struct UserscriptManagerWorker {
-    inner: SingleFlightWorker<UserscriptManagerRequest, UserscriptManagerResult>,
-}
-
-impl UserscriptManagerWorker {
-    fn spawn() -> Result<Self, String> {
-        let inner = SingleFlightWorker::spawn(
-            "ferric-browser-userscript-manager",
-            |request: UserscriptManagerRequest| match request {
-                UserscriptManagerRequest::Refresh { root } => {
-                    UserscriptManagerResult::Inventory(userscript::installed_scripts(&root))
-                }
-                UserscriptManagerRequest::Install { root, source } => {
-                    let result = userscript::install_manifest(&root, &source)
-                        .and_then(|_installed_name| userscript::installed_scripts(&root));
-                    UserscriptManagerResult::Installed(result)
-                }
-                UserscriptManagerRequest::Remove { root, name } => {
-                    let result = userscript::remove(&root, &name)
-                        .and_then(|()| userscript::installed_scripts(&root));
-                    UserscriptManagerResult::Removed(result)
-                }
-                UserscriptManagerRequest::SetEnabled {
-                    root,
-                    name,
-                    enabled,
-                } => {
-                    let result = userscript::set_enabled(&root, &name, enabled)
-                        .and_then(|()| userscript::installed_scripts(&root));
-                    UserscriptManagerResult::SetEnabled { enabled, result }
-                }
-            },
-        )
-        .map_err(|error| error.to_string())?;
-        Ok(Self { inner })
-    }
-
-    fn request(&mut self, request: UserscriptManagerRequest) -> Result<(), String> {
-        match self.inner.submit(request) {
-            Ok(()) => Ok(()),
-            Err(SubmitError::Busy) => Err("userscript manager is already busy".into()),
-            Err(SubmitError::QueueFull) => Err("userscript manager queue is full".into()),
-            Err(SubmitError::Stopped) => Err("userscript manager stopped".into()),
-        }
-    }
-
-    fn poll(&mut self) -> Option<UserscriptManagerResult> {
-        match self.inner.poll() {
-            WorkerPoll::Pending => None,
-            WorkerPoll::Ready(result) => Some(result),
-            WorkerPoll::Stopped => Some(UserscriptManagerResult::Inventory(Err(
-                "userscript manager stopped".into(),
-            ))),
-        }
-    }
-}
-
-impl NetworkPolicyWorker {
-    fn spawn() -> Result<Self, String> {
-        let inner = SingleFlightWorker::spawn(
-            "ferric-browser-network-policy",
-            |NetworkPolicyRequest { roots, config }| {
-                Ok(network_policy::load(roots.as_ref(), &config))
-            },
-        )
-        .map_err(|error| error.to_string())?;
-        Ok(Self { inner })
-    }
-
-    fn request(&mut self, roots: Option<StorageRoots>, config: Value) -> Result<(), String> {
-        match self.inner.submit(NetworkPolicyRequest { roots, config }) {
-            Ok(()) => Ok(()),
-            Err(SubmitError::Busy) => Err("network policy load is already pending".into()),
-            Err(SubmitError::QueueFull) => Err("network policy queue is full".into()),
-            Err(SubmitError::Stopped) => Err("network policy worker stopped".into()),
-        }
-    }
-
-    fn poll(&mut self) -> Option<Result<network_policy::PolicySnapshot, String>> {
-        match self.inner.poll() {
-            WorkerPoll::Pending => None,
-            WorkerPoll::Ready(result) => Some(result),
-            WorkerPoll::Stopped => Some(Err("network policy worker stopped".into())),
-        }
-    }
-}
-
-impl EditorWriteWorker {
-    fn spawn() -> Result<Self, String> {
-        let inner = SingleFlightWorker::spawn(
-            "ferric-browser-editor-writer",
-            |(path, bytes): (PathBuf, Vec<u8>)| {
-                (|| {
-                    let parent = path
-                        .parent()
-                        .ok_or_else(|| "editor scratch path has no parent".to_owned())?;
-                    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-                    #[cfg(unix)]
-                    fs::set_permissions(
-                        parent,
-                        std::os::unix::fs::PermissionsExt::from_mode(0o700),
-                    )
-                    .map_err(|error| error.to_string())?;
-                    let mut options = fs::OpenOptions::new();
-                    options.write(true).create_new(true);
-                    #[cfg(unix)]
-                    options.mode(0o600);
-                    let mut file = options.open(&path).map_err(|error| error.to_string())?;
-                    if let Err(error) = file.write_all(&bytes).and_then(|()| file.sync_all()) {
-                        let _ = fs::remove_file(&path);
-                        return Err(error.to_string());
-                    }
-                    Ok(path)
-                })()
-            },
-        )
-        .map_err(|error| error.to_string())?;
-        Ok(Self { inner })
-    }
-
-    fn request(&mut self, path: PathBuf, bytes: Vec<u8>) -> Result<(), String> {
-        match self.inner.submit((path, bytes)) {
-            Ok(()) => Ok(()),
-            Err(SubmitError::Busy) => Err("editor scratch write is already pending".into()),
-            Err(SubmitError::QueueFull) => Err("editor scratch queue is full".into()),
-            Err(SubmitError::Stopped) => Err("editor writer stopped".into()),
-        }
-    }
-
-    fn poll(&mut self) -> Option<Result<PathBuf, String>> {
-        match self.inner.poll() {
-            WorkerPoll::Pending => None,
-            WorkerPoll::Ready(result) => Some(result),
-            WorkerPoll::Stopped => Some(Err("editor writer stopped".into())),
-        }
-    }
-}
-
-impl PrintWorker {
-    fn spawn() -> Result<Self, String> {
-        let inner = SingleFlightWorker::spawn("ferric-browser-print-submit", |path: PathBuf| {
-            let mut command = Command::new("lp");
-            command
-                .arg(&path)
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null());
-            #[cfg(unix)]
-            command.process_group(0);
-            let mut child = command.spawn().map_err(|error| match error.kind() {
-                std::io::ErrorKind::NotFound => {
-                    "no desktop printer command (lp) is installed".to_owned()
-                }
-                _ => format!("desktop print command could not start: {error}"),
-            })?;
-            let deadline = Instant::now() + Duration::from_secs(30);
-            loop {
-                match child.try_wait() {
-                    Ok(Some(status)) if status.success() => return Ok(path),
-                    Ok(Some(_)) => {
-                        return Err(
-                            "desktop printer rejected the print job or is unavailable".into()
-                        );
-                    }
-                    Ok(None) if Instant::now() >= deadline => {
-                        terminate_child_process(&mut child);
-                        return Err("desktop printer submission timed out".into());
-                    }
-                    Ok(None) => thread::sleep(Duration::from_millis(20)),
-                    Err(error) => {
-                        terminate_child_process(&mut child);
-                        return Err(format!("desktop printer wait failed: {error}"));
-                    }
-                }
-            }
-        })
-        .map_err(|error| error.to_string())?;
-        Ok(Self { inner })
-    }
-
-    fn request(&mut self, path: PathBuf) -> Result<(), String> {
-        match self.inner.submit(path) {
-            Ok(()) => Ok(()),
-            Err(SubmitError::Busy) => Err("print submission is already pending".into()),
-            Err(SubmitError::QueueFull) => Err("print submission queue is full".into()),
-            Err(SubmitError::Stopped) => Err("print worker stopped".into()),
-        }
-    }
-
-    fn poll(&mut self) -> Option<Result<PathBuf, String>> {
-        match self.inner.poll() {
-            WorkerPoll::Pending => None,
-            WorkerPoll::Ready(result) => Some(result),
-            WorkerPoll::Stopped => Some(Err("print worker stopped".into())),
-        }
-    }
 }
 
 #[derive(Clone, Debug)]

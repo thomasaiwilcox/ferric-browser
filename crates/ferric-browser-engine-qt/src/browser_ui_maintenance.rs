@@ -1,10 +1,12 @@
 use super::{
-    Arc, AtomicBool, ConfigReloadWorker, ConfigWriteWorker, CxxQtType, MAX_ACTION_AUDIT_RECORDS,
-    Ordering, Pin, PortalProbeWorker, ProfileDeleteWorker, ProfileListWorker, ProfilePreviewWorker,
-    ReducedMotionProbeWorker, SystemFontScaleProbeWorker, Threading, action_audit_record,
-    captured_target_is_current, elapsed_ms, has_pending_requests, install_pending_request_waker,
-    ipc_failure, operation_is_terminal, operation_status_kind, publish_ipc_event, qobject,
-    remember_operation_stderr, subscribe_event_stream, take_pending_request,
+    Arc, AtomicBool, ConfigReloadWorker, ConfigWriteWorker, CxxQtType, EditorWriteWorker,
+    HyprlandWorker, MAX_ACTION_AUDIT_RECORDS, NetworkPolicyWorker, Ordering, Pin,
+    PortalProbeWorker, PrintWorker, ProfileDeleteWorker, ProfileListWorker, ProfilePreviewWorker,
+    ReducedMotionProbeWorker, SystemFontScaleProbeWorker, Threading, UserscriptManagerWorker,
+    action_audit_record, captured_target_is_current, elapsed_ms, has_pending_requests,
+    install_pending_request_waker, ipc_failure, operation_is_terminal, operation_status_kind,
+    publish_ipc_event, qobject, remember_operation_stderr, subscribe_event_stream,
+    take_pending_request,
 };
 
 impl qobject::BrowserUi {
@@ -152,11 +154,11 @@ impl qobject::BrowserUi {
             || rust
                 .print_worker
                 .as_ref()
-                .is_some_and(|worker| worker.inner.is_pending())
+                .is_some_and(PrintWorker::is_pending)
             || rust
                 .editor_write_worker
                 .as_ref()
-                .is_some_and(|worker| worker.inner.is_pending())
+                .is_some_and(EditorWriteWorker::is_pending)
             || rust
                 .profile_delete_worker
                 .as_ref()
@@ -165,11 +167,11 @@ impl qobject::BrowserUi {
             || rust
                 .network_policy_worker
                 .as_ref()
-                .is_some_and(|worker| worker.inner.is_pending())
+                .is_some_and(NetworkPolicyWorker::is_pending)
             || rust
                 .hyprland_worker
                 .as_ref()
-                .is_some_and(|worker| worker.inner.is_pending())
+                .is_some_and(HyprlandWorker::is_pending)
             || rust
                 .portal_probe_worker
                 .as_ref()
@@ -193,7 +195,7 @@ impl qobject::BrowserUi {
             || rust
                 .userscript_manager_worker
                 .as_ref()
-                .is_some_and(|worker| worker.inner.is_pending());
+                .is_some_and(UserscriptManagerWorker::is_pending);
         let operation_pending = rust
             .operation_states
             .values()

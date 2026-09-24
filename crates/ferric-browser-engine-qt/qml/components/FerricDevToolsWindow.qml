@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import QtWebEngine
 
 // Detached developer tools are presentation infrastructure. Close handling is

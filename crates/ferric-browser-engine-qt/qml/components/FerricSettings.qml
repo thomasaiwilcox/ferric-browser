@@ -16,7 +16,7 @@ Rectangle {
     signal closeRequested()
     signal refreshRequested()
     signal installUserscriptRequested()
-    signal temporaryChanged(bool temporary)
+    signal temporaryChangeRequested(bool temporary)
     signal searchChanged(string text)
     signal userscriptEnabledRequested(string name, bool enabled)
     signal userscriptRemovalRequested(string name)
@@ -84,7 +84,7 @@ Rectangle {
                 text: "Temporary (memory only)"
                 checked: settings.temporary
                 Accessible.name: "Apply settings temporarily"
-                onToggled: settings.temporaryChanged(checked)
+                onToggled: settings.temporaryChangeRequested(checked)
             }
             Label {
                 Layout.fillWidth: true

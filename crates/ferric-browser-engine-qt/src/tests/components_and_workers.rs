@@ -434,6 +434,11 @@ fn settings_component_composes_schema_rows_and_keeps_mutations_at_the_root() {
     assert!(qml.contains("FerricSettingRows {"));
     assert!(qml.contains("signal userscriptEnabledRequested(string name, bool enabled)"));
     assert!(qml.contains("signal settingApplyRequested(var row, var value)"));
+    // Characterization: QML generates temporaryChanged for the temporary
+    // property, so the extracted component must use a distinct intent signal.
+    assert!(qml.contains("signal temporaryChangeRequested(bool temporary)"));
+    assert!(!qml.contains("signal temporaryChanged(bool temporary)"));
+    assert!(composition_root.contains("onTemporaryChangeRequested:"));
     assert!(qml.contains("function setUserscriptEnabled(name, enabled)"));
     assert!(!qml.contains("browserUi."));
     assert!(!qml.contains("set_runtime_setting"));
@@ -492,13 +497,17 @@ fn switcher_component_exposes_focus_and_query_without_runtime_policy() {
     let composition_root = QML_SOURCE;
     assert!(qml.contains("property alias query: switcherInput.text"));
     assert!(qml.contains("function focusInput()"));
-    assert!(qml.contains("signal queryChanged(string query)"));
+    // Characterization: the query alias already owns queryChanged; the search
+    // edit is a separate user intent emitted toward the composition boundary.
+    assert!(qml.contains("signal queryChangeRequested(string query)"));
+    assert!(!qml.contains("signal queryChanged(string query)"));
     assert!(qml.contains("signal activationRequested(int index)"));
     assert!(!qml.contains("browserUi."));
     assert!(!qml.contains("execute_command"));
     assert!(composition_root.contains("FerricSwitcher {"));
     assert!(composition_root.contains("switcherSurface.query = query || \"\""));
     assert!(composition_root.contains("switcherSurface.focusInput()"));
+    assert!(composition_root.contains("onQueryChangeRequested:"));
 }
 
 #[test]
