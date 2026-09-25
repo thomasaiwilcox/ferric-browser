@@ -5,6 +5,7 @@ import QtQuick.Dialogs
 import QtWebEngine
 import io.github.ferricbrowser 1.0
 import "../scripts/BrowserScripts.js" as BrowserScripts
+import "../scripts/KeyboardPresentation.js" as KeyboardPresentation
 import "../scripts/SpellcheckPresentation.js" as SpellcheckPresentation
 
 FerricBrowserRuntimeChrome {
@@ -1207,16 +1208,8 @@ FerricBrowserRuntimeChrome {
         if (alt || meta) {
             return ""
         }
-        var text = event.text || ""
-        if (text.length === 0 || text.length > 4) {
-            return ""
-        }
-        for (var i = 0; i < text.length; ++i) {
-            if (text.charCodeAt(i) < 0x20 || text.charCodeAt(i) === 0x7f) {
-                return ""
-            }
-        }
-        return text
+        return KeyboardPresentation.printableKey(
+                    event.text, event.key, shift, Qt.Key_A, Qt.Key_Z)
     }
 
     function completeBrowserKeyAction(ui, host) {

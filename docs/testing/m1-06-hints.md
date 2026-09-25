@@ -43,11 +43,13 @@ The collector runs in Qt WebEngine's isolated application world through the
 public QML `runJavaScript` API. It represents the top document as frame `0` and walks
 same-origin `iframe`/`frame` descendants to a bounded depth of eight, carrying
 frame paths and transforming descendant geometry into top-view coordinates.
-Collection and selection have bounded 200 ms elapsed-time checks. Navigation
+Collection is bounded by candidate count and frame depth, and excludes targets
+outside both their owning frame viewport and the top-level viewport. Completed
+renderer results are not discarded based on wall-clock latency. Navigation
 invalidates the captured browser document; fresh selection uses the exact
 isolated-world element retained for the session, recomputes its same-origin
-frame-chain geometry, and checks attachment, visibility, metadata, and material
-movement. This avoids false rejection from unrelated mutations on dynamic
+frame-chain geometry, and checks attachment, viewport visibility, metadata,
+and material movement. This avoids false rejection from unrelated mutations on dynamic
 pages and prevents an overlapping child, image, or shadow host from retargeting
 activation.
 Browser features which require a trusted user-activation event,

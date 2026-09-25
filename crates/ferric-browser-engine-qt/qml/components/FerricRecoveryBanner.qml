@@ -4,6 +4,8 @@ import QtQuick.Layouts
 
 // Session-recovery presentation. The composition root owns recovery policy.
 Rectangle {
+    id: banner
+    objectName: "recoveryBanner"
     required property var browserWindow
 
     signal recoveryRequested()
@@ -31,14 +33,30 @@ Rectangle {
             Accessible.name: "Session recovery notice"
         }
         Button {
-            text: "Recover"
+            objectName: "recoveryButton"
+            text: "Recover (Alt+R)"
             Accessible.name: "Recover last session"
             onClicked: recoveryRequested()
         }
         Button {
-            text: "Dismiss"
+            objectName: "recoveryDismissButton"
+            text: "Dismiss (Alt+D)"
             Accessible.name: "Dismiss session recovery"
             onClicked: dismissalRequested()
         }
+    }
+
+    Shortcut {
+        sequence: "Alt+R"
+        context: Qt.WindowShortcut
+        enabled: banner.visible
+        onActivated: banner.recoveryRequested()
+    }
+
+    Shortcut {
+        sequence: "Alt+D"
+        context: Qt.WindowShortcut
+        enabled: banner.visible
+        onActivated: banner.dismissalRequested()
     }
 }

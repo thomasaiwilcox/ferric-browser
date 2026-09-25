@@ -1039,13 +1039,7 @@ FerricBrowserRuntimeServices {
             browserUi.cancel_hints()
             return
         }
-        var startedAt = Date.now()
         window.runBrowserScript(view, window.hintCollectorScript(browserUi.hint_links_only), function(value) {
-            if (Date.now() - startedAt > 200) {
-                window.closeHints()
-                browserUi.status_text = "Hint collection timed out"
-                return
-            }
             var payload = value && value.candidates !== undefined
                     ? {candidates: value.candidates}
                     : {candidates: value || []}
@@ -1513,13 +1507,7 @@ FerricBrowserRuntimeServices {
             window.closeHints()
             return
         }
-        var startedAt = Date.now()
         window.runBrowserScript(view, window.hintFreshScript(selected), function(value) {
-            if (Date.now() - startedAt > 200) {
-                window.closeHints()
-                browserUi.status_text = "Hint target validation timed out"
-                return
-            }
             var result = {}
             try {
                 if (actionId && actionId.length > 0) {

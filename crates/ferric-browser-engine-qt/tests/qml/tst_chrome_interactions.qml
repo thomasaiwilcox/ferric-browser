@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtTest
 import "../../qml/components"
 import "../../qml/scripts/ChromePresentation.js" as ChromePresentation
+import "../../qml/scripts/KeyboardPresentation.js" as KeyboardPresentation
 
 TestCase {
     id: chromeTest
@@ -22,6 +23,10 @@ TestCase {
     property int closedTabs: 0
     property int activatedResults: 0
     property int invokedActions: 0
+    property int keptShutdowns: 0
+    property int proceededShutdowns: 0
+    property int recoveredSessions: 0
+    property int dismissedRecoveries: 0
     property string appliedSettingValue: ""
     property string submittedCommand: ""
     property alias settingsModelObject: settingsModel
@@ -54,6 +59,7 @@ TestCase {
         property var contextMenuItems: []
         property bool temporaryProfile: false
         property bool bindingHelpVisible: true
+        property bool recoveryAvailable: true
         property string bindingHelpSearch: ""
         property var bindingHelpRows: [
             { kind: "binding", mode: "normal", command: ":open",
@@ -139,6 +145,29 @@ TestCase {
     }
 
     Component {
+        id: shutdownDecisionFixture
+        FerricShutdownDecisionDialog {
+            hostWindow: theme
+            promptVisible: true
+            title: "Close browser window?"
+            message: "The browser is waiting for a keyboard decision."
+            keepLabel: "Keep browser open"
+            proceedLabel: "Close browser"
+            onKeepRequested: chromeTest.keptShutdowns += 1
+            onProceedRequested: chromeTest.proceededShutdowns += 1
+        }
+    }
+
+    Component {
+        id: recoveryBannerFixture
+        FerricRecoveryBanner {
+            browserWindow: theme
+            onRecoveryRequested: chromeTest.recoveredSessions += 1
+            onDismissalRequested: chromeTest.dismissedRecoveries += 1
+        }
+    }
+
+    Component {
         id: largeFontHelpFixture
         Pane {
             width: 480
@@ -204,6 +233,10 @@ TestCase {
         closedTabs = 0
         activatedResults = 0
         invokedActions = 0
+        keptShutdowns = 0
+        proceededShutdowns = 0
+        recoveredSessions = 0
+        dismissedRecoveries = 0
         appliedSettingValue = ""
         submittedCommand = ""
     }
@@ -418,5 +451,59 @@ TestCase {
     function test_context_accent_matching_surface_is_readable() {
         var textColor = ChromePresentation.readableTextColor("#313244", "#313244")
         verify(ChromePresentation.contrastRatio(textColor, "#313244") >= 4.5)
+    }
+
+    function test_shifted_ascii_key_normalization_preserves_H_binding() {
+        compare(KeyboardPresentation.printableKey(
+                    "h", Qt.Key_H, true, Qt.Key_A, Qt.Key_Z), "H")
+        compare(KeyboardPresentation.printableKey(
+                    "", Qt.Key_H, true, Qt.Key_A, Qt.Key_Z), "H")
+        compare(KeyboardPresentation.printableKey(
+                    "h", Qt.Key_H, false, Qt.Key_A, Qt.Key_Z), "h")
+        compare(KeyboardPresentation.printableKey(
+                    "λ", Qt.Key_unknown, false, Qt.Key_A, Qt.Key_Z), "λ")
+    }
+
+    function test_shutdown_decision_is_keyboard_operable() {
+        var dialog = createTemporaryObject(shutdownDecisionFixture,
+                                           testWindow.contentItem)
+        verify(dialog)
+        var keep = findChild(dialog, "shutdownKeepButton")
+        var proceed = findChild(dialog, "shutdownProceedButton")
+        verify(keep)
+        verify(proceed)
+        testWindow.requestActivate()
+        tryCompare(testWindow, "active", true)
+        dialog.focusSafeChoice()
+        tryCompare(keep, "activeFocus", true)
+
+        keyClick(Qt.Key_Return)
+        compare(keptShutdowns, 1)
+
+        keep.forceActiveFocus()
+        keyClick(Qt.Key_Tab)
+        tryCompare(proceed, "activeFocus", true)
+        keyClick(Qt.Key_Return)
+        compare(proceededShutdowns, 1)
+
+        proceed.forceActiveFocus()
+        keyClick(Qt.Key_Escape)
+        compare(keptShutdowns, 2)
+
+        keep.forceActiveFocus()
+        keyClick(Qt.Key_Return, Qt.ControlModifier)
+        compare(proceededShutdowns, 2)
+    }
+
+    function test_recovery_banner_has_window_shortcuts() {
+        var banner = createTemporaryObject(recoveryBannerFixture,
+                                           testWindow.contentItem)
+        verify(banner)
+        testWindow.requestActivate()
+        tryCompare(testWindow, "active", true)
+        keyClick(Qt.Key_R, Qt.AltModifier)
+        compare(recoveredSessions, 1)
+        keyClick(Qt.Key_D, Qt.AltModifier)
+        compare(dismissedRecoveries, 1)
     }
 }

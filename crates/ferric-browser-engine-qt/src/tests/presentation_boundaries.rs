@@ -199,6 +199,8 @@ fn scalar_feature_preferences_cross_the_qml_boundary_without_config_parsing() {
 #[test]
 fn normal_input_uses_logical_unmodified_text_and_preserves_unicode_fields() {
     let qml = QML_SOURCE;
+    let keyboard_presentation =
+        include_str!("../../qml/scripts/KeyboardPresentation.js");
     assert!(qml.contains("function logicalNormalKeyText(event)"));
     assert!(qml.contains("event.key === Qt.Key_D"));
     assert!(qml.contains("event.key === Qt.Key_U"));
@@ -216,7 +218,9 @@ fn normal_input_uses_logical_unmodified_text_and_preserves_unicode_fields() {
     assert!(qml.contains("browserUi.binding_overlay.length > 0"));
     assert!(qml.contains("event.modifiers & Qt.AltModifier"));
     assert!(qml.contains("event.modifiers & Qt.MetaModifier"));
-    assert!(qml.contains("event.text || \"\""));
+    assert!(keyboard_presentation.contains("text = text || \"\""));
+    assert!(qml.contains("KeyboardPresentation.printableKey("));
+    assert!(qml.contains("event.text, event.key, shift, Qt.Key_A, Qt.Key_Z"));
     assert!(qml.contains("ui.handle_key(logicalText)"));
     assert!(qml.contains("function handleBrowserKey(ui, host, event)"));
     assert!(qml.matches("BrowserKeyRouter {").count() >= 2);
@@ -1303,6 +1307,21 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(script.contains("function cosmeticFilter(css)"));
     assert!(script.contains("out.length>=5000"));
     assert!(script.contains("depth>8"));
+    assert!(script.contains("r.bottom<=0||r.right<=0||r.top>=vh||r.left>=vw"));
+    assert!(script.contains("x>=window.innerWidth||y>=window.innerHeight"));
+    assert!(script.contains("r.top+by<window.innerHeight"));
+}
+
+#[test]
+fn hint_results_are_not_discarded_based_on_renderer_callback_latency() {
+    let qml = QML_SOURCE;
+
+    // QtWebEngine invokes runJavaScript callbacks only after the renderer has
+    // completed the work. Rejecting a completed, valid result because it took
+    // more than an arbitrary wall-clock threshold makes hints fail on large or
+    // busy pages without bounding the renderer work itself.
+    assert!(!qml.contains("Hint collection timed out"));
+    assert!(!qml.contains("Hint target validation timed out"));
 }
 
 #[test]
