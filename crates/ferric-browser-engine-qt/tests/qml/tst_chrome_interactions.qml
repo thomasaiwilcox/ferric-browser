@@ -23,6 +23,7 @@ TestCase {
     property int activatedResults: 0
     property int invokedActions: 0
     property string appliedSettingValue: ""
+    property string submittedCommand: ""
     property alias settingsModelObject: settingsModel
     property alias tabsModelObject: tabsModel
 
@@ -120,7 +121,11 @@ TestCase {
                 commandVisible: true
                 completionVisible: true
                 completionText: "open\nopen-current"
+                completionValues: "open\nopen-current"
+                completionStart: 0
+                completionEnd: 0
                 completionSelected: 0
+                onSubmitted: function(text) { chromeTest.submittedCommand = text }
             }
         }
     }
@@ -200,6 +205,7 @@ TestCase {
         activatedResults = 0
         invokedActions = 0
         appliedSettingValue = ""
+        submittedCommand = ""
     }
 
     function test_enum_options_reach_the_editor() {
@@ -283,6 +289,39 @@ TestCase {
         verify(list)
         tryVerify(function() { return list.itemAtIndex(0) !== null })
         verify(list.itemAtIndex(0).width >= list.width / 4 - 1)
+    }
+
+    function test_mouse_wheel_on_tab_strip_requests_switch() {
+        var strip = createTemporaryObject(tabFixture, testWindow.contentItem)
+        verify(strip)
+        var list = findChild(strip, "tabList")
+        verify(list)
+        mouseWheel(list, 20, 15, 0, -120)
+        compare(selectedTabs, 1)
+    }
+
+    function test_completion_selection_replaces_only_the_active_token() {
+        var surface = createTemporaryObject(completionFixture, testWindow.contentItem)
+        verify(surface)
+        var command = findChild(surface, "commandSurface")
+        verify(command)
+        command.commandText = "open ex --target tab"
+        command.completionValues = "https://example.test"
+        command.completionStart = 5
+        command.completionEnd = 7
+        command.completionSelected = -1
+        compare(command.commandWithCompletion(-1), "open ex --target tab")
+        compare(command.commandWithCompletion(0),
+                "open https://example.test --target tab")
+        command.applyCompletion(0)
+        compare(command.commandText, "open https://example.test --target tab")
+        command.commandText = "open ex --target tab"
+        command.completionSelected = 0
+        command.focusInput()
+        var input = findChild(command, "commandLineInput")
+        verify(input)
+        input.accepted()
+        compare(submittedCommand, "open https://example.test --target tab")
     }
 
     function test_close_button_retains_hover_and_does_not_select() {

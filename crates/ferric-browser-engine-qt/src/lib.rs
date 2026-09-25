@@ -42,6 +42,7 @@ mod blocking_evidence;
 mod blocking_presentation;
 mod browser_ui_browsing_commands;
 mod browser_ui_command_dispatch;
+mod browser_ui_command_history;
 mod browser_ui_command_workflows;
 mod browser_ui_configuration;
 mod browser_ui_content_tools;
@@ -699,6 +700,15 @@ mod qobject {
 
         #[qinvokable]
         fn execute_command(self: Pin<&mut BrowserUi>, input: &QString) -> bool;
+
+        #[qinvokable]
+        fn execute_interactive_command(self: Pin<&mut BrowserUi>, input: &QString) -> bool;
+
+        #[qinvokable]
+        fn command_history_previous(self: Pin<&mut BrowserUi>, current: &QString) -> QString;
+
+        #[qinvokable]
+        fn command_history_next(self: Pin<&mut BrowserUi>, current: &QString) -> QString;
 
         #[qinvokable]
         fn execute_ui_action(
@@ -1534,6 +1544,12 @@ pub struct BrowserUiRust {
     completion_end: i32,
     completion_selected: i32,
     completion_visible: bool,
+    command_history: Vec<String>,
+    command_history_index: Option<usize>,
+    command_history_draft: String,
+    queued_command_history: Vec<(String, i64)>,
+    command_history_write_pending: bool,
+    command_history_write_error: Option<String>,
     binding_overlay: QString,
     binding_help_row_kinds: QStringList,
     binding_help_row_titles: QStringList,
@@ -2148,8 +2164,14 @@ impl Default for BrowserUiRust {
             completion_values: QString::default(),
             completion_start: 0,
             completion_end: 0,
-            completion_selected: 0,
+            completion_selected: -1,
             completion_visible: false,
+            command_history: Vec::new(),
+            command_history_index: None,
+            command_history_draft: String::new(),
+            queued_command_history: Vec::new(),
+            command_history_write_pending: false,
+            command_history_write_error: None,
             binding_overlay: QString::default(),
             binding_help_row_kinds: QStringList::default(),
             binding_help_row_titles: QStringList::default(),

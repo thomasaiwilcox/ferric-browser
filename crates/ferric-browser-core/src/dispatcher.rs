@@ -334,7 +334,12 @@ pub fn dispatch_command_for(
                 });
             }
             let selector = &parsed.arguments[0];
-            let tab = if selector == "last" {
+            let tab = if selector == "previous" {
+                state
+                    .windows()
+                    .get(&window)
+                    .and_then(|window| window.previous_tab)
+            } else if selector == "last" {
                 state
                     .windows()
                     .get(&window)
@@ -1115,6 +1120,25 @@ mod tests {
                 background: false,
             }]
         );
+    }
+
+    #[test]
+    fn tab_select_previous_toggles_recent_live_tabs() {
+        let mut state = state();
+        let window = state.active_window().expect("window");
+        let first = state.windows()[&window].active_tab.expect("first tab");
+        reduce(&mut state, Event::OpenTab { window }).expect("second tab");
+        let second = state.windows()[&window].active_tab.expect("second tab");
+        assert_eq!(state.windows()[&window].previous_tab, Some(first));
+        let events = dispatch_cli(
+            &state,
+            &CommandRegistry::default_v1(),
+            "tab-select previous",
+        )
+        .expect("previous tab");
+        assert_eq!(events, vec![Event::ActivateTab { window, tab: first }]);
+        reduce(&mut state, events[0].clone()).expect("activate first tab");
+        assert_eq!(state.windows()[&window].previous_tab, Some(second));
     }
 
     #[test]

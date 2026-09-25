@@ -221,6 +221,8 @@ impl BindingTrie {
                 binding(Mode::Normal, &["g", "^"], "tab-select 1"),
                 binding(Mode::Normal, &["Ctrl+PgDown"], "tab-next"),
                 binding(Mode::Normal, &["Ctrl+PgUp"], "tab-prev"),
+                binding(Mode::Normal, &["Ctrl+Tab"], "tab-select previous"),
+                binding(Mode::Normal, &["Ctrl+^"], "tab-select previous"),
                 binding(Mode::Normal, &["Alt+1"], "tab-select 1"),
                 binding(Mode::Normal, &["Alt+2"], "tab-select 2"),
                 binding(Mode::Normal, &["Alt+3"], "tab-select 3"),

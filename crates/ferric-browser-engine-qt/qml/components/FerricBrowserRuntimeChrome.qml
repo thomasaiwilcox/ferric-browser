@@ -1261,13 +1261,16 @@ GridLayout {
         commandVisible: browserUi.mode === "command"
         completionVisible: browserUi.completion_visible
         completionText: browserUi.completion_text
+        completionValues: browserUi.completion_values
+        completionStart: browserUi.completion_start
+        completionEnd: browserUi.completion_end
         completionSelected: browserUi.completion_selected
         onCompletionUpdateRequested: function(text, cursorPosition) {
             browserUi.update_completion(text, cursorPosition)
         }
         onSubmitted: function(text) {
             var focusedContextWindow = window.focusExistingContextWindow(text, browserUi)
-            if (focusedContextWindow || browserUi.execute_command(text)) {
+            if (focusedContextWindow || browserUi.execute_interactive_command(text)) {
                 var preview = browserUi.take_session_preview()
                 if (preview.length > 0) {
                     window.showCommandSessionPreview(preview)
@@ -1297,6 +1300,12 @@ GridLayout {
         onEscapeRequested: browserUi.escape()
         onCompletionMoveRequested: function(delta) { browserUi.completion_move(delta) }
         onCompletionSelectRequested: function(index) { browserUi.completion_select(index) }
+        onHistoryMoveRequested: function(delta, current) {
+            commandSurface.commandText = delta < 0
+                ? browserUi.command_history_previous(current)
+                : browserUi.command_history_next(current)
+            commandSurface.cursorPosition = commandSurface.commandText.length
+        }
     }
 
     FerricSearchBar {

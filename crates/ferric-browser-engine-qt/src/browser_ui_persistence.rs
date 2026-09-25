@@ -182,6 +182,27 @@ impl qobject::BrowserUi {
         }
     }
 
+    pub(super) fn wait_for_command_history_writes(mut self: Pin<&mut Self>) -> bool {
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            self.as_mut().poll_storage_library();
+            let rust = self.as_ref().get_ref().rust();
+            if rust.command_history_write_error.is_some() {
+                return false;
+            }
+            if rust.queued_command_history.is_empty() && !rust.command_history_write_pending {
+                return true;
+            }
+            if Instant::now() >= deadline {
+                self.set_status_text(QString::from(
+                    "Command history did not finish before shutdown",
+                ));
+                return false;
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
     pub(super) fn private_history_records(&self) -> Vec<HistoryRecord> {
         self.rust().private_history.clone()
     }

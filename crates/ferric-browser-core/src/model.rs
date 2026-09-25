@@ -131,6 +131,7 @@ pub struct WindowState {
     pub context: Option<String>,
     pub tabs: Vec<TabId>,
     pub active_tab: Option<TabId>,
+    pub previous_tab: Option<TabId>,
     pub modes: Vec<Mode>,
 }
 

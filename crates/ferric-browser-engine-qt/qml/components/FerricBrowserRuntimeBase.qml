@@ -1785,6 +1785,9 @@ ApplicationWindow {
         interval: window.blocklistUpdateIntervalHours * 60 * 60 * 1000
         repeat: true
         running: !window.temporaryProfile
+                 || (window.browserWindowRegistry || []).some(function(entry) {
+                     return entry && !entry.privateProfile && !entry.ephemeralProfile
+                 })
                  && window.storageBasePath.length > 0
                  && window.blocklistUpdateIntervalHours > 0
         onTriggered: window.requestBlocklistUpdate()
@@ -1820,10 +1823,6 @@ ApplicationWindow {
             }
             if (consumed && window.switcherVisible) {
                 window.refreshSwitcher()
-            }
-            if (consumed && browserUi.mode === "command") {
-                browserUi.update_completion(commandSurface.commandText,
-                                            commandSurface.cursorPosition)
             }
             if (consumed && window.downloadManagerVisible) {
                 window.refreshDownloads()

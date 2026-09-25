@@ -747,6 +747,9 @@ impl qobject::BrowserUi {
         if !self.as_mut().wait_for_journey_write() {
             return false;
         }
+        if !self.as_mut().wait_for_command_history_writes() {
+            return false;
+        }
         let request_result = self.as_mut().submit_storage(StorageRequest::Flush);
         match request_result {
             Ok(()) => {

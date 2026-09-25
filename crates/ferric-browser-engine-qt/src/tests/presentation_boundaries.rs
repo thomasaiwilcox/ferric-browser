@@ -843,10 +843,7 @@ fn default_chrome_is_compact_modal_and_content_first() {
     assert!(qml.contains("palette.buttonText: window.primaryTextColor"));
     assert!(qml.contains("ChromePresentation.contrastReport"));
     assert!(qml.contains("function readableTextColor(candidate, background)"));
-    assert!(
-        qml.contains("window.contrastText(parent.color)")
-            || qml.contains("rootWindow.contrastText(parent.color)")
-    );
+    assert!(command_line.contains("commandSurface.browserWindow.contrastText(parent.color)"));
     assert!(chrome_presentation.contains("function colorChannels(value)"));
     assert!(chrome_presentation.contains("function contrastReport(colors)"));
 }

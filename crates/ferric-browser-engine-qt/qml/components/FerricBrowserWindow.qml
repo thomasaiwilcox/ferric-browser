@@ -854,9 +854,9 @@ function onContext_workspaceChanged() {
             return
         }
         if (action.indexOf("command-prefill\t") === 0) {
-            secondaryCommandLine.text = action.slice("command-prefill\t".length)
-            secondaryCommandLine.cursorPosition = secondaryCommandLine.text.length
-            secondaryCommandLine.forceActiveFocus()
+            secondaryCommandBar.commandText = action.slice("command-prefill\t".length)
+            secondaryCommandBar.cursorPosition = secondaryCommandBar.commandText.length
+            secondaryCommandBar.focusInput()
             return
         }
         if (action === "quit-request") {
@@ -1579,78 +1579,47 @@ function onContext_workspaceChanged() {
         return true
     }
 
-    Rectangle {
+    FerricCommandLine {
         id: secondaryCommandBar
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        height: rootWindow.inputBarHeight
-        z: 20
-        visible: secondaryUi.mode === "command"
-        color: rootWindow.surfaceColor
-
-        RowLayout {
-            anchors.fill: parent
-            spacing: 0
-
-            Rectangle {
-                Layout.fillHeight: true
-                Layout.preferredWidth: secondaryCommandPrefix.implicitWidth + 16
-                color: rootWindow.accentColor
-
-                Label {
-                    id: secondaryCommandPrefix
-                    anchors.centerIn: parent
-                    text: ":"
-                    color: rootWindow.contrastText(parent.color)
-                    font.bold: true
-                    Accessible.ignored: true
+        browserWindow: rootWindow
+        commandVisible: secondaryUi.mode === "command"
+        completionVisible: secondaryUi.completion_visible
+        completionText: secondaryUi.completion_text
+        completionValues: secondaryUi.completion_values
+        completionStart: secondaryUi.completion_start
+        completionEnd: secondaryUi.completion_end
+        completionSelected: secondaryUi.completion_selected
+        onCompletionUpdateRequested: function(text, cursorPosition) {
+            secondaryUi.update_completion(text, cursorPosition)
+        }
+        onSubmitted: function(text) {
+            if (secondaryUi.execute_interactive_command(text)) {
+                secondaryCommandBar.clearInput()
+                secondaryWindow.applySwitcherEngineAction()
+                if (secondaryUi.mode === "command") {
+                    secondaryUi.escape()
                 }
+            } else {
+                secondaryCommandBar.selectAllInput()
             }
+        }
+        onEscapeRequested: secondaryUi.escape()
+        onCompletionMoveRequested: function(delta) { secondaryUi.completion_move(delta) }
+        onCompletionSelectRequested: function(index) { secondaryUi.completion_select(index) }
+        onHistoryMoveRequested: function(delta, current) {
+            secondaryCommandBar.commandText = delta < 0
+                ? secondaryUi.command_history_previous(current)
+                : secondaryUi.command_history_next(current)
+            secondaryCommandBar.cursorPosition = secondaryCommandBar.commandText.length
+        }
+    }
 
-            TextField {
-                id: secondaryCommandLine
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                leftPadding: 8
-                rightPadding: 8
-                topPadding: 0
-                bottomPadding: 0
-                color: rootWindow.primaryTextColor
-                selectionColor: rootWindow.selectionColor
-                selectedTextColor: rootWindow.selectionTextColor
-                placeholderText: "command"
-                placeholderTextColor: rootWindow.mutedTextColor
-                background: Rectangle { color: "transparent" }
-                focus: secondaryCommandBar.visible
-                Accessible.name: "Command line"
-                Accessible.role: Accessible.EditableText
-                Accessible.editable: true
-                onVisibleChanged: if (visible) forceActiveFocus()
-                onTextChanged: secondaryUi.update_completion(text, cursorPosition)
-                onCursorPositionChanged:
-                    secondaryUi.update_completion(text, cursorPosition)
-                onAccepted: {
-                    if (secondaryUi.execute_command(text)) {
-                        text = ""
-                        secondaryWindow.applySwitcherEngineAction()
-                        if (secondaryUi.mode === "command") {
-                            secondaryUi.escape()
-                        }
-                    } else {
-                        selectAll()
-                    }
-                }
-                Keys.onPressed: function(event) {
-                    if (event.key === Qt.Key_Escape) {
-                        secondaryUi.escape()
-                        event.accepted = true
-                    } else if (event.key === Qt.Key_Tab) {
-                        secondaryUi.completion_move(
-                            event.modifiers & Qt.ShiftModifier ? -1 : 1)
-                        event.accepted = true
-                    }
-                }
+    Connections {
+        target: secondaryUi
+        function onStorage_library_revisionChanged() {
+            if (secondaryCommandBar.commandVisible) {
+                secondaryUi.update_completion(secondaryCommandBar.commandText,
+                                              secondaryCommandBar.cursorPosition)
             }
         }
     }

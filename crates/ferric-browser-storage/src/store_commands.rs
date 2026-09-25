@@ -1,6 +1,17 @@
 use super::{MAX_COMMAND_HISTORY_ROWS, ProfileStore, StoreError, params};
 
 impl ProfileStore {
+    /// Returns the most recent eligible commands for command-line recall.
+    pub fn command_history(&self, limit: usize) -> Result<Vec<String>, StoreError> {
+        let mut statement = self.connection.prepare(
+            "SELECT command FROM command_history ORDER BY created_at DESC, id DESC LIMIT ?1",
+        )?;
+        let rows = statement.query_map([i64::try_from(limit).unwrap_or(i64::MAX)], |row| {
+            row.get::<_, String>(0)
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
     /// Records eligible command text. Ineligible/sensitive commands are a
     /// successful no-op and never reach SQLite.
     ///

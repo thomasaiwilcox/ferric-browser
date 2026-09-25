@@ -302,6 +302,7 @@ impl qobject::BrowserUi {
         let mut session_delete_result = None;
         let mut session_checkpoint_clear_result = None;
         let mut history_result = None;
+        let mut command_record_result = None;
         let mut permission_result = None;
         let mut permission_reset_result = None;
         let mut download_result = None;
@@ -336,6 +337,9 @@ impl qobject::BrowserUi {
                 }
                 StorageCompletion::HistoryBatch(result) => {
                     history_result = Some(result.map_err(|error| error.message));
+                }
+                StorageCompletion::CommandRecord(result) => {
+                    command_record_result = Some(result.map_err(|error| error.message));
                 }
                 StorageCompletion::PermissionBatch(result) => {
                     permission_result = Some(result.map_err(|error| error.message));
@@ -573,6 +577,19 @@ impl qobject::BrowserUi {
                 Ok(snapshot) => {
                     let mut rust = self.as_mut().rust_mut();
                     let this = rust.as_mut().get_mut();
+                    for entry in &snapshot.command_history {
+                        if !this.command_history.contains(entry) {
+                            this.command_history.push(entry.clone());
+                        }
+                    }
+                    let limit = this
+                        .config
+                        .get("history")
+                        .and_then(|history| history.get("command_limit"))
+                        .and_then(serde_json::Value::as_u64)
+                        .unwrap_or(1_000)
+                        .min(1_000) as usize;
+                    this.command_history.truncate(limit);
                     this.storage_library = Some(snapshot);
                     this.storage_library_revision = this.storage_library_revision.saturating_add(1);
                     this.storage_library_dirty.set(false);
@@ -591,6 +608,25 @@ impl qobject::BrowserUi {
                 }
             }
         }
+        if let Some(result) = command_record_result {
+            consumed = true;
+            self.as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .command_history_write_pending = false;
+            if let Err(error) = result {
+                self.as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .command_history_write_error = Some(error.clone());
+                self.as_mut().set_status_text(QString::from(format!(
+                    "Command history write failed: {error}"
+                )));
+            }
+        }
+        self.as_mut().flush_command_history_writes();
         self.as_mut().request_switcher_library_index();
         if let Some(result) = journey_node_result {
             consumed = true;

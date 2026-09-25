@@ -4,6 +4,43 @@ use super::{
 };
 
 impl qobject::BrowserUi {
+    pub(super) fn queue_command_history_write(mut self: Pin<&mut Self>, command: String) {
+        {
+            let mut rust = self.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            if this.queued_command_history.len() == 1_000 {
+                this.queued_command_history.remove(0);
+            }
+            this.queued_command_history
+                .push((command, unix_timestamp()));
+        }
+        self.as_mut().flush_command_history_writes();
+    }
+
+    pub(super) fn flush_command_history_writes(mut self: Pin<&mut Self>) {
+        let next = {
+            let binding = self.as_ref();
+            let rust = binding.rust();
+            if rust.command_history_write_pending {
+                return;
+            }
+            rust.queued_command_history.first().cloned()
+        };
+        let Some((command, timestamp)) = next else {
+            return;
+        };
+        if self
+            .as_mut()
+            .submit_storage(StorageRequest::CommandRecord { command, timestamp })
+            .is_ok()
+        {
+            let mut rust = self.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            this.queued_command_history.remove(0);
+            this.command_history_write_pending = true;
+        }
+    }
+
     pub(super) fn apply_mark_write(
         mut self: Pin<&mut Self>,
         write: MarkWrite,

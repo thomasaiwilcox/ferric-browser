@@ -1125,6 +1125,9 @@ FerricBrowserRuntimeChrome {
             return "Ctrl+Alt+p"
         }
         if (control && !alt && !meta) {
+            if (event.key === Qt.Key_6 || event.key === Qt.Key_AsciiCircum) {
+                return "Ctrl+^"
+            }
             if (shift) {
                 if (event.key === Qt.Key_N) {
                     return "Ctrl+Shift+n"
@@ -1166,6 +1169,9 @@ FerricBrowserRuntimeChrome {
             }
             if (event.key === Qt.Key_Space) {
                 return "Ctrl+Space"
+            }
+            if (event.key === Qt.Key_Tab) {
+                return "Ctrl+Tab"
             }
             if (event.key === Qt.Key_T) {
                 return "Ctrl+t"

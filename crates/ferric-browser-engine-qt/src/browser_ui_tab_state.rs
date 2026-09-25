@@ -280,7 +280,7 @@ impl qobject::BrowserUi {
         self.as_mut().set_completion_values(QString::default());
         self.as_mut().set_completion_start(0);
         self.as_mut().set_completion_end(0);
-        self.as_mut().set_completion_selected(0);
+        self.as_mut().set_completion_selected(-1);
         self.set_completion_visible(false);
     }
 
@@ -317,6 +317,10 @@ impl qobject::BrowserUi {
                 .filter_map(|tab| {
                     tab.url.as_ref().map(|url| {
                         let safe_url = safe_ipc_url(url);
+                        let profile = state
+                            .profiles()
+                            .get(&tab.profile)
+                            .map_or(rust.profile_name.as_str(), |profile| profile.label.as_str());
                         CompletionCandidate {
                             insert_text: safe_url.clone(),
                             label: if tab.title.is_empty() {
@@ -324,7 +328,7 @@ impl qobject::BrowserUi {
                             } else {
                                 tab.title.clone()
                             },
-                            detail: safe_url,
+                            detail: format!("{safe_url} · {profile}"),
                             category: CompletionCategory::Tab,
                             recency: 0,
                             frequency: 0,
@@ -339,11 +343,14 @@ impl qobject::BrowserUi {
                 CompletionCandidate {
                     insert_text: safe_url.clone(),
                     label: if page.title.is_empty() {
-                        safe_url
+                        safe_url.clone()
                     } else {
                         page.title.clone()
                     },
-                    detail: format!("history · {} visits", page.visit_count),
+                    detail: format!(
+                        "{safe_url} · {} · {} visits",
+                        rust.profile_name, page.visit_count
+                    ),
                     category: CompletionCategory::History,
                     recency: u64::try_from(page.last_visit).unwrap_or(0),
                     frequency: u32::try_from(page.visit_count).unwrap_or(u32::MAX),
@@ -354,11 +361,11 @@ impl qobject::BrowserUi {
                 CompletionCandidate {
                     insert_text: safe_url.clone(),
                     label: if bookmark.title.is_empty() {
-                        safe_url
+                        safe_url.clone()
                     } else {
                         bookmark.title.clone()
                     },
-                    detail: "bookmark".into(),
+                    detail: format!("{safe_url} · {} · bookmark", rust.profile_name),
                     category: CompletionCategory::Bookmark,
                     recency: u64::try_from(bookmark.updated_at).unwrap_or(0),
                     frequency: 0,
@@ -367,9 +374,9 @@ impl qobject::BrowserUi {
             catalog.extend(library.quickmarks.iter().map(|mark| {
                 let safe_url = safe_ipc_url(&mark.url);
                 CompletionCandidate {
-                    insert_text: safe_url,
+                    insert_text: safe_url.clone(),
                     label: mark.name.clone(),
-                    detail: "quickmark".into(),
+                    detail: format!("{safe_url} · {} · quickmark", rust.profile_name),
                     category: CompletionCategory::Bookmark,
                     recency: 0,
                     frequency: 0,
@@ -388,11 +395,14 @@ impl qobject::BrowserUi {
                 CompletionCandidate {
                     insert_text: safe_url.clone(),
                     label: if page.title.is_empty() {
-                        safe_url
+                        safe_url.clone()
                     } else {
                         page.title.clone()
                     },
-                    detail: format!("private history · {} visits", page.visit_count),
+                    detail: format!(
+                        "{safe_url} · {} · private history · {} visits",
+                        rust.profile_name, page.visit_count
+                    ),
                     category: CompletionCategory::History,
                     recency: u64::try_from(page.last_visit).unwrap_or(0),
                     frequency: u32::try_from(page.visit_count).unwrap_or(u32::MAX),
@@ -436,10 +446,11 @@ impl qobject::BrowserUi {
             .iter()
             .map(|candidate| {
                 format!(
-                    "[{}] {} — {}",
+                    "{}\t{}\t{}",
                     candidate.category.as_str(),
-                    candidate.label.replace(['\n', '\r'], " "),
-                    candidate.detail.replace(['\n', '\r'], " ")
+                    sanitize_untrusted_title(&candidate.label).replace('\t', " "),
+                    crate::presentation_text::sanitize_display_text(&candidate.detail, false)
+                        .replace('\t', " ")
                 )
             })
             .collect::<Vec<_>>();
@@ -455,7 +466,7 @@ impl qobject::BrowserUi {
             i32::try_from(scalar_cursor_to_utf16(&input, result.replacement_end))
                 .unwrap_or(i32::MAX),
         );
-        self.as_mut().set_completion_selected(0);
+        self.as_mut().set_completion_selected(-1);
         self.as_mut()
             .set_completion_visible(!result.candidates.is_empty());
         !result.candidates.is_empty()
@@ -469,7 +480,11 @@ impl qobject::BrowserUi {
         }
         let current = self.as_ref().rust().completion_selected;
         let count = i64::try_from(count).unwrap_or(i64::MAX);
-        let next = (i64::from(current) + i64::from(delta)).rem_euclid(count);
+        let next = if current < 0 {
+            if delta < 0 { count - 1 } else { 0 }
+        } else {
+            (i64::from(current) + i64::from(delta)).rem_euclid(count)
+        };
         self.set_completion_selected(i32::try_from(next).unwrap_or(0));
     }
 

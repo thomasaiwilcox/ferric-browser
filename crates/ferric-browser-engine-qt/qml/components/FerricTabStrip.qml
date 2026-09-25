@@ -47,6 +47,22 @@ GridLayout {
         onWidthChanged: Qt.callLater(tabStrip.ensureActiveTabVisible)
         onHeightChanged: Qt.callLater(tabStrip.ensureActiveTabVisible)
 
+        WheelHandler {
+            target: null
+            enabled: tabList.count > 1
+            onWheel: function(event) {
+                var delta = event.angleDelta.y !== 0
+                            ? event.angleDelta.y : -event.angleDelta.x
+                if (delta === 0 || tabStrip.activeTabIndex < 0) {
+                    return
+                }
+                var step = delta < 0 ? 1 : -1
+                tabStrip.selectRequested(
+                    (tabStrip.activeTabIndex + step + tabList.count) % tabList.count)
+                event.accepted = true
+            }
+        }
+
         delegate: Rectangle {
             id: tabRow
             required property int index
@@ -98,6 +114,7 @@ GridLayout {
                       + (tabRow.pinned ? "◆ " : "")
                       + (tabRow.muted ? "[M] " : "")
                       + (tabRow.title || "New tab")
+                textFormat: Text.PlainText
                 elide: Text.ElideRight
             }
 

@@ -71,7 +71,12 @@ fn startup_profile_overrides_reach_the_browser_ui() {
 fn command_completion_popup_has_accessible_popup_semantics() {
     let qml = QML_SOURCE;
     let popup = include_str!("../../qml/components/FerricCommandLine.qml");
+    let secondary = include_str!("../../qml/components/FerricBrowserWindow.qml");
     assert!(qml.contains("FerricCommandLine {"));
+    assert!(secondary.contains("FerricCommandLine {"));
+    assert!(secondary.contains("completionText: secondaryUi.completion_text"));
+    assert!(secondary.contains("completionValues: secondaryUi.completion_values"));
+    assert!(secondary.contains("secondaryUi.update_completion(secondaryCommandBar.commandText"));
     assert!(popup.contains("Accessible.role: Accessible.PopupMenu"));
     assert!(popup.contains("Accessible.name: \"Command completion popup\""));
     assert!(popup.contains("Accessible.description:"));
@@ -523,7 +528,7 @@ fn command_line_component_emits_editing_intents_without_executing_commands() {
     assert!(!qml.contains("execute_command"));
     assert!(composition_root.contains("FerricCommandLine {"));
     assert!(composition_root.contains("browserUi.update_completion(text, cursorPosition)"));
-    assert!(composition_root.contains("browserUi.execute_command(text)"));
+    assert!(composition_root.contains("browserUi.execute_interactive_command(text)"));
     assert!(composition_root.contains("browserUi.completion_move(delta)"));
 }
 

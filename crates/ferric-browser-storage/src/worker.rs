@@ -36,6 +36,7 @@ const MAX_MARK_BATCH: usize = 16;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProfileLibrarySnapshot {
     pub history: Vec<HistoryRecord>,
+    pub command_history: Vec<String>,
     pub bookmarks: Vec<BookmarkRecord>,
     pub quickmarks: Vec<Quickmark>,
     pub downloads: Vec<DownloadRecord>,
@@ -111,6 +112,10 @@ pub enum StorageCommand {
     },
     HistoryBatch {
         visits: Vec<VisitInput>,
+    },
+    CommandRecord {
+        command: String,
+        timestamp: i64,
     },
     PermissionBatch {
         rules: Vec<PermissionRule>,
@@ -189,6 +194,7 @@ pub enum StorageOperation {
     SessionDelete,
     SessionCheckpointClear,
     HistoryBatch,
+    CommandRecord,
     PermissionBatch,
     PermissionReset,
     DownloadBatch,
@@ -216,6 +222,7 @@ impl StorageCommand {
             Self::SessionDelete { .. } => StorageOperation::SessionDelete,
             Self::SessionCheckpointClear { .. } => StorageOperation::SessionCheckpointClear,
             Self::HistoryBatch { .. } => StorageOperation::HistoryBatch,
+            Self::CommandRecord { .. } => StorageOperation::CommandRecord,
             Self::PermissionBatch { .. } => StorageOperation::PermissionBatch,
             Self::PermissionReset { .. } => StorageOperation::PermissionReset,
             Self::DownloadBatch { .. } => StorageOperation::DownloadBatch,
@@ -238,6 +245,11 @@ impl StorageCommand {
             }
             Self::HistoryBatch { visits }
                 if visits.is_empty() || visits.len() > MAX_HISTORY_BATCH =>
+            {
+                Err(StorageWorkerError::InvalidBatch)
+            }
+            Self::CommandRecord { command, .. }
+                if command.is_empty() || command.len() > 64 * 1024 =>
             {
                 Err(StorageWorkerError::InvalidBatch)
             }
@@ -295,6 +307,7 @@ pub enum StorageCompletion {
     SessionDelete(Result<(), StorageOperationError>),
     SessionCheckpointClear(Result<(), StorageOperationError>),
     HistoryBatch(Result<usize, StorageOperationError>),
+    CommandRecord(Result<bool, StorageOperationError>),
     PermissionBatch(Result<usize, StorageOperationError>),
     PermissionReset(Result<bool, StorageOperationError>),
     DownloadBatch(Result<usize, StorageOperationError>),
@@ -321,6 +334,7 @@ impl StorageCompletion {
             Self::SessionDelete(_) => StorageOperation::SessionDelete,
             Self::SessionCheckpointClear(_) => StorageOperation::SessionCheckpointClear,
             Self::HistoryBatch(_) => StorageOperation::HistoryBatch,
+            Self::CommandRecord(_) => StorageOperation::CommandRecord,
             Self::PermissionBatch(_) => StorageOperation::PermissionBatch,
             Self::PermissionReset(_) => StorageOperation::PermissionReset,
             Self::DownloadBatch(_) => StorageOperation::DownloadBatch,
@@ -352,6 +366,7 @@ impl StorageCompletion {
             StorageOperation::SessionDelete => Self::SessionDelete(Err(error)),
             StorageOperation::SessionCheckpointClear => Self::SessionCheckpointClear(Err(error)),
             StorageOperation::HistoryBatch => Self::HistoryBatch(Err(error)),
+            StorageOperation::CommandRecord => Self::CommandRecord(Err(error)),
             StorageOperation::PermissionBatch => Self::PermissionBatch(Err(error)),
             StorageOperation::PermissionReset => Self::PermissionReset(Err(error)),
             StorageOperation::DownloadBatch => Self::DownloadBatch(Err(error)),
@@ -1139,6 +1154,20 @@ fn run_worker(
                     committed,
                 ))
             }
+            StorageCommand::CommandRecord { command, timestamp } => {
+                let committed = store.as_ref().map_or_else(
+                    |error| Err(error.clone()),
+                    |store| {
+                        store
+                            .record_command(&command, timestamp, true)
+                            .map_err(|error| error.to_string())
+                    },
+                );
+                StorageCompletion::CommandRecord(storage_result(
+                    StorageOperation::CommandRecord,
+                    committed,
+                ))
+            }
             StorageCommand::PermissionBatch { rules } => {
                 let committed = store.as_ref().map_or_else(
                     |error| Err(error.clone()),
@@ -1339,6 +1368,9 @@ fn restore_session_paths(paths: Vec<PathBuf>) -> Result<SessionRestoreSnapshot, 
 fn load_library(store: &ProfileStore, limit: usize) -> Result<ProfileLibrarySnapshot, String> {
     Ok(ProfileLibrarySnapshot {
         history: store.history(limit).map_err(|error| error.to_string())?,
+        command_history: store
+            .command_history(limit)
+            .map_err(|error| error.to_string())?,
         bookmarks: store.bookmarks(limit).map_err(|error| error.to_string())?,
         quickmarks: store.quickmarks(limit).map_err(|error| error.to_string())?,
         downloads: store
@@ -1699,6 +1731,42 @@ mod tests {
         });
         let snapshot = snapshot.expect("worker response").expect("library");
         assert_eq!(snapshot.history.len(), 2);
+        drop(worker);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(format!("{}-wal", path.display()));
+        let _ = std::fs::remove_file(format!("{}-shm", path.display()));
+    }
+
+    #[test]
+    fn worker_records_command_and_returns_it_in_library_snapshot() {
+        let path = temp_path("command-history");
+        let store = ProfileStore::open(&path, StoreMode::Normal).expect("open");
+        drop(store);
+        let mut worker = ProfileStoreWorker::spawn(&path).expect("worker");
+        worker
+            .try_submit(StorageCommand::CommandRecord {
+                command: "open https://example.test".into(),
+                timestamp: 42,
+            })
+            .expect("record request");
+        let completion =
+            worker.wait_operation(StorageOperation::CommandRecord, Duration::from_secs(1));
+        assert!(matches!(
+            completion,
+            Some(StorageCompletion::CommandRecord(Ok(true)))
+        ));
+        worker.request_library(10).expect("library request");
+        let snapshot = (0..100)
+            .find_map(|_| {
+                let value = worker.poll_library();
+                if value.is_none() {
+                    thread::sleep(Duration::from_millis(1));
+                }
+                value
+            })
+            .expect("library response")
+            .expect("library");
+        assert_eq!(snapshot.command_history, ["open https://example.test"]);
         drop(worker);
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(format!("{}-wal", path.display()));

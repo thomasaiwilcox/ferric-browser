@@ -372,6 +372,8 @@ fn history_retention_and_command_history_cap_are_transactional() {
         .query_row("SELECT MIN(id) FROM command_history", [], |row| row.get(0))
         .expect("oldest command");
     assert_eq!(oldest_command, 2);
+    let recent = store.command_history(2).expect("recent commands");
+    assert_eq!(recent, ["open item-1000", "open item-999"]);
     drop(store);
     let _ = std::fs::remove_file(path);
 }

@@ -742,6 +742,12 @@ One-shot hint targets, including `tab-bg` and `yank`, do not require rapid
 mode; `--rapid` controls whether the hint session continues after a successful
 action.
 Tab/Shift-Tab in command mode traverse completion; Ctrl-n/Ctrl-p do likewise.
+Return uses an explicitly selected completion, and clicking a completion inserts
+it for review. Up/Down recall eligible profile-local command history while
+preserving the draft line. Sensitive commands are excluded; only conservatively
+safe command text is durable. In normal mode, Ctrl-Tab/Ctrl-^ return to the
+previously focused live tab, and the mouse wheel over the tab strip switches
+adjacent tabs.
 Insert and pass-through behavior must preserve common web Ctrl-c/v/x/z/a/f
 shortcuts unless a user explicitly changes those mode-specific bindings.
 

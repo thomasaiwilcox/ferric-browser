@@ -339,6 +339,7 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
                     context: None,
                     tabs: Vec::new(),
                     active_tab: None,
+                    previous_tab: None,
                     modes: vec![Mode::Normal],
                 },
             );
@@ -375,14 +376,16 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
                 .get(&window)
                 .ok_or(ReduceError::UnknownWindow(window))?
                 .active_tab;
+            let previous_recent_tab = state.windows[&window].previous_tab;
             let tab = add_tab(state, window, None)?;
             if background {
                 if let Some(active_tab) = previous_active_tab {
-                    state
+                    let window = state
                         .windows
                         .get_mut(&window)
-                        .expect("window checked above")
-                        .active_tab = Some(active_tab);
+                        .expect("window checked above");
+                    window.active_tab = Some(active_tab);
+                    window.previous_tab = previous_recent_tab;
                 }
                 state.active_window = previous_active_window;
                 state.last_focused_window = previous_last_focused_window;
@@ -471,7 +474,10 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
             if !window_state.tabs.contains(&tab) {
                 return Err(ReduceError::InvalidActivation);
             }
-            window_state.active_tab = Some(tab);
+            if window_state.active_tab != Some(tab) {
+                window_state.previous_tab = window_state.active_tab;
+                window_state.active_tab = Some(tab);
+            }
             state.active_window = Some(window);
             state.last_focused_window = Some(window);
         }
@@ -517,7 +523,10 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
                     .expect("tab ownership invariant");
                 window.tabs.remove(old_index);
                 insert_tab_in_group(window, tab, pinned, index, &pinned_ids);
-                window.active_tab = Some(tab);
+                if window.active_tab != Some(tab) {
+                    window.previous_tab = window.active_tab;
+                    window.active_tab = Some(tab);
+                }
             } else {
                 let was_active = state
                     .windows
@@ -529,6 +538,9 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
                         .get_mut(&from_window)
                         .expect("source window checked above");
                     source.tabs.retain(|candidate| *candidate != tab);
+                    if source.previous_tab == Some(tab) {
+                        source.previous_tab = None;
+                    }
                     source.tabs.clone()
                 };
                 if was_active {
@@ -549,7 +561,10 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
                     .get_mut(&to_window)
                     .expect("target window checked above");
                 insert_tab_in_group(target, tab, pinned, index, &pinned_ids);
-                target.active_tab = Some(tab);
+                if target.active_tab != Some(tab) {
+                    target.previous_tab = target.active_tab;
+                    target.active_tab = Some(tab);
+                }
                 state.active_window = Some(to_window);
                 state.last_focused_window = Some(to_window);
             }
@@ -582,6 +597,9 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
                     .get_mut(&window_id)
                     .ok_or(ReduceError::UnknownWindow(window_id))?;
                 window.tabs.retain(|candidate| *candidate != tab);
+                if window.previous_tab == Some(tab) {
+                    window.previous_tab = None;
+                }
                 window.tabs.clone()
             };
             if was_active {
@@ -1110,6 +1128,9 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
             debug_assert_eq!(removed.existence, ExistenceState::Closing);
             let window = state.windows.get_mut(&window_id).expect("tab invariant");
             window.tabs.retain(|candidate| *candidate != tab);
+            if window.previous_tab == Some(tab) {
+                window.previous_tab = None;
+            }
             if window.active_tab == Some(tab) {
                 window.active_tab = window.tabs.iter().rev().copied().next();
             }
@@ -1217,6 +1238,7 @@ fn add_tab(
         .get_mut(&window)
         .expect("window checked above");
     window_state.tabs.push(id);
+    window_state.previous_tab = window_state.active_tab;
     window_state.active_tab = Some(id);
     Ok(id)
 }

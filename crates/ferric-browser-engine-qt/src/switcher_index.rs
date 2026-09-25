@@ -130,6 +130,7 @@ mod tests {
     fn index_is_profile_scoped_and_cancellation_aware() {
         let snapshot = ProfileLibrarySnapshot {
             history: Vec::new(),
+            command_history: Vec::new(),
             bookmarks: Vec::new(),
             quickmarks: vec![Quickmark {
                 name: "docs".into(),

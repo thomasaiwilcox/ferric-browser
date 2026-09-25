@@ -32,6 +32,8 @@ This table is generated from the built-in binding registry. Configuration overri
 | `normal` | `Ctrl+Shift+t` | `tab-undo` |
 | `normal` | `Ctrl+Shift+w` | `window-close` |
 | `normal` | `Ctrl+Space` | `switcher` |
+| `normal` | `Ctrl+Tab` | `tab-select previous` |
+| `normal` | `Ctrl+^` | `tab-select previous` |
 | `normal` | `Ctrl+b` | `scroll-page up` |
 | `normal` | `Ctrl+d` | `scroll-page down --half` |
 | `normal` | `Ctrl+f` | `scroll-page down` |

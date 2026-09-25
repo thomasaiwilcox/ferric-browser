@@ -234,19 +234,6 @@ fn argument_candidates(
     catalog: &[CompletionCandidate],
     limit: usize,
 ) -> Vec<CompletionCandidate> {
-    if matches!(provider, CompletionProvider::Urls) && prefix.is_empty() {
-        return ["about:blank", "https://", "http://", "file://"]
-            .into_iter()
-            .map(|value| CompletionCandidate {
-                insert_text: value.into(),
-                label: value.into(),
-                detail: "URL scheme".into(),
-                category: CompletionCategory::Url,
-                recency: 0,
-                frequency: 0,
-            })
-            .collect();
-    }
     let mut candidates = Vec::with_capacity(catalog.len());
     for candidate in catalog {
         let category_matches = match provider {
@@ -278,7 +265,20 @@ fn argument_candidates(
         .into_iter()
         .map(|(_, candidate)| candidate.clone())
         .collect::<Vec<_>>();
+    if matches!(provider, CompletionProvider::Urls) && prefix.is_empty() {
+        candidates.extend(
+            ["about:blank", "https://", "http://", "file://"].map(|value| CompletionCandidate {
+                insert_text: value.into(),
+                label: value.into(),
+                detail: "URL scheme".into(),
+                category: CompletionCategory::Url,
+                recency: 0,
+                frequency: 0,
+            }),
+        );
+    }
     candidates.sort_by(|left, right| compare_candidates(left, right, prefix));
+    candidates.truncate(limit);
     candidates
 }
 
@@ -427,6 +427,28 @@ mod tests {
                 .candidates
                 .iter()
                 .all(|candidate| candidate.category == CompletionCategory::Url)
+        );
+    }
+
+    #[test]
+    fn empty_url_query_includes_local_places_before_scheme_starters() {
+        let registry = CommandRegistry::default_v1();
+        let catalog = vec![CompletionCandidate {
+            insert_text: "https://example.test/visited".into(),
+            label: "Visited page".into(),
+            detail: "https://example.test/visited".into(),
+            category: CompletionCategory::History,
+            recency: 42,
+            frequency: 3,
+        }];
+        let result = complete("open ", 5, &registry, &catalog, 100);
+        assert_eq!(result.candidates.len(), 5);
+        assert_eq!(result.candidates[0].label, "Visited page");
+        assert!(
+            result
+                .candidates
+                .iter()
+                .any(|item| item.insert_text == "https://")
         );
     }
 

@@ -213,8 +213,14 @@ impl qobject::BrowserUi {
             this.completion_values = QString::default();
             this.completion_start = 0;
             this.completion_end = 0;
-            this.completion_selected = 0;
+            this.completion_selected = -1;
             this.completion_visible = false;
+            this.command_history.clear();
+            this.command_history_index = None;
+            this.command_history_draft.clear();
+            this.queued_command_history.clear();
+            this.command_history_write_pending = false;
+            this.command_history_write_error = None;
             this.search_text = QString::default();
             this.search_backward = false;
             this.session_restore_values = QString::default();

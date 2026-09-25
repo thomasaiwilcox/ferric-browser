@@ -1223,7 +1223,7 @@ impl CommandRegistry {
                 vec![Mode::Normal, Mode::Command],
                 CountPolicy::NotSupported,
                 false,
-                "Select a live tab by displayed index or stable ID.",
+                "Select a live tab by displayed index, stable ID, last position, or previous focus.",
             ),
             definition(
                 "tab-focus",
@@ -2271,6 +2271,7 @@ impl CommandRegistry {
             command.examples = vec![
                 "tab-select 2".into(),
                 "tab-select last".into(),
+                "tab-select previous".into(),
                 "tab-select TAB_ID".into(),
             ];
         }
