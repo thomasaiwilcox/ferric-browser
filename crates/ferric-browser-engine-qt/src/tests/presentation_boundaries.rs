@@ -1522,6 +1522,64 @@ fn focus_overlay_controller_owns_capture_state_and_only_restores_live_targets() 
 }
 
 #[test]
+fn webengine_surface_recovery_is_frame_synchronized_and_wired_to_every_window() {
+    let controller =
+        include_str!("../../qml/components/FerricWebEngineSurfaceRecovery.qml");
+    let primary = include_str!("../../qml/components/FerricBrowserRuntimeChrome.qml");
+    let secondary = include_str!("../../qml/components/FerricBrowserWindow.qml");
+    let popup = include_str!("../../qml/components/FerricPopupWindow.qml");
+    let devtools = include_str!("../../qml/components/FerricDevToolsWindow.qml");
+    let root = include_str!("../../qml/components/FerricBrowserRuntimeBase.qml");
+    let executable = include_str!("../../../ferric-browser/src/main.rs");
+
+    assert!(controller.contains("required property var hostWindow"));
+    assert!(controller.contains("property var frameSource: hostWindow"));
+    assert!(controller.contains("function onFrameSwapped()"));
+    assert!(!controller.contains("Qt.callLater"));
+    assert!(controller.contains("WebEngineView.LifecycleState.Active"));
+    assert!(controller.contains("state.inactiveSincePresentation"));
+    assert!(!controller.contains("Timer {"));
+    assert!(!controller.contains("runJavaScript"));
+    assert!(!controller.contains(".reload("));
+    assert!(!controller.contains("Private"));
+
+    for host in [primary, secondary, popup, devtools] {
+        assert!(host.contains("FerricWebEngineSurfaceRecovery"));
+        assert!(host.contains("nativeWayland"));
+        assert!(host.contains("softwareRendering"));
+    }
+    assert!(primary.contains("window.activeWebView()"));
+    assert!(primary.contains("attachedDevToolsLoader.item"));
+    assert!(secondary.contains("secondaryWindow.activeView"));
+    assert!(secondary.contains("secondaryDevToolsLoader.item"));
+    assert!(popup.contains("views: [popupView]"));
+    assert!(devtools.contains("views: [detachedDevToolsView]"));
+    assert!(root.contains("property bool nativeWayland: false"));
+    assert!(executable.contains("platform.starts_with(\"wayland\")"));
+    assert!(executable.contains("QString::from(\"nativeWayland\")"));
+}
+
+#[test]
+fn statusbar_visibility_is_mode_aware_in_every_browser_window() {
+    let presentation = include_str!("../../qml/scripts/ChromePresentation.js");
+    let root = include_str!("../../qml/components/FerricBrowserRuntimeBase.qml");
+    let primary = include_str!("../../qml/components/FerricBrowserRuntimeChrome.qml");
+    let secondary = include_str!("../../qml/components/FerricBrowserWindow.qml");
+    let popup = include_str!("../../qml/components/FerricPopupWindow.qml");
+
+    assert!(presentation.contains("function statusBarVisible(policy, mode)"));
+    assert!(presentation.contains("mode === \"command\" || mode === \"search\""));
+    assert!(presentation.contains("policy === \"in-mode\""));
+    assert!(root.contains("property string statusbarMode: \"in-mode\""));
+    assert!(root.contains("statusBarVisibleForMode(browserUi.mode)"));
+    assert!(primary.contains("statusVisible: window.statusBarVisible"));
+    assert!(secondary.contains("statusVisible: secondaryWindow.statusBarVisible"));
+    assert!(secondary.contains("anchors.bottomMargin: secondaryWindow.bottomChromeHeight"));
+    assert!(popup.contains("visible: popupWindow.statusBarVisible"));
+    assert!(popup.contains("anchors.bottomMargin: popupWindow.statusBarVisible"));
+}
+
+#[test]
 fn inherited_runtime_layers_cross_component_scopes_through_explicit_properties() {
     // Characterization: QML ids are file-local. Direct references to ids from
     // an ancestor runtime layer launch successfully only when exposed through

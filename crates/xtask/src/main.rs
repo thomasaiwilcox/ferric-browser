@@ -724,6 +724,10 @@ fn check_shared_ui_contracts(production_adapter: &str) -> Result<(), String> {
         "crates/ferric-browser-engine-qt/qml/components/FerricFocusOverlayController.qml",
     )
     .map_err(|error| format!("could not inspect focus overlay controller: {error}"))?;
+    let webengine_surface_recovery = fs::read_to_string(
+        "crates/ferric-browser-engine-qt/qml/components/FerricWebEngineSurfaceRecovery.qml",
+    )
+    .map_err(|error| format!("could not inspect WebEngine surface recovery: {error}"))?;
     let chrome_presentation_controller = fs::read_to_string(
         "crates/ferric-browser-engine-qt/qml/components/FerricChromePresentationController.qml",
     )
@@ -778,6 +782,12 @@ fn check_shared_ui_contracts(production_adapter: &str) -> Result<(), String> {
         || !focus_overlay_controller.contains("required property var browserWindow")
         || !focus_overlay_controller.contains("function captureOverlayFocus")
         || !focus_overlay_controller.contains("function restoreOverlayFocus")
+        || !webengine_surface_recovery.contains("required property var hostWindow")
+        || !webengine_surface_recovery.contains("function onFrameSwapped()")
+        || webengine_surface_recovery.contains("Qt.callLater")
+        || webengine_surface_recovery.contains("Timer {")
+        || webengine_surface_recovery.contains("runJavaScript")
+        || webengine_surface_recovery.contains(".reload(")
         || !chrome_presentation_controller.contains("required property var browserWindow")
         || !chrome_presentation_controller.contains("required property var browserUi")
         || !chrome_presentation_controller.contains("function refreshChromeAppearance")

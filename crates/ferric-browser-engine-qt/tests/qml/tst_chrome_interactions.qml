@@ -453,6 +453,23 @@ TestCase {
         verify(ChromePresentation.contrastRatio(textColor, "#313244") >= 4.5)
     }
 
+    function test_statusbar_visibility_matches_in_mode_policy() {
+        compare(ChromePresentation.statusBarVisible("in-mode", "normal"), false)
+        compare(ChromePresentation.statusBarVisible("in-mode", "command"), false)
+        compare(ChromePresentation.statusBarVisible("in-mode", "search"), false)
+        compare(ChromePresentation.statusBarVisible("in-mode", "insert"), true)
+        compare(ChromePresentation.statusBarVisible("in-mode", "hint"), true)
+        compare(ChromePresentation.statusBarVisible("in-mode", "caret"), true)
+        compare(ChromePresentation.statusBarVisible("in-mode", "pass-through"), true)
+
+        compare(ChromePresentation.statusBarVisible("always", "normal"), true)
+        compare(ChromePresentation.statusBarVisible("always", "insert"), true)
+        compare(ChromePresentation.statusBarVisible("always", "command"), false)
+        compare(ChromePresentation.statusBarVisible("never", "normal"), false)
+        compare(ChromePresentation.statusBarVisible("never", "insert"), false)
+        compare(ChromePresentation.statusBarVisible("command", "hint"), true)
+    }
+
     function test_shifted_ascii_key_normalization_preserves_H_binding() {
         compare(KeyboardPresentation.printableKey(
                     "h", Qt.Key_H, true, Qt.Key_A, Qt.Key_Z), "H")

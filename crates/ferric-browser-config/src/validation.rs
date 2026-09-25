@@ -22,9 +22,12 @@ pub fn validate(config: &Config) -> Result<(), ConfigError> {
             config.schema_version
         )));
     }
-    if !matches!(config.ui.statusbar.as_str(), "always" | "command" | "never") {
+    if !matches!(
+        config.ui.statusbar.as_str(),
+        "always" | "in-mode" | "command" | "never"
+    ) {
         return Err(ConfigError::Validation(
-            "ui.statusbar must be always, command, or never".into(),
+            "ui.statusbar must be always, in-mode, or never".into(),
         ));
     }
     if config.privacy.remote_suggestions {

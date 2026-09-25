@@ -44,6 +44,13 @@ ApplicationWindow {
     property var devToolsAttachedView: secondaryDevToolsLoader.item
     property bool windowDetachedWasTransfer: false
     readonly property bool windowTransferMode: windowTransferView !== null
+    readonly property bool inputBarActive: secondaryUi.mode === "command"
+                                           || secondaryUi.mode === "search"
+    readonly property bool statusBarVisible:
+        rootWindow.statusBarVisibleForMode(secondaryUi.mode)
+    readonly property real bottomChromeHeight:
+        inputBarActive ? rootWindow.inputBarHeight
+                       : (statusBarVisible ? rootWindow.statusBarHeight : 0)
     readonly property var activeView: windowTransferMode
                                                ? windowTransferView
                                                : (windowFallbackView || secondaryView)
@@ -75,6 +82,15 @@ ApplicationWindow {
     property string windowShutdownPagePromptReason: ""
     property int windowShutdownPageProbeGeneration: 0
     property var activeDownloads: ({})
+
+    FerricWebEngineSurfaceRecovery {
+        hostWindow: secondaryWindow
+        enabled: rootWindow.nativeWayland && !rootWindow.softwareRendering
+        views: [
+            secondaryWindow.activeView,
+            secondaryDevToolsLoader.active ? secondaryDevToolsLoader.item : null
+        ]
+    }
 
     BrowserKeyRouter {
         id: secondaryKeyRouter
@@ -1206,12 +1222,14 @@ function onContext_workspaceChanged() {
     Item {
         id: transferViewHost
         anchors.fill: parent
+        anchors.bottomMargin: secondaryWindow.bottomChromeHeight
         visible: secondaryWindow.windowTransferMode
     }
 
     Item {
         id: fallbackViewHost
         anchors.fill: parent
+        anchors.bottomMargin: secondaryWindow.bottomChromeHeight
         visible: !secondaryWindow.windowTransferMode
     }
 
@@ -1260,6 +1278,7 @@ function onContext_workspaceChanged() {
             return host.length > 0 && counts[host] !== undefined ? Number(counts[host]) : 0
         }
         anchors.fill: parent
+        anchors.bottomMargin: secondaryWindow.bottomChromeHeight
         visible: !secondaryWindow.windowTransferMode
         profile: viewProfile
         url: secondaryWindow.windowTransferMode ? "about:blank" : secondaryUi.initial_url
@@ -1685,9 +1704,7 @@ function onContext_workspaceChanged() {
 
     FerricWindowStatusBar {
         browserWindow: window
-        statusVisible: rootWindow.statusbarMode === "always"
-                       && secondaryUi.mode !== "command"
-                       && secondaryUi.mode !== "search"
+        statusVisible: secondaryWindow.statusBarVisible
         mode: secondaryUi.mode
         displayUrl: secondaryUi.display_url
         statusText: secondaryUi.status_text

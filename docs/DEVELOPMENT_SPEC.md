@@ -558,8 +558,9 @@ qualification gate rather than silently downgrade the requirement.
 ## 8. Window layout and presentation
 
 **UI-001 — Default layout.** Web content fills the available window. A compact
-bottom status bar remains visible by default. A top tab strip appears with two
-or more tabs. The command line replaces the status text while active;
+bottom status bar is hidden in normal mode by default and appears in other
+interaction modes. Users can configure it to remain visible. A top tab strip
+appears with two or more tabs. The command line replaces the status text while active;
 completion expands upward without resizing the web page on every keystroke.
 Transient messages must not repeatedly change viewport size or scroll position.
 
@@ -1372,7 +1373,7 @@ schema_version = 3
 include = []
 
 [ui]
-statusbar = "always"
+statusbar = "in-mode"
 tabs = "multiple"
 tab_position = "top"
 font_family = "monospace"
@@ -1623,7 +1624,7 @@ must be validated before casting to Qt types.
 | --- | --- | --- | --- |
 | `schema_version` | integer 1 | G / load | Reject newer unknown schema |
 | `include` | list of local paths, empty | G / load | Merge order defined above |
-| `ui.statusbar` | always/command/never, always | G,P / L | Security/capture indicators remain accessible |
+| `ui.statusbar` | always/in-mode/never, in-mode | G,P / L | `command` remains a compatibility alias; dedicated security/capture indicators remain accessible |
 | `ui.tabs` | always/multiple/switching/never, multiple | G,P / L | Hidden tab count still available |
 | `ui.tab_position` | top/bottom/left/right, top | G,P / L | Side tabs need bounded width and keyboard access |
 | `ui.font_family` | nonempty string, monospace | G,P / L | Safe system fallback |

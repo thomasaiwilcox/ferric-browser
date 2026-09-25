@@ -4,8 +4,23 @@ use super::*;
 fn defaults_are_the_starter_configuration() {
     let config = Config::default();
     validate(&config).expect("defaults validate");
+    assert_eq!(config.ui.statusbar, "in-mode");
     assert_eq!(config.navigation.default_search, "ddg");
     assert_eq!(config.tabs.undo_limit, 100);
+}
+
+#[test]
+fn statusbar_visibility_accepts_qutebrowser_policies_and_legacy_command_alias() {
+    for policy in ["always", "in-mode", "command", "never"] {
+        let mut config = Config::default();
+        config.ui.statusbar = policy.into();
+        validate(&config).unwrap_or_else(|error| panic!("{policy} was rejected: {error}"));
+    }
+
+    let mut config = Config::default();
+    config.ui.statusbar = "sometimes".into();
+    let error = validate(&config).expect_err("unknown policy rejected");
+    assert!(error.to_string().contains("always, in-mode, or never"));
 }
 
 #[test]

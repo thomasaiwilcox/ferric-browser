@@ -21,6 +21,13 @@ ApplicationWindow {
     title: "Ferric Browser · DevTools"
     color: ownerWindow ? ownerWindow.backgroundColor : "#1e1e2e"
     palette: browserWindow.palette
+
+    FerricWebEngineSurfaceRecovery {
+        hostWindow: devToolsWindow
+        enabled: browserWindow.nativeWayland && !browserWindow.softwareRendering
+        views: [detachedDevToolsView]
+    }
+
     onClosing: {
         if (ownerWindow) {
             ownerWindowClosed()

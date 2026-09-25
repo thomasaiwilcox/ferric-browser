@@ -34,6 +34,15 @@ FerricBrowserRuntimeRequests {
         }
     }
 
+    FerricWebEngineSurfaceRecovery {
+        hostWindow: window
+        enabled: window.nativeWayland && !window.softwareRendering
+        views: [
+            window.activeWebView(),
+            attachedDevToolsLoader.active ? attachedDevToolsLoader.item : null
+        ]
+    }
+
     header: ToolBar {
 id: browserHeader
 height: window.tabPosition === "top" && window.tabStripVisible
@@ -1234,7 +1243,7 @@ GridLayout {
 
     FerricStatusBar {
         browserWindow: window
-        statusVisible: window.normalStatusVisible
+        statusVisible: window.statusBarVisible
         mode: browserUi.mode
         displayUrl: browserUi.display_url
         statusText: browserUi.status_text

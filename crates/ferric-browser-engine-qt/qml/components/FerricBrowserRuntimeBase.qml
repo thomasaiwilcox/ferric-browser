@@ -5,6 +5,7 @@ import QtQuick.Dialogs
 import QtWebEngine
 import io.github.ferricbrowser 1.0
 import "../scripts/BrowserScripts.js" as BrowserScripts
+import "../scripts/ChromePresentation.js" as ChromePresentation
 import "../scripts/SpellcheckPresentation.js" as SpellcheckPresentation
 
 ApplicationWindow {
@@ -95,7 +96,7 @@ ApplicationWindow {
     property color modeInsertColor: "#f9e2af"
     property color selectionColor: "#45475a"
     property color selectionTextColor: "#cdd6f4"
-    property string statusbarMode: "always"
+    property string statusbarMode: "in-mode"
     property string tabsMode: "multiple"
     property string tabPosition: "top"
     property bool tabSwitchingVisible: false
@@ -108,11 +109,11 @@ ApplicationWindow {
     readonly property real sideTabWidth: Math.max(160, Math.min(280, width * 0.22))
     readonly property bool inputBarActive: browserUi.mode === "command"
                                            || browserUi.mode === "search"
-    readonly property bool normalStatusVisible: statusbarMode === "always"
-                                                && !inputBarActive
+    readonly property bool statusBarVisible:
+        statusBarVisibleForMode(browserUi.mode)
     readonly property real bottomChromeHeight:
         (inputBarActive ? inputBarHeight
-         : (normalStatusVisible ? statusBarHeight : 0))
+         : (statusBarVisible ? statusBarHeight : 0))
         + (tabStripVisible && tabPosition === "bottom"
            ? tabBarHeight : 0)
     readonly property real chromeOpacity: 1.0
@@ -169,6 +170,10 @@ ApplicationWindow {
     FontMetrics {
         id: chromeFontMetrics
         font: window.font
+    }
+
+    function statusBarVisibleForMode(mode) {
+        return ChromePresentation.statusBarVisible(statusbarMode, mode)
     }
 
     FerricFocusOverlayController {
@@ -1395,6 +1400,7 @@ ApplicationWindow {
     property bool safeMode: false
     property bool userscriptsOff: false
     property bool softwareRendering: false
+    property bool nativeWayland: false
     property string instanceLockPath: ""
     property string instanceSelector: ""
     property string profileName: "default"

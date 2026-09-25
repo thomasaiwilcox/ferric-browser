@@ -104,7 +104,7 @@ pub(super) const SETTING_METADATA: &[SettingMetadata] = &[
     setting_metadata!(
         "ui.statusbar",
         "enum",
-        "always",
+        "in-mode",
         GLOBAL_PROFILE_SCOPES,
         "live",
         "none",

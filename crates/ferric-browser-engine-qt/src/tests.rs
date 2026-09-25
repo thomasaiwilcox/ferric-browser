@@ -69,9 +69,11 @@ const QML_SOURCE: &str = concat!(
     include_str!("../qml/components/FerricChromePresentationController.qml"),
     include_str!("../qml/components/FerricWindowRegistryController.qml"),
     include_str!("../qml/components/FerricRequestPresentationController.qml"),
+    include_str!("../qml/components/FerricWebEngineSurfaceRecovery.qml"),
     include_str!("../qml/components/FerricProfileSessionSurfaces.qml"),
     include_str!("../qml/components/FerricBrowserWindow.qml"),
     include_str!("../qml/components/FerricPopupWindow.qml"),
+    include_str!("../qml/components/FerricDevToolsWindow.qml"),
 );
 
 fn bootstrap_application(

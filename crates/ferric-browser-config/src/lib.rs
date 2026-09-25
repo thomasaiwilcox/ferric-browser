@@ -157,7 +157,7 @@ fn default_context_behavior() -> String {
     "prompt".into()
 }
 fn default_statusbar() -> String {
-    "always".into()
+    "in-mode".into()
 }
 fn default_tabs() -> String {
     "multiple".into()

@@ -47,6 +47,16 @@ ApplicationWindow {
     property var pendingDownloadRequests: ({})
     property string pendingDownloadId: ""
     property string pendingDownloadSuggestedName: ""
+    readonly property var statusUi:
+        popupPermissionUi || rootWindow.primaryBrowserUi
+    readonly property bool statusBarVisible:
+        rootWindow.statusBarVisibleForMode(statusUi.mode)
+
+    FerricWebEngineSurfaceRecovery {
+        hostWindow: popupWindow
+        enabled: rootWindow.nativeWayland && !rootWindow.softwareRendering
+        views: [popupView]
+    }
 
     Timer {
         id: popupShutdownPageProbeTimer
@@ -691,7 +701,8 @@ ApplicationWindow {
             }
         }
         anchors.fill: parent
-        anchors.bottomMargin: rootWindow.statusBarHeight
+        anchors.bottomMargin: popupWindow.statusBarVisible
+                              ? rootWindow.statusBarHeight : 0
         profile: popupWindow.popupProfile
         url: "about:blank"
         settings.javascriptEnabled: !!rootWindow.siteRuleValue(
@@ -869,7 +880,7 @@ ApplicationWindow {
         anchors.bottom: parent.bottom
         height: rootWindow.statusBarHeight
         z: 10
-        visible: rootWindow.statusbarMode === "always"
+        visible: popupWindow.statusBarVisible
         color: rootWindow.surfaceColor
         opacity: rootWindow.chromeOpacity
 
@@ -880,10 +891,10 @@ ApplicationWindow {
             color: rootWindow.contextStatusColor(
                        popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi,
                        rootWindow.secondaryTextColor)
-            text: (popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi).mode + " · "
-                  + (popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi).status_text
+            text: popupWindow.statusUi.mode + " · "
+                  + popupWindow.statusUi.status_text
                   + rootWindow.statusDetails(
-                      popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi,
+                      popupWindow.statusUi,
                       popupWindow, popupView,
                       popupWindow.popupPrivateProfile,
                       popupWindow.popupProfileName,
