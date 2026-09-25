@@ -97,6 +97,10 @@ ApplicationWindow {
     property color selectionColor: "#45475a"
     property color selectionTextColor: "#cdd6f4"
     property string statusbarMode: "in-mode"
+    property bool commandNoticeVisible: false
+    property string commandNoticeText: ""
+    property bool commandNoticeError: false
+    property string pendingInteractiveCommand: ""
     property string tabsMode: "multiple"
     property string tabPosition: "top"
     property bool tabSwitchingVisible: false
@@ -110,7 +114,8 @@ ApplicationWindow {
     readonly property bool inputBarActive: browserUi.mode === "command"
                                            || browserUi.mode === "search"
     readonly property bool statusBarVisible:
-        statusBarVisibleForMode(browserUi.mode)
+        (window.commandNoticeVisible && !window.inputBarActive)
+        || statusBarVisibleForMode(browserUi.mode)
     readonly property real bottomChromeHeight:
         (inputBarActive ? inputBarHeight
          : (statusBarVisible ? statusBarHeight : 0))
@@ -172,8 +177,26 @@ ApplicationWindow {
         font: window.font
     }
 
+    Timer {
+        id: commandNoticeTimer
+        interval: 3500
+        repeat: false
+        onTriggered: window.commandNoticeVisible = false
+    }
+
     function statusBarVisibleForMode(mode) {
         return ChromePresentation.statusBarVisible(statusbarMode, mode)
+    }
+
+    function showCommandNotice(text, isError) {
+        var message = String(text || "").trim()
+        if (message.length === 0 || message === "Normal mode") {
+            return
+        }
+        window.commandNoticeText = message
+        window.commandNoticeError = !!isError
+        window.commandNoticeVisible = true
+        commandNoticeTimer.restart()
     }
 
     FerricFocusOverlayController {
@@ -956,12 +979,14 @@ ApplicationWindow {
         applicationShutdownTimer.stop()
         shutdownPageProbeTimer.stop()
         browserUi.end_shutdown_gate()
+        window.shutdownConfirmationVisible = false
         window.shutdownPromptVisible = false
         window.shutdownPagePromptVisible = false
         var windows = window.browserWindowRegistry || []
         for (var i = 0; i < windows.length; ++i) {
             var host = windows[i] && windows[i].host
             if (host && host !== window) {
+                host.windowCloseConfirmationVisible = false
                 host.windowShutdownPromptVisible = false
                 host.windowShutdownStoragePromptVisible = false
                 if (host.cancelPageStateProbe) {
@@ -973,6 +998,7 @@ ApplicationWindow {
         for (var j = 0; j < popups.length; ++j) {
             var popup = popups[j] && popups[j].host
             if (popup) {
+                popup.windowCloseConfirmationVisible = false
                 popup.windowShutdownPromptVisible = false
                 if (popup.cancelPageStateProbe) {
                     popup.cancelPageStateProbe()
@@ -1045,14 +1071,14 @@ ApplicationWindow {
         for (var i = 0; i < windows.length; ++i) {
             var host = windows[i] && windows[i].host
             if (host && host !== window && !host.windowShutdownApproved) {
-                host.beginQuitRequest()
+                host.continueQuitRequest()
             }
         }
         var popups = (window.popupWindowRegistry || []).slice(0)
         for (var j = 0; j < popups.length; ++j) {
             var popup = popups[j] && popups[j].host
             if (popup && !popup.windowShutdownApproved) {
-                popup.beginQuitRequest()
+                popup.continueQuitRequest()
             }
         }
         applicationShutdownTimer.restart()
@@ -1386,7 +1412,7 @@ ApplicationWindow {
             return
         }
         close.accepted = false
-        window.beginQuitRequest()
+        window.beginQuitRequest(":window-close")
     }
     property string startupUrl: "about:blank"
     property var startupAdditionalUrls: []
@@ -1520,6 +1546,8 @@ ApplicationWindow {
     property var pendingContextMenuUi: null
     property var pendingContextMenuHost: null
     property var contextMenuItems: []
+    property bool shutdownConfirmationVisible: false
+    property string shutdownConfirmationCommand: ":window-close"
     property bool shutdownPromptVisible: false
     property bool shutdownPagePromptVisible: false
     property string shutdownPagePromptReason: ""
@@ -1637,6 +1665,7 @@ ApplicationWindow {
         || window.downloadManagerVisible
         || window.permissionPromptVisible
         || window.desktopMediaPromptVisible
+        || window.shutdownConfirmationVisible
         || window.shutdownPromptVisible
         || window.shutdownPagePromptVisible
         || window.switcherVisible
@@ -1922,6 +1951,18 @@ ApplicationWindow {
                 browserUi.update_completion(commandSurface.commandText,
                                             commandSurface.cursorPosition)
             }
+            if (window.pendingInteractiveCommand.length > 0
+                    && commandSurface.commandVisible
+                    && commandSurface.commandText === window.pendingInteractiveCommand) {
+                var command = window.pendingInteractiveCommand
+                window.pendingInteractiveCommand = ""
+                Qt.callLater(function() {
+                    if (commandSurface.commandVisible
+                            && commandSurface.commandText === command) {
+                        window.submitInteractiveCommand(command)
+                    }
+                })
+            }
         }
     }
 
@@ -1970,7 +2011,18 @@ ApplicationWindow {
         id: browserUi
         status_text: "Ready"
         onRuntime_work_available: window.scheduleRuntimeWork(0)
-        onStatus_textChanged: window.scheduleRuntimeWork(0)
+        onStatus_textChanged: {
+            window.scheduleRuntimeWork(0)
+            if (window.commandNoticeVisible && browserUi.mode !== "command"
+                    && browserUi.status_text !== "Normal mode") {
+                var loweredStatus = browserUi.status_text.toLowerCase()
+                window.showCommandNotice(
+                    browserUi.status_text,
+                    loweredStatus.indexOf("failed") >= 0
+                    || loweredStatus.indexOf("error") >= 0
+                    || loweredStatus.indexOf("rejected") >= 0)
+            }
+        }
     }
 
     BrowserKeyRouter {

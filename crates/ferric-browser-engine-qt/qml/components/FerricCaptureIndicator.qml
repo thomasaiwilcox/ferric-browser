@@ -30,9 +30,11 @@ Rectangle {
     border.color: browserWindow.warningColor
     border.width: 2
     radius: 4
-    Accessible.role: Accessible.Dialog
+    // Persistent capture state is an indicator, not an interaction-blocking
+    // modal. It must not steal keyboard focus from the active page.
+    Accessible.role: Accessible.StatusBar
     Accessible.name: "Active capture indicator"
-    focus: visible
+    focus: false
 
     ColumnLayout {
         anchors.fill: parent

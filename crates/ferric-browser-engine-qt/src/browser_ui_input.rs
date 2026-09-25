@@ -6,6 +6,17 @@ use super::{
 };
 
 impl qobject::BrowserUi {
+    pub(super) fn queue_pending_engine_action(mut self: Pin<&mut Self>) {
+        let mut rust = self.as_mut().rust_mut();
+        let this = rust.as_mut().get_mut();
+        if let Some(action) = this.pending_engine_action.take() {
+            this.pending_engine_actions.push_back(action);
+        }
+        if let Some(target) = this.pending_journey_traversal.take() {
+            this.pending_journey_traversals.push_back(target);
+        }
+    }
+
     #[allow(clippy::too_many_lines)]
     pub(super) fn apply_binding_outcome(mut self: Pin<&mut Self>, outcome: BindingOutcome) {
         match outcome {
@@ -277,12 +288,21 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn take_engine_action(mut self: Pin<&mut Self>) -> QString {
-        let mut rust = self.as_mut().rust_mut();
-        rust.as_mut()
-            .get_mut()
-            .pending_engine_action
-            .take()
-            .map_or_else(QString::default, QString::from)
+        let (action, more_pending) = {
+            let mut rust = self.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            let action = this
+                .pending_engine_actions
+                .pop_front()
+                .or_else(|| this.pending_engine_action.take());
+            let more_pending =
+                !this.pending_engine_actions.is_empty() || this.pending_engine_action.is_some();
+            (action, more_pending)
+        };
+        if more_pending {
+            self.as_mut().runtime_work_available();
+        }
+        action.map_or_else(QString::default, QString::from)
     }
 
     pub(super) fn complete_window_focus(

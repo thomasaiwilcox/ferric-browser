@@ -434,6 +434,7 @@ mod qobject {
         #[qproperty(i32, completion_end)]
         #[qproperty(i32, completion_selected)]
         #[qproperty(bool, completion_visible)]
+        #[qproperty(bool, command_retryable)]
         #[qproperty(QString, binding_overlay)]
         #[qproperty(QStringList, binding_help_row_kinds)]
         #[qproperty(QStringList, binding_help_row_titles)]
@@ -703,6 +704,12 @@ mod qobject {
 
         #[qinvokable]
         fn execute_interactive_command(self: Pin<&mut BrowserUi>, input: &QString) -> bool;
+
+        #[qinvokable]
+        fn execute_secondary_interactive_command(
+            self: Pin<&mut BrowserUi>,
+            input: &QString,
+        ) -> bool;
 
         #[qinvokable]
         fn command_history_previous(self: Pin<&mut BrowserUi>, current: &QString) -> QString;
@@ -1472,7 +1479,7 @@ use std::cell::{Cell, RefCell};
 use std::os::unix::process::CommandExt;
 use std::time::Instant;
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     fs,
     io::Write,
     path::{Path, PathBuf},
@@ -1522,10 +1529,12 @@ pub struct BrowserUiRust {
     core_mode: Mode,
     binding_clock: Instant,
     pending_engine_action: Option<String>,
+    pending_engine_actions: VecDeque<String>,
     pending_print: Option<PathBuf>,
     pending_journey_transitions: Vec<(Target, JourneyEdgeKind, String)>,
     pending_journey_parent: Option<(Target, JourneyNodeId)>,
     pending_journey_traversal: Option<Target>,
+    pending_journey_traversals: VecDeque<Target>,
     pending_journey_mappings: BTreeMap<StorageTicket, (JourneyNodeId, String)>,
     pending_history_clear: Option<(Option<i64>, Option<String>)>,
     pending_journey_reopen: Option<(String, String, Option<TabId>, String)>,
@@ -1544,6 +1553,7 @@ pub struct BrowserUiRust {
     completion_end: i32,
     completion_selected: i32,
     completion_visible: bool,
+    command_retryable: bool,
     command_history: Vec<String>,
     command_history_index: Option<usize>,
     command_history_draft: String,
@@ -2143,11 +2153,13 @@ impl Default for BrowserUiRust {
             core_mode: Mode::Normal,
             binding_clock: Instant::now(),
             pending_engine_action: None,
+            pending_engine_actions: VecDeque::new(),
             pending_print: None,
             pending_print_private: false,
             pending_journey_transitions: Vec::new(),
             pending_journey_parent: None,
             pending_journey_traversal: None,
+            pending_journey_traversals: VecDeque::new(),
             pending_journey_mappings: BTreeMap::new(),
             pending_history_clear: None,
             pending_journey_reopen: None,
@@ -2166,6 +2178,7 @@ impl Default for BrowserUiRust {
             completion_end: 0,
             completion_selected: -1,
             completion_visible: false,
+            command_retryable: false,
             command_history: Vec::new(),
             command_history_index: None,
             command_history_draft: String::new(),

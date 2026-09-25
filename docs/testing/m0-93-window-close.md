@@ -7,8 +7,15 @@ The owning browser window can now be closed through the shared command path:
   command.
 - Command, typed IPC, and action execution queue a distinct
   `window-close-request` for the primary or secondary QML owner.
-- The existing close boundary remains responsible for active-download
-  confirmation, cancellation, checkpointing, and final window shutdown.
+- Native compositor close requests and command-driven closes first show one
+  keyboard-first browser-owned confirmation. `j`/`k` or the arrow keys select,
+  Enter runs the selected action, `y` confirms, and `n`/Escape cancels; the
+  same action rows remain pointer-operable.
+- Confirmation precedes the existing active-work and page-state checks, so a
+  clean page cannot bypass the user's close decision. During an already
+  confirmed process-wide quit, child windows skip only the redundant initial
+  question and retain their active-download, cancellation, checkpointing, and
+  unsaved-page protections.
 
 The command takes no arguments and rejects routing, unknown typed fields, and
 extra positional arguments. It is distinct from `quit`: `quit` requests

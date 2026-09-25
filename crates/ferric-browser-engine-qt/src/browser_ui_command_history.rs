@@ -14,8 +14,111 @@ fn durable_history_commands(commands: &[ParsedCommand]) -> bool {
     })
 }
 
+fn secondary_command_supported(command: &ParsedCommand) -> bool {
+    if command.name == "open" {
+        return !command.arguments.iter().any(|argument| {
+            matches!(
+                argument.as_str(),
+                "--clean-link" | "--ephemeral" | "--profile" | "--context"
+            )
+        }) && !command
+            .arguments
+            .windows(2)
+            .any(|arguments| arguments[0] == "--target" && arguments[1] != "current");
+    }
+    if command.name == "open-current" {
+        return command.arguments.is_empty();
+    }
+    if command.name == "paste-open" {
+        return !command
+            .arguments
+            .windows(2)
+            .any(|arguments| arguments[0] == "--target" && arguments[1] != "current");
+    }
+    !matches!(
+        command.name.as_str(),
+        "action"
+            | "action-list"
+            | "binding-explain"
+            | "binding-list"
+            | "blocking-toggle"
+            | "blocklist-update"
+            | "bookmark-list"
+            | "command-execute"
+            | "command-help"
+            | "context-create"
+            | "context-delete"
+            | "context-enter"
+            | "context-list"
+            | "context-route"
+            | "context-save"
+            | "diagnostics"
+            | "download-cancel"
+            | "download-pause"
+            | "download-resume"
+            | "download-retry"
+            | "downloads"
+            | "help"
+            | "hint"
+            | "history"
+            | "journey"
+            | "link-cleaning-update"
+            | "macro-play"
+            | "permission-reset"
+            | "permissions"
+            | "profile-create"
+            | "profile-delete"
+            | "profile-list"
+            | "profile-open"
+            | "quickmark-list"
+            | "repeat"
+            | "session-delete"
+            | "session-list"
+            | "session-load"
+            | "session-save"
+            | "site-data-clear"
+            | "site-doctor"
+            | "site-doctor-undo"
+            | "site-status"
+            | "switcher"
+            | "tab-close"
+            | "tab-clone"
+            | "tab-focus"
+            | "tab-move"
+            | "tab-next"
+            | "tab-open"
+            | "tab-pin"
+            | "tab-prev"
+            | "tab-select"
+            | "tab-undo"
+            | "url-clean"
+            | "url-explain"
+            | "window-focus"
+            | "window-move"
+            | "window-new"
+    )
+}
+
 impl qobject::BrowserUi {
     pub(super) fn execute_interactive_command(mut self: Pin<&mut Self>, input: &QString) -> bool {
+        self.as_mut()
+            .execute_interactive_command_for_surface(input, true)
+    }
+
+    pub(super) fn execute_secondary_interactive_command(
+        mut self: Pin<&mut Self>,
+        input: &QString,
+    ) -> bool {
+        self.as_mut()
+            .execute_interactive_command_for_surface(input, false)
+    }
+
+    fn execute_interactive_command_for_surface(
+        mut self: Pin<&mut Self>,
+        input: &QString,
+        full_chrome: bool,
+    ) -> bool {
+        self.as_mut().set_command_retryable(false);
         let text = input.to_string();
         let commands = match parse_chain(&text, ParseInput::Interactive) {
             Ok(commands) => commands,
@@ -30,6 +133,19 @@ impl qobject::BrowserUi {
             .registry
             .expand_chain(commands.clone())
             .ok();
+        if !full_chrome
+            && let Some(command) = expanded.as_ref().and_then(|commands| {
+                commands
+                    .iter()
+                    .find(|command| !secondary_command_supported(command))
+            })
+        {
+            self.set_status_text(QString::from(format!(
+                "{} requires full browser chrome and is unavailable in this window",
+                command.name
+            )));
+            return false;
+        }
         let eligible = expanded.as_ref().is_some_and(|expanded| {
             expanded.iter().all(|command| {
                 self.as_ref()
@@ -125,7 +241,7 @@ impl qobject::BrowserUi {
 
 #[cfg(test)]
 mod tests {
-    use super::{ParsedCommand, durable_history_commands};
+    use super::{ParsedCommand, durable_history_commands, secondary_command_supported};
 
     fn command(name: &str, arguments: &[&str]) -> ParsedCommand {
         ParsedCommand {
@@ -152,5 +268,30 @@ mod tests {
         ] {
             assert!(!durable_history_commands(&[input]));
         }
+    }
+
+    #[test]
+    fn secondary_windows_reject_commands_their_chrome_cannot_present() {
+        for name in [
+            "history",
+            "downloads",
+            "help",
+            "diagnostics",
+            "switcher",
+            "tab-close",
+        ] {
+            assert!(!secondary_command_supported(&command(name, &[])), "{name}");
+        }
+        for name in ["reload", "zoom", "get", "version", "history-open"] {
+            assert!(secondary_command_supported(&command(name, &[])), "{name}");
+        }
+        assert!(!secondary_command_supported(&command(
+            "open",
+            &["--target", "window", "https://example.test"]
+        )));
+        assert!(secondary_command_supported(&command(
+            "open",
+            &["https://example.test"]
+        )));
     }
 }

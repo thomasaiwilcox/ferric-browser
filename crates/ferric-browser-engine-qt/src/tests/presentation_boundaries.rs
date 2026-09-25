@@ -107,7 +107,11 @@ fn page_authority_boundary_has_no_web_channel_or_privileged_page_object() {
 
 #[test]
 fn external_navigation_has_a_native_confirmation_boundary() {
-    let qml = QML_SOURCE;
+    let qml = [
+        QML_SOURCE,
+        include_str!("../../qml/components/FerricExternalNavigationDialog.qml"),
+    ]
+    .concat();
     assert!(qml.contains("external_navigation_visible"));
     assert!(qml.contains("confirm_external_navigation"));
     assert!(qml.contains("cancel_external_navigation"));
@@ -256,11 +260,13 @@ fn browser_key_router_filters_before_webengine_and_requires_explicit_acceptance(
 fn scaling_uses_qt_logical_units_and_bounds_large_font_overlays() {
     let qml = QML_SOURCE;
     let downloads = include_str!("../../qml/components/FerricDownloadManager.qml");
+    let modal = include_str!("../../qml/components/FerricModalSurface.qml");
     assert!(qml.contains("Screen.devicePixelRatio"));
     assert!(qml.contains("Screen.logicalPixelDensity"));
     assert!(qml.contains("readonly property real chromeScale"));
-    assert!(downloads.contains("Math.min(760 * browserWindow.chromeScale"));
-    assert!(downloads.contains("parent.height - 32"));
+    assert!(downloads.contains("dialogWidth: 800 * scale"));
+    assert!(modal.contains("surface.width - 32 * surface.scale"));
+    assert!(modal.contains("surface.height - 32 * surface.scale"));
     assert!(qml.contains("anchors.bottom: parent.bottom"));
     assert!(qml.contains("double-scale high-DPI"));
 }
@@ -478,7 +484,7 @@ fn qml_json_contract_allowlist_is_explicit() {
     assert!(allowlist.contains("Opaque page-script request/result contracts"));
     assert!(allowlist.contains("Prohibited presentation payloads"));
     assert_eq!(qml.matches("JSON.parse(").count(), 10);
-    assert_eq!(qml.matches("JSON.stringify(").count(), 20);
+    assert_eq!(qml.matches("JSON.stringify(").count(), 29);
 }
 
 #[test]
@@ -1159,6 +1165,26 @@ fn ephemeral_hint_target_creates_a_typed_new_window_action() {
 }
 
 #[test]
+fn foreground_hint_tab_materializes_the_view_before_navigation() {
+    let qml = include_str!("../../qml/components/FerricBrowserRuntimePresentation.qml");
+    let foreground = qml
+        .split("result.action === \"tab\"")
+        .nth(1)
+        .expect("foreground hint-tab result branch")
+        .split("result.action === \"yank\"")
+        .next()
+        .expect("foreground hint-tab branch boundary");
+
+    let sync = foreground
+        .find("window.syncTabModel()")
+        .expect("foreground hint tab must materialize its QML view");
+    let navigate = foreground
+        .find("window.executePendingEngineAction()")
+        .expect("foreground hint tab must apply its queued navigation");
+    assert!(sync < navigate, "the new tab view must exist before navigation");
+}
+
+#[test]
 fn tls_errors_are_blocked_by_default_and_only_allow_scoped_confirmation() {
     let qml = [
         QML_SOURCE,
@@ -1224,6 +1250,11 @@ fn context_menus_use_engine_actions_and_bound_spellcheck_data() {
     assert!(qml.contains("spellCheckerSuggestions"));
     assert!(qml.contains("Download link"));
     assert!(qml.contains("browser.link.open"));
+    assert!(qml.contains("Open link in new tab"));
+    assert!(qml.contains("Open link in background tab"));
+    assert!(qml.contains("Open link in new window"));
+    assert!(qml.contains("contextMenu.openAt(menuHost, menuX, menuY)"));
+    assert!(qml.contains("window.syncTabModel()"));
     assert!(qml.contains("browser.link.download"));
     assert!(qml.contains("browser.download.pause"));
     assert!(qml.contains("browser.download.resume"));
@@ -1515,10 +1546,72 @@ fn focus_overlay_controller_owns_capture_state_and_only_restores_live_targets() 
     assert!(controller.contains("function captureOverlayFocus"));
     assert!(controller.contains("function restoreOverlayFocus"));
     assert!(controller.contains("function focusTargetAvailable"));
+    assert!(controller.contains("(controller.focusReturnStack || []).length > 0"));
     assert!(controller.contains("Qt.callLater"));
     assert!(runtime.contains("FerricFocusOverlayController"));
     assert!(runtime.contains("focusOverlayController.captureOverlayFocus"));
     assert!(runtime.contains("focusOverlayController.restoreOverlayFocus"));
+}
+
+#[test]
+fn native_window_close_requires_a_user_decision_before_shutdown_checks() {
+    let root = include_str!("../../qml/components/FerricBrowserRuntimeBase.qml");
+    let presentation =
+        include_str!("../../qml/components/FerricBrowserRuntimePresentation.qml");
+    let surface = include_str!("../../qml/components/FerricBrowserRuntimeSurface.qml");
+    let secondary = include_str!("../../qml/components/FerricBrowserWindow.qml");
+    let popup = include_str!("../../qml/components/FerricPopupWindow.qml");
+
+    let root_close = root
+        .split("onClosing: function(close)")
+        .nth(1)
+        .expect("primary native close handler")
+        .split("property string startupUrl")
+        .next()
+        .expect("primary close handler boundary");
+    assert!(root_close.contains("close.accepted = false"));
+    assert!(root_close.contains("window.beginQuitRequest(\":window-close\")"));
+
+    let begin = presentation
+        .split("function beginQuitRequest(commandText)")
+        .nth(1)
+        .expect("primary close confirmation entry point")
+        .split("function continueQuitRequest()")
+        .next()
+        .expect("primary confirmation boundary");
+    assert!(begin.contains("window.shutdownConfirmationVisible = true"));
+    assert!(!begin.contains("window.checkPageStateBeforeQuit()"));
+
+    let continuation = presentation
+        .split("function continueQuitRequest()")
+        .nth(1)
+        .expect("primary post-confirmation continuation")
+        .split("function finalizeQuit()")
+        .next()
+        .expect("primary continuation boundary");
+    assert!(continuation.contains("window.checkPageStateBeforeQuit()"));
+    assert!(surface.contains("promptVisible: window.shutdownConfirmationVisible"));
+    assert!(surface.contains("window.continueQuitRequest()"));
+
+    for (name, window_source) in [("secondary", secondary), ("popup", popup)] {
+        assert!(
+            window_source.contains("close.accepted = false"),
+            "{name} must reject the native close event until confirmed"
+        );
+        assert!(
+            window_source.contains("windowCloseConfirmationVisible = true"),
+            "{name} must expose its close confirmation"
+        );
+        assert!(
+            window_source.contains("promptVisible: popupWindow.windowCloseConfirmationVisible")
+                || window_source
+                    .contains("promptVisible: secondaryWindow.windowCloseConfirmationVisible"),
+            "{name} must render the shared keyboard-first confirmation"
+        );
+    }
+
+    assert!(root.contains("host.continueQuitRequest()"));
+    assert!(root.contains("popup.continueQuitRequest()"));
 }
 
 #[test]

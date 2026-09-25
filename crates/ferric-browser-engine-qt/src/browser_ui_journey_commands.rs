@@ -413,6 +413,7 @@ impl qobject::BrowserUi {
                     || self.as_ref().rust().storage_library_dirty.get())
             {
                 self.as_mut().request_storage_library();
+                self.as_mut().set_command_retryable(true);
                 return Err("profile library metadata is still loading; retry".into());
             }
         }

@@ -544,6 +544,24 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn take_journey_traversal(mut self: Pin<&mut Self>, target: Target) -> bool {
+        let queued_target = self
+            .as_ref()
+            .rust()
+            .pending_journey_traversals
+            .front()
+            .copied();
+        if let Some(queued_target) = queued_target {
+            if queued_target != target {
+                return false;
+            }
+            self.as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .pending_journey_traversals
+                .pop_front();
+            return true;
+        }
         if self
             .as_ref()
             .rust()

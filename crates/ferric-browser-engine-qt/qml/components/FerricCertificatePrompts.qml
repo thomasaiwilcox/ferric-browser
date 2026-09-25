@@ -6,9 +6,8 @@ pragma ComponentBehavior: Bound
 
 Item {
     id: root
+    anchors.fill: parent
 
-    // The host owns request lifetime, security policy, and engine resolution.
-    // This component only renders the bounded choices and emits user intents.
     required property var browserWindow
 
     signal clientCertificateAccepted(int index)
@@ -16,60 +15,53 @@ Item {
     signal certificateAccepted()
     signal certificateRejected()
 
-    function openClientCertificate() {
-        clientCertificatePopup.open()
-    }
+    function openClientCertificate() { clientCertificatePrompt.visible = true }
+    function closeClientCertificate() { clientCertificatePrompt.visible = false }
+    function openCertificateError() { certificateErrorPrompt.visible = true }
+    function closeCertificateError() { certificateErrorPrompt.visible = false }
 
-    function closeClientCertificate() {
-        clientCertificatePopup.close()
-    }
+    FerricModalSurface {
+        id: clientCertificatePrompt
+        browserWindow: root.browserWindow
+        visible: false
+        commandText: ":client-certificate"
+        title: "Select a client certificate"
+        message: "Choose one of the identities offered by the browser engine. Private keys are never exposed here."
+        keyHelp: "j/k or ↑/↓ select  ·  enter use certificate  ·  esc cancel"
+        dialogWidth: 760 * scale
+        dialogHeight: 520 * scale
+        initialFocusItem: clientCertificateList
+        onDismissRequested: root.clientCertificateRejected()
 
-    function openCertificateError() {
-        certificateErrorPopup.open()
-    }
-
-    function closeCertificateError() {
-        certificateErrorPopup.close()
-    }
-
-    Popup {
-        id: clientCertificatePopup
-        parent: Overlay.overlay
-        modal: true
-        focus: true
-        closePolicy: Popup.NoAutoClose
-        width: Math.min(760 * root.browserWindow.chromeScale, root.browserWindow.width - 48)
-        height: Math.min(520 * root.browserWindow.chromeScale, root.browserWindow.height - 32)
-        padding: 14
-        x: Math.round((root.browserWindow.width - width) / 2)
-        y: Math.round((root.browserWindow.height - height) / 2)
-
-        background: Rectangle {
-            color: root.browserWindow.panelColor
-            border.color: root.browserWindow.accentColor
-            radius: 4
+        function moveChoice(delta) {
+            if (clientCertificateList.count === 0) {
+                return
+            }
+            clientCertificateList.currentIndex =
+                    (clientCertificateList.currentIndex + delta
+                     + clientCertificateList.count) % clientCertificateList.count
+            clientCertificateList.positionViewAtIndex(
+                clientCertificateList.currentIndex, ListView.Contain)
         }
 
-        contentItem: ColumnLayout {
-            focus: true
-            Accessible.role: Accessible.Dialog
-            Accessible.name: "Client certificate selection"
-            spacing: 10
-
-            Keys.onPressed: function(event) {
-                if (event.key === Qt.Key_Escape) {
-                    root.clientCertificateRejected()
-                    event.accepted = true
-                }
+        function activateCurrent() {
+            var choice = root.browserWindow.pendingClientCertificateOptions[
+                clientCertificateList.currentIndex]
+            if (choice) {
+                root.clientCertificateAccepted(choice.index)
             }
+        }
 
-            Label {
-                Layout.fillWidth: true
-                text: "Select a client certificate"
-                color: root.browserWindow.primaryTextColor
-                font.bold: true
-                Accessible.name: "Client certificate selection title"
-            }
+        Shortcut { sequence: "Up"; context: Qt.WindowShortcut; enabled: clientCertificatePrompt.visible; onActivated: clientCertificatePrompt.moveChoice(-1) }
+        Shortcut { sequence: "K"; context: Qt.WindowShortcut; enabled: clientCertificatePrompt.visible; onActivated: clientCertificatePrompt.moveChoice(-1) }
+        Shortcut { sequence: "Down"; context: Qt.WindowShortcut; enabled: clientCertificatePrompt.visible; onActivated: clientCertificatePrompt.moveChoice(1) }
+        Shortcut { sequence: "J"; context: Qt.WindowShortcut; enabled: clientCertificatePrompt.visible; onActivated: clientCertificatePrompt.moveChoice(1) }
+        Shortcut { sequence: "Return"; context: Qt.WindowShortcut; enabled: clientCertificatePrompt.visible; onActivated: clientCertificatePrompt.activateCurrent() }
+        Shortcut { sequence: "Enter"; context: Qt.WindowShortcut; enabled: clientCertificatePrompt.visible; onActivated: clientCertificatePrompt.activateCurrent() }
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 8 * clientCertificatePrompt.scale
 
             Label {
                 Layout.fillWidth: true
@@ -79,123 +71,65 @@ Item {
                 elide: Text.ElideMiddle
                 Accessible.name: "Client certificate host"
             }
-
-            Label {
-                Layout.fillWidth: true
-                text: "Choose one of the identities offered by the browser engine. Private keys are never exposed here."
-                color: root.browserWindow.secondaryTextColor
-                wrapMode: Text.WordWrap
-                Accessible.name: "Client certificate guidance"
-            }
-
             ListView {
                 id: clientCertificateList
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
+                spacing: 6 * clientCertificatePrompt.scale
+                currentIndex: 0
                 model: root.browserWindow.pendingClientCertificateOptions
                 Accessible.role: Accessible.List
                 Accessible.name: "Available client certificates"
 
-                delegate: Rectangle {
+                delegate: FerricCommandAction {
                     id: certificateDelegate
                     required property var modelData
                     required property int index
                     width: clientCertificateList.width
-                    height: Math.max(72 * root.browserWindow.chromeScale, 64)
-                    color: certificateDelegate.index % 2 === 0
-                           ? root.browserWindow.surfaceColor : root.browserWindow.panelColor
-                    border.color: root.browserWindow.borderColor
-                    border.width: 1
-
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.margins: 8
-                        spacing: 10
-
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            Label {
-                                Layout.fillWidth: true
-                                text: certificateDelegate.modelData.subject
-                                color: root.browserWindow.primaryTextColor
-                                elide: Text.ElideMiddle
-                                Accessible.name: "Certificate subject"
-                            }
-                            Label {
-                                Layout.fillWidth: true
-                                text: "Issuer: " + certificateDelegate.modelData.issuer
-                                      + (certificateDelegate.modelData.selfSigned
-                                         ? " (self-signed)" : "")
-                                color: root.browserWindow.mutedTextColor
-                                elide: Text.ElideMiddle
-                                Accessible.name: "Certificate issuer"
-                            }
-                        }
-
-                        Button {
-                            text: "Use"
-                            Accessible.name: "Use this client certificate"
-                            onClicked: root.clientCertificateAccepted(
-                                           certificateDelegate.modelData.index)
-                        }
-                    }
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                Item { Layout.fillWidth: true }
-                Button {
-                    text: "Cancel"
-                    Accessible.name: "Cancel client certificate selection"
-                    onClicked: root.clientCertificateRejected()
+                    browserWindow: root.browserWindow
+                    keyHint: index === clientCertificateList.currentIndex ? "enter" : ""
+                    actionLabel: certificateDelegate.modelData.subject
+                                 + " · " + certificateDelegate.modelData.issuer
+                                 + (certificateDelegate.modelData.selfSigned
+                                    ? " (self-signed)" : "")
+                    selected: index === clientCertificateList.currentIndex
+                    onSelectionRequested: clientCertificateList.currentIndex = index
+                    onClicked: root.clientCertificateAccepted(
+                                   certificateDelegate.modelData.index)
                 }
             }
         }
     }
 
-    Popup {
-        id: certificateErrorPopup
-        parent: Overlay.overlay
-        modal: true
-        focus: true
-        closePolicy: Popup.NoAutoClose
-        width: Math.min(680 * root.browserWindow.chromeScale, root.browserWindow.width - 48)
-        height: Math.min(420 * root.browserWindow.chromeScale, root.browserWindow.height - 32)
-        padding: 14
-        x: Math.round((root.browserWindow.width - width) / 2)
-        y: Math.round((root.browserWindow.height - height) / 2)
-
-        background: Rectangle {
-            color: root.browserWindow.panelColor
-            border.color: root.browserWindow.warningColor
-            radius: 4
+    FerricCommandDialog {
+        id: certificateErrorPrompt
+        browserWindow: root.browserWindow
+        visible: false
+        commandText: ":certificate-error"
+        title: "Certificate cannot be verified"
+        message: "Only continue if you recognize this host and understand the risk. This exception applies to this request only."
+        dialogWidth: 680 * scale
+        dialogHeight: 440 * scale
+        dialogBorderColor: root.browserWindow.warningColor
+        cancelAction: "back"
+        actions: [
+            { id: "back", key: "n", label: "Go back", safe: true,
+              shortcuts: ["N"] },
+            { id: "accept", key: "y", label: "Accept once",
+              shortcuts: ["Y"] }
+        ]
+        onActionRequested: function(action) {
+            if (action === "accept") {
+                root.certificateAccepted()
+            } else {
+                root.certificateRejected()
+            }
         }
 
-        contentItem: ColumnLayout {
-            focus: true
-            Accessible.role: Accessible.Dialog
-            Accessible.name: "TLS certificate warning"
-            spacing: 10
-
-            Keys.onPressed: function(event) {
-                if (event.key === Qt.Key_Escape) {
-                    root.certificateRejected()
-                    event.accepted = true
-                } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                    root.certificateAccepted()
-                    event.accepted = true
-                }
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: "Certificate cannot be verified"
-                color: root.browserWindow.warningColor
-                font.bold: true
-                Accessible.name: "TLS certificate warning title"
-            }
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 8 * certificateErrorPrompt.scale
 
             Label {
                 Layout.fillWidth: true
@@ -205,38 +139,15 @@ Item {
                 elide: Text.ElideMiddle
                 Accessible.name: "TLS certificate host"
             }
-
             Label {
                 Layout.fillWidth: true
+                Layout.fillHeight: true
                 text: root.browserWindow.pendingCertificateErrorDescription
                 color: root.browserWindow.primaryTextColor
                 wrapMode: Text.WordWrap
                 maximumLineCount: 12
                 elide: Text.ElideRight
                 Accessible.name: "TLS certificate error"
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: "Only continue if you recognize this host and understand the risk. This exception applies to this request only."
-                color: root.browserWindow.secondaryTextColor
-                wrapMode: Text.WordWrap
-                Accessible.name: "TLS certificate warning guidance"
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                Item { Layout.fillWidth: true }
-                Button {
-                    text: "Go back"
-                    Accessible.name: "Reject TLS certificate"
-                    onClicked: root.certificateRejected()
-                }
-                Button {
-                    text: "Accept once"
-                    Accessible.name: "Accept TLS certificate for this request only"
-                    onClicked: root.certificateAccepted()
-                }
             }
         }
     }

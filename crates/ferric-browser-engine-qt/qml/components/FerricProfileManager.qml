@@ -2,9 +2,8 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Rectangle {
+FerricModalSurface {
     id: manager
-    required property var browserWindow
     required property var profilesModel
     property string renameName: ""
     property string renameLabel: ""
@@ -31,38 +30,24 @@ Rectangle {
         profileRenameInput.text = ""
     }
 
-    anchors.centerIn: parent
-    width: Math.min(620 * browserWindow.chromeScale, parent.width - 32)
-    height: Math.min(430 * browserWindow.chromeScale, parent.height - 32)
-    z: 40
     visible: browserWindow.profileManagerVisible
-    focus: visible
-    Accessible.role: Accessible.Dialog
-    Accessible.name: "Profile manager"
-    onVisibleChanged: if (visible) forceActiveFocus()
-    color: browserWindow.panelColor
-    border.color: browserWindow.borderColor
-
-    Keys.onPressed: function(event) {
-        if (event.key === Qt.Key_Escape) {
-            manager.closeRequested()
-            event.accepted = true
-        }
-    }
+    commandText: ":profile-list"
+    title: "Profiles"
+    keyHelp: "tab/shift-tab controls  ·  enter activate  ·  esc close"
+    dialogWidth: 720 * scale
+    dialogHeight: 520 * scale
+    stackingOrder: 40
+    initialFocusItem: profileNameInput
+    onDismissRequested: closeRequested()
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 12
+        anchors.margins: 0
         spacing: 8
 
         RowLayout {
             Layout.fillWidth: true
-            Label {
-                Layout.fillWidth: true
-                text: "Profiles"
-                color: manager.browserWindow.primaryTextColor
-                font.bold: true
-            }
+            Item { Layout.fillWidth: true }
             Button {
                 text: "Close"
                 Accessible.name: "Close profile manager"

@@ -12,9 +12,9 @@ is being migrated. This document is the review allowlist for those exceptions.
   `site_data_clear_finished` use a bounded result object from page JavaScript.
 - Hint collection, activation, userscript actions, and detached-window handoff
   use versioned, bounded page-script or cross-window result objects.
-- Selection and page evaluation bridges use bounded
-  request tokens and opaque page-script result objects. Rust validates each
-  result before it changes browser state.
+- The primary and secondary window runtime pumps use bounded selection, caret,
+  editor, download, and page-evaluation request tokens with opaque page-script
+  result objects. Rust validates each result before it changes browser state.
 
 ## Opaque diagnostics, export, and command payloads
 

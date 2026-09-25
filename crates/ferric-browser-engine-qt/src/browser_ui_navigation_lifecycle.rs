@@ -405,6 +405,7 @@ impl qobject::BrowserUi {
             this.pending_external_navigation = None;
             this.pending_context_route = None;
             this.pending_engine_action = None;
+            this.pending_engine_actions.clear();
             // A transient profile can be released while its asynchronous
             // bootstrap or profile-scoped probes are still in flight. Drop
             // the pending handoff before dropping workers so a late result
@@ -425,6 +426,7 @@ impl qobject::BrowserUi {
             this.pending_journey_mappings.clear();
             this.pending_history_clear = None;
             this.pending_journey_traversal = None;
+            this.pending_journey_traversals.clear();
             this.pending_journey_reopen = None;
             this.pending_navigation_urls.clear();
             this.pending_redirect_tabs.clear();
@@ -558,11 +560,12 @@ impl qobject::BrowserUi {
                 .as_mut()
                 .finish_site_doctor_experiment(&QString::from(id), false);
             if temporary_closed {
-                self.as_mut()
-                    .rust_mut()
-                    .as_mut()
-                    .get_mut()
-                    .pending_engine_action = None;
+                let mut rust = self.as_mut().rust_mut();
+                let this = rust.as_mut().get_mut();
+                this.pending_engine_action = None;
+                this.pending_engine_actions.clear();
+                this.pending_journey_traversal = None;
+                this.pending_journey_traversals.clear();
             }
         }
         let closed = {

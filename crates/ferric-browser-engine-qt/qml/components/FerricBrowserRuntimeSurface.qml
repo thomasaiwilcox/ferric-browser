@@ -168,11 +168,11 @@ FerricBrowserRuntimeChrome {
             return
         }
         if (action === "quit-request") {
-            window.beginQuitRequest()
+            window.beginQuitRequest(":quit")
             return
         }
         if (action === "window-close-request") {
-            window.beginQuitRequest()
+            window.beginQuitRequest(":window-close")
             return
         }
         if (action.indexOf("window-focus\t") === 0) {
@@ -952,6 +952,7 @@ FerricBrowserRuntimeChrome {
 
     function processRuntimeWork() {
             browserUi.poll_ipc()
+            window.syncTabModel()
             window.executePendingEngineAction()
             browserUi.poll_config()
             window.maybeOpenPendingEngineFileDialog()
@@ -1313,7 +1314,41 @@ FerricBrowserRuntimeChrome {
 
     FerricShutdownDecisionDialog {
         hostWindow: window
+        promptVisible: window.shutdownConfirmationVisible
+        commandText: window.shutdownConfirmationCommand
+        title: window.shutdownConfirmationCommand === ":quit"
+               ? "Quit Ferric Browser?" : "Close this browser window?"
+        message: {
+            if (window.shutdownConfirmationCommand === ":quit") {
+                return "This will close every Ferric Browser window and tab."
+            }
+            if (window.shutdownParticipantCount() > 0) {
+                return "This is the primary browser window, so closing it will close every Ferric Browser window and tab."
+            }
+            var count = browserUi.tab_count
+            return "This will close this window and its " + count
+                    + (count === 1 ? " open tab." : " open tabs.")
+        }
+        keepLabel: "Keep browser open"
+        proceedLabel: window.shutdownConfirmationCommand === ":quit"
+                      ? "Quit browser" : "Close window"
+        proceedAccessibleName: window.shutdownConfirmationCommand === ":quit"
+                               ? "Quit Ferric Browser" : "Close browser window"
+        dialogHeight: 220 * window.chromeScale
+        onKeepRequested: {
+            window.shutdownConfirmationVisible = false
+            browserUi.status_text = "Shutdown cancelled"
+        }
+        onProceedRequested: {
+            window.shutdownConfirmationVisible = false
+            window.continueQuitRequest()
+        }
+    }
+
+    FerricShutdownDecisionDialog {
+        hostWindow: window
         promptVisible: window.shutdownPromptVisible
+        commandText: window.shutdownConfirmationCommand
         title: "Active downloads are still running"
         message: "Cancel active browser work before quitting, or keep the browser open."
         keepLabel: "Keep browser open"
@@ -1323,12 +1358,16 @@ FerricBrowserRuntimeChrome {
             window.shutdownPromptVisible = false
             browserUi.status_text = "Shutdown cancelled"
         }
-        onProceedRequested: window.cancelDownloadsAndQuit()
+        onProceedRequested: {
+            window.shutdownPromptVisible = false
+            window.cancelDownloadsAndQuit()
+        }
     }
 
     FerricShutdownDecisionDialog {
         hostWindow: window
         promptVisible: window.shutdownPagePromptVisible
+        commandText: window.shutdownConfirmationCommand
         title: "Page state may be lost"
         message: window.shutdownPagePromptReason + " Close anyway may lose that state."
         keepLabel: "Keep browser open"
@@ -1340,12 +1379,16 @@ FerricBrowserRuntimeChrome {
             window.shutdownPagePromptVisible = false
             browserUi.status_text = "Shutdown cancelled"
         }
-        onProceedRequested: window.finalizeQuit()
+        onProceedRequested: {
+            window.shutdownPagePromptVisible = false
+            window.finalizeQuit()
+        }
     }
 
     FerricShutdownDecisionDialog {
         hostWindow: window
         promptVisible: window.applicationShutdownForcePromptVisible
+        commandText: ":quit"
         title: "Browser shutdown is taking longer than expected"
         message: window.applicationShutdownStage
                  + ". Continue waiting, or force quit? Force quit leaves the "

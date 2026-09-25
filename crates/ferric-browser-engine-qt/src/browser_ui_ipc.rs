@@ -956,8 +956,12 @@ impl qobject::BrowserUi {
             if let Some(parent) = journey_parent {
                 self.as_mut().mark_journey_parent(&effects, parent);
             }
+            // A background open restores the original active tab before this
+            // point. Reconcile the complete core order so the new tab is
+            // projected even though it is not active, and so navigation can
+            // resolve its stable tab ID to a QML view index.
+            self.as_mut().sync_tab_order_from_core();
             self.as_mut().set_pending_engine_action(&effects);
-            self.as_mut().sync_core_tabs();
             return Ok(serde_json::json!({
                 "status": "accepted",
                 "tab_id": tab.to_string(),

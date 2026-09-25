@@ -1,7 +1,7 @@
 use super::{
     CommandSource, ContextsConfig, CxxQtType, DispatchTarget, Effect, EngineEffect, Event,
     HintKind, HintSession, HintTarget, IpcOpenTarget, IpcRoute, JourneyEdgeKind, Mode,
-    NavigationError, NavigationSource, ParsedCommand, PendingContextRoute, Pin, QString,
+    NavigationError, NavigationSource, ParsedCommand, PendingContextRoute, Pin, QString, TabId,
     ValidatedUrl, Value, assign_labels, clean_link, current_target, external_hint_target,
     hint_json, hint_kind_name, link_cleaning_policy, matching_context_routes, parse_hint_candidate,
     parse_hint_payload, qobject, rapid_hint_keeps_mode, resolve_input, safe_ipc_url,
@@ -148,6 +148,90 @@ impl qobject::BrowserUi {
             .get_mut()
             .pending_hint_action = Some(action_id);
         self.select_hint(label, fresh_candidate_json)
+    }
+
+    fn open_hint_in_background_tab(
+        mut self: Pin<&mut Self>,
+        source_tab: TabId,
+        url: &ValidatedUrl,
+    ) -> Result<Value, String> {
+        let response = self.as_mut().execute_ipc_command(
+            ParsedCommand {
+                name: "open".into(),
+                arguments: vec![url.to_string()],
+            },
+            &IpcRoute {
+                selector: DispatchTarget::Tab(source_tab),
+                open_target: IpcOpenTarget::BackgroundTab,
+                profile: None,
+                context: None,
+                external_open: false,
+                source: CommandSource::Ipc,
+            },
+        )?;
+        self.as_mut()
+            .set_status_text(QString::from("Hint link opened in background"));
+        let mut result = serde_json::json!({
+            "action":"tab-bg",
+            "action_id":"browser.link.open",
+            "kind":"link"
+        });
+        if let Some(tab_id) = response.get("tab_id") {
+            result["tab_id"] = tab_id.clone();
+        }
+        Ok(result)
+    }
+
+    fn open_hint_in_foreground_tab(
+        mut self: Pin<&mut Self>,
+        source_tab: TabId,
+        url: &ValidatedUrl,
+    ) -> Result<Value, String> {
+        let (window, journey_parent) = {
+            let binding = self.as_ref();
+            let state = binding
+                .rust()
+                .state
+                .as_ref()
+                .ok_or_else(|| "core state unavailable".to_owned())?;
+            let window = state
+                .tabs()
+                .get(&source_tab)
+                .map(|tab| tab.window)
+                .ok_or_else(|| "hint source tab is no longer live".to_owned())?;
+            (window, state.journey().current_node(source_tab))
+        };
+        // Hint selection runs while the core is deliberately in Hint mode.
+        // Do not redispatch the normal-mode-only `tab-open` command here;
+        // this is the already-authorized completion of the active hint action.
+        let effects = self
+            .as_mut()
+            .reduce_event(Event::OpenTabWithNavigation {
+                window,
+                url: url.clone(),
+                background: false,
+            })
+            .map_err(|error| error.clone())?;
+        let tab = effects
+            .iter()
+            .find_map(|effect| match effect {
+                Effect::Engine(EngineEffect::Navigate { target, .. }) => Some(target.tab),
+                _ => None,
+            })
+            .ok_or_else(|| "foreground hint tab did not produce a navigation target".to_owned())?;
+        if let Some(parent) = journey_parent {
+            self.as_mut().mark_journey_parent(&effects, parent);
+        }
+        self.as_mut().sync_tab_order_from_core();
+        self.as_mut().set_pending_engine_action(&effects);
+        self.as_mut()
+            .set_status_text(QString::from("Hint link opened in a foreground tab"));
+        Ok(serde_json::json!({
+            "action":"tab",
+            "action_id":"browser.link.open",
+            "kind":"link",
+            "tab_id":tab.to_string()
+        }))
     }
 
     #[allow(clippy::too_many_lines)]
@@ -323,45 +407,23 @@ impl qobject::BrowserUi {
                             ));
                             return QString::from(r#"{"error":"rapid-tab-limit"}"#);
                         }
-                        let response = match self.as_mut().execute_ipc_command(
-                            ParsedCommand {
-                                name: "open".into(),
-                                arguments: vec![url.to_string()],
-                            },
-                            &IpcRoute {
-                                selector: DispatchTarget::Tab(target.tab),
-                                open_target: IpcOpenTarget::BackgroundTab,
-                                profile: None,
-                                context: None,
-                                external_open: false,
-                                source: CommandSource::Ipc,
-                            },
-                        ) {
-                            Ok(response) => response,
-                            Err(error) => {
-                                self.set_status_text(QString::from(format!(
-                                    "Rapid background hint rejected: {error}"
-                                )));
-                                return QString::from(
-                                    r#"{"error":"background-navigation-rejected"}"#,
-                                );
-                            }
-                        };
+                        let result =
+                            match self.as_mut().open_hint_in_background_tab(target.tab, &url) {
+                                Ok(result) => result,
+                                Err(error) => {
+                                    self.set_status_text(QString::from(format!(
+                                        "Rapid background hint rejected: {error}"
+                                    )));
+                                    return QString::from(
+                                        r#"{"error":"background-navigation-rejected"}"#,
+                                    );
+                                }
+                            };
                         self.as_mut()
                             .rust_mut()
                             .as_mut()
                             .get_mut()
                             .hint_rapid_tabs_created += 1;
-                        self.as_mut()
-                            .set_status_text(QString::from("Hint link opened in background"));
-                        let mut result = serde_json::json!({
-                            "action":"tab-bg",
-                            "action_id":"browser.link.open",
-                            "kind":"link"
-                        });
-                        if let Some(tab_id) = response.get("tab_id") {
-                            result["tab_id"] = tab_id.clone();
-                        }
                         result
                     }
                     "userscript" => {
@@ -403,40 +465,26 @@ impl qobject::BrowserUi {
                         return QString::from(r#"{"error":"rapid-target-invalid-state"}"#);
                     }
                 }
+            } else if self.as_ref().rust().hint_rapid_target == "tab-bg" {
+                match self.as_mut().open_hint_in_background_tab(target.tab, &url) {
+                    Ok(result) => result,
+                    Err(error) => {
+                        self.set_status_text(QString::from(format!(
+                            "Background hint rejected: {error}"
+                        )));
+                        return QString::from(r#"{"error":"background-navigation-rejected"}"#);
+                    }
+                }
             } else if self.as_ref().rust().hint_rapid_target == "tab" {
-                let response = match self.as_mut().execute_ipc_command(
-                    ParsedCommand {
-                        name: "tab-open".into(),
-                        arguments: vec![url.to_string()],
-                    },
-                    &IpcRoute {
-                        selector: DispatchTarget::Tab(target.tab),
-                        open_target: IpcOpenTarget::Tab,
-                        profile: None,
-                        context: None,
-                        external_open: false,
-                        source: CommandSource::Ipc,
-                    },
-                ) {
-                    Ok(response) => response,
+                match self.as_mut().open_hint_in_foreground_tab(target.tab, &url) {
+                    Ok(result) => result,
                     Err(error) => {
                         self.set_status_text(QString::from(format!(
                             "Hint tab navigation rejected: {error}"
                         )));
                         return QString::from(r#"{"error":"tab-navigation-rejected"}"#);
                     }
-                };
-                self.as_mut()
-                    .set_status_text(QString::from("Hint link opened in a foreground tab"));
-                let mut result = serde_json::json!({
-                    "action":"tab",
-                    "action_id":"browser.link.open",
-                    "kind":"link"
-                });
-                if let Some(tab_id) = response.get("tab_id") {
-                    result["tab_id"] = tab_id.clone();
                 }
-                result
             } else if self.as_ref().rust().hint_rapid_target == "window" {
                 let profile = self.as_ref().rust().profile_name.clone();
                 self.as_mut()

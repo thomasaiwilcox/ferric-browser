@@ -183,6 +183,9 @@ impl qobject::BrowserUi {
             this.popup_journey_targets.clear();
             this.tab = Some(selected_tab);
             this.pending_engine_action = None;
+            this.pending_engine_actions.clear();
+            this.pending_journey_traversal = None;
+            this.pending_journey_traversals.clear();
         }
         self.as_mut()
             .set_session_restore_values(QString::from(format!(

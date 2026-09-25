@@ -15,6 +15,8 @@ Item {
     required property int completionStart
     required property int completionEnd
     required property int completionSelected
+    property string feedbackText: ""
+    property bool feedbackError: false
     property alias commandText: commandLine.text
     property alias cursorPosition: commandLine.cursorPosition
     signal completionUpdateRequested(string text, int cursorPosition)
@@ -23,6 +25,7 @@ Item {
     signal completionMoveRequested(int delta)
     signal completionSelectRequested(int index)
     signal historyMoveRequested(int delta, string current)
+    signal inputEdited()
 
     function focusInput() {
         commandLine.forceActiveFocus()
@@ -30,10 +33,21 @@ Item {
 
     function clearInput() {
         commandLine.text = ""
+        clearFeedback()
     }
 
     function selectAllInput() {
         commandLine.selectAll()
+    }
+
+    function showFeedback(text, isError) {
+        feedbackText = String(text || "")
+        feedbackError = !!isError
+    }
+
+    function clearFeedback() {
+        feedbackText = ""
+        feedbackError = false
     }
 
     function commandWithCompletion(index) {
@@ -112,9 +126,15 @@ Item {
                     if (visible) {
                         forceActiveFocus()
                         commandSurface.completionUpdateRequested(text, cursorPosition)
+                    } else {
+                        commandSurface.clearFeedback()
                     }
                 }
-                onTextChanged: commandSurface.completionUpdateRequested(text, cursorPosition)
+                onTextChanged: {
+                    commandSurface.clearFeedback()
+                    commandSurface.inputEdited()
+                    commandSurface.completionUpdateRequested(text, cursorPosition)
+                }
                 onCursorPositionChanged: commandSurface.completionUpdateRequested(text, cursorPosition)
                 onAccepted: commandSurface.submitted(
                     commandSurface.commandWithCompletion(commandSurface.completionSelected))
@@ -144,13 +164,16 @@ Item {
 
     Rectangle {
         id: completionPopup
+        objectName: "commandCompletionPopup"
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.top
         height: Math.min(commandSurface.parent.height * 0.5,
                          completionList.contentHeight + 8)
         z: 1
-        visible: commandSurface.commandVisible && commandSurface.completionVisible
+        visible: commandSurface.commandVisible
+                 && commandSurface.completionVisible
+                 && commandSurface.feedbackText.length === 0
         color: commandSurface.browserWindow.panelColor
         opacity: 1.0
         border.color: commandSurface.browserWindow.borderColor
@@ -235,6 +258,37 @@ Item {
                     }
                 }
             }
+        }
+    }
+
+    Rectangle {
+        id: feedbackPopup
+        objectName: "commandFeedbackPopup"
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.top
+        height: feedbackLabel.implicitHeight + 16
+        z: 2
+        visible: commandSurface.commandVisible
+                 && commandSurface.feedbackText.length > 0
+        color: commandSurface.browserWindow.panelColor
+        border.color: commandSurface.feedbackError
+                      ? commandSurface.browserWindow.errorColor
+                      : commandSurface.browserWindow.warningColor
+        border.width: 1
+        Accessible.role: Accessible.StaticText
+        Accessible.name: feedbackLabel.text
+
+        Label {
+            id: feedbackLabel
+            anchors.fill: parent
+            anchors.margins: 8
+            color: commandSurface.feedbackError
+                   ? commandSurface.browserWindow.errorColor
+                   : commandSurface.browserWindow.warningColor
+            text: commandSurface.feedbackText
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
         }
     }
 }

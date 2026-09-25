@@ -3169,12 +3169,17 @@ impl CommandRegistry {
         {
             command.examples = vec!["macro-stop".into()];
         }
-        registry.expansions = [("o", "open"), ("t", "tab-open"), ("q", "quit")]
-            .into_iter()
-            .map(|(name, expansion)| {
-                CommandAlias::from_text(name, expansion).expect("built-in command alias is valid")
-            })
-            .collect();
+        registry.expansions = [
+            ("o", "open"),
+            ("t", "tab-open"),
+            ("q", "quit"),
+            ("open-history", "history"),
+        ]
+        .into_iter()
+        .map(|(name, expansion)| {
+            CommandAlias::from_text(name, expansion).expect("built-in command alias is valid")
+        })
+        .collect();
         registry
     }
 
@@ -3551,6 +3556,17 @@ mod tests {
         assert_eq!(registry.resolve("o").unwrap().name, "open");
         assert_eq!(registry.resolve("t").unwrap().name, "tab-open");
         assert_eq!(registry.resolve("q").unwrap().name, "quit");
+        assert_eq!(registry.resolve("open-history").unwrap().name, "history");
+        assert_eq!(
+            registry
+                .expand_command(ParsedCommand {
+                    name: "open-history".into(),
+                    arguments: Vec::new(),
+                })
+                .unwrap()[0]
+                .name,
+            "history"
+        );
         let switcher = registry.resolve("switcher").expect("switcher command");
         assert_eq!(switcher.effect, EffectClass::Query);
         assert_eq!(

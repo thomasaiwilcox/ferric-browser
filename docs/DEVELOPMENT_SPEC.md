@@ -585,6 +585,16 @@ restored only if still valid. Background tabs show a pending badge rather than
 steal focus. Limit one interactive modal prompt per window with a bounded
 queue, and group identical origin/type requests.
 
+All browser-owned modal surfaces use the same command-first interaction
+contract: a visible command name, a safe initial choice, window-scoped Escape,
+keyboard navigation that still works when WebEngine retained focus, Enter to
+activate the selected choice, and pointer-selectable action rows. Complex
+management surfaces may use Tab/Shift-Tab for editable controls, but must still
+block page input and expose the same command header, dismissal, focus capture,
+and focus restoration behavior. Native portal file/folder pickers, transient
+status notices, capture indicators, hints, and context menus remain specialized
+surfaces rather than imitating browser-owned modal prompts.
+
 The initial prompt queue limit is eight requests per window. Cancel excess
 page-generated prompts with a visible grouped notification and a 30-second
 origin-specific cooldown. Do not discard a pending file overwrite or browser

@@ -11,6 +11,7 @@ Rectangle {
     required property string mode
     required property string displayUrl
     required property string statusText
+    property bool statusError: false
     required property string contextName
     required property color contextColor
     required property string profileName
@@ -121,7 +122,9 @@ Rectangle {
                   : statusBar.statusText + statusBar.macroStatusText
             color: statusBar.engineUpdateNotice.length > 0
                    ? statusBar.browserWindow.warningColor
-                   : statusBar.browserWindow.mutedTextColor
+                   : (statusBar.statusError
+                      ? statusBar.browserWindow.errorColor
+                      : statusBar.browserWindow.mutedTextColor)
             elide: Text.ElideRight
             horizontalAlignment: Text.AlignRight
             Accessible.ignored: true

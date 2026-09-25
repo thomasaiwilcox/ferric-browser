@@ -886,6 +886,17 @@ fn ui_action_values_use_the_shared_typed_argument_boundary() {
         serde_json::json!({"input": "https://example.test"})
     );
     assert_eq!(
+        ui_action_arguments(
+            "browser.link.open",
+            "tab-bg\thttps://example.test/reference"
+        )
+        .unwrap(),
+        serde_json::json!({
+            "url": "https://example.test/reference",
+            "target": "tab-bg"
+        })
+    );
+    assert_eq!(
         ui_action_arguments("browser.link.send", "mpv\thttps://example.test").unwrap(),
         serde_json::json!({"target": "mpv", "url": "https://example.test"})
     );

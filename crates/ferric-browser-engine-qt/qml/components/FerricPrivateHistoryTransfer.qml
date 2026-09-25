@@ -2,40 +2,31 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Rectangle {
+FerricModalSurface {
     id: transfer
-    required property var browserWindow
     required property var profilesModel
     required property bool profilesLoading
     signal reopenRequested(string profileName)
     signal bookmarkRequested(string profileName, string profileLabel)
     signal cancelRequested()
 
-    anchors.fill: parent
-    z: 12
     visible: browserWindow.privateHistoryTransferVisible
-    color: browserWindow.panelColor
-    border.color: browserWindow.warningColor
-    Accessible.role: Accessible.Dialog
-    Accessible.name: "Private history transfer preview"
+    commandText: ":history-transfer"
+    title: "Reopen private history in a named profile"
+    message: "Preview only: this transfers the safe URL. Private history, permissions, cookies, sessions, and marks remain transient."
+    keyHelp: "tab/shift-tab controls  ·  enter activate  ·  esc cancel"
+    dialogWidth: 720 * scale
+    dialogHeight: 500 * scale
+    dialogBorderColor: browserWindow.warningColor
+    stackingOrder: 82
+    initialFocusItem: profileList
+    onDismissRequested: cancelRequested()
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 18
+        anchors.margins: 0
         spacing: 10
 
-        Label {
-            Layout.fillWidth: true
-            text: "Reopen private history in a named profile"
-            color: transfer.browserWindow.primaryTextColor
-            font.bold: true
-        }
-        Label {
-            Layout.fillWidth: true
-            text: "Preview only: this transfers the safe URL below. Private history, title, permissions, cookies, sessions, and marks remain in the transient profile."
-            color: transfer.browserWindow.warningColor
-            wrapMode: Text.WordWrap
-        }
         Label {
             Layout.fillWidth: true
             text: "Title: " + transfer.browserWindow.privateHistoryTransferTitle

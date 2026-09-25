@@ -2,50 +2,31 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Rectangle {
+FerricModalSurface {
     id: diagnostics
-
-    required property var browserWindow
 
     signal closeRequested()
     signal refreshRequested()
     signal copyRequested()
     signal saveRequested()
 
-    anchors.centerIn: parent
-    width: Math.min(900, parent.width - 80)
-    height: Math.min(620, parent.height - 100)
-    z: 72
     visible: browserWindow.diagnosticsVisible
-    focus: visible
-    Accessible.role: Accessible.Dialog
-    Accessible.name: "Diagnostics"
-    onVisibleChanged: if (visible) forceActiveFocus()
-    color: browserWindow.panelColor
-    border.color: browserWindow.accentColor
-    border.width: 1
-
-    Keys.onPressed: function(event) {
-        if (event.key === Qt.Key_Escape) {
-            closeRequested()
-            event.accepted = true
-        }
-    }
+    commandText: ":diagnostics"
+    title: "Diagnostics"
+    message: "Read-only, privacy-safe runtime snapshot."
+    keyHelp: "tab/shift-tab controls  ·  esc close"
+    dialogWidth: 900 * scale
+    dialogHeight: 620 * scale
+    stackingOrder: 72
+    onDismissRequested: closeRequested()
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 14
+        anchors.margins: 0
         spacing: 8
 
         RowLayout {
             Layout.fillWidth: true
-            Label {
-                Layout.fillWidth: true
-                text: "Diagnostics"
-                color: diagnostics.browserWindow.primaryTextColor
-                font.bold: true
-                Accessible.name: "Diagnostics"
-            }
             Button {
                 text: "Refresh"
                 Accessible.name: "Refresh diagnostics"

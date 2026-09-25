@@ -462,7 +462,22 @@ FerricBrowserRuntimeServices {
         probe(0)
     }
 
-    function beginQuitRequest() {
+    function beginQuitRequest(commandText) {
+        if (window.shutdownConfirmationVisible
+                || window.shutdownPromptVisible
+                || window.shutdownPagePromptVisible
+                || window.applicationShutdownInProgress) {
+            return
+        }
+        window.shutdownConfirmationCommand = commandText === ":quit"
+                ? ":quit" : ":window-close"
+        window.shutdownConfirmationVisible = true
+        browserUi.status_text = window.shutdownConfirmationCommand === ":quit"
+                ? "Confirm browser shutdown" : "Confirm window close"
+    }
+
+    function continueQuitRequest() {
+        window.shutdownConfirmationVisible = false
         if (window.hasActiveDownloads()
                 || window.hasActiveShutdownRequestsFor(browserUi, window)) {
             window.shutdownPromptVisible = true
@@ -499,7 +514,7 @@ FerricBrowserRuntimeServices {
         }
         window.activeDownloads = ({})
         window.cancelShutdownRequestsFor(browserUi, window)
-        window.beginQuitRequest()
+        window.continueQuitRequest()
     }
 
     function refreshLibraryManager() {
@@ -1490,7 +1505,8 @@ FerricBrowserRuntimeServices {
         window.pendingContextMenuHost = window
         window.contextMenuItems = items
         window.captureOverlayFocus(window, view)
-        contextMenu.open()
+        contextMenu.openAt(window, Math.round(window.width / 2),
+                           Math.round(window.height / 2))
         browserUi.status_text = "Hint actions"
     }
 
@@ -1523,6 +1539,13 @@ FerricBrowserRuntimeServices {
                 window.hintResults = []
                 window.hintInput = ""
                 window.executePendingEngineAction()
+            } else if (result.action === "tab") {
+                window.hintResults = []
+                window.hintInput = ""
+                // The engine has already inserted and selected the new tab.
+                // Materialize its QML view before applying the queued load.
+                window.syncTabModel()
+                window.executePendingEngineAction()
             } else if (result.action === "yank") {
                 window.hintResults = []
                 window.hintInput = ""
@@ -1536,7 +1559,11 @@ FerricBrowserRuntimeServices {
                 window.hintInput = ""
                 window.syncTabModel()
                 window.executePendingEngineAction()
-                Qt.callLater(window.startHintCollection)
+                // Only rapid background hints remain in Hint mode. A one-shot
+                // `;b` selection must return to Normal mode after opening.
+                if (browserUi.mode === "hint") {
+                    Qt.callLater(window.startHintCollection)
+                }
             } else if (result.action === "userscript" && browserUi.mode === "hint") {
                 window.hintResults = []
                 window.hintInput = ""

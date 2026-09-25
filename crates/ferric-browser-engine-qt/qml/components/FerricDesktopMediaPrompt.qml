@@ -2,57 +2,68 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-// Presents available desktop-media sources. Selection and cancellation remain
-// typed intents handled by the composition root.
-Rectangle {
+// Source selection remains an intent handled by the composition root.
+FerricModalSurface {
     id: prompt
 
-    required property var browserWindow
-    property var hostWindow: null
     property bool showingWindows: false
 
     signal screenRequested(int index)
     signal windowRequested(int index)
     signal cancellationRequested()
 
-    width: Math.min(680, hostWindow ? hostWindow.width - 80 : 600)
-    height: Math.min(520, hostWindow ? hostWindow.height - 100 : 420)
-    anchors.centerIn: parent
-    z: 95
     visible: browserWindow.desktopMediaPromptVisible
              && browserWindow.pendingDesktopMediaHost === hostWindow
-    focus: visible
-    Accessible.role: Accessible.Dialog
-    Accessible.name: "Screen sharing source chooser"
-    color: browserWindow.panelColor
-    border.color: browserWindow.warningColor
-    border.width: 2
-    onVisibleChanged: {
-        if (visible) {
-            showingWindows = false
-            forceActiveFocus()
+    commandText: ":share"
+    title: "Choose what to share"
+    message: "Origin: " + browserWindow.desktopMediaOrigin
+    keyHelp: "s screens  ·  w windows  ·  j/k or ↑/↓ select  ·  enter share  ·  esc cancel"
+    dialogWidth: 680 * scale
+    dialogHeight: 520 * scale
+    dialogBorderColor: browserWindow.warningColor
+    stackingOrder: 95
+    initialFocusItem: sourceList
+
+    function selectCategory(windows) {
+        showingWindows = windows
+        sourceList.currentIndex = sourceList.count > 0 ? 0 : -1
+    }
+
+    function moveChoice(delta) {
+        if (sourceList.count === 0) {
+            return
+        }
+        sourceList.currentIndex = (sourceList.currentIndex + delta
+                                   + sourceList.count) % sourceList.count
+        sourceList.positionViewAtIndex(sourceList.currentIndex, ListView.Contain)
+    }
+
+    function activateCurrent() {
+        if (sourceList.currentIndex < 0 || sourceList.currentIndex >= sourceList.count) {
+            return
+        }
+        if (showingWindows) {
+            windowRequested(sourceList.currentIndex)
+        } else {
+            screenRequested(sourceList.currentIndex)
         }
     }
 
+    onDismissRequested: cancellationRequested()
+
+    Shortcut { sequence: "S"; context: Qt.WindowShortcut; enabled: prompt.visible; onActivated: prompt.selectCategory(false) }
+    Shortcut { sequence: "W"; context: Qt.WindowShortcut; enabled: prompt.visible; onActivated: prompt.selectCategory(true) }
+    Shortcut { sequence: "Up"; context: Qt.WindowShortcut; enabled: prompt.visible; onActivated: prompt.moveChoice(-1) }
+    Shortcut { sequence: "K"; context: Qt.WindowShortcut; enabled: prompt.visible; onActivated: prompt.moveChoice(-1) }
+    Shortcut { sequence: "Down"; context: Qt.WindowShortcut; enabled: prompt.visible; onActivated: prompt.moveChoice(1) }
+    Shortcut { sequence: "J"; context: Qt.WindowShortcut; enabled: prompt.visible; onActivated: prompt.moveChoice(1) }
+    Shortcut { sequence: "Return"; context: Qt.WindowShortcut; enabled: prompt.visible; onActivated: prompt.activateCurrent() }
+    Shortcut { sequence: "Enter"; context: Qt.WindowShortcut; enabled: prompt.visible; onActivated: prompt.activateCurrent() }
+
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 16
-        spacing: 10
+        spacing: 8 * prompt.scale
 
-        Label {
-            Layout.fillWidth: true
-            text: "Choose what to share"
-            color: prompt.browserWindow.primaryTextColor
-            font.bold: true
-            Accessible.name: "Screen sharing source chooser"
-        }
-        Label {
-            Layout.fillWidth: true
-            text: "Origin: " + prompt.browserWindow.desktopMediaOrigin
-            color: prompt.browserWindow.mutedTextColor
-            elide: Text.ElideMiddle
-            Accessible.name: "Screen sharing requesting origin"
-        }
         Label {
             Layout.fillWidth: true
             text: "Select one source for this request. Ferric Browser will not reuse a previous source."
@@ -61,71 +72,59 @@ Rectangle {
         }
         RowLayout {
             Layout.fillWidth: true
-            Button {
-                text: "Screens"
-                checked: !prompt.showingWindows
-                checkable: true
-                onClicked: prompt.showingWindows = false
-                Accessible.name: "Show screens"
+            FerricCommandAction {
+                Layout.fillWidth: true
+                browserWindow: prompt.browserWindow
+                keyHint: "s"
+                actionLabel: "Screens"
+                selected: !prompt.showingWindows
+                onClicked: prompt.selectCategory(false)
             }
-            Button {
-                text: "Windows"
-                checked: prompt.showingWindows
-                checkable: true
-                onClicked: prompt.showingWindows = true
-                Accessible.name: "Show windows"
+            FerricCommandAction {
+                Layout.fillWidth: true
+                browserWindow: prompt.browserWindow
+                keyHint: "w"
+                actionLabel: "Windows"
+                selected: prompt.showingWindows
+                onClicked: prompt.selectCategory(true)
             }
-            Item { Layout.fillWidth: true }
         }
         ListView {
-            id: desktopMediaSourceList
+            id: sourceList
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
-            spacing: 6
+            spacing: 6 * prompt.scale
+            currentIndex: 0
             model: prompt.browserWindow.pendingDesktopMediaRequest
                    ? (prompt.showingWindows
                       ? prompt.browserWindow.pendingDesktopMediaRequest.windowsModel
                       : prompt.browserWindow.pendingDesktopMediaRequest.screensModel)
                    : null
-            delegate: Button {
-                width: desktopMediaSourceList.width
-                text: (prompt.showingWindows ? "Window " : "Screen ") + (index + 1)
-                Accessible.name: text
+            Accessible.role: Accessible.List
+            Accessible.name: prompt.showingWindows ? "Shareable windows" : "Shareable screens"
+
+            delegate: FerricCommandAction {
+                required property int index
+                width: sourceList.width
+                browserWindow: prompt.browserWindow
+                keyHint: index === sourceList.currentIndex ? "enter" : ""
+                actionLabel: (prompt.showingWindows ? "Window " : "Screen ") + (index + 1)
+                selected: index === sourceList.currentIndex
+                onSelectionRequested: sourceList.currentIndex = index
                 onClicked: {
-                    if (prompt.showingWindows) {
-                        prompt.windowRequested(index)
-                    } else {
-                        prompt.screenRequested(index)
-                    }
+                    sourceList.currentIndex = index
+                    prompt.activateCurrent()
                 }
             }
         }
         Label {
             Layout.fillWidth: true
-            visible: desktopMediaSourceList.count === 0
+            visible: sourceList.count === 0
             text: prompt.showingWindows
                   ? "No windows are available." : "No screens are available."
             color: prompt.browserWindow.warningColor
             horizontalAlignment: Text.AlignHCenter
-        }
-        RowLayout {
-            Layout.fillWidth: true
-            Item { Layout.fillWidth: true }
-            Button {
-                text: "Cancel"
-                Accessible.name: "Cancel screen sharing source selection"
-                onClicked: prompt.cancellationRequested()
-            }
-        }
-    }
-
-    Keys.onPressed: function(event) {
-        if (event.key === Qt.Key_Escape) {
-            prompt.cancellationRequested()
-            event.accepted = true
-        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-            event.accepted = true
         }
     }
 }

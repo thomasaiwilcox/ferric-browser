@@ -1246,7 +1246,9 @@ GridLayout {
         statusVisible: window.statusBarVisible
         mode: browserUi.mode
         displayUrl: browserUi.display_url
-        statusText: browserUi.status_text
+        statusText: window.commandNoticeVisible
+                    ? window.commandNoticeText : browserUi.status_text
+        statusError: window.commandNoticeVisible && window.commandNoticeError
         contextName: browserUi.context_name
         contextColor: window.contextStatusColor(browserUi, window.mutedTextColor)
         profileName: window.profileName
@@ -1264,6 +1266,47 @@ GridLayout {
                                window.ephemeralProfile)
     }
 
+    function submitInteractiveCommand(text) {
+        var focusedContextWindow = window.focusExistingContextWindow(text, browserUi)
+        var succeeded = focusedContextWindow
+                || browserUi.execute_interactive_command(text)
+        if (!succeeded) {
+            window.pendingInteractiveCommand = browserUi.command_retryable ? text : ""
+            commandSurface.showFeedback(browserUi.status_text,
+                                        !browserUi.command_retryable)
+            commandSurface.selectAllInput()
+            return
+        }
+
+        window.pendingInteractiveCommand = ""
+        var commandStatus = browserUi.status_text
+        var preview = browserUi.take_session_preview()
+        if (preview.length > 0) {
+            window.showCommandSessionPreview(preview)
+        }
+        if (browserUi.library_kind.length > 0) {
+            window.libraryPage = 0
+            window.openInternalSurface()
+            window.libraryManagerVisible = true
+            window.refreshLibraryManager()
+        }
+        if (browserUi.link_preview_visible) {
+            window.showLinkPreview()
+        }
+        if (text.trim().indexOf("context-enter ") === 0) {
+            window.routeContextWorkspace(browserUi)
+        }
+        window.syncTabModel()
+        window.executePendingEngineAction()
+        commandStatus = browserUi.status_text
+        commandSurface.clearInput()
+        if (browserUi.mode === "command") {
+            browserUi.escape()
+            browserUi.status_text = commandStatus
+        }
+        window.showCommandNotice(commandStatus, false)
+    }
+
     FerricCommandLine {
         id: commandSurface
         browserWindow: window
@@ -1277,36 +1320,12 @@ GridLayout {
         onCompletionUpdateRequested: function(text, cursorPosition) {
             browserUi.update_completion(text, cursorPosition)
         }
-        onSubmitted: function(text) {
-            var focusedContextWindow = window.focusExistingContextWindow(text, browserUi)
-            if (focusedContextWindow || browserUi.execute_interactive_command(text)) {
-                var preview = browserUi.take_session_preview()
-                if (preview.length > 0) {
-                    window.showCommandSessionPreview(preview)
-                }
-                if (browserUi.library_kind.length > 0) {
-                    window.libraryPage = 0
-                    window.openInternalSurface()
-                    window.libraryManagerVisible = true
-                    window.refreshLibraryManager()
-                }
-                if (browserUi.link_preview_visible) {
-                    window.showLinkPreview()
-                }
-                if (text.trim().indexOf("context-enter ") === 0) {
-                    window.routeContextWorkspace(browserUi)
-                }
-                window.syncTabModel()
-                window.executePendingEngineAction()
-                commandSurface.clearInput()
-                if (browserUi.mode === "command") {
-                    browserUi.escape()
-                }
-            } else {
-                commandSurface.selectAllInput()
-            }
+        onSubmitted: function(text) { window.submitInteractiveCommand(text) }
+        onInputEdited: window.pendingInteractiveCommand = ""
+        onEscapeRequested: {
+            window.pendingInteractiveCommand = ""
+            browserUi.escape()
         }
-        onEscapeRequested: browserUi.escape()
         onCompletionMoveRequested: function(delta) { browserUi.completion_move(delta) }
         onCompletionSelectRequested: function(index) { browserUi.completion_select(index) }
         onHistoryMoveRequested: function(delta, current) {

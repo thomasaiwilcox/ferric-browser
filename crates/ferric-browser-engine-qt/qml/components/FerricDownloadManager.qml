@@ -2,46 +2,31 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Rectangle {
+FerricModalSurface {
     id: manager
-    required property var browserWindow
     required property var downloadsModel
     signal closeRequested()
     signal openRequested(string downloadId, bool reveal)
     signal actionRequested(string downloadId, string action)
 
-    anchors.centerIn: parent
-    width: Math.min(760 * browserWindow.chromeScale, parent.width - 32)
-    height: Math.min(430 * browserWindow.chromeScale, parent.height - 32)
-    z: 40
     visible: browserWindow.downloadManagerVisible
-    focus: visible
-    Accessible.role: Accessible.Dialog
-    Accessible.name: "Download manager"
-    onVisibleChanged: if (visible) forceActiveFocus()
-    color: browserWindow.panelColor
-    border.color: browserWindow.borderColor
-
-    Keys.onPressed: function(event) {
-        if (event.key === Qt.Key_Escape) {
-            manager.closeRequested()
-            event.accepted = true
-        }
-    }
+    commandText: ":downloads"
+    title: "Downloads"
+    keyHelp: "tab/shift-tab controls  ·  enter activate  ·  esc close"
+    dialogWidth: 800 * scale
+    dialogHeight: 520 * scale
+    stackingOrder: 40
+    initialFocusItem: downloadList
+    onDismissRequested: closeRequested()
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 12
+        anchors.margins: 0
         spacing: 8
 
         RowLayout {
             Layout.fillWidth: true
-            Label {
-                Layout.fillWidth: true
-                text: "Downloads"
-                color: manager.browserWindow.primaryTextColor
-                font.bold: true
-            }
+            Item { Layout.fillWidth: true }
             Button {
                 text: "Close"
                 Accessible.name: "Close download manager"

@@ -2,10 +2,9 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Rectangle {
+FerricModalSurface {
     id: settings
     objectName: "settingsSurface"
-    required property var browserWindow
     required property bool settingsVisible
     required property bool temporary
     required property string searchText
@@ -28,32 +27,21 @@ Rectangle {
         userscriptInventory.setEnabled(name, enabled);
     }
 
-    anchors.centerIn: parent
-    width: Math.min(980, parent.width - 70)
-    height: Math.min(680, parent.height - 80)
-    z: 76
     visible: settingsVisible
-    focus: visible
-    Accessible.role: Accessible.Dialog
-    Accessible.name: "Settings"
-    onVisibleChanged: if (visible)
-        forceActiveFocus()
-    color: browserWindow.panelColor
-    border.color: browserWindow.accentColor
-    border.width: 1
-
-    Keys.onPressed: function (event) {
-        if (event.key === Qt.Key_Escape) {
-            settings.closeRequested();
-            event.accepted = true;
-        }
-    }
+    commandText: ":settings"
+    title: "Settings"
+    message: "Validated runtime settings for the active global or profile layer."
+    keyHelp: "type to filter  ·  tab/shift-tab controls  ·  esc close"
+    dialogWidth: 980 * scale
+    dialogHeight: 680 * scale
+    stackingOrder: 76
+    onDismissRequested: closeRequested()
 
     ScrollView {
         id: settingsScroll
         objectName: "settingsScroll"
         anchors.fill: parent
-        anchors.margins: 14
+        anchors.margins: 0
         clip: true
 
         ColumnLayout {
@@ -62,13 +50,6 @@ Rectangle {
 
             ColumnLayout {
                 Layout.fillWidth: true
-                Label {
-                    Layout.fillWidth: true
-                    text: "Settings"
-                    color: settings.browserWindow.primaryTextColor
-                    font.bold: true
-                    Accessible.name: "Settings"
-                }
                 Flow {
                     Layout.fillWidth: true
                     Layout.preferredHeight: childrenRect.height

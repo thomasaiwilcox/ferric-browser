@@ -2,72 +2,57 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Popup {
-    id: popup
+// Explicit pre-navigation context-route decision. The composition root owns
+// route validation and application.
+FerricCommandDialog {
+    id: dialog
 
-    // The composition root validates and applies routes. This component only
-    // renders the explicit pre-navigation decision.
-    required property var browserWindow
     readonly property var routeUi: browserWindow.contextRouteUi || ({})
 
-    parent: Overlay.overlay
-    modal: true
-    focus: true
-    closePolicy: Popup.NoAutoClose
     visible: browserWindow.contextRouteVisible
-    width: Math.min(680 * browserWindow.chromeScale, browserWindow.width - 48)
-    padding: 14
-    x: Math.round((browserWindow.width - width) / 2)
-    y: Math.round((browserWindow.height - height) / 2)
+    commandText: ":context-route"
+    title: "Use browsing context " + (routeUi.context_route_context || "") + "?"
+    message: "Context route confirmation"
+    dialogWidth: 680 * scale
+    dialogHeight: 430 * scale
+    cancelAction: "normal"
+    actions: [
+        { id: "normal", key: "n", label: "Open normally", safe: true,
+          shortcuts: ["N"] },
+        { id: "context", key: "y", label: "Use context",
+          shortcuts: ["Y"] }
+    ]
 
-    background: Rectangle {
-        color: popup.browserWindow.panelColor
-        border.color: popup.browserWindow.accentColor
-        radius: 4
+    onActionRequested: function(action) {
+        if (action === "context") {
+            browserWindow.acceptContextRoute()
+        } else {
+            browserWindow.dismissContextRoute()
+        }
     }
 
-    contentItem: ColumnLayout {
-        focus: true
-        Accessible.role: Accessible.Dialog
-        Accessible.name: "Context route confirmation"
-        spacing: 10
-
-        Keys.onPressed: function(event) {
-            if (event.key === Qt.Key_Escape) {
-                popup.browserWindow.dismissContextRoute()
-                event.accepted = true
-            } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                popup.browserWindow.acceptContextRoute()
-                event.accepted = true
-            }
-        }
+    ColumnLayout {
+        anchors.fill: parent
+        spacing: 8 * dialog.scale
 
         Label {
             Layout.fillWidth: true
-            text: "Use browsing context "
-                  + (popup.routeUi.context_route_context || "") + "?"
-            color: popup.browserWindow.primaryTextColor
-            font.bold: true
-            Accessible.name: "Context route title"
-        }
-        Label {
-            Layout.fillWidth: true
-            text: "Route " + (popup.routeUi.context_route_id || "")
-                  + " (" + (popup.routeUi.context_route_behavior || "prompt") + ")"
-            color: popup.browserWindow.mutedTextColor
+            text: "Route " + (dialog.routeUi.context_route_id || "")
+                  + " (" + (dialog.routeUi.context_route_behavior || "prompt") + ")"
+            color: dialog.browserWindow.mutedTextColor
             elide: Text.ElideRight
         }
         Label {
             Layout.fillWidth: true
             text: "Target profile: "
-                  + (popup.routeUi.context_route_profile || "unavailable")
-            color: popup.browserWindow.secondaryTextColor
+                  + (dialog.routeUi.context_route_profile || "unavailable")
+            color: dialog.browserWindow.secondaryTextColor
             elide: Text.ElideMiddle
         }
         Label {
             Layout.fillWidth: true
-            text: "Address: " + (popup.routeUi.context_route_url || "unavailable")
-            color: popup.browserWindow.primaryTextColor
+            text: "Address: " + (dialog.routeUi.context_route_url || "unavailable")
+            color: dialog.browserWindow.primaryTextColor
             wrapMode: Text.WrapAnywhere
             maximumLineCount: 6
             elide: Text.ElideRight
@@ -76,22 +61,8 @@ Popup {
         Label {
             Layout.fillWidth: true
             text: "This choice applies before navigation. Existing redirects, popups, forms, permissions, and authentication chains are never moved automatically."
-            color: popup.browserWindow.warningColor
+            color: dialog.browserWindow.warningColor
             wrapMode: Text.WordWrap
-        }
-        RowLayout {
-            Layout.fillWidth: true
-            Item { Layout.fillWidth: true }
-            Button {
-                text: "Open normally"
-                Accessible.name: "Open without context route"
-                onClicked: popup.browserWindow.dismissContextRoute()
-            }
-            Button {
-                text: "Use context"
-                Accessible.name: "Accept context route"
-                onClicked: popup.browserWindow.acceptContextRoute()
-            }
         }
     }
 }
