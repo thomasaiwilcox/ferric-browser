@@ -11,9 +11,10 @@ warps the OS cursor.
 
 ```text
 BrowserUiRust spatial projection
-  -> FerricPagePointerAdapter (exact active WebEngineView QQuickItem)
-  -> application-synthesized QMouseEvent move/press/release via public QCoreApplication::sendEvent
-  -> Qt Quick/WebEngine hit testing
+  -> FerricPagePointerAdapter (exact active WebEngineView + owning QQuickWindow)
+  -> map the view-local point into owning-window coordinates
+  -> application-synthesized QMouseEvent move/press/release sent to QQuickWindow
+  -> Qt Quick hit testing and WebEngine render-item delivery
 ```
 
 The adapter labels these events with Qt's
@@ -21,6 +22,12 @@ The adapter labels these events with Qt's
 it is not evidence that Chromium reports `PointerEvent.isTrusted` or grants
 transient user activation. Those outcomes remain part of the native matrix
 below.
+
+Sending the sequence directly to the outer `WebEngineView` is not sufficient:
+that bypasses the `QQuickWindow` pointer-delivery path and the inner WebEngine
+render item does not receive the click. The window is therefore the event
+receiver, while the guarded view remains the authoritative coordinate and
+ownership target.
 
 The adapter's request and acknowledgement are one-shot and carry the session,
 request, serial, revision, point, and bounded outcome. Geometry, target,
@@ -34,7 +41,7 @@ scale, page zoom, and result for every row.
 
 | Case | Required observation | Result |
 |---|---|---|
-| left button | one move, one press, one release; page report updates | pending desktop run |
+| left button | one move, one press, one release; page report updates | partial — 2026-09-26, Qt 6.11.2, native Wayland/Hyprland at 1.5× scale with software rendering: the page recorded `mousedown`, `mouseup`, and `click` at `(320, 333)`; it did not expose the preceding no-button move |
 | right button | context-menu path remains browser/page policy | pending desktop run |
 | middle button | page receives middle button without forced tab policy | pending desktop run |
 | canvas | coordinate arrives at the intended canvas point | pending desktop run |
@@ -64,3 +71,9 @@ key/pointer gesture ownership, stale target destruction, bounded request
 deduplication, macro denial, and fail-closed surface-stamp exhaustion. These
 automated checks harden the implementation but do not replace the pending
 native desktop observations in the qualification table.
+
+A follow-up native Wayland run exercised the normal `;g` entry path and an
+`Enter` commit against `/spatial-grid`. The overlay appeared at root and
+refined depths, the center reticle remained aligned, and the page received the
+left-button press/release/click sequence. The row remains partial because the
+fixture did not report the adapter's preceding no-button move.

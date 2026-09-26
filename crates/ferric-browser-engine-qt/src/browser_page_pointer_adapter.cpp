@@ -196,32 +196,43 @@ void FerricPagePointerAdapter::dispatch(const QString &requestId,
         return;
     }
 
-    const QPointF local(x, y);
-    const QPointF scene = targetItem_->mapToScene(local);
-    const QPoint global = targetWindow_->mapToGlobal(scene.toPoint());
+    const QPointF targetLocal(x, y);
+    const QPointF windowPosition = targetItem_->mapToScene(targetLocal);
+    const QPoint global = targetWindow_->mapToGlobal(windowPosition.toPoint());
     const Qt::MouseButton button = action == QStringLiteral("right")
         ? Qt::RightButton
         : action == QStringLiteral("middle") ? Qt::MiddleButton : Qt::LeftButton;
     const bool click = action != QStringLiteral("hover");
     const QPointer<QQuickItem> dispatchTarget = targetItem_;
+    const QPointer<QWindow> dispatchWindow = targetWindow_;
     pendingRequestId_ = requestId;
     pendingSessionId_ = sessionId;
     dispatchWatchdog_.start();
     dispatching_ = true;
-    QMouseEvent move(QEvent::MouseMove, local, scene, global, Qt::NoButton, Qt::NoButton,
+    // QQuickWindow owns pointer hit testing and delivery to the render item
+    // beneath this view-local point. Sending directly to the outer
+    // WebEngineView bypasses that delivery path because QQuickItem accepts no
+    // mouse buttons by default.
+    QMouseEvent move(QEvent::MouseMove, windowPosition, windowPosition, global,
+                     Qt::NoButton, Qt::NoButton,
                      Qt::NoModifier, Qt::MouseEventSynthesizedByApplication);
-    const bool moved = dispatchTarget
-        && QCoreApplication::sendEvent(dispatchTarget.data(), &move);
+    const bool moved = dispatchTarget && dispatchWindow
+        && dispatchTarget->window() == dispatchWindow.data()
+        && QCoreApplication::sendEvent(dispatchWindow.data(), &move);
     bool delivered = moved;
-    if (click && moved && dispatchTarget) {
-        QMouseEvent press(QEvent::MouseButtonPress, local, scene, global, button, button,
+    if (click && moved && dispatchTarget && dispatchWindow) {
+        QMouseEvent press(QEvent::MouseButtonPress, windowPosition, windowPosition, global,
+                          button, button,
                           Qt::NoModifier, Qt::MouseEventSynthesizedByApplication);
-        QMouseEvent release(QEvent::MouseButtonRelease, local, scene, global, button,
-                            Qt::NoButton, Qt::NoModifier,
+        QMouseEvent release(QEvent::MouseButtonRelease, windowPosition, windowPosition,
+                            global, button, Qt::NoButton, Qt::NoModifier,
                             Qt::MouseEventSynthesizedByApplication);
-        const bool pressed = QCoreApplication::sendEvent(dispatchTarget.data(), &press);
-        const bool released = dispatchTarget
-            && QCoreApplication::sendEvent(dispatchTarget.data(), &release);
+        const bool pressed = QCoreApplication::sendEvent(dispatchWindow.data(), &press);
+        const bool targetUnchanged = dispatchTarget && dispatchWindow
+            && targetItem_ == dispatchTarget && targetWindow_ == dispatchWindow
+            && dispatchTarget->window() == dispatchWindow.data();
+        const bool released = targetUnchanged
+            && QCoreApplication::sendEvent(dispatchWindow.data(), &release);
         delivered = pressed && released;
     }
     dispatching_ = false;

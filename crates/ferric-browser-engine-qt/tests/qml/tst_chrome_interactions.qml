@@ -722,10 +722,16 @@ TestCase {
         verify(fixture)
         compare(fixture.gridItem.visible, true)
         compare(fixture.gridItem.labelsFit, true)
+        verify(fixture.gridItem.labelFontSize > 12)
+        verify(fixture.gridItem.reticleOuterRadius
+               > fixture.gridItem.reticleGap)
+        verify(fixture.gridItem.gridLineThickness
+               > fixture.gridItem.gridLineCoreThickness)
 
         fixture.gridModel.spatial_current_width = 45
         fixture.gridModel.spatial_current_height = 30
         tryCompare(fixture.gridItem, "labelsFit", false)
+        verify(fixture.gridItem.labelFontSize <= 12)
 
         fixture.gridModel.spatial_selecting = false
         tryCompare(fixture.gridItem, "visible", false)

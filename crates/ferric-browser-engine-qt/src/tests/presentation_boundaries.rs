@@ -272,6 +272,13 @@ fn spatial_grid_owns_complete_input_gestures_and_stale_surface_callbacks() {
     assert!(adapter_header.contains("bool surfaceExhausted_"));
     assert!(adapter_source.contains("QObject::disconnect(targetItem_.data()"));
     assert!(adapter_source.contains("const QPointer<QQuickItem> dispatchTarget = targetItem_"));
+    assert!(adapter_source.contains("const QPointer<QWindow> dispatchWindow = targetWindow_"));
+    assert!(adapter_source.contains(
+        "QCoreApplication::sendEvent(dispatchWindow.data(), &press)"
+    ));
+    assert!(!adapter_source.contains(
+        "QCoreApplication::sendEvent(dispatchTarget.data(), &press)"
+    ));
     assert!(adapter_source.contains("event->type() == QEvent::MouseButtonRelease"));
     assert!(adapter_source.contains("consumedButtons_.remove"));
     assert!(adapter_source.contains("QEvent::TabletRelease"));
@@ -287,6 +294,10 @@ fn spatial_grid_owns_complete_input_gestures_and_stale_surface_callbacks() {
     assert!(overlay.contains("browserUi.spatial_selecting"));
     assert!(overlay.contains("Accessible.role: Accessible.Indicator"));
     assert!(overlay.contains("readonly property bool labelsFit:"));
+    assert!(overlay.contains("anchors.centerIn: parent"));
+    assert!(overlay.contains("readonly property real reticleOuterRadius:"));
+    assert!(overlay.contains("readonly property real gridLineThickness:"));
+    assert!(overlay.contains("readonly property color gridLineHaloColor:"));
     assert!(!overlay.contains("JSON.parse("));
 }
 

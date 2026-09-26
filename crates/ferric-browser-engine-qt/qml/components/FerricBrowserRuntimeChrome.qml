@@ -1279,7 +1279,6 @@ GridLayout {
         z: 31
         browserUi: window.browserUi
         chromeScale: window.chromeScale
-        lineColor: window.primaryTextColor
         labelColor: window.selectionTextColor
         labelBackground: window.selectionColor
         crosshairColor: window.accentColor
