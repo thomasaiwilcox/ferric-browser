@@ -49,7 +49,7 @@ scale, page zoom, and result for every row.
 | zoom and scale | view-local logical point remains aligned | pending desktop run |
 | fullscreen/prompt race | stale requests reject; no chrome activation | pending desktop run |
 | key ownership | auto-repeat is consumed; matching release never leaks | pending desktop run |
-| cleanup | no duplicate click and no held-button state | pending desktop run |
+| cleanup | no duplicate click and no held-button state | pass — 2026-09-26, five consecutive native Wayland `;g` → `Enter` sessions each produced exactly one press/release/click sequence and returned to Normal mode |
 
 Until this table is filled with real native evidence, Grid mode remains an
 implementation feature behind the existing local build and must not be called
@@ -77,3 +77,12 @@ A follow-up native Wayland run exercised the normal `;g` entry path and an
 refined depths, the center reticle remained aligned, and the page received the
 left-button press/release/click sequence. The row remains partial because the
 fixture did not report the adapter's preceding no-button move.
+
+A repeated-session regression run then exposed and verified the adapter
+lifecycle boundary. The dispatch callback had imperatively assigned
+`spatialPointerAdapter.enabled`, replacing its declarative binding to
+`spatial_visible`; after the first click, the adapter therefore remained
+enabled, rejected new session identifiers, and continued filtering physical
+mouse input. The callback now preserves the binding and fails closed if it is
+unexpectedly disabled. Five consecutive native `;g` → `Enter` sessions each
+delivered exactly one click sequence and returned to Normal mode.

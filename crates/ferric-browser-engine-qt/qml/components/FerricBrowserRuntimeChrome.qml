@@ -1265,7 +1265,14 @@ GridLayout {
                 browserUi.spatial_invalidated("dispatch-rejected")
                 return
             }
-            spatialPointerAdapter.enabled = true
+            // `enabled` stays declaratively bound to `spatial_visible` so the
+            // adapter always releases its session and physical-input filter
+            // state when Grid exits. Never assign to it here: doing so would
+            // replace the binding after the first dispatch.
+            if (!spatialPointerAdapter.enabled) {
+                browserUi.spatial_invalidated("dispatch-rejected")
+                return
+            }
             spatialPointerAdapter.dispatch(
                         request.request_id, request.session_id,
                         request.serial, request.revision,

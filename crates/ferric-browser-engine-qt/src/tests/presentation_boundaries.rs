@@ -288,6 +288,8 @@ fn spatial_grid_owns_complete_input_gestures_and_stale_surface_callbacks() {
     assert!(!adapter_source.contains("QCursor::setPos"));
 
     assert!(qml.contains("inputBlocked: window.browserChromeInputActive"));
+    assert!(qml.contains("enabled: browserUi.spatial_visible"));
+    assert!(!qml.contains("spatialPointerAdapter.enabled = true"));
     assert!(qml.contains("var sessionId = browserUi.spatial_session_id"));
     assert!(qml.contains("browserUi.spatial_session_id !== sessionId"));
     assert!(ADAPTER_SOURCE.contains("#[qproperty(QStringList, spatial_labels)]"));
