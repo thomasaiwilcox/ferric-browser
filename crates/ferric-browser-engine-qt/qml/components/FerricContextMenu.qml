@@ -35,6 +35,17 @@ Item {
         popup.dismiss()
     }
 
+    function preferInScenePopup() {
+        // popupType was added in Qt 6.8. Older Qt releases only support the
+        // in-scene implementation, while newer styles may default to a window.
+        // Use the dynamic property form so this component still loads on 6.4;
+        // zero is QQuickPopup::Item in the public PopupType enum.
+        var propertyName = "popupType"
+        if (typeof popup[propertyName] !== "undefined") {
+            popup[propertyName] = 0
+        }
+    }
+
     function cycleCurrent(delta) {
         if (popup.count > 0) {
             popup.currentIndex = (popup.currentIndex + popup.count + delta)
@@ -55,7 +66,6 @@ Item {
     Menu {
         id: popup
         objectName: "contextMenuPopup"
-        popupType: Popup.Item
         modal: true
         focus: true
         margins: 8
@@ -65,6 +75,7 @@ Item {
                         Math.max(260 * root.browserWindow.chromeScale,
                                  implicitContentWidth + leftPadding + rightPadding))
         onClosed: root.dismissed()
+        Component.onCompleted: root.preferInScenePopup()
         background: Rectangle {
             color: root.browserWindow.panelColor
             border.color: root.browserWindow.borderColor

@@ -659,6 +659,9 @@ TestCase {
         menu.openAt(testWindow, 100, 120)
         var popup = findChild(menu, "contextMenuPopup")
         verify(popup)
+        if (typeof popup["popupType"] !== "undefined") {
+            compare(popup["popupType"], 0)
+        }
         tryCompare(popup, "visible", true)
         tryCompare(popup, "count", 3)
         tryCompare(popup, "currentIndex", 0)
