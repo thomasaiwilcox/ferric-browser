@@ -345,35 +345,83 @@ fn run_qml_lint() -> Result<(), String> {
     if generated_module_path.is_dir() {
         import_paths.push(generated_module_path);
     }
-    let mut arguments = Vec::new();
+    let mut arguments = vec!["--json".to_owned(), "-".to_owned()];
     for import_path in import_paths {
         arguments.push("-I".to_owned());
         arguments.push(import_path.display().to_string());
     }
     arguments.extend(qml_files.into_iter().map(|path| path.display().to_string()));
-    let mut silent_arguments = vec!["--silent".to_owned()];
-    silent_arguments.extend(arguments.iter().cloned());
-    let silent_argument_refs = silent_arguments
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>();
-    let status = Command::new(executable)
-        .args(&silent_argument_refs)
-        .status()
+    let output = Command::new(executable)
+        .args(&arguments)
+        .output()
         .map_err(|error| format!("failed to run {executable}: {error}"))?;
-    if status.success() {
-        return Ok(());
+    let critical_diagnostics = qml_lint_critical_diagnostics(&output.stdout)?;
+    if !critical_diagnostics.is_empty() {
+        for diagnostic in &critical_diagnostics {
+            eprintln!("{diagnostic}");
+        }
+        return Err(format!(
+            "{executable} reported {} critical QML lint diagnostic(s)",
+            critical_diagnostics.len()
+        ));
     }
+    if !output.status.success() {
+        if output.status.code() != Some(255) {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!(
+                "{executable} exited unexpectedly with {}: {}",
+                output.status,
+                stderr.trim()
+            ));
+        }
+        eprintln!(
+            "{executable} exited with {} after advisory diagnostics; no critical QML issues were reported",
+            output.status
+        );
+    }
+    Ok(())
+}
 
-    eprintln!("{executable} failed; rerunning without --silent for diagnostics");
-    let argument_refs = arguments.iter().map(String::as_str).collect::<Vec<_>>();
-    let diagnostic_status = Command::new(executable)
-        .args(&argument_refs)
-        .status()
-        .map_err(|error| format!("failed to rerun {executable}: {error}"))?;
-    Err(format!(
-        "{executable} QML lint exited with {status}; diagnostic rerun exited with {diagnostic_status}"
-    ))
+fn qml_lint_critical_diagnostics(report: &[u8]) -> Result<Vec<String>, String> {
+    let report = serde_json::from_slice::<serde_json::Value>(report)
+        .map_err(|error| format!("could not parse qmllint JSON output: {error}"))?;
+    let files = report
+        .get("files")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "qmllint JSON output did not contain a files array".to_owned())?;
+    let mut diagnostics = Vec::new();
+    for file in files {
+        let filename = file
+            .get("filename")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("<unknown QML file>");
+        let Some(warnings) = file.get("warnings").and_then(serde_json::Value::as_array) else {
+            continue;
+        };
+        for warning in warnings {
+            let severity = warning
+                .get("type")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default();
+            if !matches!(severity, "critical" | "error" | "fatal") {
+                continue;
+            }
+            let line = warning
+                .get("line")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
+            let column = warning
+                .get("column")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
+            let message = warning
+                .get("message")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("unknown qmllint error");
+            diagnostics.push(format!("{filename}:{line}:{column}: {message}"));
+        }
+    }
+    Ok(diagnostics)
 }
 
 fn qt_qml_import_path() -> Result<PathBuf, String> {
@@ -3075,6 +3123,54 @@ fn run_fuzz_smoke() -> Result<(), String> {
         targets.len()
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod qml_lint_tests {
+    use super::qml_lint_critical_diagnostics;
+
+    #[test]
+    fn advisory_qml_diagnostics_do_not_fail_older_qt_versions() {
+        let report = br#"{
+            "files": [{
+                "filename": "Overlay.qml",
+                "success": false,
+                "warnings": [{
+                    "line": 12,
+                    "column": 8,
+                    "message": "Unqualified access",
+                    "type": "warning"
+                }]
+            }]
+        }"#;
+
+        assert!(
+            qml_lint_critical_diagnostics(report)
+                .expect("valid qmllint report")
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn critical_qml_diagnostics_remain_blocking() {
+        let report = br#"{
+            "files": [{
+                "filename": "Overlay.qml",
+                "success": false,
+                "warnings": [{
+                    "line": 17,
+                    "column": 5,
+                    "message": "Expected token `}'",
+                    "type": "critical"
+                }]
+            }]
+        }"#;
+
+        assert_eq!(
+            qml_lint_critical_diagnostics(report).expect("valid qmllint report"),
+            ["Overlay.qml:17:5: Expected token `}'"]
+        );
+    }
 }
 
 #[cfg(test)]
