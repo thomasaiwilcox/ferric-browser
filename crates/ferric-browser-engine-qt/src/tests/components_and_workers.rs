@@ -621,7 +621,10 @@ fn context_menu_uses_a_compact_keyboard_operable_menu() {
     let qml = include_str!("../../qml/components/FerricContextMenu.qml");
 
     assert!(qml.contains("Menu {"));
-    assert!(qml.contains("popupType: Popup.Item"));
+    assert!(qml.contains("function preferInScenePopup()"));
+    assert!(qml.contains("var propertyName = \"popupType\""));
+    assert!(qml.contains("popup[propertyName] = 0"));
+    assert!(!qml.contains("popupType: Popup."));
     assert!(qml.contains("function openAt(hostWindow, x, y)"));
     assert!(qml.contains("popup.currentIndex = 0"));
     assert!(qml.contains("Accessible.role: Accessible.PopupMenu"));
