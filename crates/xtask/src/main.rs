@@ -4,7 +4,7 @@ use std::{
     fs,
     io::{BufRead, BufReader, Read, Write},
     net::{TcpStream, ToSocketAddrs},
-    path::Path,
+    path::{Path, PathBuf},
     process::{Child, Command, Output, Stdio},
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -340,14 +340,67 @@ fn run_qml_lint() -> Result<(), String> {
         },
     )?;
     qml_files.sort();
-    let mut arguments = vec![
-        "--silent".to_owned(),
-        "-I".to_owned(),
-        "/usr/lib/qt6/qml".to_owned(),
-    ];
+    let mut import_paths = vec![qt_qml_import_path()?];
+    let generated_module_path = PathBuf::from("target/cxxqt/qml_modules");
+    if generated_module_path.is_dir() {
+        import_paths.push(generated_module_path);
+    }
+    let mut arguments = Vec::new();
+    for import_path in import_paths {
+        arguments.push("-I".to_owned());
+        arguments.push(import_path.display().to_string());
+    }
     arguments.extend(qml_files.into_iter().map(|path| path.display().to_string()));
+    let mut silent_arguments = vec!["--silent".to_owned()];
+    silent_arguments.extend(arguments.iter().cloned());
+    let silent_argument_refs = silent_arguments
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    let status = Command::new(executable)
+        .args(&silent_argument_refs)
+        .status()
+        .map_err(|error| format!("failed to run {executable}: {error}"))?;
+    if status.success() {
+        return Ok(());
+    }
+
+    eprintln!("{executable} failed; rerunning without --silent for diagnostics");
     let argument_refs = arguments.iter().map(String::as_str).collect::<Vec<_>>();
-    run(executable, &argument_refs)
+    let diagnostic_status = Command::new(executable)
+        .args(&argument_refs)
+        .status()
+        .map_err(|error| format!("failed to rerun {executable}: {error}"))?;
+    Err(format!(
+        "{executable} QML lint exited with {status}; diagnostic rerun exited with {diagnostic_status}"
+    ))
+}
+
+fn qt_qml_import_path() -> Result<PathBuf, String> {
+    for executable in [
+        "qtpaths6",
+        "qtpaths",
+        "/usr/lib/qt6/bin/qtpaths6",
+        "/usr/lib/qt6/bin/qtpaths",
+    ] {
+        let Ok(output) = Command::new(executable)
+            .args(["--query", "QT_INSTALL_QML"])
+            .output()
+        else {
+            continue;
+        };
+        if !output.status.success() {
+            continue;
+        }
+        let Ok(stdout) = String::from_utf8(output.stdout) else {
+            continue;
+        };
+        let path = PathBuf::from(stdout.trim());
+        if path.is_dir() {
+            return Ok(path);
+        }
+    }
+    Err("could not query Qt's installed QML import directory with qtpaths".to_owned())
 }
 
 fn run_qml_ui_tests() -> Result<(), String> {
