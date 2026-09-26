@@ -17,7 +17,7 @@ Item {
     Accessible.role: Accessible.Indicator
     Accessible.name: "Grid mode, depth " + (browserUi ? browserUi.spatial_depth : 0)
     Accessible.description: browserUi && browserUi.spatial_help_visible
-                            ? "Use the displayed cell keys to refine. Enter clicks, Space hovers, Backspace goes back, zero resets, and Escape cancels."
+                            ? "Use the displayed cell keys to refine. Enter left-clicks, Shift+Enter right-clicks, Ctrl+Enter middle-clicks, Space hovers, Backspace goes back, zero resets, and Escape cancels."
                             : "Keyboard-controlled spatial navigation. Press question mark for help or Escape to cancel."
     Accessible.ignored: !visible
 
@@ -199,7 +199,7 @@ Item {
             elide: Text.ElideRight
             verticalAlignment: Text.AlignVCenter
             text: browserUi && browserUi.spatial_help_visible
-                  ? "1-9 refine  Enter click  Space hover  Backspace back  0 reset  Esc cancel"
+                  ? "1-9 refine · Enter left · Shift+Enter right · Ctrl+Enter middle · Space hover · Backspace back · 0 reset · Esc cancel"
                   : "Grid · depth " + (browserUi ? browserUi.spatial_depth : 0)
                     + (root.labelsFit ? "" : " · cells " + root.labels.join(" "))
         }

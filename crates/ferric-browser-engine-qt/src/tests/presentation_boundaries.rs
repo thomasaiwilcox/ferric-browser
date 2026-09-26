@@ -300,6 +300,8 @@ fn spatial_grid_owns_complete_input_gestures_and_stale_surface_callbacks() {
     assert!(overlay.contains("readonly property real reticleOuterRadius:"));
     assert!(overlay.contains("readonly property real gridLineThickness:"));
     assert!(overlay.contains("readonly property color gridLineHaloColor:"));
+    assert!(overlay.contains("Shift+Enter right-clicks"));
+    assert!(overlay.contains("Ctrl+Enter middle-clicks"));
     assert!(!overlay.contains("JSON.parse("));
 }
 

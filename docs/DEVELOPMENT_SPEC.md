@@ -632,7 +632,7 @@ not a privileged WebChannel shared with arbitrary web pages.
 | Command | `:` | Native editable command line and completion | Enter executes; Escape cancels |
 | Search | `/` or `?` | Incremental engine text search | Enter retains match; Escape restores prior state |
 | Hint | `f` or hint command | Label selection/filtering, no text into page | Selection/cancel/navigation |
-| Grid | `:grid` or `;g` | Keyboard-only 3×3 point selection; native click/hover only on explicit commit | Click/hover acknowledgement, Escape, or invalidated page view |
+| Grid | `:grid` or `;g` | Keyboard-only 3×3 point selection; native click/hover only on explicit commit | Click acknowledgement, Escape, or invalidated page view; hover resets to root and remains in Grid |
 | Caret | `v` | Text movement/selection commands | Escape returns normal |
 | Pass-through | `Ctrl-v` from normal | Every key goes to page except reserved escape chord | `Ctrl-Shift-Escape` |
 | Prompt | Browser request | Prompt-specific keys; no page key forwarding | Answer/cancel/invalidated request |

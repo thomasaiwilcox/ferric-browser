@@ -69,6 +69,8 @@ package() {
   install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
   install -Dm644 docs/DEVELOPMENT_SPEC.md \
     "${pkgdir}/usr/share/doc/${pkgname}/DEVELOPMENT_SPEC.md"
+  install -Dm644 docs/user/grid-navigation.md \
+    "${pkgdir}/usr/share/doc/${pkgname}/grid-navigation.md"
   install -Dm644 docs/user/commands.md \
     "${pkgdir}/usr/share/doc/${pkgname}/commands.md"
   install -Dm644 docs/user/configuration.md \

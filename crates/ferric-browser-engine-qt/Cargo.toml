@@ -13,12 +13,12 @@ crate-type = ["lib", "staticlib"]
 
 [dependencies]
 adblock.workspace = true
-ferric-browser-config = { path = "../ferric-browser-config" }
-ferric-browser-application = { path = "../ferric-browser-application" }
-ferric-browser-core = { path = "../ferric-browser-core" }
-ferric-browser-ipc = { path = "../ferric-browser-ipc" }
-ferric-browser-runtime = { path = "../ferric-browser-runtime" }
-ferric-browser-storage = { path = "../ferric-browser-storage" }
+ferric-browser-config = { version = "0.1.0", path = "../ferric-browser-config" }
+ferric-browser-application = { version = "0.1.0", path = "../ferric-browser-application" }
+ferric-browser-core = { version = "0.1.0", path = "../ferric-browser-core" }
+ferric-browser-ipc = { version = "0.1.0", path = "../ferric-browser-ipc" }
+ferric-browser-runtime = { version = "0.1.0", path = "../ferric-browser-runtime" }
+ferric-browser-storage = { version = "0.1.0", path = "../ferric-browser-storage" }
 cxx.workspace = true
 cxx-qt.workspace = true
 cxx-qt-lib.workspace = true

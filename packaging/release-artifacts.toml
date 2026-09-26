@@ -62,6 +62,10 @@ name = "generated-configuration-documentation"
 path = "docs/user/configuration.md"
 
 [[artifact]]
+name = "grid-navigation-guide"
+path = "docs/user/grid-navigation.md"
+
+[[artifact]]
 name = "installed-file-manifest"
 path = "packaging/installed-files.txt"
 

@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <QtCore/QByteArray>
+#include <QtCore/QtGlobal>
 #include <QtCore/QUrl>
 #include <QtGui/QClipboard>
 #include <QtGui/QGuiApplication>
@@ -108,8 +109,10 @@ QString ferric_browser_qt_quick_graphics_api()
         return QStringLiteral("metal");
     case QSGRendererInterface::Null:
         return QStringLiteral("null");
+#if QT_VERSION >= QT_VERSION_CHECK(6, 6, 0)
     case QSGRendererInterface::Direct3D12:
         return QStringLiteral("direct3d12");
+#endif
     case QSGRendererInterface::Unknown:
         return QStringLiteral("unknown");
     }

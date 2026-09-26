@@ -46,6 +46,20 @@ ferric-browser reset-data --confirm
 The command rejects unsafe root symlinks and leaves root directories and their
 parents in place. See [the clean-break policy](packaging/MIGRATIONS.md).
 
+## Using the browser
+
+Press `;g` from Normal mode to enter Grid mode, select the numbered region that
+contains the target, and repeat until the crosshair is positioned correctly.
+`Enter` left-clicks the crosshair. See the
+[Grid navigation guide](docs/user/grid-navigation.md) for right-click,
+middle-click, hover, correction, cancellation, and current qualification
+details.
+
+The complete generated references cover
+[keyboard bindings](docs/user/bindings.md), [commands](docs/user/commands.md),
+[configuration](docs/user/configuration.md), and
+[typed actions](docs/user/actions.md).
+
 ## Architecture
 
 Input follows one direction:

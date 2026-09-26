@@ -2678,6 +2678,7 @@ fn validate_arch_install_layout() -> Result<(), String> {
         "/usr/share/icons/hicolor/scalable/apps/io.github.ferricbrowser.FerricBrowser.svg",
         "/usr/share/doc/${pkgname}/README.md",
         "/usr/share/doc/${pkgname}/DEVELOPMENT_SPEC.md",
+        "/usr/share/doc/${pkgname}/grid-navigation.md",
         "/usr/share/doc/${pkgname}/dependencies.toml",
     ];
     for fragment in required_recipe_fragments {
@@ -2695,6 +2696,7 @@ fn validate_arch_install_layout() -> Result<(), String> {
     let installed_manifest = fs::read_to_string("packaging/installed-files.txt")
         .map_err(|error| format!("could not read packaging/installed-files.txt: {error}"))?;
     for required in [
+        "/usr/share/doc/ferric-browser/grid-navigation.md",
         "/usr/share/doc/ferric-browser/LICENSES.md",
         "/usr/share/doc/ferric-browser/license-policy.toml",
         "/usr/share/doc/ferric-browser/SUPPORT.md",
