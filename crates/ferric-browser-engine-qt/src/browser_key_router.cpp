@@ -5,6 +5,16 @@
 #include <QtGui/QGuiApplication>
 #include <QtGui/QKeyEvent>
 
+namespace {
+quint64 keyIdentity(const QKeyEvent *event)
+{
+    const quint32 scanCode = event->nativeScanCode();
+    if (scanCode != 0)
+        return (quint64(1) << 63) | quint64(scanCode);
+    return quint64(quint32(event->key()));
+}
+}
+
 FerricBrowserKeyRouter::FerricBrowserKeyRouter(QObject *parent)
     : QObject(parent)
 {
@@ -59,8 +69,7 @@ bool FerricBrowserKeyRouter::eventFilter(QObject *watched, QEvent *event)
         && static_cast<QKeyEvent *>(event)->key() == Qt::Key_Escape;
     if (keyRelease) {
         const auto *keyEvent = static_cast<QKeyEvent *>(event);
-        const quint64 identity = (quint64(quint32(keyEvent->key())) << 32)
-            | quint64(quint32(keyEvent->modifiers()));
+        const quint64 identity = keyIdentity(keyEvent);
         if (!acceptedKeys_.contains(identity))
             return false;
         acceptedKeys_.remove(identity);
@@ -88,9 +97,7 @@ bool FerricBrowserKeyRouter::eventFilter(QObject *watched, QEvent *event)
     if (handled)
     {
         if (keyPress && !keyEvent->isAutoRepeat()) {
-            const quint64 identity = (quint64(quint32(keyEvent->key())) << 32)
-                | quint64(quint32(keyEvent->modifiers()));
-            acceptedKeys_.insert(identity);
+            acceptedKeys_.insert(keyIdentity(keyEvent));
         }
         event->accept();
     }

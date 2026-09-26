@@ -72,6 +72,7 @@ private:
     bool enabled_ = false;
     bool inputBlocked_ = false;
     bool dispatching_ = false;
+    bool surfaceExhausted_ = false;
     quint64 surfaceSerial_ = 1;
     quint64 surfaceRevision_ = 1;
     QPointer<QQuickItem> targetItem_;
@@ -79,6 +80,8 @@ private:
     QSet<QString> consumedRequestIds_;
     QQueue<QString> consumedRequestOrder_;
     QSet<int> consumedButtons_;
+    bool consumedTabletSequence_ = false;
+    bool consumedTouchSequence_ = false;
     QString consumedSessionId_;
     QTimer dispatchWatchdog_;
     QString pendingRequestId_;

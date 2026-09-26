@@ -340,6 +340,38 @@ TestCase {
         }
     }
 
+    Component {
+        id: spatialGridFixture
+        Item {
+            width: 300
+            height: 240
+            property alias gridItem: spatialGrid
+            property alias gridModel: spatialGridModel
+            QtObject {
+                id: spatialGridModel
+                property bool spatial_visible: true
+                property bool spatial_selecting: true
+                property real spatial_root_width: 300
+                property real spatial_root_height: 240
+                property real spatial_current_x: 0
+                property real spatial_current_y: 0
+                property real spatial_current_width: 300
+                property real spatial_current_height: 240
+                property real spatial_crosshair_x: 150
+                property real spatial_crosshair_y: 120
+                property int spatial_depth: 0
+                property bool spatial_help_visible: false
+                property var spatial_labels: ["1", "2", "3", "4", "5",
+                                              "6", "7", "8", "9"]
+            }
+            FerricSpatialGridOverlay {
+                id: spatialGrid
+                anchors.fill: parent
+                browserUi: spatialGridModel
+            }
+        }
+    }
+
     function init() {
         settingsModel.clear()
         settingsModel.append({ key: "ui.reduced_motion", label: "Reduced motion",
@@ -682,6 +714,21 @@ TestCase {
             return settingsRows.mapToItem(settingsSurface, 0, 0).y
                    < settingsSurface.height
         })
+    }
+
+    function test_spatial_grid_hides_labels_when_cells_become_too_small() {
+        var fixture = createTemporaryObject(spatialGridFixture,
+                                            testWindow.contentItem)
+        verify(fixture)
+        compare(fixture.gridItem.visible, true)
+        compare(fixture.gridItem.labelsFit, true)
+
+        fixture.gridModel.spatial_current_width = 45
+        fixture.gridModel.spatial_current_height = 30
+        tryCompare(fixture.gridItem, "labelsFit", false)
+
+        fixture.gridModel.spatial_selecting = false
+        tryCompare(fixture.gridItem, "visible", false)
     }
 
     function test_context_accent_matching_surface_is_readable() {

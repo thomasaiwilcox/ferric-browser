@@ -184,6 +184,7 @@ pub enum SpatialLifecycle {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum SpatialCancelReason {
     User,
+    ActionDelivered,
     SurfaceUnavailable,
     TargetChanged,
     ViewChanged,
@@ -276,8 +277,8 @@ pub enum SpatialDispatchOutcome {
 pub enum SpatialAck {
     /// The acknowledgement belongs to an old request/session and was ignored.
     Ignored,
-    /// A click or rejected request ended this session.
-    Inactive,
+    /// The request ended this session for the supplied terminal reason.
+    Inactive(SpatialCancelReason),
     /// A successful hover returned to root selection.
     HoverReset,
 }
@@ -727,7 +728,7 @@ impl SpatialSession {
                 self.state = SessionState::Inactive {
                     reason: SpatialCancelReason::DispatchUncertain,
                 };
-                return SpatialAck::Inactive;
+                return SpatialAck::Inactive(SpatialCancelReason::DispatchUncertain);
             };
             self.state = SessionState::Selecting {
                 owner,
@@ -739,14 +740,13 @@ impl SpatialSession {
             };
             SpatialAck::HoverReset
         } else {
-            self.state = SessionState::Inactive {
-                reason: if outcome == SpatialDispatchOutcome::Rejected {
-                    SpatialCancelReason::DispatchRejected
-                } else {
-                    SpatialCancelReason::User
-                },
+            let reason = if outcome == SpatialDispatchOutcome::Rejected {
+                SpatialCancelReason::DispatchRejected
+            } else {
+                SpatialCancelReason::ActionDelivered
             };
-            SpatialAck::Inactive
+            self.state = SessionState::Inactive { reason };
+            SpatialAck::Inactive(reason)
         }
     }
 
@@ -791,6 +791,50 @@ mod tests {
             )
             .expect("surface ready");
         session
+    }
+
+    fn assert_rect_close(actual: LogicalRect, expected: LogicalRect) {
+        let tolerance = 1.0e-12;
+        assert!((actual.x - expected.x).abs() <= tolerance);
+        assert!((actual.y - expected.y).abs() <= tolerance);
+        assert!((actual.width - expected.width).abs() <= tolerance);
+        assert!((actual.height - expected.height).abs() <= tolerance);
+    }
+
+    #[test]
+    fn every_cell_uses_row_major_geometry() {
+        let expected = [
+            (GridCell::One, 0.0, 0.0),
+            (GridCell::Two, 30.0, 0.0),
+            (GridCell::Three, 60.0, 0.0),
+            (GridCell::Four, 0.0, 20.0),
+            (GridCell::Five, 30.0, 20.0),
+            (GridCell::Six, 60.0, 20.0),
+            (GridCell::Seven, 0.0, 40.0),
+            (GridCell::Eight, 30.0, 40.0),
+            (GridCell::Nine, 60.0, 40.0),
+        ];
+        for (cell, x, y) in expected {
+            let root = LogicalRect::new(0.0, 0.0, 90.0, 60.0).expect("valid root");
+            assert_rect_close(
+                root.child(cell),
+                LogicalRect::new(x, y, 30.0, 20.0).expect("valid child"),
+            );
+        }
+    }
+
+    #[test]
+    fn rectangles_reject_non_finite_and_non_positive_geometry() {
+        for rect in [
+            LogicalRect::new(0.0, 0.0, 0.0, 1.0),
+            LogicalRect::new(0.0, 0.0, -1.0, 1.0),
+            LogicalRect::new(0.0, 0.0, f64::NAN, 1.0),
+            LogicalRect::new(0.0, 0.0, 1.0, f64::INFINITY),
+            LogicalRect::new(f64::MAX, 0.0, f64::MAX, 1.0),
+        ] {
+            assert!(rect.is_none());
+        }
+        assert!(LogicalRect::new(-1.5, -2.5, 0.25, 0.5).is_some());
     }
 
     #[test]
@@ -866,7 +910,94 @@ mod tests {
         );
         assert_eq!(
             session.acknowledge(request.request_id, owner, SpatialDispatchOutcome::Delivered),
-            SpatialAck::Inactive
+            SpatialAck::Inactive(SpatialCancelReason::ActionDelivered)
+        );
+        assert_eq!(
+            session.cancel_reason(),
+            Some(SpatialCancelReason::ActionDelivered)
+        );
+        assert!(!session.is_active());
+    }
+
+    #[test]
+    fn pending_dispatch_blocks_selection_and_duplicate_commits() {
+        let mut ids = IdSource::new();
+        let mut session = ready(&mut ids);
+        session
+            .request(&mut ids, SpatialAction::Click(PointerButton::Right))
+            .expect("first request");
+        assert_eq!(
+            session.request(&mut ids, SpatialAction::Hover),
+            Err(SpatialError::DispatchPending)
+        );
+        assert!(matches!(
+            session.refine(GridCell::One),
+            Err(SpatialError::DispatchPending)
+        ));
+        assert!(matches!(session.back(), Err(SpatialError::DispatchPending)));
+        assert!(matches!(
+            session.reset(),
+            Err(SpatialError::DispatchPending)
+        ));
+        assert!(matches!(
+            session.toggle_help(),
+            Err(SpatialError::DispatchPending)
+        ));
+    }
+
+    #[test]
+    fn wrong_owner_ack_is_ignored_and_rejection_is_terminal() {
+        let mut ids = IdSource::new();
+        let mut session = ready(&mut ids);
+        let request = session
+            .request(&mut ids, SpatialAction::Hover)
+            .expect("hover request");
+        let wrong_owner = SpatialOwner::new(
+            session.target(),
+            SurfaceStamp::new(1, 2).expect("valid different stamp"),
+        );
+        assert_eq!(
+            session.acknowledge(
+                request.request_id,
+                wrong_owner,
+                SpatialDispatchOutcome::Delivered
+            ),
+            SpatialAck::Ignored
+        );
+        assert_eq!(session.pending_request(), Some(request));
+        assert_eq!(
+            session.acknowledge(
+                request.request_id,
+                request.owner,
+                SpatialDispatchOutcome::Rejected
+            ),
+            SpatialAck::Inactive(SpatialCancelReason::DispatchRejected)
+        );
+        assert_eq!(
+            session.cancel_reason(),
+            Some(SpatialCancelReason::DispatchRejected)
+        );
+    }
+
+    #[test]
+    fn expiring_a_pending_dispatch_is_uncertain_and_never_revivable() {
+        let mut ids = IdSource::new();
+        let mut session = ready(&mut ids);
+        let request = session
+            .request(&mut ids, SpatialAction::Click(PointerButton::Middle))
+            .expect("click request");
+        session.expire_dispatch();
+        assert_eq!(
+            session.cancel_reason(),
+            Some(SpatialCancelReason::DispatchUncertain)
+        );
+        assert_eq!(
+            session.acknowledge(
+                request.request_id,
+                request.owner,
+                SpatialDispatchOutcome::Delivered
+            ),
+            SpatialAck::Ignored
         );
         assert!(!session.is_active());
     }

@@ -524,9 +524,10 @@ mod qobject {
         #[qproperty(QString, hint_unmatched_policy)]
         #[qproperty(f64, hint_marker_scale)]
         #[qproperty(bool, spatial_visible)]
+        #[qproperty(bool, spatial_selecting)]
         #[qproperty(QString, spatial_session_id)]
         #[qproperty(QString, spatial_dispatch_request)]
-        #[qproperty(QString, spatial_labels)]
+        #[qproperty(QStringList, spatial_labels)]
         #[qproperty(f64, spatial_root_x)]
         #[qproperty(f64, spatial_root_y)]
         #[qproperty(f64, spatial_root_width)]
@@ -1499,10 +1500,11 @@ use ferric_browser_core::{
     HintInteractionInput, HintInteractionOutcome, HintKind, HintSession, HintTarget, IdSource,
     JourneyEdgeKind, JourneyNodeId, LoadingState, LogicalRect, Mode, NavigationContext,
     NavigationError, NavigationSource, ParseInput, ParsedCommand, PointerButton, PrivacyKind,
-    ResourceLifecycle, SearchCase, SpatialAction, SpatialCancelReason, SpatialDispatchOutcome,
-    SpatialOwner, SpatialSession, SpatialTarget, SurfaceStamp, TabId, TabTransfer, Target,
-    ValidatedUrl, WindowId, assign_labels_with_options, canonical_origin, clean_link, complete,
-    parse_chain, refresh_labels, resolve_input, switcher_rank, tokenize_switcher_query,
+    ResourceLifecycle, SearchCase, SpatialAck, SpatialAction, SpatialCancelReason,
+    SpatialDispatchOutcome, SpatialError, SpatialLifecycle, SpatialOwner, SpatialSession,
+    SpatialTarget, SurfaceStamp, TabId, TabTransfer, Target, ValidatedUrl, WindowId,
+    assign_labels_with_options, canonical_origin, clean_link, complete, parse_chain,
+    refresh_labels, resolve_input, switcher_rank, tokenize_switcher_query,
 };
 use ferric_browser_ipc::{
     EventNotification, PublicError, Request, Response, has_pending_requests,
@@ -1737,9 +1739,10 @@ pub struct BrowserUiRust {
     hint_rapid_tabs_created: u8,
     pending_hint_action: Option<String>,
     spatial_visible: bool,
+    spatial_selecting: bool,
     spatial_session_id: QString,
     spatial_dispatch_request: QString,
-    spatial_labels: QString,
+    spatial_labels: QStringList,
     spatial_root_x: f64,
     spatial_root_y: f64,
     spatial_root_width: f64,
@@ -2387,11 +2390,12 @@ impl Default for BrowserUiRust {
             hint_rapid_tabs_created: 0,
             pending_hint_action: None,
             spatial_visible: false,
+            spatial_selecting: false,
             spatial_session_id: QString::default(),
             spatial_dispatch_request: QString::default(),
-            spatial_labels: QString::from(
-                "[\"1\",\"2\",\"3\",\"4\",\"5\",\"6\",\"7\",\"8\",\"9\"]",
-            ),
+            spatial_labels: (1..=9)
+                .map(|cell| QString::from(cell.to_string()))
+                .collect(),
             spatial_root_x: 0.0,
             spatial_root_y: 0.0,
             spatial_root_width: 0.0,

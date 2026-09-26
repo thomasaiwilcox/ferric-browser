@@ -3,16 +3,14 @@
 #include <QtCore/QCoreApplication>
 #include <QtCore/QEvent>
 #include <QtCore/QTimer>
-#include <QtGui/QCursor>
 #include <QtGui/QGuiApplication>
 #include <QtGui/QMouseEvent>
-#include <QtGui/QWheelEvent>
 #include <QtQuick/QQuickWindow>
 #include <cmath>
 #include <limits>
 
 namespace {
-constexpr int kMaxRequestBytes = 128;
+constexpr int kMaxRequestCharacters = 128;
 constexpr qsizetype kMaxConsumedRequestIds = 64;
 }
 
@@ -50,7 +48,6 @@ void FerricPagePointerAdapter::setEnabled(bool enabled)
         consumedRequestIds_.clear();
         consumedRequestOrder_.clear();
         consumedSessionId_.clear();
-        consumedButtons_.clear();
     }
     emit enabledChanged();
 }
@@ -59,14 +56,26 @@ void FerricPagePointerAdapter::setTargetItem(QQuickItem *item)
 {
     if (targetItem_ == item)
         return;
-    if (targetItem_)
+    if (targetItem_) {
         targetItem_->removeEventFilter(this);
+        QObject::disconnect(targetItem_.data(), nullptr, this, nullptr);
+    }
     targetItem_ = item;
     if (targetItem_) {
         targetItem_->installEventFilter(this);
         connect(targetItem_, &QObject::destroyed, this, [this] {
+            targetItem_.clear();
             advanceSurface(true, QStringLiteral("target-changed"));
             emit targetItemChanged();
+        });
+        connect(targetItem_, &QQuickItem::widthChanged, this, [this] {
+            advanceSurface(false, QStringLiteral("geometry-changed"));
+        });
+        connect(targetItem_, &QQuickItem::heightChanged, this, [this] {
+            advanceSurface(false, QStringLiteral("geometry-changed"));
+        });
+        connect(targetItem_, &QQuickItem::visibleChanged, this, [this] {
+            advanceSurface(false, QStringLiteral("geometry-changed"));
         });
     }
     advanceSurface(true, QStringLiteral("target-changed"));
@@ -77,12 +86,15 @@ void FerricPagePointerAdapter::setTargetWindow(QWindow *window)
 {
     if (targetWindow_ == window)
         return;
-    if (targetWindow_)
+    if (targetWindow_) {
         targetWindow_->removeEventFilter(this);
+        QObject::disconnect(targetWindow_.data(), nullptr, this, nullptr);
+    }
     targetWindow_ = window;
     if (targetWindow_) {
         targetWindow_->installEventFilter(this);
         connect(targetWindow_, &QObject::destroyed, this, [this] {
+            targetWindow_.clear();
             advanceSurface(true, QStringLiteral("window-changed"));
             emit targetWindowChanged();
         });
@@ -106,13 +118,17 @@ void FerricPagePointerAdapter::advanceSurface(bool targetChanged, const QString 
     dispatchWatchdog_.stop();
     pendingRequestId_.clear();
     pendingSessionId_.clear();
-    surfaceRevision_ = surfaceRevision_ == std::numeric_limits<quint64>::max()
-        ? surfaceRevision_
-        : surfaceRevision_ + 1;
+    if (surfaceExhausted_ || surfaceRevision_ == std::numeric_limits<quint64>::max()
+        || (targetChanged && surfaceSerial_ == std::numeric_limits<quint64>::max())) {
+        surfaceExhausted_ = true;
+        emit surfaceChanged();
+        if (enabled_)
+            emit invalidated(QStringLiteral("surface-unavailable"));
+        return;
+    }
+    ++surfaceRevision_;
     if (targetChanged)
-        surfaceSerial_ = surfaceSerial_ == std::numeric_limits<quint64>::max()
-            ? surfaceSerial_
-            : surfaceSerial_ + 1;
+        ++surfaceSerial_;
     emit surfaceChanged();
     if (enabled_)
         emit invalidated(reason);
@@ -120,10 +136,11 @@ void FerricPagePointerAdapter::advanceSurface(bool targetChanged, const QString 
 
 bool FerricPagePointerAdapter::validTarget() const
 {
-    return targetItem_ && targetWindow_
+    return !surfaceExhausted_ && targetItem_ && targetWindow_
         && static_cast<QWindow *>(targetItem_->window()) == targetWindow_.data()
         && targetItem_->isVisible() && targetWindow_->isVisible()
-        && targetWindow_->isActive() && targetItem_->width() > 0.0
+        && targetWindow_->isActive() && std::isfinite(targetItem_->width())
+        && std::isfinite(targetItem_->height()) && targetItem_->width() > 0.0
         && targetItem_->height() > 0.0 && !inputBlocked_;
 }
 
@@ -153,8 +170,12 @@ void FerricPagePointerAdapter::dispatch(const QString &requestId,
     bool revisionOk = false;
     const quint64 serial = serialText.toULongLong(&serialOk);
     const quint64 revision = revisionText.toULongLong(&revisionOk);
-    if (requestId.isEmpty() || requestId.size() > kMaxRequestBytes || sessionId.isEmpty()
-        || sessionId.size() > kMaxRequestBytes || consumedRequestIds_.contains(requestId)) {
+    serialOk = serialOk && serial != 0 && serialText == QString::number(serial);
+    revisionOk = revisionOk && revision != 0 && revisionText == QString::number(revision);
+    if (requestId.isEmpty() || requestId.size() > kMaxRequestCharacters || sessionId.isEmpty()
+        || sessionId.size() > kMaxRequestCharacters
+        || (!consumedSessionId_.isEmpty() && consumedSessionId_ != sessionId)
+        || consumedRequestIds_.contains(requestId)) {
         acknowledge(requestId, sessionId, serialText, revisionText, QStringLiteral("rejected"));
         return;
     }
@@ -182,21 +203,25 @@ void FerricPagePointerAdapter::dispatch(const QString &requestId,
         ? Qt::RightButton
         : action == QStringLiteral("middle") ? Qt::MiddleButton : Qt::LeftButton;
     const bool click = action != QStringLiteral("hover");
+    const QPointer<QQuickItem> dispatchTarget = targetItem_;
     pendingRequestId_ = requestId;
     pendingSessionId_ = sessionId;
     dispatchWatchdog_.start();
     dispatching_ = true;
     QMouseEvent move(QEvent::MouseMove, local, scene, global, Qt::NoButton, Qt::NoButton,
-                     Qt::NoModifier, Qt::MouseEventNotSynthesized);
-    const bool moved = QCoreApplication::sendEvent(targetItem_, &move);
+                     Qt::NoModifier, Qt::MouseEventSynthesizedByApplication);
+    const bool moved = dispatchTarget
+        && QCoreApplication::sendEvent(dispatchTarget.data(), &move);
     bool delivered = moved;
-    if (click && moved) {
+    if (click && moved && dispatchTarget) {
         QMouseEvent press(QEvent::MouseButtonPress, local, scene, global, button, button,
-                          Qt::NoModifier, Qt::MouseEventNotSynthesized);
+                          Qt::NoModifier, Qt::MouseEventSynthesizedByApplication);
         QMouseEvent release(QEvent::MouseButtonRelease, local, scene, global, button,
-                            Qt::NoButton, Qt::NoModifier, Qt::MouseEventNotSynthesized);
-        const bool pressed = QCoreApplication::sendEvent(targetItem_, &press);
-        const bool released = QCoreApplication::sendEvent(targetItem_, &release);
+                            Qt::NoButton, Qt::NoModifier,
+                            Qt::MouseEventSynthesizedByApplication);
+        const bool pressed = QCoreApplication::sendEvent(dispatchTarget.data(), &press);
+        const bool released = dispatchTarget
+            && QCoreApplication::sendEvent(dispatchTarget.data(), &release);
         delivered = pressed && released;
     }
     dispatching_ = false;
@@ -208,6 +233,28 @@ bool FerricPagePointerAdapter::eventFilter(QObject *watched, QEvent *event)
 {
     if (dispatching_)
         return false;
+    if (event->type() == QEvent::MouseButtonRelease) {
+        const auto *mouse = static_cast<QMouseEvent *>(event);
+        if (consumedButtons_.remove(int(mouse->button())) > 0) {
+            event->accept();
+            return true;
+        }
+    }
+    if (consumedTabletSequence_
+        && (event->type() == QEvent::TabletMove || event->type() == QEvent::TabletRelease)) {
+        if (event->type() == QEvent::TabletRelease)
+            consumedTabletSequence_ = false;
+        event->accept();
+        return true;
+    }
+    if (consumedTouchSequence_
+        && (event->type() == QEvent::TouchUpdate || event->type() == QEvent::TouchEnd
+            || event->type() == QEvent::TouchCancel)) {
+        if (event->type() == QEvent::TouchEnd || event->type() == QEvent::TouchCancel)
+            consumedTouchSequence_ = false;
+        event->accept();
+        return true;
+    }
     if (watched == targetItem_) {
         switch (event->type()) {
         case QEvent::Resize:
@@ -247,16 +294,24 @@ bool FerricPagePointerAdapter::eventFilter(QObject *watched, QEvent *event)
         emit physicalPointerDetected(QStringLiteral("physical-pointer"));
         return true;
     }
-    case QEvent::MouseButtonRelease: {
-        const auto *mouse = static_cast<QMouseEvent *>(event);
-        if (consumedButtons_.remove(int(mouse->button())) > 0)
-            return true;
+    case QEvent::MouseButtonRelease:
         return false;
-    }
     case QEvent::Wheel:
     case QEvent::TabletMove:
+        dispatchWatchdog_.stop();
+        pendingRequestId_.clear();
+        pendingSessionId_.clear();
+        emit physicalPointerDetected(QStringLiteral("physical-pointer"));
+        return true;
     case QEvent::TabletPress:
+        consumedTabletSequence_ = true;
+        dispatchWatchdog_.stop();
+        pendingRequestId_.clear();
+        pendingSessionId_.clear();
+        emit physicalPointerDetected(QStringLiteral("physical-pointer"));
+        return true;
     case QEvent::TouchBegin:
+        consumedTouchSequence_ = true;
         dispatchWatchdog_.stop();
         pendingRequestId_.clear();
         pendingSessionId_.clear();

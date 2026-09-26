@@ -254,6 +254,53 @@ fn browser_key_router_filters_before_webengine_and_requires_explicit_acceptance(
     assert!(source.contains("QGuiApplication::focusWindow() != targetWindow_"));
     assert!(source.contains("emit keyPressed("));
     assert!(source.contains("return handled;"));
+    assert!(source.contains("nativeScanCode()"));
+    assert!(!source.contains("| quint64(quint32(keyEvent->modifiers()))"));
+}
+
+#[test]
+fn spatial_grid_owns_complete_input_gestures_and_stale_surface_callbacks() {
+    let adapter_header = include_str!("../browser_page_pointer_adapter.h");
+    let adapter_source = include_str!("../browser_page_pointer_adapter.cpp");
+    let overlay = include_str!("../../qml/components/FerricSpatialGridOverlay.qml");
+    let qml = QML_SOURCE;
+
+    assert!(adapter_header.contains("QPointer<QQuickItem> targetItem_"));
+    assert!(adapter_header.contains("QSet<int> consumedButtons_"));
+    assert!(adapter_header.contains("bool consumedTabletSequence_"));
+    assert!(adapter_header.contains("bool consumedTouchSequence_"));
+    assert!(adapter_header.contains("bool surfaceExhausted_"));
+    assert!(adapter_source.contains("QObject::disconnect(targetItem_.data()"));
+    assert!(adapter_source.contains("const QPointer<QQuickItem> dispatchTarget = targetItem_"));
+    assert!(adapter_source.contains("event->type() == QEvent::MouseButtonRelease"));
+    assert!(adapter_source.contains("consumedButtons_.remove"));
+    assert!(adapter_source.contains("QEvent::TabletRelease"));
+    assert!(adapter_source.contains("QEvent::TouchEnd"));
+    assert!(!adapter_source.contains("consumedButtons_.clear()"));
+    assert!(adapter_source.contains("surfaceExhausted_ = true"));
+    assert!(!adapter_source.contains("QCursor::setPos"));
+
+    assert!(qml.contains("inputBlocked: window.browserChromeInputActive"));
+    assert!(qml.contains("var sessionId = browserUi.spatial_session_id"));
+    assert!(qml.contains("browserUi.spatial_session_id !== sessionId"));
+    assert!(ADAPTER_SOURCE.contains("#[qproperty(QStringList, spatial_labels)]"));
+    assert!(overlay.contains("browserUi.spatial_selecting"));
+    assert!(overlay.contains("Accessible.role: Accessible.Indicator"));
+    assert!(overlay.contains("readonly property bool labelsFit:"));
+    assert!(!overlay.contains("JSON.parse("));
+}
+
+#[test]
+fn spatial_grid_reports_ready_pending_and_terminal_outcomes() {
+    let source = ADAPTER_SOURCE;
+    assert!(source.contains("set_spatial_visible(true)"));
+    assert!(source.contains("Grid ready"));
+    assert!(source.contains("Grid action pending"));
+    assert!(source.contains("Grid click delivered"));
+    assert!(source.contains("Grid hover delivered; selection reset"));
+    assert!(source.contains("Grid denied during macro recording; recording aborted"));
+    assert!(source.contains("Grid denied during macro playback; playback aborted"));
+    assert!(source.contains("SpatialAck::Inactive(reason)"));
 }
 
 #[test]

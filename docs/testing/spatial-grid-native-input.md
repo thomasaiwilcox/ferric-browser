@@ -12,9 +12,15 @@ warps the OS cursor.
 ```text
 BrowserUiRust spatial projection
   -> FerricPagePointerAdapter (exact active WebEngineView QQuickItem)
-  -> QMouseEvent move/press/release via public QCoreApplication::sendEvent
+  -> application-synthesized QMouseEvent move/press/release via public QCoreApplication::sendEvent
   -> Qt Quick/WebEngine hit testing
 ```
+
+The adapter labels these events with Qt's
+`MouseEventSynthesizedByApplication` source. This is accurate source metadata;
+it is not evidence that Chromium reports `PointerEvent.isTrusted` or grants
+transient user activation. Those outcomes remain part of the native matrix
+below.
 
 The adapter's request and acknowledgement are one-shot and carry the session,
 request, serial, revision, point, and bounded outcome. Geometry, target,
@@ -48,3 +54,13 @@ bounded offscreen Qt/QML adapter smoke, and `cargo xtask test wayland` passes
 the nested native Wayland startup smoke. The latter reports interactive input
 qualification as not-run when the compositor does not expose its virtual
 keyboard protocol; that result does not fill any row in the matrix above.
+
+## 2026-09-26 implementation audit
+
+The post-implementation audit re-ran the workspace, QML, Clippy, and offscreen
+adapter gates. It also added regression coverage for typed label projection,
+session-bound surface callbacks, exact terminal acknowledgements, complete
+key/pointer gesture ownership, stale target destruction, bounded request
+deduplication, macro denial, and fail-closed surface-stamp exhaustion. These
+automated checks harden the implementation but do not replace the pending
+native desktop observations in the qualification table.

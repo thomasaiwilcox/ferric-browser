@@ -1205,8 +1205,7 @@ GridLayout {
         enabled: browserUi.spatial_visible
         targetItem: browserUi.spatial_visible ? window.activeWebView() : null
         targetWindow: window
-        inputBlocked: window.permissionPromptVisible || window.shutdownPromptVisible
-                     || window.desktopMediaPromptVisible || window.devToolsVisible
+        inputBlocked: window.browserChromeInputActive
         onDispatchAcknowledged: function(requestId, sessionId, serial, revision, outcome) {
             browserUi.spatial_dispatch_ack(
                         requestId, sessionId, serial, revision, outcome)
@@ -1237,7 +1236,12 @@ GridLayout {
             if (!browserUi.spatial_visible) {
                 return
             }
+            var sessionId = browserUi.spatial_session_id
             Qt.callLater(function() {
+                if (!browserUi.spatial_visible
+                        || browserUi.spatial_session_id !== sessionId) {
+                    return
+                }
                 var view = window.activeWebView()
                 if (view && view.width > 0 && view.height > 0) {
                     browserUi.spatial_surface_ready(
@@ -1274,6 +1278,11 @@ GridLayout {
         anchors.fill: webViews
         z: 31
         browserUi: window.browserUi
+        chromeScale: window.chromeScale
+        lineColor: window.primaryTextColor
+        labelColor: window.selectionTextColor
+        labelBackground: window.selectionColor
+        crosshairColor: window.accentColor
     }
 
     Loader {

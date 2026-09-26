@@ -6,11 +6,36 @@
 
 use super::{
     BindingResolver, CxxQtType, Event, GridCell, LogicalRect, Mode, Pin, PointerButton, QString,
-    SpatialAction, SpatialCancelReason, SpatialDispatchOutcome, SpatialOwner, SpatialSession,
-    SpatialTarget, SurfaceStamp, current_target, qobject,
+    QStringList, SpatialAck, SpatialAction, SpatialCancelReason, SpatialDispatchOutcome,
+    SpatialError, SpatialLifecycle, SpatialOwner, SpatialSession, SpatialTarget, SurfaceStamp,
+    current_target, qobject,
 };
 use ferric_browser_core::{SpatialRequestId, SpatialSessionId};
 use serde_json::json;
+
+fn default_spatial_labels() -> QStringList {
+    (1..=9)
+        .map(|cell| QString::from(cell.to_string()))
+        .collect()
+}
+
+fn terminal_spatial_reason(
+    lifecycle: Option<SpatialLifecycle>,
+    reason: SpatialCancelReason,
+) -> SpatialCancelReason {
+    if lifecycle == Some(SpatialLifecycle::DispatchPending)
+        && !matches!(
+            reason,
+            SpatialCancelReason::ActionDelivered
+                | SpatialCancelReason::DispatchRejected
+                | SpatialCancelReason::DispatchUncertain
+        )
+    {
+        SpatialCancelReason::DispatchUncertain
+    } else {
+        reason
+    }
+}
 
 impl qobject::BrowserUi {
     pub(super) fn clear_spatial_session_state(mut self: Pin<&mut Self>) {
@@ -20,12 +45,11 @@ impl qobject::BrowserUi {
             this.spatial_session = None;
         }
         self.as_mut().set_spatial_visible(false);
+        self.as_mut().set_spatial_selecting(false);
         self.as_mut().set_spatial_session_id(QString::default());
         self.as_mut()
             .set_spatial_dispatch_request(QString::default());
-        self.as_mut().set_spatial_labels(QString::from(
-            "[\"1\",\"2\",\"3\",\"4\",\"5\",\"6\",\"7\",\"8\",\"9\"]",
-        ));
+        self.as_mut().set_spatial_labels(default_spatial_labels());
         self.as_mut().set_spatial_root_x(0.0);
         self.as_mut().set_spatial_root_y(0.0);
         self.as_mut().set_spatial_root_width(0.0);
@@ -64,11 +88,12 @@ impl qobject::BrowserUi {
                 labels[index - 1] = label;
             }
         }
-        self.as_mut().set_spatial_labels(QString::from(
-            serde_json::to_string(&labels).unwrap_or_else(|_| {
-                "[\"—\",\"—\",\"—\",\"—\",\"—\",\"—\",\"—\",\"—\",\"—\"]".into()
-            }),
-        ));
+        self.as_mut().set_spatial_labels(
+            labels
+                .into_iter()
+                .map(QString::from)
+                .collect::<QStringList>(),
+        );
         let projection = self
             .as_ref()
             .rust()
@@ -76,10 +101,13 @@ impl qobject::BrowserUi {
             .as_ref()
             .and_then(SpatialSession::projection);
         let Some(projection) = projection else {
-            self.as_mut().clear_spatial_session_state();
+            self.as_mut()
+                .cancel_spatial_navigation(SpatialCancelReason::DispatchUncertain);
             return;
         };
         self.as_mut().set_spatial_visible(true);
+        self.as_mut()
+            .set_spatial_selecting(matches!(projection.lifecycle, SpatialLifecycle::Selecting));
         self.as_mut()
             .set_spatial_session_id(QString::from(projection.session_id.to_string()));
         self.as_mut().set_spatial_root_x(projection.root_rect.x);
@@ -106,10 +134,27 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn begin_spatial_navigation(mut self: Pin<&mut Self>) -> bool {
-        if self.as_ref().rust().core_mode == Mode::Grid
-            && self.as_ref().rust().spatial_session.is_some()
-        {
-            return true;
+        if self.as_ref().rust().core_mode == Mode::Grid {
+            if self.as_ref().rust().spatial_session.is_some() {
+                return true;
+            }
+            self.as_mut()
+                .cancel_spatial_navigation(SpatialCancelReason::DispatchUncertain);
+            return false;
+        }
+        if self.as_ref().rust().recording_macro.is_some() {
+            self.as_mut().rust_mut().as_mut().get_mut().recording_macro = None;
+            self.as_mut().sync_macro_status_text();
+            self.set_status_text(QString::from(
+                "Grid denied during macro recording; recording aborted",
+            ));
+            return false;
+        }
+        if self.as_ref().rust().macro_depth > 0 {
+            self.set_status_text(QString::from(
+                "Grid denied during macro playback; playback aborted",
+            ));
+            return false;
         }
         if !matches!(self.as_ref().rust().core_mode, Mode::Normal | Mode::Command) {
             self.set_status_text(QString::from("Grid mode is available from Normal mode"));
@@ -154,13 +199,28 @@ impl qobject::BrowserUi {
             .set_spatial_session_id(QString::from(session_id));
         self.as_mut()
             .set_spatial_dispatch_request(QString::default());
+        self.as_mut().set_spatial_selecting(false);
         self.as_mut()
             .set_status_text(QString::from("Grid mode: waiting for page surface"));
+        // This signal schedules the one-turn, session-bound surface capture
+        // in QML, so publish it only after the session identity is complete.
+        self.as_mut().set_spatial_visible(true);
         true
     }
 
     pub(super) fn cancel_spatial_navigation(mut self: Pin<&mut Self>, reason: SpatialCancelReason) {
         let was_grid = self.as_ref().rust().core_mode == Mode::Grid;
+        let had_session = self.as_ref().rust().spatial_session.is_some();
+        if !was_grid && !had_session {
+            return;
+        }
+        let lifecycle = self
+            .as_ref()
+            .rust()
+            .spatial_session
+            .as_ref()
+            .and_then(SpatialSession::lifecycle);
+        let reason = terminal_spatial_reason(lifecycle, reason);
         if let Some(session) = self
             .as_mut()
             .rust_mut()
@@ -181,13 +241,17 @@ impl qobject::BrowserUi {
         }
         let status = match reason {
             SpatialCancelReason::User => "Grid cancelled",
-            SpatialCancelReason::WindowInactive | SpatialCancelReason::PhysicalPointer => {
-                "Grid cancelled: pointer or window took control"
-            }
+            SpatialCancelReason::ActionDelivered => "Grid click delivered",
+            SpatialCancelReason::WindowInactive => "Grid cancelled: window lost focus",
+            SpatialCancelReason::PhysicalPointer => "Grid cancelled: pointer took control",
             SpatialCancelReason::PromptOwnedInput => "Grid cancelled: browser prompt took control",
             SpatialCancelReason::DispatchRejected => "Grid action rejected",
             SpatialCancelReason::DispatchUncertain => "Grid action outcome uncertain",
-            _ => "Grid cancelled: page view changed",
+            SpatialCancelReason::SurfaceUnavailable => "Grid unavailable: page surface not ready",
+            SpatialCancelReason::RendererUnavailable => "Grid cancelled: renderer unavailable",
+            SpatialCancelReason::TargetChanged
+            | SpatialCancelReason::ViewChanged
+            | SpatialCancelReason::GeometryChanged => "Grid cancelled: page view changed",
         };
         self.set_status_text(QString::from(status));
     }
@@ -232,6 +296,7 @@ impl qobject::BrowserUi {
         match result {
             Ok(_) => {
                 self.as_mut().publish_spatial_projection();
+                self.set_status_text(QString::from("Grid ready"));
                 true
             }
             Err(_) => {
@@ -251,9 +316,9 @@ impl qobject::BrowserUi {
             };
             session.request(&mut this.spatial_ids, action)
         };
-        let Ok(request) = request else {
-            self.set_status_text(QString::from("Grid action rejected"));
-            return false;
+        let request = match request {
+            Ok(request) => request,
+            Err(error) => return self.as_mut().report_spatial_error(error),
         };
         let action_name = match request.action {
             SpatialAction::Hover => "hover",
@@ -271,10 +336,57 @@ impl qobject::BrowserUi {
             "y": request.point.y,
             "action": action_name,
         });
+        self.as_mut().publish_spatial_projection();
+        self.as_mut()
+            .set_status_text(QString::from("Grid action pending"));
+        // Publishing the request enters QML and the native adapter
+        // synchronously. Set all pending-state projection first so a
+        // re-entrant acknowledgement remains the final state/status.
         self.as_mut()
             .set_spatial_dispatch_request(QString::from(payload.to_string()));
-        self.as_mut().publish_spatial_projection();
         true
+    }
+
+    fn report_spatial_error(mut self: Pin<&mut Self>, error: SpatialError) -> bool {
+        let status = match error {
+            SpatialError::NoSurface => "Grid is waiting for the page surface",
+            SpatialError::DispatchPending => "Grid action is already pending",
+            SpatialError::AtDepthLimit => "Grid refinement depth limit reached",
+            SpatialError::PrecisionLimit => "Grid precision limit reached",
+            SpatialError::Inactive => {
+                self.as_mut()
+                    .cancel_spatial_navigation(SpatialCancelReason::DispatchRejected);
+                return false;
+            }
+            SpatialError::InvalidGeometry
+            | SpatialError::InvalidSurface
+            | SpatialError::TargetMismatch
+            | SpatialError::SurfaceMismatch
+            | SpatialError::NoDispatchPending
+            | SpatialError::InvalidRequestPoint
+            | SpatialError::RevisionExhausted => {
+                self.as_mut()
+                    .cancel_spatial_navigation(SpatialCancelReason::DispatchRejected);
+                return false;
+            }
+        };
+        self.set_status_text(QString::from(status));
+        false
+    }
+
+    fn finish_spatial_operation(
+        mut self: Pin<&mut Self>,
+        result: Result<(), SpatialError>,
+        status: &'static str,
+    ) -> bool {
+        match result {
+            Ok(()) => {
+                self.as_mut().publish_spatial_projection();
+                self.set_status_text(QString::from(status));
+                true
+            }
+            Err(error) => self.as_mut().report_spatial_error(error),
+        }
     }
 
     pub(super) fn handle_spatial_command(
@@ -317,13 +429,12 @@ impl qobject::BrowserUi {
                     .get_mut()
                     .spatial_session
                     .as_mut()
-                    .and_then(|session| session.refine(cell).ok());
-                if result.is_none() {
-                    self.set_status_text(QString::from("Grid precision or depth limit reached"));
-                    return Some(false);
-                }
-                self.as_mut().publish_spatial_projection();
-                Some(true)
+                    .ok_or(SpatialError::Inactive)
+                    .and_then(|session| session.refine(cell).map(|_| ()));
+                Some(
+                    self.as_mut()
+                        .finish_spatial_operation(result, "Grid refined"),
+                )
             }
             "grid-click" => {
                 let [button] = arguments else {
@@ -343,9 +454,6 @@ impl qobject::BrowserUi {
                         return Some(false);
                     }
                 };
-                if arguments.len() != 1 {
-                    return Some(false);
-                }
                 Some(
                     self.as_mut()
                         .spatial_dispatch_action(SpatialAction::Click(button)),
@@ -353,57 +461,71 @@ impl qobject::BrowserUi {
             }
             "grid-hover" => {
                 if !arguments.is_empty() {
+                    self.set_status_text(QString::from("grid-hover does not accept arguments"));
                     return Some(false);
                 }
                 Some(self.as_mut().spatial_dispatch_action(SpatialAction::Hover))
             }
             "grid-back" => {
                 if !arguments.is_empty() {
+                    self.set_status_text(QString::from("grid-back does not accept arguments"));
                     return Some(false);
                 }
-                let _ = self
+                let result = self
                     .as_mut()
                     .rust_mut()
                     .as_mut()
                     .get_mut()
                     .spatial_session
                     .as_mut()
-                    .and_then(|session| session.back().ok());
-                self.as_mut().publish_spatial_projection();
-                Some(true)
+                    .ok_or(SpatialError::Inactive)
+                    .and_then(|session| session.back().map(|_| ()));
+                Some(
+                    self.as_mut()
+                        .finish_spatial_operation(result, "Grid moved back"),
+                )
             }
             "grid-reset" => {
                 if !arguments.is_empty() {
+                    self.set_status_text(QString::from("grid-reset does not accept arguments"));
                     return Some(false);
                 }
-                let _ = self
+                let result = self
                     .as_mut()
                     .rust_mut()
                     .as_mut()
                     .get_mut()
                     .spatial_session
                     .as_mut()
-                    .and_then(|session| session.reset().ok());
-                self.as_mut().publish_spatial_projection();
-                Some(true)
+                    .ok_or(SpatialError::Inactive)
+                    .and_then(|session| session.reset().map(|_| ()));
+                Some(
+                    self.as_mut()
+                        .finish_spatial_operation(result, "Grid reset to full page"),
+                )
             }
             "grid-help" => {
                 if !arguments.is_empty() {
+                    self.set_status_text(QString::from("grid-help does not accept arguments"));
                     return Some(false);
                 }
-                let _ = self
+                let result = self
                     .as_mut()
                     .rust_mut()
                     .as_mut()
                     .get_mut()
                     .spatial_session
                     .as_mut()
-                    .and_then(|session| session.toggle_help().ok());
-                self.as_mut().publish_spatial_projection();
-                Some(true)
+                    .ok_or(SpatialError::Inactive)
+                    .and_then(|session| session.toggle_help().map(|_| ()));
+                Some(
+                    self.as_mut()
+                        .finish_spatial_operation(result, "Grid help toggled"),
+                )
             }
             "grid-cancel" => {
                 if !arguments.is_empty() {
+                    self.set_status_text(QString::from("grid-cancel does not accept arguments"));
                     return Some(false);
                 }
                 self.as_mut()
@@ -437,6 +559,11 @@ impl qobject::BrowserUi {
         let Some(surface) = SurfaceStamp::new(serial, revision) else {
             return false;
         };
+        let outcome = match outcome.to_string().as_str() {
+            "delivered" => SpatialDispatchOutcome::Delivered,
+            "rejected" => SpatialDispatchOutcome::Rejected,
+            _ => return false,
+        };
         let result = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
@@ -447,27 +574,21 @@ impl qobject::BrowserUi {
                 return false;
             }
             let owner = SpatialOwner::new(session.target(), surface);
-            let outcome = match outcome.to_string().as_str() {
-                "delivered" => SpatialDispatchOutcome::Delivered,
-                "rejected" => SpatialDispatchOutcome::Rejected,
-                _ => return false,
-            };
             session.acknowledge(request_id, owner, outcome)
         };
-        if matches!(result, ferric_browser_core::SpatialAck::Ignored) {
-            return false;
-        }
-        self.as_mut()
-            .set_spatial_dispatch_request(QString::default());
-        if matches!(result, ferric_browser_core::SpatialAck::Inactive) {
-            self.as_mut()
-                .cancel_spatial_navigation(if outcome.to_string() == "rejected" {
-                    SpatialCancelReason::DispatchRejected
-                } else {
-                    SpatialCancelReason::User
-                });
-        } else {
-            self.as_mut().publish_spatial_projection();
+        match result {
+            SpatialAck::Ignored => return false,
+            SpatialAck::HoverReset => {
+                self.as_mut()
+                    .set_spatial_dispatch_request(QString::default());
+                self.as_mut().publish_spatial_projection();
+                self.set_status_text(QString::from("Grid hover delivered; selection reset"));
+            }
+            SpatialAck::Inactive(reason) => {
+                self.as_mut()
+                    .set_spatial_dispatch_request(QString::default());
+                self.as_mut().cancel_spatial_navigation(reason);
+            }
         }
         true
     }
@@ -481,9 +602,47 @@ impl qobject::BrowserUi {
             "prompt-owned-input" => SpatialCancelReason::PromptOwnedInput,
             "renderer-unavailable" => SpatialCancelReason::RendererUnavailable,
             "physical-pointer" => SpatialCancelReason::PhysicalPointer,
+            "dispatch-rejected" => SpatialCancelReason::DispatchRejected,
             "dispatch-uncertain" => SpatialCancelReason::DispatchUncertain,
             _ => SpatialCancelReason::ViewChanged,
         };
         self.as_mut().cancel_spatial_navigation(reason);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pending_dispatch_invalidation_is_uncertain_but_acknowledgements_remain_exact() {
+        assert_eq!(
+            terminal_spatial_reason(
+                Some(SpatialLifecycle::DispatchPending),
+                SpatialCancelReason::GeometryChanged,
+            ),
+            SpatialCancelReason::DispatchUncertain
+        );
+        assert_eq!(
+            terminal_spatial_reason(
+                Some(SpatialLifecycle::DispatchPending),
+                SpatialCancelReason::User,
+            ),
+            SpatialCancelReason::DispatchUncertain
+        );
+        assert_eq!(
+            terminal_spatial_reason(
+                Some(SpatialLifecycle::DispatchPending),
+                SpatialCancelReason::ActionDelivered,
+            ),
+            SpatialCancelReason::ActionDelivered
+        );
+        assert_eq!(
+            terminal_spatial_reason(
+                Some(SpatialLifecycle::Selecting),
+                SpatialCancelReason::GeometryChanged,
+            ),
+            SpatialCancelReason::GeometryChanged
+        );
     }
 }
