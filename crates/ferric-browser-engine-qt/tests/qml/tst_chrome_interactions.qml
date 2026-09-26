@@ -711,11 +711,13 @@ TestCase {
         var settingsScroll = findChild(settingsSurface, "settingsScroll")
         verify(settingsScroll)
         verify(settingsScroll.contentHeight > settingsScroll.height)
-        settingsScroll.contentItem.contentY = settingsScroll.contentHeight
-                                             - settingsScroll.height
+        var settingsViewport = settingsScroll.contentItem
+        verify(settingsViewport)
+        settingsViewport.contentY = settingsViewport.contentHeight
+                                    - settingsViewport.height
         tryVerify(function() {
-            return settingsRows.mapToItem(settingsSurface, 0, 0).y
-                   < settingsSurface.height
+            return settingsViewport.contentY + settingsViewport.height
+                   >= settingsViewport.contentHeight - 1
         })
     }
 
