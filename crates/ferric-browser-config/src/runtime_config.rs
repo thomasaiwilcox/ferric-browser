@@ -2,16 +2,17 @@
 
 use super::{
     ActionTargetConfig, BTreeMap, BTreeSet, BlockingConfig, CURRENT_SCHEMA_VERSION, ContentConfig,
-    ContextsConfig, Deserialize, DesktopConfig, DiscoveryConfig, DownloadsConfig, HistoryConfig,
-    HyprlandConfig, InputConfig, IpcConfig, LinksConfig, LoggingConfig, MAX_INCLUDE_DEPTH,
-    MAX_RUNTIME_SETTINGS, MAX_RUNTIME_VALUE_BYTES, MAX_TOTAL_BYTES, NavigationConfig, Path,
-    PathBuf, PermissionRuleConfig, PermissionsConfig, PrivacyConfig, ProfileDefinition,
-    ProfilesConfig, RUNTIME_SCHEMA_VERSION, Serialize, SessionConfig, SiteDoctorConfig, SiteRule,
-    SpellcheckConfig, SwitcherConfig, SystemTime, TabsConfig, ThemeConfig, ToolsConfig, UNIX_EPOCH,
-    UiConfig, Write, default_search_engines, fs, io_error, runtime_site_rule_id,
-    set_private_file_mode, set_private_permissions, setting_supports_site_scope, validate,
-    validate_contexts, validate_profile_definition, validate_profiles, validate_runtime_binding,
-    validate_runtime_key, validate_runtime_overrides, validate_runtime_site_pattern,
+    ContextsConfig, Deserialize, DesktopConfig, DiscoveryConfig, DownloadsConfig, HintsConfig,
+    HistoryConfig, HyprlandConfig, InputConfig, IpcConfig, LinksConfig, LoggingConfig,
+    MAX_INCLUDE_DEPTH, MAX_RUNTIME_SETTINGS, MAX_RUNTIME_VALUE_BYTES, MAX_TOTAL_BYTES,
+    NavigationConfig, Path, PathBuf, PermissionRuleConfig, PermissionsConfig, PrivacyConfig,
+    ProfileDefinition, ProfilesConfig, RUNTIME_SCHEMA_VERSION, Serialize, SessionConfig,
+    SiteDoctorConfig, SiteRule, SpellcheckConfig, SwitcherConfig, SystemTime, TabsConfig,
+    ThemeConfig, ToolsConfig, UNIX_EPOCH, UiConfig, Write, default_search_engines, fs, io_error,
+    runtime_site_rule_id, set_private_file_mode, set_private_permissions,
+    setting_supports_site_scope, validate, validate_contexts, validate_profile_definition,
+    validate_profiles, validate_runtime_binding, validate_runtime_key, validate_runtime_overrides,
+    validate_runtime_site_pattern,
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -26,6 +27,8 @@ pub struct Config {
     pub theme: ThemeConfig,
     #[serde(default)]
     pub input: InputConfig,
+    #[serde(default)]
+    pub hints: HintsConfig,
     #[serde(default)]
     pub discovery: DiscoveryConfig,
     #[serde(default)]
@@ -84,6 +87,7 @@ impl Default for Config {
             ui: UiConfig::default(),
             theme: ThemeConfig::default(),
             input: InputConfig::default(),
+            hints: HintsConfig::default(),
             discovery: DiscoveryConfig::default(),
             navigation: NavigationConfig::default(),
             links: LinksConfig::default(),

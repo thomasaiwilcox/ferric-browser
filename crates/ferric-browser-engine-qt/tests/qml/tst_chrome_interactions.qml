@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtTest
 import "../../qml/components"
 import "../../qml/scripts/ChromePresentation.js" as ChromePresentation
+import "../../qml/scripts/KeyboardPresentation.js" as KeyboardPresentation
 
 TestCase {
     id: chromeTest
@@ -22,6 +23,19 @@ TestCase {
     property int closedTabs: 0
     property int activatedResults: 0
     property int invokedActions: 0
+    property int activatedContextItems: 0
+    property string activatedContextAction: ""
+    property int dismissedContextMenus: 0
+    property int keptShutdowns: 0
+    property int proceededShutdowns: 0
+    property int recoveredSessions: 0
+    property int dismissedRecoveries: 0
+    property int acceptedCommandDialogs: 0
+    property int cancelledCommandDialogs: 0
+    property int closedLibraries: 0
+    property int openedLibraryEntries: 0
+    property string openedLibraryEntryId: ""
+    property int leakedLibraryKeys: 0
     property string appliedSettingValue: ""
     property string submittedCommand: ""
     property alias settingsModelObject: settingsModel
@@ -54,6 +68,10 @@ TestCase {
         property var contextMenuItems: []
         property bool temporaryProfile: false
         property bool bindingHelpVisible: true
+        property bool recoveryAvailable: true
+        property bool journeyExportPreviewVisible: false
+        property string journeyExportPreviewText: ""
+        property bool privateHistoryTransferVisible: false
         property string bindingHelpSearch: ""
         property var bindingHelpRows: [
             { kind: "binding", mode: "normal", command: ":open",
@@ -134,7 +152,141 @@ TestCase {
         id: contextMenuFixture
         FerricContextMenu {
             browserWindow: theme
-            onScopeSelected: function(scope) { theme.switcherScope = scope }
+            onItemActivated: function(item) {
+                chromeTest.activatedContextItems += 1
+                chromeTest.activatedContextAction = item.action
+            }
+            onDismissed: chromeTest.dismissedContextMenus += 1
+        }
+    }
+
+    Component {
+        id: libraryFixture
+        Item {
+            width: testWindow.width
+            height: testWindow.height
+            Keys.onPressed: function(event) {
+                chromeTest.leakedLibraryKeys += 1
+            }
+
+            ListModel {
+                id: fixtureHistoryEntries
+                ListElement {
+                    entryKind: "history"
+                    entryId: "first"
+                    label: "First page"
+                    secondary: "https://first.test"
+                    nodeId: ""
+                }
+                ListElement {
+                    entryKind: "history"
+                    entryId: "second"
+                    label: "Second page"
+                    secondary: "https://second.test"
+                    nodeId: ""
+                }
+            }
+
+            FerricLibraryManager {
+                browserWindow: theme
+                managerVisible: true
+                libraryKind: "history"
+                graphMode: false
+                totalEntries: 2
+                page: 0
+                pageCount: 1
+                pageSize: 100
+                journeySearchText: ""
+                journeyCurrentOnly: false
+                pendingDelete: ""
+                entries: fixtureHistoryEntries
+                graphNodes: []
+                graphEntries: []
+                graphLineData: []
+                profilesModel: []
+                profilesLoading: false
+                onCloseRequested: chromeTest.closedLibraries += 1
+                onEntryOpenRequested: function(entryKind, entryId) {
+                    chromeTest.openedLibraryEntries += 1
+                    chromeTest.openedLibraryEntryId = entryId
+                }
+            }
+        }
+    }
+
+    Component {
+        id: focusOverlayFixture
+        Item {
+            width: testWindow.width
+            height: testWindow.height
+            property alias controller: focusController
+            property alias pageItem: pageFocusTarget
+            property alias commandItem: commandFocusTarget
+            property alias overlayItem: overlayFocusTarget
+
+            Item {
+                id: pageFocusTarget
+                visible: true
+            }
+            Item {
+                id: commandFocusTarget
+                visible: true
+            }
+            Item {
+                id: overlayFocusTarget
+                visible: true
+            }
+            FerricFocusOverlayController {
+                id: focusController
+                browserWindow: testWindow
+            }
+        }
+    }
+
+    Component {
+        id: shutdownDecisionFixture
+        FerricShutdownDecisionDialog {
+            hostWindow: theme
+            promptVisible: true
+            title: "Close browser window?"
+            message: "The browser is waiting for a keyboard decision."
+            keepLabel: "Keep browser open"
+            proceedLabel: "Close browser"
+            onKeepRequested: chromeTest.keptShutdowns += 1
+            onProceedRequested: chromeTest.proceededShutdowns += 1
+        }
+    }
+
+    Component {
+        id: recoveryBannerFixture
+        FerricRecoveryBanner {
+            browserWindow: theme
+            onRecoveryRequested: chromeTest.recoveredSessions += 1
+            onDismissalRequested: chromeTest.dismissedRecoveries += 1
+        }
+    }
+
+    Component {
+        id: commandDialogFixture
+        FerricCommandDialog {
+            browserWindow: theme
+            visible: true
+            commandText: ":test-dialog"
+            title: "Keyboard contract"
+            message: "The safe choice is selected first."
+            actions: [
+                { id: "cancel", key: "n", label: "Cancel", safe: true,
+                  shortcuts: ["N"] },
+                { id: "accept", key: "y", label: "Accept",
+                  shortcuts: ["Y"] }
+            ]
+            onActionRequested: function(action) {
+                if (action === "accept") {
+                    chromeTest.acceptedCommandDialogs += 1
+                } else {
+                    chromeTest.cancelledCommandDialogs += 1
+                }
+            }
         }
     }
 
@@ -188,6 +340,38 @@ TestCase {
         }
     }
 
+    Component {
+        id: spatialGridFixture
+        Item {
+            width: 300
+            height: 240
+            property alias gridItem: spatialGrid
+            property alias gridModel: spatialGridModel
+            QtObject {
+                id: spatialGridModel
+                property bool spatial_visible: true
+                property bool spatial_selecting: true
+                property real spatial_root_width: 300
+                property real spatial_root_height: 240
+                property real spatial_current_x: 0
+                property real spatial_current_y: 0
+                property real spatial_current_width: 300
+                property real spatial_current_height: 240
+                property real spatial_crosshair_x: 150
+                property real spatial_crosshair_y: 120
+                property int spatial_depth: 0
+                property bool spatial_help_visible: false
+                property var spatial_labels: ["1", "2", "3", "4", "5",
+                                              "6", "7", "8", "9"]
+            }
+            FerricSpatialGridOverlay {
+                id: spatialGrid
+                anchors.fill: parent
+                browserUi: spatialGridModel
+            }
+        }
+    }
+
     function init() {
         settingsModel.clear()
         settingsModel.append({ key: "ui.reduced_motion", label: "Reduced motion",
@@ -200,10 +384,24 @@ TestCase {
             tabsModel.append({ title: "Tab " + index, pinned: false, muted: false })
         }
         theme.switcherScope = "all"
+        theme.contextMenuItems = []
         selectedTabs = 0
         closedTabs = 0
         activatedResults = 0
         invokedActions = 0
+        activatedContextItems = 0
+        activatedContextAction = ""
+        dismissedContextMenus = 0
+        keptShutdowns = 0
+        proceededShutdowns = 0
+        recoveredSessions = 0
+        dismissedRecoveries = 0
+        acceptedCommandDialogs = 0
+        cancelledCommandDialogs = 0
+        closedLibraries = 0
+        openedLibraryEntries = 0
+        openedLibraryEntryId = ""
+        leakedLibraryKeys = 0
         appliedSettingValue = ""
         submittedCommand = ""
     }
@@ -324,6 +522,99 @@ TestCase {
         compare(submittedCommand, "open https://example.test --target tab")
     }
 
+    function test_command_feedback_is_visible_and_editing_clears_it() {
+        var surface = createTemporaryObject(completionFixture,
+                                            testWindow.contentItem)
+        verify(surface)
+        var command = findChild(surface, "commandSurface")
+        var input = findChild(command, "commandLineInput")
+        var completion = findChild(command, "commandCompletionPopup")
+        var feedback = findChild(command, "commandFeedbackPopup")
+        verify(command)
+        verify(input)
+        verify(completion)
+        verify(feedback)
+
+        command.showFeedback("Unknown command: nope", true)
+        compare(command.feedbackText, "Unknown command: nope")
+        compare(command.feedbackError, true)
+        compare(feedback.visible, true)
+        compare(completion.visible, false)
+
+        command.commandText += "x"
+        compare(command.feedbackText, "")
+        compare(feedback.visible, false)
+    }
+
+    function test_library_escape_works_when_a_child_control_has_focus() {
+        var manager = createTemporaryObject(libraryFixture,
+                                            testWindow.contentItem)
+        verify(manager)
+        var closeButton = findChild(manager, "libraryCloseButton")
+        verify(closeButton)
+        testWindow.requestActivate()
+        tryCompare(testWindow, "active", true)
+        closeButton.forceActiveFocus()
+        tryCompare(closeButton, "activeFocus", true)
+        keyClick(Qt.Key_Escape)
+        compare(closedLibraries, 1)
+    }
+
+    function test_history_list_owns_navigation_and_activates_selection() {
+        var manager = createTemporaryObject(libraryFixture,
+                                            testWindow.contentItem)
+        verify(manager)
+        var list = findChild(manager, "libraryEntryList")
+        verify(list)
+        testWindow.requestActivate()
+        tryCompare(testWindow, "active", true)
+        tryCompare(list, "activeFocus", true)
+        tryCompare(list, "currentIndex", 0)
+
+        keyClick(Qt.Key_Down)
+        compare(list.currentIndex, 1)
+        compare(leakedLibraryKeys, 0)
+
+        keyClick(Qt.Key_Up)
+        compare(list.currentIndex, 0)
+        compare(leakedLibraryKeys, 0)
+
+        keyClick(Qt.Key_J)
+        compare(list.currentIndex, 1)
+        compare(leakedLibraryKeys, 0)
+
+        keyClick(Qt.Key_Return)
+        compare(openedLibraryEntries, 1)
+        compare(openedLibraryEntryId, "second")
+        compare(leakedLibraryKeys, 0)
+    }
+
+    function test_overlay_focus_wins_deferred_command_mode_restore() {
+        var fixture = createTemporaryObject(focusOverlayFixture,
+                                            testWindow.contentItem)
+        verify(fixture)
+        testWindow.requestActivate()
+        tryCompare(testWindow, "active", true)
+
+        fixture.pageItem.forceActiveFocus()
+        tryCompare(fixture.pageItem, "activeFocus", true)
+        fixture.controller.captureModeFocus()
+
+        fixture.commandItem.forceActiveFocus()
+        tryCompare(fixture.commandItem, "activeFocus", true)
+        fixture.controller.captureOverlayFocus(testWindow, fixture.pageItem)
+        fixture.overlayItem.forceActiveFocus()
+        tryCompare(fixture.overlayItem, "activeFocus", true)
+        fixture.commandItem.visible = false
+
+        fixture.controller.restoreModeFocus()
+        wait(0)
+        compare(fixture.overlayItem.activeFocus, true)
+
+        fixture.controller.restoreOverlayFocus()
+        tryCompare(fixture.pageItem, "activeFocus", true)
+    }
+
     function test_close_button_retains_hover_and_does_not_select() {
         var strip = createTemporaryObject(tabFixture, testWindow.contentItem)
         verify(strip)
@@ -354,22 +645,35 @@ TestCase {
         compare(picture.blue(400, 245), 37)
     }
 
-    function test_context_scope_fits_and_selects() {
+    function test_context_menu_is_compact_keyboard_navigable_and_selectable() {
+        theme.contextMenuItems = [
+            { label: "Open link", action: "open-link", value: "https://example.test" },
+            { label: "Open link in new tab", action: "open-link-tab",
+              value: "tab\thttps://example.test" },
+            { label: "Copy link", action: "copy-link", value: "https://example.test" }
+        ]
         var menu = createTemporaryObject(contextMenuFixture, testWindow.contentItem)
         verify(menu)
-        menu.open()
-        var selector = findChild(menu, "scopeSelector")
-        verify(selector)
-        compare(selector.count, 11)
-        compare(selector.currentText, "all")
-        verify(selector.width <= 420)
-        mouseClick(selector)
-        tryCompare(selector.popup, "visible", true)
-        var scopeRow = selector.popup.contentItem.itemAtIndex(1)
-        verify(scopeRow)
-        mouseClick(scopeRow)
-        tryCompare(theme, "switcherScope", "tabs")
-        menu.close()
+        testWindow.requestActivate()
+        tryCompare(testWindow, "active", true)
+        menu.openAt(testWindow, 100, 120)
+        var popup = findChild(menu, "contextMenuPopup")
+        verify(popup)
+        if (typeof popup["popupType"] !== "undefined") {
+            compare(popup["popupType"], 0)
+        }
+        tryCompare(popup, "visible", true)
+        tryCompare(popup, "count", 3)
+        tryCompare(popup, "currentIndex", 0)
+        verify(popup.width <= 520)
+        verify(popup.height < testWindow.height / 2)
+
+        keyClick(Qt.Key_Down)
+        compare(popup.currentIndex, 1)
+        keyClick(Qt.Key_Return)
+        tryCompare(chromeTest, "activatedContextItems", 1)
+        compare(activatedContextAction, "open-link-tab")
+        tryCompare(popup, "visible", false)
     }
 
     function test_large_font_rows_expand_to_fit_content() {
@@ -407,16 +711,163 @@ TestCase {
         var settingsScroll = findChild(settingsSurface, "settingsScroll")
         verify(settingsScroll)
         verify(settingsScroll.contentHeight > settingsScroll.height)
-        settingsScroll.contentItem.contentY = settingsScroll.contentHeight
-                                             - settingsScroll.height
+        var settingsViewport = settingsScroll.contentItem
+        verify(settingsViewport)
+        settingsViewport.contentY = settingsViewport.contentHeight
+                                    - settingsViewport.height
         tryVerify(function() {
-            return settingsRows.mapToItem(settingsSurface, 0, 0).y
-                   < settingsSurface.height
+            return settingsViewport.contentY + settingsViewport.height
+                   >= settingsViewport.contentHeight - 1
         })
+    }
+
+    function test_spatial_grid_hides_labels_when_cells_become_too_small() {
+        var fixture = createTemporaryObject(spatialGridFixture,
+                                            testWindow.contentItem)
+        verify(fixture)
+        compare(fixture.gridItem.visible, true)
+        compare(fixture.gridItem.labelsFit, true)
+        verify(fixture.gridItem.labelFontSize > 12)
+        verify(fixture.gridItem.reticleOuterRadius
+               > fixture.gridItem.reticleGap)
+        verify(fixture.gridItem.gridLineThickness
+               > fixture.gridItem.gridLineCoreThickness)
+
+        fixture.gridModel.spatial_current_width = 45
+        fixture.gridModel.spatial_current_height = 30
+        tryCompare(fixture.gridItem, "labelsFit", false)
+        verify(fixture.gridItem.labelFontSize <= 12)
+
+        fixture.gridModel.spatial_selecting = false
+        tryCompare(fixture.gridItem, "visible", false)
     }
 
     function test_context_accent_matching_surface_is_readable() {
         var textColor = ChromePresentation.readableTextColor("#313244", "#313244")
         verify(ChromePresentation.contrastRatio(textColor, "#313244") >= 4.5)
+    }
+
+    function test_statusbar_visibility_matches_in_mode_policy() {
+        compare(ChromePresentation.statusBarVisible("in-mode", "normal"), false)
+        compare(ChromePresentation.statusBarVisible("in-mode", "command"), false)
+        compare(ChromePresentation.statusBarVisible("in-mode", "search"), false)
+        compare(ChromePresentation.statusBarVisible("in-mode", "insert"), true)
+        compare(ChromePresentation.statusBarVisible("in-mode", "hint"), true)
+        compare(ChromePresentation.statusBarVisible("in-mode", "caret"), true)
+        compare(ChromePresentation.statusBarVisible("in-mode", "pass-through"), true)
+
+        compare(ChromePresentation.statusBarVisible("always", "normal"), true)
+        compare(ChromePresentation.statusBarVisible("always", "insert"), true)
+        compare(ChromePresentation.statusBarVisible("always", "command"), false)
+        compare(ChromePresentation.statusBarVisible("never", "normal"), false)
+        compare(ChromePresentation.statusBarVisible("never", "insert"), false)
+        compare(ChromePresentation.statusBarVisible("command", "hint"), true)
+    }
+
+    function test_shifted_ascii_key_normalization_preserves_H_binding() {
+        compare(KeyboardPresentation.printableKey(
+                    "h", Qt.Key_H, true, Qt.Key_A, Qt.Key_Z), "H")
+        compare(KeyboardPresentation.printableKey(
+                    "", Qt.Key_H, true, Qt.Key_A, Qt.Key_Z), "H")
+        compare(KeyboardPresentation.printableKey(
+                    "h", Qt.Key_H, false, Qt.Key_A, Qt.Key_Z), "h")
+        compare(KeyboardPresentation.printableKey(
+                    "λ", Qt.Key_unknown, false, Qt.Key_A, Qt.Key_Z), "λ")
+    }
+
+    function test_shutdown_decision_is_keyboard_operable() {
+        var dialog = createTemporaryObject(shutdownDecisionFixture,
+                                           testWindow.contentItem)
+        verify(dialog)
+        var keep = findChild(dialog, "shutdownKeepButton")
+        var proceed = findChild(dialog, "shutdownProceedButton")
+        verify(keep)
+        verify(proceed)
+        testWindow.requestActivate()
+        tryCompare(testWindow, "active", true)
+        dialog.focusSafeChoice()
+        tryCompare(keep, "activeFocus", true)
+
+        keyClick(Qt.Key_Return)
+        compare(keptShutdowns, 1)
+
+        dialog.decisionTaken = false
+        keep.forceActiveFocus()
+        keyClick(Qt.Key_Tab)
+        tryCompare(proceed, "activeFocus", true)
+        keyClick(Qt.Key_Return)
+        compare(proceededShutdowns, 1)
+
+        dialog.decisionTaken = false
+        proceed.forceActiveFocus()
+        keyClick(Qt.Key_Escape)
+        compare(keptShutdowns, 2)
+
+        dialog.decisionTaken = false
+        keep.forceActiveFocus()
+        keyClick(Qt.Key_Return, Qt.ControlModifier)
+        compare(proceededShutdowns, 2)
+
+        dialog.decisionTaken = false
+        testWindow.contentItem.forceActiveFocus()
+        keyClick(Qt.Key_Y)
+        compare(proceededShutdowns, 3)
+
+        dialog.decisionTaken = false
+        testWindow.contentItem.forceActiveFocus()
+        keyClick(Qt.Key_N)
+        compare(keptShutdowns, 3)
+
+        dialog.decisionTaken = false
+        dialog.focusSafeChoice()
+        tryCompare(keep, "activeFocus", true)
+        keyClick(Qt.Key_J)
+        tryCompare(dialog, "currentIndex", 1)
+        tryCompare(proceed, "activeFocus", true)
+        keyClick(Qt.Key_Return)
+        compare(proceededShutdowns, 4)
+
+        dialog.decisionTaken = false
+        mouseClick(keep, keep.width / 2, keep.height / 2)
+        compare(keptShutdowns, 4)
+    }
+
+    function test_recovery_banner_has_window_shortcuts() {
+        var banner = createTemporaryObject(recoveryBannerFixture,
+                                           testWindow.contentItem)
+        verify(banner)
+        testWindow.requestActivate()
+        tryCompare(testWindow, "active", true)
+        keyClick(Qt.Key_R, Qt.AltModifier)
+        compare(recoveredSessions, 1)
+        // A real recovery decision closes the surface. Reset the one-shot
+        // guard so this fixture can exercise the second window shortcut too.
+        banner.decisionTaken = false
+        keyClick(Qt.Key_D, Qt.AltModifier)
+        compare(dismissedRecoveries, 1)
+    }
+
+    function test_shared_command_dialog_supports_keyboard_and_mouse() {
+        var dialog = createTemporaryObject(commandDialogFixture,
+                                           testWindow.contentItem)
+        verify(dialog)
+        testWindow.requestActivate()
+        tryCompare(testWindow, "active", true)
+        tryCompare(dialog, "currentIndex", 0)
+
+        keyClick(Qt.Key_J)
+        compare(dialog.currentIndex, 1)
+        keyClick(Qt.Key_Return)
+        compare(acceptedCommandDialogs, 1)
+
+        dialog.decisionTaken = false
+        keyClick(Qt.Key_Escape)
+        compare(cancelledCommandDialogs, 1)
+
+        dialog.decisionTaken = false
+        var accept = findChild(dialog, "commandDialogAction-accept")
+        verify(accept)
+        mouseClick(accept, accept.width / 2, accept.height / 2)
+        compare(acceptedCommandDialogs, 2)
     }
 }

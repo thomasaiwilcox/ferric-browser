@@ -34,6 +34,15 @@ FerricBrowserRuntimeRequests {
         }
     }
 
+    FerricWebEngineSurfaceRecovery {
+        hostWindow: window
+        enabled: window.nativeWayland && !window.softwareRendering
+        views: [
+            window.activeWebView(),
+            attachedDevToolsLoader.active ? attachedDevToolsLoader.item : null
+        ]
+    }
+
     header: ToolBar {
 id: browserHeader
 height: window.tabPosition === "top" && window.tabStripVisible
@@ -954,6 +963,11 @@ GridLayout {
                         window.scheduleFocusProbe(2)
                     }
                 }
+                onZoomFactorChanged: {
+                    if (viewUi === browserUi && browserUi.mode === "grid") {
+                        browserUi.spatial_invalidated("geometry-changed")
+                    }
+                }
 
                 onUrlChanged: {
                     refreshEffectiveSiteSettings()
@@ -1125,6 +1139,9 @@ GridLayout {
                         viewUi, webView, request, window)
                 }
                 onFullScreenRequested: function(request) {
+                    if (viewUi === browserUi && browserUi.mode === "grid") {
+                        browserUi.spatial_invalidated("view-changed")
+                    }
                     request.accept()
                     if (request.toggleOn) {
                         window.showFullScreen()
@@ -1183,6 +1200,97 @@ GridLayout {
         }
     }
 
+    FerricPagePointerAdapter {
+        id: spatialPointerAdapter
+        enabled: browserUi.spatial_visible
+        targetItem: browserUi.spatial_visible ? window.activeWebView() : null
+        targetWindow: window
+        inputBlocked: window.browserChromeInputActive
+        onDispatchAcknowledged: function(requestId, sessionId, serial, revision, outcome) {
+            browserUi.spatial_dispatch_ack(
+                        requestId, sessionId, serial, revision, outcome)
+        }
+        onInvalidated: function(reason) {
+            // Initial target binding can advance the adapter stamp before the
+            // first geometry observation. Once a root is installed, every
+            // later invalidation is authoritative.
+            if (browserUi.spatial_visible && browserUi.spatial_root_width > 0) {
+                browserUi.spatial_invalidated(reason)
+            }
+        }
+        onPhysicalPointerDetected: function(reason) {
+            if (browserUi.spatial_visible) {
+                browserUi.spatial_invalidated(reason)
+            }
+        }
+        onSurfaceChanged: {
+            if (browserUi.spatial_visible && browserUi.spatial_root_width > 0) {
+                browserUi.spatial_invalidated("geometry-changed")
+            }
+        }
+    }
+
+    Connections {
+        target: browserUi
+        function onSpatial_visibleChanged() {
+            if (!browserUi.spatial_visible) {
+                return
+            }
+            var sessionId = browserUi.spatial_session_id
+            Qt.callLater(function() {
+                if (!browserUi.spatial_visible
+                        || browserUi.spatial_session_id !== sessionId) {
+                    return
+                }
+                var view = window.activeWebView()
+                if (view && view.width > 0 && view.height > 0) {
+                    browserUi.spatial_surface_ready(
+                                view.width, view.height,
+                                spatialPointerAdapter.surfaceSerial,
+                                spatialPointerAdapter.surfaceRevision)
+                } else {
+                    browserUi.spatial_invalidated("surface-unavailable")
+                }
+            })
+        }
+        function onSpatial_dispatch_requestChanged() {
+            var payload = browserUi.spatial_dispatch_request
+            if (!payload || payload.length === 0) {
+                return
+            }
+            var request
+            try {
+                request = JSON.parse(payload)
+            } catch (error) {
+                browserUi.spatial_invalidated("dispatch-rejected")
+                return
+            }
+            // `enabled` stays declaratively bound to `spatial_visible` so the
+            // adapter always releases its session and physical-input filter
+            // state when Grid exits. Never assign to it here: doing so would
+            // replace the binding after the first dispatch.
+            if (!spatialPointerAdapter.enabled) {
+                browserUi.spatial_invalidated("dispatch-rejected")
+                return
+            }
+            spatialPointerAdapter.dispatch(
+                        request.request_id, request.session_id,
+                        request.serial, request.revision,
+                        Number(request.x), Number(request.y), request.action)
+        }
+    }
+
+    FerricSpatialGridOverlay {
+        id: spatialGridOverlay
+        anchors.fill: webViews
+        z: 31
+        browserUi: window.browserUi
+        chromeScale: window.chromeScale
+        labelColor: window.selectionTextColor
+        labelBackground: window.selectionColor
+        crosshairColor: window.accentColor
+    }
+
     Loader {
         id: attachedDevToolsLoader
         anchors.left: parent.left
@@ -1202,11 +1310,24 @@ GridLayout {
         }
     }
 
+    Timer {
+        interval: 80
+        repeat: true
+        running: browserUi.hint_visible
+        onTriggered: window.pollHintRefresh()
+    }
+
     FerricHintOverlay {
+        id: hintOverlaySurface
         anchors.fill: webViews
         browserWindow: window
         hintsVisible: browserUi.hint_visible
         hintResults: window.hintResults
+        sourceViewport: window.hintViewport
+        hintState: window.hintState
+        unmatchedPolicy: browserUi.hint_unmatched_policy
+        markerScale: browserUi.hint_marker_scale
+        collisionRotation: window.hintCollisionRotation
         onActivationRequested: function(label) { window.activateHint(label) }
         onActionsRequested: function(label) { window.showHintActions(label) }
     }
@@ -1234,10 +1355,12 @@ GridLayout {
 
     FerricStatusBar {
         browserWindow: window
-        statusVisible: window.normalStatusVisible
+        statusVisible: window.statusBarVisible
         mode: browserUi.mode
         displayUrl: browserUi.display_url
-        statusText: browserUi.status_text
+        statusText: window.commandNoticeVisible
+                    ? window.commandNoticeText : browserUi.status_text
+        statusError: window.commandNoticeVisible && window.commandNoticeError
         contextName: browserUi.context_name
         contextColor: window.contextStatusColor(browserUi, window.mutedTextColor)
         profileName: window.profileName
@@ -1255,6 +1378,47 @@ GridLayout {
                                window.ephemeralProfile)
     }
 
+    function submitInteractiveCommand(text) {
+        var focusedContextWindow = window.focusExistingContextWindow(text, browserUi)
+        var succeeded = focusedContextWindow
+                || browserUi.execute_interactive_command(text)
+        if (!succeeded) {
+            window.pendingInteractiveCommand = browserUi.command_retryable ? text : ""
+            commandSurface.showFeedback(browserUi.status_text,
+                                        !browserUi.command_retryable)
+            commandSurface.selectAllInput()
+            return
+        }
+
+        window.pendingInteractiveCommand = ""
+        var commandStatus = browserUi.status_text
+        var preview = browserUi.take_session_preview()
+        if (preview.length > 0) {
+            window.showCommandSessionPreview(preview)
+        }
+        if (browserUi.library_kind.length > 0) {
+            window.libraryPage = 0
+            window.openInternalSurface()
+            window.libraryManagerVisible = true
+            window.refreshLibraryManager()
+        }
+        if (browserUi.link_preview_visible) {
+            window.showLinkPreview()
+        }
+        if (text.trim().indexOf("context-enter ") === 0) {
+            window.routeContextWorkspace(browserUi)
+        }
+        window.syncTabModel()
+        window.executePendingEngineAction()
+        commandStatus = browserUi.status_text
+        commandSurface.clearInput()
+        if (browserUi.mode === "command") {
+            browserUi.escape()
+            browserUi.status_text = commandStatus
+        }
+        window.showCommandNotice(commandStatus, false)
+    }
+
     FerricCommandLine {
         id: commandSurface
         browserWindow: window
@@ -1268,36 +1432,12 @@ GridLayout {
         onCompletionUpdateRequested: function(text, cursorPosition) {
             browserUi.update_completion(text, cursorPosition)
         }
-        onSubmitted: function(text) {
-            var focusedContextWindow = window.focusExistingContextWindow(text, browserUi)
-            if (focusedContextWindow || browserUi.execute_interactive_command(text)) {
-                var preview = browserUi.take_session_preview()
-                if (preview.length > 0) {
-                    window.showCommandSessionPreview(preview)
-                }
-                if (browserUi.library_kind.length > 0) {
-                    window.libraryPage = 0
-                    window.openInternalSurface()
-                    window.libraryManagerVisible = true
-                    window.refreshLibraryManager()
-                }
-                if (browserUi.link_preview_visible) {
-                    window.showLinkPreview()
-                }
-                if (text.trim().indexOf("context-enter ") === 0) {
-                    window.routeContextWorkspace(browserUi)
-                }
-                window.syncTabModel()
-                window.executePendingEngineAction()
-                commandSurface.clearInput()
-                if (browserUi.mode === "command") {
-                    browserUi.escape()
-                }
-            } else {
-                commandSurface.selectAllInput()
-            }
+        onSubmitted: function(text) { window.submitInteractiveCommand(text) }
+        onInputEdited: window.pendingInteractiveCommand = ""
+        onEscapeRequested: {
+            window.pendingInteractiveCommand = ""
+            browserUi.escape()
         }
-        onEscapeRequested: browserUi.escape()
         onCompletionMoveRequested: function(delta) { browserUi.completion_move(delta) }
         onCompletionSelectRequested: function(index) { browserUi.completion_select(index) }
         onHistoryMoveRequested: function(delta, current) {

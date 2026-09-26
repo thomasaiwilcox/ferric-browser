@@ -40,9 +40,9 @@ fn nonempty_font_family(value: &str) -> String {
 fn statusbar_mode(value: &str) -> &'static str {
     match value {
         "always" => "always",
-        "command" => "command",
+        "in-mode" | "command" => "in-mode",
         "never" => "never",
-        _ => "always",
+        _ => "in-mode",
     }
 }
 
@@ -93,11 +93,26 @@ mod tests {
             ChromePreferences {
                 font_family: "monospace".into(),
                 font_size_pt: 40.0,
-                statusbar_mode: "always",
+                statusbar_mode: "in-mode",
                 tabs_mode: "multiple",
                 tab_position: "top",
                 reduced_motion: "on",
             }
         );
+    }
+
+    #[test]
+    fn statusbar_projection_uses_in_mode_and_normalizes_the_legacy_alias() {
+        let mut config = Config::default();
+        assert_eq!(project(&config).statusbar_mode, "in-mode");
+
+        config.ui.statusbar = "command".into();
+        assert_eq!(project(&config).statusbar_mode, "in-mode");
+
+        config.ui.statusbar = "always".into();
+        assert_eq!(project(&config).statusbar_mode, "always");
+
+        config.ui.statusbar = "never".into();
+        assert_eq!(project(&config).statusbar_mode, "never");
     }
 }

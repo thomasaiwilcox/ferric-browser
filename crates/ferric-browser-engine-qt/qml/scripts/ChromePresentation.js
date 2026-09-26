@@ -1,7 +1,7 @@
 .pragma library
 
 // Pure chrome-presentation helpers. This resource deliberately has no bridge,
-// storage, or page access; it only projects already-validated theme colors.
+// storage, or page access; it only projects already-validated chrome facts.
 var VERSION = "1"
 
 function colorChannels(value) {
@@ -50,6 +50,19 @@ function contrastText(background) {
 function readableTextColor(candidate, background) {
     return contrastRatio(candidate, background) >= 4.5
             ? candidate : contrastText(background)
+}
+
+function statusBarVisible(policy, mode) {
+    if (mode === "command" || mode === "search") {
+        return false
+    }
+    if (policy === "always") {
+        return true
+    }
+    // "command" was Ferric's original name for this policy. Accept it at
+    // the presentation boundary as well as normalizing it in Rust so an old
+    // live configuration cannot produce a surprising hidden bar.
+    return (policy === "in-mode" || policy === "command") && mode !== "normal"
 }
 
 function contrastReport(colors) {

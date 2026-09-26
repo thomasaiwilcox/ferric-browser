@@ -1115,9 +1115,11 @@ fn run_gui(plan: &GuiLaunchPlan<'_>) -> Result<(), String> {
     cxx_qt::init_crate!(ferric_browser_engine_qt);
     cxx_qt::init_qml_module!("io.github.ferricbrowser");
     let mut app = QGuiApplication::new();
+    let mut native_wayland = false;
     if let Some(_app) = app.as_mut() {
         ferric_browser_engine_qt::set_desktop_identity();
         let platform = ferric_browser_engine_qt::qt_platform_name();
+        native_wayland = platform.starts_with("wayland");
         if matches!(platform.as_str(), "xcb" | "xwayland")
             && std::env::var("FERRIC_BROWSER_ALLOW_NON_WAYLAND").as_deref() != Ok("1")
         {
@@ -1195,6 +1197,10 @@ fn run_gui(plan: &GuiLaunchPlan<'_>) -> Result<(), String> {
         initial_properties.insert(
             QString::from("softwareRendering"),
             QVariant::from(&software_rendering),
+        );
+        initial_properties.insert(
+            QString::from("nativeWayland"),
+            QVariant::from(&native_wayland),
         );
         let instance_lock_path = QString::from(instance_lock_path.to_string_lossy().as_ref());
         initial_properties.insert(
@@ -1412,7 +1418,7 @@ fn command_argument_is_flag(command: &str, argument: &str) -> bool {
         "tab-close" => matches!(argument, "id" | "count"),
         "tab-move" => argument == "context",
         "window-new" => argument == "profile",
-        "hint" => matches!(argument, "target" | "rapid" | "script"),
+        "hint" => matches!(argument, "target" | "rapid" | "script" | "first" | "index"),
         "yank" => matches!(argument, "clean" | "primary"),
         "history-clear" => matches!(argument, "since" | "origin"),
         "session-load" => argument == "append",

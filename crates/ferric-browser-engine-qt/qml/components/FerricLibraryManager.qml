@@ -2,9 +2,8 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Rectangle {
+FerricModalSurface {
     id: libraryManager
-    required property var browserWindow
     required property bool managerVisible
     required property string libraryKind
     required property bool graphMode
@@ -49,38 +48,54 @@ Rectangle {
         journeyGraph.requestPaint()
     }
 
-    anchors.centerIn: parent
-    width: Math.min(820, parent.width - 100)
-    height: Math.min(520, parent.height - 120)
-    z: 55
+    function focusPrimaryControl() {
+        if (libraryEntryList.visible) {
+            libraryEntryList.focusList()
+        } else {
+            libraryManager.forceActiveFocus()
+        }
+    }
+
     visible: managerVisible
-    focus: visible
-    Accessible.role: Accessible.Dialog
-    Accessible.name: "Library manager"
-    onVisibleChanged: if (visible) forceActiveFocus()
-    color: browserWindow.panelColor
-    border.color: browserWindow.borderColor
+    commandText: ":" + libraryKind
+    title: libraryKind
+    message: "Profile-local records; URLs are displayed in their sanitized form."
+    keyHelp: "j/k or ↑/↓ select  ·  enter open  ·  tab actions  ·  esc close"
+    dialogWidth: 880 * scale
+    dialogHeight: 580 * scale
+    stackingOrder: 55
+    onDismissRequested: closeRequested()
+    Component.onCompleted: {
+        if (visible)
+            Qt.callLater(focusPrimaryControl)
+    }
 
     Keys.onPressed: function(event) {
         if (event.key === Qt.Key_Escape) {
             libraryManager.closeRequested()
             event.accepted = true
+        } else if (libraryEntryList.visible) {
+            libraryEntryList.handleNavigationKey(event)
+        }
+    }
+
+    Connections {
+        target: libraryManager
+        function onVisibleChanged() {
+            if (libraryManager.visible) {
+                Qt.callLater(libraryManager.focusPrimaryControl)
+            }
         }
     }
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 12
+        anchors.margins: 0
         spacing: 8
 
         RowLayout {
             Layout.fillWidth: true
-            Label {
-                Layout.fillWidth: true
-                text: libraryManager.libraryKind
-                color: libraryManager.browserWindow.primaryTextColor
-                font.bold: true
-            }
+            Item { Layout.fillWidth: true }
             Button {
                 visible: libraryManager.libraryKind === "journey"
                 text: libraryManager.graphMode ? "Outline" : "Relationships"
@@ -117,16 +132,11 @@ Rectangle {
                 onClicked: libraryManager.pageChangeRequested(1)
             }
             Button {
+                objectName: "libraryCloseButton"
                 text: "Close"
                 Accessible.name: "Close library manager"
                 onClicked: libraryManager.closeRequested()
             }
-        }
-
-        Label {
-            Layout.fillWidth: true
-            text: "Profile-local records; URLs are displayed in their sanitized form."
-            color: libraryManager.browserWindow.mutedTextColor
         }
 
         FerricJourneySearch {

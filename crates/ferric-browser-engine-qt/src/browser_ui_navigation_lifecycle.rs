@@ -38,6 +38,10 @@ impl qobject::BrowserUi {
             .set_navigation_failure_requested_url(QString::from(safe_ipc_url(&url.to_string())));
         let active_index = self.as_ref().rust().active_tab_index;
         self.as_mut().clear_focus_observation_state(active_index);
+        if self.as_ref().rust().core_mode == super::Mode::Grid {
+            self.as_mut()
+                .spatial_invalidated(&QString::from("target-changed"));
+        }
         self.as_mut().clear_hint_session_state();
         {
             let mut rust = self.as_mut().rust_mut();
@@ -81,6 +85,12 @@ impl qobject::BrowserUi {
             self.as_mut().note_navigation_started(target, &started_url);
         }
         self.as_mut().clear_focus_observation_state(index);
+        if index == self.as_ref().rust().active_tab_index
+            && self.as_ref().rust().core_mode == super::Mode::Grid
+        {
+            self.as_mut()
+                .spatial_invalidated(&QString::from("target-changed"));
+        }
         self.as_mut().clear_hint_session_state();
         if index == self.as_ref().rust().active_tab_index {
             self.as_mut().clear_navigation_failure();
@@ -123,6 +133,10 @@ impl qobject::BrowserUi {
             }
         };
         let active_index = self.as_ref().rust().active_tab_index;
+        if self.as_ref().rust().core_mode == super::Mode::Grid {
+            self.as_mut()
+                .spatial_invalidated(&QString::from("target-changed"));
+        }
         self.as_mut().clear_focus_observation_state(active_index);
         let Ok(parsed) = ValidatedUrl::parse(url.to_string()) else {
             self.set_status_text(QString::from("Engine returned an invalid URL"));
@@ -164,6 +178,12 @@ impl qobject::BrowserUi {
                 return;
             }
         };
+        if index == self.as_ref().rust().active_tab_index
+            && self.as_ref().rust().core_mode == super::Mode::Grid
+        {
+            self.as_mut()
+                .spatial_invalidated(&QString::from("target-changed"));
+        }
         self.as_mut().clear_focus_observation_state(index);
         let changed_experiment_target =
             self.as_ref()
@@ -405,6 +425,7 @@ impl qobject::BrowserUi {
             this.pending_external_navigation = None;
             this.pending_context_route = None;
             this.pending_engine_action = None;
+            this.pending_engine_actions.clear();
             // A transient profile can be released while its asynchronous
             // bootstrap or profile-scoped probes are still in flight. Drop
             // the pending handoff before dropping workers so a late result
@@ -425,6 +446,7 @@ impl qobject::BrowserUi {
             this.pending_journey_mappings.clear();
             this.pending_history_clear = None;
             this.pending_journey_traversal = None;
+            this.pending_journey_traversals.clear();
             this.pending_journey_reopen = None;
             this.pending_navigation_urls.clear();
             this.pending_redirect_tabs.clear();
@@ -558,11 +580,12 @@ impl qobject::BrowserUi {
                 .as_mut()
                 .finish_site_doctor_experiment(&QString::from(id), false);
             if temporary_closed {
-                self.as_mut()
-                    .rust_mut()
-                    .as_mut()
-                    .get_mut()
-                    .pending_engine_action = None;
+                let mut rust = self.as_mut().rust_mut();
+                let this = rust.as_mut().get_mut();
+                this.pending_engine_action = None;
+                this.pending_engine_actions.clear();
+                this.pending_journey_traversal = None;
+                this.pending_journey_traversals.clear();
             }
         }
         let closed = {

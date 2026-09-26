@@ -26,10 +26,11 @@ QML, portal, PipeWire, and optional feature inputs without claiming that every
 optional service is present.
 
 The recipe installs the binary, desktop entry, scalable icon, generated user
-documentation, dependency/license inventory, migration and known-issue notes,
-and support/security/provenance/release-policy/contributor documentation,
-including the current release-identity decision record. The optional,
-community-maintained Omarchy integration recipe
+documentation, the Grid navigation guide, dependency/license inventory,
+migration and known-issue notes, and support, security, provenance,
+release-policy, and contributor documentation, including the current
+release-identity decision record. The optional, community-maintained Omarchy
+integration recipe
 is in `packaging/omarchy/`; it is built from the same release archive and only
 installs package-owned resources plus public-CLI wrappers. Clean Arch
 build/install qualification, icon-cache refresh, and live handler/launcher

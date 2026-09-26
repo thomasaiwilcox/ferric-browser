@@ -4,15 +4,17 @@
 //! targets are valid or which rapid actions retain Hint mode.
 
 use crate::input_validation::is_bounded_untrusted_text;
-use ferric_browser_core::ParsedCommand;
+use ferric_browser_core::{HintKind, ParsedCommand};
 
 /// Fully validated options for a hint command.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct HintOptions {
-    pub(super) links_only: bool,
+    pub(super) family: String,
     pub(super) rapid: bool,
     pub(super) target: String,
     pub(super) script: Option<String>,
+    pub(super) first: bool,
+    pub(super) index: usize,
 }
 
 /// Returns the userscript name encoded by an external hint target.
@@ -36,18 +38,55 @@ pub(super) fn rapid_hint_keeps_mode(rapid: bool, action: Option<&str>) -> bool {
         )
 }
 
+/// Returns whether selecting this candidate should consume its captured URL.
+///
+/// Images and media expose `currentSrc` for explicit URL actions such as
+/// opening a tab, yanking, or downloading. Their ordinary current action must
+/// still click the DOM element so an enclosing link or page handler retains
+/// its native behavior.
+pub(super) fn hint_uses_url_action(
+    kind: HintKind,
+    rapid: bool,
+    target: &str,
+    has_pending_action: bool,
+) -> bool {
+    kind == HintKind::Link
+        || matches!(kind, HintKind::Image | HintKind::Media)
+            && (rapid || target != "current" || has_pending_action)
+}
+
 /// Parses the legacy command arguments into named, validated hint options.
 pub(super) fn parse_hint_options(command: &ParsedCommand) -> Result<HintOptions, String> {
-    let mut links_only = false;
+    let mut family = "all".to_owned();
+    let mut family_seen = false;
     let mut rapid = false;
     let mut target = "current".to_owned();
     let mut script = None;
+    let mut first = false;
+    let mut requested_index = None;
     let mut index = 0;
     while index < command.arguments.len() {
         match command.arguments[index].as_str() {
-            "links" if !links_only => links_only = true,
-            "all" if !links_only => {}
+            value @ ("links" | "all" | "inputs" | "buttons" | "images" | "media"
+            | "scrollables")
+                if !family_seen =>
+            {
+                value.clone_into(&mut family);
+                family_seen = true;
+            }
             "--rapid" if !rapid => rapid = true,
+            "--first" if !first => first = true,
+            "--index" if requested_index.is_none() => {
+                index += 1;
+                requested_index = Some(
+                    command
+                        .arguments
+                        .get(index)
+                        .and_then(|value| value.parse::<usize>().ok())
+                        .filter(|value| (1..=5_000).contains(value))
+                        .ok_or_else(|| "hint index must be 1..=5000".to_owned())?,
+                );
+            }
             "--target" => {
                 index += 1;
                 target = command
@@ -56,7 +95,7 @@ pub(super) fn parse_hint_options(command: &ParsedCommand) -> Result<HintOptions,
                     .filter(|value| is_hint_target(value))
                     .cloned()
                     .ok_or_else(|| {
-                        "hint target must be current, tab, tab-bg, window, yank, clean-yank, download, userscript, ephemeral, or external:NAME"
+                        "hint target must be current, tab, tab-bg, window, yank, clean-yank, download, userscript, ephemeral, choose, or external:NAME"
                             .to_owned()
                     })?;
             }
@@ -72,10 +111,12 @@ pub(super) fn parse_hint_options(command: &ParsedCommand) -> Result<HintOptions,
                     return Err("hint script was specified more than once".into());
                 }
             }
-            "links" | "all" => return Err("hint kind was specified more than once".into()),
+            "links" | "all" | "inputs" | "buttons" | "images" | "media" | "scrollables" => {
+                return Err("hint family was specified more than once".into());
+            }
             _ => {
                 return Err(
-                    "hint expects [--target TARGET] [--rapid] [--script NAME] [links|all]".into(),
+                    "hint expects [--target TARGET] [--rapid] [--script NAME] [--first] [--index N] [links|all|inputs|buttons|images|media|scrollables]".into(),
                 );
             }
         }
@@ -83,6 +124,12 @@ pub(super) fn parse_hint_options(command: &ParsedCommand) -> Result<HintOptions,
     }
     if rapid && target == "current" {
         target = "yank".into();
+    }
+    if rapid && first {
+        return Err("hint --rapid cannot be combined with --first".into());
+    }
+    if requested_index.is_some() && !first {
+        return Err("hint --index requires --first".into());
     }
     if rapid && target == "ephemeral" {
         return Err("hint target ephemeral does not support --rapid".into());
@@ -107,10 +154,12 @@ pub(super) fn parse_hint_options(command: &ParsedCommand) -> Result<HintOptions,
         return Err("--script is only valid with the userscript hint target".into());
     }
     Ok(HintOptions {
-        links_only,
+        family,
         rapid,
         target,
         script,
+        first,
+        index: requested_index.unwrap_or(1),
     })
 }
 
@@ -126,6 +175,7 @@ fn is_hint_target(value: &str) -> bool {
             | "download"
             | "userscript"
             | "ephemeral"
+            | "choose"
     ) || external_hint_target(value).is_some()
 }
 
@@ -149,10 +199,12 @@ mod tests {
         assert_eq!(
             options,
             HintOptions {
-                links_only: true,
+                family: "links".into(),
                 rapid: false,
                 target: "userscript".into(),
                 script: Some("reader".into()),
+                first: false,
+                index: 1,
             }
         );
         assert!(
@@ -173,5 +225,70 @@ mod tests {
         assert!(external_hint_target("external:").is_none());
         assert!(external_hint_target("external:Capital").is_none());
         assert!(external_hint_target("external:contains/slash").is_none());
+    }
+
+    #[test]
+    fn current_images_and_media_activate_the_element_instead_of_the_source_url() {
+        assert!(hint_uses_url_action(
+            HintKind::Link,
+            false,
+            "current",
+            false
+        ));
+        assert!(!hint_uses_url_action(
+            HintKind::Image,
+            false,
+            "current",
+            false
+        ));
+        assert!(!hint_uses_url_action(
+            HintKind::Media,
+            false,
+            "current",
+            false
+        ));
+        assert!(hint_uses_url_action(HintKind::Image, false, "tab", false));
+        assert!(hint_uses_url_action(
+            HintKind::Media,
+            false,
+            "current",
+            true
+        ));
+        assert!(hint_uses_url_action(HintKind::Image, true, "tab-bg", false));
+        assert!(!hint_uses_url_action(HintKind::Button, false, "tab", false));
+    }
+
+    #[test]
+    fn parses_specialized_first_selection_and_rejects_conflicts() {
+        let options = parse_hint_options(&ParsedCommand {
+            name: "hint".into(),
+            arguments: vec![
+                "--target".into(),
+                "choose".into(),
+                "--first".into(),
+                "--index".into(),
+                "3".into(),
+                "inputs".into(),
+            ],
+        })
+        .expect("indexed specialized hint");
+        assert_eq!(options.family, "inputs");
+        assert_eq!(options.target, "choose");
+        assert!(options.first);
+        assert_eq!(options.index, 3);
+
+        for arguments in [
+            vec!["--index".into(), "2".into()],
+            vec!["--first".into(), "--rapid".into()],
+            vec!["--first".into(), "--index".into(), "5001".into()],
+        ] {
+            assert!(
+                parse_hint_options(&ParsedCommand {
+                    name: "hint".into(),
+                    arguments,
+                })
+                .is_err()
+            );
+        }
     }
 }

@@ -720,10 +720,12 @@ impl qobject::BrowserUi {
             self.as_ref().validate_ipc_route(route)?;
             let options = parse_hint_options(&command)?;
             self.as_mut().set_hint_options(
-                options.links_only,
+                &options.family,
                 options.rapid,
                 &options.target,
                 options.script.as_deref(),
+                options.first,
+                options.index,
             );
             return Ok(serde_json::json!({"status": "accepted", "mode": "hint"}));
         }
@@ -956,8 +958,12 @@ impl qobject::BrowserUi {
             if let Some(parent) = journey_parent {
                 self.as_mut().mark_journey_parent(&effects, parent);
             }
+            // A background open restores the original active tab before this
+            // point. Reconcile the complete core order so the new tab is
+            // projected even though it is not active, and so navigation can
+            // resolve its stable tab ID to a QML view index.
+            self.as_mut().sync_tab_order_from_core();
             self.as_mut().set_pending_engine_action(&effects);
-            self.as_mut().sync_core_tabs();
             return Ok(serde_json::json!({
                 "status": "accepted",
                 "tab_id": tab.to_string(),

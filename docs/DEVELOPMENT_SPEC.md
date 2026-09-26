@@ -558,8 +558,9 @@ qualification gate rather than silently downgrade the requirement.
 ## 8. Window layout and presentation
 
 **UI-001 — Default layout.** Web content fills the available window. A compact
-bottom status bar remains visible by default. A top tab strip appears with two
-or more tabs. The command line replaces the status text while active;
+bottom status bar is hidden in normal mode by default and appears in other
+interaction modes. Users can configure it to remain visible. A top tab strip
+appears with two or more tabs. The command line replaces the status text while active;
 completion expands upward without resizing the web page on every keystroke.
 Transient messages must not repeatedly change viewport size or scroll position.
 
@@ -583,6 +584,16 @@ grant; Escape cancels/denies. Keyboard focus and the original page context are
 restored only if still valid. Background tabs show a pending badge rather than
 steal focus. Limit one interactive modal prompt per window with a bounded
 queue, and group identical origin/type requests.
+
+All browser-owned modal surfaces use the same command-first interaction
+contract: a visible command name, a safe initial choice, window-scoped Escape,
+keyboard navigation that still works when WebEngine retained focus, Enter to
+activate the selected choice, and pointer-selectable action rows. Complex
+management surfaces may use Tab/Shift-Tab for editable controls, but must still
+block page input and expose the same command header, dismissal, focus capture,
+and focus restoration behavior. Native portal file/folder pickers, transient
+status notices, capture indicators, hints, and context menus remain specialized
+surfaces rather than imitating browser-owned modal prompts.
 
 The initial prompt queue limit is eight requests per window. Cancel excess
 page-generated prompts with a visible grouped notification and a 30-second
@@ -621,6 +632,7 @@ not a privileged WebChannel shared with arbitrary web pages.
 | Command | `:` | Native editable command line and completion | Enter executes; Escape cancels |
 | Search | `/` or `?` | Incremental engine text search | Enter retains match; Escape restores prior state |
 | Hint | `f` or hint command | Label selection/filtering, no text into page | Selection/cancel/navigation |
+| Grid | `:grid` or `;g` | Keyboard-only 3×3 point selection; native click/hover only on explicit commit | Click acknowledgement, Escape, or invalidated page view; hover resets to root and remains in Grid |
 | Caret | `v` | Text movement/selection commands | Escape returns normal |
 | Pass-through | `Ctrl-v` from normal | Every key goes to page except reserved escape chord | `Ctrl-Shift-Escape` |
 | Prompt | Browser request | Prompt-specific keys; no page key forwarding | Answer/cancel/invalidated request |
@@ -636,6 +648,8 @@ keypress must not leak its release into a different target or leave modifiers
 stuck. Handle autorepeat, dead keys, AltGr, keyboard layout changes, and IME
 composition. IME preedit text is never interpreted as normal-mode commands.
 Physical/scancode bindings are optional; logical key bindings are the default.
+Grid mode additionally consumes auto-repeat and its matching key release, and
+does not forward unsupported modifier combinations to the page.
 
 **INPUT-003 — Editable focus.** User-initiated focus of input, textarea, or
 contenteditable normally enters insert mode. Page autofocus and script-driven
@@ -683,6 +697,16 @@ The overlay does not steal focus, reset the timeout, send keys to the page, or
 change which command wins. Escape/cancellation and exact-leaf behavior remain
 those of INPUT-004 and INPUT-005.
 
+**GRID-001 — Ephemeral view-bound session.** Grid selection owns a bounded,
+view-bound Rust session whose target, surface stamp, refinement history, and
+single pending dispatch remain ephemeral; lifecycle changes cancel rather than
+retarget the session.
+
+**GRID-002 — Native pointer qualification.** Grid commits use the public-Qt
+`FerricPagePointerAdapter` path and never substitute DOM activation, remote
+debugging, or desktop-wide injection. Native desktop evidence remains the
+release qualification gate for supported environments.
+
 **DISC-003 — Explanation.** `binding-explain` reports tokenization, current and
 requested mode, count eligibility, exact/prefix resolution, timeout behavior,
 winning binding, shadowed layers, conflicts, and reserved-key constraints.
@@ -715,6 +739,7 @@ specified in section 10. Each help entry must show applicable modes and counts.
 | `J` / `K` | Next/previous tab | `T` / `gt` | Open tab selector |
 | `d` / `u` | Close/undo tab | `r` / `R` | Reload/reload bypass cache |
 | `f` / `F` | Hint current/new foreground tab | `;b` / `;f` / `;r` | Hint background/foreground/rapid background tab |
+| `;g` | Enter Grid mode | Grid: `1`–`9` refine, `Enter`/`Shift+Enter`/`Ctrl+Enter` click, `Space` hover |
 | `yy` / `yt` | Copy URL/title | `pp` / `Pp` | Open clipboard current/new tab (`pP` / `PP` use primary selection) |
 | `/` / `?` | Search forward/backward | `n` / `N` | Next/previous match |
 | `+` / `-` / `=` | Zoom in/out/reset | `m` / `b` | Save/open quickmark prompt |
@@ -836,7 +861,11 @@ commands may be added, but these names and semantics form the target contract.
 | `window-close` | Close with page/download checks |
 | `window-focus <WINDOW_ID>` | Request activation; report compositor denial |
 | `fullscreen [on\|off\|toggle]` | Request window fullscreen; coordinate web fullscreen |
-| `hint [--target current\|tab\|tab-bg\|window\|yank\|clean-yank\|download\|userscript\|ephemeral] [--rapid] [--script NAME] [links\|all]` | Select validated live element; `ephemeral` is V1.1 |
+| `hint [--target TARGET] [--rapid] [--script NAME] [--first] [--index N] [links\|all\|inputs\|buttons\|images\|media\|scrollables]` | Select a freshly validated live element; targets include `current`, `tab`, `tab-bg`, `window`, `yank`, `clean-yank`, `download`, `userscript`, `ephemeral`, and `choose`; `--index` requires `--first` and `--rapid` conflicts with `--first` |
+| `grid` | Enter keyboard-controlled Grid mode for the active WebEngine view; default Normal binding is `;g` |
+| `grid-refine <1\|2\|3\|4\|5\|6\|7\|8\|9>`, `grid-back`, `grid-reset` | Refine or restore a bounded 3×3 view-local logical rectangle; no automatic click |
+| `grid-click <left\|right\|middle>`, `grid-hover` | Deliver one native pointer action at the current crosshair; hover returns to root selection after acknowledgement |
+| `grid-help`, `grid-cancel` | Toggle concise help or cancel Grid mode |
 | `mode-enter <normal\|insert\|caret\|passthrough>` | Explicit mode transition |
 | `caret-move <left\|right\|up\|down\|word-next\|word-prev\|line-start\|line-end> [--count N]` | Move/extend caret according to selection state |
 | `caret-select [on\|off\|toggle]`, `caret-yank` | Select and copy visible document text |
@@ -991,47 +1020,58 @@ coverage and a human-readable changelog.
 
 ## 12. Hints, caret navigation, and page scripts
 
-**HINT-001 — Candidate collection.** Collect visible interactive elements:
-links, buttons, inputs, selects, textareas, appropriate ARIA roles, and
-contenteditable elements. Support frames and open shadow roots where public
-engine frame APIs permit. Closed shadow roots, canvas-drawn controls, browser
-PDF UI, and inaccessible frames have explicit limitations and retain normal
-mouse/keyboard interaction. Do not imply cross-origin DOM access via ordinary
-parent-frame JavaScript; inject through the engine's frame facilities.
+**HINT-001 — Candidate collection.** Collect explicit candidate families for
+links, inputs, buttons, images, media, and elements with a real overflow scroll
+range; `all` combines those families. Intersect each candidate with its
+viewport and clipping/scroll ancestors, exclude disabled and inert controls,
+and require composed-tree hit testing to reach the candidate or a descendant
+at a center or inset point. Repeat visibility checks through each containing
+frame. Support same-origin frames and open shadow roots within the bounded
+frame/depth/candidate limits. Cross-origin frames, closed shadow roots,
+canvas-drawn controls, browser PDF UI, and inaccessible frames remain explicit
+limitations.
 
-**HINT-002 — Labels and geometry.** Default alphabet is `asdfghjkl`. Assign
-deterministic prefix-free labels in viewport reading order. Keep labels stable
-for a hint session while candidates remain valid. Coordinates must account for
-page zoom, device scale, frame offsets, scrolling, and visual viewport changes.
-Prefer native Qt Quick overlays for labels and hit targets. M0/M2 must validate
-whether nested frame transforms can be represented correctly; unsupported
-transforms are skipped explicitly rather than clicked approximately.
+**HINT-002 — Labels, filtering, and geometry.** Use the configured hint
+alphabet and minimum width to assign deterministic prefix-free labels in
+viewport reading order. Document-local weak element IDs survive recollection,
+so labels remain stable while the required width is unchanged; a capacity
+transition performs one atomic deterministic relabel. Label input supports
+prefix editing, active-result cycling, configurable unmatched presentation and
+auto-follow behavior. `/` enters ranked text filtering without relabeling or
+auto-activation. Marker placement tries target corners, clamps to the viewport,
+uses bounded offsets, and records unavoidable collision clusters for keyboard
+rotation. Coordinates account for page zoom, device scale, frame offsets,
+scrolling, and visual viewport changes.
 
 **HINT-003 — Validation before action.** Every candidate is tied to tab,
-document, frame, and hint-session IDs. On selection, recheck attachment,
-visibility, target kind, and geometry. Cancel/recollect on navigation or major
-layout change. Mutation observers are throttled; never continuously scan the
-whole page at animation-frame frequency. Hard cap candidates at 5,000 and
-explain if narrowed collection is needed.
+document, frame, hint-session, and stable element IDs. Selection and palette
+execution recheck exact identity, attachment, composed visibility, frame,
+target kind, action metadata, and geometry. Navigation invalidates the session.
+While hints are visible, bounded scroll/resize/mutation observation increments
+a dirty revision; the browser polls only that revision, coalesces refreshes,
+diffs candidates in place, and stops tracking when the session closes. Hard cap
+candidates at 5,000 and explain if narrowed collection is needed.
 
-**HINT-004 — Activation.** Use direct navigation for a pure link-open action
-when its semantics permit it. For buttons and controls, route a validated
-native input action through the correct view when required. Synthetic DOM
-`.click()` does not necessarily provide trusted user activation; test controls
-requiring a user gesture, popup creation, file input, and fullscreen. Never
-work around that distinction by disabling engine security. Hinting an input
-focuses it and enters insert mode. Hint-to-download and hint-to-userscript
-require explicit user action and use captured metadata.
+**HINT-004 — Activation and action choice.** Use direct navigation for a pure
+URL-open action when its semantics permit it. Hinting an input focuses the
+exact validated control and enters Insert; hinting a scrollable records the
+exact element as the browser scroll target and returns to Normal. `--first`
+activates a viewport-ordered candidate without labels, with an optional 1-based
+index. `--target choose` and marker right-click freshly inspect the element and
+open a keyboard modal containing only applicable current/tab/background-tab/
+window/yank/clean-yank/download/ephemeral/userscript actions. Escape returns to
+the still-active hint session. Synthetic DOM `.click()` does not necessarily
+provide trusted user activation; never weaken engine security to emulate it.
 
-**HINT-005 — Rapid hints.** A rapid background-tab/yank/clean-yank action can
-stay in hint mode if the source document remains valid. `tab` opens the
-validated link in a foreground tab, while `window` queues a new same-profile
-window navigation and both end the current hint session. Foreground
-navigation, downloads requiring consent, or document-changing actions end the
-session. Limit background-tab creation to 20 per hint invocation unless
-explicitly confirmed. Clean-yank applies the active link-cleaning rules to the
-selected URL before writing the clipboard and reports whether the value
-changed.
+**HINT-005 — Rapid hints.** A rapid background-tab/yank/clean-yank/download or
+manifest-backed userscript action can stay in hint mode while the source
+document remains valid. Consumed stable element IDs disappear immediately;
+remaining labels are preserved and newly appearing candidates receive
+deterministic free labels until a width transition requires atomic relabeling.
+`tab` opens the validated URL in a foreground tab, while `window` queues a new
+same-profile window navigation and both end the session. Limit background-tab
+creation to 20 per invocation unless explicitly confirmed. Optional marker
+acknowledgement animation is suppressed under reduced motion.
 
 **PAGE-001 — Script boundary.** Package browser-owned scripts as immutable
 resources with versions/hashes. Use an isolated script world. Expose no file,
@@ -1372,7 +1412,7 @@ schema_version = 3
 include = []
 
 [ui]
-statusbar = "always"
+statusbar = "in-mode"
 tabs = "multiple"
 tab_position = "top"
 font_family = "monospace"
@@ -1388,6 +1428,14 @@ entry_mode = "normal"
 auto_insert = true
 keychain_timeout_ms = 1000
 count_limit = 9999
+
+[hints]
+chars = "asdfghjkl"
+min_chars = 1
+auto_follow = "full-match"
+unmatched = "hide"
+rapid_unmatched = "hide"
+marker_scale = 1.0
 
 [discovery]
 keychain_overlay = true
@@ -1623,7 +1671,7 @@ must be validated before casting to Qt types.
 | --- | --- | --- | --- |
 | `schema_version` | integer 1 | G / load | Reject newer unknown schema |
 | `include` | list of local paths, empty | G / load | Merge order defined above |
-| `ui.statusbar` | always/command/never, always | G,P / L | Security/capture indicators remain accessible |
+| `ui.statusbar` | always/in-mode/never, in-mode | G,P / L | `command` remains a compatibility alias; dedicated security/capture indicators remain accessible |
 | `ui.tabs` | always/multiple/switching/never, multiple | G,P / L | Hidden tab count still available |
 | `ui.tab_position` | top/bottom/left/right, top | G,P / L | Side tabs need bounded width and keyboard access |
 | `ui.font_family` | nonempty string, monospace | G,P / L | Safe system fallback |
@@ -1635,6 +1683,12 @@ must be validated before casting to Qt types.
 | `input.auto_insert` | bool true | G,P,S / L | Editable focus transition |
 | `input.keychain_timeout_ms` | 100–5000, 1000 | G / L | Existing chain retains original timeout |
 | `input.count_limit` | 1–9999, 9999 | G / L | Command-specific limits still apply |
+| `hints.chars` | 2–32 unique printable ASCII characters excluding whitespace and `/`, `asdfghjkl` | G,P / L | A change cancels an active hint session |
+| `hints.min_chars` | 1–8, 1 | G,P / L | A change cancels an active hint session |
+| `hints.auto_follow` | always/unique-match/full-match/never, full-match | G,P / L | A change cancels an active hint session |
+| `hints.unmatched` | hide/dim/show, hide | G,P / L | Applies immediately to ordinary hints |
+| `hints.rapid_unmatched` | hide/dim/show, hide | G,P / L | Applies immediately to rapid hints |
+| `hints.marker_scale` | 0.75–2.0, 1.0 | G,P / L | Applies immediately without relabeling |
 | `discovery.keychain_overlay` | bool true | G,P / L | Derived continuations only; never page-controlled |
 | `discovery.keychain_overlay_delay_ms` | 100–2000, 350 | G,P / L | Delay starts after an incomplete valid prefix |
 | `discovery.learning_mode` | bool false | G,P / L | Adds explanations without altering dispatch |

@@ -5,6 +5,7 @@ import QtQuick.Dialogs
 import QtWebEngine
 import io.github.ferricbrowser 1.0
 import "../scripts/BrowserScripts.js" as BrowserScripts
+import "../scripts/KeyboardPresentation.js" as KeyboardPresentation
 import "../scripts/SpellcheckPresentation.js" as SpellcheckPresentation
 
 FerricBrowserRuntimeChrome {
@@ -167,11 +168,11 @@ FerricBrowserRuntimeChrome {
             return
         }
         if (action === "quit-request") {
-            window.beginQuitRequest()
+            window.beginQuitRequest(":quit")
             return
         }
         if (action === "window-close-request") {
-            window.beginQuitRequest()
+            window.beginQuitRequest(":window-close")
             return
         }
         if (action.indexOf("window-focus\t") === 0) {
@@ -951,6 +952,7 @@ FerricBrowserRuntimeChrome {
 
     function processRuntimeWork() {
             browserUi.poll_ipc()
+            window.syncTabModel()
             window.executePendingEngineAction()
             browserUi.poll_config()
             window.maybeOpenPendingEngineFileDialog()
@@ -1207,16 +1209,8 @@ FerricBrowserRuntimeChrome {
         if (alt || meta) {
             return ""
         }
-        var text = event.text || ""
-        if (text.length === 0 || text.length > 4) {
-            return ""
-        }
-        for (var i = 0; i < text.length; ++i) {
-            if (text.charCodeAt(i) < 0x20 || text.charCodeAt(i) === 0x7f) {
-                return ""
-            }
-        }
-        return text
+        return KeyboardPresentation.printableKey(
+                    event.text, event.key, shift, Qt.Key_A, Qt.Key_Z)
     }
 
     function completeBrowserKeyAction(ui, host) {
@@ -1228,6 +1222,47 @@ FerricBrowserRuntimeChrome {
         }
     }
 
+    function logicalGridKeyText(event) {
+        if (!event) {
+            return ""
+        }
+        var control = !!(event.modifiers & Qt.ControlModifier)
+        var shift = !!(event.modifiers & Qt.ShiftModifier)
+        var alt = !!(event.modifiers & Qt.AltModifier)
+        var meta = !!(event.modifiers & Qt.MetaModifier)
+        if (alt || meta) {
+            return ""
+        }
+        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+            if (control && !shift) {
+                return "Ctrl+Enter"
+            }
+            if (shift && !control) {
+                return "Shift+Enter"
+            }
+            return !control && !shift ? "Enter" : ""
+        }
+        if (control || shift) {
+            if (shift && event.key === Qt.Key_Slash && event.text === "?") {
+                return "?"
+            }
+            return ""
+        }
+        if (event.key >= Qt.Key_0 && event.key <= Qt.Key_9) {
+            return String.fromCharCode(event.key)
+        }
+        if (event.key === Qt.Key_Space) {
+            return "Space"
+        }
+        if (event.key === Qt.Key_Backspace) {
+            return "Backspace"
+        }
+        if (event.key === Qt.Key_Escape) {
+            return "Escape"
+        }
+        return event.text === "?" ? "?" : ""
+    }
+
     function handleBrowserKey(ui, host, event) {
         if (!ui || !event) {
             return false
@@ -1237,12 +1272,28 @@ FerricBrowserRuntimeChrome {
         if (window.handleMediaKey(event)) {
             handled = true
         } else if (event.key === Qt.Key_Escape) {
-            if (ui === browserUi && ui.mode === "hint") {
+            if (ui.mode === "grid" && event.modifiers !== Qt.NoModifier) {
+                // Unsupported modified Escape is consumed while Grid owns the
+                // keyboard, but does not mutate the spatial session.
+            } else if (ui === browserUi && ui.mode === "hint") {
                 window.closeHints()
             } else {
                 ui.escape()
             }
             handled = true
+        } else if (ui.mode === "grid") {
+            // Grid owns the whole triggering gesture. Auto-repeat is consumed
+            // without entering the Rust binding resolver, preventing a held
+            // digit or Enter key from refining/clicking repeatedly.
+            if (event.isAutoRepeat) {
+                handled = true
+            } else {
+                var gridText = window.logicalGridKeyText(event)
+                if (gridText.length > 0) {
+                    ui.handle_key(gridText)
+                }
+                handled = true
+            }
         } else if (ui.mode === "normal" && logicalText === ":") {
             ui.enter_command()
             handled = true
@@ -1255,17 +1306,29 @@ FerricBrowserRuntimeChrome {
                 ui.enter_search(logicalText === "?")
             }
             handled = true
-        } else if (ui === browserUi && ui.mode === "hint"
-                   && logicalText.length === 1) {
-            window.hintInput += logicalText.toLowerCase()
-            var matches = window.hintResults.filter(function(candidate) {
-                return candidate.label.indexOf(window.hintInput) === 0
-            })
-            if (matches.length === 1 && matches[0].label === window.hintInput) {
-                window.activateHint(matches[0].label)
-            } else if (matches.length === 0) {
-                window.hintInput = ""
-                ui.status_text = "Unknown hint label"
+        } else if (ui === browserUi && ui.mode === "hint") {
+            var control = (event.modifiers & Qt.ControlModifier) !== 0
+            var shift = (event.modifiers & Qt.ShiftModifier) !== 0
+            if (control && event.key === Qt.Key_U) {
+                window.applyHintInteraction("clear", "")
+            } else if (event.key === Qt.Key_Backspace) {
+                window.applyHintInteraction("backspace", "")
+            } else if (event.key === Qt.Key_Tab || event.key === Qt.Key_Right
+                       || event.key === Qt.Key_Down) {
+                window.applyHintInteraction(shift ? "previous" : "next", "")
+            } else if (event.key === Qt.Key_Backtab || event.key === Qt.Key_Left
+                       || event.key === Qt.Key_Up) {
+                window.applyHintInteraction("previous", "")
+            } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                window.applyHintInteraction("activate", "")
+            } else if (control && event.key === Qt.Key_Space) {
+                window.applyHintInteraction("rotate", "")
+            } else if (logicalText === "/" && window.hintState.mode === "label") {
+                window.applyHintInteraction("text-mode", "")
+            } else if (logicalText === " " && window.hintState.mode === "label") {
+                window.applyHintInteraction("rotate", "")
+            } else if (logicalText.length === 1) {
+                window.applyHintInteraction("character", logicalText)
             }
             handled = true
         } else if (ui.mode === "caret" && logicalText.length === 1) {
@@ -1320,7 +1383,41 @@ FerricBrowserRuntimeChrome {
 
     FerricShutdownDecisionDialog {
         hostWindow: window
+        promptVisible: window.shutdownConfirmationVisible
+        commandText: window.shutdownConfirmationCommand
+        title: window.shutdownConfirmationCommand === ":quit"
+               ? "Quit Ferric Browser?" : "Close this browser window?"
+        message: {
+            if (window.shutdownConfirmationCommand === ":quit") {
+                return "This will close every Ferric Browser window and tab."
+            }
+            if (window.shutdownParticipantCount() > 0) {
+                return "This is the primary browser window, so closing it will close every Ferric Browser window and tab."
+            }
+            var count = browserUi.tab_count
+            return "This will close this window and its " + count
+                    + (count === 1 ? " open tab." : " open tabs.")
+        }
+        keepLabel: "Keep browser open"
+        proceedLabel: window.shutdownConfirmationCommand === ":quit"
+                      ? "Quit browser" : "Close window"
+        proceedAccessibleName: window.shutdownConfirmationCommand === ":quit"
+                               ? "Quit Ferric Browser" : "Close browser window"
+        dialogHeight: 220 * window.chromeScale
+        onKeepRequested: {
+            window.shutdownConfirmationVisible = false
+            browserUi.status_text = "Shutdown cancelled"
+        }
+        onProceedRequested: {
+            window.shutdownConfirmationVisible = false
+            window.continueQuitRequest()
+        }
+    }
+
+    FerricShutdownDecisionDialog {
+        hostWindow: window
         promptVisible: window.shutdownPromptVisible
+        commandText: window.shutdownConfirmationCommand
         title: "Active downloads are still running"
         message: "Cancel active browser work before quitting, or keep the browser open."
         keepLabel: "Keep browser open"
@@ -1330,12 +1427,16 @@ FerricBrowserRuntimeChrome {
             window.shutdownPromptVisible = false
             browserUi.status_text = "Shutdown cancelled"
         }
-        onProceedRequested: window.cancelDownloadsAndQuit()
+        onProceedRequested: {
+            window.shutdownPromptVisible = false
+            window.cancelDownloadsAndQuit()
+        }
     }
 
     FerricShutdownDecisionDialog {
         hostWindow: window
         promptVisible: window.shutdownPagePromptVisible
+        commandText: window.shutdownConfirmationCommand
         title: "Page state may be lost"
         message: window.shutdownPagePromptReason + " Close anyway may lose that state."
         keepLabel: "Keep browser open"
@@ -1347,12 +1448,16 @@ FerricBrowserRuntimeChrome {
             window.shutdownPagePromptVisible = false
             browserUi.status_text = "Shutdown cancelled"
         }
-        onProceedRequested: window.finalizeQuit()
+        onProceedRequested: {
+            window.shutdownPagePromptVisible = false
+            window.finalizeQuit()
+        }
     }
 
     FerricShutdownDecisionDialog {
         hostWindow: window
         promptVisible: window.applicationShutdownForcePromptVisible
+        commandText: ":quit"
         title: "Browser shutdown is taking longer than expected"
         message: window.applicationShutdownStage
                  + ". Continue waiting, or force quit? Force quit leaves the "

@@ -96,6 +96,7 @@ pub(crate) fn validate_command_arguments(
         ("history-clear", "confirmed"),
         ("journey", "current"),
         ("hint", "rapid"),
+        ("hint", "first"),
     ] {
         if command == command_name
             && arguments
@@ -115,43 +116,72 @@ pub(crate) fn validate_command_arguments(
         return Err("command argument clean_link must be a boolean".into());
     }
     if command == "hint" {
-        let target = arguments.get("target").and_then(Value::as_str);
-        if arguments
-            .get("kind")
-            .and_then(Value::as_str)
-            .is_some_and(|kind| !matches!(kind, "links" | "all"))
-        {
-            return Err("command argument kind must be links or all".into());
-        }
-        if target.is_some_and(|target| {
+        validate_hint_arguments(arguments)?;
+    }
+    Ok(())
+}
+
+fn validate_hint_arguments(arguments: &serde_json::Map<String, Value>) -> Result<(), String> {
+    let target = arguments.get("target").and_then(Value::as_str);
+    if arguments
+        .get("kind")
+        .and_then(Value::as_str)
+        .is_some_and(|kind| {
+            !matches!(
+                kind,
+                "links" | "all" | "inputs" | "buttons" | "images" | "media" | "scrollables"
+            )
+        })
+    {
+        return Err("command argument kind must be a supported hint family".into());
+    }
+    if target.is_some_and(|target| {
+        !matches!(
+            target,
+            "current"
+                | "tab"
+                | "tab-bg"
+                | "window"
+                | "yank"
+                | "clean-yank"
+                | "download"
+                | "userscript"
+                | "ephemeral"
+                | "choose"
+        ) && !external_hint_target(target)
+    }) {
+        return Err("command argument target must be a supported hint target".into());
+    }
+    if arguments.get("rapid").and_then(Value::as_bool) == Some(true)
+        && target.is_some_and(|target| {
             !matches!(
                 target,
-                "current"
-                    | "tab"
-                    | "tab-bg"
-                    | "window"
-                    | "yank"
-                    | "clean-yank"
-                    | "download"
-                    | "userscript"
-                    | "ephemeral"
-            ) && !external_hint_target(target)
-        }) {
-            return Err("command argument target must be a supported hint target".into());
+                "current" | "tab-bg" | "yank" | "clean-yank" | "download" | "userscript"
+            ) || external_hint_target(target)
+        })
+    {
+        return Err("command argument target does not support rapid=true".into());
+    }
+    if target == Some("userscript") && arguments.get("script").and_then(Value::as_str).is_none() {
+        return Err("hint target userscript requires script".into());
+    }
+    if target != Some("userscript") && arguments.contains_key("script") {
+        return Err("hint script is only valid with target userscript".into());
+    }
+    let first = arguments.get("first").and_then(Value::as_bool) == Some(true);
+    let rapid = arguments.get("rapid").and_then(Value::as_bool) == Some(true);
+    if first && rapid {
+        return Err("hint first and rapid modes cannot be combined".into());
+    }
+    if let Some(index) = arguments.get("index") {
+        if !first {
+            return Err("hint index requires first=true".into());
         }
-        if arguments.get("rapid").and_then(Value::as_bool) == Some(true)
-            && target.is_some_and(|target| {
-                matches!(target, "tab" | "window" | "ephemeral") || external_hint_target(target)
-            })
+        if !index
+            .as_u64()
+            .is_some_and(|index| (1..=5_000).contains(&index))
         {
-            return Err("command argument target does not support rapid=true".into());
-        }
-        if target == Some("userscript") && arguments.get("script").and_then(Value::as_str).is_none()
-        {
-            return Err("hint target userscript requires script".into());
-        }
-        if target != Some("userscript") && arguments.contains_key("script") {
-            return Err("hint script is only valid with target userscript".into());
+            return Err("hint index must be 1..=5000".into());
         }
     }
     Ok(())

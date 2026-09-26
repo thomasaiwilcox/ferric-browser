@@ -2,45 +2,41 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Rectangle {
+FerricModalSurface {
     id: preview
-    required property var browserWindow
     required property var previewUi
     signal closeRequested()
     signal navigationConfirmed()
 
-    anchors.centerIn: parent
-    width: Math.min(900, parent.width - 80)
-    height: Math.min(470, parent.height - 120)
-    z: 70
     visible: browserWindow.linkPreviewVisible
-    focus: visible
-    Accessible.role: Accessible.Dialog
-    Accessible.name: "Clean-link preview"
-    onVisibleChanged: if (visible) forceActiveFocus()
-    color: browserWindow.panelColor
-    border.color: browserWindow.warningColor
+    commandText: previewUi.link_preview_command === "url-explain"
+                 ? ":url-explain" : ":url-clean"
+    title: previewUi.link_preview_command === "url-explain"
+           ? "URL explanation" : "Clean-link preview"
+    message: "Preview only; no navigation was performed. Sensitive URL components are masked."
+    keyHelp: "y confirm navigation when offered  ·  esc close"
+    dialogWidth: 900 * scale
+    dialogHeight: 520 * scale
+    dialogBorderColor: browserWindow.warningColor
+    stackingOrder: 70
+    onDismissRequested: closeRequested()
 
-    Keys.onPressed: function(event) {
-        if (event.key === Qt.Key_Escape) {
-            preview.closeRequested()
-            event.accepted = true
-        }
+    Shortcut {
+        sequence: "Y"
+        context: Qt.WindowShortcut
+        enabled: preview.visible
+                 && preview.previewUi.link_preview_requires_confirmation
+        onActivated: preview.navigationConfirmed()
     }
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 14
+        anchors.margins: 0
         spacing: 8
 
         RowLayout {
             Layout.fillWidth: true
-            Label {
-                Layout.fillWidth: true
-                text: preview.previewUi.link_preview_command === "url-explain" ? "URL explanation" : "Clean-link preview"
-                color: preview.browserWindow.primaryTextColor
-                font.bold: true
-            }
+            Item { Layout.fillWidth: true }
             Button {
                 text: "Confirm navigation"
                 visible: preview.previewUi.link_preview_requires_confirmation
@@ -52,13 +48,6 @@ Rectangle {
                 Accessible.name: "Close URL preview"
                 onClicked: preview.closeRequested()
             }
-        }
-
-        Label {
-            Layout.fillWidth: true
-            text: "Preview only; no navigation was performed. Sensitive URL components are masked."
-            color: preview.browserWindow.warningColor
-            wrapMode: Text.WordWrap
         }
 
         Label {

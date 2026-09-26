@@ -4,7 +4,7 @@ use std::{
     fs,
     io::{BufRead, BufReader, Read, Write},
     net::{TcpStream, ToSocketAddrs},
-    path::Path,
+    path::{Path, PathBuf},
     process::{Child, Command, Output, Stdio},
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -94,6 +94,7 @@ fn mode_name(mode: Mode) -> &'static str {
         Mode::Command => "command",
         Mode::Search => "search",
         Mode::Hint => "hint",
+        Mode::Grid => "grid",
         Mode::Caret => "caret",
         Mode::PassThrough => "pass-through",
     }
@@ -339,14 +340,115 @@ fn run_qml_lint() -> Result<(), String> {
         },
     )?;
     qml_files.sort();
-    let mut arguments = vec![
-        "--silent".to_owned(),
-        "-I".to_owned(),
-        "/usr/lib/qt6/qml".to_owned(),
-    ];
+    let mut import_paths = vec![qt_qml_import_path()?];
+    let generated_module_path = PathBuf::from("target/cxxqt/qml_modules");
+    if generated_module_path.is_dir() {
+        import_paths.push(generated_module_path);
+    }
+    let mut arguments = vec!["--json".to_owned(), "-".to_owned()];
+    for import_path in import_paths {
+        arguments.push("-I".to_owned());
+        arguments.push(import_path.display().to_string());
+    }
     arguments.extend(qml_files.into_iter().map(|path| path.display().to_string()));
-    let argument_refs = arguments.iter().map(String::as_str).collect::<Vec<_>>();
-    run(executable, &argument_refs)
+    let output = Command::new(executable)
+        .args(&arguments)
+        .output()
+        .map_err(|error| format!("failed to run {executable}: {error}"))?;
+    let critical_diagnostics = qml_lint_critical_diagnostics(&output.stdout)?;
+    if !critical_diagnostics.is_empty() {
+        for diagnostic in &critical_diagnostics {
+            eprintln!("{diagnostic}");
+        }
+        return Err(format!(
+            "{executable} reported {} critical QML lint diagnostic(s)",
+            critical_diagnostics.len()
+        ));
+    }
+    if !output.status.success() {
+        if output.status.code() != Some(255) {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!(
+                "{executable} exited unexpectedly with {}: {}",
+                output.status,
+                stderr.trim()
+            ));
+        }
+        eprintln!(
+            "{executable} exited with {} after advisory diagnostics; no critical QML issues were reported",
+            output.status
+        );
+    }
+    Ok(())
+}
+
+fn qml_lint_critical_diagnostics(report: &[u8]) -> Result<Vec<String>, String> {
+    let report = serde_json::from_slice::<serde_json::Value>(report)
+        .map_err(|error| format!("could not parse qmllint JSON output: {error}"))?;
+    let files = report
+        .get("files")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "qmllint JSON output did not contain a files array".to_owned())?;
+    let mut diagnostics = Vec::new();
+    for file in files {
+        let filename = file
+            .get("filename")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("<unknown QML file>");
+        let Some(warnings) = file.get("warnings").and_then(serde_json::Value::as_array) else {
+            continue;
+        };
+        for warning in warnings {
+            let severity = warning
+                .get("type")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default();
+            if !matches!(severity, "critical" | "error" | "fatal") {
+                continue;
+            }
+            let line = warning
+                .get("line")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
+            let column = warning
+                .get("column")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
+            let message = warning
+                .get("message")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("unknown qmllint error");
+            diagnostics.push(format!("{filename}:{line}:{column}: {message}"));
+        }
+    }
+    Ok(diagnostics)
+}
+
+fn qt_qml_import_path() -> Result<PathBuf, String> {
+    for executable in [
+        "qtpaths6",
+        "qtpaths",
+        "/usr/lib/qt6/bin/qtpaths6",
+        "/usr/lib/qt6/bin/qtpaths",
+    ] {
+        let Ok(output) = Command::new(executable)
+            .args(["--query", "QT_INSTALL_QML"])
+            .output()
+        else {
+            continue;
+        };
+        if !output.status.success() {
+            continue;
+        }
+        let Ok(stdout) = String::from_utf8(output.stdout) else {
+            continue;
+        };
+        let path = PathBuf::from(stdout.trim());
+        if path.is_dir() {
+            return Ok(path);
+        }
+    }
+    Err("could not query Qt's installed QML import directory with qtpaths".to_owned())
 }
 
 fn run_qml_ui_tests() -> Result<(), String> {
@@ -724,6 +826,10 @@ fn check_shared_ui_contracts(production_adapter: &str) -> Result<(), String> {
         "crates/ferric-browser-engine-qt/qml/components/FerricFocusOverlayController.qml",
     )
     .map_err(|error| format!("could not inspect focus overlay controller: {error}"))?;
+    let webengine_surface_recovery = fs::read_to_string(
+        "crates/ferric-browser-engine-qt/qml/components/FerricWebEngineSurfaceRecovery.qml",
+    )
+    .map_err(|error| format!("could not inspect WebEngine surface recovery: {error}"))?;
     let chrome_presentation_controller = fs::read_to_string(
         "crates/ferric-browser-engine-qt/qml/components/FerricChromePresentationController.qml",
     )
@@ -778,6 +884,12 @@ fn check_shared_ui_contracts(production_adapter: &str) -> Result<(), String> {
         || !focus_overlay_controller.contains("required property var browserWindow")
         || !focus_overlay_controller.contains("function captureOverlayFocus")
         || !focus_overlay_controller.contains("function restoreOverlayFocus")
+        || !webengine_surface_recovery.contains("required property var hostWindow")
+        || !webengine_surface_recovery.contains("function onFrameSwapped()")
+        || webengine_surface_recovery.contains("Qt.callLater")
+        || webengine_surface_recovery.contains("Timer {")
+        || webengine_surface_recovery.contains("runJavaScript")
+        || webengine_surface_recovery.contains(".reload(")
         || !chrome_presentation_controller.contains("required property var browserWindow")
         || !chrome_presentation_controller.contains("required property var browserUi")
         || !chrome_presentation_controller.contains("function refreshChromeAppearance")
@@ -2667,6 +2779,7 @@ fn validate_arch_install_layout() -> Result<(), String> {
         "/usr/share/icons/hicolor/scalable/apps/io.github.ferricbrowser.FerricBrowser.svg",
         "/usr/share/doc/${pkgname}/README.md",
         "/usr/share/doc/${pkgname}/DEVELOPMENT_SPEC.md",
+        "/usr/share/doc/${pkgname}/grid-navigation.md",
         "/usr/share/doc/${pkgname}/dependencies.toml",
     ];
     for fragment in required_recipe_fragments {
@@ -2684,6 +2797,7 @@ fn validate_arch_install_layout() -> Result<(), String> {
     let installed_manifest = fs::read_to_string("packaging/installed-files.txt")
         .map_err(|error| format!("could not read packaging/installed-files.txt: {error}"))?;
     for required in [
+        "/usr/share/doc/ferric-browser/grid-navigation.md",
         "/usr/share/doc/ferric-browser/LICENSES.md",
         "/usr/share/doc/ferric-browser/license-policy.toml",
         "/usr/share/doc/ferric-browser/SUPPORT.md",
@@ -3009,6 +3123,54 @@ fn run_fuzz_smoke() -> Result<(), String> {
         targets.len()
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod qml_lint_tests {
+    use super::qml_lint_critical_diagnostics;
+
+    #[test]
+    fn advisory_qml_diagnostics_do_not_fail_older_qt_versions() {
+        let report = br#"{
+            "files": [{
+                "filename": "Overlay.qml",
+                "success": false,
+                "warnings": [{
+                    "line": 12,
+                    "column": 8,
+                    "message": "Unqualified access",
+                    "type": "warning"
+                }]
+            }]
+        }"#;
+
+        assert!(
+            qml_lint_critical_diagnostics(report)
+                .expect("valid qmllint report")
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn critical_qml_diagnostics_remain_blocking() {
+        let report = br#"{
+            "files": [{
+                "filename": "Overlay.qml",
+                "success": false,
+                "warnings": [{
+                    "line": 17,
+                    "column": 5,
+                    "message": "Expected token `}'",
+                    "type": "critical"
+                }]
+            }]
+        }"#;
+
+        assert_eq!(
+            qml_lint_critical_diagnostics(report).expect("valid qmllint report"),
+            ["Overlay.qml:17:5: Expected token `}'"]
+        );
+    }
 }
 
 #[cfg(test)]

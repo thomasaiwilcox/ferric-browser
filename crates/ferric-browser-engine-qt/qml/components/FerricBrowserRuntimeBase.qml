@@ -5,6 +5,7 @@ import QtQuick.Dialogs
 import QtWebEngine
 import io.github.ferricbrowser 1.0
 import "../scripts/BrowserScripts.js" as BrowserScripts
+import "../scripts/ChromePresentation.js" as ChromePresentation
 import "../scripts/SpellcheckPresentation.js" as SpellcheckPresentation
 
 ApplicationWindow {
@@ -95,7 +96,11 @@ ApplicationWindow {
     property color modeInsertColor: "#f9e2af"
     property color selectionColor: "#45475a"
     property color selectionTextColor: "#cdd6f4"
-    property string statusbarMode: "always"
+    property string statusbarMode: "in-mode"
+    property bool commandNoticeVisible: false
+    property string commandNoticeText: ""
+    property bool commandNoticeError: false
+    property string pendingInteractiveCommand: ""
     property string tabsMode: "multiple"
     property string tabPosition: "top"
     property bool tabSwitchingVisible: false
@@ -108,11 +113,12 @@ ApplicationWindow {
     readonly property real sideTabWidth: Math.max(160, Math.min(280, width * 0.22))
     readonly property bool inputBarActive: browserUi.mode === "command"
                                            || browserUi.mode === "search"
-    readonly property bool normalStatusVisible: statusbarMode === "always"
-                                                && !inputBarActive
+    readonly property bool statusBarVisible:
+        (window.commandNoticeVisible && !window.inputBarActive)
+        || statusBarVisibleForMode(browserUi.mode)
     readonly property real bottomChromeHeight:
         (inputBarActive ? inputBarHeight
-         : (normalStatusVisible ? statusBarHeight : 0))
+         : (statusBarVisible ? statusBarHeight : 0))
         + (tabStripVisible && tabPosition === "bottom"
            ? tabBarHeight : 0)
     readonly property real chromeOpacity: 1.0
@@ -169,6 +175,28 @@ ApplicationWindow {
     FontMetrics {
         id: chromeFontMetrics
         font: window.font
+    }
+
+    Timer {
+        id: commandNoticeTimer
+        interval: 3500
+        repeat: false
+        onTriggered: window.commandNoticeVisible = false
+    }
+
+    function statusBarVisibleForMode(mode) {
+        return ChromePresentation.statusBarVisible(statusbarMode, mode)
+    }
+
+    function showCommandNotice(text, isError) {
+        var message = String(text || "").trim()
+        if (message.length === 0 || message === "Normal mode") {
+            return
+        }
+        window.commandNoticeText = message
+        window.commandNoticeError = !!isError
+        window.commandNoticeVisible = true
+        commandNoticeTimer.restart()
     }
 
     FerricFocusOverlayController {
@@ -951,12 +979,14 @@ ApplicationWindow {
         applicationShutdownTimer.stop()
         shutdownPageProbeTimer.stop()
         browserUi.end_shutdown_gate()
+        window.shutdownConfirmationVisible = false
         window.shutdownPromptVisible = false
         window.shutdownPagePromptVisible = false
         var windows = window.browserWindowRegistry || []
         for (var i = 0; i < windows.length; ++i) {
             var host = windows[i] && windows[i].host
             if (host && host !== window) {
+                host.windowCloseConfirmationVisible = false
                 host.windowShutdownPromptVisible = false
                 host.windowShutdownStoragePromptVisible = false
                 if (host.cancelPageStateProbe) {
@@ -968,6 +998,7 @@ ApplicationWindow {
         for (var j = 0; j < popups.length; ++j) {
             var popup = popups[j] && popups[j].host
             if (popup) {
+                popup.windowCloseConfirmationVisible = false
                 popup.windowShutdownPromptVisible = false
                 if (popup.cancelPageStateProbe) {
                     popup.cancelPageStateProbe()
@@ -1040,14 +1071,14 @@ ApplicationWindow {
         for (var i = 0; i < windows.length; ++i) {
             var host = windows[i] && windows[i].host
             if (host && host !== window && !host.windowShutdownApproved) {
-                host.beginQuitRequest()
+                host.continueQuitRequest()
             }
         }
         var popups = (window.popupWindowRegistry || []).slice(0)
         for (var j = 0; j < popups.length; ++j) {
             var popup = popups[j] && popups[j].host
             if (popup && !popup.windowShutdownApproved) {
-                popup.beginQuitRequest()
+                popup.continueQuitRequest()
             }
         }
         applicationShutdownTimer.restart()
@@ -1381,7 +1412,7 @@ ApplicationWindow {
             return
         }
         close.accepted = false
-        window.beginQuitRequest()
+        window.beginQuitRequest(":window-close")
     }
     property string startupUrl: "about:blank"
     property var startupAdditionalUrls: []
@@ -1395,6 +1426,7 @@ ApplicationWindow {
     property bool safeMode: false
     property bool userscriptsOff: false
     property bool softwareRendering: false
+    property bool nativeWayland: false
     property string instanceLockPath: ""
     property string instanceSelector: ""
     property string profileName: "default"
@@ -1514,6 +1546,8 @@ ApplicationWindow {
     property var pendingContextMenuUi: null
     property var pendingContextMenuHost: null
     property var contextMenuItems: []
+    property bool shutdownConfirmationVisible: false
+    property string shutdownConfirmationCommand: ":window-close"
     property bool shutdownPromptVisible: false
     property bool shutdownPagePromptVisible: false
     property string shutdownPagePromptReason: ""
@@ -1609,7 +1643,14 @@ ApplicationWindow {
     property int libraryTotalEntries: 0
     property bool linkPreviewVisible: false
     property var hintResults: []
+    property var hintViewport: ({ width: 0, height: 0 })
     property string hintInput: ""
+    property var hintState: ({ mode: "label", prefix: "", query: "", matching_labels: [], active_label: "", remaining: 0, total: 0 })
+    property int hintDirtyRevision: 0
+    property bool hintRefreshPending: false
+    property int hintCollectionEpoch: 0
+    property int hintCollisionRotation: 0
+    property var hintTrackingView: null
     property bool rapidHintConfirmationVisible: false
     property string copiedText: ""
     property string copiedValue: ""
@@ -1631,6 +1672,7 @@ ApplicationWindow {
         || window.downloadManagerVisible
         || window.permissionPromptVisible
         || window.desktopMediaPromptVisible
+        || window.shutdownConfirmationVisible
         || window.shutdownPromptVisible
         || window.shutdownPagePromptVisible
         || window.switcherVisible
@@ -1916,6 +1958,18 @@ ApplicationWindow {
                 browserUi.update_completion(commandSurface.commandText,
                                             commandSurface.cursorPosition)
             }
+            if (window.pendingInteractiveCommand.length > 0
+                    && commandSurface.commandVisible
+                    && commandSurface.commandText === window.pendingInteractiveCommand) {
+                var command = window.pendingInteractiveCommand
+                window.pendingInteractiveCommand = ""
+                Qt.callLater(function() {
+                    if (commandSurface.commandVisible
+                            && commandSurface.commandText === command) {
+                        window.submitInteractiveCommand(command)
+                    }
+                })
+            }
         }
     }
 
@@ -1964,7 +2018,18 @@ ApplicationWindow {
         id: browserUi
         status_text: "Ready"
         onRuntime_work_available: window.scheduleRuntimeWork(0)
-        onStatus_textChanged: window.scheduleRuntimeWork(0)
+        onStatus_textChanged: {
+            window.scheduleRuntimeWork(0)
+            if (window.commandNoticeVisible && browserUi.mode !== "command"
+                    && browserUi.status_text !== "Normal mode") {
+                var loweredStatus = browserUi.status_text.toLowerCase()
+                window.showCommandNotice(
+                    browserUi.status_text,
+                    loweredStatus.indexOf("failed") >= 0
+                    || loweredStatus.indexOf("error") >= 0
+                    || loweredStatus.indexOf("rejected") >= 0)
+            }
+        }
     }
 
     BrowserKeyRouter {
@@ -1973,14 +2038,16 @@ ApplicationWindow {
         enabled: window.active && window.browserKeyFocusActive
                  && (browserUi.mode === "normal"
                      || browserUi.mode === "hint"
+                     || browserUi.mode === "grid"
                      || browserUi.mode === "caret"
                      || browserUi.mode === "insert"
                      || browserUi.mode === "pass-through")
-        onKeyPressed: function(text, key, modifiers) {
+        onKeyPressed: function(text, key, modifiers, isAutoRepeat) {
             var event = {
                 text: text,
                 key: key,
                 modifiers: modifiers,
+                isAutoRepeat: !!isAutoRepeat,
                 accepted: false
             }
             if (window.handleBrowserKey(browserUi, window, event)) {

@@ -15,6 +15,7 @@ mod journey;
 mod link_cleaning;
 mod model;
 mod navigation;
+mod spatial_navigation;
 mod switcher;
 mod url;
 
@@ -34,12 +35,14 @@ pub use dispatcher::{
     dispatch_command, dispatch_command_for,
 };
 pub use hints::{
-    HintCandidate, HintError, HintGeometry, HintKind, HintSession, HintTarget, LabeledHint,
-    MAX_HINT_CANDIDATES, assign_labels,
+    HintAutoFollow, HintCandidate, HintError, HintGeometry, HintInputMode, HintInteraction,
+    HintInteractionInput, HintInteractionOutcome, HintInteractionSnapshot, HintKind, HintSession,
+    HintTarget, HintUnmatchedPolicy, LabeledHint, MAX_HINT_CANDIDATES, assign_labels,
+    assign_labels_with_options, refresh_labels,
 };
 pub use id::{
     ActionId, ContextId, DocumentId, DownloadId, HintSessionId, IdSource, JourneyNodeId, ProfileId,
-    RequestId, SessionId, TabId, WindowId,
+    RequestId, SessionId, SpatialRequestId, SpatialSessionId, TabId, WindowId,
 };
 pub use input::{
     BindingDefinition, BindingError, BindingOutcome, BindingRegistry, BindingResolver, BindingTrie,
@@ -63,6 +66,12 @@ pub use model::{
 pub use navigation::{
     NavigationContext, NavigationError, NavigationResult, NavigationSource, resolve_input,
     resolve_search_query,
+};
+pub use spatial_navigation::{
+    GridCell, LogicalPoint, LogicalRect, MAX_SPATIAL_DEPTH, PointerButton, SPATIAL_PRECISION_LIMIT,
+    SpatialAck, SpatialAction, SpatialCancelReason, SpatialDispatchOutcome, SpatialDispatchRequest,
+    SpatialError, SpatialLifecycle, SpatialOwner, SpatialProjection, SpatialSession, SpatialTarget,
+    SurfaceStamp,
 };
 pub use switcher::{
     MAX_SWITCHER_QUERY_TERMS, MAX_SWITCHER_TERM_BYTES, rank as switcher_rank,

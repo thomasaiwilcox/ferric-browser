@@ -260,6 +260,14 @@ pub fn dispatch_command_for(
         .resolve(&parsed.name)
         .map_err(DispatchError::Command)?;
     let command = definition.name.as_str();
+    if (command == "grid" || command.starts_with("grid-"))
+        && !matches!(
+            invocation_context.source,
+            CommandSource::Keyboard | CommandSource::Ui
+        )
+    {
+        return Err(DispatchError::UnsupportedCommand(command.into()));
+    }
     let count = validate_count(command, count, definition.count)?;
 
     let target = selected_tab(state, selector, window).map(|tab| Target {
@@ -269,6 +277,15 @@ pub fn dispatch_command_for(
     });
 
     match command {
+        "grid" => {
+            ensure_no_arguments(&parsed, command)?;
+            Ok(vec![Event::PushMode {
+                window,
+                mode: Mode::Grid,
+            }])
+        }
+        "grid-refine" | "grid-click" | "grid-hover" | "grid-back" | "grid-reset" | "grid-help"
+        | "grid-cancel" => Err(DispatchError::UnsupportedCommand(command.into())),
         "tab-open" => {
             let (input, background) = tab_open_arguments(&parsed, command)?;
             let navigation =

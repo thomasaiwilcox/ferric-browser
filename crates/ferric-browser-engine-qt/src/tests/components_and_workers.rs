@@ -231,6 +231,66 @@ fn site_ledger_component_renders_data_and_emits_bridge_intents() {
 }
 
 #[test]
+fn browser_owned_dialogs_share_the_command_first_modal_contract() {
+    let modal = include_str!("../../qml/components/FerricModalSurface.qml");
+    let command = include_str!("../../qml/components/FerricCommandDialog.qml");
+    assert!(modal.contains("context: Qt.WindowShortcut"));
+    assert!(modal.contains("sequence: \"Escape\""));
+    assert!(modal.contains("Accessible.role: Accessible.Dialog"));
+    assert!(modal.contains("Modal background clicks never imply consent"));
+    assert!(command.contains("sequence: \"J\""));
+    assert!(command.contains("sequence: \"K\""));
+    assert!(command.contains("dialog.activateCurrent()"));
+    assert!(command.contains("actions[i].safe === true"));
+
+    let browser_owned = [
+        include_str!("../../qml/components/FerricBindingHelp.qml"),
+        include_str!("../../qml/components/FerricCertificatePrompts.qml"),
+        include_str!("../../qml/components/FerricContextMoveDialog.qml"),
+        include_str!("../../qml/components/FerricContextRouteDialog.qml"),
+        include_str!("../../qml/components/FerricDesktopMediaPrompt.qml"),
+        include_str!("../../qml/components/FerricDiagnostics.qml"),
+        include_str!("../../qml/components/FerricDownloadManager.qml"),
+        include_str!("../../qml/components/FerricExternalNavigationDialog.qml"),
+        include_str!("../../qml/components/FerricJourneyExportPreview.qml"),
+        include_str!("../../qml/components/FerricLibraryManager.qml"),
+        include_str!("../../qml/components/FerricLinkPreview.qml"),
+        include_str!("../../qml/components/FerricNavigationFailure.qml"),
+        include_str!("../../qml/components/FerricPageDialog.qml"),
+        include_str!("../../qml/components/FerricPermissionPrompt.qml"),
+        include_str!("../../qml/components/FerricPrivateHistoryTransfer.qml"),
+        include_str!("../../qml/components/FerricProfileDeletePreview.qml"),
+        include_str!("../../qml/components/FerricProfileManager.qml"),
+        include_str!("../../qml/components/FerricRapidHintConfirmation.qml"),
+        include_str!("../../qml/components/FerricRecoveryBanner.qml"),
+        include_str!("../../qml/components/FerricRendererFailurePrompt.qml"),
+        include_str!("../../qml/components/FerricReopenWindowConfirmation.qml"),
+        include_str!("../../qml/components/FerricSessionManager.qml"),
+        include_str!("../../qml/components/FerricSessionPreview.qml"),
+        include_str!("../../qml/components/FerricSettings.qml"),
+        include_str!("../../qml/components/FerricSiteLedger.qml"),
+        include_str!("../../qml/components/FerricSwitcher.qml"),
+        include_str!("../../qml/components/FerricUserscriptRemovalDialog.qml"),
+        include_str!("../../qml/components/FerricWebAuthPrompt.qml"),
+    ];
+    for source in browser_owned {
+        assert!(
+            source.contains("FerricModalSurface {")
+                || source.contains("FerricCommandDialog {"),
+            "browser-owned dialogs must use the shared modal contract"
+        );
+    }
+
+    let secondary_window = include_str!("../../qml/components/FerricBrowserWindow.qml");
+    assert!(secondary_window.contains("FerricExternalNavigationDialog {"));
+    assert!(!secondary_window.contains("Popup {"));
+
+    let capture = include_str!("../../qml/components/FerricCaptureIndicator.qml");
+    assert!(capture.contains("Accessible.role: Accessible.StatusBar"));
+    assert!(capture.contains("focus: false"));
+}
+
+#[test]
 fn diagnostics_component_is_intent_only_and_replaces_the_inline_surface() {
     let qml = include_str!("../../qml/components/FerricDiagnostics.qml");
     let composition_root = QML_SOURCE;
@@ -389,6 +449,7 @@ fn hint_overlay_component_renders_candidates_and_emits_root_owned_intents() {
     let qml = include_str!("../../qml/components/FerricHintOverlay.qml");
     let composition_root = QML_SOURCE;
     assert!(qml.contains("required property var hintResults"));
+    assert!(qml.contains("required property var sourceViewport"));
     assert!(qml.contains("signal activationRequested(string label)"));
     assert!(qml.contains("signal actionsRequested(string label)"));
     assert!(!qml.contains("browserUi."));
@@ -528,8 +589,48 @@ fn command_line_component_emits_editing_intents_without_executing_commands() {
     assert!(!qml.contains("execute_command"));
     assert!(composition_root.contains("FerricCommandLine {"));
     assert!(composition_root.contains("browserUi.update_completion(text, cursorPosition)"));
-    assert!(composition_root.contains("browserUi.execute_interactive_command(text)"));
+    assert!(composition_root.contains("window.submitInteractiveCommand(text)"));
+    assert!(composition_root.contains("commandSurface.showFeedback(browserUi.status_text"));
     assert!(composition_root.contains("browserUi.completion_move(delta)"));
+}
+
+#[test]
+fn command_outcomes_remain_visible_and_detached_windows_pump_runtime_work() {
+    let root = QML_SOURCE;
+    let command_line = include_str!("../../qml/components/FerricCommandLine.qml");
+    let secondary = include_str!("../../qml/components/FerricBrowserWindow.qml");
+    let library = include_str!("../../qml/components/FerricLibraryManager.qml");
+    let modal = include_str!("../../qml/components/FerricModalSurface.qml");
+
+    assert!(command_line.contains("function showFeedback(text, isError)"));
+    assert!(command_line.contains("id: feedbackPopup"));
+    assert!(root.contains("property bool commandNoticeVisible: false"));
+    assert!(root.contains("window.showCommandNotice(commandStatus, false)"));
+    assert!(root.contains("browserUi.command_retryable ? text : \"\""));
+    assert!(secondary.contains("execute_secondary_interactive_command(text)"));
+    assert!(secondary.contains("onRuntime_work_available:"));
+    assert!(secondary.contains("function processRuntimeWork()"));
+    assert!(library.contains("FerricModalSurface {"));
+    assert!(library.contains("onDismissRequested: closeRequested()"));
+    assert!(modal.contains("context: Qt.WindowShortcut"));
+    assert!(modal.contains("enabled: surface.visible && surface.dismissOnEscape"));
+}
+
+#[test]
+fn context_menu_uses_a_compact_keyboard_operable_menu() {
+    let qml = include_str!("../../qml/components/FerricContextMenu.qml");
+
+    assert!(qml.contains("Menu {"));
+    assert!(qml.contains("function preferInScenePopup()"));
+    assert!(qml.contains("var propertyName = \"popupType\""));
+    assert!(qml.contains("popup[propertyName] = 0"));
+    assert!(!qml.contains("popupType: Popup."));
+    assert!(qml.contains("function openAt(hostWindow, x, y)"));
+    assert!(qml.contains("popup.currentIndex = 0"));
+    assert!(qml.contains("Accessible.role: Accessible.PopupMenu"));
+    assert!(qml.contains("Accessible.role: Accessible.MenuItem"));
+    assert!(!qml.contains("scopeSelector"));
+    assert!(!qml.contains("Switcher scope"));
 }
 
 #[test]
@@ -576,6 +677,12 @@ fn library_entries_component_preserves_row_state_and_emits_root_owned_operations
     assert!(qml.contains("signal journeyReopenRequested(string nodeId, string target)"));
     assert!(qml.contains("signal journeyExpandRequested(string nodeId)"));
     assert!(qml.contains("function markEditSaved(entryKind, entryId)"));
+    assert!(qml.contains("function focusList()"));
+    assert!(qml.contains("function moveSelection(delta)"));
+    assert!(qml.contains("function activateCurrent()"));
+    assert!(qml.contains("function handleNavigationKey(event)"));
+    assert!(qml.contains("event.accepted = true"));
+    assert!(qml.contains("Accessible.selected: index === libraryList.currentIndex"));
     assert!(!qml.contains("browserUi."));
     assert!(!qml.contains("execute_command"));
     assert!(manager.contains("FerricLibraryEntries {"));
@@ -596,6 +703,10 @@ fn library_manager_composes_presentation_and_forwards_every_operation_to_the_roo
         qml.contains("signal entryEditRequested(string entryKind, string entryId, string value)")
     );
     assert!(qml.contains("signal journeyReopenRequested(string nodeId, string target)"));
+    assert!(qml.contains("function focusPrimaryControl()"));
+    assert!(qml.contains("Qt.callLater(focusPrimaryControl)"));
+    assert!(qml.contains("Component.onCompleted:"));
+    assert!(qml.contains("libraryEntryList.handleNavigationKey(event)"));
     assert!(!qml.contains("browserUi."));
     assert!(!qml.contains("execute_command"));
     assert!(composition_root.contains("FerricLibraryManager {"));
@@ -629,6 +740,149 @@ fn all_hints_cover_qutebrowser_control_families_and_activate_controls() {
     assert!(script.contains("window.__ferric_browserHintElements=elements"));
     assert!(script.contains("record&&record.element"));
     assert!(script.contains("el.click();return true"));
+}
+
+#[test]
+fn one_shot_background_hints_use_the_background_route_and_exit_hint_mode() {
+    let source = include_str!("../browser_ui_navigation.rs");
+    let ipc = include_str!("../browser_ui_ipc.rs");
+    let ipc_preparation = include_str!("../browser_ui_ipc_preparation.rs");
+    let qml = include_str!("../../qml/components/FerricBrowserRuntimePresentation.qml");
+
+    assert!(source.contains("hint_rapid_target == \"tab-bg\""));
+    assert!(source.matches("open_hint_in_background_tab(").count() >= 3);
+    assert!(source.contains("open_target: IpcOpenTarget::BackgroundTab"));
+    assert!(source.contains("rapid_hint_keeps_mode("));
+
+    let background_open = ipc
+        .split("if route.open_target == IpcOpenTarget::BackgroundTab")
+        .nth(1)
+        .expect("background-tab IPC route")
+        .split("dispatch_fallback_ipc_command")
+        .next()
+        .expect("background-tab IPC route boundary");
+    let sync = background_open
+        .find("sync_tab_order_from_core()")
+        .expect("background open must project the complete tab order");
+    let navigate = background_open
+        .find("set_pending_engine_action(&effects)")
+        .expect("background open must queue navigation");
+    assert!(sync < navigate, "the background tab view must exist before navigation");
+    assert!(ipc_preparation.contains("self.as_mut().sync_tab_order_from_core();"));
+
+    let runtime = include_str!("../../qml/components/FerricBrowserRuntimeSurface.qml");
+    let runtime_work = runtime
+        .split("function processRuntimeWork()")
+        .nth(1)
+        .expect("runtime work function")
+        .split("Timer {")
+        .next()
+        .expect("runtime work function boundary");
+    let poll = runtime_work.find("browserUi.poll_ipc()").expect("IPC poll");
+    let project = runtime_work
+        .find("window.syncTabModel()")
+        .expect("tab model projection after IPC poll");
+    let execute = runtime_work
+        .find("window.executePendingEngineAction()")
+        .expect("pending IPC action execution");
+    assert!(
+        poll < project && project < execute,
+        "IPC-created tab views must exist before their navigation is consumed"
+    );
+
+    let background_result = qml
+        .split("result.action === \"tab-bg\"")
+        .nth(1)
+        .expect("background hint result branch")
+        .split("result.action === \"userscript\"")
+        .next()
+        .expect("background hint result boundary");
+    assert!(background_result.contains("window.syncTabModel()"));
+    assert!(background_result.contains("window.executePendingEngineAction()"));
+    assert!(background_result.contains("if (browserUi.mode === \"hint\")"));
+}
+
+#[test]
+fn rapid_download_hints_queue_the_validated_download_and_keep_hint_mode() {
+    let source = include_str!("../browser_ui_navigation.rs");
+    let policy = include_str!("../hint_policy.rs");
+    let rapid_dispatch = source
+        .split("if self.as_ref().rust().hint_rapid {")
+        .nth(1)
+        .expect("rapid hint dispatch")
+        .split("} else if self.as_ref().rust().hint_rapid_target == \"yank\"")
+        .next()
+        .expect("rapid hint dispatch boundary");
+
+    let download = rapid_dispatch
+        .split("\"download\" => {")
+        .nth(1)
+        .expect("rapid download branch")
+        .split("_ => {")
+        .next()
+        .expect("rapid download branch boundary");
+    assert!(download.contains("queue_download_request("));
+    assert!(download.contains("\"Rapid hint download queued\""));
+    assert!(download.contains("\"action\"] = Value::String(\"download\".into())"));
+    assert!(policy.contains(
+        "Some(\"yank\" | \"clean-yank\" | \"tab-bg\" | \"userscript\" | \"download\")"
+    ));
+}
+
+#[test]
+fn foreground_hints_complete_directly_without_redispatching_a_normal_mode_command() {
+    let source = include_str!("../browser_ui_navigation.rs");
+    let foreground = source
+        .split("fn open_hint_in_foreground_tab(")
+        .nth(1)
+        .expect("foreground hint-tab helper")
+        .split("pub(super) fn select_hint(")
+        .next()
+        .expect("foreground hint-tab helper boundary");
+
+    assert!(foreground.contains("Event::OpenTabWithNavigation"));
+    assert!(foreground.contains("background: false"));
+    assert!(!foreground.contains("name: \"tab-open\""));
+    let sync = foreground
+        .find("sync_tab_order_from_core()")
+        .expect("foreground tab projection");
+    let navigate = foreground
+        .find("set_pending_engine_action(&effects)")
+        .expect("foreground tab navigation");
+    assert!(sync < navigate, "the foreground tab view must exist before navigation");
+
+    let selection = source
+        .split("hint_rapid_target == \"tab\"")
+        .nth(1)
+        .expect("foreground hint selection branch")
+        .split("hint_rapid_target == \"window\"")
+        .next()
+        .expect("foreground hint selection boundary");
+    assert!(selection.contains("open_hint_in_foreground_tab(target.tab, &url)"));
+}
+
+#[test]
+fn completed_hints_pop_the_core_mode_stack() {
+    let source = include_str!("../browser_ui_navigation.rs");
+    let completion = source
+        .split("let keeps_hint_mode = rapid_hint_keeps_mode(")
+        .nth(1)
+        .expect("hint completion policy")
+        .split("pub(super) fn confirm_rapid_hint_tabs")
+        .next()
+        .expect("hint completion boundary");
+
+    let normal_completion = completion
+        .split("} else if !palette_open {")
+        .nth(1)
+        .expect("non-rapid completion branch");
+    let pop = normal_completion
+        .find("Event::PopMode { window }")
+        .expect("core hint mode pop");
+    let project = normal_completion
+        .find("set_core_mode(Mode::Normal)")
+        .expect("normal mode projection");
+    assert!(pop < project, "the core stack must leave Hint before projecting Normal");
 }
 
 #[test]

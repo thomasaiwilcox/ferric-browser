@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Layouts
 
 pragma ComponentBehavior: Bound
 
@@ -10,95 +9,184 @@ Item {
     // The window creates safe menu entries and executes them. This component
     // only displays that model and reports the user's choice.
     required property var browserWindow
+    Accessible.role: Accessible.PopupMenu
+    Accessible.name: "Web content context menu"
 
-    signal scopeSelected(string scope)
     signal itemActivated(var item)
     signal dismissed()
 
+    function openAt(hostWindow, x, y) {
+        var parentItem = hostWindow && hostWindow.contentItem
+                ? hostWindow.contentItem : root.parent
+        popup.popup(parentItem, Number(x) || 0, Number(y) || 0)
+        Qt.callLater(function() {
+            if (popup.visible && popup.count > 0) {
+                popup.currentIndex = 0
+                popup.forceActiveFocus()
+            }
+        })
+    }
+
     function open() {
-        popup.open()
+        openAt(null, 12, 12)
     }
 
     function close() {
-        popup.close()
+        popup.dismiss()
     }
 
-    Popup {
+    function preferInScenePopup() {
+        // popupType was added in Qt 6.8. Older Qt releases only support the
+        // in-scene implementation, while newer styles may default to a window.
+        // Use the dynamic property form so this component still loads on 6.4;
+        // zero is QQuickPopup::Item in the public PopupType enum.
+        var propertyName = "popupType"
+        if (typeof popup[propertyName] !== "undefined") {
+            popup[propertyName] = 0
+        }
+    }
+
+    function cycleCurrent(delta) {
+        if (popup.count > 0) {
+            popup.currentIndex = (popup.currentIndex + popup.count + delta)
+                    % popup.count
+        }
+    }
+
+    function activateMnemonic(actionId) {
+        var items = root.browserWindow.contextMenuItems || []
+        for (var i = 0; i < items.length; ++i) {
+            if (String(items[i].actionId || "") === actionId) {
+                root.itemActivated(items[i])
+                return
+            }
+        }
+    }
+
+    Menu {
         id: popup
-        parent: Overlay.overlay
+        objectName: "contextMenuPopup"
         modal: true
         focus: true
-        closePolicy: Popup.NoAutoClose
-        width: Math.min(420 * root.browserWindow.chromeScale, root.browserWindow.width - 48)
-        height: Math.min(560 * root.browserWindow.chromeScale, root.browserWindow.height - 32)
-        padding: 8
-        x: Math.round((root.browserWindow.width - width) / 2)
-        y: Math.round((root.browserWindow.height - height) / 2)
-
+        margins: 8
+        padding: 6
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        width: Math.min(520 * root.browserWindow.chromeScale,
+                        Math.max(260 * root.browserWindow.chromeScale,
+                                 implicitContentWidth + leftPadding + rightPadding))
+        onClosed: root.dismissed()
+        Component.onCompleted: root.preferInScenePopup()
         background: Rectangle {
             color: root.browserWindow.panelColor
-            border.color: root.browserWindow.accentColor
-            radius: 4
+            border.color: root.browserWindow.borderColor
+            radius: 5
         }
 
-        contentItem: ColumnLayout {
-            focus: true
-            Accessible.role: Accessible.PopupMenu
-            Accessible.name: "Web content context menu"
+        Instantiator {
+            model: root.browserWindow.contextMenuItems
 
-            Keys.onPressed: function(event) {
-                if (event.key === Qt.Key_Escape) {
-                    root.dismissed()
-                    event.accepted = true
-                }
-            }
+            delegate: MenuItem {
+                id: itemDelegate
+                required property var modelData
+                objectName: "contextMenuItem"
+                width: popup.availableWidth
+                implicitWidth: Math.max(
+                                   248 * root.browserWindow.chromeScale,
+                                   menuLabel.implicitWidth
+                                   + 28 * root.browserWindow.chromeScale)
+                implicitHeight: Math.max(
+                                    32 * root.browserWindow.chromeScale,
+                                    menuLabel.implicitHeight
+                                    + 12 * root.browserWindow.chromeScale)
+                font: root.browserWindow.font
+                Accessible.role: Accessible.MenuItem
+                Accessible.name: itemDelegate.modelData.label
+                onTriggered: root.itemActivated(itemDelegate.modelData)
 
-            RowLayout {
-                Layout.fillWidth: true
-                Label {
-                    text: "Scope"
-                    color: root.browserWindow.primaryTextColor
-                }
-                ComboBox {
-                    id: scopeSelector
-                    objectName: "scopeSelector"
-                    Layout.fillWidth: true
-                    model: ["all", "tabs", "windows", "contexts", "commands",
-                        "actions", "history", "marks", "sessions", "downloads", "closed"]
-                    currentIndex: Math.max(0, model.indexOf(
-                                               root.browserWindow.switcherScope))
-                    Accessible.name: "Switcher scope"
-                    Accessible.description: "Choose which browser items appear in this menu"
-                    onActivated: root.scopeSelected(currentText)
-                }
-            }
-
-            ListView {
-                id: itemList
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
-                model: root.browserWindow.contextMenuItems
-                Accessible.role: Accessible.List
-                Accessible.name: "Context menu actions"
-
-                delegate: Button {
-                    id: itemDelegate
-                    required property var modelData
-                    width: itemList.width
+                contentItem: Label {
+                    id: menuLabel
                     text: itemDelegate.modelData.label
-                    Accessible.role: Accessible.MenuItem
-                    Accessible.name: itemDelegate.modelData.label
-                    onClicked: root.itemActivated(itemDelegate.modelData)
+                    color: itemDelegate.highlighted
+                           ? root.browserWindow.selectionTextColor
+                           : root.browserWindow.primaryTextColor
+                    elide: Text.ElideRight
+                    verticalAlignment: Text.AlignVCenter
+                }
+
+                background: Rectangle {
+                    color: itemDelegate.highlighted
+                           ? root.browserWindow.selectionColor : "transparent"
+                    radius: 3
                 }
             }
 
-            Button {
-                Layout.fillWidth: true
-                text: "Close"
-                Accessible.name: "Close context menu"
-                onClicked: root.dismissed()
+            onObjectAdded: function(index, object) {
+                popup.insertItem(index, object)
+            }
+            onObjectRemoved: function(index, object) {
+                popup.removeItem(object)
             }
         }
+    }
+
+    Shortcut {
+        enabled: popup.visible
+        sequence: "Tab"
+        context: Qt.WindowShortcut
+        onActivated: root.cycleCurrent(1)
+    }
+    Shortcut {
+        enabled: popup.visible
+        sequence: "Shift+Tab"
+        context: Qt.WindowShortcut
+        onActivated: root.cycleCurrent(-1)
+    }
+    Shortcut {
+        enabled: popup.visible
+        sequence: "A"
+        context: Qt.WindowShortcut
+        onActivated: root.activateMnemonic("hint.current")
+    }
+    Shortcut {
+        enabled: popup.visible
+        sequence: "F"
+        context: Qt.WindowShortcut
+        onActivated: root.activateMnemonic("hint.tab")
+    }
+    Shortcut {
+        enabled: popup.visible
+        sequence: "B"
+        context: Qt.WindowShortcut
+        onActivated: root.activateMnemonic("hint.tab-bg")
+    }
+    Shortcut {
+        enabled: popup.visible
+        sequence: "W"
+        context: Qt.WindowShortcut
+        onActivated: root.activateMnemonic("hint.window")
+    }
+    Shortcut {
+        enabled: popup.visible
+        sequence: "Y"
+        context: Qt.WindowShortcut
+        onActivated: root.activateMnemonic("hint.yank")
+    }
+    Shortcut {
+        enabled: popup.visible
+        sequence: "C"
+        context: Qt.WindowShortcut
+        onActivated: root.activateMnemonic("hint.clean-yank")
+    }
+    Shortcut {
+        enabled: popup.visible
+        sequence: "D"
+        context: Qt.WindowShortcut
+        onActivated: root.activateMnemonic("hint.download")
+    }
+    Shortcut {
+        enabled: popup.visible
+        sequence: "E"
+        context: Qt.WindowShortcut
+        onActivated: root.activateMnemonic("hint.ephemeral")
     }
 }

@@ -34,7 +34,11 @@ pub(super) fn project(config: &Value) -> Vec<SettingsRow> {
                     editor_type: definition.editor_type,
                     scope: metadata.supported_scopes.join("/"),
                     apply_time: metadata.apply_time,
-                    value,
+                    value: if definition.key == "ui.statusbar" && value == "command" {
+                        "in-mode".into()
+                    } else {
+                        value
+                    },
                     options: definition.options,
                 })
             })
@@ -86,6 +90,12 @@ const NO_OPTIONS: &[&str] = &[];
 // surface allowlist here prevents QML from becoming a second configuration
 // schema while avoiding controls for values that need a dedicated workflow.
 const SETTINGS_SURFACE: &[SettingsSurfaceDefinition] = &[
+    SettingsSurfaceDefinition {
+        key: "ui.statusbar",
+        label: "Status bar visibility",
+        editor_type: "enum",
+        options: &["in-mode", "always", "never"],
+    },
     SettingsSurfaceDefinition {
         key: "ui.font_family",
         label: "Chrome font family",
@@ -260,6 +270,26 @@ mod tests {
         assert_eq!(row.scope, "global/profile/site");
         assert_eq!(row.apply_time, "navigation");
         assert_eq!(row.value, "true");
+    }
+
+    #[test]
+    fn statusbar_visibility_is_live_and_exposes_the_supported_policies() {
+        let mut config = Config::default();
+        let row = project(&serde_json::to_value(&config).expect("default config serializes"))
+            .into_iter()
+            .find(|row| row.key == "ui.statusbar")
+            .expect("statusbar row");
+        assert_eq!(row.value, "in-mode");
+        assert_eq!(row.apply_time, "live");
+        assert_eq!(row.options, &["in-mode", "always", "never"]);
+
+        config.ui.statusbar = "command".into();
+        let config = serde_json::to_value(config).expect("legacy config serializes");
+        let row = project(&config)
+            .into_iter()
+            .find(|row| row.key == "ui.statusbar")
+            .expect("statusbar row");
+        assert_eq!(row.value, "in-mode");
     }
 
     #[test]

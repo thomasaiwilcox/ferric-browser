@@ -1,6 +1,6 @@
 use super::{
-    CxxQtType, Event, Mode, Pin, QString, current_target, finish_pending_selection_operation,
-    qobject,
+    CxxQtType, Event, Mode, Pin, QString, SpatialCancelReason, current_target,
+    finish_pending_selection_operation, qobject,
 };
 
 impl qobject::BrowserUi {
@@ -56,6 +56,11 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn escape(mut self: Pin<&mut Self>) {
+        if self.as_ref().rust().core_mode == Mode::Grid {
+            self.as_mut()
+                .cancel_spatial_navigation(SpatialCancelReason::User);
+            return;
+        }
         self.as_mut().set_binding_overlay(QString::default());
         {
             let mut rust = self.as_mut().rust_mut();

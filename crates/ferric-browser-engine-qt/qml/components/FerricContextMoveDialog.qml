@@ -2,21 +2,17 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Popup {
-    id: popup
+FerricModalSurface {
+    id: dialog
 
-    // Context policy remains in the composition root; this is a reusable view.
-    required property var browserWindow
-
-    parent: Overlay.overlay
-    modal: true
-    focus: true
-    closePolicy: Popup.NoAutoClose
     visible: browserWindow.contextMoveVisible
-    width: Math.min(460, browserWindow.width - 48)
-    padding: 14
-    x: Math.round((browserWindow.width - width) / 2)
-    y: Math.round((browserWindow.height - height) / 2)
+    commandText: ":tab-move --context"
+    title: "Move tab to context"
+    message: "Only another live window in the same profile can receive the tab."
+    keyHelp: "j/k or ↑/↓ select  ·  enter move  ·  esc cancel"
+    dialogWidth: 500 * scale
+    dialogHeight: 430 * scale
+    initialFocusItem: choices
 
     function dismiss() {
         browserWindow.contextMoveVisible = false
@@ -25,52 +21,62 @@ Popup {
         browserWindow.restoreOverlayFocus()
     }
 
-    background: Rectangle {
-        color: popup.browserWindow.panelColor
-        border.color: popup.browserWindow.accentColor
-        radius: 4
+    function moveChoice(delta) {
+        if (choices.count === 0) {
+            return
+        }
+        var next = choices.currentIndex < 0 ? 0 : choices.currentIndex
+        for (var step = 0; step < choices.count; ++step) {
+            next = (next + delta + choices.count) % choices.count
+            var candidate = choices.itemAtIndex(next)
+            if (candidate && candidate.enabled) {
+                choices.currentIndex = next
+                choices.positionViewAtIndex(next, ListView.Contain)
+                candidate.forceActiveFocus()
+                return
+            }
+        }
     }
 
-    contentItem: ColumnLayout {
-        focus: true
-        Accessible.role: Accessible.Dialog
-        Accessible.name: "Move tab to another context window"
-        spacing: 8
+    function activateCurrent() {
+        var choice = browserWindow.contextMoveChoices[choices.currentIndex]
+        if (choice && choice.available) {
+            browserWindow.chooseContextMove(choice.name)
+        }
+    }
 
-        Label {
-            Layout.fillWidth: true
-            text: "Move tab to context"
-            color: popup.browserWindow.primaryTextColor
-            font.bold: true
-        }
-        Label {
-            Layout.fillWidth: true
-            text: "Only another live window in the same profile can receive the tab."
-            color: popup.browserWindow.secondaryTextColor
-            wrapMode: Text.WordWrap
-        }
-        Repeater {
-            model: popup.browserWindow.contextMoveChoices
-            delegate: Button {
-                Layout.fillWidth: true
-                text: modelData.label + (modelData.available ? "" : " (open with context-enter first)")
-                enabled: !!modelData.available
-                Accessible.name: "Move tab to " + modelData.label
-                onClicked: popup.browserWindow.chooseContextMove(modelData.name)
-            }
-        }
-        Button {
-            Layout.alignment: Qt.AlignRight
-            text: "Cancel"
-            Accessible.name: "Cancel context tab move"
-            onClicked: popup.dismiss()
-        }
+    onDismissRequested: dismiss()
 
-        Keys.onPressed: function(event) {
-            if (event.key === Qt.Key_Escape) {
-                popup.dismiss()
-                event.accepted = true
-            }
+    Shortcut { sequence: "Up"; context: Qt.WindowShortcut; enabled: dialog.visible; onActivated: dialog.moveChoice(-1) }
+    Shortcut { sequence: "K"; context: Qt.WindowShortcut; enabled: dialog.visible; onActivated: dialog.moveChoice(-1) }
+    Shortcut { sequence: "Down"; context: Qt.WindowShortcut; enabled: dialog.visible; onActivated: dialog.moveChoice(1) }
+    Shortcut { sequence: "J"; context: Qt.WindowShortcut; enabled: dialog.visible; onActivated: dialog.moveChoice(1) }
+    Shortcut { sequence: "Return"; context: Qt.WindowShortcut; enabled: dialog.visible; onActivated: dialog.activateCurrent() }
+    Shortcut { sequence: "Enter"; context: Qt.WindowShortcut; enabled: dialog.visible; onActivated: dialog.activateCurrent() }
+
+    ListView {
+        id: choices
+        anchors.fill: parent
+        clip: true
+        spacing: 6 * dialog.scale
+        model: dialog.browserWindow.contextMoveChoices
+        currentIndex: 0
+        Accessible.role: Accessible.List
+        Accessible.name: "Destination contexts"
+
+        delegate: FerricCommandAction {
+            required property var modelData
+            required property int index
+            width: choices.width
+            browserWindow: dialog.browserWindow
+            keyHint: index === choices.currentIndex ? "enter" : ""
+            actionLabel: modelData.label
+                         + (modelData.available
+                            ? "" : " (open with context-enter first)")
+            selected: index === choices.currentIndex
+            enabled: !!modelData.available
+            onSelectionRequested: choices.currentIndex = index
+            onClicked: dialog.browserWindow.chooseContextMove(modelData.name)
         }
     }
 }

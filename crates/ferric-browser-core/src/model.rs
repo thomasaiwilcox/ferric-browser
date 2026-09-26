@@ -43,6 +43,7 @@ pub enum Mode {
     Command,
     Search,
     Hint,
+    Grid,
     Caret,
     PassThrough,
 }

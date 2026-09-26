@@ -16,6 +16,16 @@ impl qobject::BrowserUi {
         command: &mut ParsedCommand,
         registry: &CommandRegistry,
     ) -> CommandDispatchControl {
+        if let Some(result) = self
+            .as_mut()
+            .handle_spatial_command(&command.name, &command.arguments)
+        {
+            return if result {
+                CommandDispatchControl::Continue
+            } else {
+                CommandDispatchControl::Failed
+            };
+        }
         if command.name == "open-current" {
             let target = match command.arguments.as_slice() {
                 [] => "open",

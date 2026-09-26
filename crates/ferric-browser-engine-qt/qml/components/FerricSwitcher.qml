@@ -2,9 +2,8 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Rectangle {
+FerricModalSurface {
     id: switcher
-    required property var browserWindow
     required property bool switcherVisible
     required property var results
     property alias query: switcherInput.text
@@ -17,33 +16,26 @@ Rectangle {
         switcherInput.forceActiveFocus()
     }
 
-    anchors.centerIn: parent
-    width: Math.min(860, parent.width - Math.max(40, browserWindow.chromeRowHeight * 4))
-    height: Math.min(520, parent.height - Math.max(90, browserWindow.chromeRowHeight * 6))
-    z: 60
     visible: switcherVisible
-    focus: visible
-    Accessible.role: Accessible.Dialog
-    Accessible.name: "Universal switcher"
+    commandText: ":switcher"
+    title: "Universal switcher"
+    keyHelp: "↑/↓ select  ·  pgup/pgdn page  ·  enter open  ·  esc close"
+    dialogWidth: 860 * scale
+    dialogHeight: 520 * scale
+    stackingOrder: 60
+    initialFocusItem: switcherInput
+    onDismissRequested: closeRequested()
     Accessible.description: "Search up to " + browserWindow.switcherMaxResults()
         + " browser items; use arrow keys, Page Up, Page Down, Home, End, and Enter to choose"
-    color: browserWindow.panelColor
-    border.color: browserWindow.accentColor
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 12
+        anchors.margins: 0
         spacing: 8
 
         RowLayout {
             Layout.fillWidth: true
-            Label {
-                Layout.fillWidth: true
-                text: "Switcher"
-                color: switcher.browserWindow.primaryTextColor
-                font.bold: true
-                Accessible.name: "Universal switcher heading"
-            }
+            Item { Layout.fillWidth: true }
             Label {
                 text: "Ctrl-P · Esc"
                 color: switcher.browserWindow.mutedTextColor
@@ -60,7 +52,7 @@ Rectangle {
         TextField {
             id: switcherInput
             Layout.fillWidth: true
-            placeholderText: "Search tabs, windows, contexts, commands, history, marks, sessions, downloads"
+            placeholderText: "Search tabs, windows, contexts, commands, actions, history, marks, sessions, downloads"
             Accessible.name: "Universal switcher search"
             Accessible.role: Accessible.EditableText
             Accessible.editable: true

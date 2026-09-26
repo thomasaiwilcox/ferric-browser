@@ -7,6 +7,10 @@ impl qobject::BrowserUi {
         mut self: Pin<&mut Self>,
         tab_index: i32,
     ) -> bool {
+        if self.as_ref().rust().core_mode == super::Mode::Grid {
+            self.as_mut()
+                .spatial_invalidated(&QString::from("renderer-unavailable"));
+        }
         let tab = if tab_index >= 0 {
             self.as_ref().tab_for_index(tab_index)
         } else {

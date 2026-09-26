@@ -8,8 +8,8 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-ferric-browser-core = { path = "../ferric-browser-core" }
-ferric-browser-ipc = { path = "../ferric-browser-ipc" }
+ferric-browser-core = { version = "0.1.0", path = "../ferric-browser-core" }
+ferric-browser-ipc = { version = "0.1.0", path = "../ferric-browser-ipc" }
 serde_json.workspace = true
 
 [lints]

@@ -18,6 +18,10 @@ FerricBrowserRuntimePresentation {
         target: browserUi
         function onActive_tab_indexChanged() {
             window.noteTabActivity()
+            if (window.hintTrackingView
+                    && window.activeWebView() !== window.hintTrackingView) {
+                window.closeHints()
+            }
         }
         function onTab_countChanged() {
             window.noteTabActivity()
@@ -55,6 +59,7 @@ FerricBrowserRuntimePresentation {
             if (browserUi.mode === "hint") {
                 window.startHintCollection()
             } else {
+                window.stopHintTracking()
                 if (browserUi.mode !== "caret") {
                     window.caretSelecting = false
                 }
@@ -63,6 +68,11 @@ FerricBrowserRuntimePresentation {
                     window.hintResults = []
                     window.hintInput = ""
                 }
+            }
+        }
+        function onHint_visibleChanged() {
+            if (!browserUi.hint_visible) {
+                window.stopHintTracking()
             }
         }
         function onConfig_jsonChanged() {
@@ -794,6 +804,17 @@ FerricBrowserRuntimePresentation {
         if (safeLink.length > 0) {
             items.push(window.contextMenuItem("Open link", "open-link", safeLink,
                                               "browser.link.open"))
+            if (!hostWindow || hostWindow === window) {
+                items.push(window.contextMenuItem(
+                              "Open link in new tab", "open-link-tab",
+                              "tab\t" + safeLink, "browser.link.open"))
+                items.push(window.contextMenuItem(
+                              "Open link in background tab", "open-link-tab-bg",
+                              "tab-bg\t" + safeLink, "browser.link.open"))
+            }
+            items.push(window.contextMenuItem(
+                          "Open link in new window", "open-link-window",
+                          "window\t" + safeLink, "browser.link.open"))
             items.push(window.contextMenuItem("Copy link", "copy-link", safeLink,
                                               "browser.link.copy"))
             items.push(window.contextMenuItem("Clean-copy link", "copy-link", safeLink,
@@ -859,7 +880,17 @@ FerricBrowserRuntimePresentation {
         window.contextMenuItems = items
         request.accepted = true
         window.captureOverlayFocus(hostWindow || window, view)
-        contextMenu.open()
+        var menuHost = hostWindow || window
+        var menuX = Math.round(menuHost.width / 2)
+        var menuY = Math.round(menuHost.height / 2)
+        if (request.position && menuHost.contentItem && view.mapToItem) {
+            var mappedPosition = view.mapToItem(
+                        menuHost.contentItem,
+                        Number(request.position.x), Number(request.position.y))
+            menuX = mappedPosition.x
+            menuY = mappedPosition.y
+        }
+        contextMenu.openAt(menuHost, menuX, menuY)
         ui.status_text = "Context menu"
     }
 
@@ -883,6 +914,7 @@ FerricBrowserRuntimePresentation {
                 return
             }
             if (ui === browserUi) {
+                window.syncTabModel()
                 window.executePendingEngineAction()
             } else if (action === "open-link" && view) {
                 var pending = ui.take_engine_action()
@@ -1733,7 +1765,7 @@ FerricBrowserRuntimePresentation {
             return
         }
         ui.status_text = "Restarting with software rendering"
-        window.beginQuitRequest()
+        window.continueQuitRequest()
     }
 
     Timer {

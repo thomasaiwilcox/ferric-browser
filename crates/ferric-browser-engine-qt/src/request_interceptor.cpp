@@ -1,6 +1,7 @@
 #include "request_interceptor.h"
 
 #include <QtCore/QReadLocker>
+#include <QtCore/QtGlobal>
 #include <QtCore/QWriteLocker>
 #include <QtCore/QUrl>
 #include <QtWebEngineCore/QWebEngineUrlRequestInfo>
@@ -54,8 +55,10 @@ QString resourceTypeName(const QWebEngineUrlRequestInfo::ResourceType type)
         return QStringLiteral("navigation-preload-main-frame");
     case QWebEngineUrlRequestInfo::ResourceTypeNavigationPreloadSubFrame:
         return QStringLiteral("navigation-preload-sub-frame");
+#if QT_VERSION >= QT_VERSION_CHECK(6, 9, 0)
     case QWebEngineUrlRequestInfo::ResourceTypeJson:
         return QStringLiteral("json");
+#endif
     case QWebEngineUrlRequestInfo::ResourceTypeWebSocket:
         return QStringLiteral("websocket");
     case QWebEngineUrlRequestInfo::ResourceTypeUnknown:

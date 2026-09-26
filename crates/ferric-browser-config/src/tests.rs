@@ -4,8 +4,68 @@ use super::*;
 fn defaults_are_the_starter_configuration() {
     let config = Config::default();
     validate(&config).expect("defaults validate");
+    assert_eq!(config.ui.statusbar, "in-mode");
     assert_eq!(config.navigation.default_search, "ddg");
     assert_eq!(config.tabs.undo_limit, 100);
+    assert_eq!(config.hints.chars, "asdfghjkl");
+    assert_eq!(config.hints.min_chars, 1);
+    assert!((config.hints.marker_scale - 1.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn hint_configuration_is_defaulted_and_bounded() {
+    let parsed = toml::from_str::<Config>("schema_version = 3\n").expect("defaulted hints");
+    assert_eq!(parsed.hints, HintsConfig::default());
+    validate(&parsed).expect("default hints validate");
+
+    let mut config = Config::default();
+    for chars in ["a", "aa", "a/", "a ", "éa"] {
+        config.hints.chars = chars.into();
+        assert!(
+            validate(&config).is_err(),
+            "accepted invalid alphabet {chars:?}"
+        );
+    }
+    config.hints.chars = "ab".into();
+    config.hints.min_chars = 9;
+    assert!(validate(&config).is_err());
+    config.hints.min_chars = 1;
+    config.hints.marker_scale = 2.01;
+    assert!(validate(&config).is_err());
+
+    let parsed = toml::from_str::<Config>(
+        "schema_version = 3\n[hints]\nchars = 'AS12'\nmin_chars = 2\nauto_follow = 'never'\nunmatched = 'dim'\nrapid_unmatched = 'show'\nmarker_scale = 1.5\n",
+    )
+    .expect("typed hint settings");
+    validate(&parsed).expect("typed hint settings validate");
+    assert_eq!(parsed.hints.auto_follow, HintAutoFollow::Never);
+    assert_eq!(parsed.hints.unmatched, HintUnmatchedPolicy::Dim);
+    assert_eq!(parsed.hints.rapid_unmatched, HintUnmatchedPolicy::Show);
+
+    let mut overrides = RuntimeOverrides::default();
+    overrides
+        .set_literal("hints.marker_scale", "1.25")
+        .expect("live hint override");
+    overrides
+        .set_literal("hints.auto_follow", "unique-match")
+        .expect("enum hint override");
+    let effective = apply_runtime_overrides(&Config::default(), &overrides).expect("apply hints");
+    assert!((effective.hints.marker_scale - 1.25).abs() < f64::EPSILON);
+    assert_eq!(effective.hints.auto_follow, HintAutoFollow::UniqueMatch);
+}
+
+#[test]
+fn statusbar_visibility_accepts_qutebrowser_policies_and_legacy_command_alias() {
+    for policy in ["always", "in-mode", "command", "never"] {
+        let mut config = Config::default();
+        config.ui.statusbar = policy.into();
+        validate(&config).unwrap_or_else(|error| panic!("{policy} was rejected: {error}"));
+    }
+
+    let mut config = Config::default();
+    config.ui.statusbar = "sometimes".into();
+    let error = validate(&config).expect_err("unknown policy rejected");
+    assert!(error.to_string().contains("always, in-mode, or never"));
 }
 
 #[test]
@@ -256,6 +316,18 @@ fn setting_registry_resolves_static_and_dynamic_settings() {
         Some("dynamic")
     );
     assert!(registry.resolve("unrecognized.setting").is_none());
+    for key in [
+        "hints.chars",
+        "hints.min_chars",
+        "hints.auto_follow",
+        "hints.unmatched",
+        "hints.rapid_unmatched",
+        "hints.marker_scale",
+    ] {
+        let setting = registry.resolve(key).expect("hint setting metadata");
+        assert_eq!(setting.supported_scopes, ["global", "profile"]);
+        assert_eq!(setting.apply_time, "live");
+    }
 }
 
 #[test]

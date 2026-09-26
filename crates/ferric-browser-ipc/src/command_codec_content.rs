@@ -12,7 +12,7 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
             let mut index = 0;
             while index < command.arguments.len() {
                 match command.arguments[index].as_str() {
-                    "links" | "all" => {
+                    "links" | "all" | "inputs" | "buttons" | "images" | "media" | "scrollables" => {
                         if object.contains_key("kind") {
                             return Err("hint kind was specified more than once".into());
                         }
@@ -28,6 +28,29 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
                         {
                             return Err("hint --rapid was specified more than once".into());
                         }
+                    }
+                    "--first" => {
+                        if object
+                            .insert("first".into(), serde_json::Value::Bool(true))
+                            .is_some()
+                        {
+                            return Err("hint --first was specified more than once".into());
+                        }
+                    }
+                    "--index" => {
+                        let hint_index = command
+                            .arguments
+                            .get(index + 1)
+                            .and_then(|value| value.parse::<u64>().ok())
+                            .filter(|value| (1..=5_000).contains(value))
+                            .ok_or_else(|| "hint --index requires N in 1..=5000".to_owned())?;
+                        if object
+                            .insert("index".into(), serde_json::Value::from(hint_index))
+                            .is_some()
+                        {
+                            return Err("hint --index was specified more than once".into());
+                        }
+                        index += 1;
                     }
                     "--target" => {
                         let target = command
@@ -45,9 +68,10 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
                                 | "download"
                                 | "userscript"
                                 | "ephemeral"
+                                | "choose"
                         ) {
                             return Err(
-                                "hint target must be current, tab, tab-bg, window, yank, clean-yank, download, userscript, or ephemeral"
+                                "hint target must be current, tab, tab-bg, window, yank, clean-yank, download, userscript, ephemeral, or choose"
                                     .into(),
                             );
                         }
@@ -127,6 +151,14 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
                 && object.contains_key("script")
             {
                 return Err("--script is only valid with target userscript".into());
+            }
+            let first = object.get("first") == Some(&serde_json::Value::Bool(true));
+            let rapid = object.get("rapid") == Some(&serde_json::Value::Bool(true));
+            if first && rapid {
+                return Err("hint --first cannot be combined with --rapid".into());
+            }
+            if object.contains_key("index") && !first {
+                return Err("hint --index requires --first".into());
             }
             serde_json::Value::Object(object)
         }

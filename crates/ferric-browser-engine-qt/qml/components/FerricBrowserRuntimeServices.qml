@@ -552,9 +552,6 @@ FerricBrowserRuntimeBase {
     FerricContextMenu {
         id: contextMenu
         browserWindow: window
-        onScopeSelected: function(scope) {
-            window.setSwitcherScope(scope)
-        }
         onItemActivated: function(item) {
             window.activateContextMenuItem(item)
         }

@@ -8,11 +8,11 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-ferric-browser-core = { path = "../ferric-browser-core" }
-ferric-browser-config = { path = "../ferric-browser-config" }
-ferric-browser-ipc = { path = "../ferric-browser-ipc" }
-ferric-browser-storage = { path = "../ferric-browser-storage" }
-ferric-browser-engine-qt = { path = "../ferric-browser-engine-qt" }
+ferric-browser-core = { version = "0.1.0", path = "../ferric-browser-core" }
+ferric-browser-config = { version = "0.1.0", path = "../ferric-browser-config" }
+ferric-browser-ipc = { version = "0.1.0", path = "../ferric-browser-ipc" }
+ferric-browser-storage = { version = "0.1.0", path = "../ferric-browser-storage" }
+ferric-browser-engine-qt = { version = "0.1.0", path = "../ferric-browser-engine-qt" }
 cxx-qt.workspace = true
 cxx-qt-lib.workspace = true
 serde_json.workspace = true

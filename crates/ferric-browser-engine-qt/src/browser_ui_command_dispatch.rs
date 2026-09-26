@@ -23,7 +23,11 @@ impl qobject::BrowserUi {
                 return false;
             }
         };
-        for mut command in commands {
+        let command_count = commands.len();
+        for (command_index, mut command) in commands.into_iter().enumerate() {
+            if command_index > 0 {
+                self.as_mut().queue_pending_engine_action();
+            }
             match self
                 .as_mut()
                 .dispatch_workflow_command(&mut command, &registry)
@@ -327,10 +331,12 @@ impl qobject::BrowserUi {
                     }
                 };
                 self.as_mut().set_hint_options(
-                    options.links_only,
+                    &options.family,
                     options.rapid,
                     &options.target,
                     options.script.as_deref(),
+                    options.first,
+                    options.index,
                 );
                 continue;
             }
@@ -967,7 +973,12 @@ impl qobject::BrowserUi {
             self.as_mut().sync_tab_order_from_core();
             self.as_mut().set_pending_engine_action(&effects);
         }
-        self.set_status_text(QString::from("Command executed"));
+        if command_count > 1 {
+            self.as_mut().queue_pending_engine_action();
+        }
+        if self.as_ref().rust().status_text.to_string() == "Command mode" {
+            self.set_status_text(QString::from("Command executed"));
+        }
         true
     }
 

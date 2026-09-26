@@ -195,7 +195,9 @@ impl qobject::BrowserUi {
             .pending_link_navigation = Some(pending);
         self.as_mut().publish_link_preview("open", &result, true);
         self.as_mut().set_link_preview_visible(true);
-        self.as_mut().sync_core_tabs();
+        // Clean background opens also restore the original active tab. Keep
+        // the newly-created pending tab in the full projected tab order.
+        self.as_mut().sync_tab_order_from_core();
         self.set_status_text(QString::from("Clean-link navigation awaits confirmation"));
         Ok(value)
     }

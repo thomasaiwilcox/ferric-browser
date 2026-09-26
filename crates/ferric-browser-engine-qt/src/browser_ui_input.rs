@@ -6,6 +6,17 @@ use super::{
 };
 
 impl qobject::BrowserUi {
+    pub(super) fn queue_pending_engine_action(mut self: Pin<&mut Self>) {
+        let mut rust = self.as_mut().rust_mut();
+        let this = rust.as_mut().get_mut();
+        if let Some(action) = this.pending_engine_action.take() {
+            this.pending_engine_actions.push_back(action);
+        }
+        if let Some(target) = this.pending_journey_traversal.take() {
+            this.pending_journey_traversals.push_back(target);
+        }
+    }
+
     #[allow(clippy::too_many_lines)]
     pub(super) fn apply_binding_outcome(mut self: Pin<&mut Self>, outcome: BindingOutcome) {
         match outcome {
@@ -29,6 +40,22 @@ impl qobject::BrowserUi {
                 if parsed.name == "hint" && parsed.arguments.is_empty() {
                     self.as_mut().set_hint_mode_kind(true);
                     return;
+                }
+                if parsed.name == "hint" && count > 1 {
+                    if parsed
+                        .arguments
+                        .iter()
+                        .any(|argument| argument == "--first")
+                    {
+                        parsed
+                            .arguments
+                            .extend(["--index".into(), count.min(5_000).to_string()]);
+                    } else {
+                        self.set_status_text(QString::from(
+                            "A hint count is only valid with --first",
+                        ));
+                        return;
+                    }
                 }
                 if parsed.name == "repeat" && count > 1 {
                     parsed.arguments = vec!["--count".into(), count.to_string()];
@@ -56,6 +83,15 @@ impl qobject::BrowserUi {
                     return;
                 }
                 let parsed = expanded.into_iter().next().expect("one expanded command");
+                if let Some(result) = self
+                    .as_mut()
+                    .handle_spatial_command(&parsed.name, &parsed.arguments)
+                {
+                    if result {
+                        self.as_mut().set_binding_overlay(QString::default());
+                    }
+                    return;
+                }
                 let current_url = self.as_ref().rust().current_url.to_string();
                 if let Some(prefill) = modal_command_prefill(&parsed, &current_url) {
                     self.as_mut().enter_command();
@@ -277,12 +313,21 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn take_engine_action(mut self: Pin<&mut Self>) -> QString {
-        let mut rust = self.as_mut().rust_mut();
-        rust.as_mut()
-            .get_mut()
-            .pending_engine_action
-            .take()
-            .map_or_else(QString::default, QString::from)
+        let (action, more_pending) = {
+            let mut rust = self.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            let action = this
+                .pending_engine_actions
+                .pop_front()
+                .or_else(|| this.pending_engine_action.take());
+            let more_pending =
+                !this.pending_engine_actions.is_empty() || this.pending_engine_action.is_some();
+            (action, more_pending)
+        };
+        if more_pending {
+            self.as_mut().runtime_work_available();
+        }
+        action.map_or_else(QString::default, QString::from)
     }
 
     pub(super) fn complete_window_focus(

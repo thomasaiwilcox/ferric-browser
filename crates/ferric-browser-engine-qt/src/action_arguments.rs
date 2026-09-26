@@ -10,10 +10,10 @@ pub(super) fn decode_ui_action_arguments(action_id: &str, value: &str) -> Result
         "browser.url.open" | "browser.tab.open" => Ok(serde_json::json!({"input": value})),
         "browser.url.copy" | "browser.url.clean-copy" => Ok(serde_json::json!({})),
         "browser.url.clean" | "browser.url.explain" => Ok(optional_value("url", value)),
-        "browser.link.open"
-        | "browser.link.copy"
-        | "browser.link.clean-copy"
-        | "browser.link.download" => Ok(serde_json::json!({"url": value})),
+        "browser.link.open" => link_open_arguments(value),
+        "browser.link.copy" | "browser.link.clean-copy" | "browser.link.download" => {
+            Ok(serde_json::json!({"url": value}))
+        }
         "browser.url.send" | "browser.link.send" => send_arguments(value),
         "browser.selection.send" | "browser.tab.send" => Ok(serde_json::json!({"target": value})),
         "browser.selection.copy" => Ok(serde_json::json!({})),
@@ -143,6 +143,21 @@ fn send_arguments(value: &str) -> Result<Value, String> {
     }
 }
 
+fn link_open_arguments(value: &str) -> Result<Value, String> {
+    match optional_fields(value, 2, "Link open")?.as_slice() {
+        [url] => Ok(serde_json::json!({"url": url})),
+        [target, url]
+            if matches!(
+                *target,
+                "current" | "tab" | "tab-bg" | "window" | "private-window"
+            ) =>
+        {
+            Ok(serde_json::json!({"url": url, "target": target}))
+        }
+        _ => Err("Link open UI action requires a URL and an optional valid target".into()),
+    }
+}
+
 fn window_new_arguments(value: &str) -> Result<Value, String> {
     match optional_fields(value, 2, "Window new")?.as_slice() {
         [] => Ok(serde_json::json!({})),
@@ -199,6 +214,18 @@ mod tests {
 
     #[test]
     fn decodes_compact_action_values_without_opening_the_argument_boundary() {
+        assert_eq!(
+            decode_ui_action_arguments("browser.link.open", "tab-bg\thttps://example.test/docs")
+                .expect("valid targeted link open"),
+            serde_json::json!({
+                "url": "https://example.test/docs",
+                "target": "tab-bg"
+            })
+        );
+        assert!(
+            decode_ui_action_arguments("browser.link.open", "invalid\thttps://example.test/docs")
+                .is_err()
+        );
         assert_eq!(
             decode_ui_action_arguments("browser.link.send", "mpv\thttps://example.test")
                 .expect("valid send"),

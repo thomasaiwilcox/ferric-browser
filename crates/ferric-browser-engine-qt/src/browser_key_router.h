@@ -5,6 +5,7 @@
 #include <QtCore/QPointer>
 #include <QtGui/QWindow>
 #include <QtQml/qqmlregistration.h>
+#include <QtCore/QSet>
 
 class FerricBrowserKeyRouter : public QObject {
     Q_OBJECT
@@ -27,7 +28,8 @@ public:
 signals:
     void enabledChanged();
     void targetWindowChanged();
-    void keyPressed(const QString &text, int key, int modifiers);
+    void keyPressed(const QString &text, int key, int modifiers, bool isAutoRepeat);
+    void keyReleased(int key, int modifiers);
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -37,6 +39,7 @@ private:
     bool dispatching_ = false;
     bool accepted_ = false;
     QPointer<QWindow> targetWindow_;
+    QSet<quint64> acceptedKeys_;
 };
 
 #endif

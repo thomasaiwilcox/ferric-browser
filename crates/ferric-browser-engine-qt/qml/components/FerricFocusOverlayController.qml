@@ -71,6 +71,13 @@ QtObject {
         controller.modeFocusReturnTarget = null
         controller.modeFocusCaptured = false
         Qt.callLater(function() {
+            // A command may open an overlay immediately before leaving command
+            // mode.  In that case the overlay owns focus until its stack entry
+            // is restored; do not let the deferred mode restore steal focus
+            // back for the page.
+            if ((controller.focusReturnStack || []).length > 0) {
+                return
+            }
             if (controller.focusTargetAvailable(target)) {
                 target.forceActiveFocus()
             } else {

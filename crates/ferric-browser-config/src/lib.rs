@@ -157,7 +157,7 @@ fn default_context_behavior() -> String {
     "prompt".into()
 }
 fn default_statusbar() -> String {
-    "always".into()
+    "in-mode".into()
 }
 fn default_tabs() -> String {
     "multiple".into()
@@ -208,6 +208,15 @@ fn default_command_limit() -> u32 {
     1_000
 }
 fn default_zoom() -> f64 {
+    1.0
+}
+fn default_hint_chars() -> String {
+    "asdfghjkl".into()
+}
+fn default_hint_min_chars() -> u8 {
+    1
+}
+fn default_hint_marker_scale() -> f64 {
     1.0
 }
 fn default_update_interval() -> u32 {

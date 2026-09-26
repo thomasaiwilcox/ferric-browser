@@ -2,52 +2,43 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Rectangle {
+FerricCommandDialog {
     id: preview
-    required property var browserWindow
     signal chooseFileRequested()
     signal cancelRequested()
 
-    anchors.fill: parent
-    z: 10
     visible: browserWindow.journeyExportPreviewVisible
-    color: browserWindow.panelColor
-    border.color: browserWindow.warningColor
-    Accessible.role: Accessible.Dialog
-    Accessible.name: "Journey export preview"
+    commandText: ":journey-export"
+    title: "Review journey export"
+    message: "Review the sanitized export before choosing its destination."
+    dialogWidth: 760 * scale
+    dialogHeight: 520 * scale
+    dialogBorderColor: browserWindow.warningColor
+    stackingOrder: 82
+    actions: [
+        { id: "cancel", key: "n", shortcuts: ["N"], label: "Cancel export", safe: true },
+        { id: "choose", key: "y", shortcuts: ["Y"], label: "Choose destination" }
+    ]
+    onActionRequested: function(action) {
+        if (action === "choose") {
+            preview.chooseFileRequested()
+        } else {
+            preview.cancelRequested()
+        }
+    }
 
-    ColumnLayout {
+    ScrollView {
         anchors.fill: parent
-        anchors.margins: 18
-        spacing: 12
+        clip: true
 
-        Label {
-            Layout.fillWidth: true
-            text: "Review journey export"
-            color: preview.browserWindow.primaryTextColor
-            font.bold: true
-        }
-        Text {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
+        TextArea {
+            width: parent.width
             text: preview.browserWindow.journeyExportPreviewText
+            readOnly: true
+            wrapMode: TextEdit.Wrap
             color: preview.browserWindow.primaryTextColor
-            wrapMode: Text.WordWrap
-            Accessible.name: text
-        }
-        RowLayout {
-            Layout.fillWidth: true
-            Item { Layout.fillWidth: true }
-            Button {
-                text: "Choose file"
-                Accessible.name: "Choose journey export file"
-                onClicked: preview.chooseFileRequested()
-            }
-            Button {
-                text: "Cancel"
-                Accessible.name: "Cancel journey export"
-                onClicked: preview.cancelRequested()
-            }
+            background: Rectangle { color: preview.browserWindow.surfaceColor }
+            Accessible.name: "Journey export preview"
         }
     }
 }

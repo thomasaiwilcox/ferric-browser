@@ -7,9 +7,8 @@ pragma ComponentBehavior: Bound
 
 Item {
     id: root
+    anchors.fill: parent
 
-    // Request validation and WebEngine calls remain with the browser window.
-    // This component renders state supplied by that owner and emits intents.
     required property var browserWindow
     property alias pin: webAuthPinField.text
 
@@ -18,76 +17,131 @@ Item {
     signal cancelled()
     signal retryRequested()
 
-    function open() {
-        prompt.open()
-    }
+    function open() { prompt.visible = true }
+    function close() { prompt.visible = false }
 
-    function close() {
-        prompt.close()
-    }
-
-    Popup {
+    FerricModalSurface {
         id: prompt
-        parent: Overlay.overlay
-        modal: true
-        focus: true
-        closePolicy: Popup.NoAutoClose
-        width: Math.min(680 * root.browserWindow.chromeScale, root.browserWindow.width - 48)
-        height: Math.min(520 * root.browserWindow.chromeScale, root.browserWindow.height - 32)
-        padding: 14
-        x: Math.round((root.browserWindow.width - width) / 2)
-        y: Math.round((root.browserWindow.height - height) / 2)
+        browserWindow: root.browserWindow
+        visible: false
+        commandText: ":webauth"
+        title: "WebAuthn security-key request"
+        message: root.browserWindow.webAuthStatusText
+        keyHelp: root.browserWindow.pendingWebAuthState
+                 === WebEngineWebAuthUxRequest.SelectAccount
+                 ? "j/k or ↑/↓ select  ·  enter use account  ·  esc cancel"
+                 : root.browserWindow.pendingWebAuthState
+                   === WebEngineWebAuthUxRequest.CollectPin
+                   ? "enter submit PIN  ·  esc cancel"
+                   : "r retry when available  ·  esc cancel"
+        dialogWidth: 680 * scale
+        dialogHeight: 520 * scale
+        dialogBorderColor: root.browserWindow.privateColor
+        initialFocusItem: root.browserWindow.pendingWebAuthState
+                          === WebEngineWebAuthUxRequest.CollectPin
+                          ? webAuthPinField : accountList
+        onDismissRequested: root.cancelled()
 
-        background: Rectangle {
-            color: root.browserWindow.panelColor
-            border.color: root.browserWindow.privateColor
-            radius: 4
+        function moveAccount(delta) {
+            if (accountList.count === 0) {
+                return
+            }
+            accountList.currentIndex = (accountList.currentIndex + delta
+                                        + accountList.count) % accountList.count
+            accountList.positionViewAtIndex(accountList.currentIndex, ListView.Contain)
         }
 
-        contentItem: ColumnLayout {
-            focus: true
-            Accessible.role: Accessible.Dialog
-            Accessible.name: "WebAuthn security-key prompt"
-            spacing: 10
+        function activateAccount() {
+            if (accountList.currentIndex >= 0
+                    && accountList.currentIndex < accountList.count) {
+                root.accountSelected(
+                    root.browserWindow.pendingWebAuthUserNames[accountList.currentIndex])
+            }
+        }
 
-            Keys.onPressed: function(event) {
-                if (event.key === Qt.Key_Escape) {
-                    root.cancelled()
-                    event.accepted = true
-                } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                    if (root.browserWindow.pendingWebAuthState
-                            === WebEngineWebAuthUxRequest.CollectPin) {
-                        root.pinSubmitted()
-                        event.accepted = true
-                    }
+        Shortcut {
+            sequence: "Up"
+            context: Qt.WindowShortcut
+            enabled: prompt.visible && root.browserWindow.pendingWebAuthState
+                     === WebEngineWebAuthUxRequest.SelectAccount
+            onActivated: prompt.moveAccount(-1)
+        }
+        Shortcut {
+            sequence: "K"
+            context: Qt.WindowShortcut
+            enabled: prompt.visible && root.browserWindow.pendingWebAuthState
+                     === WebEngineWebAuthUxRequest.SelectAccount
+            onActivated: prompt.moveAccount(-1)
+        }
+        Shortcut {
+            sequence: "Down"
+            context: Qt.WindowShortcut
+            enabled: prompt.visible && root.browserWindow.pendingWebAuthState
+                     === WebEngineWebAuthUxRequest.SelectAccount
+            onActivated: prompt.moveAccount(1)
+        }
+        Shortcut {
+            sequence: "J"
+            context: Qt.WindowShortcut
+            enabled: prompt.visible && root.browserWindow.pendingWebAuthState
+                     === WebEngineWebAuthUxRequest.SelectAccount
+            onActivated: prompt.moveAccount(1)
+        }
+        Shortcut {
+            sequence: "Return"
+            context: Qt.WindowShortcut
+            enabled: prompt.visible
+                     && (root.browserWindow.pendingWebAuthState
+                         === WebEngineWebAuthUxRequest.SelectAccount
+                         || root.browserWindow.pendingWebAuthState
+                         === WebEngineWebAuthUxRequest.CollectPin)
+            onActivated: {
+                if (root.browserWindow.pendingWebAuthState
+                        === WebEngineWebAuthUxRequest.CollectPin) {
+                    root.pinSubmitted()
+                } else {
+                    prompt.activateAccount()
                 }
             }
-
-            Label {
-                Layout.fillWidth: true
-                text: "WebAuthn security-key request"
-                color: root.browserWindow.privateColor
-                font.bold: true
-                Accessible.name: "WebAuthn title"
+        }
+        Shortcut {
+            sequence: "Enter"
+            context: Qt.WindowShortcut
+            enabled: prompt.visible
+                     && (root.browserWindow.pendingWebAuthState
+                         === WebEngineWebAuthUxRequest.SelectAccount
+                         || root.browserWindow.pendingWebAuthState
+                         === WebEngineWebAuthUxRequest.CollectPin)
+            onActivated: {
+                if (root.browserWindow.pendingWebAuthState
+                        === WebEngineWebAuthUxRequest.CollectPin) {
+                    root.pinSubmitted()
+                } else {
+                    prompt.activateAccount()
+                }
             }
+        }
+        Shortcut {
+            sequence: "R"
+            context: Qt.WindowShortcut
+            enabled: prompt.visible && root.browserWindow.pendingWebAuthState
+                     === WebEngineWebAuthUxRequest.RequestFailed
+            onActivated: root.retryRequested()
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 8 * prompt.scale
 
             Label {
                 Layout.fillWidth: true
-                text: "Relying party: " + (root.browserWindow.pendingWebAuthRelyingParty
-                                             || "opaque or unavailable relying party")
+                text: "Relying party: "
+                      + (root.browserWindow.pendingWebAuthRelyingParty
+                         || "opaque or unavailable relying party")
                 color: root.browserWindow.mutedTextColor
                 elide: Text.ElideMiddle
                 Accessible.name: "WebAuthn relying party"
             }
-
-            Label {
-                Layout.fillWidth: true
-                text: root.browserWindow.webAuthStatusText
-                color: root.browserWindow.primaryTextColor
-                wrapMode: Text.WordWrap
-                Accessible.name: "WebAuthn status"
-            }
-
             ListView {
                 id: accountList
                 Layout.fillWidth: true
@@ -95,35 +149,38 @@ Item {
                 visible: root.browserWindow.pendingWebAuthState
                          === WebEngineWebAuthUxRequest.SelectAccount
                 clip: true
+                spacing: 6 * prompt.scale
+                currentIndex: 0
                 model: root.browserWindow.pendingWebAuthUserNames
                 Accessible.role: Accessible.List
                 Accessible.name: "WebAuthn accounts"
 
-                delegate: Button {
+                delegate: FerricCommandAction {
                     id: accountDelegate
                     required property string modelData
+                    required property int index
                     width: accountList.width
-                    text: accountDelegate.modelData
-                    Accessible.name: "Use WebAuthn account " + accountDelegate.modelData
+                    browserWindow: root.browserWindow
+                    keyHint: index === accountList.currentIndex ? "enter" : ""
+                    actionLabel: accountDelegate.modelData
+                    selected: index === accountList.currentIndex
+                    onSelectionRequested: accountList.currentIndex = index
                     onClicked: root.accountSelected(accountDelegate.modelData)
                 }
             }
-
             Label {
                 Layout.fillWidth: true
                 visible: root.browserWindow.pendingWebAuthState
                          === WebEngineWebAuthUxRequest.CollectPin
                 text: "PIN attempts remaining: "
                       + (root.browserWindow.pendingWebAuthRequest
-                         ? root.browserWindow.pendingWebAuthRequest.pinRequest.remainingAttempts
-                         : 0)
+                         ? root.browserWindow.pendingWebAuthRequest.pinRequest.remainingAttempts : 0)
                       + "; minimum length: "
                       + (root.browserWindow.pendingWebAuthRequest
                          ? root.browserWindow.pendingWebAuthRequest.pinRequest.minPinLength : 0)
                 color: root.browserWindow.mutedTextColor
                 Accessible.name: "WebAuthn PIN guidance"
             }
-
             TextField {
                 id: webAuthPinField
                 Layout.fillWidth: true
@@ -134,9 +191,7 @@ Item {
                 Accessible.name: "WebAuthn PIN"
                 Accessible.role: Accessible.EditableText
                 Accessible.editable: true
-                onVisibleChanged: if (visible) forceActiveFocus()
             }
-
             Label {
                 Layout.fillWidth: true
                 visible: root.browserWindow.pendingWebAuthState
@@ -146,7 +201,6 @@ Item {
                 wrapMode: Text.WordWrap
                 Accessible.name: "WebAuthn security-key instruction"
             }
-
             Label {
                 Layout.fillWidth: true
                 visible: root.browserWindow.pendingWebAuthState
@@ -156,29 +210,34 @@ Item {
                 wrapMode: Text.WordWrap
                 Accessible.name: "WebAuthn failure guidance"
             }
-
-            RowLayout {
+            Item { Layout.fillHeight: true }
+            FerricCommandAction {
                 Layout.fillWidth: true
-                Item { Layout.fillWidth: true }
-                Button {
-                    text: "Cancel"
-                    Accessible.name: "Cancel WebAuthn request"
-                    onClicked: root.cancelled()
-                }
-                Button {
-                    visible: root.browserWindow.pendingWebAuthState
-                             === WebEngineWebAuthUxRequest.CollectPin
-                    text: "Submit PIN"
-                    Accessible.name: "Submit WebAuthn PIN"
-                    onClicked: root.pinSubmitted()
-                }
-                Button {
-                    visible: root.browserWindow.pendingWebAuthState
-                             === WebEngineWebAuthUxRequest.RequestFailed
-                    text: "Retry"
-                    Accessible.name: "Retry WebAuthn request"
-                    onClicked: root.retryRequested()
-                }
+                visible: root.browserWindow.pendingWebAuthState
+                         === WebEngineWebAuthUxRequest.CollectPin
+                browserWindow: root.browserWindow
+                keyHint: "enter"
+                actionLabel: "Submit PIN"
+                selected: true
+                onClicked: root.pinSubmitted()
+            }
+            FerricCommandAction {
+                Layout.fillWidth: true
+                visible: root.browserWindow.pendingWebAuthState
+                         === WebEngineWebAuthUxRequest.RequestFailed
+                browserWindow: root.browserWindow
+                keyHint: "r"
+                actionLabel: "Retry"
+                selected: true
+                onClicked: root.retryRequested()
+            }
+            FerricCommandAction {
+                Layout.fillWidth: true
+                browserWindow: root.browserWindow
+                keyHint: "esc"
+                actionLabel: "Cancel request"
+                safe: true
+                onClicked: root.cancelled()
             }
         }
     }

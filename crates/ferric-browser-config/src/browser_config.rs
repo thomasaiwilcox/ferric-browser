@@ -1,13 +1,45 @@
 //! Browser behavior configuration records.
 
 use super::{
-    CollisionPolicy, Deserialize, EntryMode, ExternalLinks, LastClose, LogLevel,
-    PermissionDecision, PortalMode, Serialize, SessionRestore, default_builtin, default_checkpoint,
-    default_command_limit, default_count_limit, default_keychain_timeout, default_languages,
-    default_lists, default_log_size, default_new_tab, default_overlay_delay,
-    default_related_position, default_retained_files, default_retention, default_search_engine,
-    default_start_pages, default_true, default_undo_limit, default_update_interval, default_zoom,
+    CollisionPolicy, Deserialize, EntryMode, ExternalLinks, HintAutoFollow, HintUnmatchedPolicy,
+    LastClose, LogLevel, PermissionDecision, PortalMode, Serialize, SessionRestore,
+    default_builtin, default_checkpoint, default_command_limit, default_count_limit,
+    default_hint_chars, default_hint_marker_scale, default_hint_min_chars,
+    default_keychain_timeout, default_languages, default_lists, default_log_size, default_new_tab,
+    default_overlay_delay, default_related_position, default_retained_files, default_retention,
+    default_search_engine, default_start_pages, default_true, default_undo_limit,
+    default_update_interval, default_zoom,
 };
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HintsConfig {
+    #[serde(default = "default_hint_chars")]
+    pub chars: String,
+    #[serde(default = "default_hint_min_chars")]
+    pub min_chars: u8,
+    #[serde(default)]
+    pub auto_follow: HintAutoFollow,
+    #[serde(default)]
+    pub unmatched: HintUnmatchedPolicy,
+    #[serde(default)]
+    pub rapid_unmatched: HintUnmatchedPolicy,
+    #[serde(default = "default_hint_marker_scale")]
+    pub marker_scale: f64,
+}
+
+impl Default for HintsConfig {
+    fn default() -> Self {
+        Self {
+            chars: default_hint_chars(),
+            min_chars: default_hint_min_chars(),
+            auto_follow: HintAutoFollow::default(),
+            unmatched: HintUnmatchedPolicy::default(),
+            rapid_unmatched: HintUnmatchedPolicy::default(),
+            marker_scale: default_hint_marker_scale(),
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

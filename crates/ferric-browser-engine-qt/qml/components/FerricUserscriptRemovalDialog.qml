@@ -1,35 +1,43 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Layouts
 
 Item {
     id: root
-
-    // The browser window owns removal policy and storage mutation. This dialog
-    // renders the confirmation copy and reports the explicit user decision.
     required property var browserWindow
 
     signal confirmed()
     signal cancelled()
 
+    anchors.fill: parent
+
     function open() {
-        dialog.open()
+        dialog.visible = true
     }
 
-    Dialog {
+    FerricCommandDialog {
         id: dialog
-        title: "Remove userscript"
-        modal: true
-        width: Math.min(520, root.browserWindow.width - 48)
-        height: Math.min(180, root.browserWindow.height - 48)
-        standardButtons: Dialog.Ok | Dialog.Cancel
-        contentItem: Label {
-            text: "Remove userscript '" + root.browserWindow.pendingUserscriptRemoval
-                    + "' and its copied assets?"
-            wrapMode: Text.WordWrap
-            padding: 16
-            color: root.browserWindow.primaryTextColor
+        browserWindow: root.browserWindow
+        visible: false
+        commandText: ":userscript-remove"
+        title: "Remove userscript?"
+        message: "Remove userscript '" + root.browserWindow.pendingUserscriptRemoval
+                 + "' and its copied assets?"
+        dialogWidth: 600 * scale
+        dialogHeight: 270 * scale
+        dialogBorderColor: root.browserWindow.errorColor
+        stackingOrder: 90
+        actions: [
+            { id: "cancel", key: "n", shortcuts: ["N"], label: "Keep userscript", safe: true },
+            { id: "confirm", key: "y", shortcuts: ["Y"], label: "Remove userscript", destructive: true }
+        ]
+        onActionRequested: function(action) {
+            dialog.visible = false
+            if (action === "confirm") {
+                root.confirmed()
+            } else {
+                root.cancelled()
+            }
         }
-        onAccepted: root.confirmed()
-        onRejected: root.cancelled()
     }
 }

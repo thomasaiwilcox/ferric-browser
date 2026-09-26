@@ -14,6 +14,8 @@ fn main() {
         .cpp_files([
             "src/browser_key_router.h",
             "src/browser_key_router.cpp",
+            "src/browser_page_pointer_adapter.h",
+            "src/browser_page_pointer_adapter.cpp",
             "src/request_interceptor.h",
             "src/request_interceptor.cpp",
             "src/blocklist_updater.h",

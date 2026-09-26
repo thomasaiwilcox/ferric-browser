@@ -1,75 +1,51 @@
 # M1-06 implementation evidence
 
-Date: 2026-09-15  
+Date: 2026-09-25
 Status: in-progress
 
 ## Task card
 
-- Requirements: HINT-001, HINT-002, HINT-003, the link/input portion of
-  HINT-004, and the yank portion of HINT-005.
-- Files: `crates/ferric-browser-core/src/hints.rs`, `crates/ferric-browser-core/src/id.rs`,
-  `crates/ferric-browser-engine-qt/src/lib.rs`,
-  `crates/ferric-browser-engine-qt/qml/Main.qml`, and `docs/requirements.csv`.
-- Observable result: `f` maps to qutebrowser's baseline `hint all` behavior.
-  The Qt adapter asks the current WebEngineView for a bounded
-  visible-interactive-element snapshot, including links, images, summaries,
-  buttons, form controls, explicit click handlers, tabbable and ARIA controls,
-  and open shadow-root descendants. Rust
-  validates the untrusted JSON, caps candidates at 5,000, assigns deterministic
-  `asdfghjkl` labels in viewport order, and binds them to a hint session and
-  captured tab/document target. QML renders compact native label overlays.
-  Selection resolves the exact retained element identity and rechecks target,
-  frame, attachment, visibility, geometry, material movement, and metadata,
-  then performs direct validated navigation for links
-  through `browser.link.open`, focuses form/contenteditable controls and
-  enters insert mode, or invokes bounded DOM activation for validated ordinary
-  controls.
-  Rapid `hint --rapid --target yank` link activation copies the validated,
-  privacy-filtered URL and recollects labels while the source document remains
-  in hint mode.
-  `hint --target userscript --script NAME` validates the selected link, passes
-  its sanitized URL as the manifest-declared `hint_url` context, and starts
-  the bounded userscript operation.
-- Evidence: `cargo test -p ferric-browser-core --locked` (42 tests),
-  `cargo test -p ferric-browser-engine-qt --locked` (7 tests), workspace clippy with
-  warnings denied, and a live offscreen smoke using
-  `docs/testing/fixtures/hints.html`: IPC `command.execute` with `hint` was
-  accepted and `windows.query` reported `mode: hint`, proving the DOM collector
-  retained a non-empty label set.
+- Requirements: HINT-001 through HINT-005.
+- Files: `crates/ferric-browser-core/src/hints.rs`, the typed configuration and
+  command/IPC models, `crates/ferric-browser-engine-qt/src/`, QML runtime
+  components, `qml/scripts/BrowserScripts.js`, and the live hint fixture.
+- Observable result: `f` starts the default `hint all` session; `;a` starts the
+  action chooser; `gi` focuses the first input and a count such as `3gi`
+  forwards `--index 3`. Candidate families cover links, inputs, buttons,
+  images, media, and scrollable elements. The isolated-world collector walks
+  same-origin frames and open shadow roots, clips geometry, performs composed
+  hit testing, assigns stable document-local element IDs, and reports a dirty
+  revision for coalesced live refresh.
+- Rust validates the bounded snapshot, assigns configurable prefix-free labels,
+  preserves them across same-width refreshes, owns prefix/text-filter state and
+  ranking, and revalidates the exact tab/document/frame/element before every
+  activation. QML presents active/unmatched states, collision-aware placement,
+  target outlines, status counts, mouse parity, and the applicable-action
+  palette.
+- Rapid actions remove consumed stable IDs while preserving the remaining
+  labels and retain the 20-background-tab confirmation boundary. Navigation,
+  stale identity, replacement, covering, or material movement fails closed.
+- Verification target: locked workspace tests, Clippy with warnings denied,
+  formatting, build, QML adapter tests, and the native Wayland smoke where a
+  compositor is available. Performance remains p95 no more than 200 ms for 500
+  visible candidates at three zoom levels.
 
 ## Limitations
 
 The collector runs in Qt WebEngine's isolated application world through the
-public QML `runJavaScript` API. It represents the top document as frame `0` and walks
-same-origin `iframe`/`frame` descendants to a bounded depth of eight, carrying
-frame paths and transforming descendant geometry into top-view coordinates.
-Collection and selection have bounded 200 ms elapsed-time checks. Navigation
-invalidates the captured browser document; fresh selection uses the exact
-isolated-world element retained for the session, recomputes its same-origin
-frame-chain geometry, and checks attachment, visibility, metadata, and material
-movement. This avoids false rejection from unrelated mutations on dynamic
-pages and prevents an overlapping child, image, or shadow host from retargeting
-activation.
-Browser features which require a trusted user-activation event,
-cross-origin/closed frames, and engine-specific device-scale/zoom qualification
-remain. Rapid yank and userscript actions are limited to validated links and
-do not create tabs; rapid download uses the same validated link target but
-depends on scripted anchor activation. Canvas controls, closed shadow roots,
-PDF UI, and inaccessible frames remain explicit exclusions per the
-specification.
+public QML `runJavaScript` API. It represents the top document as frame `0` and
+walks same-origin descendants to depth eight, carrying frame paths and
+transforming geometry into top-view coordinates. Collection remains capped at
+5,000 candidates. Browser features requiring a trusted user-activation event,
+cross-origin frames, closed shadow roots, canvas internals, PDF UI, and
+engine-specific device-scale/zoom qualification remain explicit exclusions.
 
 ## Rapid hint follow-up
 
-The command, typed IPC, and CLI paths accept `--rapid` with the bounded
-targets `current`, `tab-bg`, `yank`, `clean-yank`, `download`, and `userscript`.
-Rapid yank, clean-yank, background-tab, download, and manifest-backed userscript selection either copy
-the safe URL, queue a validated download, open it in a new background tab
-through the normal target-aware navigation path, or start the userscript with
-sanitized `hint_url` context. These actions leave
-the mode stack in hint mode, clear the stale session, and ask QML to recollect
-the current document. Background-tab creation is capped at 20 per batch;
-reaching the boundary pauses the session for an explicit QML confirmation that
-grants one more bounded batch.
-Unsupported rapid targets return an explicit error without a navigation or tab
-mutation. Unit coverage exercises typed and CLI option forwarding; workspace
-Clippy and `cargo xtask check` pass.
+The command, typed IPC, and CLI paths accept `--rapid` with the bounded targets
+`current`, `tab-bg`, `yank`, `clean-yank`, `download`, and `userscript`. Rapid
+selection copies, downloads, opens, or dispatches userscript context only after
+fresh validation, acknowledges and removes the consumed candidate, then diffs
+the dirty snapshot without blanking the overlay. Reaching 20 background tabs
+pauses for explicit confirmation. Unsupported rapid targets fail before any
+navigation, clipboard, download, or tab mutation.

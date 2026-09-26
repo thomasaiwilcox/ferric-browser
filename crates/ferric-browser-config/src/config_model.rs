@@ -90,3 +90,22 @@ pub enum LogLevel {
     Info,
     Debug,
 }
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum HintAutoFollow {
+    Always,
+    UniqueMatch,
+    #[default]
+    FullMatch,
+    Never,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum HintUnmatchedPolicy {
+    #[default]
+    Hide,
+    Dim,
+    Show,
+}

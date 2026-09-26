@@ -428,6 +428,18 @@ pub(super) fn decode_command_arguments(
             {
                 args.push("--rapid".into());
             }
+            if arguments
+                .and_then(|arguments| arguments.get("first"))
+                .is_some_and(|value| value.as_bool() == Some(true))
+            {
+                args.push("--first".into());
+            }
+            if let Some(index) = arguments
+                .and_then(|arguments| arguments.get("index"))
+                .and_then(Value::as_u64)
+            {
+                args.extend(["--index".into(), index.to_string()]);
+            }
             if let Some(target) = optional_text_argument("target")? {
                 args.extend(["--target".into(), target]);
             }

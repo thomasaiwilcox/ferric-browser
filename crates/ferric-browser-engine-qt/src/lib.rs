@@ -47,6 +47,7 @@ mod browser_ui_command_workflows;
 mod browser_ui_configuration;
 mod browser_ui_content_tools;
 mod browser_ui_context_commands;
+mod browser_ui_context_navigation;
 mod browser_ui_contexts;
 mod browser_ui_controls;
 mod browser_ui_downloads_permissions;
@@ -84,6 +85,7 @@ mod browser_ui_runtime;
 mod browser_ui_runtime_config;
 mod browser_ui_sessions;
 mod browser_ui_site;
+mod browser_ui_spatial;
 mod browser_ui_state;
 mod browser_ui_storage_writes;
 mod browser_ui_tab_state;
@@ -221,7 +223,9 @@ use effect_projection::{engine_action_name, restore_entry_line};
 use feature_preferences::FeaturePreferences;
 use focus_policy::{FocusObservation, focus_mode_transition};
 use hint_payload::{hint_json, hint_kind_name, parse_hint_candidate, parse_hint_payload};
-use hint_policy::{external_hint_target, parse_hint_options, rapid_hint_keeps_mode};
+use hint_policy::{
+    external_hint_target, hint_uses_url_action, parse_hint_options, rapid_hint_keeps_mode,
+};
 use input_validation::{
     is_bounded_journey_query, is_bounded_untrusted_text, validate_jseval_script,
 };
@@ -434,6 +438,7 @@ mod qobject {
         #[qproperty(i32, completion_end)]
         #[qproperty(i32, completion_selected)]
         #[qproperty(bool, completion_visible)]
+        #[qproperty(bool, command_retryable)]
         #[qproperty(QString, binding_overlay)]
         #[qproperty(QStringList, binding_help_row_kinds)]
         #[qproperty(QStringList, binding_help_row_titles)]
@@ -515,6 +520,26 @@ mod qobject {
         #[qproperty(bool, hint_visible)]
         #[qproperty(bool, hint_links_only)]
         #[qproperty(bool, hint_rapid)]
+        #[qproperty(QString, hint_family)]
+        #[qproperty(QString, hint_unmatched_policy)]
+        #[qproperty(f64, hint_marker_scale)]
+        #[qproperty(bool, spatial_visible)]
+        #[qproperty(bool, spatial_selecting)]
+        #[qproperty(QString, spatial_session_id)]
+        #[qproperty(QString, spatial_dispatch_request)]
+        #[qproperty(QStringList, spatial_labels)]
+        #[qproperty(f64, spatial_root_x)]
+        #[qproperty(f64, spatial_root_y)]
+        #[qproperty(f64, spatial_root_width)]
+        #[qproperty(f64, spatial_root_height)]
+        #[qproperty(f64, spatial_current_x)]
+        #[qproperty(f64, spatial_current_y)]
+        #[qproperty(f64, spatial_current_width)]
+        #[qproperty(f64, spatial_current_height)]
+        #[qproperty(f64, spatial_crosshair_x)]
+        #[qproperty(f64, spatial_crosshair_y)]
+        #[qproperty(i32, spatial_depth)]
+        #[qproperty(bool, spatial_help_visible)]
         #[qproperty(bool, caret_selecting)]
         #[qproperty(QString, caret_request_token)]
         #[qproperty(QString, caret_request_operation)]
@@ -705,6 +730,12 @@ mod qobject {
         fn execute_interactive_command(self: Pin<&mut BrowserUi>, input: &QString) -> bool;
 
         #[qinvokable]
+        fn execute_secondary_interactive_command(
+            self: Pin<&mut BrowserUi>,
+            input: &QString,
+        ) -> bool;
+
+        #[qinvokable]
         fn command_history_previous(self: Pin<&mut BrowserUi>, current: &QString) -> QString;
 
         #[qinvokable]
@@ -866,6 +897,13 @@ mod qobject {
 
         #[qinvokable]
         fn begin_hint_session(self: Pin<&mut BrowserUi>, candidates_json: &QString) -> QString;
+
+        #[qinvokable]
+        fn update_hint_interaction(
+            self: Pin<&mut BrowserUi>,
+            action: &QString,
+            text: &QString,
+        ) -> QString;
 
         #[qinvokable]
         fn select_hint(
@@ -1338,6 +1376,31 @@ mod qobject {
         fn handle_key(self: Pin<&mut BrowserUi>, key: &QString) -> bool;
 
         #[qinvokable]
+        fn begin_spatial_navigation(self: Pin<&mut BrowserUi>) -> bool;
+
+        #[qinvokable]
+        fn spatial_surface_ready(
+            self: Pin<&mut BrowserUi>,
+            width: f64,
+            height: f64,
+            serial: &QString,
+            revision: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn spatial_dispatch_ack(
+            self: Pin<&mut BrowserUi>,
+            request_id: &QString,
+            session_id: &QString,
+            serial: &QString,
+            revision: &QString,
+            outcome: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn spatial_invalidated(self: Pin<&mut BrowserUi>, reason: &QString);
+
+        #[qinvokable]
         fn tick_bindings(self: Pin<&mut BrowserUi>);
 
         #[qinvokable]
@@ -1433,11 +1496,15 @@ use ferric_browser_core::{
     ActionDefinition, ActionRegistry, ActionSource, BindingOutcome, BindingResolver, BindingTrie,
     CleanLinkResult, CommandInvocation, CommandRegistry, CommandSource, CompletionCandidate,
     CompletionCategory, DEFAULT_COMPLETION_LIMIT, Diagnostic, DispatchTarget, Effect, EngineEffect,
-    Event, ExistenceState, HintKind, HintSession, HintTarget, IdSource, JourneyEdgeKind,
-    JourneyNodeId, LoadingState, Mode, NavigationContext, NavigationError, NavigationSource,
-    ParseInput, ParsedCommand, PrivacyKind, ResourceLifecycle, SearchCase, TabId, TabTransfer,
-    Target, ValidatedUrl, WindowId, assign_labels, canonical_origin, clean_link, complete,
-    parse_chain, resolve_input, switcher_rank, tokenize_switcher_query,
+    Event, ExistenceState, GridCell, HintAutoFollow as CoreHintAutoFollow, HintInteraction,
+    HintInteractionInput, HintInteractionOutcome, HintKind, HintSession, HintTarget, IdSource,
+    JourneyEdgeKind, JourneyNodeId, LoadingState, LogicalRect, Mode, NavigationContext,
+    NavigationError, NavigationSource, ParseInput, ParsedCommand, PointerButton, PrivacyKind,
+    ResourceLifecycle, SearchCase, SpatialAck, SpatialAction, SpatialCancelReason,
+    SpatialDispatchOutcome, SpatialError, SpatialLifecycle, SpatialOwner, SpatialSession,
+    SpatialTarget, SurfaceStamp, TabId, TabTransfer, Target, ValidatedUrl, WindowId,
+    assign_labels_with_options, canonical_origin, clean_link, complete, parse_chain,
+    refresh_labels, resolve_input, switcher_rank, tokenize_switcher_query,
 };
 use ferric_browser_ipc::{
     EventNotification, PublicError, Request, Response, has_pending_requests,
@@ -1472,7 +1539,7 @@ use std::cell::{Cell, RefCell};
 use std::os::unix::process::CommandExt;
 use std::time::Instant;
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     fs,
     io::Write,
     path::{Path, PathBuf},
@@ -1522,10 +1589,12 @@ pub struct BrowserUiRust {
     core_mode: Mode,
     binding_clock: Instant,
     pending_engine_action: Option<String>,
+    pending_engine_actions: VecDeque<String>,
     pending_print: Option<PathBuf>,
     pending_journey_transitions: Vec<(Target, JourneyEdgeKind, String)>,
     pending_journey_parent: Option<(Target, JourneyNodeId)>,
     pending_journey_traversal: Option<Target>,
+    pending_journey_traversals: VecDeque<Target>,
     pending_journey_mappings: BTreeMap<StorageTicket, (JourneyNodeId, String)>,
     pending_history_clear: Option<(Option<i64>, Option<String>)>,
     pending_journey_reopen: Option<(String, String, Option<TabId>, String)>,
@@ -1544,6 +1613,7 @@ pub struct BrowserUiRust {
     completion_end: i32,
     completion_selected: i32,
     completion_visible: bool,
+    command_retryable: bool,
     command_history: Vec<String>,
     command_history_index: Option<usize>,
     command_history_draft: String,
@@ -1659,10 +1729,34 @@ pub struct BrowserUiRust {
     hint_visible: bool,
     hint_links_only: bool,
     hint_rapid: bool,
+    hint_family: QString,
+    hint_unmatched_policy: QString,
+    hint_marker_scale: f64,
     hint_rapid_target: String,
     hint_script: Option<String>,
+    hint_first: bool,
+    hint_index: usize,
     hint_rapid_tabs_created: u8,
     pending_hint_action: Option<String>,
+    spatial_visible: bool,
+    spatial_selecting: bool,
+    spatial_session_id: QString,
+    spatial_dispatch_request: QString,
+    spatial_labels: QStringList,
+    spatial_root_x: f64,
+    spatial_root_y: f64,
+    spatial_root_width: f64,
+    spatial_root_height: f64,
+    spatial_current_x: f64,
+    spatial_current_y: f64,
+    spatial_current_width: f64,
+    spatial_current_height: f64,
+    spatial_crosshair_x: f64,
+    spatial_crosshair_y: f64,
+    spatial_depth: i32,
+    spatial_help_visible: bool,
+    spatial_session: Option<SpatialSession>,
+    spatial_ids: IdSource,
     caret_selecting: bool,
     caret_request_token: QString,
     caret_request_operation: QString,
@@ -1696,6 +1790,8 @@ pub struct BrowserUiRust {
     userscript_completions: Arc<Mutex<Vec<UserscriptCompletion>>>,
     userscript_cancellations: Arc<Mutex<BTreeMap<String, Arc<AtomicBool>>>>,
     hint_session: Option<HintSession>,
+    hint_interaction: Option<HintInteraction>,
+    hint_consumed: BTreeSet<(String, u32)>,
     hint_ids: IdSource,
     config_json: QString,
     settings_rows: QVariant,
@@ -2143,11 +2239,13 @@ impl Default for BrowserUiRust {
             core_mode: Mode::Normal,
             binding_clock: Instant::now(),
             pending_engine_action: None,
+            pending_engine_actions: VecDeque::new(),
             pending_print: None,
             pending_print_private: false,
             pending_journey_transitions: Vec::new(),
             pending_journey_parent: None,
             pending_journey_traversal: None,
+            pending_journey_traversals: VecDeque::new(),
             pending_journey_mappings: BTreeMap::new(),
             pending_history_clear: None,
             pending_journey_reopen: None,
@@ -2166,6 +2264,7 @@ impl Default for BrowserUiRust {
             completion_end: 0,
             completion_selected: -1,
             completion_visible: false,
+            command_retryable: false,
             command_history: Vec::new(),
             command_history_index: None,
             command_history_draft: String::new(),
@@ -2281,10 +2380,36 @@ impl Default for BrowserUiRust {
             hint_visible: false,
             hint_links_only: false,
             hint_rapid: false,
+            hint_family: QString::from("all"),
+            hint_unmatched_policy: QString::from("hide"),
+            hint_marker_scale: 1.0,
             hint_rapid_target: "current".into(),
             hint_script: None,
+            hint_first: false,
+            hint_index: 1,
             hint_rapid_tabs_created: 0,
             pending_hint_action: None,
+            spatial_visible: false,
+            spatial_selecting: false,
+            spatial_session_id: QString::default(),
+            spatial_dispatch_request: QString::default(),
+            spatial_labels: (1..=9)
+                .map(|cell| QString::from(cell.to_string()))
+                .collect(),
+            spatial_root_x: 0.0,
+            spatial_root_y: 0.0,
+            spatial_root_width: 0.0,
+            spatial_root_height: 0.0,
+            spatial_current_x: 0.0,
+            spatial_current_y: 0.0,
+            spatial_current_width: 0.0,
+            spatial_current_height: 0.0,
+            spatial_crosshair_x: 0.0,
+            spatial_crosshair_y: 0.0,
+            spatial_depth: 0,
+            spatial_help_visible: false,
+            spatial_session: None,
+            spatial_ids: IdSource::new(),
             caret_selecting: false,
             caret_request_token: QString::default(),
             caret_request_operation: QString::default(),
@@ -2317,6 +2442,8 @@ impl Default for BrowserUiRust {
             userscript_completions: Arc::new(Mutex::new(Vec::new())),
             userscript_cancellations: Arc::new(Mutex::new(BTreeMap::new())),
             hint_session: None,
+            hint_interaction: None,
+            hint_consumed: BTreeSet::new(),
             hint_ids: IdSource::new(),
             config_json: QString::from(
                 serde_json::to_string(&Config::default()).unwrap_or_else(|_| "{}".into()),

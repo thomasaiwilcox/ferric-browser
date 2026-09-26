@@ -2,8 +2,8 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Rectangle {
-    required property var browserWindow
+FerricModalSurface {
+    id: ledger
     required property bool siteExperimentAvailable
 
     signal closeRequested()
@@ -13,40 +13,26 @@ Rectangle {
     signal siteDoctorProposalApplyRequested(string proposalId)
     signal siteDoctorExperimentRequested(string kind)
 
-    anchors.centerIn: parent
-    width: Math.min(900, parent.width - 80)
-    height: Math.min(600, parent.height - 100)
-    z: 70
     visible: browserWindow.siteLedgerVisible
-    focus: visible
-    Accessible.role: Accessible.Dialog
-    Accessible.name: "Site Ledger"
-    onVisibleChanged: if (visible) forceActiveFocus()
-    color: browserWindow.panelColor
-    border.color: browserWindow.accentColor
-    border.width: 1
-
-    Keys.onPressed: function(event) {
-        if (event.key === Qt.Key_Escape) {
-            closeRequested()
-            event.accepted = true
-        }
-    }
+    commandText: ":site-status"
+    title: "Site Ledger"
+    message: browserWindow.siteLedgerData.private
+             ? "Private session · site identity is withheld"
+             : (browserWindow.siteLedgerData.origin || "No normalized HTTP(S) origin")
+    keyHelp: "tab/shift-tab controls  ·  enter activate  ·  esc close"
+    dialogWidth: 940 * scale
+    dialogHeight: 660 * scale
+    stackingOrder: 70
+    onDismissRequested: closeRequested()
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 14
+        anchors.margins: 0
         spacing: 8
 
         RowLayout {
             Layout.fillWidth: true
-            Label {
-                Layout.fillWidth: true
-                text: "Site Ledger"
-                color: browserWindow.primaryTextColor
-                font.bold: true
-                Accessible.name: "Site Ledger"
-            }
+            Item { Layout.fillWidth: true }
             Button {
                 text: "Refresh"
                 Accessible.name: "Refresh Site Ledger"
@@ -84,16 +70,6 @@ Rectangle {
                 color: browserWindow.secondaryTextColor
                 wrapMode: Text.WordWrap
             }
-        }
-
-        Label {
-            Layout.fillWidth: true
-            text: browserWindow.siteLedgerData.private
-                  ? "Private session · site identity is withheld"
-                  : (browserWindow.siteLedgerData.origin || "No normalized HTTP(S) origin")
-            color: browserWindow.secondaryTextColor
-            elide: Text.ElideMiddle
-            Accessible.name: "Ledger origin"
         }
 
         RowLayout {

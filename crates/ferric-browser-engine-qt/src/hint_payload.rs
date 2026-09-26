@@ -25,8 +25,8 @@ pub(super) fn parse_hint_candidate(value: &Value) -> Result<HintCandidate, Strin
         .get("element_id")
         .and_then(Value::as_u64)
         .and_then(|value| u32::try_from(value).ok())
-        .filter(|value| *value > 0 && *value <= MAX_HINT_CANDIDATES as u32)
-        .ok_or_else(|| "hint candidate element_id must be a bounded positive integer".to_owned())?;
+        .filter(|value| *value > 0)
+        .ok_or_else(|| "hint candidate element_id must be a positive 32-bit integer".to_owned())?;
     let frame_path = object
         .get("frame_path")
         .and_then(Value::as_str)
@@ -38,7 +38,7 @@ pub(super) fn parse_hint_candidate(value: &Value) -> Result<HintCandidate, Strin
     if frame_path.is_empty()
         || frame_path.len() > 256
         || !valid_hint_frame_path(frame_path)
-        || text.len() > 512
+        || text.chars().count() > 512
         || frame_path.chars().any(char::is_control)
         || text.chars().any(char::is_control)
     {
@@ -120,6 +120,9 @@ pub(super) fn hint_kind_name(kind: HintKind) -> &'static str {
         HintKind::Select => "select",
         HintKind::Textarea => "textarea",
         HintKind::ContentEditable => "contenteditable",
+        HintKind::Image => "image",
+        HintKind::Media => "media",
+        HintKind::Scrollable => "scrollable",
         HintKind::Aria => "aria",
     }
 }
@@ -168,6 +171,9 @@ fn parse_hint_kind(value: &str) -> Result<HintKind, String> {
         "select" => Ok(HintKind::Select),
         "textarea" => Ok(HintKind::Textarea),
         "contenteditable" => Ok(HintKind::ContentEditable),
+        "image" => Ok(HintKind::Image),
+        "media" => Ok(HintKind::Media),
+        "scrollable" => Ok(HintKind::Scrollable),
         "aria" => Ok(HintKind::Aria),
         _ => Err(format!("unknown hint kind: {value}")),
     }
@@ -199,5 +205,23 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn accepts_bounded_unicode_text_by_character_count() {
+        let candidate = |text: String| {
+            serde_json::json!({
+                "element_id": 1,
+                "kind": "link",
+                "frame_path": "0",
+                "text": text,
+                "href": "https://example.test/",
+                "geometry": {"x": 1.0, "y": 2.0, "width": 10.0, "height": 10.0}
+            })
+        };
+
+        assert!(parse_hint_candidate(&candidate("é".repeat(512))).is_ok());
+        assert!(parse_hint_candidate(&candidate("é".repeat(513))).is_err());
+        assert!(parse_hint_candidate(&candidate("unsafe\u{0085}text".into())).is_err());
     }
 }

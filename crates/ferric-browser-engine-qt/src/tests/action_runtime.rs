@@ -570,7 +570,7 @@ fn switcher_actions_have_safe_defaults_and_kind_allowlists() {
     .concat();
     let qml = [
         QML_SOURCE,
-        include_str!("../../qml/components/FerricContextMenu.qml"),
+        include_str!("../../qml/components/FerricSwitcher.qml"),
         include_str!("../../qml/components/FerricSwitcherResults.qml"),
     ]
     .concat();
@@ -630,7 +630,7 @@ fn switcher_actions_have_safe_defaults_and_kind_allowlists() {
     assert!(qml.contains("entry.ui.switcher_result_actions"));
     assert!(!qml.contains("JSON.parse(raw).results"));
     assert!(qml.contains("function setSwitcherScope(scope)"));
-    assert!(qml.contains("\"actions\", \"history\""));
+    assert!(qml.contains("commands, actions, history"));
     assert!(qml.contains("Accessible.role: Accessible.PageTab"));
 }
 

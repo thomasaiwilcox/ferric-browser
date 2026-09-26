@@ -38,6 +38,7 @@ ApplicationWindow {
     property bool pendingFileDialogWaitingForPortal: false
     property double pendingFileDialogPortalDeadlineMs: 0
     property bool windowShutdownApproved: false
+    property bool windowCloseConfirmationVisible: false
     property bool windowShutdownPromptVisible: false
     property bool windowShutdownPagePromptVisible: false
     property bool windowShutdownStoragePromptVisible: false
@@ -47,6 +48,16 @@ ApplicationWindow {
     property var pendingDownloadRequests: ({})
     property string pendingDownloadId: ""
     property string pendingDownloadSuggestedName: ""
+    readonly property var statusUi:
+        popupPermissionUi || rootWindow.primaryBrowserUi
+    readonly property bool statusBarVisible:
+        rootWindow.statusBarVisibleForMode(statusUi.mode)
+
+    FerricWebEngineSurfaceRecovery {
+        hostWindow: popupWindow
+        enabled: rootWindow.nativeWayland && !rootWindow.softwareRendering
+        views: [popupView]
+    }
 
     Timer {
         id: popupShutdownPageProbeTimer
@@ -119,6 +130,17 @@ ApplicationWindow {
     }
 
     function beginQuitRequest() {
+        if (popupWindow.windowCloseConfirmationVisible
+                || popupWindow.windowShutdownPromptVisible
+                || popupWindow.windowShutdownPagePromptVisible) {
+            return
+        }
+        popupWindow.windowCloseConfirmationVisible = true
+        popupWindow.statusUi.status_text = "Confirm popup window close"
+    }
+
+    function continueQuitRequest() {
+        popupWindow.windowCloseConfirmationVisible = false
         if (popupWindow.hasActiveDownloads()
                 || rootWindow.hasActiveShutdownRequestsFor(
                     popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi, popupWindow)) {
@@ -164,103 +186,69 @@ ApplicationWindow {
         popupWindow.activeDownloads = ({})
         rootWindow.cancelShutdownRequestsFor(
                     popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi, popupWindow)
-        popupWindow.beginQuitRequest()
+        popupWindow.continueQuitRequest()
     }
 
-    Rectangle {
-        anchors.centerIn: parent
-        width: Math.min(560, popupWindow.width - 80)
-        height: Math.min(190 * rootWindow.chromeScale, popupWindow.height - 32)
-        z: 100
-        visible: popupWindow.windowShutdownPromptVisible
-        color: rootWindow.panelColor
-        border.color: rootWindow.warningColor
-        border.width: 2
-
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 16
-            spacing: 12
-            Label {
-                Layout.fillWidth: true
-                text: "Popup browser work is still running"
-                color: rootWindow.primaryTextColor
-                font.bold: true
-            }
-            Label {
-                Layout.fillWidth: true
-                text: "Finish or cancel active popup work before closing."
-                color: rootWindow.secondaryTextColor
-                wrapMode: Text.WordWrap
-            }
-            RowLayout {
-                Layout.alignment: Qt.AlignRight
-                Button {
-                    text: "Keep window open"
-                    Accessible.name: "Keep popup window open"
-                    onClicked: {
-                        popupWindow.windowShutdownPromptVisible = false
-                        rootWindow.abortApplicationShutdown()
-                        if (popupWindow.popupPermissionUi) {
-                            popupWindow.popupPermissionUi.status_text = "Popup shutdown cancelled"
-                        }
-                    }
-                }
-                Button {
-                    text: "Cancel active work and close"
-                    Accessible.name: "Close popup window anyway"
-                    onClicked: popupWindow.cancelDownloadsAndQuit()
-                }
-            }
+    FerricShutdownDecisionDialog {
+        hostWindow: popupWindow
+        promptVisible: popupWindow.windowCloseConfirmationVisible
+        commandText: ":window-close"
+        title: "Close this popup window?"
+        message: "This will close the popup and its page."
+        keepLabel: "Keep window open"
+        proceedLabel: "Close window"
+        proceedAccessibleName: "Close popup browser window"
+        dialogHeight: 220 * rootWindow.chromeScale
+        onKeepRequested: {
+            popupWindow.windowCloseConfirmationVisible = false
+            popupWindow.statusUi.status_text = "Popup window close cancelled"
+        }
+        onProceedRequested: {
+            popupWindow.windowCloseConfirmationVisible = false
+            popupWindow.continueQuitRequest()
         }
     }
 
-    Rectangle {
-        anchors.centerIn: parent
-        width: Math.min(560, popupWindow.width - 80)
-        height: Math.min(220 * rootWindow.chromeScale, popupWindow.height - 32)
-        z: 100
-        visible: popupWindow.windowShutdownPagePromptVisible
-        color: rootWindow.panelColor
-        border.color: rootWindow.warningColor
-        border.width: 2
+    FerricShutdownDecisionDialog {
+        hostWindow: popupWindow
+        promptVisible: popupWindow.windowShutdownPromptVisible
+        commandText: ":window-close"
+        title: "Popup browser work is still running"
+        message: "Cancel active popup work before closing, or keep this window open."
+        keepLabel: "Keep window open"
+        proceedLabel: "Cancel active work and close"
+        proceedAccessibleName: "Cancel active work and close popup window"
+        dialogHeight: 220 * rootWindow.chromeScale
+        onKeepRequested: {
+            popupWindow.windowShutdownPromptVisible = false
+            rootWindow.abortApplicationShutdown()
+            popupWindow.statusUi.status_text = "Popup shutdown cancelled"
+        }
+        onProceedRequested: {
+            popupWindow.windowShutdownPromptVisible = false
+            popupWindow.cancelDownloadsAndQuit()
+        }
+    }
 
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 16
-            spacing: 12
-            Label {
-                Layout.fillWidth: true
-                text: "Popup page state may be lost"
-                color: rootWindow.primaryTextColor
-                font.bold: true
-            }
-            Label {
-                Layout.fillWidth: true
-                text: popupWindow.windowShutdownPagePromptReason
-                      + " Close anyway may lose that state."
-                color: rootWindow.secondaryTextColor
-                wrapMode: Text.WordWrap
-            }
-            RowLayout {
-                Layout.alignment: Qt.AlignRight
-                Button {
-                    text: "Keep window open"
-                    Accessible.name: "Keep popup window open"
-                    onClicked: {
-                        popupWindow.cancelPageStateProbe()
-                        rootWindow.abortApplicationShutdown()
-                        if (popupWindow.popupPermissionUi) {
-                            popupWindow.popupPermissionUi.status_text = "Popup shutdown cancelled"
-                        }
-                    }
-                }
-                Button {
-                    text: "Close anyway"
-                    Accessible.name: "Close popup window despite page state"
-                    onClicked: popupWindow.finalizeQuit()
-                }
-            }
+    FerricShutdownDecisionDialog {
+        hostWindow: popupWindow
+        promptVisible: popupWindow.windowShutdownPagePromptVisible
+        commandText: ":window-close"
+        title: "Popup page state may be lost"
+        message: popupWindow.windowShutdownPagePromptReason
+                 + " Close anyway may lose that state."
+        keepLabel: "Keep window open"
+        proceedLabel: "Close anyway"
+        proceedAccessibleName: "Close popup window despite page state"
+        dialogHeight: 220 * rootWindow.chromeScale
+        onKeepRequested: {
+            popupWindow.cancelPageStateProbe()
+            rootWindow.abortApplicationShutdown()
+            popupWindow.statusUi.status_text = "Popup shutdown cancelled"
+        }
+        onProceedRequested: {
+            popupWindow.windowShutdownPagePromptVisible = false
+            popupWindow.finalizeQuit()
         }
     }
 
@@ -691,7 +679,8 @@ ApplicationWindow {
             }
         }
         anchors.fill: parent
-        anchors.bottomMargin: rootWindow.statusBarHeight
+        anchors.bottomMargin: popupWindow.statusBarVisible
+                              ? rootWindow.statusBarHeight : 0
         profile: popupWindow.popupProfile
         url: "about:blank"
         settings.javascriptEnabled: !!rootWindow.siteRuleValue(
@@ -869,7 +858,7 @@ ApplicationWindow {
         anchors.bottom: parent.bottom
         height: rootWindow.statusBarHeight
         z: 10
-        visible: rootWindow.statusbarMode === "always"
+        visible: popupWindow.statusBarVisible
         color: rootWindow.surfaceColor
         opacity: rootWindow.chromeOpacity
 
@@ -880,10 +869,10 @@ ApplicationWindow {
             color: rootWindow.contextStatusColor(
                        popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi,
                        rootWindow.secondaryTextColor)
-            text: (popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi).mode + " · "
-                  + (popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi).status_text
+            text: popupWindow.statusUi.mode + " · "
+                  + popupWindow.statusUi.status_text
                   + rootWindow.statusDetails(
-                      popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi,
+                      popupWindow.statusUi,
                       popupWindow, popupView,
                       popupWindow.popupPrivateProfile,
                       popupWindow.popupProfileName,

@@ -150,6 +150,9 @@ impl qobject::BrowserUi {
         layers: ConfigurationLayers,
         status: &str,
     ) -> Result<Value, String> {
+        let previous_hints = serde_json::from_value::<Config>(self.as_ref().rust().config.clone())
+            .ok()
+            .map(|config| config.hints);
         let snapshot = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
@@ -199,11 +202,20 @@ impl qobject::BrowserUi {
             )));
         self.as_mut().update_chrome_preferences(&active_settings);
         self.as_mut().update_feature_preferences(&active_settings);
+        self.as_mut().update_hint_preferences(&active_settings);
         self.as_mut().update_settings_presentation(&active_config);
         self.as_mut().set_config_json(QString::from(config_json));
         let learning_mode = self.as_ref().rust().learning_mode;
         self.as_mut().set_learning_mode(learning_mode);
         self.as_mut().update_theme_palette(&candidate);
+        let label_settings_changed = previous_hints.is_some_and(|previous| {
+            previous.chars != active_settings.hints.chars
+                || previous.min_chars != active_settings.hints.min_chars
+                || previous.auto_follow != active_settings.hints.auto_follow
+        });
+        if label_settings_changed && self.as_ref().rust().hint_session.is_some() {
+            self.as_mut().cancel_hints();
+        }
         let status = if pending.is_empty() {
             status.to_owned()
         } else {
@@ -278,6 +290,23 @@ impl qobject::BrowserUi {
             .set_feature_link_cleaning_update_sha256(QString::from(
                 preferences.link_cleaning_update_sha256,
             ));
+    }
+
+    pub(super) fn update_hint_preferences(mut self: Pin<&mut Self>, config: &Config) {
+        let policy = if self.as_ref().rust().hint_rapid {
+            &config.hints.rapid_unmatched
+        } else {
+            &config.hints.unmatched
+        };
+        let policy = match policy {
+            ferric_browser_config::HintUnmatchedPolicy::Hide => "hide",
+            ferric_browser_config::HintUnmatchedPolicy::Dim => "dim",
+            ferric_browser_config::HintUnmatchedPolicy::Show => "show",
+        };
+        self.as_mut()
+            .set_hint_unmatched_policy(QString::from(policy));
+        self.as_mut()
+            .set_hint_marker_scale(config.hints.marker_scale);
     }
 
     pub(super) fn update_settings_presentation(mut self: Pin<&mut Self>, config: &Value) {

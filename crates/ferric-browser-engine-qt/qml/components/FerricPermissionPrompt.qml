@@ -2,52 +2,67 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-// Renders a permission request for a supplied host. Decisions are emitted as
-// intents; the composition root owns permission policy and dispatch.
-Rectangle {
+// Browser-owned permission decisions use the same command-first contract as
+// shutdown and recovery prompts. Policy remains with the composition root.
+FerricCommandDialog {
     id: prompt
-
-    required property var browserWindow
-    property var hostWindow: null
 
     signal decisionRequested(bool allow, string lifetime)
 
-    width: Math.min(600, hostWindow ? hostWindow.width - 80 : 520)
-    height: Math.min(280 * browserWindow.chromeScale, hostWindow.height - 32)
-    anchors.centerIn: parent
-    z: 90
     visible: browserWindow.permissionPromptVisible
              && browserWindow.pendingPermissionHost === hostWindow
-    focus: visible
-    Accessible.role: Accessible.Dialog
-    Accessible.name: "Permission request"
-    onVisibleChanged: if (visible) forceActiveFocus()
-    color: browserWindow.panelColor
-    border.color: browserWindow.accentColor
-    border.width: 2
+    commandText: ":permission"
+    title: "Permission request"
+    message: browserWindow.pendingPermissionOrigin + " wants to "
+             + browserWindow.permissionDisplayName(
+                   browserWindow.pendingPermissionName) + "."
+    dialogWidth: 600 * scale
+    dialogHeight: 390 * scale
+    dialogBorderColor: browserWindow.warningColor
+    stackingOrder: 90
+    cancelAction: "deny"
+    actions: {
+        var choices = [{
+            id: "deny", key: "n", label: "Deny", safe: true,
+            shortcuts: ["N"]
+        }]
+        if (browserWindow.pendingPermissionName !== "screen-capture") {
+            choices.push({
+                id: "session", key: "s", label: "Allow for session",
+                shortcuts: ["S"]
+            })
+        }
+        choices.push({
+            id: "once", key: "y", label: "Allow once",
+            shortcuts: ["Y"]
+        })
+        if (browserWindow.permissionCanRememberForSite(
+                    browserWindow.pendingPermissionOrigin,
+                    browserWindow.pendingPermissionName)) {
+            choices.push({
+                id: "site", key: "a", label: "Always allow for this site",
+                shortcuts: ["A"]
+            })
+        }
+        return choices
+    }
+
+    onActionRequested: function(action) {
+        if (action === "deny") {
+            prompt.decisionRequested(false, "")
+        } else if (action === "session") {
+            prompt.decisionRequested(true, "session")
+        } else if (action === "site") {
+            prompt.decisionRequested(true, "site")
+        } else {
+            prompt.decisionRequested(true, "")
+        }
+    }
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 16
-        spacing: 10
+        spacing: 8 * prompt.scale
 
-        Label {
-            Layout.fillWidth: true
-            text: "Permission request"
-            color: prompt.browserWindow.primaryTextColor
-            font.bold: true
-            Accessible.name: "Permission request"
-        }
-        Label {
-            Layout.fillWidth: true
-            text: prompt.browserWindow.pendingPermissionOrigin + " wants to "
-                  + prompt.browserWindow.permissionDisplayName(
-                      prompt.browserWindow.pendingPermissionName) + "."
-            color: prompt.browserWindow.secondaryTextColor
-            wrapMode: Text.WordWrap
-            Accessible.name: "Permission request for "
-                             + prompt.browserWindow.pendingPermissionOrigin
-        }
         Label {
             Layout.fillWidth: true
             text: (prompt.browserWindow.pendingPermissionPrivate
@@ -66,47 +81,10 @@ Rectangle {
             text: prompt.browserWindow.permissionCanRemember(
                       prompt.browserWindow.pendingPermissionOrigin,
                       prompt.browserWindow.pendingPermissionName)
-                  ? "Allow once, or remember an allow rule for this exact site."
+                  ? "A remembered rule applies only to this exact site."
                   : "This decision applies to this request only."
             color: prompt.browserWindow.warningColor
             wrapMode: Text.WordWrap
-        }
-        RowLayout {
-            Layout.alignment: Qt.AlignRight
-            spacing: 8
-            Button {
-                text: "Deny"
-                Accessible.name: "Deny permission request"
-                onClicked: prompt.decisionRequested(false, "")
-            }
-            Button {
-                text: "Allow for session"
-                Accessible.name: "Allow permission for this session"
-                visible: prompt.browserWindow.pendingPermissionName !== "screen-capture"
-                onClicked: prompt.decisionRequested(true, "session")
-            }
-            Button {
-                text: "Allow once"
-                Accessible.name: "Allow permission request once"
-                onClicked: prompt.decisionRequested(true, "")
-            }
-            Button {
-                visible: prompt.browserWindow.permissionCanRememberForSite(
-                    prompt.browserWindow.pendingPermissionOrigin,
-                    prompt.browserWindow.pendingPermissionName)
-                text: "Allow for site"
-                Accessible.name: "Allow permission for this site"
-                onClicked: prompt.decisionRequested(true, "site")
-            }
-        }
-    }
-
-    Keys.onPressed: function(event) {
-        if (event.key === Qt.Key_Escape) {
-            prompt.decisionRequested(false, "")
-            event.accepted = true
-        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-            event.accepted = true
         }
     }
 }

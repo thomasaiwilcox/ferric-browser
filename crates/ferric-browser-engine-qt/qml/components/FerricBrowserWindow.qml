@@ -44,11 +44,24 @@ ApplicationWindow {
     property var devToolsAttachedView: secondaryDevToolsLoader.item
     property bool windowDetachedWasTransfer: false
     readonly property bool windowTransferMode: windowTransferView !== null
+    readonly property bool inputBarActive: secondaryUi.mode === "command"
+                                           || secondaryUi.mode === "search"
+    property bool commandNoticeVisible: false
+    property string commandNoticeText: ""
+    property bool commandNoticeError: false
+    property string pendingInteractiveCommand: ""
+    readonly property bool statusBarVisible:
+        (secondaryWindow.commandNoticeVisible && !secondaryWindow.inputBarActive)
+        || rootWindow.statusBarVisibleForMode(secondaryUi.mode)
+    readonly property real bottomChromeHeight:
+        inputBarActive ? rootWindow.inputBarHeight
+                       : (statusBarVisible ? rootWindow.statusBarHeight : 0)
     readonly property var activeView: windowTransferMode
                                                ? windowTransferView
                                                : (windowFallbackView || secondaryView)
     readonly property bool browserKeyFocusActive:
         !rootWindow.browserChromeInputActive
+        && !windowCloseConfirmationVisible
         && !windowShutdownPromptVisible
         && !windowShutdownPagePromptVisible
         && !windowShutdownStoragePromptVisible
@@ -70,11 +83,41 @@ ApplicationWindow {
     property bool pendingFileDialogWaitingForPortal: false
     property double pendingFileDialogPortalDeadlineMs: 0
     property bool windowShutdownApproved: false
+    property bool windowCloseConfirmationVisible: false
     property bool windowShutdownPromptVisible: false
     property bool windowShutdownPagePromptVisible: false
+    property bool windowShutdownStoragePromptVisible: false
     property string windowShutdownPagePromptReason: ""
     property int windowShutdownPageProbeGeneration: 0
     property var activeDownloads: ({})
+    property bool caretSelecting: false
+
+    Timer {
+        id: secondaryCommandNoticeTimer
+        interval: 3500
+        repeat: false
+        onTriggered: secondaryWindow.commandNoticeVisible = false
+    }
+
+    function showCommandNotice(text, isError) {
+        var message = String(text || "").trim()
+        if (message.length === 0 || message === "Normal mode") {
+            return
+        }
+        secondaryWindow.commandNoticeText = message
+        secondaryWindow.commandNoticeError = !!isError
+        secondaryWindow.commandNoticeVisible = true
+        secondaryCommandNoticeTimer.restart()
+    }
+
+    FerricWebEngineSurfaceRecovery {
+        hostWindow: secondaryWindow
+        enabled: rootWindow.nativeWayland && !rootWindow.softwareRendering
+        views: [
+            secondaryWindow.activeView,
+            secondaryDevToolsLoader.active ? secondaryDevToolsLoader.item : null
+        ]
+    }
 
     BrowserKeyRouter {
         id: secondaryKeyRouter
@@ -83,14 +126,16 @@ ApplicationWindow {
                  && secondaryWindow.browserKeyFocusActive
                  && (secondaryUi.mode === "normal"
                      || secondaryUi.mode === "hint"
+                     || secondaryUi.mode === "grid"
                      || secondaryUi.mode === "caret"
                      || secondaryUi.mode === "insert"
                      || secondaryUi.mode === "pass-through")
-        onKeyPressed: function(text, key, modifiers) {
+        onKeyPressed: function(text, key, modifiers, isAutoRepeat) {
             var event = {
                 text: text,
                 key: key,
                 modifiers: modifiers,
+                isAutoRepeat: !!isAutoRepeat,
                 accepted: false
             }
             if (rootWindow.handleBrowserKey(
@@ -184,6 +229,18 @@ ApplicationWindow {
     }
 
     function beginQuitRequest() {
+        if (secondaryWindow.windowCloseConfirmationVisible
+                || secondaryWindow.windowShutdownPromptVisible
+                || secondaryWindow.windowShutdownPagePromptVisible
+                || secondaryWindow.windowShutdownStoragePromptVisible) {
+            return
+        }
+        secondaryWindow.windowCloseConfirmationVisible = true
+        secondaryUi.status_text = "Confirm window close"
+    }
+
+    function continueQuitRequest() {
+        secondaryWindow.windowCloseConfirmationVisible = false
         if (secondaryWindow.hasActiveDownloads()
                 || rootWindow.hasActiveShutdownRequestsFor(secondaryUi, secondaryWindow)) {
             secondaryWindow.windowShutdownPromptVisible = true
@@ -228,7 +285,7 @@ ApplicationWindow {
         }
         secondaryWindow.activeDownloads = ({})
         rootWindow.cancelShutdownRequestsFor(secondaryUi, secondaryWindow)
-        secondaryWindow.beginQuitRequest()
+        secondaryWindow.continueQuitRequest()
     }
 
     FerricFileDialogSurfaces {
@@ -435,11 +492,50 @@ ApplicationWindow {
     BrowserUi {
         id: secondaryUi
         status_text: "Ready"
+        onRuntime_work_available: secondaryWindow.scheduleRuntimeWork(0)
+        onStatus_textChanged: {
+            secondaryWindow.scheduleRuntimeWork(0)
+            if (secondaryWindow.commandNoticeVisible
+                    && secondaryUi.mode !== "command"
+                    && secondaryUi.status_text !== "Normal mode") {
+                var loweredStatus = secondaryUi.status_text.toLowerCase()
+                secondaryWindow.showCommandNotice(
+                    secondaryUi.status_text,
+                    loweredStatus.indexOf("failed") >= 0
+                    || loweredStatus.indexOf("error") >= 0
+                    || loweredStatus.indexOf("rejected") >= 0)
+            }
+        }
+    }
+
+    FerricShutdownDecisionDialog {
+        hostWindow: secondaryWindow
+        promptVisible: secondaryWindow.windowCloseConfirmationVisible
+        commandText: ":window-close"
+        title: "Close this browser window?"
+        message: {
+            var count = secondaryUi.tab_count
+            return "This will close this window and its " + count
+                    + (count === 1 ? " open tab." : " open tabs.")
+        }
+        keepLabel: "Keep window open"
+        proceedLabel: "Close window"
+        proceedAccessibleName: "Close browser window"
+        dialogHeight: 220 * rootWindow.chromeScale
+        onKeepRequested: {
+            secondaryWindow.windowCloseConfirmationVisible = false
+            secondaryUi.status_text = "Window close cancelled"
+        }
+        onProceedRequested: {
+            secondaryWindow.windowCloseConfirmationVisible = false
+            secondaryWindow.continueQuitRequest()
+        }
     }
 
     FerricShutdownDecisionDialog {
         hostWindow: secondaryWindow
         promptVisible: secondaryWindow.windowShutdownPromptVisible
+        commandText: ":window-close"
         title: "Active browser work is still running"
         message: "Cancel active work before closing, or keep this window open."
         keepLabel: "Keep window open"
@@ -450,12 +546,16 @@ ApplicationWindow {
             rootWindow.abortApplicationShutdown()
             secondaryUi.status_text = "Shutdown cancelled"
         }
-        onProceedRequested: secondaryWindow.cancelDownloadsAndQuit()
+        onProceedRequested: {
+            secondaryWindow.windowShutdownPromptVisible = false
+            secondaryWindow.cancelDownloadsAndQuit()
+        }
     }
 
     FerricShutdownDecisionDialog {
         hostWindow: secondaryWindow
         promptVisible: secondaryWindow.windowShutdownPagePromptVisible
+        commandText: ":window-close"
         title: "Page state may be lost"
         message: secondaryWindow.windowShutdownPagePromptReason
                  + " Close anyway may lose that state."
@@ -468,12 +568,16 @@ ApplicationWindow {
             rootWindow.abortApplicationShutdown()
             secondaryUi.status_text = "Shutdown cancelled"
         }
-        onProceedRequested: secondaryWindow.finalizeQuit()
+        onProceedRequested: {
+            secondaryWindow.windowShutdownPagePromptVisible = false
+            secondaryWindow.finalizeQuit()
+        }
     }
 
     FerricShutdownDecisionDialog {
         hostWindow: secondaryWindow
         promptVisible: secondaryWindow.windowShutdownStoragePromptVisible
+        commandText: ":window-close"
         title: "Durable profile state could not be flushed"
         message: "The window remains open so its session and profile data are not abandoned. Retry the close after checking storage availability, or keep it open."
         keepLabel: "Keep window open"
@@ -487,7 +591,10 @@ ApplicationWindow {
             rootWindow.abortApplicationShutdown()
             secondaryUi.status_text = "Shutdown cancelled; durable state was retained"
         }
-        onProceedRequested: secondaryWindow.finalizeQuit()
+        onProceedRequested: {
+            secondaryWindow.windowShutdownStoragePromptVisible = false
+            secondaryWindow.finalizeQuit()
+        }
     }
 
     Connections {
@@ -528,86 +635,13 @@ function onContext_workspaceChanged() {
         }
     }
 
-    Popup {
+    FerricExternalNavigationDialog {
         id: secondaryExternalNavigationPopup
-        parent: Overlay.overlay
-        modal: true
-        focus: true
-        closePolicy: Popup.NoAutoClose
-        visible: secondaryUi.external_navigation_visible
-        width: Math.min(620, secondaryWindow.width - 48)
-        padding: 14
-        x: Math.round((secondaryWindow.width - width) / 2)
-        y: Math.round((secondaryWindow.height - height) / 2)
-
-        background: Rectangle {
-            color: rootWindow.panelColor
-            border.color: rootWindow.warningColor
-            radius: 4
-        }
-
-        contentItem: ColumnLayout {
-            focus: true
-            Accessible.role: Accessible.Dialog
-            Accessible.name: "External URI confirmation"
-            spacing: 10
-
-            Keys.onPressed: function(event) {
-                if (event.key === Qt.Key_Escape) {
-                    secondaryUi.cancel_external_navigation()
-                    event.accepted = true
-                } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                    if (secondaryUi.confirm_external_navigation()) {
-                        secondaryWindow.applySwitcherEngineAction()
-                    }
-                    event.accepted = true
-                }
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: "Open with system handler?"
-                color: rootWindow.primaryTextColor
-                font.bold: true
-            }
-            Label {
-                Layout.fillWidth: true
-                text: "This URI will leave Ferric Browser and may launch another application."
-                color: rootWindow.warningColor
-                wrapMode: Text.WordWrap
-            }
-            Label {
-                Layout.fillWidth: true
-                text: "Scheme: " + secondaryUi.external_navigation_scheme
-                color: rootWindow.mutedTextColor
-            }
-            Label {
-                Layout.fillWidth: true
-                text: secondaryUi.external_navigation_uri
-                color: rootWindow.primaryTextColor
-                wrapMode: Text.WrapAnywhere
-                maximumLineCount: 8
-                elide: Text.ElideRight
-                Accessible.name: "External URI"
-            }
-            RowLayout {
-                Layout.fillWidth: true
-                Item { Layout.fillWidth: true }
-                Button {
-                    text: "Cancel"
-                    Accessible.name: "Cancel external URI"
-                    onClicked: secondaryUi.cancel_external_navigation()
-                }
-                Button {
-                    text: "Open with system handler"
-                    Accessible.name: "Confirm external URI"
-                    onClicked: {
-                        if (secondaryUi.confirm_external_navigation()) {
-                            secondaryWindow.applySwitcherEngineAction()
-                        }
-                    }
-                }
-            }
+        browserWindow: rootWindow
+        browserUi: secondaryUi
+        hostWindow: secondaryWindow
+        confirmedActionHandler: function() {
+            secondaryWindow.applySwitcherEngineAction()
         }
     }
 
@@ -850,7 +884,6 @@ function onContext_workspaceChanged() {
     function applySwitcherEngineAction() {
         var action = secondaryUi.take_engine_action()
         if (!action || action.length === 0) {
-            secondaryWindow.activeView.forceActiveFocus()
             return
         }
         if (action.indexOf("command-prefill\t") === 0) {
@@ -860,7 +893,7 @@ function onContext_workspaceChanged() {
             return
         }
         if (action === "quit-request") {
-            rootWindow.beginQuitRequest()
+            rootWindow.beginQuitRequest(":quit")
             return
         }
         if (action === "window-close-request") {
@@ -915,6 +948,50 @@ function onContext_workspaceChanged() {
                 secondaryWindow.activeView.reload()
             }
             secondaryWindow.activeView.forceActiveFocus()
+            return
+        }
+        if (action === "back" || action.indexOf("back\t") === 0
+                || action === "forward" || action.indexOf("forward\t") === 0) {
+            var historyParts = action.split("\t")
+            var historyCount = Number(historyParts.length >= 2
+                                      ? historyParts[1] : 1)
+            var historyBack = historyParts[0] === "back"
+            var historyMoved = 0
+            while (historyMoved < historyCount
+                    && ((historyBack && secondaryWindow.activeView.canGoBack)
+                        || (!historyBack && secondaryWindow.activeView.canGoForward))) {
+                if (historyBack) {
+                    secondaryWindow.activeView.goBack()
+                } else {
+                    secondaryWindow.activeView.goForward()
+                }
+                historyMoved += 1
+            }
+            secondaryUi.status_text = historyMoved === 0
+                    ? "History boundary reached"
+                    : historyMoved < historyCount
+                      ? "History boundary reached after " + historyMoved + " step(s)"
+                      : (historyBack ? "Back requested" : "Forward requested")
+            secondaryWindow.activeView.forceActiveFocus()
+            return
+        }
+        if (action === "stop") {
+            secondaryWindow.activeView.stop()
+            secondaryWindow.activeView.forceActiveFocus()
+            return
+        }
+        if (action.indexOf("fullscreen\t") === 0) {
+            var fullscreenState = action.split("\t")[1] || "toggle"
+            var currentlyFullscreen = secondaryWindow.visibility === Window.FullScreen
+            var enterFullscreen = fullscreenState === "on"
+                    || (fullscreenState === "toggle" && !currentlyFullscreen)
+            if (enterFullscreen) {
+                secondaryWindow.showFullScreen()
+                secondaryUi.status_text = "Fullscreen enabled"
+            } else {
+                secondaryWindow.showNormal()
+                secondaryUi.status_text = "Fullscreen ended"
+            }
             return
         }
         if (action.indexOf("reopen-window\t") === 0) {
@@ -1085,11 +1162,168 @@ function onContext_workspaceChanged() {
             secondaryWindow.activeView.forceActiveFocus()
             return
         }
+        if (action.indexOf("print-pdf\t") === 0) {
+            var secondaryPdfParts = action.split("\t")
+            if (secondaryPdfParts.length >= 3) {
+                var secondaryPdfPath = secondaryUi.prepare_print_pdf(
+                    secondaryPdfParts.slice(2).join("\t"))
+                if (secondaryPdfPath.length > 0 && secondaryWindow.activeView) {
+                    secondaryWindow.activeView.printToPdf(secondaryPdfPath)
+                } else {
+                    secondaryUi.finish_print_pdf(
+                        secondaryPdfParts.slice(2).join("\t"), false)
+                }
+            }
+            return
+        }
         if (action.indexOf("external-open\t") === 0) {
             rootWindow.openExternalUri(secondaryUi,
                                    action.split("\t").slice(1).join("\t"))
+            return
         }
+        secondaryUi.status_text = "Browser action is unavailable in this window: "
+                + action.split("\t")[0]
         secondaryWindow.activeView.forceActiveFocus()
+    }
+
+    function scheduleRuntimeWork(delay) {
+        var boundedDelay = Math.max(0, Math.min(60000, Number(delay) || 0))
+        if (!secondaryRuntimeWorkTimer.running
+                || boundedDelay < secondaryRuntimeWorkTimer.interval) {
+            secondaryRuntimeWorkTimer.interval = Math.max(1, boundedDelay)
+            secondaryRuntimeWorkTimer.restart()
+        }
+    }
+
+    function processRuntimeWork() {
+        secondaryWindow.applySwitcherEngineAction()
+        secondaryUi.poll_config()
+        secondaryWindow.maybeOpenPendingEngineFileDialog()
+        secondaryUi.refresh_operations()
+        secondaryUi.tick_bindings()
+        secondaryUi.tick_site_doctor_experiment()
+        secondaryUi.checkpoint_session()
+
+        if (secondaryUi.take_caret_request()) {
+            var caretToken = secondaryUi.caret_request_token
+            var caretOperation = secondaryUi.caret_request_operation
+            if (secondaryWindow.activeView) {
+                rootWindow.runBrowserScript(
+                    secondaryWindow.activeView,
+                    rootWindow.caretScript(caretOperation,
+                                           secondaryWindow.caretSelecting),
+                    function(value) {
+                        var response = value || {error: "caret script returned no result"}
+                        if (response.selecting !== undefined) {
+                            secondaryWindow.caretSelecting = response.selecting
+                        }
+                        secondaryUi.deliver_caret(caretToken, JSON.stringify(response))
+                    })
+            } else {
+                secondaryUi.deliver_caret(
+                    caretToken, JSON.stringify({error: "document view unavailable"}))
+            }
+        }
+
+        var editorRequest = secondaryUi.take_editor_request()
+        if (editorRequest.length > 0) {
+            if (secondaryWindow.activeView) {
+                rootWindow.runBrowserScript(
+                    secondaryWindow.activeView, rootWindow.editorScript(),
+                    function(value) {
+                        secondaryUi.deliver_editor(
+                            editorRequest,
+                            JSON.stringify(value
+                                           || {error: "editor script returned no result"}))
+                    })
+            } else {
+                secondaryUi.deliver_editor(
+                    editorRequest,
+                    JSON.stringify({error: "document view unavailable"}))
+            }
+        }
+
+        if (secondaryUi.take_editor_completion()) {
+            var editorToken = secondaryUi.editor_completion_token
+            var editorOriginal = secondaryUi.editor_completion_original
+            var editorUpdated = secondaryUi.editor_completion_updated
+            var editorError = secondaryUi.editor_completion_error
+            var editorStderr = secondaryUi.editor_completion_stderr
+            if (editorError.length > 0) {
+                if (editorStderr.length > 0) {
+                    editorError += " (stderr: " + editorStderr + ")"
+                }
+                secondaryUi.deliver_editor_apply(
+                    editorToken, JSON.stringify({error: editorError}))
+            } else if (secondaryWindow.activeView) {
+                rootWindow.runBrowserScript(
+                    secondaryWindow.activeView,
+                    rootWindow.editorApplyScript(editorOriginal, editorUpdated),
+                    function(value) {
+                        secondaryUi.deliver_editor_apply(
+                            editorToken,
+                            JSON.stringify(value
+                                           || {error: "editor apply returned no result"}))
+                    })
+            } else {
+                secondaryUi.deliver_editor_apply(
+                    editorToken,
+                    JSON.stringify({error: "document view unavailable"}))
+            }
+        }
+
+        var selectionToken = secondaryUi.take_selection_request()
+        if (selectionToken.length > 0) {
+            if (secondaryWindow.activeView) {
+                rootWindow.runBrowserScript(
+                    secondaryWindow.activeView, rootWindow.selectionScript(),
+                    function(value) {
+                        secondaryUi.deliver_selection(selectionToken,
+                                                      JSON.stringify(value))
+                    })
+            } else {
+                secondaryUi.deliver_selection(
+                    selectionToken,
+                    JSON.stringify({error: "document view unavailable"}))
+            }
+        }
+
+        if (secondaryUi.take_download_request()) {
+            if (secondaryWindow.activeView) {
+                rootWindow.runBrowserScript(
+                    secondaryWindow.activeView,
+                    rootWindow.downloadLinkScript(secondaryUi.download_request_url),
+                    function() {
+                        secondaryUi.complete_download_request(
+                            secondaryUi.download_request_token, true)
+                    })
+            } else {
+                secondaryUi.complete_download_request(
+                    secondaryUi.download_request_token, false)
+            }
+        }
+
+        var clipboardRequest = secondaryUi.take_clipboard_request()
+        if (clipboardRequest.length > 0) {
+            rootWindow.copyToClipboard(
+                clipboardRequest,
+                !secondaryUi.clipboard_request_sensitive,
+                secondaryUi.clipboard_request_primary)
+        }
+
+        secondaryWindow.applySwitcherEngineAction()
+        var nextDelay = secondaryUi.maintenance_delay_ms()
+        if (nextDelay >= 0) {
+            secondaryWindow.scheduleRuntimeWork(nextDelay)
+        }
+    }
+
+    Timer {
+        id: secondaryRuntimeWorkTimer
+        interval: 1
+        repeat: false
+        running: false
+        onTriggered: secondaryWindow.processRuntimeWork()
     }
 
     header: ToolBar {
@@ -1206,12 +1440,14 @@ function onContext_workspaceChanged() {
     Item {
         id: transferViewHost
         anchors.fill: parent
+        anchors.bottomMargin: secondaryWindow.bottomChromeHeight
         visible: secondaryWindow.windowTransferMode
     }
 
     Item {
         id: fallbackViewHost
         anchors.fill: parent
+        anchors.bottomMargin: secondaryWindow.bottomChromeHeight
         visible: !secondaryWindow.windowTransferMode
     }
 
@@ -1260,6 +1496,7 @@ function onContext_workspaceChanged() {
             return host.length > 0 && counts[host] !== undefined ? Number(counts[host]) : 0
         }
         anchors.fill: parent
+        anchors.bottomMargin: secondaryWindow.bottomChromeHeight
         visible: !secondaryWindow.windowTransferMode
         profile: viewProfile
         url: secondaryWindow.windowTransferMode ? "about:blank" : secondaryUi.initial_url
@@ -1579,6 +1816,27 @@ function onContext_workspaceChanged() {
         return true
     }
 
+    function submitInteractiveCommand(text) {
+        if (!secondaryUi.execute_secondary_interactive_command(text)) {
+            secondaryWindow.pendingInteractiveCommand = secondaryUi.command_retryable
+                    ? text : ""
+            secondaryCommandBar.showFeedback(secondaryUi.status_text,
+                                             !secondaryUi.command_retryable)
+            secondaryCommandBar.selectAllInput()
+            return
+        }
+        secondaryWindow.pendingInteractiveCommand = ""
+        var commandStatus = secondaryUi.status_text
+        secondaryCommandBar.clearInput()
+        secondaryWindow.applySwitcherEngineAction()
+        commandStatus = secondaryUi.status_text
+        if (secondaryUi.mode === "command") {
+            secondaryUi.escape()
+            secondaryUi.status_text = commandStatus
+        }
+        secondaryWindow.showCommandNotice(commandStatus, false)
+    }
+
     FerricCommandLine {
         id: secondaryCommandBar
         browserWindow: rootWindow
@@ -1592,18 +1850,12 @@ function onContext_workspaceChanged() {
         onCompletionUpdateRequested: function(text, cursorPosition) {
             secondaryUi.update_completion(text, cursorPosition)
         }
-        onSubmitted: function(text) {
-            if (secondaryUi.execute_interactive_command(text)) {
-                secondaryCommandBar.clearInput()
-                secondaryWindow.applySwitcherEngineAction()
-                if (secondaryUi.mode === "command") {
-                    secondaryUi.escape()
-                }
-            } else {
-                secondaryCommandBar.selectAllInput()
-            }
+        onSubmitted: function(text) { secondaryWindow.submitInteractiveCommand(text) }
+        onInputEdited: secondaryWindow.pendingInteractiveCommand = ""
+        onEscapeRequested: {
+            secondaryWindow.pendingInteractiveCommand = ""
+            secondaryUi.escape()
         }
-        onEscapeRequested: secondaryUi.escape()
         onCompletionMoveRequested: function(delta) { secondaryUi.completion_move(delta) }
         onCompletionSelectRequested: function(index) { secondaryUi.completion_select(index) }
         onHistoryMoveRequested: function(delta, current) {
@@ -1620,6 +1872,19 @@ function onContext_workspaceChanged() {
             if (secondaryCommandBar.commandVisible) {
                 secondaryUi.update_completion(secondaryCommandBar.commandText,
                                               secondaryCommandBar.cursorPosition)
+            }
+            if (secondaryWindow.pendingInteractiveCommand.length > 0
+                    && secondaryCommandBar.commandVisible
+                    && secondaryCommandBar.commandText
+                       === secondaryWindow.pendingInteractiveCommand) {
+                var command = secondaryWindow.pendingInteractiveCommand
+                secondaryWindow.pendingInteractiveCommand = ""
+                Qt.callLater(function() {
+                    if (secondaryCommandBar.commandVisible
+                            && secondaryCommandBar.commandText === command) {
+                        secondaryWindow.submitInteractiveCommand(command)
+                    }
+                })
             }
         }
     }
@@ -1685,16 +1950,19 @@ function onContext_workspaceChanged() {
 
     FerricWindowStatusBar {
         browserWindow: window
-        statusVisible: rootWindow.statusbarMode === "always"
-                       && secondaryUi.mode !== "command"
-                       && secondaryUi.mode !== "search"
+        statusVisible: secondaryWindow.statusBarVisible
         mode: secondaryUi.mode
         displayUrl: secondaryUi.display_url
-        statusText: secondaryUi.status_text
+        statusText: secondaryWindow.commandNoticeVisible
+                    ? secondaryWindow.commandNoticeText : secondaryUi.status_text
         profileLabel: secondaryWindow.windowEphemeralProfile ? "EPHEMERAL"
                       : secondaryWindow.windowPrivateProfile ? "PRIVATE"
                       : secondaryWindow.windowProfileName
-        statusColor: rootWindow.contextStatusColor(secondaryUi, rootWindow.mutedTextColor)
+        statusColor: secondaryWindow.commandNoticeVisible
+                     && secondaryWindow.commandNoticeError
+                     ? rootWindow.errorColor
+                     : rootWindow.contextStatusColor(secondaryUi,
+                                                     rootWindow.mutedTextColor)
         profileColor: rootWindow.contextStatusColor(secondaryUi, rootWindow.secondaryTextColor)
         accessibleDetails: rootWindow.statusDetails(
                                secondaryUi, secondaryWindow,
@@ -1788,6 +2056,7 @@ function onContext_workspaceChanged() {
     }
 
     Component.onCompleted: {
+        secondaryWindow.scheduleRuntimeWork(0)
         secondaryWindow.permissionPromptSurface =
                 rootWindow.permissionPromptFactory.createObject(
                     secondaryWindow.contentItem, { hostWindow: secondaryWindow })

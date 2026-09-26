@@ -48,6 +48,8 @@ opaque_id!(ProfileId);
 opaque_id!(RequestId);
 opaque_id!(DownloadId);
 opaque_id!(SessionId);
+opaque_id!(SpatialSessionId);
+opaque_id!(SpatialRequestId);
 opaque_id!(JourneyNodeId);
 opaque_id!(HintSessionId);
 opaque_id!(TabId);
@@ -106,6 +108,14 @@ impl IdSource {
     #[allow(dead_code)]
     pub(crate) fn session(&mut self) -> SessionId {
         SessionId::from_raw(self.allocate())
+    }
+
+    pub(crate) fn spatial_session(&mut self) -> SpatialSessionId {
+        SpatialSessionId::from_raw(self.allocate())
+    }
+
+    pub(crate) fn spatial_request(&mut self) -> SpatialRequestId {
+        SpatialRequestId::from_raw(self.allocate())
     }
 
     #[allow(dead_code)]

@@ -22,9 +22,12 @@ pub fn validate(config: &Config) -> Result<(), ConfigError> {
             config.schema_version
         )));
     }
-    if !matches!(config.ui.statusbar.as_str(), "always" | "command" | "never") {
+    if !matches!(
+        config.ui.statusbar.as_str(),
+        "always" | "in-mode" | "command" | "never"
+    ) {
         return Err(ConfigError::Validation(
-            "ui.statusbar must be always, command, or never".into(),
+            "ui.statusbar must be always, in-mode, or never".into(),
         ));
     }
     if config.privacy.remote_suggestions {
@@ -58,6 +61,29 @@ pub fn validate(config: &Config) -> Result<(), ConfigError> {
     {
         return Err(ConfigError::Validation(
             "input limits are outside their allowed range".into(),
+        ));
+    }
+    let mut hint_chars = BTreeSet::new();
+    if !(2..=32).contains(&config.hints.chars.len())
+        || !config.hints.chars.is_ascii()
+        || config
+            .hints
+            .chars
+            .bytes()
+            .any(|byte| !byte.is_ascii_graphic() || byte == b'/' || !hint_chars.insert(byte))
+    {
+        return Err(ConfigError::Validation(
+            "hints.chars must contain 2..=32 unique printable ASCII characters excluding /".into(),
+        ));
+    }
+    if !(1..=8).contains(&config.hints.min_chars) {
+        return Err(ConfigError::Validation(
+            "hints.min_chars must be 1..=8".into(),
+        ));
+    }
+    if !(0.75..=2.0).contains(&config.hints.marker_scale) {
+        return Err(ConfigError::Validation(
+            "hints.marker_scale must be 0.75..=2.0".into(),
         ));
     }
     if !(100..=2_000).contains(&config.discovery.keychain_overlay_delay_ms) {

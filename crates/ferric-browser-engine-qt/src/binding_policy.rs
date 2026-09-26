@@ -16,6 +16,7 @@ pub(super) fn parse_ipc_mode(mode: &str) -> Result<Mode, String> {
         "command" => Ok(Mode::Command),
         "search" => Ok(Mode::Search),
         "hint" => Ok(Mode::Hint),
+        "grid" => Ok(Mode::Grid),
         "caret" => Ok(Mode::Caret),
         "pass-through" => Ok(Mode::PassThrough),
         _ => Err(format!("unknown binding mode: {mode}")),
@@ -29,8 +30,16 @@ pub(super) fn ipc_mode_name(mode: Mode) -> &'static str {
         Mode::Command => "command",
         Mode::Search => "search",
         Mode::Hint => "hint",
+        Mode::Grid => "grid",
         Mode::Caret => "caret",
         Mode::PassThrough => "pass-through",
+    }
+}
+
+fn configured_mode_name(mode: &str) -> Option<Mode> {
+    match mode {
+        "grid" => Some(Mode::Grid),
+        _ => parse_ipc_mode(mode).ok(),
     }
 }
 
@@ -237,7 +246,7 @@ pub(super) fn configured_bindings(
         .definitions();
     let modes = config.get("bindings")?.as_object()?;
     for (mode_name, entries) in modes {
-        let Ok(mode) = parse_ipc_mode(mode_name) else {
+        let Some(mode) = configured_mode_name(mode_name) else {
             continue;
         };
         let Some(entries) = entries.as_object() else {

@@ -2,47 +2,29 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Rectangle {
+FerricModalSurface {
     id: bindingHelp
-    required property var browserWindow
     signal closeRequested()
     signal refreshRequested()
     signal searchChanged(string text)
 
-    anchors.centerIn: parent
-    width: Math.min(980, parent.width - 70)
-    height: Math.min(650, parent.height - 90)
-    z: 74
     visible: browserWindow.bindingHelpVisible
-    focus: visible
-    Accessible.role: Accessible.Dialog
-    Accessible.name: "Binding help"
-    onVisibleChanged: if (visible) forceActiveFocus()
-    color: browserWindow.panelColor
-    border.color: browserWindow.accentColor
-    border.width: 1
-
-    Keys.onPressed: function(event) {
-        if (event.key === Qt.Key_Escape) {
-            closeRequested()
-            event.accepted = true
-        }
-    }
+    commandText: ":bind"
+    title: "Keyboard help"
+    message: "Unbound commands remain available through the command line."
+    keyHelp: "type to filter  ·  tab/shift-tab controls  ·  esc close"
+    dialogWidth: 980 * scale
+    dialogHeight: 650 * scale
+    stackingOrder: 74
+    initialFocusItem: helpSearchInput
+    onDismissRequested: closeRequested()
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 14
+        anchors.margins: 0
         spacing: 8
         ColumnLayout {
             Layout.fillWidth: true
-            Label {
-                Layout.fillWidth: true
-                text: "Keyboard help"
-                color: bindingHelp.browserWindow.primaryTextColor
-                font.bold: true
-                Accessible.name: "Keyboard help"
-                Accessible.description: "Unbound commands remain available through the command line"
-            }
             RowLayout {
                 Layout.fillWidth: true
                 Button { text: "Refresh"; Accessible.name: "Refresh keyboard help"; onClicked: bindingHelp.refreshRequested() }

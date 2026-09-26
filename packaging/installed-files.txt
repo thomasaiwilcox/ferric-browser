@@ -5,6 +5,7 @@
 /usr/share/licenses/ferric-browser/LICENSE
 /usr/share/doc/ferric-browser/README.md
 /usr/share/doc/ferric-browser/DEVELOPMENT_SPEC.md
+/usr/share/doc/ferric-browser/grid-navigation.md
 /usr/share/doc/ferric-browser/commands.md
 /usr/share/doc/ferric-browser/configuration.md
 /usr/share/doc/ferric-browser/bindings.md

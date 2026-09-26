@@ -2,79 +2,53 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Rectangle {
+FerricCommandDialog {
     id: preview
-    required property var browserWindow
     signal closeRequested()
     signal loadRequested(bool append)
 
-    anchors.centerIn: parent
-    width: Math.min(620 * browserWindow.chromeScale, parent.width - 32)
-    height: Math.min(430 * browserWindow.chromeScale, parent.height - 32)
-    z: 50
     visible: browserWindow.sessionPreviewVisible
-    focus: visible
-    Accessible.role: Accessible.Dialog
-    Accessible.name: "Session preview"
-    onVisibleChanged: if (visible) forceActiveFocus()
-    color: browserWindow.backgroundColor
-    border.color: browserWindow.accentColor
-
-    Keys.onPressed: function(event) {
-        if (event.key === Qt.Key_Escape) {
+    commandText: ":session-load"
+    title: "Load session: " + browserWindow.sessionPreviewName
+    message: browserWindow.sessionPreviewAppend
+             ? "Append these validated descriptors to the current tabs?"
+             : "Replace the current tabs with these validated descriptors?"
+    dialogWidth: 680 * scale
+    dialogHeight: 540 * scale
+    stackingOrder: 50
+    actions: [
+        { id: "cancel", key: "esc", label: "Cancel", safe: true },
+        { id: "append", key: "a", shortcuts: ["A"], label: "Append tabs",
+          enabled: !browserWindow.sessionPreviewLoading
+                   && !browserWindow.sessionPreviewError },
+        { id: "replace", key: "r", shortcuts: ["R"], label: "Replace current tabs",
+          destructive: true,
+          enabled: !browserWindow.sessionPreviewLoading
+                   && !browserWindow.sessionPreviewAppend
+                   && !browserWindow.sessionPreviewError }
+    ]
+    onActionRequested: function(action) {
+        if (action === "append") {
+            preview.loadRequested(true)
+        } else if (action === "replace") {
+            preview.loadRequested(false)
+        } else {
             preview.closeRequested()
-            event.accepted = true
         }
     }
 
-    ColumnLayout {
+    ScrollView {
         anchors.fill: parent
-        anchors.margins: 14
-        spacing: 10
+        clip: true
 
-        Label {
-            Layout.fillWidth: true
-            text: "Load session: " + preview.browserWindow.sessionPreviewName
-            color: preview.browserWindow.primaryTextColor
-            font.bold: true
-        }
-        Label {
-            Layout.fillWidth: true
-            text: preview.browserWindow.sessionPreviewAppend
-                  ? "Append these validated descriptors to the current tabs?"
-                  : "Replace the current tabs with these validated descriptors?"
-            color: preview.browserWindow.secondaryTextColor
-            wrapMode: Text.WordWrap
-        }
-        Text {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
+        TextArea {
+            width: parent.width
             text: preview.browserWindow.sessionPreviewText
+            readOnly: true
+            wrapMode: TextEdit.Wrap
             color: preview.browserWindow.primaryTextColor
-            wrapMode: Text.Wrap
-            elide: Text.ElideRight
-        }
-        RowLayout {
-            Layout.fillWidth: true
-            Item { Layout.fillWidth: true }
-            Button {
-                text: "Replace"
-                enabled: !preview.browserWindow.sessionPreviewLoading
-                         && !preview.browserWindow.sessionPreviewAppend
-                         && !preview.browserWindow.sessionPreviewError
-                onClicked: preview.loadRequested(false)
-            }
-            Button {
-                text: "Append"
-                enabled: !preview.browserWindow.sessionPreviewLoading
-                         && !preview.browserWindow.sessionPreviewError
-                onClicked: preview.loadRequested(true)
-            }
-            Button {
-                text: "Cancel"
-                Accessible.name: "Cancel session preview"
-                onClicked: preview.closeRequested()
-            }
+            background: Rectangle { color: preview.browserWindow.surfaceColor }
+            Accessible.name: "Validated session descriptors"
         }
     }
 }
