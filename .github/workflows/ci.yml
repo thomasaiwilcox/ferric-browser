@@ -23,6 +23,7 @@ jobs:
           sudo apt-get install -y qt6-base-dev qt6-declarative-dev qt6-webengine-dev qt6-wayland-dev \
             qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-dialogs \
             qml6-module-qtquick-layouts qml6-module-qtquick-templates \
+            qml6-module-qtqml-workerscript \
             qml6-module-qtwebengine desktop-file-utils
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
