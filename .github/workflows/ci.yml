@@ -25,7 +25,7 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
       - name: Lint QML syntax
-        run: /usr/lib/qt6/bin/qmllint --silent -I /usr/lib/x86_64-linux-gnu/qt6/qml crates/ferric-browser-engine-qt/qml/Main.qml
+        run: /usr/lib/qt6/bin/qmllint -I /usr/lib/x86_64-linux-gnu/qt6/qml -I target/cxxqt/qml_modules crates/ferric-browser-engine-qt/qml/Main.qml
       - run: cargo xtask check
       - run: desktop-file-validate packaging/io.github.ferricbrowser.FerricBrowser.desktop
 
