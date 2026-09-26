@@ -197,6 +197,7 @@ const fn mode_name(mode: Mode) -> &'static str {
         Mode::Command => "command",
         Mode::Search => "search",
         Mode::Hint => "hint",
+        Mode::Grid => "grid",
         Mode::Caret => "caret",
         Mode::PassThrough => "pass-through",
     }

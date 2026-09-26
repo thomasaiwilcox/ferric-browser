@@ -71,6 +71,8 @@ pub fn command_argument_names(command: &str) -> &'static [&'static str] {
         "site-data-clear" => &["origin", "confirmed"],
         "blocking-toggle" => &["site"],
         "spawn" => &["argv", "userscript"],
+        "grid-refine" => &["cell"],
+        "grid-click" => &["button"],
         "script-run" => &["name"],
         "jseval" => &["world", "script"],
         "devtools" => &["detach"],

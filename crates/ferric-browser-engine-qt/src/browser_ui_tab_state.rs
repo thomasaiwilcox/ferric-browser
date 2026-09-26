@@ -9,6 +9,10 @@ use super::{
 
 impl qobject::BrowserUi {
     pub(super) fn set_core_mode(mut self: Pin<&mut Self>, mode: Mode) {
+        let leaving_grid = self.as_ref().rust().core_mode == Mode::Grid && mode != Mode::Grid;
+        if leaving_grid {
+            self.as_mut().clear_spatial_session_state();
+        }
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
         this.core_mode = mode;
@@ -818,6 +822,10 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn set_active_tab_properties(mut self: Pin<&mut Self>, index: i32, tab: TabId) {
+        if self.as_ref().rust().core_mode == Mode::Grid {
+            self.as_mut()
+                .spatial_invalidated(&QString::from("target-changed"));
+        }
         let (url, title, load_state) = {
             let rust = self.as_ref().get_ref().rust();
             let Some(state) = rust.state.as_ref() else {

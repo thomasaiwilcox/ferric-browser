@@ -126,14 +126,16 @@ ApplicationWindow {
                  && secondaryWindow.browserKeyFocusActive
                  && (secondaryUi.mode === "normal"
                      || secondaryUi.mode === "hint"
+                     || secondaryUi.mode === "grid"
                      || secondaryUi.mode === "caret"
                      || secondaryUi.mode === "insert"
                      || secondaryUi.mode === "pass-through")
-        onKeyPressed: function(text, key, modifiers) {
+        onKeyPressed: function(text, key, modifiers, isAutoRepeat) {
             var event = {
                 text: text,
                 key: key,
                 modifiers: modifiers,
+                isAutoRepeat: !!isAutoRepeat,
                 accepted: false
             }
             if (rootWindow.handleBrowserKey(

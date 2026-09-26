@@ -83,6 +83,15 @@ impl qobject::BrowserUi {
                     return;
                 }
                 let parsed = expanded.into_iter().next().expect("one expanded command");
+                if let Some(result) = self
+                    .as_mut()
+                    .handle_spatial_command(&parsed.name, &parsed.arguments)
+                {
+                    if result {
+                        self.as_mut().set_binding_overlay(QString::default());
+                    }
+                    return;
+                }
                 let current_url = self.as_ref().rust().current_url.to_string();
                 if let Some(prefill) = modal_command_prefill(&parsed, &current_url) {
                     self.as_mut().enter_command();

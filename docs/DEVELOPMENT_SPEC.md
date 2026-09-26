@@ -632,6 +632,7 @@ not a privileged WebChannel shared with arbitrary web pages.
 | Command | `:` | Native editable command line and completion | Enter executes; Escape cancels |
 | Search | `/` or `?` | Incremental engine text search | Enter retains match; Escape restores prior state |
 | Hint | `f` or hint command | Label selection/filtering, no text into page | Selection/cancel/navigation |
+| Grid | `:grid` or `;g` | Keyboard-only 3×3 point selection; native click/hover only on explicit commit | Click/hover acknowledgement, Escape, or invalidated page view |
 | Caret | `v` | Text movement/selection commands | Escape returns normal |
 | Pass-through | `Ctrl-v` from normal | Every key goes to page except reserved escape chord | `Ctrl-Shift-Escape` |
 | Prompt | Browser request | Prompt-specific keys; no page key forwarding | Answer/cancel/invalidated request |
@@ -647,6 +648,8 @@ keypress must not leak its release into a different target or leave modifiers
 stuck. Handle autorepeat, dead keys, AltGr, keyboard layout changes, and IME
 composition. IME preedit text is never interpreted as normal-mode commands.
 Physical/scancode bindings are optional; logical key bindings are the default.
+Grid mode additionally consumes auto-repeat and its matching key release, and
+does not forward unsupported modifier combinations to the page.
 
 **INPUT-003 — Editable focus.** User-initiated focus of input, textarea, or
 contenteditable normally enters insert mode. Page autofocus and script-driven
@@ -694,6 +697,16 @@ The overlay does not steal focus, reset the timeout, send keys to the page, or
 change which command wins. Escape/cancellation and exact-leaf behavior remain
 those of INPUT-004 and INPUT-005.
 
+**GRID-001 — Ephemeral view-bound session.** Grid selection owns a bounded,
+view-bound Rust session whose target, surface stamp, refinement history, and
+single pending dispatch remain ephemeral; lifecycle changes cancel rather than
+retarget the session.
+
+**GRID-002 — Native pointer qualification.** Grid commits use the public-Qt
+`FerricPagePointerAdapter` path and never substitute DOM activation, remote
+debugging, or desktop-wide injection. Native desktop evidence remains the
+release qualification gate for supported environments.
+
 **DISC-003 — Explanation.** `binding-explain` reports tokenization, current and
 requested mode, count eligibility, exact/prefix resolution, timeout behavior,
 winning binding, shadowed layers, conflicts, and reserved-key constraints.
@@ -726,6 +739,7 @@ specified in section 10. Each help entry must show applicable modes and counts.
 | `J` / `K` | Next/previous tab | `T` / `gt` | Open tab selector |
 | `d` / `u` | Close/undo tab | `r` / `R` | Reload/reload bypass cache |
 | `f` / `F` | Hint current/new foreground tab | `;b` / `;f` / `;r` | Hint background/foreground/rapid background tab |
+| `;g` | Enter Grid mode | Grid: `1`–`9` refine, `Enter`/`Shift+Enter`/`Ctrl+Enter` click, `Space` hover |
 | `yy` / `yt` | Copy URL/title | `pp` / `Pp` | Open clipboard current/new tab (`pP` / `PP` use primary selection) |
 | `/` / `?` | Search forward/backward | `n` / `N` | Next/previous match |
 | `+` / `-` / `=` | Zoom in/out/reset | `m` / `b` | Save/open quickmark prompt |
@@ -848,6 +862,10 @@ commands may be added, but these names and semantics form the target contract.
 | `window-focus <WINDOW_ID>` | Request activation; report compositor denial |
 | `fullscreen [on\|off\|toggle]` | Request window fullscreen; coordinate web fullscreen |
 | `hint [--target TARGET] [--rapid] [--script NAME] [--first] [--index N] [links\|all\|inputs\|buttons\|images\|media\|scrollables]` | Select a freshly validated live element; targets include `current`, `tab`, `tab-bg`, `window`, `yank`, `clean-yank`, `download`, `userscript`, `ephemeral`, and `choose`; `--index` requires `--first` and `--rapid` conflicts with `--first` |
+| `grid` | Enter keyboard-controlled Grid mode for the active WebEngine view; default Normal binding is `;g` |
+| `grid-refine <1\|2\|3\|4\|5\|6\|7\|8\|9>`, `grid-back`, `grid-reset` | Refine or restore a bounded 3×3 view-local logical rectangle; no automatic click |
+| `grid-click <left\|right\|middle>`, `grid-hover` | Deliver one native pointer action at the current crosshair; hover returns to root selection after acknowledgement |
+| `grid-help`, `grid-cancel` | Toggle concise help or cancel Grid mode |
 | `mode-enter <normal\|insert\|caret\|passthrough>` | Explicit mode transition |
 | `caret-move <left\|right\|up\|down\|word-next\|word-prev\|line-start\|line-end> [--count N]` | Move/extend caret according to selection state |
 | `caret-select [on\|off\|toggle]`, `caret-yank` | Select and copy visible document text |

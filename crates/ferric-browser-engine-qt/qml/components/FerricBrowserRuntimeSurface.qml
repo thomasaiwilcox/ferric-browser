@@ -1222,6 +1222,47 @@ FerricBrowserRuntimeChrome {
         }
     }
 
+    function logicalGridKeyText(event) {
+        if (!event) {
+            return ""
+        }
+        var control = !!(event.modifiers & Qt.ControlModifier)
+        var shift = !!(event.modifiers & Qt.ShiftModifier)
+        var alt = !!(event.modifiers & Qt.AltModifier)
+        var meta = !!(event.modifiers & Qt.MetaModifier)
+        if (alt || meta) {
+            return ""
+        }
+        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+            if (control && !shift) {
+                return "Ctrl+Enter"
+            }
+            if (shift && !control) {
+                return "Shift+Enter"
+            }
+            return !control && !shift ? "Enter" : ""
+        }
+        if (control || shift) {
+            if (shift && event.key === Qt.Key_Slash && event.text === "?") {
+                return "?"
+            }
+            return ""
+        }
+        if (event.key >= Qt.Key_0 && event.key <= Qt.Key_9) {
+            return String.fromCharCode(event.key)
+        }
+        if (event.key === Qt.Key_Space) {
+            return "Space"
+        }
+        if (event.key === Qt.Key_Backspace) {
+            return "Backspace"
+        }
+        if (event.key === Qt.Key_Escape) {
+            return "Escape"
+        }
+        return event.text === "?" ? "?" : ""
+    }
+
     function handleBrowserKey(ui, host, event) {
         if (!ui || !event) {
             return false
@@ -1231,12 +1272,28 @@ FerricBrowserRuntimeChrome {
         if (window.handleMediaKey(event)) {
             handled = true
         } else if (event.key === Qt.Key_Escape) {
-            if (ui === browserUi && ui.mode === "hint") {
+            if (ui.mode === "grid" && event.modifiers !== Qt.NoModifier) {
+                // Unsupported modified Escape is consumed while Grid owns the
+                // keyboard, but does not mutate the spatial session.
+            } else if (ui === browserUi && ui.mode === "hint") {
                 window.closeHints()
             } else {
                 ui.escape()
             }
             handled = true
+        } else if (ui.mode === "grid") {
+            // Grid owns the whole triggering gesture. Auto-repeat is consumed
+            // without entering the Rust binding resolver, preventing a held
+            // digit or Enter key from refining/clicking repeatedly.
+            if (event.isAutoRepeat) {
+                handled = true
+            } else {
+                var gridText = window.logicalGridKeyText(event)
+                if (gridText.length > 0) {
+                    ui.handle_key(gridText)
+                }
+                handled = true
+            }
         } else if (ui.mode === "normal" && logicalText === ":") {
             ui.enter_command()
             handled = true

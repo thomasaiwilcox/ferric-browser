@@ -2038,14 +2038,16 @@ ApplicationWindow {
         enabled: window.active && window.browserKeyFocusActive
                  && (browserUi.mode === "normal"
                      || browserUi.mode === "hint"
+                     || browserUi.mode === "grid"
                      || browserUi.mode === "caret"
                      || browserUi.mode === "insert"
                      || browserUi.mode === "pass-through")
-        onKeyPressed: function(text, key, modifiers) {
+        onKeyPressed: function(text, key, modifiers, isAutoRepeat) {
             var event = {
                 text: text,
                 key: key,
                 modifiers: modifiers,
+                isAutoRepeat: !!isAutoRepeat,
                 accepted: false
             }
             if (window.handleBrowserKey(browserUi, window, event)) {

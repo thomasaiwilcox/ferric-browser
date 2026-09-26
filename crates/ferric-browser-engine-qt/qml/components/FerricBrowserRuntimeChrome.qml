@@ -963,6 +963,11 @@ GridLayout {
                         window.scheduleFocusProbe(2)
                     }
                 }
+                onZoomFactorChanged: {
+                    if (viewUi === browserUi && browserUi.mode === "grid") {
+                        browserUi.spatial_invalidated("geometry-changed")
+                    }
+                }
 
                 onUrlChanged: {
                     refreshEffectiveSiteSettings()
@@ -1134,6 +1139,9 @@ GridLayout {
                         viewUi, webView, request, window)
                 }
                 onFullScreenRequested: function(request) {
+                    if (viewUi === browserUi && browserUi.mode === "grid") {
+                        browserUi.spatial_invalidated("view-changed")
+                    }
                     request.accept()
                     if (request.toggleOn) {
                         window.showFullScreen()
@@ -1190,6 +1198,82 @@ GridLayout {
                 }
             }
         }
+    }
+
+    FerricPagePointerAdapter {
+        id: spatialPointerAdapter
+        enabled: browserUi.spatial_visible
+        targetItem: browserUi.spatial_visible ? window.activeWebView() : null
+        targetWindow: window
+        inputBlocked: window.permissionPromptVisible || window.shutdownPromptVisible
+                     || window.desktopMediaPromptVisible || window.devToolsVisible
+        onDispatchAcknowledged: function(requestId, sessionId, serial, revision, outcome) {
+            browserUi.spatial_dispatch_ack(
+                        requestId, sessionId, serial, revision, outcome)
+        }
+        onInvalidated: function(reason) {
+            // Initial target binding can advance the adapter stamp before the
+            // first geometry observation. Once a root is installed, every
+            // later invalidation is authoritative.
+            if (browserUi.spatial_visible && browserUi.spatial_root_width > 0) {
+                browserUi.spatial_invalidated(reason)
+            }
+        }
+        onPhysicalPointerDetected: function(reason) {
+            if (browserUi.spatial_visible) {
+                browserUi.spatial_invalidated(reason)
+            }
+        }
+        onSurfaceChanged: {
+            if (browserUi.spatial_visible && browserUi.spatial_root_width > 0) {
+                browserUi.spatial_invalidated("geometry-changed")
+            }
+        }
+    }
+
+    Connections {
+        target: browserUi
+        function onSpatial_visibleChanged() {
+            if (!browserUi.spatial_visible) {
+                return
+            }
+            Qt.callLater(function() {
+                var view = window.activeWebView()
+                if (view && view.width > 0 && view.height > 0) {
+                    browserUi.spatial_surface_ready(
+                                view.width, view.height,
+                                spatialPointerAdapter.surfaceSerial,
+                                spatialPointerAdapter.surfaceRevision)
+                } else {
+                    browserUi.spatial_invalidated("surface-unavailable")
+                }
+            })
+        }
+        function onSpatial_dispatch_requestChanged() {
+            var payload = browserUi.spatial_dispatch_request
+            if (!payload || payload.length === 0) {
+                return
+            }
+            var request
+            try {
+                request = JSON.parse(payload)
+            } catch (error) {
+                browserUi.spatial_invalidated("dispatch-rejected")
+                return
+            }
+            spatialPointerAdapter.enabled = true
+            spatialPointerAdapter.dispatch(
+                        request.request_id, request.session_id,
+                        request.serial, request.revision,
+                        Number(request.x), Number(request.y), request.action)
+        }
+    }
+
+    FerricSpatialGridOverlay {
+        id: spatialGridOverlay
+        anchors.fill: webViews
+        z: 31
+        browserUi: window.browserUi
     }
 
     Loader {

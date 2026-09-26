@@ -2,13 +2,13 @@
 
 ## Implementation handoff proposal v0.1
 
-**Status:** Ready for sliced implementation after the native-input gate in Slice 0 passes; not yet accepted or implemented.
+**Status:** Implemented in sliced form; native desktop qualification remains the final release gate recorded in `docs/testing/spatial-grid-native-input.md`.
 
 **Review date:** 26 September 2026.
 
-**Repository reviewed:** local `main` at `f29b0c14944b2c569cc13f2288dbea2401a1829f`, including the uncommitted worktree visible on the review date.
+**Repository reviewed:** local `main` implementation worktree on 26 September 2026; the implementation, generated documentation, fixtures, and qualification checklist referenced below are included in this handoff.
 
-**Evidence boundary:** Source review and public documentation review only. No native-input experiment, usability study, or performance benchmark was performed for this proposal. The only change made by this review is this proposal document.
+**Evidence boundary:** The implementation has passed focused Rust/Qt tests, workspace tests, repository checks, the offscreen Qt/QML adapter smoke, and the nested Wayland startup smoke. The interactive desktop qualification matrix remains pending because this environment's compositor lacks the virtual-keyboard protocol; no usability study or performance benchmark was performed.
 
 ### How to use this handoff
 

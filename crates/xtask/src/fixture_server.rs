@@ -428,6 +428,56 @@ fn route_request(request: &FixtureRequest) -> FixtureResponse {
                <a href="/heavy">heavy</a>
                <a href="/cross-origin">cross origin</a>"#,
         ),
+        ("GET", "/spatial-grid") => html_response(
+            "Spatial grid fixture",
+            r#"<style>
+                 body { margin: 0; min-height: 100vh; font: 20px sans-serif; }
+                 #surface { position: relative; width: 100vw; height: 100vh; }
+                 button, canvas { position: absolute; }
+                 #left { left: 8%; top: 12%; }
+                 #right { right: 8%; top: 12%; }
+                 #middle { left: 46%; top: 48%; }
+                 canvas { left: 25%; top: 30%; width: 50%; height: 45%; border: 2px solid #333; }
+                 #event-report { position: fixed; left: 8px; bottom: 8px; max-width: 90vw;
+                   padding: 4px; background: #fff8; }
+               </style>
+               <div id="surface">
+                 <button id="left">left</button><button id="right">right</button>
+                 <button id="middle">middle</button><canvas id="grid-canvas" width="640" height="360"></canvas>
+                 <iframe title="distinct-origin" src="http://127.0.0.1:18774/spatial-grid-frame"
+                   style="position:absolute;right:4%;bottom:4%;width:30%;height:20%"></iframe>
+                 <output id="event-report">events: none</output>
+               </div>
+               <script>
+                 const report = document.getElementById('event-report');
+                 const events = [];
+                 function record(e) {
+                   events.push(e.type + ':' + e.button + '@' + Math.round(e.clientX) + ',' + Math.round(e.clientY));
+                   while (events.length > 32) events.shift();
+                   report.textContent = 'events: ' + events.join(' | ');
+                 }
+                 for (const node of document.querySelectorAll('button,canvas')) {
+                   for (const type of ['mousemove','mousedown','mouseup','click','contextmenu'])
+                     node.addEventListener(type, record);
+                 }
+               </script>"#,
+        ),
+        ("GET", "/spatial-grid-frame") => html_response(
+            "Spatial grid cross-origin frame",
+            r#"<button id="frame-target" style="margin:30px;width:180px;height:80px">frame target</button>
+               <output id="frame-report">events: none</output>
+               <script>
+                 const target = document.getElementById('frame-target');
+                 const report = document.getElementById('frame-report');
+                 const events = [];
+                 for (const type of ['mousemove','mousedown','mouseup','click','contextmenu'])
+                   target.addEventListener(type, e => {
+                     events.push(type + ':' + e.button);
+                     while (events.length > 16) events.shift();
+                     report.textContent = 'events: ' + events.join(' | ');
+                   });
+               </script>"#,
+        ),
         ("GET", "/blocking") => html_response(
             "Ferric Browser blocking fixture",
             r#"<img alt="blocked resource" src="http://127.0.0.1:18774/__ferric_browser_blocked__">

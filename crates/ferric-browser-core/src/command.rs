@@ -650,6 +650,70 @@ impl CommandRegistry {
                 "Label visible page links and controls for validated activation.",
             ),
             definition(
+                "grid",
+                &[],
+                vec![Mode::Normal, Mode::Command],
+                CountPolicy::NotSupported,
+                false,
+                "Enter keyboard-controlled spatial Grid mode for the active page view.",
+            ),
+            definition(
+                "grid-refine",
+                &[],
+                vec![Mode::Grid],
+                CountPolicy::NotSupported,
+                false,
+                "Refine the active spatial region by one row-major grid cell.",
+            ),
+            definition(
+                "grid-click",
+                &[],
+                vec![Mode::Grid],
+                CountPolicy::NotSupported,
+                false,
+                "Request one native pointer click at the spatial crosshair.",
+            ),
+            definition(
+                "grid-hover",
+                &[],
+                vec![Mode::Grid],
+                CountPolicy::NotSupported,
+                false,
+                "Request one native pointer hover at the spatial crosshair.",
+            ),
+            definition(
+                "grid-back",
+                &[],
+                vec![Mode::Grid],
+                CountPolicy::NotSupported,
+                false,
+                "Restore the previous spatial region.",
+            ),
+            definition(
+                "grid-reset",
+                &[],
+                vec![Mode::Grid],
+                CountPolicy::NotSupported,
+                false,
+                "Restore the root spatial region without dispatching input.",
+            ),
+            definition(
+                "grid-help",
+                &[],
+                vec![Mode::Grid],
+                CountPolicy::NotSupported,
+                false,
+                "Toggle concise Grid mode help.",
+            ),
+            definition(
+                "grid-cancel",
+                &[],
+                vec![Mode::Grid],
+                CountPolicy::NotSupported,
+                false,
+                "Cancel Grid mode without dispatching input.",
+            ),
+            definition(
                 "download",
                 &[],
                 vec![Mode::Normal, Mode::Command],
@@ -3180,6 +3244,34 @@ impl CommandRegistry {
         {
             command.examples = vec!["macro-stop".into()];
         }
+        if let Some(command) = registry
+            .definitions
+            .iter_mut()
+            .find(|definition| definition.name == "grid-refine")
+        {
+            command.arguments = vec![ArgumentDefinition {
+                name: "cell".into(),
+                kind: ArgumentKind::Enum,
+                required: true,
+            }];
+            command.examples = vec!["grid-refine 5".into()];
+        }
+        if let Some(command) = registry
+            .definitions
+            .iter_mut()
+            .find(|definition| definition.name == "grid-click")
+        {
+            command.arguments = vec![ArgumentDefinition {
+                name: "button".into(),
+                kind: ArgumentKind::Enum,
+                required: true,
+            }];
+            command.examples = vec![
+                "grid-click left".into(),
+                "grid-click right".into(),
+                "grid-click middle".into(),
+            ];
+        }
         registry.expansions = [
             ("o", "open"),
             ("t", "tab-open"),
@@ -3435,7 +3527,7 @@ mod tests {
             .remove(0);
         assert_eq!(registry.resolve(&command.name).unwrap().name, "open");
         assert!(registry.validate(&command, Mode::Normal).is_ok());
-        assert_eq!(registry.definitions().len(), 129);
+        assert_eq!(registry.definitions().len(), 137);
         let open = registry.resolve("open").unwrap();
         assert_ne!(open.action, ActionId::from_raw(0));
         assert_eq!(open.effect, EffectClass::Navigation);

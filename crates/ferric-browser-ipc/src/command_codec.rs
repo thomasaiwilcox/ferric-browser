@@ -15,6 +15,8 @@ mod command_codec_contexts;
 mod command_codec_library;
 #[path = "command_codec_navigation.rs"]
 mod command_codec_navigation;
+#[path = "command_codec_spatial.rs"]
+mod command_codec_spatial;
 #[path = "command_codec_tabs_windows.rs"]
 mod command_codec_tabs_windows;
 
@@ -49,6 +51,7 @@ pub fn encode_command(command: &ParsedCommand) -> Result<Value, String> {
         command_codec_contexts::encode,
         command_codec_content::encode,
         command_codec_automation::encode,
+        command_codec_spatial::encode,
     ] {
         if let Some(value) = encode(command)? {
             encoded = Some(value);

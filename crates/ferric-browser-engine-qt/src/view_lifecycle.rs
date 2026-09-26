@@ -4,6 +4,10 @@ use super::{CxxQtType, Pin, QString, qobject};
 
 impl qobject::BrowserUi {
     pub(super) fn view_closed(mut self: Pin<&mut Self>) {
+        if self.as_ref().rust().core_mode == super::Mode::Grid {
+            self.as_mut()
+                .spatial_invalidated(&QString::from("view-changed"));
+        }
         self.as_mut().clear_hint_session_state();
         {
             let mut rust = self.as_mut().rust_mut();

@@ -54,8 +54,20 @@ bool FerricBrowserKeyRouter::eventFilter(QObject *watched, QEvent *event)
 {
     Q_UNUSED(watched);
     const bool keyPress = event->type() == QEvent::KeyPress;
+    const bool keyRelease = event->type() == QEvent::KeyRelease;
     const bool escapeOverride = event->type() == QEvent::ShortcutOverride
         && static_cast<QKeyEvent *>(event)->key() == Qt::Key_Escape;
+    if (keyRelease) {
+        const auto *keyEvent = static_cast<QKeyEvent *>(event);
+        const quint64 identity = (quint64(quint32(keyEvent->key())) << 32)
+            | quint64(quint32(keyEvent->modifiers()));
+        if (!acceptedKeys_.contains(identity))
+            return false;
+        acceptedKeys_.remove(identity);
+        emit keyReleased(keyEvent->key(), int(keyEvent->modifiers()));
+        event->accept();
+        return true;
+    }
     if (!targetWindow_ || QGuiApplication::focusWindow() != targetWindow_
         || (!keyPress && !escapeOverride)) {
         return false;
@@ -67,12 +79,20 @@ bool FerricBrowserKeyRouter::eventFilter(QObject *watched, QEvent *event)
     const auto *keyEvent = static_cast<QKeyEvent *>(event);
     accepted_ = false;
     dispatching_ = true;
-    emit keyPressed(keyEvent->text(), keyEvent->key(), int(keyEvent->modifiers()));
+    emit keyPressed(
+        keyEvent->text(), keyEvent->key(), int(keyEvent->modifiers()), keyEvent->isAutoRepeat());
     dispatching_ = false;
 
     const bool handled = accepted_;
     accepted_ = false;
     if (handled)
+    {
+        if (keyPress && !keyEvent->isAutoRepeat()) {
+            const quint64 identity = (quint64(quint32(keyEvent->key())) << 32)
+                | quint64(quint32(keyEvent->modifiers()));
+            acceptedKeys_.insert(identity);
+        }
         event->accept();
+    }
     return handled;
 }

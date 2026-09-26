@@ -11,6 +11,7 @@ This table is generated from the built-in binding registry. Configuration overri
 | `normal` | `; b` | `hint --target tab-bg all` |
 | `normal` | `; d` | `hint --target download links` |
 | `normal` | `; f` | `hint --target tab all` |
+| `normal` | `; g` | `grid` |
 | `normal` | `; r` | `hint --rapid --target tab-bg links` |
 | `normal` | `; y` | `hint --target yank links` |
 | `normal` | `=` | `zoom reset` |
@@ -98,3 +99,20 @@ This table is generated from the built-in binding registry. Configuration overri
 | `normal` | `w i` | `devtools` |
 | `normal` | `y t` | `yank title` |
 | `normal` | `y y` | `yank url` |
+| `grid` | `0` | `grid-reset` |
+| `grid` | `1` | `grid-refine 1` |
+| `grid` | `2` | `grid-refine 2` |
+| `grid` | `3` | `grid-refine 3` |
+| `grid` | `4` | `grid-refine 4` |
+| `grid` | `5` | `grid-refine 5` |
+| `grid` | `6` | `grid-refine 6` |
+| `grid` | `7` | `grid-refine 7` |
+| `grid` | `8` | `grid-refine 8` |
+| `grid` | `9` | `grid-refine 9` |
+| `grid` | `?` | `grid-help` |
+| `grid` | `Backspace` | `grid-back` |
+| `grid` | `Ctrl+Enter` | `grid-click middle` |
+| `grid` | `Enter` | `grid-click left` |
+| `grid` | `Escape` | `grid-cancel` |
+| `grid` | `Shift+Enter` | `grid-click right` |
+| `grid` | `Space` | `grid-hover` |

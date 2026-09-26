@@ -38,6 +38,10 @@ impl qobject::BrowserUi {
             .set_navigation_failure_requested_url(QString::from(safe_ipc_url(&url.to_string())));
         let active_index = self.as_ref().rust().active_tab_index;
         self.as_mut().clear_focus_observation_state(active_index);
+        if self.as_ref().rust().core_mode == super::Mode::Grid {
+            self.as_mut()
+                .spatial_invalidated(&QString::from("target-changed"));
+        }
         self.as_mut().clear_hint_session_state();
         {
             let mut rust = self.as_mut().rust_mut();
@@ -81,6 +85,12 @@ impl qobject::BrowserUi {
             self.as_mut().note_navigation_started(target, &started_url);
         }
         self.as_mut().clear_focus_observation_state(index);
+        if index == self.as_ref().rust().active_tab_index
+            && self.as_ref().rust().core_mode == super::Mode::Grid
+        {
+            self.as_mut()
+                .spatial_invalidated(&QString::from("target-changed"));
+        }
         self.as_mut().clear_hint_session_state();
         if index == self.as_ref().rust().active_tab_index {
             self.as_mut().clear_navigation_failure();
@@ -123,6 +133,10 @@ impl qobject::BrowserUi {
             }
         };
         let active_index = self.as_ref().rust().active_tab_index;
+        if self.as_ref().rust().core_mode == super::Mode::Grid {
+            self.as_mut()
+                .spatial_invalidated(&QString::from("target-changed"));
+        }
         self.as_mut().clear_focus_observation_state(active_index);
         let Ok(parsed) = ValidatedUrl::parse(url.to_string()) else {
             self.set_status_text(QString::from("Engine returned an invalid URL"));
@@ -164,6 +178,12 @@ impl qobject::BrowserUi {
                 return;
             }
         };
+        if index == self.as_ref().rust().active_tab_index
+            && self.as_ref().rust().core_mode == super::Mode::Grid
+        {
+            self.as_mut()
+                .spatial_invalidated(&QString::from("target-changed"));
+        }
         self.as_mut().clear_focus_observation_state(index);
         let changed_experiment_target =
             self.as_ref()
