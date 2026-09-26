@@ -847,7 +847,7 @@ commands may be added, but these names and semantics form the target contract.
 | `window-close` | Close with page/download checks |
 | `window-focus <WINDOW_ID>` | Request activation; report compositor denial |
 | `fullscreen [on\|off\|toggle]` | Request window fullscreen; coordinate web fullscreen |
-| `hint [--target current\|tab\|tab-bg\|window\|yank\|clean-yank\|download\|userscript\|ephemeral] [--rapid] [--script NAME] [links\|all]` | Select validated live element; `ephemeral` is V1.1 |
+| `hint [--target TARGET] [--rapid] [--script NAME] [--first] [--index N] [links\|all\|inputs\|buttons\|images\|media\|scrollables]` | Select a freshly validated live element; targets include `current`, `tab`, `tab-bg`, `window`, `yank`, `clean-yank`, `download`, `userscript`, `ephemeral`, and `choose`; `--index` requires `--first` and `--rapid` conflicts with `--first` |
 | `mode-enter <normal\|insert\|caret\|passthrough>` | Explicit mode transition |
 | `caret-move <left\|right\|up\|down\|word-next\|word-prev\|line-start\|line-end> [--count N]` | Move/extend caret according to selection state |
 | `caret-select [on\|off\|toggle]`, `caret-yank` | Select and copy visible document text |
@@ -1002,47 +1002,58 @@ coverage and a human-readable changelog.
 
 ## 12. Hints, caret navigation, and page scripts
 
-**HINT-001 — Candidate collection.** Collect visible interactive elements:
-links, buttons, inputs, selects, textareas, appropriate ARIA roles, and
-contenteditable elements. Support frames and open shadow roots where public
-engine frame APIs permit. Closed shadow roots, canvas-drawn controls, browser
-PDF UI, and inaccessible frames have explicit limitations and retain normal
-mouse/keyboard interaction. Do not imply cross-origin DOM access via ordinary
-parent-frame JavaScript; inject through the engine's frame facilities.
+**HINT-001 — Candidate collection.** Collect explicit candidate families for
+links, inputs, buttons, images, media, and elements with a real overflow scroll
+range; `all` combines those families. Intersect each candidate with its
+viewport and clipping/scroll ancestors, exclude disabled and inert controls,
+and require composed-tree hit testing to reach the candidate or a descendant
+at a center or inset point. Repeat visibility checks through each containing
+frame. Support same-origin frames and open shadow roots within the bounded
+frame/depth/candidate limits. Cross-origin frames, closed shadow roots,
+canvas-drawn controls, browser PDF UI, and inaccessible frames remain explicit
+limitations.
 
-**HINT-002 — Labels and geometry.** Default alphabet is `asdfghjkl`. Assign
-deterministic prefix-free labels in viewport reading order. Keep labels stable
-for a hint session while candidates remain valid. Coordinates must account for
-page zoom, device scale, frame offsets, scrolling, and visual viewport changes.
-Prefer native Qt Quick overlays for labels and hit targets. M0/M2 must validate
-whether nested frame transforms can be represented correctly; unsupported
-transforms are skipped explicitly rather than clicked approximately.
+**HINT-002 — Labels, filtering, and geometry.** Use the configured hint
+alphabet and minimum width to assign deterministic prefix-free labels in
+viewport reading order. Document-local weak element IDs survive recollection,
+so labels remain stable while the required width is unchanged; a capacity
+transition performs one atomic deterministic relabel. Label input supports
+prefix editing, active-result cycling, configurable unmatched presentation and
+auto-follow behavior. `/` enters ranked text filtering without relabeling or
+auto-activation. Marker placement tries target corners, clamps to the viewport,
+uses bounded offsets, and records unavoidable collision clusters for keyboard
+rotation. Coordinates account for page zoom, device scale, frame offsets,
+scrolling, and visual viewport changes.
 
 **HINT-003 — Validation before action.** Every candidate is tied to tab,
-document, frame, and hint-session IDs. On selection, recheck attachment,
-visibility, target kind, and geometry. Cancel/recollect on navigation or major
-layout change. Mutation observers are throttled; never continuously scan the
-whole page at animation-frame frequency. Hard cap candidates at 5,000 and
-explain if narrowed collection is needed.
+document, frame, hint-session, and stable element IDs. Selection and palette
+execution recheck exact identity, attachment, composed visibility, frame,
+target kind, action metadata, and geometry. Navigation invalidates the session.
+While hints are visible, bounded scroll/resize/mutation observation increments
+a dirty revision; the browser polls only that revision, coalesces refreshes,
+diffs candidates in place, and stops tracking when the session closes. Hard cap
+candidates at 5,000 and explain if narrowed collection is needed.
 
-**HINT-004 — Activation.** Use direct navigation for a pure link-open action
-when its semantics permit it. For buttons and controls, route a validated
-native input action through the correct view when required. Synthetic DOM
-`.click()` does not necessarily provide trusted user activation; test controls
-requiring a user gesture, popup creation, file input, and fullscreen. Never
-work around that distinction by disabling engine security. Hinting an input
-focuses it and enters insert mode. Hint-to-download and hint-to-userscript
-require explicit user action and use captured metadata.
+**HINT-004 — Activation and action choice.** Use direct navigation for a pure
+URL-open action when its semantics permit it. Hinting an input focuses the
+exact validated control and enters Insert; hinting a scrollable records the
+exact element as the browser scroll target and returns to Normal. `--first`
+activates a viewport-ordered candidate without labels, with an optional 1-based
+index. `--target choose` and marker right-click freshly inspect the element and
+open a keyboard modal containing only applicable current/tab/background-tab/
+window/yank/clean-yank/download/ephemeral/userscript actions. Escape returns to
+the still-active hint session. Synthetic DOM `.click()` does not necessarily
+provide trusted user activation; never weaken engine security to emulate it.
 
-**HINT-005 — Rapid hints.** A rapid background-tab/yank/clean-yank action can
-stay in hint mode if the source document remains valid. `tab` opens the
-validated link in a foreground tab, while `window` queues a new same-profile
-window navigation and both end the current hint session. Foreground
-navigation, downloads requiring consent, or document-changing actions end the
-session. Limit background-tab creation to 20 per hint invocation unless
-explicitly confirmed. Clean-yank applies the active link-cleaning rules to the
-selected URL before writing the clipboard and reports whether the value
-changed.
+**HINT-005 — Rapid hints.** A rapid background-tab/yank/clean-yank/download or
+manifest-backed userscript action can stay in hint mode while the source
+document remains valid. Consumed stable element IDs disappear immediately;
+remaining labels are preserved and newly appearing candidates receive
+deterministic free labels until a width transition requires atomic relabeling.
+`tab` opens the validated URL in a foreground tab, while `window` queues a new
+same-profile window navigation and both end the session. Limit background-tab
+creation to 20 per invocation unless explicitly confirmed. Optional marker
+acknowledgement animation is suppressed under reduced motion.
 
 **PAGE-001 — Script boundary.** Package browser-owned scripts as immutable
 resources with versions/hashes. Use an isolated script world. Expose no file,
@@ -1400,6 +1411,14 @@ auto_insert = true
 keychain_timeout_ms = 1000
 count_limit = 9999
 
+[hints]
+chars = "asdfghjkl"
+min_chars = 1
+auto_follow = "full-match"
+unmatched = "hide"
+rapid_unmatched = "hide"
+marker_scale = 1.0
+
 [discovery]
 keychain_overlay = true
 keychain_overlay_delay_ms = 350
@@ -1646,6 +1665,12 @@ must be validated before casting to Qt types.
 | `input.auto_insert` | bool true | G,P,S / L | Editable focus transition |
 | `input.keychain_timeout_ms` | 100–5000, 1000 | G / L | Existing chain retains original timeout |
 | `input.count_limit` | 1–9999, 9999 | G / L | Command-specific limits still apply |
+| `hints.chars` | 2–32 unique printable ASCII characters excluding whitespace and `/`, `asdfghjkl` | G,P / L | A change cancels an active hint session |
+| `hints.min_chars` | 1–8, 1 | G,P / L | A change cancels an active hint session |
+| `hints.auto_follow` | always/unique-match/full-match/never, full-match | G,P / L | A change cancels an active hint session |
+| `hints.unmatched` | hide/dim/show, hide | G,P / L | Applies immediately to ordinary hints |
+| `hints.rapid_unmatched` | hide/dim/show, hide | G,P / L | Applies immediately to rapid hints |
+| `hints.marker_scale` | 0.75–2.0, 1.0 | G,P / L | Applies immediately without relabeling |
 | `discovery.keychain_overlay` | bool true | G,P / L | Derived continuations only; never page-controlled |
 | `discovery.keychain_overlay_delay_ms` | 100–2000, 350 | G,P / L | Delay starts after an incomplete valid prefix |
 | `discovery.learning_mode` | bool false | G,P / L | Adds explanations without altering dispatch |

@@ -1012,8 +1012,16 @@ FerricBrowserRuntimeServices {
         }
     }
 
-    function hintCollectorScript(linksOnly) {
-        return BrowserScripts.hintCollector(linksOnly)
+    function hintCollectorScript(family) {
+        return BrowserScripts.hintCollector(family)
+    }
+
+    function hintDirtyRevisionScript() {
+        return BrowserScripts.hintDirtyRevision()
+    }
+
+    function hintStopTrackingScript() {
+        return BrowserScripts.hintStopTracking()
     }
 
     function selectionScript() {
@@ -1048,13 +1056,45 @@ FerricBrowserRuntimeServices {
         return BrowserScripts.hintClick(elementId)
     }
 
+    function hintSetScrollTargetScript(elementId) {
+        return BrowserScripts.hintSetScrollTarget(elementId)
+    }
+
     function startHintCollection() {
         var view = window.activeWebView()
         if (!view) {
             browserUi.cancel_hints()
             return
         }
-        window.runBrowserScript(view, window.hintCollectorScript(browserUi.hint_links_only), function(value) {
+        if (window.hintRefreshPending) {
+            return
+        }
+        if (window.hintTrackingView && window.hintTrackingView !== view) {
+            window.closeHints()
+            return
+        }
+        window.hintTrackingView = view
+        var collectionEpoch = window.hintCollectionEpoch + 1
+        window.hintCollectionEpoch = collectionEpoch
+        window.hintRefreshPending = true
+        window.runBrowserScript(view, window.hintCollectorScript(browserUi.hint_family), function(value) {
+            if (window.hintCollectionEpoch !== collectionEpoch) {
+                return
+            }
+            window.hintRefreshPending = false
+            if (browserUi.mode !== "hint" || window.hintTrackingView !== view) {
+                return
+            }
+            window.hintDirtyRevision = Number(value && value.revision || 0)
+            var collectedViewport = value && value.viewport ? value.viewport : ({})
+            var collectedWidth = Number(collectedViewport.width || 0)
+            var collectedHeight = Number(collectedViewport.height || 0)
+            window.hintViewport = ({
+                width: Number.isFinite(collectedWidth) && collectedWidth > 0
+                       ? collectedWidth : 0,
+                height: Number.isFinite(collectedHeight) && collectedHeight > 0
+                        ? collectedHeight : 0
+            })
             var payload = value && value.candidates !== undefined
                     ? {candidates: value.candidates}
                     : {candidates: value || []}
@@ -1065,20 +1105,100 @@ FerricBrowserRuntimeServices {
                 response = {}
             }
             if (!response.hints || response.hints.length === 0) {
+                var hintFailure = response.error
+                        ? browserUi.status_text : "No visible hint targets"
                 window.hintResults = []
                 browserUi.cancel_hints()
+                browserUi.status_text = hintFailure
+                window.showCommandNotice(hintFailure, true)
                 return
             }
-            window.hintInput = ""
+            window.hintState = response.state || window.hintState
+            window.hintInput = window.hintState.mode === "text"
+                    ? "/" + window.hintState.query : window.hintState.prefix
             window.hintResults = response.hints
+            if (response.first_label) {
+                Qt.callLater(function() { window.activateHint(String(response.first_label)) })
+            }
         })
     }
 
+    function pollHintRefresh() {
+        var view = window.activeWebView()
+        if (!view || !browserUi.hint_visible || window.hintRefreshPending) {
+            return
+        }
+        window.runBrowserScript(view, window.hintDirtyRevisionScript(), function(value) {
+            if (value && value.dirty === true
+                    && Number(value.revision || 0) !== window.hintDirtyRevision) {
+                window.startHintCollection()
+            }
+        })
+    }
+
+    function applyHintInteraction(action, text) {
+        var response = {}
+        try {
+            response = JSON.parse(browserUi.update_hint_interaction(action, text || ""))
+        } catch (error) {
+            return false
+        }
+        if (response.state) {
+            window.hintState = response.state
+            window.hintInput = response.state.mode === "text"
+                    ? "/" + response.state.query : response.state.prefix
+        }
+        if (response.outcome === "activate") {
+            window.activateHint(String(response.label || ""))
+        } else if (response.outcome === "cancel") {
+            window.closeHints()
+        } else if (response.outcome === "rotate") {
+            window.rotateHintCollision()
+        }
+        return true
+    }
+
+    function rotateHintCollision() {
+        var active = String(window.hintState.active_label || "")
+        var selected = null
+        for (var i = 0; i < window.hintResults.length; ++i) {
+            if (String(window.hintResults[i].label) === active) {
+                selected = window.hintResults[i]
+                break
+            }
+        }
+        if (!selected) return
+        var cluster = window.hintResults.filter(function(candidate) {
+            return candidate.x < selected.x + selected.width
+                    && candidate.x + candidate.width > selected.x
+                    && candidate.y < selected.y + selected.height
+                    && candidate.y + candidate.height > selected.y
+        })
+        if (cluster.length < 2) return
+        var current = cluster.indexOf(selected)
+        var next = cluster[(current + 1) % cluster.length]
+        window.hintCollisionRotation += 1
+        window.applyHintInteraction("select", String(next.label))
+    }
+
     function closeHints() {
+        window.hintCollectionEpoch += 1
+        window.stopHintTracking()
+        window.hintRefreshPending = false
         window.hintInput = ""
+        window.hintViewport = ({ width: 0, height: 0 })
+        window.hintState = ({ mode: "label", prefix: "", query: "", matching_labels: [], active_label: "", remaining: 0, total: 0 })
         window.hintResults = []
         window.rapidHintConfirmationVisible = false
         browserUi.cancel_hints()
+    }
+
+    function stopHintTracking() {
+        var view = window.hintTrackingView
+        window.hintTrackingView = null
+        if (view) {
+            window.runBrowserScript(view, window.hintStopTrackingScript(), function(value) {})
+        }
     }
 
     function openEphemeralWindow(url, requestedToken) {
@@ -1474,13 +1594,35 @@ FerricBrowserRuntimeServices {
     }
 
     function showHintActions(label) {
+        window.activateHint(label, "hint.choose")
+    }
+
+    function openHintActionPalette(label) {
         var view = window.activeWebView()
         if (!view) {
             window.closeHints()
             return
         }
-        var items = []
-        if (browserUi.select_userscript_action_subject("link")) {
+        var selected = null
+        for (var candidateIndex = 0; candidateIndex < window.hintResults.length; ++candidateIndex) {
+            if (String(window.hintResults[candidateIndex].label) === String(label)) {
+                selected = window.hintResults[candidateIndex]
+                break
+            }
+        }
+        if (!selected) return
+        var items = [window.contextMenuItem("Activate / open current", "hint-userscript-action", label, "hint.current")]
+        var hasUrl = selected.href !== null && String(selected.href || "").length > 0
+        if (hasUrl) {
+            items.push(window.contextMenuItem("Open in foreground tab", "hint-userscript-action", label, "hint.tab"))
+            items.push(window.contextMenuItem("Open in background tab", "hint-userscript-action", label, "hint.tab-bg"))
+            items.push(window.contextMenuItem("Open in new window", "hint-userscript-action", label, "hint.window"))
+            items.push(window.contextMenuItem("Yank URL", "hint-userscript-action", label, "hint.yank"))
+            items.push(window.contextMenuItem("Clean-yank URL", "hint-userscript-action", label, "hint.clean-yank"))
+            items.push(window.contextMenuItem("Download", "hint-userscript-action", label, "hint.download"))
+            items.push(window.contextMenuItem("Open in ephemeral window", "hint-userscript-action", label, "hint.ephemeral"))
+        }
+        if (hasUrl && browserUi.select_userscript_action_subject("link")) {
             var ids = browserUi.userscript_action_ids
             var labels = browserUi.userscript_action_labels
             var availability = browserUi.userscript_action_availability
@@ -1494,10 +1636,6 @@ FerricBrowserRuntimeServices {
                     }
                 }
             }
-        }
-        if (items.length === 0) {
-            browserUi.status_text = "No userscript actions are available for this hint"
-            return
         }
         window.pendingContextMenuRequest = { hintAction: true }
         window.pendingContextMenuView = view
@@ -1539,6 +1677,8 @@ FerricBrowserRuntimeServices {
                 window.hintResults = []
                 window.hintInput = ""
                 window.executePendingEngineAction()
+            } else if (result.action === "choose") {
+                window.openHintActionPalette(label)
             } else if (result.action === "tab") {
                 window.hintResults = []
                 window.hintInput = ""
@@ -1546,14 +1686,30 @@ FerricBrowserRuntimeServices {
                 // Materialize its QML view before applying the queued load.
                 window.syncTabModel()
                 window.executePendingEngineAction()
+            } else if (result.action === "window") {
+                window.hintResults = []
+                window.hintInput = ""
+                window.executePendingEngineAction()
             } else if (result.action === "yank") {
-                window.hintResults = []
-                window.hintInput = ""
-                Qt.callLater(window.startHintCollection)
+                if (browserUi.mode === "hint") {
+                    window.hintResults = window.hintResults.filter(function(candidate) {
+                        return String(candidate.label) !== String(label)
+                    })
+                    Qt.callLater(window.startHintCollection)
+                } else {
+                    window.hintResults = []
+                    window.hintInput = ""
+                }
             } else if (result.action === "clean-yank") {
-                window.hintResults = []
-                window.hintInput = ""
-                Qt.callLater(window.startHintCollection)
+                if (browserUi.mode === "hint") {
+                    window.hintResults = window.hintResults.filter(function(candidate) {
+                        return String(candidate.label) !== String(label)
+                    })
+                    Qt.callLater(window.startHintCollection)
+                } else {
+                    window.hintResults = []
+                    window.hintInput = ""
+                }
             } else if (result.action === "tab-bg") {
                 window.hintResults = []
                 window.hintInput = ""
@@ -1562,16 +1718,31 @@ FerricBrowserRuntimeServices {
                 // Only rapid background hints remain in Hint mode. A one-shot
                 // `;b` selection must return to Normal mode after opening.
                 if (browserUi.mode === "hint") {
+                    window.hintResults = window.hintResults.filter(function(candidate) {
+                        return String(candidate.label) !== String(label)
+                    })
                     Qt.callLater(window.startHintCollection)
                 }
-            } else if (result.action === "userscript" && browserUi.mode === "hint") {
-                window.hintResults = []
-                window.hintInput = ""
-                Qt.callLater(window.startHintCollection)
-            } else if (result.action === "download" && browserUi.mode === "hint") {
-                window.hintResults = []
-                window.hintInput = ""
-                Qt.callLater(window.startHintCollection)
+            } else if (result.action === "userscript") {
+                if (browserUi.mode === "hint") {
+                    window.hintResults = window.hintResults.filter(function(candidate) {
+                        return String(candidate.label) !== String(label)
+                    })
+                    Qt.callLater(window.startHintCollection)
+                } else {
+                    window.hintResults = []
+                    window.hintInput = ""
+                }
+            } else if (result.action === "download") {
+                if (browserUi.mode === "hint") {
+                    window.hintResults = window.hintResults.filter(function(candidate) {
+                        return String(candidate.label) !== String(label)
+                    })
+                    Qt.callLater(window.startHintCollection)
+                } else {
+                    window.hintResults = []
+                    window.hintInput = ""
+                }
             } else if (result.action === "ephemeral") {
                 window.hintResults = []
                 window.hintInput = ""
@@ -1592,6 +1763,14 @@ FerricBrowserRuntimeServices {
                     window.hintResults = []
                     window.hintInput = ""
                     browserUi.enter_insert()
+                })
+            } else if (result.action === "scroll-target") {
+                window.runBrowserScript(view, window.hintSetScrollTargetScript(result.element_id), function(value) {
+                    window.hintResults = []
+                    window.hintInput = ""
+                    browserUi.status_text = value === true
+                            ? "Scrollable hint target selected"
+                            : "Scrollable hint target is no longer available"
                 })
             } else if (result.action === "click") {
                 var clickScript = window.hintClickScript(result.element_id)

@@ -645,7 +645,7 @@ impl CommandRegistry {
                 "hint",
                 &[],
                 vec![Mode::Normal, Mode::Command],
-                CountPolicy::NotSupported,
+                CountPolicy::Supported { maximum: 5_000 },
                 false,
                 "Label visible page links and controls for validated activation.",
             ),
@@ -2477,11 +2477,22 @@ impl CommandRegistry {
                     kind: ArgumentKind::Text,
                     required: false,
                 },
+                ArgumentDefinition {
+                    name: "first".into(),
+                    kind: ArgumentKind::Boolean,
+                    required: false,
+                },
+                ArgumentDefinition {
+                    name: "index".into(),
+                    kind: ArgumentKind::Integer,
+                    required: false,
+                },
             ];
             command.examples = vec![
                 "hint links".into(),
                 "hint --rapid --target tab-bg links".into(),
-                "hint --rapid --target yank links".into(),
+                "hint --target choose all".into(),
+                "hint --first --index 3 inputs".into(),
             ];
         }
         if let Some(command) = registry

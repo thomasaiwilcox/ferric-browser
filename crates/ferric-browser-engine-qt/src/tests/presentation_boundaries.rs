@@ -374,7 +374,12 @@ fn context_routes_validate_before_assigning_window_membership() {
 
 #[test]
 fn context_routes_are_pre_navigation_and_browser_confirmed() {
-    let source = [ADAPTER_SOURCE, include_str!("../tab_presentation.rs")].concat();
+    let source = [
+        ADAPTER_SOURCE,
+        include_str!("../browser_ui_context_navigation.rs"),
+        include_str!("../tab_presentation.rs"),
+    ]
+    .concat();
     let qml = [
         QML_SOURCE,
         include_str!("../../qml/components/FerricContextRouteDialog.qml"),
@@ -483,7 +488,7 @@ fn qml_json_contract_allowlist_is_explicit() {
 
     assert!(allowlist.contains("Opaque page-script request/result contracts"));
     assert!(allowlist.contains("Prohibited presentation payloads"));
-    assert_eq!(qml.matches("JSON.parse(").count(), 10);
+    assert_eq!(qml.matches("JSON.parse(").count(), 11);
     assert_eq!(qml.matches("JSON.stringify(").count(), 29);
 }
 
@@ -1304,14 +1309,16 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(qml.contains("return BrowserScripts.focusProbe()"));
     assert!(qml.contains("return BrowserScripts.focusObserverSource()"));
     assert!(qml.contains("return BrowserScripts.shutdownPageProbe()"));
-    assert!(qml.contains("return BrowserScripts.hintCollector(linksOnly)"));
+    assert!(qml.contains("return BrowserScripts.hintCollector(family)"));
+    assert!(qml.contains("return BrowserScripts.hintDirtyRevision()"));
+    assert!(qml.contains("return BrowserScripts.hintStopTracking()"));
     assert!(qml.contains("return BrowserScripts.hintFresh(candidate)"));
     assert!(qml.contains("return BrowserScripts.hintFocus(elementId)"));
     assert!(qml.contains("return BrowserScripts.hintClick(elementId)"));
     assert!(qml.contains("BrowserScripts.pageUserscriptRun(scriptSource)"));
     assert!(qml.contains("BrowserScripts.pageUserscriptInstall(script.source)"));
     assert!(!qml.contains("function hintSelector(linksOnly)"));
-    assert!(script.contains("var VERSION = \"4\""));
+    assert!(script.contains("var VERSION = \"9\""));
     assert!(script.contains("function pageUserscriptRun(source)"));
     assert!(script.contains("function pageUserscriptInstall(source)"));
     assert!(!qml.contains("var source = \"(function(){try{\" + scriptSource"));
@@ -1326,7 +1333,7 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(script.contains("service_workers:'unavailable'"));
     assert!(script.contains("window.__ferric_browserFocusState"));
     assert!(script.contains("elements.length > 128"));
-    assert!(script.contains("function hintCollector(linksOnly)"));
+    assert!(script.contains("function hintCollector(family)"));
     assert!(script.contains("function hintFresh(candidate)"));
     assert!(script.contains("function hintFocus(elementId)"));
     assert!(script.contains("function hintClick(elementId)"));
@@ -1340,7 +1347,50 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(script.contains("depth>8"));
     assert!(script.contains("r.bottom<=0||r.right<=0||r.top>=vh||r.left>=vw"));
     assert!(script.contains("x>=window.innerWidth||y>=window.innerHeight"));
-    assert!(script.contains("r.top+by<window.innerHeight"));
+    assert!(script.contains("r.top<window.innerHeight"));
+    assert!(script.contains("state.resize.unobserve"));
+    assert!(script.contains("function intersect(a,b)"));
+    assert!(script.contains("trim().slice(0,512)"));
+    assert!(script.contains("kind==='link'&&href===null"));
+    assert!(script.contains("function linkedSurface(el,r)"));
+    assert!(script.contains(
+        "family==='all'&&(kind==='image'||kind==='media')&&linkedSurface(el,r)"
+    ));
+    assert!(script.contains("function hasPreferredLink(el,r)"));
+    assert!(script.contains("String(current.href||current.getAttribute('href')||'')===href"));
+}
+
+#[test]
+fn enhanced_hint_presentation_keeps_keyboard_policy_out_of_qml() {
+    let qml = QML_SOURCE;
+    let base = include_str!("../../qml/components/FerricBrowserRuntimeBase.qml");
+    let requests = include_str!("../../qml/components/FerricBrowserRuntimeRequests.qml");
+    let overlay = include_str!("../../qml/components/FerricHintOverlay.qml");
+    let menu = include_str!("../../qml/components/FerricContextMenu.qml");
+
+    assert!(qml.contains("update_hint_interaction(action, text || \"\")"));
+    assert!(qml.contains("window.applyHintInteraction(\"text-mode\", \"\")"));
+    assert!(qml.contains("window.applyHintInteraction(\"rotate\", \"\")"));
+    assert!(qml.contains("return BrowserScripts.hintDirtyRevision()"));
+    assert!(qml.contains("browserUi.mode !== \"hint\" || window.hintTrackingView !== view"));
+    assert!(qml.contains("window.hintCollectionEpoch !== collectionEpoch"));
+    assert!(qml.contains("function stopHintTracking()"));
+    assert!(qml.contains("window.showCommandNotice(hintFailure, true)"));
+    assert!(qml.contains("window.hintViewport = ({"));
+    assert!(base.contains("property var hintTrackingView: null"));
+    assert!(base.contains("property var hintViewport: ({ width: 0, height: 0 })"));
+    assert!(base.contains("property int hintCollectionEpoch: 0"));
+    assert!(requests.contains("function onHint_visibleChanged()"));
+    assert!(requests.contains("window.activeWebView() !== window.hintTrackingView"));
+    assert!(overlay.contains("unmatchedPolicy !== \"hide\""));
+    assert!(overlay.contains("unmatchedPolicy === \"show\""));
+    assert!(overlay.contains("<u>"));
+    assert!(overlay.contains("Active hint target"));
+    assert!(overlay.contains("function coordinateScale(renderedSize, sourceSize)"));
+    assert!(overlay.contains("var targetX = source.x * scaleX"));
+    assert!(overlay.contains("var options = [[targetX, targetY]"));
+    assert!(menu.contains("sequence: \"Tab\""));
+    assert!(menu.contains("hint.clean-yank"));
 }
 
 #[test]

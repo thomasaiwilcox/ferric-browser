@@ -1429,6 +1429,40 @@ fn cli_hint_commands_forward_rapid_target_options() {
 }
 
 #[test]
+fn cli_hint_commands_forward_first_index_families_and_choose() {
+    let command = parse_chain(
+        "hint --target choose --first --index 3 inputs",
+        ParseInput::Cli,
+    )
+    .expect("valid indexed hint command")
+    .remove(0);
+    assert_eq!(
+        command_params(&command).expect("typed indexed hint parameters"),
+        serde_json::json!({
+            "command": "hint",
+            "arguments": {
+                "kind": "inputs",
+                "target": "choose",
+                "first": true,
+                "index": 3
+            }
+        })
+    );
+
+    for invalid in [
+        "hint --index 2 inputs",
+        "hint --first --index 0 inputs",
+        "hint --first --index 5001 inputs",
+        "hint --rapid --first inputs",
+    ] {
+        let parsed = parse_chain(invalid, ParseInput::Cli)
+            .expect("generic parser accepts command tokens")
+            .remove(0);
+        assert!(command_params(&parsed).is_err(), "accepted {invalid:?}");
+    }
+}
+
+#[test]
 fn cli_hint_commands_accept_qutebrowser_one_shot_targets() {
     for target in ["tab", "tab-bg", "window", "yank", "clean-yank", "download"] {
         let command = parse_chain(&format!("hint --target {target} links"), ParseInput::Cli)

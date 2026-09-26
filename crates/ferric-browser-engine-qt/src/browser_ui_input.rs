@@ -41,6 +41,22 @@ impl qobject::BrowserUi {
                     self.as_mut().set_hint_mode_kind(true);
                     return;
                 }
+                if parsed.name == "hint" && count > 1 {
+                    if parsed
+                        .arguments
+                        .iter()
+                        .any(|argument| argument == "--first")
+                    {
+                        parsed
+                            .arguments
+                            .extend(["--index".into(), count.min(5_000).to_string()]);
+                    } else {
+                        self.set_status_text(QString::from(
+                            "A hint count is only valid with --first",
+                        ));
+                        return;
+                    }
+                }
                 if parsed.name == "repeat" && count > 1 {
                     parsed.arguments = vec!["--count".into(), count.to_string()];
                 }

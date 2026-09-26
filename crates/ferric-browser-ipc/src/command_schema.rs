@@ -59,7 +59,7 @@ pub fn command_argument_names(command: &str) -> &'static [&'static str] {
         "profile-create" => &["name", "ephemeral"],
         "history-clear" => &["since", "origin", "confirmed"],
         "url-clean" | "url-explain" => &["url"],
-        "hint" => &["kind", "target", "rapid", "script"],
+        "hint" => &["kind", "target", "rapid", "script", "first", "index"],
         "mode-enter" => &["mode"],
         "caret-move" => &["direction", "count"],
         "caret-select" => &["state"],

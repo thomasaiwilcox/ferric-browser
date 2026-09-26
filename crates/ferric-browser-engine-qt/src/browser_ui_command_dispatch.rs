@@ -331,10 +331,12 @@ impl qobject::BrowserUi {
                     }
                 };
                 self.as_mut().set_hint_options(
-                    options.links_only,
+                    &options.family,
                     options.rapid,
                     &options.target,
                     options.script.as_deref(),
+                    options.first,
+                    options.index,
                 );
                 continue;
             }

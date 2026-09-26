@@ -195,6 +195,8 @@ impl BindingTrie {
                     "hint --rapid --target tab-bg links",
                 ),
                 binding(Mode::Normal, &[";", "y"], "hint --target yank links"),
+                binding(Mode::Normal, &[";", "a"], "hint --target choose all"),
+                binding(Mode::Normal, &["g", "i"], "hint --first inputs"),
                 binding(Mode::Normal, &["i"], "mode-enter insert"),
                 binding(Mode::Normal, &["v"], "mode-enter caret"),
                 binding(Mode::Normal, &["y", "y"], "yank url"),
@@ -263,7 +265,10 @@ impl BindingTrie {
 
     #[must_use]
     fn definition(&self, command: &str) -> Option<&crate::CommandDefinition> {
-        self.registry.resolve(command).ok()
+        command
+            .split_ascii_whitespace()
+            .next()
+            .and_then(|name| self.registry.resolve(name).ok())
     }
 
     /// Returns the effective bindings in deterministic mode/key order.
@@ -421,10 +426,14 @@ impl BindingResolver {
 
     #[must_use]
     fn count(&self) -> u32 {
-        self.count_digits
-            .parse()
-            .unwrap_or(MAX_COUNT)
-            .min(MAX_COUNT)
+        if self.count_digits.is_empty() {
+            1
+        } else {
+            self.count_digits
+                .parse()
+                .unwrap_or(MAX_COUNT)
+                .min(MAX_COUNT)
+        }
     }
 
     #[must_use]
@@ -604,6 +613,53 @@ mod tests {
                 && binding.keys == vec!["Ctrl+u".to_owned()]
                 && binding.command == "scroll-page up --half"
         }));
+    }
+
+    #[test]
+    fn default_bindings_include_choose_and_indexable_first_input_hint() {
+        let trie = BindingTrie::default_v1(CommandRegistry::default_v1()).unwrap();
+        let definitions = trie.definitions();
+        assert!(definitions.iter().any(|binding| {
+            binding.keys == [";", "a"] && binding.command == "hint --target choose all"
+        }));
+        assert!(definitions.iter().any(|binding| {
+            binding.keys == ["g", "i"] && binding.command == "hint --first inputs"
+        }));
+
+        let mut resolver = BindingResolver::new(trie, Mode::Normal);
+        assert_eq!(
+            resolver.feed("f", 0),
+            BindingOutcome::Execute {
+                command: "hint all".into(),
+                count: 1,
+            }
+        );
+        assert!(matches!(
+            resolver.feed("g", 1),
+            BindingOutcome::Pending { count: 1, .. }
+        ));
+        assert_eq!(
+            resolver.feed("i", 2),
+            BindingOutcome::Execute {
+                command: "hint --first inputs".into(),
+                count: 1,
+            }
+        );
+        assert!(matches!(
+            resolver.feed("3", 3),
+            BindingOutcome::Pending { count: 3, .. }
+        ));
+        assert!(matches!(
+            resolver.feed("g", 4),
+            BindingOutcome::Pending { count: 3, .. }
+        ));
+        assert_eq!(
+            resolver.feed("i", 5),
+            BindingOutcome::Execute {
+                command: "hint --first inputs".into(),
+                count: 3,
+            }
+        );
     }
 
     #[test]

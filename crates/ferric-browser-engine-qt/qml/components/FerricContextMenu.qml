@@ -35,6 +35,23 @@ Item {
         popup.dismiss()
     }
 
+    function cycleCurrent(delta) {
+        if (popup.count > 0) {
+            popup.currentIndex = (popup.currentIndex + popup.count + delta)
+                    % popup.count
+        }
+    }
+
+    function activateMnemonic(actionId) {
+        var items = root.browserWindow.contextMenuItems || []
+        for (var i = 0; i < items.length; ++i) {
+            if (String(items[i].actionId || "") === actionId) {
+                root.itemActivated(items[i])
+                return
+            }
+        }
+    }
+
     Menu {
         id: popup
         objectName: "contextMenuPopup"
@@ -48,7 +65,6 @@ Item {
                         Math.max(260 * root.browserWindow.chromeScale,
                                  implicitContentWidth + leftPadding + rightPadding))
         onClosed: root.dismissed()
-
         background: Rectangle {
             color: root.browserWindow.panelColor
             border.color: root.browserWindow.borderColor
@@ -100,5 +116,66 @@ Item {
                 popup.removeItem(object)
             }
         }
+    }
+
+    Shortcut {
+        enabled: popup.visible
+        sequence: "Tab"
+        context: Qt.WindowShortcut
+        onActivated: root.cycleCurrent(1)
+    }
+    Shortcut {
+        enabled: popup.visible
+        sequence: "Shift+Tab"
+        context: Qt.WindowShortcut
+        onActivated: root.cycleCurrent(-1)
+    }
+    Shortcut {
+        enabled: popup.visible
+        sequence: "A"
+        context: Qt.WindowShortcut
+        onActivated: root.activateMnemonic("hint.current")
+    }
+    Shortcut {
+        enabled: popup.visible
+        sequence: "F"
+        context: Qt.WindowShortcut
+        onActivated: root.activateMnemonic("hint.tab")
+    }
+    Shortcut {
+        enabled: popup.visible
+        sequence: "B"
+        context: Qt.WindowShortcut
+        onActivated: root.activateMnemonic("hint.tab-bg")
+    }
+    Shortcut {
+        enabled: popup.visible
+        sequence: "W"
+        context: Qt.WindowShortcut
+        onActivated: root.activateMnemonic("hint.window")
+    }
+    Shortcut {
+        enabled: popup.visible
+        sequence: "Y"
+        context: Qt.WindowShortcut
+        onActivated: root.activateMnemonic("hint.yank")
+    }
+    Shortcut {
+        enabled: popup.visible
+        sequence: "C"
+        context: Qt.WindowShortcut
+        onActivated: root.activateMnemonic("hint.clean-yank")
+    }
+    Shortcut {
+        enabled: popup.visible
+        sequence: "D"
+        context: Qt.WindowShortcut
+        onActivated: root.activateMnemonic("hint.download")
+    }
+    Shortcut {
+        enabled: popup.visible
+        sequence: "E"
+        context: Qt.WindowShortcut
+        onActivated: root.activateMnemonic("hint.ephemeral")
     }
 }

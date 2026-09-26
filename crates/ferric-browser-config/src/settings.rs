@@ -210,6 +210,60 @@ pub(super) const SETTING_METADATA: &[SettingMetadata] = &[
         "normal"
     ),
     setting_metadata!(
+        "hints.chars",
+        "string",
+        "asdfghjkl",
+        GLOBAL_PROFILE_SCOPES,
+        "live",
+        "none",
+        "normal"
+    ),
+    setting_metadata!(
+        "hints.min_chars",
+        "integer",
+        "1",
+        GLOBAL_PROFILE_SCOPES,
+        "live",
+        "none",
+        "normal"
+    ),
+    setting_metadata!(
+        "hints.auto_follow",
+        "enum",
+        "full-match",
+        GLOBAL_PROFILE_SCOPES,
+        "live",
+        "none",
+        "normal"
+    ),
+    setting_metadata!(
+        "hints.unmatched",
+        "enum",
+        "hide",
+        GLOBAL_PROFILE_SCOPES,
+        "live",
+        "none",
+        "normal"
+    ),
+    setting_metadata!(
+        "hints.rapid_unmatched",
+        "enum",
+        "hide",
+        GLOBAL_PROFILE_SCOPES,
+        "live",
+        "none",
+        "normal"
+    ),
+    setting_metadata!(
+        "hints.marker_scale",
+        "number",
+        "1.0",
+        GLOBAL_PROFILE_SCOPES,
+        "live",
+        "none",
+        "normal"
+    ),
+    setting_metadata!(
         "discovery.keychain_overlay",
         "boolean",
         "true",

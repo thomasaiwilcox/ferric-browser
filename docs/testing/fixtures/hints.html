@@ -1,9 +1,43 @@
 <!doctype html>
 <html lang="en">
-  <head><meta charset="utf-8"><title>FerricBrowser hint fixture</title></head>
+  <head>
+    <meta charset="utf-8"><title>FerricBrowser hint fixture</title>
+    <style>
+      body { min-height: 1600px; }
+      .overlap { position: absolute; top: 120px; left: 20px; }
+      .overlap.second { left: 24px; top: 124px; }
+      .clip { width: 90px; height: 36px; overflow: hidden; margin-top: 80px; }
+      .clip button { margin-top: 28px; }
+      .scroller { width: 180px; height: 60px; overflow: auto; }
+      .scroller > div { height: 240px; }
+    </style>
+  </head>
   <body>
     <a href="https://example.test/one">One</a>
     <button type="button">Button</button>
     <label>Search <input aria-label="Search"></label>
+    <select aria-label="Section"><option>Docs</option></select>
+    <textarea aria-label="Notes"></textarea>
+    <div contenteditable="true" aria-label="Editor">Editable</div>
+    <button class="overlap" type="button">Dense first</button>
+    <button class="overlap second" type="button">Dense second</button>
+    <div class="clip"><button type="button">Partly clipped</button></div>
+    <button type="button" disabled>Disabled</button>
+    <div inert><button type="button">Inert</button></div>
+    <img src="https://example.test/image.png" alt="Reference image">
+    <video src="https://example.test/video.mp4" aria-label="Reference video" controls></video>
+    <audio src="https://example.test/audio.ogg" aria-label="Reference audio" controls></audio>
+    <div class="scroller" aria-label="Scrollable results"><div>Long scrollable content</div></div>
+    <iframe title="same-origin hint frame" srcdoc="<a href='https://example.test/frame'>Frame link</a><button>Frame button</button>"></iframe>
+    <div id="shadow-host"></div>
+    <div id="dynamic"></div>
+    <script>
+      const root = document.querySelector("#shadow-host").attachShadow({mode: "open"});
+      root.innerHTML = "<button type='button' aria-label='Shadow button'>Shadow</button>";
+      setTimeout(function() {
+        document.querySelector("#dynamic").innerHTML =
+          "<a href='https://example.test/dynamic'>Dynamic link</a>";
+      }, 150);
+    </script>
   </body>
 </html>

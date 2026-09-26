@@ -7,6 +7,7 @@ This table is generated from the built-in binding registry. Configuration overri
 | `normal` | `+` | `zoom in` |
 | `normal` | `-` | `zoom out` |
 | `normal` | `.` | `repeat` |
+| `normal` | `; a` | `hint --target choose all` |
 | `normal` | `; b` | `hint --target tab-bg all` |
 | `normal` | `; d` | `hint --target download links` |
 | `normal` | `; f` | `hint --target tab all` |
@@ -78,6 +79,7 @@ This table is generated from the built-in binding registry. Configuration overri
 | `normal` | `g b` | `bookmark-open` |
 | `normal` | `g f` | `view-source` |
 | `normal` | `g g` | `scroll-to top` |
+| `normal` | `g i` | `hint --first inputs` |
 | `normal` | `g o` | `open-current` |
 | `normal` | `g t` | `switcher --scope tabs` |
 | `normal` | `h` | `scroll left` |

@@ -1211,11 +1211,24 @@ GridLayout {
         }
     }
 
+    Timer {
+        interval: 80
+        repeat: true
+        running: browserUi.hint_visible
+        onTriggered: window.pollHintRefresh()
+    }
+
     FerricHintOverlay {
+        id: hintOverlaySurface
         anchors.fill: webViews
         browserWindow: window
         hintsVisible: browserUi.hint_visible
         hintResults: window.hintResults
+        sourceViewport: window.hintViewport
+        hintState: window.hintState
+        unmatchedPolicy: browserUi.hint_unmatched_policy
+        markerScale: browserUi.hint_marker_scale
+        collisionRotation: window.hintCollisionRotation
         onActivationRequested: function(label) { window.activateHint(label) }
         onActionsRequested: function(label) { window.showHintActions(label) }
     }

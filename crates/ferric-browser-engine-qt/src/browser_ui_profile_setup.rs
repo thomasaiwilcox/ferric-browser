@@ -154,6 +154,7 @@ impl qobject::BrowserUi {
             .update_chrome_preferences(&presentation_config);
         self.as_mut()
             .update_feature_preferences(&presentation_config);
+        self.as_mut().update_hint_preferences(&presentation_config);
         self.as_mut().update_settings_presentation(&config);
         let hyprland_config = serde_json::from_value::<ferric_browser_config::HyprlandConfig>(
             config.get("hyprland").cloned().unwrap_or(Value::Null),
@@ -310,11 +311,18 @@ impl qobject::BrowserUi {
             this.hint_visible = false;
             this.hint_links_only = false;
             this.hint_rapid = false;
+            this.hint_family = QString::from("all");
+            this.hint_unmatched_policy = QString::from("hide");
+            this.hint_marker_scale = 1.0;
             this.hint_rapid_target = "current".into();
             this.hint_script = None;
+            this.hint_first = false;
+            this.hint_index = 1;
             this.hint_rapid_tabs_created = 0;
             this.caret_selecting = false;
             this.hint_session = None;
+            this.hint_interaction = None;
+            this.hint_consumed.clear();
             this.config = config;
             this.base_config = base_config;
             this.learning_mode = this
@@ -413,6 +421,7 @@ impl qobject::BrowserUi {
         };
         self.as_mut()
             .set_config_json(QString::from(effective_config_json));
+        self.as_mut().update_hint_preferences(&presentation_config);
         self.as_mut()
             .set_desktop_portal_mode(QString::from(desktop_portal_mode));
         let learning_mode = self.as_ref().rust().learning_mode;

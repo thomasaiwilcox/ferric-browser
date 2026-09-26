@@ -1418,7 +1418,7 @@ fn command_argument_is_flag(command: &str, argument: &str) -> bool {
         "tab-close" => matches!(argument, "id" | "count"),
         "tab-move" => argument == "context",
         "window-new" => argument == "profile",
-        "hint" => matches!(argument, "target" | "rapid" | "script"),
+        "hint" => matches!(argument, "target" | "rapid" | "script" | "first" | "index"),
         "yank" => matches!(argument, "clean" | "primary"),
         "history-clear" => matches!(argument, "since" | "origin"),
         "session-load" => argument == "append",

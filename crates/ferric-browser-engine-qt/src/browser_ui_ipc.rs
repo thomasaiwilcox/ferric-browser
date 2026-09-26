@@ -720,10 +720,12 @@ impl qobject::BrowserUi {
             self.as_ref().validate_ipc_route(route)?;
             let options = parse_hint_options(&command)?;
             self.as_mut().set_hint_options(
-                options.links_only,
+                &options.family,
                 options.rapid,
                 &options.target,
                 options.script.as_deref(),
+                options.first,
+                options.index,
             );
             return Ok(serde_json::json!({"status": "accepted", "mode": "hint"}));
         }

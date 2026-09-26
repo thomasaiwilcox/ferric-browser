@@ -1249,17 +1249,29 @@ FerricBrowserRuntimeChrome {
                 ui.enter_search(logicalText === "?")
             }
             handled = true
-        } else if (ui === browserUi && ui.mode === "hint"
-                   && logicalText.length === 1) {
-            window.hintInput += logicalText.toLowerCase()
-            var matches = window.hintResults.filter(function(candidate) {
-                return candidate.label.indexOf(window.hintInput) === 0
-            })
-            if (matches.length === 1 && matches[0].label === window.hintInput) {
-                window.activateHint(matches[0].label)
-            } else if (matches.length === 0) {
-                window.hintInput = ""
-                ui.status_text = "Unknown hint label"
+        } else if (ui === browserUi && ui.mode === "hint") {
+            var control = (event.modifiers & Qt.ControlModifier) !== 0
+            var shift = (event.modifiers & Qt.ShiftModifier) !== 0
+            if (control && event.key === Qt.Key_U) {
+                window.applyHintInteraction("clear", "")
+            } else if (event.key === Qt.Key_Backspace) {
+                window.applyHintInteraction("backspace", "")
+            } else if (event.key === Qt.Key_Tab || event.key === Qt.Key_Right
+                       || event.key === Qt.Key_Down) {
+                window.applyHintInteraction(shift ? "previous" : "next", "")
+            } else if (event.key === Qt.Key_Backtab || event.key === Qt.Key_Left
+                       || event.key === Qt.Key_Up) {
+                window.applyHintInteraction("previous", "")
+            } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                window.applyHintInteraction("activate", "")
+            } else if (control && event.key === Qt.Key_Space) {
+                window.applyHintInteraction("rotate", "")
+            } else if (logicalText === "/" && window.hintState.mode === "label") {
+                window.applyHintInteraction("text-mode", "")
+            } else if (logicalText === " " && window.hintState.mode === "label") {
+                window.applyHintInteraction("rotate", "")
+            } else if (logicalText.length === 1) {
+                window.applyHintInteraction("character", logicalText)
             }
             handled = true
         } else if (ui.mode === "caret" && logicalText.length === 1) {

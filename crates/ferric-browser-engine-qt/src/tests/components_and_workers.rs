@@ -449,6 +449,7 @@ fn hint_overlay_component_renders_candidates_and_emits_root_owned_intents() {
     let qml = include_str!("../../qml/components/FerricHintOverlay.qml");
     let composition_root = QML_SOURCE;
     assert!(qml.contains("required property var hintResults"));
+    assert!(qml.contains("required property var sourceViewport"));
     assert!(qml.contains("signal activationRequested(string label)"));
     assert!(qml.contains("signal actionsRequested(string label)"));
     assert!(!qml.contains("browserUi."));
@@ -799,6 +800,33 @@ fn one_shot_background_hints_use_the_background_route_and_exit_hint_mode() {
 }
 
 #[test]
+fn rapid_download_hints_queue_the_validated_download_and_keep_hint_mode() {
+    let source = include_str!("../browser_ui_navigation.rs");
+    let policy = include_str!("../hint_policy.rs");
+    let rapid_dispatch = source
+        .split("if self.as_ref().rust().hint_rapid {")
+        .nth(1)
+        .expect("rapid hint dispatch")
+        .split("} else if self.as_ref().rust().hint_rapid_target == \"yank\"")
+        .next()
+        .expect("rapid hint dispatch boundary");
+
+    let download = rapid_dispatch
+        .split("\"download\" => {")
+        .nth(1)
+        .expect("rapid download branch")
+        .split("_ => {")
+        .next()
+        .expect("rapid download branch boundary");
+    assert!(download.contains("queue_download_request("));
+    assert!(download.contains("\"Rapid hint download queued\""));
+    assert!(download.contains("\"action\"] = Value::String(\"download\".into())"));
+    assert!(policy.contains(
+        "Some(\"yank\" | \"clean-yank\" | \"tab-bg\" | \"userscript\" | \"download\")"
+    ));
+}
+
+#[test]
 fn foreground_hints_complete_directly_without_redispatching_a_normal_mode_command() {
     let source = include_str!("../browser_ui_navigation.rs");
     let foreground = source
@@ -828,6 +856,30 @@ fn foreground_hints_complete_directly_without_redispatching_a_normal_mode_comman
         .next()
         .expect("foreground hint selection boundary");
     assert!(selection.contains("open_hint_in_foreground_tab(target.tab, &url)"));
+}
+
+#[test]
+fn completed_hints_pop_the_core_mode_stack() {
+    let source = include_str!("../browser_ui_navigation.rs");
+    let completion = source
+        .split("let keeps_hint_mode = rapid_hint_keeps_mode(")
+        .nth(1)
+        .expect("hint completion policy")
+        .split("pub(super) fn confirm_rapid_hint_tabs")
+        .next()
+        .expect("hint completion boundary");
+
+    let normal_completion = completion
+        .split("} else if !palette_open {")
+        .nth(1)
+        .expect("non-rapid completion branch");
+    let pop = normal_completion
+        .find("Event::PopMode { window }")
+        .expect("core hint mode pop");
+    let project = normal_completion
+        .find("set_core_mode(Mode::Normal)")
+        .expect("normal mode projection");
+    assert!(pop < project, "the core stack must leave Hint before projecting Normal");
 }
 
 #[test]

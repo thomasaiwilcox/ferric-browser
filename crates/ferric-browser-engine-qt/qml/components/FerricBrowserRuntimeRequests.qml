@@ -18,6 +18,10 @@ FerricBrowserRuntimePresentation {
         target: browserUi
         function onActive_tab_indexChanged() {
             window.noteTabActivity()
+            if (window.hintTrackingView
+                    && window.activeWebView() !== window.hintTrackingView) {
+                window.closeHints()
+            }
         }
         function onTab_countChanged() {
             window.noteTabActivity()
@@ -55,6 +59,7 @@ FerricBrowserRuntimePresentation {
             if (browserUi.mode === "hint") {
                 window.startHintCollection()
             } else {
+                window.stopHintTracking()
                 if (browserUi.mode !== "caret") {
                     window.caretSelecting = false
                 }
@@ -63,6 +68,11 @@ FerricBrowserRuntimePresentation {
                     window.hintResults = []
                     window.hintInput = ""
                 }
+            }
+        }
+        function onHint_visibleChanged() {
+            if (!browserUi.hint_visible) {
+                window.stopHintTracking()
             }
         }
         function onConfig_jsonChanged() {

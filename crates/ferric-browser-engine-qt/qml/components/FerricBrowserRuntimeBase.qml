@@ -1643,7 +1643,14 @@ ApplicationWindow {
     property int libraryTotalEntries: 0
     property bool linkPreviewVisible: false
     property var hintResults: []
+    property var hintViewport: ({ width: 0, height: 0 })
     property string hintInput: ""
+    property var hintState: ({ mode: "label", prefix: "", query: "", matching_labels: [], active_label: "", remaining: 0, total: 0 })
+    property int hintDirtyRevision: 0
+    property bool hintRefreshPending: false
+    property int hintCollectionEpoch: 0
+    property int hintCollisionRotation: 0
+    property var hintTrackingView: null
     property bool rapidHintConfirmationVisible: false
     property string copiedText: ""
     property string copiedValue: ""

@@ -47,6 +47,7 @@ mod browser_ui_command_workflows;
 mod browser_ui_configuration;
 mod browser_ui_content_tools;
 mod browser_ui_context_commands;
+mod browser_ui_context_navigation;
 mod browser_ui_contexts;
 mod browser_ui_controls;
 mod browser_ui_downloads_permissions;
@@ -221,7 +222,9 @@ use effect_projection::{engine_action_name, restore_entry_line};
 use feature_preferences::FeaturePreferences;
 use focus_policy::{FocusObservation, focus_mode_transition};
 use hint_payload::{hint_json, hint_kind_name, parse_hint_candidate, parse_hint_payload};
-use hint_policy::{external_hint_target, parse_hint_options, rapid_hint_keeps_mode};
+use hint_policy::{
+    external_hint_target, hint_uses_url_action, parse_hint_options, rapid_hint_keeps_mode,
+};
 use input_validation::{
     is_bounded_journey_query, is_bounded_untrusted_text, validate_jseval_script,
 };
@@ -516,6 +519,9 @@ mod qobject {
         #[qproperty(bool, hint_visible)]
         #[qproperty(bool, hint_links_only)]
         #[qproperty(bool, hint_rapid)]
+        #[qproperty(QString, hint_family)]
+        #[qproperty(QString, hint_unmatched_policy)]
+        #[qproperty(f64, hint_marker_scale)]
         #[qproperty(bool, caret_selecting)]
         #[qproperty(QString, caret_request_token)]
         #[qproperty(QString, caret_request_operation)]
@@ -873,6 +879,13 @@ mod qobject {
 
         #[qinvokable]
         fn begin_hint_session(self: Pin<&mut BrowserUi>, candidates_json: &QString) -> QString;
+
+        #[qinvokable]
+        fn update_hint_interaction(
+            self: Pin<&mut BrowserUi>,
+            action: &QString,
+            text: &QString,
+        ) -> QString;
 
         #[qinvokable]
         fn select_hint(
@@ -1440,11 +1453,13 @@ use ferric_browser_core::{
     ActionDefinition, ActionRegistry, ActionSource, BindingOutcome, BindingResolver, BindingTrie,
     CleanLinkResult, CommandInvocation, CommandRegistry, CommandSource, CompletionCandidate,
     CompletionCategory, DEFAULT_COMPLETION_LIMIT, Diagnostic, DispatchTarget, Effect, EngineEffect,
-    Event, ExistenceState, HintKind, HintSession, HintTarget, IdSource, JourneyEdgeKind,
-    JourneyNodeId, LoadingState, Mode, NavigationContext, NavigationError, NavigationSource,
-    ParseInput, ParsedCommand, PrivacyKind, ResourceLifecycle, SearchCase, TabId, TabTransfer,
-    Target, ValidatedUrl, WindowId, assign_labels, canonical_origin, clean_link, complete,
-    parse_chain, resolve_input, switcher_rank, tokenize_switcher_query,
+    Event, ExistenceState, HintAutoFollow as CoreHintAutoFollow, HintInteraction,
+    HintInteractionInput, HintInteractionOutcome, HintKind, HintSession, HintTarget, IdSource,
+    JourneyEdgeKind, JourneyNodeId, LoadingState, Mode, NavigationContext, NavigationError,
+    NavigationSource, ParseInput, ParsedCommand, PrivacyKind, ResourceLifecycle, SearchCase, TabId,
+    TabTransfer, Target, ValidatedUrl, WindowId, assign_labels_with_options, canonical_origin,
+    clean_link, complete, parse_chain, refresh_labels, resolve_input, switcher_rank,
+    tokenize_switcher_query,
 };
 use ferric_browser_ipc::{
     EventNotification, PublicError, Request, Response, has_pending_requests,
@@ -1669,8 +1684,13 @@ pub struct BrowserUiRust {
     hint_visible: bool,
     hint_links_only: bool,
     hint_rapid: bool,
+    hint_family: QString,
+    hint_unmatched_policy: QString,
+    hint_marker_scale: f64,
     hint_rapid_target: String,
     hint_script: Option<String>,
+    hint_first: bool,
+    hint_index: usize,
     hint_rapid_tabs_created: u8,
     pending_hint_action: Option<String>,
     caret_selecting: bool,
@@ -1706,6 +1726,8 @@ pub struct BrowserUiRust {
     userscript_completions: Arc<Mutex<Vec<UserscriptCompletion>>>,
     userscript_cancellations: Arc<Mutex<BTreeMap<String, Arc<AtomicBool>>>>,
     hint_session: Option<HintSession>,
+    hint_interaction: Option<HintInteraction>,
+    hint_consumed: BTreeSet<(String, u32)>,
     hint_ids: IdSource,
     config_json: QString,
     settings_rows: QVariant,
@@ -2294,8 +2316,13 @@ impl Default for BrowserUiRust {
             hint_visible: false,
             hint_links_only: false,
             hint_rapid: false,
+            hint_family: QString::from("all"),
+            hint_unmatched_policy: QString::from("hide"),
+            hint_marker_scale: 1.0,
             hint_rapid_target: "current".into(),
             hint_script: None,
+            hint_first: false,
+            hint_index: 1,
             hint_rapid_tabs_created: 0,
             pending_hint_action: None,
             caret_selecting: false,
@@ -2330,6 +2357,8 @@ impl Default for BrowserUiRust {
             userscript_completions: Arc::new(Mutex::new(Vec::new())),
             userscript_cancellations: Arc::new(Mutex::new(BTreeMap::new())),
             hint_session: None,
+            hint_interaction: None,
+            hint_consumed: BTreeSet::new(),
             hint_ids: IdSource::new(),
             config_json: QString::from(
                 serde_json::to_string(&Config::default()).unwrap_or_else(|_| "{}".into()),
