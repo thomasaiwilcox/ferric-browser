@@ -503,7 +503,7 @@ impl CommandRegistry {
                 normal.clone(),
                 CountPolicy::Supported { maximum: 9_999 },
                 false,
-                "Scroll the focused page container in one direction.",
+                "Scroll the resolved page scroll target in one direction.",
             ),
             definition(
                 "scroll-page",
@@ -511,7 +511,7 @@ impl CommandRegistry {
                 normal.clone(),
                 CountPolicy::Supported { maximum: 9_999 },
                 false,
-                "Scroll the focused page container by viewport pages.",
+                "Scroll the resolved page scroll target by viewport pages.",
             ),
             definition(
                 "scroll-to",
@@ -519,7 +519,7 @@ impl CommandRegistry {
                 normal.clone(),
                 CountPolicy::NotSupported,
                 false,
-                "Scroll the focused page container to its top or bottom.",
+                "Scroll the resolved page scroll target to its top or bottom.",
             ),
             definition(
                 "scroll-target",

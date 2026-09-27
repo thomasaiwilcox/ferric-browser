@@ -28,6 +28,7 @@ status-bar feedback used when the configured status bar is otherwise hidden.
 | Select two-axis pane, mix `j/l/Ctrl+d/G` | Pass | Element-local incremental, half-page, and edge scripts moved the selected pane. |
 | Selected pane with nonzero `scrollLeft`, `gg`/`G` | Pass | Both vertical edge operations preserved the pane's horizontal offset. |
 | Focus input A, select pane B | Pass | `document.activeElement` remained `input-a`; assignment did not call focus. |
+| Clear the Hint map, force Chromium GC twice, then `j` | Pass (live QtWebEngine) | The still-connected weak target remained dereferenceable. Pane A moved from 0 to 40 while pane B and the document remained at 0, and policy stayed `element`. |
 | Remove selected pane, `j` | Pass | Policy changed to automatic and the same operation moved the focus-resolved pane A. |
 | Hide selected pane, `j` | Pass | Same-operation automatic fallback moved pane A. |
 | Remove all overflow, `j` | Pass | Same-operation automatic fallback moved pane A. |
@@ -36,12 +37,16 @@ status-bar feedback used when the configured status bar is otherwise hidden.
 | `scroll-target document` with focus in pane | Pass | The document moved while pane A stayed at its prior position. |
 | `scroll-target auto` | Pass | Focus-aware pane scrolling resumed; page status object reported `auto`. |
 | `scroll-target status` in every state | Pass (runtime + native selected-region check) | Page status objects were checked for element, document, automatic, and invalidated-to-automatic states. The native `:scroll-target status` command displayed the selected-region notice; source-boundary assertions cover the exact selected region/document/automatic mapping. |
+| `scroll-target document ;; tab-next` | Pass (adapter regression + native host) | The queued action carries tab A's stable ID; QML resolved that ID after tab B became active. Native inspection reported A=`document`, B=`auto`. Crossed `document`/`auto` chains then reported A=`auto`, B=`document`. |
+| `scroll-target status ;; tab-next` with different tab policies | Pass (adapter regression + native host) | The command issued from document-policy tab B, switched to automatic-policy tab A, and still displayed `Scroll target: document`. |
+| Policy action after its issuing tab has no view | Pass (source boundary) | Stable-ID resolution yields no view and reaches the visible `Scroll target unavailable: no active page` path before the generic active-view guard. |
 | Select same-origin frame/shadow target | Pass | The exact shadow pane and `srcdoc` frame pane each moved. |
 | Select frame pane, replace its same-origin document, then press `j` | Pass | Old frame target invalidated; the same scroll operation returned automatic. |
 | After remove, hide, overflow-loss, adoption, or frame invalidation, check status | Pass | Each invalid target reported automatic after invalidation. |
 | Reload after selection | Pass (page-world runtime) | The generated scrollables collector and frame-aware setter selected pane B; after reload, a fresh isolated world reported automatic. Native Ferric reload/key dispatch was not driven. |
 | Navigate after selection | Pass (page-world runtime) | After selecting pane B, top-level navigation to the same deterministic fixture with a query string created a fresh isolated world whose status was automatic. Native Ferric navigation/key dispatch was not driven. |
-| Switch tabs | Pass (page-world runtime) | Two independent Chromium page targets held element and document policies; activating each target preserved only its own document policy. This did not exercise Ferric chrome's native tab selector. |
+| Switch tabs | Pass (page-world runtime + native command chain) | Two independent Chromium page targets held separate policies. Native `tab-next` chains preserved the issuing tab's policy action while activating the other tab. |
+| 100 paced native `j` inputs with an explicit target | Pass (native host performance watch) | All inputs completed in 2.14 seconds including a configured 15 ms per-key injection delay. Pane A reached its exact 470 px maximum, pane B/document remained at 0, policy stayed `element`, and the renderer immediately answered a follow-up probe. |
 | Restore a session | Pass by construction + fresh-world runtime | `SessionTab` persists URL, pinned/muted, zoom, and document scroll position only; restore creates tabs and navigates them. The generated runtime test verified a fresh document world starts automatic. A Ferric-native saved-session restore UI workflow was not driven. |
 
 Cross-origin frame contents remain excluded: collection and exact element
@@ -59,6 +64,14 @@ synthesize Ferric's native `;s` / `;S` key events or drive the native reload,
 tab-selector, or saved-session UI workflows. The latter's automatic-reset
 contract is supported by the session schema/restore path and fresh-world
 runtime evidence, rather than a native restore interaction.
+
+The weak-reference stress check selected the collector-provided pane A record,
+ran the production target setter, cleared the Hint tracking map, invoked
+Chromium's `HeapProfiler.collectGarbage` twice, and only then ran the production
+scroll expression. The connected element remained available through its weak
+reference and moved without another strong handle being retained by the test
+harness. DevTools was enabled only on the disposable qualification instance;
+production remote debugging remains disabled.
 
 The native host run also caught and verified a re-entrancy regression: Rust
 originally left Hint mode synchronously, which made QML clear the page-side

@@ -40,6 +40,7 @@ For explicit target selection, the locked core/IPC/Qt and CLI test targets,
 workspace verifier, warning-denied Clippy, generated docs, build, adapter smoke,
 and formatting gates passed on 2026-09-26. The direct Chromium fixture matrix
 is recorded in [`explicit-scroll-target.md`](explicit-scroll-target.md).
-Native Wayland startup passed, but interactive qualification was not run
-because the compositor lacks the virtual-keyboard protocol required for input
-injection; this is not counted as a native interaction pass.
+The nested Wayland compositor still lacks the virtual-keyboard protocol needed
+for input injection. A later host-Wayland run drove the native `;s`, `;S`, `j`,
+status, and stable-tab command-chain paths; its results are recorded in the
+explicit scroll-target qualification linked above.

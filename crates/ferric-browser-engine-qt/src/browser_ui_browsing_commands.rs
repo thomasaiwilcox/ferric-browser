@@ -1,6 +1,6 @@
 use super::{
     CommandRegistry, CxxQtType, Event, ExistenceState, JourneyEdgeKind, Mode, ParsedCommand, Pin,
-    QString, ScrollTargetAction, SearchCase, ValidatedUrl, Value, current_target,
+    QString, ScrollTargetAction, SearchCase, TabId, ValidatedUrl, Value, current_target,
     is_bounded_untrusted_text, is_safe_history_url, parse_scroll_options,
     parse_scroll_target_options, parse_search_next_options, qobject, safe_ipc_url,
 };
@@ -16,6 +16,7 @@ pub(super) fn dispatch_scroll_target_command(
     registry: &CommandRegistry,
     core_mode: Mode,
     hint_chrome_available: bool,
+    target_tab: Option<TabId>,
     mut apply_effect: impl FnMut(ScrollTargetEffect),
 ) -> Result<Value, String> {
     registry
@@ -37,8 +38,9 @@ pub(super) fn dispatch_scroll_target_command(
             "mode": "hint"
         }));
     }
+    let tab_id = target_tab.map_or_else(String::new, |tab| tab.to_string());
     apply_effect(ScrollTargetEffect::QueueEngineAction(format!(
-        "scroll-target\t{action_name}"
+        "scroll-target\t{tab_id}\t{action_name}"
     )));
     Ok(serde_json::json!({
         "status": "accepted",
@@ -554,11 +556,15 @@ impl qobject::BrowserUi {
         let registry = self.as_ref().rust().registry.clone();
         let core_mode = self.as_ref().rust().core_mode;
         let hint_chrome_available = self.as_ref().rust().hint_chrome_available;
+        let target_tab = self
+            .as_ref()
+            .tab_for_index(self.as_ref().rust().active_tab_index);
         dispatch_scroll_target_command(
             command,
             &registry,
             core_mode,
             hint_chrome_available,
+            target_tab,
             |effect| match effect {
                 ScrollTargetEffect::StartHints => {
                     self.as_mut()

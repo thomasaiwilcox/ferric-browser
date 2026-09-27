@@ -903,9 +903,13 @@ function onContext_workspaceChanged() {
         }
         if (action.indexOf("scroll-target\t") === 0) {
             var scrollTargetParts = action.split("\t")
+            var scrollTargetIndex = scrollTargetParts.length === 3
+                    ? secondaryUi.tab_index_for_id(scrollTargetParts[1]) : -1
+            var scrollTargetView = scrollTargetIndex === 0
+                    ? secondaryWindow.activeView : null
             rootWindow.applyScrollTargetAction(
-                secondaryUi, secondaryWindow.activeView,
-                scrollTargetParts.length === 2 ? scrollTargetParts[1] : "",
+                secondaryUi, scrollTargetView,
+                scrollTargetParts.length === 3 ? scrollTargetParts[2] : "",
                 secondaryWindow)
             return
         }

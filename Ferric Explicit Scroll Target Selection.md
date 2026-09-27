@@ -655,8 +655,21 @@ Its responsibilities are limited to:
 - registry validation;
 - exact action parsing through `command_options`;
 - entering Hint mode for `select`;
-- queuing a bounded engine-action string for the other three actions;
+- capturing the issuing tab's stable `TabId` and queuing it with the bounded
+  engine-action string for the other three actions;
 - returning a bounded JSON acknowledgement.
+
+The internal action shape is:
+
+```text
+scroll-target<TAB>TAB_ID<TAB>auto|document|status
+```
+
+QML resolves `TAB_ID` back to the exact owning view when it consumes the
+action. It must not use whichever tab is active at consumption time; command
+chains such as `scroll-target document ;; tab-next` may change that tab first.
+If the captured tab no longer resolves to a view, use the normal visible
+no-active-page error path.
 
 Use these acknowledgement shapes:
 
@@ -947,12 +960,14 @@ arguments, exact object identity, and revalidation are the boundaries.
 
 ### 15.15 `FerricBrowserRuntimeSurface.qml`
 
-- consume `scroll-target\tACTION` pending actions for the primary view through
-  the shared helper.
+- consume `scroll-target\tTAB_ID\tACTION` pending actions by resolving the
+  stable tab ID to its primary view, before the generic active-view guard, and
+  pass that view through the shared helper.
 
 ### 15.16 `FerricBrowserWindow.qml`
 
-- consume non-Hint policy/status actions for the secondary active view through
+- consume non-Hint policy/status actions only when their stable tab ID resolves
+  to the secondary view, then route that view through
   the same helper;
 - set `secondaryUi.hint_chrome_available: false` and preserve the existing
   full-chrome restriction for `select`.
@@ -1087,6 +1102,7 @@ Perform and record this matrix in a new evidence file,
 | Select two-axis pane, mix `j/l/Ctrl+d/G` | every command owns that pane |
 | Selected pane with nonzero `scrollLeft`, `gg`/`G` | vertical edge changes; `scrollLeft` is preserved |
 | Focus input A, select pane B | input A remains `document.activeElement` |
+| Clear the Hint map, force Chromium GC, then `j` | connected weak target remains selected and moves |
 | Remove selected pane, `j` | policy becomes auto; same command uses automatic target |
 | Hide selected pane, `j` | same invalidation/fallback behavior |
 | Remove all overflow, `j` | same invalidation/fallback behavior |
@@ -1095,6 +1111,8 @@ Perform and record this matrix in a new evidence file,
 | `scroll-target document` with focus in pane | only document scrolls |
 | `scroll-target auto` | focus-aware behavior resumes |
 | `scroll-target status` in every state | exact status text |
+| `scroll-target document ;; tab-next` | tab A becomes document policy; tab B becomes active and remains unchanged |
+| `scroll-target auto/status ;; tab-next` | action/status is resolved against the issuing tab, not the newly active tab |
 | Select same-origin frame/shadow target | exact selected element moves |
 | Select the frame's pane, then navigate or replace that frame document and press `j` | old target invalidates; same command resolves once through automatic policy |
 | After each remove, hide, overflow-loss, adoption, or frame-document invalidation, run `scroll-target status` | exact status is `Scroll target: automatic` |
@@ -1102,6 +1120,7 @@ Perform and record this matrix in a new evidence file,
 | Navigate after selection | new document reports automatic |
 | Switch tabs | each document's ephemeral policy is independent |
 | Restore a session | restored documents start automatic |
+| 100 paced `j` inputs with an explicit target | all inputs complete, policy remains element, and the renderer remains responsive |
 
 Explicitly note the existing exclusion for cross-origin frame contents.
 
