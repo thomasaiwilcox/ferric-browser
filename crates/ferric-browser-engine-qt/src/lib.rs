@@ -191,13 +191,15 @@ use browser_ui_state::{
 };
 use chrome_preferences::ChromePreferences;
 use command_options::{
-    command_count as ipc_command_count, history_clear as parse_history_clear_arguments,
-    is_link_clean as is_link_clean_command, is_reopen_in_window as is_reopen_in_window_command,
-    is_scroll as is_scroll_command, is_search_next as is_search_next_command,
+    ScrollTargetAction, command_count as ipc_command_count,
+    history_clear as parse_history_clear_arguments, is_link_clean as is_link_clean_command,
+    is_reopen_in_window as is_reopen_in_window_command, is_scroll as is_scroll_command,
+    is_scroll_target as is_scroll_target_command, is_search_next as is_search_next_command,
     is_tab_clone as is_tab_clone_command, is_tab_detach as is_tab_detach_command,
     is_tab_give as is_tab_give_command, is_tab_undo as is_tab_undo_command,
     is_yank as is_yank_command, is_zoom as is_zoom_command, scroll as parse_scroll_options,
-    search_next as parse_search_next_options, selection_yank_command,
+    scroll_target as parse_scroll_target_options, search_next as parse_search_next_options,
+    selection_yank_command,
 };
 use config_projection::{
     config_value_at_path, configured_editor_argv, runtime_override_value, toml_string_array_literal,
@@ -522,6 +524,7 @@ mod qobject {
         #[qproperty(bool, hint_rapid)]
         #[qproperty(QString, hint_family)]
         #[qproperty(QString, hint_unmatched_policy)]
+        #[qproperty(bool, hint_chrome_available)]
         #[qproperty(f64, hint_marker_scale)]
         #[qproperty(bool, spatial_visible)]
         #[qproperty(bool, spatial_selecting)]
@@ -1731,6 +1734,7 @@ pub struct BrowserUiRust {
     hint_rapid: bool,
     hint_family: QString,
     hint_unmatched_policy: QString,
+    hint_chrome_available: bool,
     hint_marker_scale: f64,
     hint_rapid_target: String,
     hint_script: Option<String>,
@@ -2382,6 +2386,7 @@ impl Default for BrowserUiRust {
             hint_rapid: false,
             hint_family: QString::from("all"),
             hint_unmatched_policy: QString::from("hide"),
+            hint_chrome_available: true,
             hint_marker_scale: 1.0,
             hint_rapid_target: "current".into(),
             hint_script: None,

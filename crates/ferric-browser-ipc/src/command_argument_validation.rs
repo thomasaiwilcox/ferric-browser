@@ -118,6 +118,14 @@ pub(crate) fn validate_command_arguments(
     if command == "hint" {
         validate_hint_arguments(arguments)?;
     }
+    if command == "scroll-target"
+        && !arguments
+            .get("action")
+            .and_then(Value::as_str)
+            .is_some_and(|action| matches!(action, "select" | "auto" | "document" | "status"))
+    {
+        return Err("command argument action must be select, auto, document, or status".into());
+    }
     Ok(())
 }
 

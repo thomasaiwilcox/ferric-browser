@@ -1208,6 +1208,43 @@ fn cli_navigation_and_configuration_commands_use_typed_arguments() {
 }
 
 #[test]
+fn cli_scroll_target_actions_round_trip_through_the_shared_ipc_codec() {
+    for action in ["select", "auto", "document", "status"] {
+        let parsed = parse_chain(&format!("scroll-target {action}"), ParseInput::Cli)
+            .expect("CLI scroll-target command")
+            .pop()
+            .expect("one parsed command");
+        let params = command_params(&parsed).expect("typed scroll-target parameters");
+        assert_eq!(params["arguments"], serde_json::json!({"action": action}));
+        assert_eq!(
+            ferric_browser_ipc::decode_command_invocation(&params)
+                .expect("decode scroll-target command")
+                .command,
+            parsed
+        );
+    }
+
+    for input in [
+        "scroll-target",
+        "scroll-target auto status",
+        "scroll-target element",
+    ] {
+        let parsed = parse_chain(input, ParseInput::Cli)
+            .expect("invalid action forms still parse as tokens")
+            .pop()
+            .expect("one parsed command");
+        assert!(command_params(&parsed).is_err(), "accepted {input:?}");
+    }
+    assert!(
+        command_params(&ParsedCommand {
+            name: "scroll-target".into(),
+            arguments: vec!["auto\n".into()],
+        })
+        .is_err()
+    );
+}
+
+#[test]
 fn every_registered_command_example_has_a_typed_cli_envelope() {
     let registry = CommandRegistry::default_v1();
     let mut checked = 0;

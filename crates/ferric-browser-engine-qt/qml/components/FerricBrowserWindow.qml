@@ -491,6 +491,7 @@ ApplicationWindow {
 
     BrowserUi {
         id: secondaryUi
+        hint_chrome_available: false
         status_text: "Ready"
         onRuntime_work_available: secondaryWindow.scheduleRuntimeWork(0)
         onStatus_textChanged: {
@@ -898,6 +899,14 @@ function onContext_workspaceChanged() {
         }
         if (action === "window-close-request") {
             secondaryWindow.beginQuitRequest()
+            return
+        }
+        if (action.indexOf("scroll-target\t") === 0) {
+            var scrollTargetParts = action.split("\t")
+            rootWindow.applyScrollTargetAction(
+                secondaryUi, secondaryWindow.activeView,
+                scrollTargetParts.length === 2 ? scrollTargetParts[1] : "",
+                secondaryWindow)
             return
         }
         if (action === "tab-detach" || action.indexOf("tab-detach\t") === 0

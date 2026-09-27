@@ -1056,8 +1056,8 @@ FerricBrowserRuntimeServices {
         return BrowserScripts.hintClick(elementId)
     }
 
-    function hintSetScrollTargetScript(elementId) {
-        return BrowserScripts.hintSetScrollTarget(elementId)
+    function hintSetScrollTargetScript(elementId, framePath) {
+        return BrowserScripts.hintSetScrollTarget(elementId, framePath)
     }
 
     function startHintCollection() {
@@ -1754,33 +1754,52 @@ FerricBrowserRuntimeServices {
                 window.rapidHintConfirmationVisible = true
             } else if (result.action === "focus") {
                 var focusScript = window.hintFocusScript(result.element_id)
-                window.runBrowserScript(view, focusScript, function(value) {
+                var focusStarted = window.runBrowserScript(view, focusScript, function(value) {
+                    window.closeHints()
                     if (value !== true) {
-                        window.closeHints()
                         browserUi.status_text = "Hint focus target is no longer available"
+                        window.showCommandNotice(browserUi.status_text, true)
                         return
                     }
-                    window.hintResults = []
-                    window.hintInput = ""
                     browserUi.enter_insert()
                 })
+                if (!focusStarted) {
+                    window.closeHints()
+                    browserUi.status_text = "Hint focus target is no longer available"
+                    window.showCommandNotice(browserUi.status_text, true)
+                }
             } else if (result.action === "scroll-target") {
-                window.runBrowserScript(view, window.hintSetScrollTargetScript(result.element_id), function(value) {
-                    window.hintResults = []
-                    window.hintInput = ""
-                    browserUi.status_text = value === true
-                            ? "Scrollable hint target selected"
-                            : "Scrollable hint target is no longer available"
-                })
+                var targetScript = window.hintSetScrollTargetScript(
+                            result.element_id, result.frame_path)
+                var targetStarted = window.runBrowserScript(view, targetScript, function(value) {
+                    window.closeHints()
+                    var targetSelected = value && typeof value === "object"
+                            && value.ok === true && value.policy === "element"
+                    browserUi.status_text = targetSelected
+                            ? "Scroll target: selected region"
+                            : "Scroll target selection failed: region is no longer available"
+                    window.showCommandNotice(browserUi.status_text, !targetSelected)
+                }, window.browserScriptWorld)
+                if (!targetStarted) {
+                    window.closeHints()
+                    browserUi.status_text =
+                            "Scroll target selection failed: region is no longer available"
+                    window.showCommandNotice(browserUi.status_text, true)
+                }
             } else if (result.action === "click") {
                 var clickScript = window.hintClickScript(result.element_id)
-                window.runBrowserScript(view, clickScript, function(value) {
-                    window.hintResults = []
-                    window.hintInput = ""
+                var clickStarted = window.runBrowserScript(view, clickScript, function(value) {
+                    window.closeHints()
                     browserUi.status_text = value === true
                             ? "Hint target activated"
                             : "Hint target is no longer clickable"
+                    window.showCommandNotice(browserUi.status_text, value !== true)
                 })
+                if (!clickStarted) {
+                    window.closeHints()
+                    browserUi.status_text = "Hint target is no longer clickable"
+                    window.showCommandNotice(browserUi.status_text, true)
+                }
             } else {
                 window.hintResults = []
                 window.hintInput = ""

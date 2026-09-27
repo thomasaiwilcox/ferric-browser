@@ -862,7 +862,7 @@ fn foreground_hints_complete_directly_without_redispatching_a_normal_mode_comman
 }
 
 #[test]
-fn completed_hints_pop_the_core_mode_stack() {
+fn completed_hints_pop_the_core_mode_stack_after_page_independent_actions() {
     let source = include_str!("../browser_ui_navigation.rs");
     let completion = source
         .split("let keeps_hint_mode = rapid_hint_keeps_mode(")
@@ -873,7 +873,7 @@ fn completed_hints_pop_the_core_mode_stack() {
         .expect("hint completion boundary");
 
     let normal_completion = completion
-        .split("} else if !palette_open {")
+        .split("} else if !palette_open && !awaits_page_activation {")
         .nth(1)
         .expect("non-rapid completion branch");
     let pop = normal_completion
@@ -883,6 +883,7 @@ fn completed_hints_pop_the_core_mode_stack() {
         .find("set_core_mode(Mode::Normal)")
         .expect("normal mode projection");
     assert!(pop < project, "the core stack must leave Hint before projecting Normal");
+    assert!(completion.contains("Some(\"focus\" | \"scroll-target\" | \"click\")"));
 }
 
 #[test]

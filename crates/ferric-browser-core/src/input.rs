@@ -187,6 +187,8 @@ impl BindingTrie {
                 binding(Mode::Normal, &["f"], "hint all"),
                 binding(Mode::Normal, &["F"], "hint --target tab all"),
                 binding(Mode::Normal, &[";", "g"], "grid"),
+                binding(Mode::Normal, &[";", "s"], "scroll-target select"),
+                binding(Mode::Normal, &[";", "S"], "scroll-target auto"),
                 binding(Mode::Normal, &[";", "b"], "hint --target tab-bg all"),
                 binding(Mode::Normal, &[";", "f"], "hint --target tab all"),
                 binding(Mode::Normal, &[";", "d"], "hint --target download links"),
@@ -631,6 +633,70 @@ mod tests {
                 && binding.keys == vec!["Ctrl+u".to_owned()]
                 && binding.command == "scroll-page up --half"
         }));
+    }
+
+    #[test]
+    fn default_bindings_select_and_clear_scroll_targets() {
+        let trie = BindingTrie::default_v1(CommandRegistry::default_v1()).unwrap();
+        let definitions = trie.definitions();
+        assert!(definitions.iter().any(|binding| {
+            binding.mode == Mode::Normal
+                && binding.keys == [";", "s"]
+                && binding.command == "scroll-target select"
+        }));
+        assert!(definitions.iter().any(|binding| {
+            binding.mode == Mode::Normal
+                && binding.keys == [";", "S"]
+                && binding.command == "scroll-target auto"
+        }));
+        let mut resolver = BindingResolver::new(trie, Mode::Normal);
+        assert!(matches!(
+            resolver.feed(";", 0),
+            BindingOutcome::Pending { .. }
+        ));
+        assert_eq!(
+            resolver.feed("s", 1),
+            BindingOutcome::Execute {
+                command: "scroll-target select".into(),
+                count: 1,
+            }
+        );
+        assert!(matches!(
+            resolver.feed(";", 2),
+            BindingOutcome::Pending { .. }
+        ));
+        assert_eq!(
+            resolver.feed("S", 3),
+            BindingOutcome::Execute {
+                command: "scroll-target auto".into(),
+                count: 1,
+            }
+        );
+        assert!(matches!(
+            resolver.feed(";", 4),
+            BindingOutcome::Pending { .. }
+        ));
+        assert_eq!(
+            resolver.feed("g", 5),
+            BindingOutcome::Execute {
+                command: "grid".into(),
+                count: 1,
+            }
+        );
+        assert!(matches!(
+            resolver.feed("2", 6),
+            BindingOutcome::Pending { count: 2, .. }
+        ));
+        assert!(matches!(
+            resolver.feed(";", 7),
+            BindingOutcome::Pending { count: 2, .. }
+        ));
+        assert_eq!(
+            resolver.feed("s", 8),
+            BindingOutcome::Rejected {
+                reason: "command scroll-target select does not accept a count".into(),
+            }
+        );
     }
 
     #[test]

@@ -7,12 +7,14 @@ This table is generated from the built-in binding registry. Configuration overri
 | `normal` | `+` | `zoom in` |
 | `normal` | `-` | `zoom out` |
 | `normal` | `.` | `repeat` |
+| `normal` | `; S` | `scroll-target auto` |
 | `normal` | `; a` | `hint --target choose all` |
 | `normal` | `; b` | `hint --target tab-bg all` |
 | `normal` | `; d` | `hint --target download links` |
 | `normal` | `; f` | `hint --target tab all` |
 | `normal` | `; g` | `grid` |
 | `normal` | `; r` | `hint --rapid --target tab-bg links` |
+| `normal` | `; s` | `scroll-target select` |
 | `normal` | `; y` | `hint --target yank links` |
 | `normal` | `=` | `zoom reset` |
 | `normal` | `Alt+1` | `tab-select 1` |

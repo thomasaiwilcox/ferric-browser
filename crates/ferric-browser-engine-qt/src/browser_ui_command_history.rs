@@ -285,6 +285,10 @@ mod tests {
         for name in ["reload", "zoom", "get", "version", "history-open"] {
             assert!(secondary_command_supported(&command(name, &[])), "{name}");
         }
+        assert!(secondary_command_supported(&command(
+            "scroll-target",
+            &["auto"]
+        )));
         assert!(!secondary_command_supported(&command(
             "open",
             &["--target", "window", "https://example.test"]

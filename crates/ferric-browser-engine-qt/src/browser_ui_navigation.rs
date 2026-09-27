@@ -894,6 +894,13 @@ impl qobject::BrowserUi {
             self.as_ref().rust().hint_rapid,
             result.get("action").and_then(Value::as_str),
         );
+        // Page-backed activations still need the retained Hint record after
+        // this Rust callback returns. QML closes the session after the
+        // asynchronous page script has consumed that record.
+        let awaits_page_activation = matches!(
+            result.get("action").and_then(Value::as_str),
+            Some("focus" | "scroll-target" | "click")
+        );
         let palette_open = result.get("action").and_then(Value::as_str) == Some("choose");
         if keeps_hint_mode {
             let mut rust = self.as_mut().rust_mut();
@@ -902,7 +909,7 @@ impl qobject::BrowserUi {
                 .insert((selected.frame_path.clone(), selected.element_id));
             this.hint_interaction = None;
             this.pending_hint_action = None;
-        } else if !palette_open {
+        } else if !palette_open && !awaits_page_activation {
             self.as_mut().clear_hint_session_state();
             let window = self.as_ref().rust().window;
             if let Some(window) = window {

@@ -8,7 +8,7 @@ Status: in-progress
 - Requirements: HINT-001 through HINT-005.
 - Files: `crates/ferric-browser-core/src/hints.rs`, the typed configuration and
   command/IPC models, `crates/ferric-browser-engine-qt/src/`, QML runtime
-  components, `qml/scripts/BrowserScripts.js`, and the live hint fixture.
+  components, `qml/scripts/BrowserScripts.js`, and the live hint fixtures.
 - Observable result: `f` starts the default `hint all` session; `;a` starts the
   action chooser; `gi` focuses the first input and a count such as `3gi`
   forwards `--index 3`. Candidate families cover links, inputs, buttons,
@@ -22,6 +22,25 @@ Status: in-progress
   activation. QML presents active/unmatched states, collision-aware placement,
   target outlines, status counts, mouse parity, and the applicable-action
   palette.
+
+## Explicit scroll target follow-up
+
+`scroll-target select` enters the existing Hint mode with the `scrollables`
+family. Selection stores only weak references to the exact element and its
+owner document in the isolated application world; closing the Hint session
+releases the collector's strong element map. `scroll-target document`,
+`scroll-target auto`, and `scroll-target status` expose the three distinct
+policies. Scroll ownership remains independent of DOM focus, and each operation
+checks frame reachability, composed visibility, and axis-specific scrollability
+again. The live fixture and per-case qualification evidence are maintained in
+[`explicit-scroll-target.md`](explicit-scroll-target.md).
+
+The native Wayland startup smoke passed during scroll-target qualification.
+The interactive matrix was not run through Ferric's native key path because
+the compositor lacks the virtual-keyboard protocol required by `wtype`; the
+live Chromium page-script matrix is separate evidence and is not presented as
+a native input pass.
+
 - Rapid actions remove consumed stable IDs while preserving the remaining
   labels and retain the 20-background-tab confirmation boundary. Navigation,
   stale identity, replacement, covering, or material movement fails closed.

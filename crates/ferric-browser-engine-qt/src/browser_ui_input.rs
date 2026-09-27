@@ -6,6 +6,17 @@ use super::{
 };
 
 impl qobject::BrowserUi {
+    pub(super) fn execute_command(self: Pin<&mut Self>, input: &QString) -> bool {
+        let commands = match parse_chain(&input.to_string(), ParseInput::Interactive) {
+            Ok(commands) => commands,
+            Err(error) => {
+                self.set_status_text(QString::from(error.to_string()));
+                return false;
+            }
+        };
+        self.execute_parsed_commands(commands)
+    }
+
     pub(super) fn queue_pending_engine_action(mut self: Pin<&mut Self>) {
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
@@ -37,6 +48,10 @@ impl qobject::BrowserUi {
                 }
                 let mut parsed = parsed_commands.remove(0);
                 let registry = self.as_ref().rust().registry.clone();
+                if parsed.name == "scroll-target" && count > 1 {
+                    self.set_status_text(QString::from("scroll-target does not accept a count"));
+                    return;
+                }
                 if parsed.name == "hint" && parsed.arguments.is_empty() {
                     self.as_mut().set_hint_mode_kind(true);
                     return;

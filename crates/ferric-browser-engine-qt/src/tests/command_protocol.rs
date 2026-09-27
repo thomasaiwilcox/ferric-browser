@@ -75,6 +75,112 @@ fn modal_navigation_bindings_open_an_editable_command_line() {
 }
 
 #[test]
+fn scroll_target_command_uses_the_shared_executor_and_owned_view_actions() {
+    use crate::browser_ui_browsing_commands::{
+        ScrollTargetEffect, dispatch_scroll_target_command,
+    };
+
+    let source = ADAPTER_SOURCE;
+    let qml = QML_SOURCE;
+    assert!(source.contains("pub(super) fn execute_scroll_target_command"));
+    assert!(source.contains("is_scroll_target_command(&command.name)"));
+    assert!(source.contains("context routing is not valid for scroll targeting"));
+    assert!(source.contains("hint_chrome_available"));
+    assert!(source.contains("\"scroll-target\\t{action_name}\""));
+    assert!(source.contains("ScrollTargetEffect::QueueEngineAction(action)"));
+    assert!(source.contains("set_hint_options(\"scrollables\", false, \"current\", None, false, 1)"));
+    assert!(qml.contains("window.applyScrollTargetAction("));
+    assert!(qml.contains("browserUi, webView,"));
+    assert!(qml.contains("secondaryUi, secondaryWindow.activeView,"));
+    assert!(qml.contains("id: secondaryUi"));
+    assert!(qml.contains("hint_chrome_available: false"));
+
+    let select = ParsedCommand {
+        name: "scroll-target".into(),
+        arguments: vec!["select".into()],
+    };
+    let registry = CommandRegistry::default_v1();
+    let mut mode = Mode::Normal;
+    let mut queued_actions = Vec::new();
+    let result = dispatch_scroll_target_command(
+        &select,
+        &registry,
+        mode,
+        true,
+        |effect| match effect {
+            ScrollTargetEffect::StartHints => mode = Mode::Hint,
+            ScrollTargetEffect::QueueEngineAction(action) => queued_actions.push(action),
+        },
+    )
+    .expect("full-chrome selection should enter Hint mode");
+    assert_eq!(
+        result,
+        serde_json::json!({
+            "status": "accepted",
+            "action": "select",
+            "mode": "hint"
+        })
+    );
+    assert_eq!(mode, Mode::Hint);
+    assert!(queued_actions.is_empty());
+
+    let mut mode = Mode::Normal;
+    let mut queued_actions = Vec::new();
+    let error = dispatch_scroll_target_command(
+        &select,
+        &registry,
+        mode,
+        false,
+        |effect| match effect {
+            ScrollTargetEffect::StartHints => mode = Mode::Hint,
+            ScrollTargetEffect::QueueEngineAction(action) => queued_actions.push(action),
+        },
+    )
+    .expect_err("secondary chrome must reject interactive selection");
+    assert_eq!(
+        error,
+        "scroll-target requires full browser chrome and is unavailable in this window"
+    );
+    assert_eq!(mode, Mode::Normal);
+    assert!(queued_actions.is_empty());
+
+    for action in ["auto", "document", "status"] {
+        let command = ParsedCommand {
+            name: "scroll-target".into(),
+            arguments: vec![action.into()],
+        };
+        let mut effects = Vec::new();
+        let result = dispatch_scroll_target_command(
+            &command,
+            &registry,
+            Mode::Normal,
+            false,
+            |effect| effects.push(effect),
+        )
+        .expect("non-Hint policy actions should work in reduced chrome");
+        assert_eq!(
+            result,
+            serde_json::json!({
+                "status": "accepted",
+                "action": action,
+                "pending": true
+            })
+        );
+        assert_eq!(
+            effects,
+            [ScrollTargetEffect::QueueEngineAction(format!(
+                "scroll-target\t{action}"
+            ))]
+        );
+    }
+
+    let mut rust = BrowserUiRust::default();
+    assert!(rust.hint_chrome_available);
+    rust.hint_chrome_available = false;
+    assert!(!rust.hint_chrome_available);
+}
+
+#[test]
 fn local_empty_binding_commands_use_the_full_executor() {
     let command = |name: &str, arguments: &[&str]| ParsedCommand {
         name: name.into(),

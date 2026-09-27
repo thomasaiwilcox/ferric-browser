@@ -323,6 +323,17 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
             }
             serde_json::json!({"edge": command.arguments[0]})
         }
+        "scroll-target" => match command.arguments.as_slice() {
+            [action] if matches!(action.as_str(), "select" | "auto" | "document" | "status") => {
+                serde_json::json!({"action": action})
+            }
+            _ => {
+                return Err(
+                    "scroll-target requires exactly one of select, auto, document, or status"
+                        .into(),
+                );
+            }
+        },
         _ => return Ok(None),
     };
     Ok(Some(EncodedCommand::with_context(arguments, context)))

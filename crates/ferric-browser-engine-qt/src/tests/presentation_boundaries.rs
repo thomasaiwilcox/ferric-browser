@@ -1380,7 +1380,47 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(qml.contains("BrowserScripts.pageUserscriptRun(scriptSource)"));
     assert!(qml.contains("BrowserScripts.pageUserscriptInstall(script.source)"));
     assert!(!qml.contains("function hintSelector(linksOnly)"));
-    assert!(script.contains("var VERSION = \"9\""));
+    assert!(script.contains("var VERSION = \"10\""));
+    assert!(qml.contains("function scrollTargetPolicyScript(policy)"));
+    assert!(qml.contains("return BrowserScripts.scrollTargetPolicy(policy)"));
+    assert!(qml.contains("function scrollTargetStatusScript()"));
+    assert!(qml.contains("return BrowserScripts.scrollTargetStatus()"));
+    assert!(qml.contains("function hintSetScrollTargetScript(elementId, framePath)"));
+    assert!(qml.contains("return BrowserScripts.hintSetScrollTarget(elementId, framePath)"));
+    assert!(qml.contains("function applyScrollTargetAction(ui, view, action, feedbackHost)"));
+    assert!(qml.contains("Scroll target unavailable: no active page"));
+    assert!(qml.contains("Scroll target command failed"));
+    assert!(qml.contains("? \"automatic\" : \"document\""));
+    assert!(qml.contains("? \"selected region\""));
+    assert!(qml.contains("feedbackHost.showCommandNotice(message, isError)"));
+    assert!(qml.contains("window.showCommandNotice(browserUi.status_text, !targetSelected)"));
+    assert!(qml.contains("action.indexOf(\"scroll-target\\t\") === 0"));
+    assert!(qml.contains("id: secondaryUi"));
+    assert!(qml.contains("hint_chrome_available: false"));
+    assert!(script.contains("window.__ferric_browserScrollTargetState"));
+    assert!(!script.contains("window.__ferric_browserScrollTarget="));
+    assert!(!script.contains("window.__ferric_browserScrollTarget&&"));
+    assert!(script.contains("new WeakRef(element)"));
+    assert!(script.contains("new WeakRef(element.ownerDocument)"));
+    assert!(script.contains("deref.call(state.elementRef)"));
+    assert!(script.contains("deref.call(state.ownerDocumentRef)"));
+    assert!(script.contains("style.overflowX"));
+    assert!(script.contains("style.overflowY"));
+    assert!(script.contains("'overlay'"));
+    assert!(script.contains("function ftMeaningfullyVisible(element)"));
+    assert!(script.contains("frame.contentWindow!==childView"));
+    assert!(script.contains("kind=family==='scrollables'?'scrollable':'aria'"));
+    assert!(script.contains("kind=candidateKind==='scrollable'?'scrollable':'aria'"));
+    assert!(script.contains("if(s.elements&&typeof s.elements.clear==='function')s.elements.clear()"));
+    let target_start = script
+        .find("function hintSetScrollTarget(elementId, framePath)")
+        .expect("target assignment builder");
+    let target_end = script[target_start..]
+        .find("\n}")
+        .map(|offset| target_start + offset)
+        .expect("target assignment builder end");
+    assert!(!script[target_start..target_end].contains(".focus("));
+    assert!(script[target_start..target_end].contains("ftSetPolicy('element',element)"));
     assert!(script.contains("function pageUserscriptRun(source)"));
     assert!(script.contains("function pageUserscriptInstall(source)"));
     assert!(!qml.contains("var source = \"(function(){try{\" + scriptSource"));
@@ -1453,6 +1493,44 @@ fn enhanced_hint_presentation_keeps_keyboard_policy_out_of_qml() {
     assert!(overlay.contains("var options = [[targetX, targetY]"));
     assert!(menu.contains("sequence: \"Tab\""));
     assert!(menu.contains("hint.clean-yank"));
+}
+
+#[test]
+fn page_backed_hints_close_after_the_renderer_consumes_the_retained_record() {
+    let presentation =
+        include_str!("../../qml/components/FerricBrowserRuntimePresentation.qml");
+
+    for (action, next_action) in [
+        ("focus", "scroll-target"),
+        ("scroll-target", "click"),
+        ("click", "rejection"),
+    ] {
+        let start = presentation
+            .find(&format!("result.action === \"{action}\""))
+            .unwrap_or_else(|| panic!("missing {action} hint branch"));
+        let end = if next_action == "rejection" {
+            presentation[start..]
+                .find("} else {")
+                .map(|offset| start + offset)
+                .expect("missing final hint rejection branch")
+        } else {
+            presentation[start..]
+                .find(&format!("result.action === \"{next_action}\""))
+                .map(|offset| start + offset)
+                .unwrap_or_else(|| panic!("missing {next_action} hint branch"))
+        };
+        let branch = &presentation[start..end];
+        let launch = branch
+            .find("window.runBrowserScript(")
+            .unwrap_or_else(|| panic!("missing {action} renderer launch"));
+        let close = branch
+            .find("window.closeHints()")
+            .unwrap_or_else(|| panic!("missing {action} callback cleanup"));
+        assert!(
+            launch < close,
+            "{action} must not clear its retained page record before launching the renderer action"
+        );
+    }
 }
 
 #[test]

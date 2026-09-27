@@ -42,6 +42,7 @@ pub fn command_argument_names(command: &str) -> &'static [&'static str] {
         "scroll" => &["direction", "count"],
         "scroll-page" => &["direction", "half", "count"],
         "scroll-to" => &["edge"],
+        "scroll-target" => &["action"],
         "window-focus" => &["id"],
         "window-move" => &["id", "workspace"],
         "window-close" => &[],
@@ -126,6 +127,7 @@ mod tests {
     fn command_fields_are_closed() {
         assert!(command_argument_names("open").contains(&"input"));
         assert!(command_argument_names("context-route").contains(&"entry_points"));
+        assert_eq!(command_argument_names("scroll-target"), &["action"]);
         assert!(command_argument_names("not-a-command").is_empty());
         assert!(validate_command_argument_fields("open", &Map::new()).is_ok());
         assert!(

@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ferric explicit scroll target fixture</title>
+  <style>
+    :root { font: 15px/1.4 sans-serif; color: #17202a; background: #f4f6f8; }
+    body { margin: 0; min-height: 1900px; padding: 18px; box-sizing: border-box; }
+    h1 { margin: 0 0 10px; font-size: 23px; }
+    h2 { margin: 0 0 8px; font-size: 16px; }
+    p { margin: 5px 0; }
+    button, select { margin: 3px; padding: 5px 8px; }
+    .controls, .region { border: 1px solid #8895a2; border-radius: 5px; background: white; padding: 10px; }
+    .controls { position: relative; z-index: 1; max-width: 1050px; }
+    .regions { display: grid; grid-template-columns: repeat(2, minmax(300px, 1fr)); gap: 12px; max-width: 1050px; margin-top: 12px; }
+    .pane { height: 180px; overflow: auto; background: #f8fbff; }
+    .vertical { overflow-x: hidden; overflow-y: auto; }
+    .horizontal { overflow-x: auto; overflow-y: hidden; white-space: nowrap; }
+    .two-axis { overflow: auto; }
+    .content { height: 650px; min-width: 100%; padding: 8px; box-sizing: border-box; background: repeating-linear-gradient(#fff 0 28px, #e7edf3 29px 30px); }
+    .wide-content { width: 1050px; height: 65px; padding: 8px; box-sizing: border-box; background: repeating-linear-gradient(90deg,#fff 0 90px,#e7edf3 91px 92px); }
+    .large-content { width: 850px; height: 620px; padding: 8px; box-sizing: border-box; background: repeating-linear-gradient(#fff 0 28px,#e7edf3 29px 30px); }
+    .outer { height: 205px; overflow-y: auto; overflow-x: hidden; padding: 6px; background: #eef4e8; }
+    .inner { height: 115px; overflow-y: auto; overflow-x: hidden; background: #fff; }
+    .reparent-bin { min-height: 210px; margin-top: 12px; border: 2px dashed #8b99a6; padding: 8px; background: #fff; }
+    iframe { width: 100%; height: 230px; border: 1px solid #556; background: white; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; margin: 6px 0 0; }
+    #shadowHost { display: block; }
+  </style>
+</head>
+<body>
+  <h1>Explicit scroll target qualification</h1>
+  <p>Use <code>;s</code> to select a live scrollable region, then test normal scroll keys and commands. Readouts are event driven; this fixture uses no timers or remote resources.</p>
+
+  <section class="controls">
+    <h2>Mutation controls</h2>
+    <label for="mutationTarget">Region to mutate:</label>
+    <select id="mutationTarget">
+      <option value="pane-a">Vertical pane A</option>
+      <option value="pane-b">Vertical pane B</option>
+      <option value="horizontal-pane">Horizontal pane</option>
+      <option value="two-axis-pane">Two-axis pane</option>
+      <option value="outer-pane">Nested outer pane</option>
+      <option value="inner-pane">Nested inner pane</option>
+      <option value="shadow-pane">Open shadow pane</option>
+      <option value="frame-pane">Same-origin frame pane</option>
+    </select>
+    <button id="removePane">Remove region</button>
+    <button id="hidePane">Set display:none</button>
+    <button id="removeOverflow">Remove all overflow</button>
+    <button id="removeVertical">Disable vertical axis</button>
+    <button id="movePane">Reparent in this document</button>
+    <button id="adoptPane">Adopt into detached document</button>
+    <button id="replaceFrame">Replace frame document</button>
+    <button id="navigateFrame">Navigate frame document</button>
+    <button id="focusInput">Focus input A</button>
+    <p id="fixtureMessage" role="status">Ready</p>
+    <pre id="documentReadout"></pre>
+    <pre id="focusReadout"></pre>
+  </section>
+
+  <main class="regions">
+    <section class="region">
+      <h2>Vertical-only pane A</h2>
+      <div id="pane-a" class="pane vertical" data-region>
+        <div class="content"><label>Input A <input id="input-a" value="focus stays here"></label><p>Vertical content A</p></div>
+      </div>
+      <pre data-readout="pane-a"></pre>
+    </section>
+    <section class="region">
+      <h2>Independent vertical pane B</h2>
+      <div id="pane-b" class="pane vertical" data-region>
+        <div class="content"><p>Vertical content B</p></div>
+      </div>
+      <pre data-readout="pane-b"></pre>
+    </section>
+    <section class="region">
+      <h2>Horizontal-only pane</h2>
+      <div id="horizontal-pane" class="pane horizontal" data-region>
+        <div class="wide-content">Horizontal content, with a long stable row to scroll.</div>
+      </div>
+      <pre data-readout="horizontal-pane"></pre>
+    </section>
+    <section class="region">
+      <h2>Two-axis pane</h2>
+      <div id="two-axis-pane" class="pane two-axis" data-region>
+        <div class="large-content">Two-axis content</div>
+      </div>
+      <pre data-readout="two-axis-pane"></pre>
+    </section>
+    <section class="region">
+      <h2>Nested scroll panes</h2>
+      <div id="outer-pane" class="outer" data-region>
+        <div class="content">
+          <p>Outer content</p>
+          <div id="inner-pane" class="inner" data-region>
+            <div class="content"><p>Inner content</p></div>
+          </div>
+        </div>
+      </div>
+      <pre data-readout="outer-pane"></pre>
+      <pre data-readout="inner-pane"></pre>
+    </section>
+    <section class="region">
+      <h2>Open shadow root</h2>
+      <div id="shadowHost"></div>
+    </section>
+    <section class="region">
+      <h2>Same-origin srcdoc frame</h2>
+      <iframe id="frameView" title="Same-origin scroll pane"></iframe>
+    </section>
+  </main>
+
+  <section class="region reparent-bin" id="reparentBin">
+    <h2>Same-document reparent destination</h2>
+    <p>A selected region moved here should retain its exact object identity while it remains visible and scrollable.</p>
+  </section>
+
+  <script>
+    (function () {
+      "use strict";
+      const message = document.getElementById("fixtureMessage");
+      const shadowRoot = document.getElementById("shadowHost").attachShadow({ mode: "open" });
+      shadowRoot.innerHTML = "<style>.pane{height:180px;overflow-y:auto;overflow-x:hidden;background:#f8fbff}.content{height:650px;padding:8px;background:repeating-linear-gradient(#fff 0 28px,#e7edf3 29px 30px)}</style><h3>Shadow scroll pane</h3><div id='shadow-pane' class='pane' data-region><div class='content'>Open shadow content</div></div><pre id='shadowReadout'></pre>";
+
+      function frameMarkup(label) {
+        return "<!doctype html><html><head><meta charset='utf-8'><style>body{font:14px sans-serif;margin:6px}.pane{height:155px;overflow-y:auto;overflow-x:hidden;background:#f8fbff}.content{height:620px;padding:8px;background:repeating-linear-gradient(#fff 0 28px,#e7edf3 29px 30px)}pre{font-size:12px}</style></head><body><h3>" + label + "</h3><div id='frame-pane' class='pane' data-region><div class='content'>Frame scroll content</div></div><pre id='frameReadout'></pre><script>(function(){const pane=document.getElementById('frame-pane'),readout=document.getElementById('frameReadout');function update(){readout.textContent='frame-pane scrollLeft='+pane.scrollLeft+' scrollTop='+pane.scrollTop;}pane.addEventListener('scroll',update);update();})();<\/script></body></html>";
+      }
+      const frame = document.getElementById("frameView");
+      frame.srcdoc = frameMarkup("Initial same-origin document");
+
+      function selectedRegion() {
+        const id = document.getElementById("mutationTarget").value;
+        if (id === "shadow-pane") return shadowRoot.getElementById(id);
+        if (id === "frame-pane") return frame.contentDocument && frame.contentDocument.getElementById(id);
+        return document.getElementById(id);
+      }
+      function regionText(element) {
+        return element.id + " scrollLeft=" + element.scrollLeft + " scrollTop=" + element.scrollTop;
+      }
+      function updateReadouts() {
+        const root = document.scrollingElement || document.documentElement;
+        document.getElementById("documentReadout").textContent =
+          "document scrollLeft=" + root.scrollLeft + " scrollTop=" + root.scrollTop;
+        document.querySelectorAll("[data-readout]").forEach(function (readout) {
+          const pane = document.getElementById(readout.dataset.readout);
+          readout.textContent = pane ? regionText(pane) : readout.dataset.readout + " removed";
+        });
+        const shadowPane = shadowRoot.getElementById("shadow-pane");
+        document.getElementById("shadowReadout").textContent = shadowPane ? regionText(shadowPane) : "shadow-pane removed";
+        const active = document.activeElement;
+        document.getElementById("focusReadout").textContent =
+          "focused stable ID=" + (active && active.id ? active.id : active === frame ? "frameView" : "none");
+      }
+      function observeRegions() {
+        document.querySelectorAll("[data-region]").forEach(function (pane) {
+          pane.addEventListener("scroll", updateReadouts);
+        });
+        shadowRoot.getElementById("shadow-pane").addEventListener("scroll", updateReadouts);
+      }
+      document.addEventListener("scroll", updateReadouts, true);
+      document.addEventListener("focusin", updateReadouts, true);
+      window.addEventListener("scroll", updateReadouts);
+      observeRegions();
+
+      document.getElementById("removePane").addEventListener("click", function () {
+        const target = selectedRegion();
+        if (target) target.remove();
+        message.textContent = "Selected fixture region removed";
+        updateReadouts();
+      });
+      document.getElementById("hidePane").addEventListener("click", function () {
+        const target = selectedRegion();
+        if (target) target.style.display = "none";
+        message.textContent = "Selected fixture region hidden";
+        updateReadouts();
+      });
+      document.getElementById("removeOverflow").addEventListener("click", function () {
+        const target = selectedRegion();
+        if (target) { target.style.overflowX = "visible"; target.style.overflowY = "visible"; }
+        message.textContent = "Overflow removed from selected fixture region";
+        updateReadouts();
+      });
+      document.getElementById("removeVertical").addEventListener("click", function () {
+        const target = selectedRegion();
+        if (target) target.style.overflowY = "hidden";
+        message.textContent = "Vertical scroll axis disabled; horizontal overflow is unchanged";
+        updateReadouts();
+      });
+      document.getElementById("movePane").addEventListener("click", function () {
+        const target = selectedRegion();
+        if (target) document.getElementById("reparentBin").appendChild(target);
+        message.textContent = "Selected fixture region reparented in the same document";
+        updateReadouts();
+      });
+      document.getElementById("adoptPane").addEventListener("click", function () {
+        const target = selectedRegion();
+        if (target) {
+          const adoptedDocument = document.implementation.createHTMLDocument("adopted fixture region");
+          adoptedDocument.body.appendChild(adoptedDocument.adoptNode(target));
+          window.fixtureAdoptedDocument = adoptedDocument;
+        }
+        message.textContent = "Selected fixture region adopted into a detached document";
+        updateReadouts();
+      });
+      document.getElementById("replaceFrame").addEventListener("click", function () {
+        frame.srcdoc = frameMarkup("Replacement same-origin document");
+        message.textContent = "Frame document replaced";
+      });
+      document.getElementById("navigateFrame").addEventListener("click", function () {
+        frame.srcdoc = frameMarkup("Navigated same-origin document");
+        message.textContent = "Frame navigated to a new same-origin document";
+      });
+      document.getElementById("focusInput").addEventListener("click", function () {
+        document.getElementById("input-a").focus();
+        updateReadouts();
+      });
+      frame.addEventListener("load", updateReadouts);
+      updateReadouts();
+    })();
+  </script>
+</body>
+</html>

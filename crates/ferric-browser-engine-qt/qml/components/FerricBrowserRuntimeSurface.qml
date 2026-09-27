@@ -748,6 +748,12 @@ FerricBrowserRuntimeChrome {
                     webView.findText(browserUi.search_text, findFlags)
                 }
             }
+        } else if (action.indexOf("scroll-target\t") === 0) {
+            var scrollTargetParts = action.split("\t")
+            window.applyScrollTargetAction(
+                browserUi, webView,
+                scrollTargetParts.length === 2 ? scrollTargetParts[1] : "",
+                window)
         } else if (action.indexOf("scroll\t") === 0
                    || action.indexOf("scroll-page\t") === 0
                    || action.indexOf("scroll-to\t") === 0) {
