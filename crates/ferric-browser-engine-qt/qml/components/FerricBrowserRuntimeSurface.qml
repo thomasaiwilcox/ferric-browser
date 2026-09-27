@@ -711,6 +711,17 @@ FerricBrowserRuntimeChrome {
             }
             return
         }
+        if (action.indexOf("scroll-target\t") === 0) {
+            var scrollTargetParts = action.split("\t")
+            var scrollTargetIndex = scrollTargetParts.length === 3
+                    ? browserUi.tab_index_for_id(scrollTargetParts[1]) : -1
+            var scrollTargetView = tabViewAt(scrollTargetIndex)
+            window.applyScrollTargetAction(
+                browserUi, scrollTargetView,
+                scrollTargetParts.length === 3 ? scrollTargetParts[2] : "",
+                window)
+            return
+        }
         var webView = window.activeWebView()
         if (!webView) {
             return

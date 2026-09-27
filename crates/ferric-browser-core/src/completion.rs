@@ -82,7 +82,17 @@ pub fn complete(
         enum_candidates(&command_prefix, &prefix)
             .unwrap_or_else(|| argument_candidates(provider, &prefix, catalog, candidate_limit))
     };
-    candidates.sort_by(|left, right| compare_candidates(left, right, &prefix));
+    if command_prefix.split_ascii_whitespace().next() == Some("scroll-target") {
+        let order = ["select", "auto", "document", "status"];
+        candidates.sort_by_key(|candidate| {
+            order
+                .iter()
+                .position(|value| *value == candidate.insert_text)
+                .unwrap_or(order.len())
+        });
+    } else {
+        candidates.sort_by(|left, right| compare_candidates(left, right, &prefix));
+    }
     candidates.truncate(candidate_limit);
 
     CompletionResult {
@@ -130,6 +140,7 @@ fn enum_candidates(command_prefix: &str, prefix: &str) -> Option<Vec<CompletionC
                 "scroll" => &["up", "down", "left", "right"],
                 "scroll-page" => &["up", "down"],
                 "scroll-to" => &["top", "bottom"],
+                "scroll-target" => &["select", "auto", "document", "status"],
                 "caret-move" => &[
                     "left",
                     "right",
@@ -484,6 +495,25 @@ mod tests {
                 .map(|candidate| candidate.insert_text.as_str())
                 .collect::<Vec<_>>(),
             vec!["closed", "commands", "contexts"]
+        );
+
+        let result = complete("scroll-target ", 14, &registry, &[], 100);
+        assert_eq!(
+            result
+                .candidates
+                .iter()
+                .map(|candidate| candidate.insert_text.as_str())
+                .collect::<Vec<_>>(),
+            vec!["select", "auto", "document", "status"]
+        );
+        let result = complete("scroll-target d", 15, &registry, &[], 100);
+        assert_eq!(
+            result
+                .candidates
+                .iter()
+                .map(|candidate| candidate.insert_text.as_str())
+                .collect::<Vec<_>>(),
+            vec!["document"]
         );
     }
 

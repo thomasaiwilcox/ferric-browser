@@ -739,7 +739,8 @@ specified in section 10. Each help entry must show applicable modes and counts.
 | `J` / `K` | Next/previous tab | `T` / `gt` | Open tab selector |
 | `d` / `u` | Close/undo tab | `r` / `R` | Reload/reload bypass cache |
 | `f` / `F` | Hint current/new foreground tab | `;b` / `;f` / `;r` | Hint background/foreground/rapid background tab |
-| `;g` | Enter Grid mode | Grid: `1`–`9` refine, `Enter`/`Shift+Enter`/`Ctrl+Enter` click, `Space` hover |
+| `;g` | Enter Grid mode | `;s` / `;S` | Select a scroll target / return to automatic targeting |
+| Grid controls | `1`–`9` refine, `Enter`/`Shift+Enter`/`Ctrl+Enter` click, `Space` hover |  |  |
 | `yy` / `yt` | Copy URL/title | `pp` / `Pp` | Open clipboard current/new tab (`pP` / `PP` use primary selection) |
 | `/` / `?` | Search forward/backward | `n` / `N` | Next/previous match |
 | `+` / `-` / `=` | Zoom in/out/reset | `m` / `b` | Save/open quickmark prompt |
@@ -841,9 +842,10 @@ commands may be added, but these names and semantics form the target contract.
 | `back [--count N]`, `forward [--count N]` | Traverse engine history; report boundary without error spam |
 | `reload [--bypass-cache]` | Reload; retain engine form-resubmission protection |
 | `stop` | Cancel current load |
-| `scroll <up\|down\|left\|right> [--count N]` | Scroll page/container under documented focus rule |
-| `scroll-page <up\|down> [--half] [--count N]` | Relative viewport scrolling |
-| `scroll-to <top\|bottom>` | Scroll document extremity |
+| `scroll <up\|down\|left\|right> [--count N]` | Use the explicit element/document target when set; otherwise resolve the nearest focused ancestor scrollable on that axis, then the document |
+| `scroll-page <up\|down> [--half] [--count N]` | Apply the same target policy with target-local viewport dimensions |
+| `scroll-to <top\|bottom>` | Apply the same target policy vertically and preserve horizontal position |
+| `scroll-target <select\|auto\|document\|status>` | Select a visible scrollable through Hint mode, clear to focus-aware automatic targeting, pin the document scroller, or report the current policy |
 | `search [--backward] [--case smart\|sensitive\|insensitive] <text>` | In-page search; no network |
 | `search-next [--backward] [--count N]` | Traverse retained matches |
 | `zoom <in\|out\|reset\|FACTOR>` | Clamp 0.25–5.0; default 1.0 |
@@ -1054,8 +1056,15 @@ candidates at 5,000 and explain if narrowed collection is needed.
 
 **HINT-004 — Activation and action choice.** Use direct navigation for a pure
 URL-open action when its semantics permit it. Hinting an input focuses the
-exact validated control and enters Insert; hinting a scrollable records the
-exact element as the browser scroll target and returns to Normal. `--first`
+exact validated control and enters Insert; explicit `scroll-target select`
+reuses the `scrollables` Hint family, stores the exact validated element as an
+ephemeral weak target, and returns to Normal without changing DOM focus.
+Explicit scroll ownership is independent of focus and persists until `;S`/
+`scroll-target auto`, an explicit document policy, or target invalidation.
+Every scroll operation revalidates identity, same-origin frame reachability,
+visibility, and axis scrollability; an invalid target clears to automatic and
+the triggering operation resolves once through the automatic policy. A valid
+target that does not support the requested axis is a no-op. `--first`
 activates a viewport-ordered candidate without labels, with an optional 1-based
 index. `--target choose` and marker right-click freshly inspect the element and
 open a keyboard modal containing only applicable current/tab/background-tab/

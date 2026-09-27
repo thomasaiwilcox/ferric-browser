@@ -2,6 +2,43 @@
 
 use ferric_browser_core::{ParsedCommand, canonical_origin};
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum ScrollTargetAction {
+    Select,
+    Auto,
+    Document,
+    Status,
+}
+
+impl ScrollTargetAction {
+    #[must_use]
+    pub(super) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Select => "select",
+            Self::Auto => "auto",
+            Self::Document => "document",
+            Self::Status => "status",
+        }
+    }
+}
+
+pub(super) fn scroll_target(arguments: &[String]) -> Result<ScrollTargetAction, String> {
+    match arguments {
+        [action] => match action.as_str() {
+            "select" => Ok(ScrollTargetAction::Select),
+            "auto" => Ok(ScrollTargetAction::Auto),
+            "document" => Ok(ScrollTargetAction::Document),
+            "status" => Ok(ScrollTargetAction::Status),
+            _ => Err(scroll_target_usage()),
+        },
+        _ => Err(scroll_target_usage()),
+    }
+}
+
+fn scroll_target_usage() -> String {
+    "scroll-target requires exactly one of select, auto, document, or status".into()
+}
+
 pub(super) fn history_clear(
     command: &ParsedCommand,
 ) -> Result<(Option<i64>, Option<String>, bool), String> {
@@ -147,6 +184,11 @@ pub(super) fn is_scroll(name: &str) -> bool {
 }
 
 #[must_use]
+pub(super) fn is_scroll_target(name: &str) -> bool {
+    name == "scroll-target"
+}
+
+#[must_use]
 pub(super) fn is_link_clean(name: &str) -> bool {
     matches!(name, "url-clean" | "url-explain")
 }
@@ -201,7 +243,7 @@ fn scroll_count(value: &str) -> Result<u32, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{history_clear, scroll, search_next};
+    use super::{ScrollTargetAction, history_clear, scroll, scroll_target, search_next};
     use ferric_browser_core::ParsedCommand;
 
     #[test]
@@ -228,5 +270,28 @@ mod tests {
             }),
             Ok((None, Some("https://example.test".into()), true))
         );
+    }
+
+    #[test]
+    fn scroll_target_parser_accepts_only_the_closed_action_enum() {
+        for (name, expected) in [
+            ("select", ScrollTargetAction::Select),
+            ("auto", ScrollTargetAction::Auto),
+            ("document", ScrollTargetAction::Document),
+            ("status", ScrollTargetAction::Status),
+        ] {
+            assert_eq!(scroll_target(&[name.into()]), Ok(expected));
+            assert_eq!(expected.as_str(), name);
+        }
+        let error = "scroll-target requires exactly one of select, auto, document, or status";
+        for arguments in [
+            vec![],
+            vec!["auto".into(), "status".into()],
+            vec!["Auto".into()],
+            vec!["element".into()],
+            vec!["auto\n".into()],
+        ] {
+            assert_eq!(scroll_target(&arguments), Err(error.into()));
+        }
     }
 }

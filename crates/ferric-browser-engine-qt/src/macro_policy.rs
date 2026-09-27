@@ -51,6 +51,7 @@ mod tests {
         }
         for command in [
             "paste-open",
+            "scroll-target",
             "permission-decision",
             "yank",
             "spawn",

@@ -111,6 +111,56 @@ FerricBrowserRuntimeBase {
         return BrowserScripts.scroll(kind, direction, half, count)
     }
 
+    function scrollTargetPolicyScript(policy) {
+        return BrowserScripts.scrollTargetPolicy(policy)
+    }
+
+    function scrollTargetStatusScript() {
+        return BrowserScripts.scrollTargetStatus()
+    }
+
+    function applyScrollTargetAction(ui, view, action, feedbackHost) {
+        function report(message, isError) {
+            ui.status_text = message
+            if (feedbackHost && feedbackHost.showCommandNotice) {
+                feedbackHost.showCommandNotice(message, isError)
+            }
+        }
+        if (!view) {
+            report("Scroll target unavailable: no active page", true)
+            return false
+        }
+        if (action !== "auto" && action !== "document" && action !== "status") {
+            report("Scroll target command failed", true)
+            return false
+        }
+        var script = action === "status"
+                ? window.scrollTargetStatusScript()
+                : window.scrollTargetPolicyScript(action)
+        var launched = false
+        try {
+            launched = window.runBrowserScript(view, script, function(value) {
+                if (!value || typeof value !== "object" || value.ok !== true
+                        || (value.policy !== "auto" && value.policy !== "document"
+                            && value.policy !== "element")
+                        || (action !== "status" && value.policy !== action)) {
+                    report("Scroll target command failed", true)
+                    return
+                }
+                var reported = value.policy === "element" ? "selected region"
+                        : value.policy === "auto" ? "automatic" : "document"
+                report("Scroll target: " + reported, false)
+            }, window.browserScriptWorld)
+        } catch (error) {
+            launched = false
+        }
+        if (!launched) {
+            report("Scroll target command failed", true)
+            return false
+        }
+        return true
+    }
+
     function searchFindFlags(query, caseMode, backward) {
         var flags = backward ? WebEngineView.FindBackward : 0
         var sensitive = caseMode === "sensitive"

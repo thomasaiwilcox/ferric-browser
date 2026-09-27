@@ -1,12 +1,12 @@
 use crate::browser_ui_command_workflows::CommandDispatchControl;
 
 use super::{
-    CommandInvocation, CxxQtType, DispatchTarget, ParseInput, ParsedCommand, Pin, QString,
-    RuntimeDispatch, binding_command_parameters, is_library_command, is_link_clean_command,
-    is_reopen_in_window_command, is_scroll_command, is_search_next_command, is_tab_clone_command,
-    is_tab_detach_command, is_tab_give_command, is_tab_undo_command, is_yank_command,
-    is_zoom_command, learning_mode_request, normalize_active_tab_command, parse_chain,
-    parse_hint_options, qobject, selection_yank_command,
+    CommandInvocation, CxxQtType, DispatchTarget, ParsedCommand, Pin, QString, RuntimeDispatch,
+    binding_command_parameters, is_library_command, is_link_clean_command,
+    is_reopen_in_window_command, is_scroll_command, is_scroll_target_command,
+    is_search_next_command, is_tab_clone_command, is_tab_detach_command, is_tab_give_command,
+    is_tab_undo_command, is_yank_command, is_zoom_command, learning_mode_request,
+    normalize_active_tab_command, parse_hint_options, qobject, selection_yank_command,
 };
 
 impl qobject::BrowserUi {
@@ -573,6 +573,16 @@ impl qobject::BrowserUi {
                 }
                 continue;
             }
+            if is_scroll_target_command(&command.name) {
+                match self.as_mut().execute_scroll_target_command(&command) {
+                    Ok(_) if command.arguments.as_slice() == ["select"] => return true,
+                    Ok(_) => continue,
+                    Err(error) => {
+                        self.set_status_text(QString::from(error));
+                        return false;
+                    }
+                }
+            }
             if is_link_clean_command(&command.name) {
                 let mode = self.as_ref().rust().core_mode;
                 if let Err(error) = registry.validate(&command, mode) {
@@ -980,16 +990,5 @@ impl qobject::BrowserUi {
             self.set_status_text(QString::from("Command executed"));
         }
         true
-    }
-
-    pub(super) fn execute_command(self: Pin<&mut Self>, input: &QString) -> bool {
-        let commands = match parse_chain(&input.to_string(), ParseInput::Interactive) {
-            Ok(commands) => commands,
-            Err(error) => {
-                self.set_status_text(QString::from(error.to_string()));
-                return false;
-            }
-        };
-        self.execute_parsed_commands(commands)
     }
 }

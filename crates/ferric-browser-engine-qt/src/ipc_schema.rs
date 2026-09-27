@@ -86,6 +86,14 @@ pub(super) fn validate_command_argument_envelope(
     {
         return Err("command argument clean_link must be a boolean".into());
     }
+    if command == "scroll-target"
+        && !arguments
+            .get("action")
+            .and_then(Value::as_str)
+            .is_some_and(|action| matches!(action, "select" | "auto" | "document" | "status"))
+    {
+        return Err("command argument action must be select, auto, document, or status".into());
+    }
     validate_command_argument_semantics(command, arguments)
 }
 
@@ -270,6 +278,7 @@ mod tests {
             ["input", "target", "clean_link", "external"]
         );
         assert_eq!(command_argument_names("context-route").len(), 7);
+        assert_eq!(command_argument_names("scroll-target"), ["action"]);
         assert!(command_argument_names("not-a-command").is_empty());
     }
 
@@ -298,6 +307,22 @@ mod tests {
             )
             .is_err()
         );
+        for arguments in [
+            serde_json::json!({}),
+            serde_json::json!({"action": null}),
+            serde_json::json!({"action": "element"}),
+            serde_json::json!({"action": "auto", "unexpected": true}),
+        ] {
+            assert!(
+                validate_command_argument_envelope("scroll-target", arguments.as_object()).is_err()
+            );
+        }
+        for action in ["select", "auto", "document", "status"] {
+            let arguments = serde_json::json!({"action": action});
+            assert!(
+                validate_command_argument_envelope("scroll-target", arguments.as_object()).is_ok()
+            );
+        }
     }
 
     #[test]

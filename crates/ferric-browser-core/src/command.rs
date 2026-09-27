@@ -503,7 +503,7 @@ impl CommandRegistry {
                 normal.clone(),
                 CountPolicy::Supported { maximum: 9_999 },
                 false,
-                "Scroll the focused page container in one direction.",
+                "Scroll the resolved page scroll target in one direction.",
             ),
             definition(
                 "scroll-page",
@@ -511,7 +511,7 @@ impl CommandRegistry {
                 normal.clone(),
                 CountPolicy::Supported { maximum: 9_999 },
                 false,
-                "Scroll the focused page container by viewport pages.",
+                "Scroll the resolved page scroll target by viewport pages.",
             ),
             definition(
                 "scroll-to",
@@ -519,7 +519,15 @@ impl CommandRegistry {
                 normal.clone(),
                 CountPolicy::NotSupported,
                 false,
-                "Scroll the focused page container to its top or bottom.",
+                "Scroll the resolved page scroll target to its top or bottom.",
+            ),
+            definition(
+                "scroll-target",
+                &[],
+                normal.clone(),
+                CountPolicy::NotSupported,
+                false,
+                "Select, clear, inspect, or pin the active page's keyboard scroll target.",
             ),
             definition(
                 "window-close",
@@ -2771,6 +2779,23 @@ impl CommandRegistry {
         if let Some(command) = registry
             .definitions
             .iter_mut()
+            .find(|definition| definition.name == "scroll-target")
+        {
+            command.arguments = vec![ArgumentDefinition {
+                name: "action".into(),
+                kind: ArgumentKind::Enum,
+                required: true,
+            }];
+            command.examples = vec![
+                "scroll-target select".into(),
+                "scroll-target auto".into(),
+                "scroll-target document".into(),
+                "scroll-target status".into(),
+            ];
+        }
+        if let Some(command) = registry
+            .definitions
+            .iter_mut()
             .find(|definition| definition.name == "tab-clone")
         {
             command.examples = vec!["tab-clone".into()];
@@ -3527,11 +3552,49 @@ mod tests {
             .remove(0);
         assert_eq!(registry.resolve(&command.name).unwrap().name, "open");
         assert!(registry.validate(&command, Mode::Normal).is_ok());
-        assert_eq!(registry.definitions().len(), 137);
+        assert_eq!(registry.definitions().len(), 138);
         let open = registry.resolve("open").unwrap();
         assert_ne!(open.action, ActionId::from_raw(0));
         assert_eq!(open.effect, EffectClass::Navigation);
         assert_eq!(open.scope, CommandScope::Tab);
+        let scroll_target = registry.resolve("scroll-target").unwrap();
+        assert!(scroll_target.aliases.is_empty());
+        assert_eq!(scroll_target.modes, [Mode::Normal, Mode::Command]);
+        assert_eq!(scroll_target.count, CountPolicy::NotSupported);
+        assert!(!scroll_target.sensitive);
+        assert_eq!(
+            scroll_target.description,
+            "Select, clear, inspect, or pin the active page's keyboard scroll target."
+        );
+        assert_eq!(scroll_target.scope, CommandScope::Tab);
+        assert_eq!(scroll_target.effect, EffectClass::Mutating);
+        assert_eq!(scroll_target.completion, CompletionProvider::None);
+        assert_eq!(scroll_target.arguments.len(), 1);
+        assert_eq!(scroll_target.arguments[0].name, "action");
+        assert_eq!(scroll_target.arguments[0].kind, ArgumentKind::Enum);
+        assert!(scroll_target.arguments[0].required);
+        assert_eq!(
+            scroll_target.examples,
+            [
+                "scroll-target select",
+                "scroll-target auto",
+                "scroll-target document",
+                "scroll-target status",
+            ]
+        );
+        for mode in [Mode::Normal, Mode::Command] {
+            assert!(
+                registry
+                    .validate(
+                        &ParsedCommand {
+                            name: "scroll-target".into(),
+                            arguments: vec!["status".into()],
+                        },
+                        mode
+                    )
+                    .is_ok()
+            );
+        }
         for name in ["tab-suspend", "tab-discard", "tab-resume"] {
             let definition = registry.resolve(name).expect("suspension command");
             assert_eq!(definition.arguments.len(), 1);

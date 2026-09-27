@@ -2,10 +2,10 @@ use super::{
     CxxQtType, DispatchTarget, Event, IpcOpenTarget, IpcRoute, ParsedCommand, Pin, QString, Value,
     binding_command_parameters, current_target, ipc_mode_name, is_context_command,
     is_library_command, is_link_clean_command, is_reopen_in_window_command, is_scroll_command,
-    is_search_next_command, is_tab_clone_command, is_tab_detach_command, is_tab_give_command,
-    is_tab_undo_command, is_yank_command, is_zoom_command, learning_mode_request,
-    normalize_active_tab_command, parse_action_invocation, parse_hint_options, qobject,
-    resolve_input, selection_yank_command,
+    is_scroll_target_command, is_search_next_command, is_tab_clone_command, is_tab_detach_command,
+    is_tab_give_command, is_tab_undo_command, is_yank_command, is_zoom_command,
+    learning_mode_request, normalize_active_tab_command, parse_action_invocation,
+    parse_hint_options, qobject, resolve_input, selection_yank_command,
 };
 
 impl qobject::BrowserUi {
@@ -441,6 +441,13 @@ impl qobject::BrowserUi {
             }
             self.as_ref().validate_ipc_route(route)?;
             return self.execute_scroll_command(&command);
+        }
+        if is_scroll_target_command(&command.name) {
+            if route.context.is_some() {
+                return Err("context routing is not valid for scroll targeting".into());
+            }
+            self.as_ref().validate_ipc_route(route)?;
+            return self.execute_scroll_target_command(&command);
         }
         if is_link_clean_command(&command.name) {
             if route.context.is_some() {

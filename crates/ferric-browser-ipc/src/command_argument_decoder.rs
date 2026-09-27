@@ -613,6 +613,15 @@ pub(super) fn decode_command_arguments(
             }
             vec![edge]
         }
+        "scroll-target" => {
+            let action = text_argument("action")?;
+            if !matches!(action.as_str(), "select" | "auto" | "document" | "status") {
+                return Err(
+                    "command argument action must be select, auto, document, or status".into(),
+                );
+            }
+            vec![action]
+        }
         "window-move" => vec![text_argument("id")?, text_argument("workspace")?],
         "command-execute" => {
             let mut args = vec![text_argument("id")?];

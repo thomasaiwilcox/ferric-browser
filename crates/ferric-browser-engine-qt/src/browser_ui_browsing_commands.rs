@@ -1,8 +1,53 @@
 use super::{
-    CxxQtType, Event, ExistenceState, JourneyEdgeKind, ParsedCommand, Pin, QString, SearchCase,
-    ValidatedUrl, Value, current_target, is_bounded_untrusted_text, is_safe_history_url,
-    parse_scroll_options, parse_search_next_options, qobject, safe_ipc_url,
+    CommandRegistry, CxxQtType, Event, ExistenceState, JourneyEdgeKind, Mode, ParsedCommand, Pin,
+    QString, ScrollTargetAction, SearchCase, TabId, ValidatedUrl, Value, current_target,
+    is_bounded_untrusted_text, is_safe_history_url, parse_scroll_options,
+    parse_scroll_target_options, parse_search_next_options, qobject, safe_ipc_url,
 };
+
+#[derive(Debug, Eq, PartialEq)]
+pub(super) enum ScrollTargetEffect {
+    StartHints,
+    QueueEngineAction(String),
+}
+
+pub(super) fn dispatch_scroll_target_command(
+    command: &ParsedCommand,
+    registry: &CommandRegistry,
+    core_mode: Mode,
+    hint_chrome_available: bool,
+    target_tab: Option<TabId>,
+    mut apply_effect: impl FnMut(ScrollTargetEffect),
+) -> Result<Value, String> {
+    registry
+        .validate(command, core_mode)
+        .map_err(|error| error.to_string())?;
+    let action = parse_scroll_target_options(&command.arguments)?;
+    let action_name = action.as_str();
+    if action == ScrollTargetAction::Select {
+        if !hint_chrome_available {
+            return Err(
+                "scroll-target requires full browser chrome and is unavailable in this window"
+                    .into(),
+            );
+        }
+        apply_effect(ScrollTargetEffect::StartHints);
+        return Ok(serde_json::json!({
+            "status": "accepted",
+            "action": "select",
+            "mode": "hint"
+        }));
+    }
+    let tab_id = target_tab.map_or_else(String::new, |tab| tab.to_string());
+    apply_effect(ScrollTargetEffect::QueueEngineAction(format!(
+        "scroll-target\t{tab_id}\t{action_name}"
+    )));
+    Ok(serde_json::json!({
+        "status": "accepted",
+        "action": action_name,
+        "pending": true
+    }))
+}
 
 impl qobject::BrowserUi {
     pub(super) fn execute_tab_undo_command(
@@ -502,5 +547,37 @@ impl qobject::BrowserUi {
             "count": count,
             "pending": true
         }))
+    }
+
+    pub(super) fn execute_scroll_target_command(
+        mut self: Pin<&mut Self>,
+        command: &ParsedCommand,
+    ) -> Result<Value, String> {
+        let registry = self.as_ref().rust().registry.clone();
+        let core_mode = self.as_ref().rust().core_mode;
+        let hint_chrome_available = self.as_ref().rust().hint_chrome_available;
+        let target_tab = self
+            .as_ref()
+            .tab_for_index(self.as_ref().rust().active_tab_index);
+        dispatch_scroll_target_command(
+            command,
+            &registry,
+            core_mode,
+            hint_chrome_available,
+            target_tab,
+            |effect| match effect {
+                ScrollTargetEffect::StartHints => {
+                    self.as_mut()
+                        .set_hint_options("scrollables", false, "current", None, false, 1)
+                }
+                ScrollTargetEffect::QueueEngineAction(action) => {
+                    self.as_mut()
+                        .rust_mut()
+                        .as_mut()
+                        .get_mut()
+                        .pending_engine_action = Some(action);
+                }
+            },
+        )
     }
 }

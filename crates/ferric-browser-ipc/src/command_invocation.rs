@@ -69,6 +69,48 @@ mod tests {
     }
 
     #[test]
+    fn scroll_target_actions_round_trip_and_reject_open_ended_forms() {
+        for action in ["select", "auto", "document", "status"] {
+            let parsed = ferric_browser_core::ParsedCommand {
+                name: "scroll-target".into(),
+                arguments: vec![action.into()],
+            };
+            let envelope = encode_command(&parsed).expect("encode scroll target action");
+            assert_eq!(envelope["arguments"], json!({"action": action}));
+            assert_eq!(
+                decode_command_invocation(&envelope)
+                    .expect("decode scroll target action")
+                    .command,
+                parsed
+            );
+        }
+        for envelope in [
+            json!({"command":"scroll-target","arguments":{}}),
+            json!({"command":"scroll-target","arguments":{"action":null}}),
+            json!({"command":"scroll-target","arguments":{"action":1}}),
+            json!({"command":"scroll-target","arguments":{"action":"element"}}),
+            json!({"command":"scroll-target","arguments":{"action":"auto","extra":true}}),
+            json!({"command":"scroll-target","arguments":{"action":"auto\n"}}),
+        ] {
+            assert!(decode_command_invocation(&envelope).is_err(), "{envelope}");
+        }
+        for arguments in [
+            vec![],
+            vec!["auto".into(), "status".into()],
+            vec!["Auto".into()],
+            vec!["element".into()],
+        ] {
+            assert!(
+                encode_command(&ferric_browser_core::ParsedCommand {
+                    name: "scroll-target".into(),
+                    arguments,
+                })
+                .is_err()
+            );
+        }
+    }
+
+    #[test]
     fn every_registered_command_example_round_trips_through_the_public_envelope() {
         let registry = CommandRegistry::default_v1();
         for definition in registry.definitions() {

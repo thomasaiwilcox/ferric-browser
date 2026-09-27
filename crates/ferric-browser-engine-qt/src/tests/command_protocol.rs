@@ -75,6 +75,193 @@ fn modal_navigation_bindings_open_an_editable_command_line() {
 }
 
 #[test]
+fn scroll_target_command_uses_the_shared_executor_and_owned_view_actions() {
+    use crate::browser_ui_browsing_commands::{
+        ScrollTargetEffect, dispatch_scroll_target_command,
+    };
+
+    let source = ADAPTER_SOURCE;
+    let qml = QML_SOURCE;
+    let primary = include_str!("../../qml/components/FerricBrowserRuntimeSurface.qml");
+    let secondary = include_str!("../../qml/components/FerricBrowserWindow.qml");
+    assert!(source.contains("pub(super) fn execute_scroll_target_command"));
+    assert!(source.contains("is_scroll_target_command(&command.name)"));
+    assert!(source.contains("context routing is not valid for scroll targeting"));
+    assert!(source.contains("hint_chrome_available"));
+    assert!(source.contains("\"scroll-target\\t{tab_id}\\t{action_name}\""));
+    assert!(source.contains("ScrollTargetEffect::QueueEngineAction(action)"));
+    assert!(source.contains("set_hint_options(\"scrollables\", false, \"current\", None, false, 1)"));
+    assert!(qml.contains("window.applyScrollTargetAction("));
+    assert!(primary.contains("browserUi.tab_index_for_id(scrollTargetParts[1])"));
+    assert!(primary.contains("browserUi, scrollTargetView,"));
+    assert!(secondary.contains("secondaryUi.tab_index_for_id(scrollTargetParts[1])"));
+    assert!(secondary.contains("secondaryUi, scrollTargetView,"));
+    assert!(qml.contains("id: secondaryUi"));
+    assert!(qml.contains("hint_chrome_available: false"));
+    let primary_scroll_target = primary
+        .find("if (action.indexOf(\"scroll-target\\t\") === 0)")
+        .expect("primary scroll-target branch");
+    let generic_active_view = primary
+        .find("var webView = window.activeWebView()")
+        .expect("generic active-view guard");
+    assert!(
+        primary_scroll_target < generic_active_view,
+        "stable scroll-target routing must run before the generic active-view guard"
+    );
+
+    let select = ParsedCommand {
+        name: "scroll-target".into(),
+        arguments: vec!["select".into()],
+    };
+    let registry = CommandRegistry::default_v1();
+    let issuing_tab = TabId::from_display("tabid-41").expect("stable tab ID");
+    let mut mode = Mode::Normal;
+    let mut queued_actions = Vec::new();
+    let result = dispatch_scroll_target_command(
+        &select,
+        &registry,
+        mode,
+        true,
+        Some(issuing_tab),
+        |effect| match effect {
+            ScrollTargetEffect::StartHints => mode = Mode::Hint,
+            ScrollTargetEffect::QueueEngineAction(action) => queued_actions.push(action),
+        },
+    )
+    .expect("full-chrome selection should enter Hint mode");
+    assert_eq!(
+        result,
+        serde_json::json!({
+            "status": "accepted",
+            "action": "select",
+            "mode": "hint"
+        })
+    );
+    assert_eq!(mode, Mode::Hint);
+    assert!(queued_actions.is_empty());
+
+    let mut mode = Mode::Normal;
+    let mut queued_actions = Vec::new();
+    let error = dispatch_scroll_target_command(
+        &select,
+        &registry,
+        mode,
+        false,
+        Some(issuing_tab),
+        |effect| match effect {
+            ScrollTargetEffect::StartHints => mode = Mode::Hint,
+            ScrollTargetEffect::QueueEngineAction(action) => queued_actions.push(action),
+        },
+    )
+    .expect_err("secondary chrome must reject interactive selection");
+    assert_eq!(
+        error,
+        "scroll-target requires full browser chrome and is unavailable in this window"
+    );
+    assert_eq!(mode, Mode::Normal);
+    assert!(queued_actions.is_empty());
+
+    for action in ["auto", "document", "status"] {
+        let command = ParsedCommand {
+            name: "scroll-target".into(),
+            arguments: vec![action.into()],
+        };
+        let mut effects = Vec::new();
+        let result = dispatch_scroll_target_command(
+            &command,
+            &registry,
+            Mode::Normal,
+            false,
+            Some(issuing_tab),
+            |effect| effects.push(effect),
+        )
+        .expect("non-Hint policy actions should work in reduced chrome");
+        assert_eq!(
+            result,
+            serde_json::json!({
+                "status": "accepted",
+                "action": action,
+                "pending": true
+            })
+        );
+        assert_eq!(
+            effects,
+            [ScrollTargetEffect::QueueEngineAction(format!(
+                "scroll-target\t{issuing_tab}\t{action}"
+            ))]
+        );
+    }
+
+    let no_page_command = ParsedCommand {
+        name: "scroll-target".into(),
+        arguments: vec!["document".into()],
+    };
+    let mut no_page_effects = Vec::new();
+    dispatch_scroll_target_command(
+        &no_page_command,
+        &registry,
+        Mode::Normal,
+        true,
+        None,
+        |effect| no_page_effects.push(effect),
+    )
+    .expect("a missing page must reach the QML error path");
+    assert_eq!(
+        no_page_effects,
+        [ScrollTargetEffect::QueueEngineAction(
+            "scroll-target\t\tdocument".into()
+        )]
+    );
+
+    let mut rust = BrowserUiRust::default();
+    assert!(rust.hint_chrome_available);
+    rust.hint_chrome_available = false;
+    assert!(!rust.hint_chrome_available);
+}
+
+#[test]
+fn chained_scroll_target_policy_actions_keep_the_issuing_tab_identity() {
+    use crate::browser_ui_browsing_commands::{
+        ScrollTargetEffect, dispatch_scroll_target_command,
+    };
+
+    let registry = CommandRegistry::default_v1();
+    let issuing_tab = TabId::from_display("tabid-41").expect("issuing tab ID");
+    let tab_after_next = TabId::from_display("tabid-42").expect("next tab ID");
+
+    for action in ["document", "auto", "status"] {
+        let chain = parse_chain(
+            &format!("scroll-target {action} ;; tab-next"),
+            ParseInput::Interactive,
+        )
+        .expect("policy and tab switch command chain");
+        assert_eq!(chain.len(), 2);
+        assert_eq!(chain[0].name, "scroll-target");
+        assert_eq!(chain[1].name, "tab-next");
+
+        let mut effects = Vec::new();
+        dispatch_scroll_target_command(
+            &chain[0],
+            &registry,
+            Mode::Normal,
+            true,
+            Some(issuing_tab),
+            |effect| effects.push(effect),
+        )
+        .expect("scroll-target policy action");
+
+        assert_ne!(issuing_tab, tab_after_next);
+        assert_eq!(
+            effects,
+            [ScrollTargetEffect::QueueEngineAction(format!(
+                "scroll-target\t{issuing_tab}\t{action}"
+            ))],
+            "the queued policy action must remain bound to tab A after tab-next activates tab B"
+        );
+    }
+}
+
+#[test]
 fn local_empty_binding_commands_use_the_full_executor() {
     let command = |name: &str, arguments: &[&str]| ParsedCommand {
         name: name.into(),
