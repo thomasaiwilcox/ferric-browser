@@ -2,6 +2,9 @@
 
 Date: 2026-09-27
 
+The durable design and ownership decisions are recorded in
+[`ADR-0014`](../architecture/ADR-0014-explicit-scroll-target.md).
+
 ## Runtime evidence
 
 The deterministic local fixture is
