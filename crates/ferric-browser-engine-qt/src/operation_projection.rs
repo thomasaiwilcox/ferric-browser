@@ -3,6 +3,7 @@
 use crate::{
     BrowserUiRust,
     ipc_params::{query_bool_param, query_object, query_optional_string},
+    sanitize_process_stderr,
 };
 use serde_json::{Value, json};
 
@@ -41,7 +42,8 @@ pub(super) fn operations_query_value(
         .iter()
         .filter(|(id, _)| requested.is_none_or(|requested| requested == id.as_str()))
         .map(|(id, status)| {
-            let mut operation = json!({"operation_id": id, "status": status});
+            let public_status = sanitize_process_stderr(status.as_bytes());
+            let mut operation = json!({"operation_id": id, "status": public_status});
             if include_stderr {
                 operation["stderr"] = rust
                     .operation_stderr

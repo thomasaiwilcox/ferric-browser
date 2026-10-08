@@ -47,6 +47,7 @@ pub(super) fn sensitive_ipc_query_key(key: &str) -> bool {
             | "client-secret"
             | "client_secret"
             | "code"
+            | "cookie"
             | "credential"
             | "credentials"
             | "jwt"
@@ -56,13 +57,16 @@ pub(super) fn sensitive_ipc_query_key(key: &str) -> bool {
             | "passwd"
             | "private-key"
             | "private_key"
+            | "proxy-authorization"
             | "refresh-token"
             | "refresh_token"
             | "secret"
             | "session"
+            | "set-cookie"
             | "sig"
             | "signature"
             | "token"
+            | "x-api-key"
     )
 }
 

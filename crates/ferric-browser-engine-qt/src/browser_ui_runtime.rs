@@ -67,9 +67,9 @@ impl qobject::BrowserUi {
         self.as_mut()
             .set_hyprland_status(QString::from(status.clone()));
         if !adapter.workspace_routing_enabled() || status != "ready" {
-            self.as_mut().set_status_text(QString::from(format!(
-                "Hyprland routing unavailable: {status}"
-            )));
+            self.as_mut().set_status_text(QString::from(
+                "Hyprland workspace routing failed; details suppressed",
+            ));
             return false;
         }
         let request = HyprlandRequest::RouteWorkspace { config, workspace };
@@ -89,10 +89,10 @@ impl qobject::BrowserUi {
                     .set_status_text(QString::from("Hyprland workspace routing request queued"));
                 true
             }
-            Err(error) => {
-                self.as_mut().set_status_text(QString::from(format!(
-                    "Hyprland routing request unavailable: {error:?}"
-                )));
+            Err(_) => {
+                self.as_mut().set_status_text(QString::from(
+                    "Hyprland workspace routing failed; details suppressed",
+                ));
                 false
             }
         }
@@ -116,9 +116,9 @@ impl qobject::BrowserUi {
         self.as_mut()
             .set_hyprland_status(QString::from(status.clone()));
         if !adapter.workspace_routing_enabled() || status != "ready" {
-            self.as_mut().set_status_text(QString::from(format!(
-                "Window movement unavailable: {status}"
-            )));
+            self.as_mut().set_status_text(QString::from(
+                "Hyprland workspace move failed; details suppressed",
+            ));
             return false;
         }
         let request = HyprlandRequest::MoveActiveWindow { config, workspace };
@@ -138,10 +138,10 @@ impl qobject::BrowserUi {
                     .set_status_text(QString::from("Window workspace-move request queued"));
                 true
             }
-            Err(error) => {
-                self.as_mut().set_status_text(QString::from(format!(
-                    "Window movement request unavailable: {error:?}"
-                )));
+            Err(_) => {
+                self.as_mut().set_status_text(QString::from(
+                    "Hyprland workspace move failed; details suppressed",
+                ));
                 false
             }
         }
@@ -155,9 +155,9 @@ impl qobject::BrowserUi {
         self.as_mut()
             .set_hyprland_status(QString::from(status.clone()));
         if !adapter.workspace_routing_enabled() || status != "ready" {
-            self.as_mut().set_status_text(QString::from(format!(
-                "Hyprland client query unavailable: {status}"
-            )));
+            self.as_mut().set_status_text(QString::from(
+                "Hyprland browser-client query failed; details suppressed",
+            ));
             return QString::from(self.as_ref().hyprland_clients_json().to_string());
         }
         let result = {
@@ -174,10 +174,10 @@ impl qobject::BrowserUi {
                     })
                 })
         };
-        if let Err(error) = result {
-            self.as_mut().set_status_text(QString::from(format!(
-                "Hyprland client query unavailable: {error:?}"
-            )));
+        if result.is_err() {
+            self.as_mut().set_status_text(QString::from(
+                "Hyprland browser-client query failed; details suppressed",
+            ));
         } else {
             self.as_mut()
                 .set_status_text(QString::from("Hyprland browser-client query queued"));
@@ -263,13 +263,14 @@ impl qobject::BrowserUi {
             if let Some((target_name, subject)) = parse_external_action_id(id)
                 && matches!(subject.as_str(), "url" | "tab")
             {
-                if let Err(error) = self
+                if self
                     .as_ref()
                     .validate_action_availability(id, CommandSource::Switcher)
+                    .is_err()
                 {
-                    self.set_status_text(QString::from(format!(
-                        "Switcher action unavailable: {error}"
-                    )));
+                    self.set_status_text(QString::from(
+                        "Switcher action unavailable; details suppressed",
+                    ));
                     return false;
                 }
                 let available = configured_switcher_action_values(
@@ -310,13 +311,14 @@ impl qobject::BrowserUi {
                 ));
                 return false;
             }
-            if let Err(error) = self
+            if self
                 .as_ref()
                 .validate_action_availability(&definition.id, CommandSource::Switcher)
+                .is_err()
             {
-                self.set_status_text(QString::from(format!(
-                    "Switcher action unavailable: {error}"
-                )));
+                self.set_status_text(QString::from(
+                    "Switcher action unavailable; details suppressed",
+                ));
                 return false;
             }
             let params = serde_json::json!({
@@ -328,14 +330,12 @@ impl qobject::BrowserUi {
                 return false;
             };
             route.source = CommandSource::Switcher;
-            if let Err(error) = self.as_mut().execute_ipc_command(command, &route) {
-                self.set_status_text(QString::from(format!("Switcher action failed: {error}")));
+            if self.as_mut().execute_ipc_command(command, &route).is_err() {
+                self.set_status_text(QString::from("Switcher action failed; details suppressed"));
                 return false;
             }
-            self.as_mut().set_status_text(QString::from(format!(
-                "Switcher action executed: {}",
-                definition.label
-            )));
+            self.as_mut()
+                .set_status_text(QString::from("Switcher action executed"));
             return true;
         }
 
@@ -682,10 +682,10 @@ impl qobject::BrowserUi {
                 let rust = this.rust();
                 (rust.storage_flush_pending, rust.storage_flush_error.clone())
             };
-            if let Some(error) = error {
-                self.set_status_text(QString::from(format!(
-                    "Durable metadata flush failed: {error}"
-                )));
+            if error.is_some() {
+                self.set_status_text(QString::from(
+                    "Durable metadata flush failed; details suppressed",
+                ));
                 return false;
             }
             if !pending {
@@ -762,10 +762,10 @@ impl qobject::BrowserUi {
                     return false;
                 }
             }
-            Err(error) => {
-                self.set_status_text(QString::from(format!(
-                    "Durable metadata flush unavailable: {error}"
-                )));
+            Err(_error) => {
+                self.set_status_text(QString::from(
+                    "Durable metadata flush unavailable; details suppressed",
+                ));
                 return false;
             }
         }
@@ -790,6 +790,14 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn clear_current_session_checkpoints(mut self: Pin<&mut Self>) -> bool {
+        if self
+            .as_ref()
+            .rust()
+            .session_checkpoint_clear_ticket
+            .is_some()
+        {
+            return true;
+        }
         let (Some(root), Some(profile_id)) = ({
             let pinned = self.as_ref();
             (
@@ -809,22 +817,20 @@ impl qobject::BrowserUi {
             ));
             return false;
         };
-        match Some(
-            self.as_mut()
-                .submit_storage(StorageRequest::SessionCheckpointClear { root, profile_id }),
-        ) {
-            Some(Ok(())) => {
-                self.as_mut()
-                    .rust_mut()
-                    .as_mut()
-                    .get_mut()
-                    .session_checkpoint_clear_pending = true;
+        match Some(self.as_mut().submit_storage_with_ticket(
+            StorageRequest::SessionCheckpointClear { root, profile_id },
+        )) {
+            Some(Ok(ticket)) => {
+                let mut rust = self.as_mut().rust_mut();
+                let this = rust.as_mut().get_mut();
+                this.session_checkpoint_clear_pending = true;
+                this.session_checkpoint_clear_ticket = Some(ticket);
                 true
             }
-            Some(Err(error)) => {
-                self.set_status_text(QString::from(format!(
-                    "Stale session checkpoint cleanup unavailable; recovery data was retained: {error}"
-                )));
+            Some(Err(_error)) => {
+                self.set_status_text(QString::from(
+                    "Stale session checkpoint cleanup unavailable; recovery data was retained; details suppressed",
+                ));
                 false
             }
             None => {

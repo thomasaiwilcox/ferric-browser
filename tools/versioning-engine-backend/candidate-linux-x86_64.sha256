@@ -1,0 +1,6 @@
+# Disposable 2026-10-08 research install. This is not a release certificate.
+cc40e5ad4e199d1ed8376ca1b4da961f40daa79799c0f490aa5865921e7cef5b  lib/libQt6WebEngineCore.so.6.11.2
+5fc5aaef1b257f104bf6a97551c9d9136bb63eb886cbd9df2b101cc97f3f2126  lib/libQt6WebEngineQuick.so.6.11.2
+f6e15355cf3d26936a08648df2cfa81ee84601cb6c58b7039a0970d960f5d614  lib/libQt6WebEngineQuickDelegatesQml.so.6.11.2
+024da2c4db1525a3286a5f64dc19da638d0324f1a86f5e728393d3ed59436815  lib/libQt6WebEngineWidgets.so.6.11.2
+15d90f1882662b94b80f712483c28196b433adabc6794c7b9ecc76781a90d2cf  lib/qt6/QtWebEngineProcess

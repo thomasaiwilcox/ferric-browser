@@ -1,0 +1,17 @@
+<!doctype html><meta charset="utf-8"><title>Versioning activity</title>
+<h1>Polling, worker and WebSocket fixture</h1>
+<output id="polls">0</output><output id="worker">idle</output><output id="socket">idle</output>
+<script>
+let polls = 0;
+setInterval(async () => {
+  try { await fetch('/versioning/activity/poll'); document.querySelector('#polls').value = String(++polls); }
+  catch (_) { document.querySelector('#polls').value = 'failed'; }
+}, 500);
+const worker = new Worker('/versioning/activity/worker.js');
+worker.onmessage = event => { document.querySelector('#worker').value = event.data; };
+worker.postMessage('synthetic');
+const socket = new WebSocket(location.origin.replace(/^http/, 'ws') + '/websocket');
+socket.onopen = () => { document.querySelector('#socket').value = 'open'; socket.send('synthetic'); };
+socket.onmessage = () => { document.querySelector('#socket').value = 'echoed'; socket.close(); };
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/versioning/activity/sw.js');
+</script>

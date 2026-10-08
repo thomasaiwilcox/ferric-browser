@@ -5,12 +5,24 @@ use crate::{
 };
 use ferric_browser_core::ParsedCommand;
 use serde_json::Value;
+use std::fmt;
 
 /// A validated IPC envelope paired with the canonical runtime command.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct CommandInvocation {
     pub envelope: CommandEnvelope,
     pub command: ParsedCommand,
+}
+
+impl fmt::Debug for CommandInvocation {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("CommandInvocation")
+            .field("envelope", &self.envelope)
+            .field("command", &"[redacted]")
+            .field("argument_count", &self.command.arguments.len())
+            .finish()
+    }
 }
 
 /// Decodes one stable IPC envelope into a canonical command invocation.
@@ -29,7 +41,9 @@ pub fn decode_command_invocation(params: &Value) -> Result<CommandInvocation, St
 mod tests {
     use super::decode_command_invocation;
     use crate::encode_command;
-    use ferric_browser_core::{CommandRegistry, ParseInput, parse_chain};
+    use ferric_browser_core::{
+        CommandRegistry, ParseInput, ParsedCommand, VersioningCommand, parse_chain,
+    };
     use serde_json::json;
 
     #[test]
@@ -51,6 +65,21 @@ mod tests {
     }
 
     #[test]
+    fn invocation_debug_redacts_url_arguments() {
+        let sentinel_url = "https://private.example.test/path?token=invocation-sentinel";
+        let invocation = decode_command_invocation(&serde_json::json!({
+            "command": "open",
+            "arguments": {"input": sentinel_url}
+        }))
+        .expect("valid invocation");
+
+        let rendered = format!("{invocation:?}");
+        assert!(!rendered.contains(sentinel_url));
+        assert!(!rendered.contains("invocation-sentinel"));
+        assert!(rendered.contains("argument_count: 1"));
+    }
+
+    #[test]
     fn invocation_rejects_closed_argument_contracts() {
         assert!(
             decode_command_invocation(&json!({
@@ -66,6 +95,109 @@ mod tests {
             }))
             .is_err()
         );
+    }
+
+    #[test]
+    fn rejected_ipc_command_values_are_not_reflected_in_errors() {
+        const SENTINEL: &str = "private-ipc-option-sentinel";
+        let cases: &[(&str, &[&str])] = &[
+            ("open", &["--private-ipc-option-sentinel"]),
+            ("tab-open", &["--private-ipc-option-sentinel"]),
+            ("search", &["query", "--private-ipc-option-sentinel"]),
+            ("search-next", &["--private-ipc-option-sentinel"]),
+            ("scroll-page", &["down", "--private-ipc-option-sentinel"]),
+            ("hint", &[SENTINEL]),
+            (
+                "context-create",
+                &[
+                    "work",
+                    "--profile",
+                    "default",
+                    "--private-ipc-option-sentinel",
+                    "private-value",
+                ],
+            ),
+            (
+                "context-create",
+                &[
+                    "work",
+                    "--profile",
+                    "default",
+                    "--private-ipc-option-sentinel",
+                ],
+            ),
+            (
+                "context-route",
+                &[
+                    "add",
+                    "https://example.test",
+                    "work",
+                    "--entry-point",
+                    SENTINEL,
+                ],
+            ),
+            (
+                "context-route",
+                &[
+                    "add",
+                    "https://example.test",
+                    "work",
+                    "--private-ipc-option-sentinel",
+                    "private-value",
+                ],
+            ),
+            (
+                "context-route",
+                &[
+                    "add",
+                    "https://example.test",
+                    "work",
+                    "--private-ipc-option-sentinel",
+                ],
+            ),
+            ("window-new", &["--private-ipc-option-sentinel"]),
+            ("history-clear", &["--private-ipc-option-sentinel"]),
+            ("history-clear", &["private-history-argument-sentinel"]),
+            ("get", &["--private-ipc-option-sentinel"]),
+            (
+                "command-execute",
+                &["stable-command", "{\"private-ipc-json-sentinel\":"],
+            ),
+        ];
+
+        for (name, arguments) in cases {
+            let parsed = ParsedCommand {
+                name: (*name).to_owned(),
+                arguments: arguments
+                    .iter()
+                    .map(|argument| (*argument).to_owned())
+                    .collect(),
+            };
+            let error = encode_command(&parsed).expect_err("invalid command must be rejected");
+            assert!(!error.contains(SENTINEL), "{name}: {error}");
+            assert!(
+                !error.contains("private-history-argument-sentinel"),
+                "{name}: {error}"
+            );
+            assert!(
+                !error.contains("private-ipc-json-sentinel"),
+                "{name}: {error}"
+            );
+        }
+
+        let decode_error = decode_command_invocation(&json!({
+            "command": "send",
+            "arguments": {"target": "clipboard", "send_subject": SENTINEL}
+        }))
+        .expect_err("invalid structured send subject must be rejected");
+        assert!(!decode_error.contains(SENTINEL), "{decode_error}");
+
+        let unknown_name = ParsedCommand {
+            name: SENTINEL.to_owned(),
+            arguments: vec!["private-value".into()],
+        };
+        let unknown_error = encode_command(&unknown_name).expect_err("unknown command is rejected");
+        assert!(!unknown_error.contains(SENTINEL), "{unknown_error}");
     }
 
     #[test]
@@ -138,6 +270,56 @@ mod tests {
                     "example {example:?} changed its public JSON shape"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn versioning_ui_cli_and_structured_ipc_share_typed_requests() {
+        let operation = ferric_browser_core::OperationId::fresh();
+        for input in [
+            "commit 'Before trial' --scope=window --pages",
+            "commit -- --pages",
+            "commit-list --limit=25 --offset=100",
+            "stash 'Research set' --scope=window",
+            "branch trial --clean",
+            "diff main trial --kind=cookies --offset=200",
+            "restore main --mode=archive --into=current --policies",
+            "merge trial --cookies --site=example.test",
+            "merge-resolve plan item branch",
+            "merge-apply plan",
+            &format!("versioning-cancel {operation}"),
+        ] {
+            let ui = parse_chain(input, ParseInput::Interactive)
+                .unwrap()
+                .remove(0);
+            let cli = parse_chain(input, ParseInput::Cli).unwrap().remove(0);
+            let expected = VersioningCommand::from_parsed(&ui, 1).unwrap();
+            assert_eq!(
+                VersioningCommand::from_parsed(&cli, 1).unwrap(),
+                expected,
+                "{input}"
+            );
+            let envelope = encode_command(&cli).unwrap();
+            let ipc = decode_command_invocation(&envelope).unwrap();
+            assert_eq!(
+                VersioningCommand::from_parsed(&ipc.command, 1).unwrap(),
+                expected,
+                "{input}"
+            );
+        }
+    }
+
+    #[test]
+    fn structured_versioning_ipc_rejects_unknown_and_incompatible_options() {
+        for request in [
+            json!({"command":"commit","arguments":{"message":"note","unknown":true}}),
+            json!({"command":"commit","arguments":{"message":"note","editable":true}}),
+            json!({"command":"commit-list","arguments":{"limit":0}}),
+            json!({"command":"branch","arguments":{"name":"trial","scope":"context"}}),
+            json!({"command":"merge","arguments":{"branch":"trial","cookies":false}}),
+            json!({"command":"merge-apply","arguments":{"plan":"plan","cookies":true}}),
+        ] {
+            assert!(decode_command_invocation(&request).is_err(), "{request}");
         }
     }
 

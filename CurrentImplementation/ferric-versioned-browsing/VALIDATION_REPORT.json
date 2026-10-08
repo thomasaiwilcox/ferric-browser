@@ -1,0 +1,20 @@
+{
+  "pack_validation": "passed",
+  "scope": "Document/ledger integrity only; not a Ferric build or native test.",
+  "baseline_main": "deea458d92bcf6d8fbea7b04af17823b5882cc1b",
+  "tasks": 103,
+  "phases": 9,
+  "dependency_edges": 285,
+  "dag_valid": true,
+  "planned_module_prerequisites_valid": true,
+  "task_appendices_match_ledger": true,
+  "markdown_fences_balanced": true,
+  "proposal_word_count": 27027,
+  "statuses": {
+    "verified": 52,
+    "blocked": 39,
+    "not-started": 8,
+    "in-progress": 4
+  },
+  "enabled_production_capabilities": []
+}

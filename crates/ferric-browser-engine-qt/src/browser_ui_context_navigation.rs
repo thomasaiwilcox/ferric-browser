@@ -108,10 +108,12 @@ impl qobject::BrowserUi {
                 pending.context_name,
                 url.as_str()
             ));
-            self.set_status_text(QString::from(format!(
-                "Context route accepted; opening {} in profile {}",
-                pending.context_name, pending.profile_name
-            )));
+            // Status text can also be returned through IPC command failures;
+            // do not copy user-defined context/profile labels into that
+            // diagnostic channel.
+            self.set_status_text(QString::from(
+                "Context route accepted; opening the selected profile",
+            ));
             return true;
         }
         let Some(window) = self.as_ref().rust().window else {
@@ -149,10 +151,9 @@ impl qobject::BrowserUi {
             return false;
         }
         self.as_mut().sync_core_tabs();
-        self.set_status_text(QString::from(format!(
-            "Context route accepted: {}",
-            pending.context_name
-        )));
+        // Context names are user-controlled metadata. Keep the status/IPC
+        // projection fixed while the exact name remains in the routing action.
+        self.set_status_text(QString::from("Context route accepted"));
         true
     }
 
@@ -170,8 +171,8 @@ impl qobject::BrowserUi {
                 self.set_status_text(QString::from("Navigation requested without context route"));
                 true
             }
-            Err(error) => {
-                self.set_status_text(QString::from(format!("Navigation rejected: {error}")));
+            Err(_) => {
+                self.set_status_text(QString::from("Navigation rejected; details suppressed"));
                 false
             }
         }
@@ -220,20 +221,20 @@ impl qobject::BrowserUi {
                 match self.as_mut().navigate_url(&result.url) {
                     Ok(()) => self.set_status_text(QString::from("Navigation requested")),
                     Err(error) if error == "Navigation ignored" => {
-                        self.set_status_text(QString::from(error));
+                        self.set_status_text(QString::from("Navigation ignored"));
                     }
-                    Err(error) => {
-                        self.set_status_text(QString::from(format!(
-                            "Navigation rejected: {error}"
-                        )));
+                    Err(_) => {
+                        self.set_status_text(QString::from(
+                            "Navigation rejected; details suppressed",
+                        ));
                     }
                 }
             }
             Err(NavigationError::ExternalSchemeRequiresConfirmation { scheme, url }) => {
                 self.as_mut().request_external_navigation(scheme, url);
             }
-            Err(error) => {
-                self.set_status_text(QString::from(format!("Navigation rejected: {error}")));
+            Err(_) => {
+                self.set_status_text(QString::from("Navigation rejected; details suppressed"));
             }
         }
     }
@@ -269,16 +270,15 @@ impl qobject::BrowserUi {
                 }
                 match self.as_mut().navigate_url(&result.url) {
                     Ok(()) => self.set_status_text(QString::from("Navigation requested")),
-                    Err(error) => {
-                        self.set_status_text(QString::from(format!("Navigation rejected: {error}")))
-                    }
+                    Err(_) => self
+                        .set_status_text(QString::from("Navigation rejected; details suppressed")),
                 }
             }
             Err(NavigationError::ExternalSchemeRequiresConfirmation { scheme, url }) => {
                 self.as_mut().request_external_navigation(scheme, url);
             }
-            Err(error) => {
-                self.set_status_text(QString::from(format!("Navigation rejected: {error}")));
+            Err(_) => {
+                self.set_status_text(QString::from("Navigation rejected; details suppressed"));
             }
         }
     }
@@ -288,15 +288,15 @@ impl qobject::BrowserUi {
         match resolve_input(&requested, &self.as_ref().navigation_context()) {
             Ok(result) => match self.as_mut().navigate_url(&result.url) {
                 Ok(()) => self.set_status_text(QString::from("Navigation requested")),
-                Err(error) => {
-                    self.set_status_text(QString::from(format!("Navigation rejected: {error}")))
+                Err(_) => {
+                    self.set_status_text(QString::from("Navigation rejected; details suppressed"))
                 }
             },
             Err(NavigationError::ExternalSchemeRequiresConfirmation { scheme, url }) => {
                 self.as_mut().request_external_navigation(scheme, url);
             }
-            Err(error) => {
-                self.set_status_text(QString::from(format!("Navigation rejected: {error}")));
+            Err(_) => {
+                self.set_status_text(QString::from("Navigation rejected; details suppressed"));
             }
         }
     }
@@ -328,11 +328,11 @@ impl qobject::BrowserUi {
         };
         let input = match validate_clipboard_navigation_input(&raw) {
             Ok(input) => input,
-            Err(error) => {
+            Err(_) => {
                 let status = if primary && raw.trim().is_empty() {
                     "Primary selection is unavailable or empty; navigation was not started"
                 } else {
-                    error.as_str()
+                    "Clipboard navigation input is invalid; details suppressed"
                 };
                 self.set_status_text(QString::from(status));
                 return false;
@@ -343,10 +343,10 @@ impl qobject::BrowserUi {
             Err(NavigationError::ExternalSchemeRequiresConfirmation { scheme, url }) => {
                 return self.as_mut().request_external_navigation(scheme, url);
             }
-            Err(error) => {
-                self.set_status_text(QString::from(format!(
-                    "Clipboard navigation rejected: {error}"
-                )));
+            Err(_) => {
+                self.set_status_text(QString::from(
+                    "Clipboard navigation rejected; details suppressed",
+                ));
                 return false;
             }
         };
@@ -359,10 +359,10 @@ impl qobject::BrowserUi {
                 self.set_status_text(QString::from("Clipboard navigation requested"));
                 true
             }
-            Err(error) => {
-                self.set_status_text(QString::from(format!(
-                    "Clipboard navigation rejected: {error}"
-                )));
+            Err(_) => {
+                self.set_status_text(QString::from(
+                    "Clipboard navigation rejected; details suppressed",
+                ));
                 false
             }
         }

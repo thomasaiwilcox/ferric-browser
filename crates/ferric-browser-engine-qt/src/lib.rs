@@ -47,6 +47,7 @@ mod browser_ui_command_workflows;
 mod browser_ui_configuration;
 mod browser_ui_content_tools;
 mod browser_ui_context_commands;
+mod browser_ui_context_commit_ipc;
 mod browser_ui_context_navigation;
 mod browser_ui_contexts;
 mod browser_ui_controls;
@@ -65,9 +66,12 @@ mod browser_ui_ipc_switcher_actions;
 mod browser_ui_ipc_userscripts;
 mod browser_ui_journey_commands;
 mod browser_ui_library;
+mod browser_ui_library_versioning;
 mod browser_ui_maintenance;
+mod browser_ui_media_fingerprint;
 mod browser_ui_navigation;
 mod browser_ui_navigation_lifecycle;
+mod browser_ui_permission_reset;
 mod browser_ui_persistence;
 mod browser_ui_popups;
 mod browser_ui_process_actions;
@@ -83,6 +87,7 @@ mod browser_ui_query_switcher;
 mod browser_ui_repeat_macros;
 mod browser_ui_runtime;
 mod browser_ui_runtime_config;
+mod browser_ui_session_restore;
 mod browser_ui_sessions;
 mod browser_ui_site;
 mod browser_ui_spatial;
@@ -91,6 +96,8 @@ mod browser_ui_storage_writes;
 mod browser_ui_tab_state;
 mod browser_ui_tabs;
 mod browser_ui_ui_actions;
+mod browser_ui_versioning;
+mod browser_ui_versioning_policy_configuration;
 mod browser_ui_web_actions;
 mod chrome_preferences;
 mod command_options;
@@ -98,6 +105,7 @@ mod compatibility;
 mod config_projection;
 mod config_watch;
 mod configuration_workers;
+mod context_capture_handoff;
 mod desktop_portals;
 mod desktop_preferences;
 mod diagnostics;
@@ -122,6 +130,7 @@ mod ipc_route;
 #[cfg(test)]
 mod ipc_schema;
 mod ipc_transport;
+mod ipc_window_route;
 mod library_presentation;
 mod link_cleaning_policy;
 mod logging;
@@ -174,8 +183,9 @@ use action_catalog::{
 use action_mapping::parse_action_invocation;
 use action_request_decoder::typed_ipc_action;
 use background_workers::{
-    EditorWriteWorker, HyprlandRequest, HyprlandResponse, HyprlandWorker, NetworkPolicyWorker,
-    PrintWorker, UserscriptManagerRequest, UserscriptManagerResult, UserscriptManagerWorker,
+    EditorWriteWorker, HyprlandRequest, HyprlandResponse, HyprlandWorker,
+    MediaFingerprintKeyWorker, NetworkPolicyWorker, PrintWorker, UserscriptManagerRequest,
+    UserscriptManagerResult, UserscriptManagerWorker,
 };
 use binding_policy::{
     binding_command_parameters, binding_uses_full_command_executor, config_get_command_parameters,
@@ -218,8 +228,8 @@ use download_files::{
 };
 use editor_process::{
     EditorCompletion, PendingConfigEdit, PendingEditor, cleanup_editor_artifact,
-    discard_config_edit, discard_editor_request, join_editor_stderr, terminate_child_process,
-    terminate_editor_process, try_wait_editor_process,
+    discard_config_edit, discard_editor_request, terminate_child_process, terminate_editor_process,
+    try_wait_editor_process,
 };
 use effect_projection::{engine_action_name, restore_entry_line};
 use feature_preferences::FeaturePreferences;
@@ -263,9 +273,7 @@ use operation_policy::{
 use operation_projection::{operations_query_value, remember_operation_stderr};
 #[cfg(test)]
 use presentation_text::MAX_PAGE_TITLE_BYTES;
-use presentation_text::{
-    bounded_navigation_failure_detail, normalized_navigation_failure_kind, sanitize_untrusted_title,
-};
+use presentation_text::{normalized_navigation_failure_kind, sanitize_untrusted_title};
 use process_output::sanitize_process_stderr;
 use profile_workers::{
     ProfileDeleteWorker, ProfileListWorker, ProfileMutationResult, ProfilePreviewWorker,
@@ -319,6 +327,22 @@ pub fn diagnostics_snapshot() -> Value {
 
 pub fn enable_software_rendering() {
     qobject::ferric_browser_enable_software_rendering();
+}
+
+pub fn enable_qml_diagnostics(engine: Pin<&mut cxx_qt_lib::QQmlApplicationEngine>) {
+    qobject::ferric_browser_enable_qml_diagnostics(engine);
+}
+
+pub fn suppress_qml_warning_stderr(engine: Pin<&mut cxx_qt_lib::QQmlApplicationEngine>) {
+    qobject::ferric_browser_suppress_qml_warning_stderr(engine);
+}
+
+pub fn dump_qml_component_errors(
+    engine: Pin<&mut cxx_qt_lib::QQmlApplicationEngine>,
+    url: &cxx_qt_lib::QUrl,
+    initial_properties: &cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>,
+) {
+    qobject::ferric_browser_dump_qml_component_errors(engine, url, initial_properties);
 }
 
 pub fn register_internal_scheme() {
@@ -393,10 +417,17 @@ mod qobject {
         include!("cxx-qt-lib/qstring.h");
         include!("cxx-qt-lib/qstringlist.h");
         include!("cxx-qt-lib/qvariant.h");
+        include!("cxx-qt-lib/qmap.h");
+        include!("cxx-qt-lib/qqmlapplicationengine.h");
+        include!("cxx-qt-lib/qurl.h");
+        include!("qml_diagnostics.h");
         include!("url_display.h");
         type QString = cxx_qt_lib::QString;
         type QStringList = cxx_qt_lib::QStringList;
         type QVariant = cxx_qt_lib::QVariant;
+        type QMap_QString_QVariant = cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>;
+        type QQmlApplicationEngine = cxx_qt_lib::QQmlApplicationEngine;
+        type QUrl = cxx_qt_lib::QUrl;
 
         fn ferric_browser_to_ascii_host(host: &QString) -> QString;
         fn ferric_browser_canonicalize_url(value: &QString) -> QString;
@@ -412,6 +443,310 @@ mod qobject {
         fn ferric_browser_set_desktop_identity();
         fn ferric_browser_enable_software_rendering();
         fn ferric_browser_register_internal_scheme();
+        fn ferric_browser_suppress_qml_warning_stderr(engine: Pin<&mut QQmlApplicationEngine>);
+        fn ferric_browser_enable_qml_diagnostics(engine: Pin<&mut QQmlApplicationEngine>);
+        fn ferric_browser_dump_qml_component_errors(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            url: &QUrl,
+            initial_properties: &QMap_QString_QVariant,
+        );
+        #[allow(dead_code)]
+        fn ferric_browser_test_archive_window_state(
+            engine: Pin<&mut QQmlApplicationEngine>,
+        ) -> QString;
+        #[allow(dead_code)]
+        fn ferric_browser_test_request_archive_view(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            commit: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_attempt_archive_profile_replacement(
+            engine: Pin<&mut QQmlApplicationEngine>,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_close_archive_view(engine: Pin<&mut QQmlApplicationEngine>) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_begin_window_shutdown(
+            engine: Pin<&mut QQmlApplicationEngine>,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_cancel_quit_and_drain_archive_worker(
+            engine: Pin<&mut QQmlApplicationEngine>,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_page_capture_state(
+            engine: Pin<&mut QQmlApplicationEngine>,
+        ) -> QString;
+        #[allow(dead_code)]
+        fn ferric_browser_test_clean_branch_state(
+            engine: Pin<&mut QQmlApplicationEngine>,
+        ) -> QString;
+        #[allow(dead_code)]
+        fn ferric_browser_test_execute_root_command(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            command: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_disable_pending_clean_branch_view_factory(
+            engine: Pin<&mut QQmlApplicationEngine>,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_request_clean_branch_close(
+            engine: Pin<&mut QQmlApplicationEngine>,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_confirm_clean_branch_close(
+            engine: Pin<&mut QQmlApplicationEngine>,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_confirm_clean_branch_page_close(
+            engine: Pin<&mut QQmlApplicationEngine>,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_confirm_clean_branch_popup_page_close(
+            engine: Pin<&mut QQmlApplicationEngine>,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_remember_normal_notification_permission(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            origin: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_normal_notification_allowed(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            origin: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_deny_clean_branch_permission(
+            engine: Pin<&mut QQmlApplicationEngine>,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_execute_clean_branch_command(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            command: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_first_clean_branch_tab_close_refused(
+            engine: Pin<&mut QQmlApplicationEngine>,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_disable_clean_branch_factory(
+            engine: Pin<&mut QQmlApplicationEngine>,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_click_clean_branch_page(
+            engine: Pin<&mut QQmlApplicationEngine>,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_page_capture_public_projections(
+            engine: Pin<&mut QQmlApplicationEngine>,
+        ) -> QString;
+        #[allow(dead_code)]
+        fn ferric_browser_test_load_viewless_download_extension(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            extension_path: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_observe_viewless_download(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            download_url: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_viewless_download_was_observed(
+            engine: Pin<&mut QQmlApplicationEngine>,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_open_viewless_download_extension_popup(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            download_url: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_cancel_page_capture_download(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            operation: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_expire_page_capture_save(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            operation: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_close_first_page_capture_tab(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            operation: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_close_second_page_capture_tab(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            operation: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_close_completed_page_capture_tab(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            operation: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_close_during_capture_install_is_deferred(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            operation: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_delay_page_capture_renderer(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            expected_url: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_submit_page_capture_form(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            expected_url: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_prepare_page_capture_geometry(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            expected_url: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_prepare_page_capture_selection(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            expected_url: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_prepare_page_capture_refill_draft(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            expected_url: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_prepare_page_capture_media_position(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            expected_url: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_remove_page_capture_frame(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            expected_url: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_reload_page_capture_frame(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            expected_url: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_probe_restored_page_geometry(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            expected_url: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_confirm_restore_editable_review(
+            engine: Pin<&mut QQmlApplicationEngine>,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_probe_blank_restore_refill_draft(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            expected_url: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_probe_restored_refill_draft(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            expected_url: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_probe_restored_media_position(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            expected_url: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_open_secondary_page_capture_form(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            startup_url: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_secondary_page_capture_state(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            startup_url: &QString,
+        ) -> QString;
+        #[allow(dead_code)]
+        fn ferric_browser_test_submit_secondary_page_capture_form(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            startup_url: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_navigate_secondary_page_capture(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            startup_url: &QString,
+            url: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_request_secondary_page_capture_close(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            startup_url: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_continue_secondary_page_capture_close(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            startup_url: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_confirm_secondary_page_capture_close(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            startup_url: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_retry_secondary_page_capture_close(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            startup_url: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_navigate_page_capture_source(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            url: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_navigate_first_page_capture_tab(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            url: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_navigate_second_page_capture_tab(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            url: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_open_second_page_capture_tab(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            url: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_select_page_capture_tab(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            tab_index: i32,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_request_page_capture(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            include_editable: bool,
+            include_selection: bool,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_request_window_page_capture(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            include_editable: bool,
+            include_selection: bool,
+            allow_partial_pages: bool,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_page_capture_disclosure_operation(
+            engine: Pin<&mut QQmlApplicationEngine>,
+        ) -> QString;
+        #[allow(dead_code)]
+        fn ferric_browser_test_accept_page_capture(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            operation: &QString,
+        ) -> bool;
+        #[allow(dead_code)]
+        fn ferric_browser_test_decline_page_capture(
+            engine: Pin<&mut QQmlApplicationEngine>,
+            operation: &QString,
+        ) -> bool;
     }
 
     extern "RustQt" {
@@ -422,6 +757,14 @@ mod qobject {
         #[qproperty(QString, display_url)]
         #[qproperty(QString, page_title)]
         #[qproperty(QString, status_text)]
+        #[qproperty(bool, versioning_panel_visible)]
+        #[qproperty(QString, versioning_panel_kind)]
+        #[qproperty(QString, versioning_panel_data)]
+        #[qproperty(QString, versioning_archive_view_url)]
+        #[qproperty(QString, versioning_archive_view_operation)]
+        #[qproperty(QString, versioning_archive_source_url)]
+        #[qproperty(QString, versioning_archive_captured_at_ms)]
+        #[qproperty(QString, versioning_archive_fidelity_label)]
         #[qproperty(QString, macro_status_text)]
         #[qproperty(QString, load_state)]
         #[qproperty(QString, navigation_failure_kind)]
@@ -550,7 +893,6 @@ mod qobject {
         #[qproperty(QString, editor_completion_original)]
         #[qproperty(QString, editor_completion_updated)]
         #[qproperty(QString, editor_completion_error)]
-        #[qproperty(QString, editor_completion_stderr)]
         #[qproperty(QString, jseval_tab_id)]
         #[qproperty(QString, jseval_world)]
         #[qproperty(QString, jseval_script)]
@@ -675,6 +1017,9 @@ mod qobject {
         fn navigate_without_context_route(self: Pin<&mut BrowserUi>, input: &QString);
 
         #[qinvokable]
+        fn navigate_clean_branch_safe_get(self: Pin<&mut BrowserUi>, url: &QString) -> bool;
+
+        #[qinvokable]
         fn set_blocking_active_evidence(
             self: Pin<&mut BrowserUi>,
             explanation: &QStringList,
@@ -728,6 +1073,96 @@ mod qobject {
 
         #[qinvokable]
         fn execute_command(self: Pin<&mut BrowserUi>, input: &QString) -> bool;
+
+        /// Exposes only the current saved context's opaque identity.
+        #[qinvokable]
+        fn active_context_capture_ref(self: Pin<&mut BrowserUi>, context_name: &QString)
+        -> QString;
+
+        /// Saved ordered runtime member IDs; authority remains in Rust.
+        #[qinvokable]
+        fn active_context_capture_members(
+            self: Pin<&mut BrowserUi>,
+            context_name: &QString,
+        ) -> QStringList;
+
+        /// Stage a Rust-held membership record at its exact live owner.
+        #[qinvokable]
+        fn stage_context_window_membership(
+            self: Pin<&mut BrowserUi>,
+            context_name: &QString,
+        ) -> QString;
+
+        #[qinvokable]
+        fn prepare_staged_context_save(
+            self: Pin<&mut BrowserUi>,
+            context_name: &QString,
+            handles: &QStringList,
+        ) -> QString;
+
+        #[qinvokable]
+        fn confirm_staged_context_window_membership(
+            self: Pin<&mut BrowserUi>,
+            handle: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn finish_staged_context_save(self: Pin<&mut BrowserUi>, plan_id: &QString) -> bool;
+
+        #[qinvokable]
+        fn cancel_staged_context_save(self: Pin<&mut BrowserUi>, plan_id: &QString) -> bool;
+
+        /// Stage only an opaque handle; the owner-issued capture remains in Rust.
+        #[qinvokable]
+        fn stage_context_window_capture(
+            self: Pin<&mut BrowserUi>,
+            context_name: &QString,
+            context_ref: &QString,
+            ordinal: i32,
+        ) -> QString;
+
+        /// Bind only a handle issued by this exact live window owner.
+        #[qinvokable]
+        fn bind_staged_context_window_capture(self: Pin<&mut BrowserUi>, handle: &QString) -> bool;
+
+        /// Assemble only Rust-held exact-owner captures; return an opaque plan ID.
+        #[qinvokable]
+        fn prepare_staged_context_commit(
+            self: Pin<&mut BrowserUi>,
+            handles: &QStringList,
+            message: &QString,
+        ) -> QString;
+
+        /// Publish only after all originating owners produced Rust receipts.
+        #[qinvokable]
+        fn finish_staged_context_commit(
+            self: Pin<&mut BrowserUi>,
+            plan_id: &QString,
+        ) -> QStringList;
+
+        #[qinvokable]
+        fn cancel_staged_context_commit(self: Pin<&mut BrowserUi>, plan_id: &QString) -> bool;
+
+        /// Consumes only the Rust-validated message queued by a context commit.
+        #[qinvokable]
+        fn take_context_commit_message(self: Pin<&mut BrowserUi>) -> QString;
+
+        #[qinvokable]
+        fn confirm_versioned_commit_delete(self: Pin<&mut BrowserUi>, request_id: &QString)
+        -> bool;
+
+        #[qinvokable]
+        fn cancel_versioned_commit_delete(self: Pin<&mut BrowserUi>, request_id: &QString) -> bool;
+
+        #[qinvokable]
+        fn confirm_versioned_policy_restore(
+            self: Pin<&mut BrowserUi>,
+            request_id: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn cancel_versioned_policy_restore(self: Pin<&mut BrowserUi>, request_id: &QString)
+        -> bool;
 
         #[qinvokable]
         fn execute_interactive_command(self: Pin<&mut BrowserUi>, input: &QString) -> bool;
@@ -786,6 +1221,316 @@ mod qobject {
         fn new_tab(self: Pin<&mut BrowserUi>) -> i32;
 
         #[qinvokable]
+        fn bind_native_versioning_profile(self: Pin<&mut BrowserUi>) -> bool;
+
+        /// # Safety
+        /// `child` must be a live, distinct BrowserUi QObject for this
+        /// synchronous QML call. The implementation checks exact Rust owner
+        /// and profile generations before admitting branch lineage.
+        #[qinvokable]
+        unsafe fn publish_versioned_clean_branch(
+            self: Pin<&mut BrowserUi>,
+            child: *mut BrowserUi,
+            branch_id: &QString,
+        ) -> bool;
+
+        /// # Safety
+        /// `child` must be a live, distinct tab-capable BrowserUi QObject.
+        /// The caller must establish one exact native view per ordered child tab.
+        #[qinvokable]
+        unsafe fn publish_versioned_clean_branch_window(
+            self: Pin<&mut BrowserUi>,
+            child: *mut BrowserUi,
+            branch_id: &QString,
+        ) -> bool;
+
+        /// # Safety
+        /// `child` must be a live, distinct BrowserUi QObject for this
+        /// synchronous, exact-owner structural export preview.
+        #[qinvokable]
+        unsafe fn preview_versioned_clean_branch_export(
+            self: Pin<&mut BrowserUi>,
+            child: *mut BrowserUi,
+            branch_id: &QString,
+            command: &QString,
+        ) -> QString;
+
+        /// # Safety
+        /// `child` must remain live throughout the synchronous confirmation.
+        #[qinvokable]
+        unsafe fn confirm_versioned_clean_branch_export(
+            self: Pin<&mut BrowserUi>,
+            child: *mut BrowserUi,
+            operation_id: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn cancel_versioned_clean_branch_export(
+            self: Pin<&mut BrowserUi>,
+            operation_id: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn abort_versioned_clean_branch(self: Pin<&mut BrowserUi>, branch_id: &QString) -> bool;
+
+        /// # Safety
+        /// `child` must be a live, distinct BrowserUi QObject during this
+        /// synchronous close callback.
+        #[qinvokable]
+        unsafe fn close_versioned_clean_branch(
+            self: Pin<&mut BrowserUi>,
+            child: *mut BrowserUi,
+            branch_id: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn switch_versioned_clean_branch_parent(
+            self: Pin<&mut BrowserUi>,
+            command: &QString,
+        ) -> QString;
+
+        /// # Safety
+        /// `child` must be the live branch BrowserUi for this synchronous
+        /// call. The exact application, native owner and view are checked.
+        #[qinvokable]
+        unsafe fn switch_versioned_clean_branch_child(
+            self: Pin<&mut BrowserUi>,
+            child: *mut BrowserUi,
+            command: &QString,
+        ) -> QString;
+
+        /// # Safety
+        /// `child` must remain alive for this synchronous owner recheck.
+        #[qinvokable]
+        unsafe fn validate_versioned_clean_branch_target(
+            self: Pin<&mut BrowserUi>,
+            child: *mut BrowserUi,
+            branch_id: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn request_versioned_pristine_restore(
+            self: Pin<&mut BrowserUi>,
+            commit_id: &QString,
+            restore_media_positions: bool,
+            restore_editable_drafts: bool,
+        ) -> bool;
+
+        #[qinvokable]
+        fn request_versioned_pristine_tab_restore(
+            self: Pin<&mut BrowserUi>,
+            commit_id: &QString,
+            restore_media_positions: bool,
+            restore_editable_drafts: bool,
+        ) -> bool;
+
+        #[qinvokable]
+        fn request_versioned_archive_view(self: Pin<&mut BrowserUi>, commit_id: &QString) -> bool;
+
+        #[qinvokable]
+        fn close_versioned_archive_view(self: Pin<&mut BrowserUi>, operation_id: &QString) -> bool;
+
+        #[qinvokable]
+        fn versioned_restore_geometry_capture_request(
+            self: Pin<&mut BrowserUi>,
+            request_id: &QString,
+            destination_tab_id: &QString,
+        ) -> QString;
+
+        #[qinvokable]
+        fn versioned_restore_geometry_script(
+            self: Pin<&mut BrowserUi>,
+            request_id: &QString,
+            current_sidecar_json: &QString,
+        ) -> QString;
+
+        #[qinvokable]
+        fn versioned_restore_editable_preview(
+            self: Pin<&mut BrowserUi>,
+            request_id: &QString,
+        ) -> QString;
+
+        #[qinvokable]
+        fn confirm_versioned_restore_editable_preview(
+            self: Pin<&mut BrowserUi>,
+            request_id: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn discard_versioned_restore_sidecar(
+            self: Pin<&mut BrowserUi>,
+            request_id: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn pending_native_stash_start(self: Pin<&mut BrowserUi>) -> QStringList;
+
+        #[qinvokable]
+        fn acknowledge_native_stash_start(
+            self: Pin<&mut BrowserUi>,
+            operation_id: &QString,
+            source_tab_id: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn refuse_native_stash_start(self: Pin<&mut BrowserUi>, operation_id: &QString) -> bool;
+
+        #[qinvokable]
+        fn pending_native_stash_disclosure(self: Pin<&mut BrowserUi>) -> QStringList;
+
+        #[qinvokable]
+        fn request_native_page_capture_consent(
+            self: Pin<&mut BrowserUi>,
+            editable: bool,
+            selection: bool,
+        ) -> bool;
+
+        #[qinvokable]
+        fn request_native_window_page_capture_consent(
+            self: Pin<&mut BrowserUi>,
+            editable: bool,
+            selection: bool,
+            allow_partial_pages: bool,
+        ) -> bool;
+
+        #[qinvokable]
+        fn pending_native_page_capture_disclosure(self: Pin<&mut BrowserUi>) -> QStringList;
+
+        #[qinvokable]
+        fn accept_native_page_capture_disclosure(
+            self: Pin<&mut BrowserUi>,
+            operation_id: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn decline_native_page_capture_disclosure(
+            self: Pin<&mut BrowserUi>,
+            operation_id: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn pending_native_page_capture_save(self: Pin<&mut BrowserUi>) -> QStringList;
+
+        #[qinvokable]
+        fn native_page_capture_archive_limit_bytes(self: Pin<&mut BrowserUi>) -> QString;
+
+        #[qinvokable]
+        fn native_page_capture_sidecar_request(
+            self: Pin<&mut BrowserUi>,
+            operation_id: &QString,
+            tab_id: &QString,
+        ) -> QStringList;
+
+        #[qinvokable]
+        fn native_page_capture_media_key_status(self: Pin<&mut BrowserUi>) -> QString;
+
+        #[qinvokable]
+        fn complete_native_page_capture_sidecar(
+            self: Pin<&mut BrowserUi>,
+            operation_id: &QString,
+            sidecar_json: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn claim_native_page_capture_save(
+            self: Pin<&mut BrowserUi>,
+            operation_id: &QString,
+            tab_id: &QString,
+            observed_url: &QString,
+        ) -> QString;
+
+        #[qinvokable]
+        fn cancel_native_page_capture_request(
+            self: Pin<&mut BrowserUi>,
+            operation_id: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn cancel_pending_native_page_capture_for_shutdown(self: Pin<&mut BrowserUi>) -> bool;
+
+        #[qinvokable]
+        fn has_native_page_capture_request(self: Pin<&mut BrowserUi>) -> bool;
+
+        #[qinvokable]
+        fn note_native_page_capture_download_requested(
+            self: Pin<&mut BrowserUi>,
+            operation_id: &QString,
+            download_id: &QString,
+            observed_path: &QString,
+            is_save_page: bool,
+            is_mhtml: bool,
+            permit_matches: bool,
+        ) -> bool;
+
+        #[qinvokable]
+        fn finish_native_page_capture_download(
+            self: Pin<&mut BrowserUi>,
+            operation_id: &QString,
+            download_facts_json: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn fail_native_window_capture_page(
+            self: Pin<&mut BrowserUi>,
+            operation_id: &QString,
+            tab_id: &QString,
+            reason: &QString,
+            observed_path: &QString,
+            download_id: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn decline_native_stash_disclosure(
+            self: Pin<&mut BrowserUi>,
+            operation_id: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn pending_native_stash_preparation(self: Pin<&mut BrowserUi>) -> QStringList;
+
+        #[qinvokable]
+        fn has_native_stash_preparation(self: Pin<&mut BrowserUi>) -> bool;
+
+        #[qinvokable]
+        fn has_active_versioning_operations(self: Pin<&mut BrowserUi>) -> bool;
+
+        #[qinvokable]
+        fn has_pending_versioning_object_work(self: Pin<&mut BrowserUi>) -> bool;
+
+        #[qinvokable]
+        fn acknowledge_native_fallback_materialized(
+            self: Pin<&mut BrowserUi>,
+            view_id: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn acknowledge_native_stash_hold_installed(
+            self: Pin<&mut BrowserUi>,
+            view_id: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn abort_native_stash_preparation(self: Pin<&mut BrowserUi>, view_id: &QString) -> bool;
+
+        #[qinvokable]
+        fn abort_native_stash_held_preparation(
+            self: Pin<&mut BrowserUi>,
+            view_id: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn poll_native_stash_cleanup(self: Pin<&mut BrowserUi>) -> QString;
+
+        #[qinvokable]
+        fn confirm_native_frozen_stash(self: Pin<&mut BrowserUi>, view_id: &QString) -> i32;
+
+        #[qinvokable]
+        fn acknowledge_native_stash_restoration(
+            self: Pin<&mut BrowserUi>,
+            view_id: &QString,
+        ) -> bool;
+
+        #[qinvokable]
         fn select_tab(self: Pin<&mut BrowserUi>, index: i32) -> bool;
 
         #[qinvokable]
@@ -802,6 +1547,9 @@ mod qobject {
 
         #[qinvokable]
         fn tab_id_for_index(self: Pin<&mut BrowserUi>, index: i32) -> QString;
+
+        #[qinvokable]
+        fn has_lazy_restore_page(self: Pin<&mut BrowserUi>, index: i32) -> bool;
 
         #[qinvokable]
         fn tab_transfer_payload(self: Pin<&mut BrowserUi>, id: &QString) -> QString;
@@ -1013,6 +1761,9 @@ mod qobject {
 
         #[qinvokable]
         fn request_shutdown(self: Pin<&mut BrowserUi>) -> bool;
+
+        #[qinvokable]
+        fn versioned_archive_shutdown_ready(self: Pin<&mut BrowserUi>) -> bool;
 
         #[qinvokable]
         fn begin_shutdown_gate(self: Pin<&mut BrowserUi>) -> bool;
@@ -1267,6 +2018,12 @@ mod qobject {
         fn diagnostics_json(self: Pin<&mut BrowserUi>) -> QString;
 
         #[qinvokable]
+        fn authorize_diagnostics_export(
+            self: Pin<&mut BrowserUi>,
+            reviewed_preview: &QString,
+        ) -> bool;
+
+        #[qinvokable]
         fn spellcheck_dictionaries(self: Pin<&mut BrowserUi>) -> QStringList;
 
         #[qinvokable]
@@ -1338,6 +2095,14 @@ mod qobject {
             url: QString,
             title: QString,
         );
+
+        /// Adapter-only proof for an exact bodyless typed main-frame GET.
+        #[qinvokable]
+        fn navigation_typed_safe_get_committed_for(
+            self: Pin<&mut BrowserUi>,
+            index: i32,
+            url: QString,
+        ) -> bool;
 
         #[qinvokable]
         fn navigation_completed(self: Pin<&mut BrowserUi>);
@@ -1450,7 +2215,13 @@ mod qobject {
         fn enter_caret(self: Pin<&mut BrowserUi>);
 
         #[qinvokable]
-        fn poll_ipc(self: Pin<&mut BrowserUi>);
+        fn poll_ipc(self: Pin<&mut BrowserUi>) -> QStringList;
+
+        #[qinvokable]
+        fn poll_routed_ipc(self: Pin<&mut BrowserUi>) -> i32;
+
+        #[qinvokable]
+        fn reject_routed_ipc(self: Pin<&mut BrowserUi>, window_id: &QString) -> i32;
 
         #[qinvokable]
         fn view_closed(self: Pin<&mut BrowserUi>);
@@ -1502,12 +2273,13 @@ use ferric_browser_core::{
     Event, ExistenceState, GridCell, HintAutoFollow as CoreHintAutoFollow, HintInteraction,
     HintInteractionInput, HintInteractionOutcome, HintKind, HintSession, HintTarget, IdSource,
     JourneyEdgeKind, JourneyNodeId, LoadingState, LogicalRect, Mode, NavigationContext,
-    NavigationError, NavigationSource, ParseInput, ParsedCommand, PointerButton, PrivacyKind,
-    ResourceLifecycle, SearchCase, SpatialAck, SpatialAction, SpatialCancelReason,
-    SpatialDispatchOutcome, SpatialError, SpatialLifecycle, SpatialOwner, SpatialSession,
-    SpatialTarget, SurfaceStamp, TabId, TabTransfer, Target, ValidatedUrl, WindowId,
-    assign_labels_with_options, canonical_origin, clean_link, complete, parse_chain,
-    refresh_labels, resolve_input, switcher_rank, tokenize_switcher_query,
+    NavigationError, NavigationSource, OperationId, ParseInput, ParsedCommand, PointerButton,
+    PrivacyKind, ProfileId, ProfileInstanceId, ResourceLifecycle, SearchCase, SpatialAck,
+    SpatialAction, SpatialCancelReason, SpatialDispatchOutcome, SpatialError, SpatialLifecycle,
+    SpatialOwner, SpatialSession, SpatialTarget, SurfaceStamp, TabId, TabTransfer, Target,
+    ValidatedUrl, VersioningEngineEffect, WindowId, assign_labels_with_options, canonical_origin,
+    clean_link, complete, parse_chain, refresh_labels, resolve_input, switcher_rank,
+    tokenize_switcher_query,
 };
 use ferric_browser_ipc::{
     EventNotification, PublicError, Request, Response, has_pending_requests,
@@ -1572,6 +2344,19 @@ pub struct BrowserUiRust {
     display_url: QString,
     page_title: QString,
     status_text: QString,
+    versioning_panel_visible: bool,
+    versioning_panel_kind: QString,
+    versioning_panel_data: QString,
+    versioning_archive_view_url: QString,
+    versioning_archive_view_operation: QString,
+    versioning_archive_source_url: QString,
+    versioning_archive_captured_at_ms: QString,
+    versioning_archive_fidelity_label: QString,
+    latest_versioning_read_request: Option<u64>,
+    pending_archive_view_request: Option<u64>,
+    pending_archive_view_cleanup: Option<u64>,
+    active_archive_view_operation: Option<OperationId>,
+    archive_view_cleanup_retries: u8,
     macro_status_text: QString,
     load_state: QString,
     navigation_failure_kind: QString,
@@ -1585,6 +2370,15 @@ pub struct BrowserUiRust {
     // The application boundary owns reducer state and durable resources; Qt
     // receives only read projections and typed effects.
     state: Option<BrowserApplication>,
+    native_versioning_profile: Option<(ProfileId, ProfileInstanceId)>,
+    pending_pristine_restore_request: Option<u64>,
+    pending_pristine_restore_media: bool,
+    pending_pristine_restore_editable: bool,
+    pending_pristine_restore_tab_surface: bool,
+    native_stash_bridge: browser_ui_versioning::NativeStashBridge,
+    pending_versioning_operation_effects:
+        VecDeque<ferric_browser_application::versioning::OperationEffect>,
+    pending_versioning_rescan_required: bool,
     window: Option<WindowId>,
     tab: Option<TabId>,
     registry: CommandRegistry,
@@ -1703,12 +2497,18 @@ pub struct BrowserUiRust {
     switcher_cache: Option<SwitcherQueryCache>,
     session_names: Vec<String>,
     session_names_dirty: Cell<bool>,
+    session_names_pending: bool,
+    session_names_ticket: Option<StorageTicket>,
     session_restore_preview_pending: bool,
     session_restore_load_append: Option<bool>,
     session_restore_recovery_pending: bool,
+    session_restore_ticket: Option<StorageTicket>,
     session_save_pending: bool,
+    session_save_ticket: Option<StorageTicket>,
     session_save_checkpoint: bool,
+    session_delete_ticket: Option<StorageTicket>,
     session_checkpoint_clear_pending: bool,
+    session_checkpoint_clear_ticket: Option<StorageTicket>,
     storage_flush_pending: bool,
     storage_flush_error: Option<String>,
     download_destination_pending: bool,
@@ -1768,7 +2568,6 @@ pub struct BrowserUiRust {
     editor_completion_original: QString,
     editor_completion_updated: QString,
     editor_completion_error: QString,
-    editor_completion_stderr: QString,
     jseval_tab_id: QString,
     jseval_world: QString,
     jseval_script: QString,
@@ -1917,13 +2716,22 @@ pub struct BrowserUiRust {
     profile_list_worker: Option<ProfileListWorker>,
     profile_preview_worker: Option<ProfilePreviewWorker>,
     userscript_manager_worker: Option<UserscriptManagerWorker>,
+    media_fingerprint_key_worker: Option<MediaFingerprintKeyWorker>,
+    media_fingerprint_key_request: Option<(Uuid, bool)>,
+    media_fingerprint_key_failure: Option<Uuid>,
+    media_fingerprint_key: Option<(Uuid, ferric_browser_storage::MediaFingerprintKey)>,
+    pending_media_restore_capture: Option<(u64, String)>,
     theme_watch: ConfigWatch,
     ipc_sequence: u64,
     ipc_shutdown_gate: bool,
     contexts: Option<ContextSnapshot>,
     pending_context_route: Option<PendingContextRoute>,
+    pending_context_capture: Option<browser_ui_contexts::PendingContextCapture>,
+    pending_context_save: Option<browser_ui_contexts::PendingContextSave>,
+    pending_context_commit_message: Option<String>,
     profile_name: String,
     profile_id: Option<Uuid>,
+    session_core_profile_id: Option<ProfileId>,
     journey_durable_ids: RefCell<BTreeMap<JourneyNodeId, String>>,
     profile_persistence: ProfilePersistence,
     session_permissions: BTreeMap<PermissionDecisionKey, String>,
@@ -1941,8 +2749,8 @@ pub struct BrowserUiRust {
     operation_stderr: BTreeMap<String, String>,
     action_audit: Vec<Value>,
     structured_log: Option<logging::StructuredLogSink>,
-    diagnostics_preview_ready: bool,
-    diagnostics_preview_payload: Option<String>,
+    diagnostics_snapshot_payload: Option<String>,
+    diagnostics_export_payload: Option<String>,
     request_resolution_counts: BTreeMap<(String, String), u64>,
     active_site_experiment: Option<SiteExperiment>,
     last_site_doctor_result: Option<Value>,
@@ -1956,7 +2764,7 @@ pub struct BrowserUiRust {
     live_window_registry: Vec<LiveWindowRegistryEntry>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct SiteExperiment {
     id: String,
     kind: String,
@@ -1981,7 +2789,7 @@ fn site_doctor_remaining_seconds(created_at: Instant, now: Instant) -> Option<u6
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct ClosedTabDescriptor {
     id: Uuid,
     url: String,
@@ -1991,7 +2799,7 @@ struct ClosedTabDescriptor {
     closed_at: i64,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct PendingLinkNavigation {
     target: Option<Target>,
     new_window_action: Option<String>,
@@ -1999,19 +2807,18 @@ struct PendingLinkNavigation {
     url: ValidatedUrl,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct JourneyReopenRecord {
     id: String,
     url: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct PendingExternalNavigation {
-    scheme: String,
     url: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct PendingSelection {
     token: String,
     target: Target,
@@ -2030,7 +2837,7 @@ fn finish_pending_selection_operation(this: &mut BrowserUiRust, status: &str) {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct PendingCaret {
     token: String,
     target: Target,
@@ -2038,24 +2845,23 @@ struct PendingCaret {
     issued: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct PendingSpawn {
     token: String,
     target: Target,
     argv: Vec<String>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct PendingActionTarget {
     token: String,
     target: Target,
-    target_name: String,
     target_config: ActionTargetConfig,
     operation_id: String,
     created_at: Instant,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct PendingUserscript {
     token: String,
     target: Target,
@@ -2063,7 +2869,7 @@ struct PendingUserscript {
     operation_id: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct PendingDownload {
     token: String,
     target: Target,
@@ -2071,13 +2877,13 @@ struct PendingDownload {
     issued: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct SpawnCompletion {
     operation_id: String,
     status: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct UserscriptCompletion {
     operation_id: String,
     status: String,
@@ -2090,7 +2896,7 @@ fn bootstrap_runtime(
     privacy: PrivacyKind,
     profile_label: &str,
 ) -> Option<(BrowserRuntime, WindowId, TabId)> {
-    BrowserRuntime::bootstrap(privacy, profile_label).ok()
+    BrowserRuntime::bootstrap_process_unique(privacy, profile_label).ok()
 }
 
 fn ensure_spawn_working_directory(rust: &mut BrowserUiRust) -> Result<PathBuf, String> {
@@ -2102,9 +2908,9 @@ fn ensure_spawn_working_directory(rust: &mut BrowserUiRust) -> Result<PathBuf, S
         |roots| roots.runtime.join("spawn"),
     );
     fs::create_dir_all(&path)
-        .map_err(|error| format!("could not create process working directory: {error}"))?;
+        .map_err(|_| "could not create process working directory".to_owned())?;
     set_private_directory_permissions(&path)
-        .map_err(|error| format!("could not secure process working directory: {error}"))?;
+        .map_err(|_| "could not secure process working directory".to_owned())?;
     rust.spawn_working_directory = Some(path.clone());
     Ok(path)
 }
@@ -2115,6 +2921,7 @@ impl qobject::BrowserUi {
     fn poll_storage_effects(mut self: Pin<&mut Self>) -> Vec<StorageEffect> {
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
+        this.poll_media_fingerprint_key();
         Option::as_mut(&mut this.state)
             .map(BrowserApplication::poll_storage_effects)
             .unwrap_or_default()
@@ -2225,6 +3032,19 @@ impl Default for BrowserUiRust {
             display_url: QString::from("about:blank"),
             page_title: QString::default(),
             status_text: QString::from("Ready"),
+            versioning_panel_visible: false,
+            versioning_panel_kind: QString::from("none"),
+            versioning_panel_data: QString::from("{}"),
+            versioning_archive_view_url: QString::default(),
+            versioning_archive_view_operation: QString::default(),
+            versioning_archive_source_url: QString::default(),
+            versioning_archive_captured_at_ms: QString::default(),
+            versioning_archive_fidelity_label: QString::default(),
+            latest_versioning_read_request: None,
+            pending_archive_view_request: None,
+            pending_archive_view_cleanup: None,
+            active_archive_view_operation: None,
+            archive_view_cleanup_retries: 0,
             macro_status_text: QString::default(),
             load_state: QString::from("idle"),
             navigation_failure_kind: QString::default(),
@@ -2236,6 +3056,14 @@ impl Default for BrowserUiRust {
             learning_mode: false,
             view_alive: true,
             state,
+            native_versioning_profile: None,
+            pending_pristine_restore_request: None,
+            pending_pristine_restore_media: false,
+            pending_pristine_restore_editable: false,
+            pending_pristine_restore_tab_surface: false,
+            native_stash_bridge: browser_ui_versioning::NativeStashBridge::default(),
+            pending_versioning_operation_effects: VecDeque::new(),
+            pending_versioning_rescan_required: false,
             window,
             tab,
             registry,
@@ -2355,12 +3183,18 @@ impl Default for BrowserUiRust {
             switcher_cache: None,
             session_names: Vec::new(),
             session_names_dirty: Cell::new(true),
+            session_names_pending: false,
+            session_names_ticket: None,
             session_restore_preview_pending: false,
             session_restore_load_append: None,
             session_restore_recovery_pending: false,
+            session_restore_ticket: None,
             session_save_pending: false,
+            session_save_ticket: None,
             session_save_checkpoint: false,
+            session_delete_ticket: None,
             session_checkpoint_clear_pending: false,
+            session_checkpoint_clear_ticket: None,
             storage_flush_pending: false,
             storage_flush_error: None,
             download_destination_pending: false,
@@ -2422,7 +3256,6 @@ impl Default for BrowserUiRust {
             editor_completion_original: QString::default(),
             editor_completion_updated: QString::default(),
             editor_completion_error: QString::default(),
-            editor_completion_stderr: QString::default(),
             jseval_tab_id: QString::default(),
             jseval_world: QString::default(),
             jseval_script: QString::default(),
@@ -2590,13 +3423,22 @@ impl Default for BrowserUiRust {
             profile_list_worker: None,
             profile_preview_worker: None,
             userscript_manager_worker: None,
+            media_fingerprint_key_worker: None,
+            media_fingerprint_key_request: None,
+            media_fingerprint_key_failure: None,
+            media_fingerprint_key: None,
+            pending_media_restore_capture: None,
             theme_watch: ConfigWatch::default(),
             ipc_sequence: 3,
             ipc_shutdown_gate: false,
             contexts: None,
             pending_context_route: None,
+            pending_context_capture: None,
+            pending_context_save: None,
+            pending_context_commit_message: None,
             profile_name: "default".into(),
             profile_id: None,
+            session_core_profile_id: None,
             journey_durable_ids: RefCell::new(BTreeMap::new()),
             profile_persistence: ProfilePersistence::Unavailable,
             session_permissions: BTreeMap::new(),
@@ -2614,8 +3456,8 @@ impl Default for BrowserUiRust {
             operation_stderr: BTreeMap::new(),
             action_audit: Vec::new(),
             structured_log: None,
-            diagnostics_preview_ready: false,
-            diagnostics_preview_payload: None,
+            diagnostics_snapshot_payload: None,
+            diagnostics_export_payload: None,
             request_resolution_counts: BTreeMap::new(),
             active_site_experiment: None,
             last_site_doctor_result: None,

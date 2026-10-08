@@ -17,6 +17,12 @@ is being migrated. This document is the review allowlist for those exceptions.
 - The primary and secondary window runtime pumps use bounded selection, caret,
   editor, download, and page-evaluation request tokens with opaque page-script
   result objects. Rust validates each result before it changes browser state.
+- The versioned page-archive save callback returns a bounded native download
+  fact record (completion state and byte count only); Rust correlates it with
+  the exact pending operation and never trusts a QML-supplied URL or path.
+- Clean-branch structural export decodes a bounded, one-use Rust preview in
+  the exact child window. The child displays destination and page count only;
+  Rust rechecks linked owners and revisions before confirmation.
 
 ## Opaque diagnostics, export, and command payloads
 
@@ -46,7 +52,7 @@ The following formerly JSON-encoded policy/presentation data must remain typed:
   status.
 
 `tests::qml_json_contract_allowlist_is_explicit` records the current number of
-JSON calls in `Main.qml`. Adding a new call requires a deliberate update to
+JSON calls in the composed runtime QML source. Adding a new call requires a deliberate update to
 this document and a review that it is an opaque page-script, diagnostic, or
 export contract—not a presentation or policy model.
 

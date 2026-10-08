@@ -65,6 +65,17 @@ pub enum PermissionDecision {
     Deny,
 }
 
+/// Whether a future explicitly requested sensitive page-capture operation may
+/// ask for one-use consent. `Ask` is not standing permission; it still
+/// requires a fresh native confirmation for each operation.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SensitiveCapturePolicy {
+    #[default]
+    Ask,
+    Deny,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum CollisionPolicy {

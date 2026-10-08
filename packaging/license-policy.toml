@@ -28,6 +28,21 @@ license = "MIT OR Apache-2.0"
 provenance = "crates.io locked CXX-Qt runtime type dependency"
 
 [[dependency]]
+name = "getrandom"
+license = "MIT OR Apache-2.0"
+provenance = "crates.io locked operating-system CSPRNG used for profile media-key provisioning"
+
+[[dependency]]
+name = "hmac"
+license = "MIT OR Apache-2.0"
+provenance = "crates.io RustCrypto HMAC 0.12.1; RFC 2104 keyed-hash implementation"
+
+[[dependency]]
+name = "dbus-secret-service"
+license = "MIT OR Apache-2.0"
+provenance = "crates.io dbus-secret-service 4.1.0; explicitly configured Linux Secret Service backend"
+
+[[dependency]]
 name = "libc"
 license = "MIT OR Apache-2.0"
 provenance = "crates.io locked Unix platform dependency"
@@ -36,6 +51,11 @@ provenance = "crates.io locked Unix platform dependency"
 name = "rusqlite"
 license = "MIT"
 provenance = "crates.io locked SQLite binding; SQLite notices remain distribution inputs"
+
+[[dependency]]
+name = "sha2"
+license = "MIT OR Apache-2.0"
+provenance = "crates.io RustCrypto sha2 0.10.9; reviewed incremental SHA-256 dependency"
 
 [[dependency]]
 name = "serde"
@@ -53,6 +73,16 @@ license = "MIT OR Apache-2.0"
 provenance = "crates.io locked configuration dependency"
 
 [[dependency]]
+name = "url"
+license = "MIT OR Apache-2.0"
+provenance = "crates.io URL parser used for bounded media-source canonicalization"
+
+[[dependency]]
 name = "uuid"
 license = "MIT OR Apache-2.0"
 provenance = "crates.io locked identity dependency"
+
+[[dependency]]
+name = "zeroize"
+license = "MIT OR Apache-2.0"
+provenance = "crates.io zeroize; clearing profile media-key buffers on drop"

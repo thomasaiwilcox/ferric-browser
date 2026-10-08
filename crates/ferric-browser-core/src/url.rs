@@ -2,10 +2,16 @@ use std::fmt;
 
 const MAX_URL_BYTES: usize = 16 * 1024;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct ValidatedUrl(String);
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+impl fmt::Debug for ValidatedUrl {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("ValidatedUrl([redacted])")
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
 pub enum UrlError {
     Empty,
     TooLong,
@@ -15,6 +21,19 @@ pub enum UrlError {
     Malformed(String),
 }
 
+impl fmt::Debug for UrlError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Empty => formatter.write_str("Empty"),
+            Self::TooLong => formatter.write_str("TooLong"),
+            Self::ControlCharacter => formatter.write_str("ControlCharacter"),
+            Self::MissingScheme => formatter.write_str("MissingScheme"),
+            Self::UnsupportedScheme(_) => formatter.write_str("UnsupportedScheme([redacted])"),
+            Self::Malformed(_) => formatter.write_str("Malformed([redacted])"),
+        }
+    }
+}
+
 impl fmt::Display for UrlError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -22,10 +41,8 @@ impl fmt::Display for UrlError {
             Self::TooLong => formatter.write_str("URL exceeds the size limit"),
             Self::ControlCharacter => formatter.write_str("URL contains a control character"),
             Self::MissingScheme => formatter.write_str("URL has no scheme"),
-            Self::UnsupportedScheme(scheme) => {
-                write!(formatter, "unsupported URL scheme: {scheme}")
-            }
-            Self::Malformed(reason) => write!(formatter, "malformed URL: {reason}"),
+            Self::UnsupportedScheme(_) => formatter.write_str("unsupported URL scheme"),
+            Self::Malformed(_) => formatter.write_str("malformed URL"),
         }
     }
 }
@@ -480,6 +497,36 @@ mod tests {
         assert!(canonicalize("https://[::1/").is_err());
         assert!(canonicalize("https://example.test/a b").is_err());
         assert!(canonicalize("https://example.test/a\\b").is_err());
+    }
+
+    #[test]
+    fn url_and_url_error_debug_redact_dynamic_values() {
+        let sentinel = "private-url-debug-sentinel";
+        let validated =
+            ValidatedUrl::parse(format!("https://example.test/{sentinel}?secret=value"))
+                .expect("valid URL");
+        assert!(!format!("{validated:?}").contains(sentinel));
+        assert!(!format!("{validated:?}").contains("secret=value"));
+
+        for error in [
+            UrlError::UnsupportedScheme(sentinel.into()),
+            UrlError::Malformed(sentinel.into()),
+        ] {
+            assert!(!format!("{error:?}").contains(sentinel));
+        }
+    }
+
+    #[test]
+    fn url_error_display_redacts_dynamic_values() {
+        let sentinel = "private-url-error-sentinel";
+        let errors = [
+            UrlError::UnsupportedScheme(sentinel.into()),
+            UrlError::Malformed(sentinel.into()),
+        ];
+
+        for error in errors {
+            assert!(!error.to_string().contains(sentinel));
+        }
     }
 
     #[test]

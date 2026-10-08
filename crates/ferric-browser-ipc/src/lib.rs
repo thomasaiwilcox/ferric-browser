@@ -33,6 +33,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use ferric_browser_core::versioning::{VersioningFailure, VersioningReason};
 use fs2::FileExt;
 use serde::{Deserialize, Serialize, de, de::Deserializer as _};
 use serde_json::{Value, json};
@@ -58,7 +59,7 @@ const REDACTED: &str = "[redacted]";
 
 static ERROR_CORRELATIONS: OnceLock<Mutex<VecDeque<(String, String)>>> = OnceLock::new();
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Request {
     pub id: String,
     pub method: String,
@@ -66,7 +67,18 @@ pub struct Request {
     pub params: Value,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+impl std::fmt::Debug for Request {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("Request")
+            .field("id", &REDACTED)
+            .field("method", &REDACTED)
+            .field("params", &REDACTED)
+            .finish()
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Response {
     pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -75,12 +87,35 @@ pub struct Response {
     pub error: Option<ProtocolError>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+impl std::fmt::Debug for Response {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("Response")
+            .field("id", &REDACTED)
+            .field("has_result", &self.result.is_some())
+            .field("has_error", &self.error.is_some())
+            .finish()
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct EventNotification {
     pub instance_id: String,
     pub sequence: u64,
     pub event_type: String,
     pub payload: Value,
+}
+
+impl std::fmt::Debug for EventNotification {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("EventNotification")
+            .field("instance_id", &REDACTED)
+            .field("sequence", &self.sequence)
+            .field("event_type", &REDACTED)
+            .field("payload", &REDACTED)
+            .finish()
+    }
 }
 
 /// A validated request waiting for execution on the application thread.
@@ -477,7 +512,7 @@ pub fn take_pending_request() -> Option<PendingRequest> {
         .and_then(|mut queue| queue.pop_front())
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ProtocolError {
     pub code: String,
     pub message: String,
@@ -485,16 +520,38 @@ pub struct ProtocolError {
     pub details: Option<Value>,
 }
 
+impl std::fmt::Debug for ProtocolError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ProtocolError")
+            .field("code", &REDACTED)
+            .field("message", &REDACTED)
+            .field("has_details", &self.details.is_some())
+            .finish()
+    }
+}
+
 /// A typed failure that is safe to expose through the CLI or local IPC.
 ///
 /// The stable [`ErrorCode`] is selected where the failure occurs.  Adapters
 /// must not infer it from a formatted diagnostic message: messages are for
 /// people and diagnostics, while codes are the compatibility contract.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct PublicError {
     code: ErrorCode,
     user_message: String,
     diagnostic_context: String,
+}
+
+impl std::fmt::Debug for PublicError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("PublicError")
+            .field("code", &self.code)
+            .field("user_message", &REDACTED)
+            .field("diagnostic_context", &REDACTED)
+            .finish()
+    }
 }
 
 impl PublicError {
@@ -571,6 +628,86 @@ impl From<&str> for PublicError {
     }
 }
 
+impl From<VersioningFailure> for PublicError {
+    fn from(error: VersioningFailure) -> Self {
+        use VersioningReason as Reason;
+        let (code, message) = match error.reason() {
+            Reason::VersioningDisabled
+            | Reason::UnsupportedCapability
+            | Reason::UnqualifiedRuntime
+            | Reason::ArchiveIsolationUnavailable
+            | Reason::RetentionUnavailable
+            | Reason::CookieIdentityLossy
+            | Reason::CookieSnapshotIncomplete
+            | Reason::CookieSeedUnverified
+            | Reason::MergeApplyUnavailable => (
+                ErrorCode::Unsupported,
+                "This versioning capability is unavailable.",
+            ),
+            Reason::StaleOwner
+            | Reason::DocumentChanged
+            | Reason::ConfirmationExpired
+            | Reason::MergeStale => (
+                ErrorCode::StaleTarget,
+                "The versioning target changed; refresh it and retry.",
+            ),
+            Reason::WrongProfile | Reason::AmbiguousReference | Reason::UnsafeRestoreDescriptor => {
+                (
+                    ErrorCode::InvalidArgument,
+                    "The versioning request is invalid.",
+                )
+            }
+            Reason::PrivatePersistenceDenied => (
+                ErrorCode::Denied,
+                "Private browsing data cannot be persisted.",
+            ),
+            Reason::SensitiveCaptureDenied => (
+                ErrorCode::Denied,
+                "Sensitive capture is denied by the active policy.",
+            ),
+            Reason::ConfirmationRequired => (
+                ErrorCode::ConfirmationRequired,
+                "This versioning action requires confirmation.",
+            ),
+            Reason::Busy => (ErrorCode::Busy, "A versioning operation is already active."),
+            Reason::QuotaExceeded => (ErrorCode::Storage, "Versioning storage quota was exceeded."),
+            Reason::CaptureTimeout => (
+                ErrorCode::Timeout,
+                "The versioning capture timed out; inspect its outcome.",
+            ),
+            Reason::CaptureInterrupted | Reason::RetainedRendererLost => (
+                ErrorCode::Engine,
+                "The versioning operation was interrupted.",
+            ),
+            Reason::MergeConflict => (
+                ErrorCode::StaleTarget,
+                "The merge has conflicts; refresh its target.",
+            ),
+            Reason::MergePartial => (
+                ErrorCode::Partial,
+                "The merge applied only partially; inspect the result before retrying.",
+            ),
+            Reason::MergeOutcomeUnknown => (
+                ErrorCode::OutcomeUnknown,
+                "The merge outcome is unknown; inspect the target before retrying.",
+            ),
+            Reason::ObjectCorrupt => (
+                ErrorCode::Storage,
+                "A versioning object could not be read safely.",
+            ),
+        };
+        let projection = error.projection();
+        Self::new(
+            code,
+            message,
+            format!(
+                "reason={};category={}",
+                projection.reason_code, projection.category
+            ),
+        )
+    }
+}
+
 /// Stable public error vocabulary shared by the CLI and local IPC.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ErrorCode {
@@ -589,6 +726,8 @@ pub enum ErrorCode {
     Storage,
     Engine,
     Cancelled,
+    Partial,
+    OutcomeUnknown,
 }
 
 impl ErrorCode {
@@ -610,6 +749,8 @@ impl ErrorCode {
             Self::Storage => "E_STORAGE",
             Self::Engine => "E_ENGINE",
             Self::Cancelled => "E_CANCELLED",
+            Self::Partial => "E_PARTIAL",
+            Self::OutcomeUnknown => "E_OUTCOME_UNKNOWN",
         }
     }
 
@@ -676,6 +817,14 @@ impl ErrorCode {
                 "the operation was cancelled without a partial commit",
                 "retry it when ready",
             ),
+            Self::Partial => (
+                "some changes may already have been applied",
+                "inspect the current state before deciding whether to retry",
+            ),
+            Self::OutcomeUnknown => (
+                "the effect on state is not yet known",
+                "inspect the current state before deciding whether to retry",
+            ),
         }
     }
 }
@@ -700,6 +849,8 @@ pub fn canonical_error_code(code: &str) -> ErrorCode {
         "E_IO" => ErrorCode::Io,
         "E_STORAGE" => ErrorCode::Storage,
         "E_CANCELLED" => ErrorCode::Cancelled,
+        "E_PARTIAL" => ErrorCode::Partial,
+        "E_OUTCOME_UNKNOWN" => ErrorCode::OutcomeUnknown,
         _ => ErrorCode::Engine,
     }
 }
@@ -839,53 +990,109 @@ fn redact_text(text: &str) -> String {
 }
 
 fn redact_token(token: &str) -> String {
-    if looks_like_url(token) {
-        let without_fragment = token.split('#').next().unwrap_or_default();
+    let (prefix, candidate, suffix) = trim_diagnostic_wrappers(token);
+    if looks_like_url(candidate) {
+        let without_fragment = candidate.split('#').next().unwrap_or_default();
         let without_query = without_fragment.split('?').next().unwrap_or_default();
         let scheme_end = without_query
             .find("://")
             .expect("looks_like_url checked the scheme");
+        let scheme = &without_query[..scheme_end];
         let authority_start = scheme_end + 3;
         let authority_end = without_query[authority_start..]
             .find('/')
             .map_or(without_query.len(), |offset| authority_start + offset);
         let authority = &without_query[authority_start..authority_end];
+        if scheme.eq_ignore_ascii_case("file") {
+            return format!("{prefix}{scheme}://[redacted]/{suffix}");
+        }
         let authority = authority
             .rsplit_once('@')
             .map_or(authority, |(_, host)| host);
-        return format!(
-            "{}{}{}",
-            &without_query[..authority_start],
-            authority,
-            &without_query[authority_end..]
-        );
+        return format!("{prefix}{scheme}://{authority}/{suffix}");
     }
-    if let Some((key, _)) = token.split_once('=')
-        && sensitive_key(key.trim_matches(|character: char| !character.is_ascii_alphanumeric()))
+    if looks_like_local_path(candidate) {
+        return format!("{prefix}[local path redacted]{suffix}");
+    }
+    // INVARIANT: IPC diagnostics may include attacker-controlled rejected
+    // external URIs. Opaque payloads (for example `mailto:` recipients or
+    // `data:` contents) are not covered by the hierarchical URL scrubber, so
+    // retain only the scheme at this protocol boundary.
+    if let Some((scheme, payload)) = candidate.split_once(':')
+        && !payload.starts_with("//")
+        && is_uri_scheme(scheme)
     {
-        return format!("{key}={REDACTED}");
+        return format!("{prefix}{scheme}:{REDACTED}{suffix}");
+    }
+    if let Some((key, _)) = candidate.split_once('=') {
+        let normalized_key = key
+            .trim_matches(|character: char| !character.is_ascii_alphanumeric())
+            .to_ascii_lowercase();
+        if sensitive_key(&normalized_key) {
+            return format!("{prefix}{key}={REDACTED}{suffix}");
+        }
+        if matches!(
+            normalized_key.as_str(),
+            "path" | "filepath" | "filename" | "directory" | "directorypath" | "socket"
+        ) {
+            return format!("{prefix}{key}={REDACTED}{suffix}");
+        }
     }
     token.to_owned()
+}
+
+fn looks_like_local_path(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    value.starts_with('/')
+        || value.starts_with("\\\\")
+        || value.starts_with("~/")
+        || value.starts_with("./")
+        || value.starts_with("../")
+        || value.starts_with(".\\")
+        || value.starts_with("..\\")
+        || (bytes.len() >= 3
+            && bytes[0].is_ascii_alphabetic()
+            && bytes[1] == b':'
+            && matches!(bytes[2], b'/' | b'\\'))
+}
+
+fn trim_diagnostic_wrappers(token: &str) -> (&str, &str, &str) {
+    let start = token.len() - token.trim_start_matches(is_diagnostic_wrapper).len();
+    let after_start = &token[start..];
+    let core_len = after_start.trim_end_matches(is_diagnostic_wrapper).len();
+    (
+        &token[..start],
+        &after_start[..core_len],
+        &after_start[core_len..],
+    )
+}
+
+fn is_diagnostic_wrapper(character: char) -> bool {
+    matches!(
+        character,
+        '(' | ')' | '[' | ']' | '{' | '}' | '<' | '>' | '"' | '\''
+    )
+}
+
+fn is_uri_scheme(value: &str) -> bool {
+    !value.is_empty()
+        && value.chars().enumerate().all(|(index, character)| {
+            if index == 0 {
+                character.is_ascii_alphabetic()
+            } else {
+                character.is_ascii_alphanumeric() || matches!(character, '+' | '-' | '.')
+            }
+        })
 }
 
 fn looks_like_url(value: &str) -> bool {
     let Some(scheme_end) = value.find("://") else {
         return false;
     };
-    scheme_end > 0
-        && value[..scheme_end]
-            .chars()
-            .enumerate()
-            .all(|(index, character)| {
-                if index == 0 {
-                    character.is_ascii_alphabetic()
-                } else {
-                    character.is_ascii_alphanumeric() || matches!(character, '+' | '-' | '.')
-                }
-            })
+    is_uri_scheme(&value[..scheme_end])
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct HelloParams {
     pub protocol_major: u32,
     #[serde(default)]
@@ -893,7 +1100,18 @@ pub struct HelloParams {
     pub client: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+impl std::fmt::Debug for HelloParams {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("HelloParams")
+            .field("protocol_major", &self.protocol_major)
+            .field("protocol_minor", &self.protocol_minor)
+            .field("client", &REDACTED)
+            .finish()
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct HelloResult {
     pub protocol_major: u32,
     pub protocol_minor: u32,
@@ -901,7 +1119,19 @@ pub struct HelloResult {
     pub capabilities: Vec<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+impl std::fmt::Debug for HelloResult {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("HelloResult")
+            .field("protocol_major", &self.protocol_major)
+            .field("protocol_minor", &self.protocol_minor)
+            .field("instance_id", &REDACTED)
+            .field("capability_count", &self.capabilities.len())
+            .finish()
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
 pub enum FrameError {
     Io(String),
     ZeroLength,
@@ -914,12 +1144,28 @@ pub enum FrameError {
 impl std::fmt::Display for FrameError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Io(message) => write!(formatter, "IPC I/O error: {message}"),
+            Self::Io(_) => formatter.write_str("IPC I/O failed"),
             Self::ZeroLength => formatter.write_str("IPC frame length must be nonzero"),
             Self::TooLarge(length) => write!(formatter, "IPC frame is too large: {length} bytes"),
             Self::InvalidUtf8 => formatter.write_str("IPC frame is not UTF-8"),
-            Self::InvalidJson(message) => write!(formatter, "IPC JSON is invalid: {message}"),
+            Self::InvalidJson(_) => formatter.write_str("IPC JSON is invalid"),
             Self::TooDeep => write!(formatter, "IPC JSON exceeds depth {MAX_JSON_DEPTH}"),
+        }
+    }
+}
+
+impl std::fmt::Debug for FrameError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Io(_) => formatter.debug_tuple("Io").field(&REDACTED).finish(),
+            Self::InvalidJson(_) => formatter
+                .debug_tuple("InvalidJson")
+                .field(&REDACTED)
+                .finish(),
+            Self::ZeroLength => formatter.write_str("ZeroLength"),
+            Self::TooLarge(length) => formatter.debug_tuple("TooLarge").field(length).finish(),
+            Self::InvalidUtf8 => formatter.write_str("InvalidUtf8"),
+            Self::TooDeep => formatter.write_str("TooDeep"),
         }
     }
 }
@@ -1177,11 +1423,21 @@ struct CacheEntry {
 }
 
 /// Bounded per-connection response cache for safe request retransmission.
-#[derive(Debug)]
 pub struct RequestCache {
     entries: HashMap<String, CacheEntry>,
     pending: HashMap<String, (u64, Instant)>,
     order: VecDeque<String>,
+}
+
+impl std::fmt::Debug for RequestCache {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("RequestCache")
+            .field("completed_count", &self.entries.len())
+            .field("pending_count", &self.pending.len())
+            .field("capacity", &MAX_CACHED_REQUESTS)
+            .finish()
+    }
 }
 
 impl Default for RequestCache {
@@ -1275,11 +1531,22 @@ fn fingerprint(request: &Request) -> u64 {
     hasher.finish()
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct InstancePaths {
     pub directory: PathBuf,
     pub socket: PathBuf,
     pub lock: PathBuf,
+}
+
+impl std::fmt::Debug for InstancePaths {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("InstancePaths")
+            .field("directory", &REDACTED)
+            .field("socket", &REDACTED)
+            .field("lock", &REDACTED)
+            .finish()
+    }
 }
 
 /// Creates a stable, bounded instance path from a canonical base and identity.
@@ -1307,7 +1574,6 @@ fn stable_digest(value: &str) -> u64 {
     })
 }
 
-#[derive(Debug)]
 pub enum InstanceError {
     Io {
         path: PathBuf,
@@ -1319,16 +1585,28 @@ pub enum InstanceError {
     },
 }
 
+impl std::fmt::Debug for InstanceError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Io { .. } => formatter
+                .debug_struct("Io")
+                .field("path", &REDACTED)
+                .field("message", &REDACTED)
+                .finish(),
+            Self::Busy { owner, .. } => formatter
+                .debug_struct("Busy")
+                .field("path", &REDACTED)
+                .field("owner_present", &owner.is_some())
+                .finish(),
+        }
+    }
+}
+
 impl std::fmt::Display for InstanceError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Io { path, message } => write!(formatter, "{}: {message}", path.display()),
-            Self::Busy { path, owner } => write!(
-                formatter,
-                "instance is already owned ({}; owner {})",
-                path.display(),
-                owner.as_deref().unwrap_or("unknown")
-            ),
+            Self::Io { .. } => formatter.write_str("IPC instance setup failed"),
+            Self::Busy { .. } => formatter.write_str("browser instance is already running"),
         }
     }
 }
@@ -1479,6 +1757,7 @@ fn instance_io(path: &Path, error: &io::Error) -> InstanceError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ferric_browser_core::versioning::SensitiveCategory;
     use std::io::Cursor;
     #[cfg(target_os = "linux")]
     use std::os::unix::fs::PermissionsExt;
@@ -1490,6 +1769,101 @@ mod tests {
             method: method.into(),
             params,
         }
+    }
+
+    #[test]
+    fn ipc_debug_and_frame_diagnostics_redact_dynamic_payloads() {
+        let sentinel = "private-ipc-secret-sentinel";
+        let request = request(
+            sentinel,
+            sentinel,
+            json!({"url": format!("https://example.test/?token={sentinel}")}),
+        );
+        assert!(!format!("{request:?}").contains(sentinel));
+        assert!(
+            serde_json::to_string(&request)
+                .expect("request serializes")
+                .contains(sentinel)
+        );
+
+        let response = Response {
+            id: sentinel.into(),
+            result: Some(json!({"title": sentinel})),
+            error: Some(ProtocolError {
+                code: "private-code".into(),
+                message: sentinel.into(),
+                details: Some(json!({"path": sentinel})),
+            }),
+        };
+        assert!(!format!("{response:?}").contains(sentinel));
+        assert!(!format!("{:?}", response.error).contains(sentinel));
+        assert!(
+            serde_json::to_string(&response)
+                .expect("response serializes")
+                .contains(sentinel)
+        );
+
+        let event = EventNotification {
+            instance_id: sentinel.into(),
+            sequence: 7,
+            event_type: sentinel.into(),
+            payload: json!({"url": sentinel}),
+        };
+        assert!(!format!("{event:?}").contains(sentinel));
+
+        let public_error = PublicError::new(ErrorCode::Engine, sentinel, sentinel);
+        assert!(!format!("{public_error:?}").contains(sentinel));
+        assert!(format!("{public_error}").contains(sentinel));
+
+        for error in [
+            FrameError::Io(sentinel.into()),
+            FrameError::InvalidJson(sentinel.into()),
+        ] {
+            assert!(!format!("{error:?}").contains(sentinel));
+            assert!(!error.to_string().contains(sentinel));
+        }
+
+        let paths = InstancePaths {
+            directory: PathBuf::from(sentinel),
+            socket: PathBuf::from(sentinel),
+            lock: PathBuf::from(sentinel),
+        };
+        assert!(!format!("{paths:?}").contains(sentinel));
+        let error = InstanceError::Io {
+            path: PathBuf::from(sentinel),
+            message: sentinel.into(),
+        };
+        assert!(!format!("{error:?}").contains(sentinel));
+        assert!(!error.to_string().contains(sentinel));
+        let busy = InstanceError::Busy {
+            path: PathBuf::from(sentinel),
+            owner: Some(sentinel.into()),
+        };
+        assert!(!format!("{busy:?}").contains(sentinel));
+        assert!(!busy.to_string().contains(sentinel));
+
+        let hello = HelloParams {
+            protocol_major: PROTOCOL_MAJOR,
+            protocol_minor: PROTOCOL_MINOR,
+            client: sentinel.into(),
+        };
+        assert!(!format!("{hello:?}").contains(sentinel));
+        assert!(
+            serde_json::to_string(&hello)
+                .expect("hello serializes")
+                .contains(sentinel)
+        );
+        let hello_result = HelloResult {
+            protocol_major: PROTOCOL_MAJOR,
+            protocol_minor: PROTOCOL_MINOR,
+            instance_id: sentinel.into(),
+            capabilities: vec![sentinel.into()],
+        };
+        assert!(!format!("{hello_result:?}").contains(sentinel));
+
+        let mut cache = RequestCache::new();
+        cache.insert(&request, response, Instant::now());
+        assert!(!format!("{cache:?}").contains(sentinel));
     }
 
     #[test]
@@ -1646,18 +2020,65 @@ mod tests {
     }
 
     #[test]
+    fn versioning_failures_preserve_reason_without_claiming_a_partial_merge_is_unchanged() {
+        for (reason, expected) in [
+            (VersioningReason::MergePartial, ErrorCode::Partial),
+            (
+                VersioningReason::MergeOutcomeUnknown,
+                ErrorCode::OutcomeUnknown,
+            ),
+        ] {
+            let failure = VersioningFailure::new(reason, SensitiveCategory::Cookie);
+            let public = PublicError::from(failure);
+            assert_eq!(public.code(), expected);
+            assert!(public.diagnostic_context().contains(reason.as_str()));
+            let response = Response::failure("merge", public.into_protocol_error());
+            let error = response.error.unwrap();
+            assert_eq!(error.code, expected.as_str());
+            assert!(!error.message.contains("unchanged"));
+            assert!(!error.message.contains("no browser state was changed"));
+            let details = error.details.unwrap();
+            assert_eq!(details["preserved"], expected.guidance().0);
+            assert!(
+                details["diagnostic_context"]
+                    .as_str()
+                    .unwrap()
+                    .contains("category=cookie")
+            );
+        }
+    }
+
+    #[test]
+    fn sensitive_capture_policy_denial_is_a_payload_free_denial() {
+        let failure = VersioningFailure::new(
+            VersioningReason::SensitiveCaptureDenied,
+            SensitiveCategory::Page,
+        );
+        let public = PublicError::from(failure);
+        assert_eq!(public.code(), ErrorCode::Denied);
+        assert_eq!(
+            public.user_message(),
+            "Sensitive capture is denied by the active policy."
+        );
+        assert!(
+            public
+                .diagnostic_context()
+                .contains("reason=sensitive-capture-denied;category=page")
+        );
+    }
+
+    #[test]
     fn failure_response_redacts_sensitive_messages_and_details() {
         let response = Response::failure(
             "request-2",
             ProtocolError {
                 code: "E_ENGINE".into(),
-                message:
-                    "failed https://user:pass@example.test/path?token=secret#fragment Bearer abc123"
-                        .into(),
+                message: "failed https://user:pass@example.test/path?token=secret#fragment https://example.test/private-path-sentinel Bearer abc123 (mailto:private@example.test?subject=invoice&body=payload-secret) bare mailto:bare@example.test?subject=bare-secret file:///private/archive/archive-path-sentinel /home/private-user/profile-path-sentinel/profile.sqlite path=/tmp/private-user/socket-path-sentinel.sock".into(),
                 details: Some(json!({
                     "authorization": "Bearer abc123",
                     "cookie": "session=secret",
                     "form_input": "pin=1234",
+                    "diagnostic_context": "external URI rejected: \"mailto:private@example.test?subject=invoice&body=payload-secret\" file:///private/archive/archive-path-sentinel /home/private-user/profile-path-sentinel/profile.sqlite",
                     "nested": ["https://example.test/?password=secret"]
                 })),
             },
@@ -1666,12 +2087,53 @@ mod tests {
         assert!(!error.message.contains("pass@example"));
         assert!(!error.message.contains("token=secret"));
         assert!(!error.message.contains("fragment"));
+        assert!(!error.message.contains("private-path-sentinel"));
+        assert!(!error.message.contains("archive-path-sentinel"));
+        assert!(!error.message.contains("profile-path-sentinel"));
+        assert!(!error.message.contains("socket-path-sentinel"));
+        assert!(error.message.contains("[local path redacted]"));
         assert!(!error.message.contains("abc123"));
+        assert!(!error.message.contains("private@example.test"));
+        assert!(!error.message.contains("invoice"));
+        assert!(!error.message.contains("payload-secret"));
+        assert!(!error.message.contains("bare@example.test"));
+        assert!(!error.message.contains("bare-secret"));
+        assert!(error.message.contains("mailto:[redacted]"));
+        assert!(error.message.contains("https://example.test/"));
+        assert!(error.message.contains("file://[redacted]/"));
         let details = error.details.expect("error details");
         assert_eq!(details["authorization"], REDACTED);
         assert_eq!(details["cookie"], REDACTED);
         assert_eq!(details["form_input"], REDACTED);
+        let diagnostic = details["diagnostic_context"].as_str().unwrap();
+        assert!(!diagnostic.contains("private@example.test"));
+        assert!(!diagnostic.contains("invoice"));
+        assert!(!diagnostic.contains("payload-secret"));
+        assert!(!diagnostic.contains("archive-path-sentinel"));
+        assert!(!diagnostic.contains("profile-path-sentinel"));
+        assert!(diagnostic.contains("mailto:[redacted]"));
+        assert!(diagnostic.contains("file://[redacted]/"));
         assert_eq!(details["nested"][0], "https://example.test/");
+    }
+
+    #[test]
+    fn ipc_error_redaction_scrubs_unc_and_drive_paths() {
+        let unc = redact_text(r"could not open \\server\share\private-profile\state.sqlite");
+        assert!(!unc.contains("server"));
+        assert!(!unc.contains("share"));
+        assert!(!unc.contains("private-profile"));
+        assert!(unc.contains("[local path redacted]"));
+
+        let extended =
+            redact_text(r"could not open \\?\UNC\server\share\private-profile\state.sqlite");
+        assert!(!extended.contains("server"));
+        assert!(!extended.contains("share"));
+        assert!(!extended.contains("private-profile"));
+        assert!(extended.contains("[local path redacted]"));
+
+        let drive = redact_text(r"could not open C:\Users\private-user\state.sqlite");
+        assert!(!drive.contains("private-user"));
+        assert!(drive.contains("[local path redacted]"));
     }
 
     #[test]

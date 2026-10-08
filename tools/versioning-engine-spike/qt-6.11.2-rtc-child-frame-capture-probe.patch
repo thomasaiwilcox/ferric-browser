@@ -1,0 +1,145 @@
+--- a/src/core/web_contents_adapter.h
++++ b/src/core/web_contents_adapter.h
+@@ -79,6 +79,8 @@
+     bool m_ferricRtcProbeBusy = false;
+     std::function<void()> m_ferricRtcHeldScriptInvalidator;
+     std::function<void()> m_ferricRtcMediaActivityInvalidator;
++    int m_ferricChildCaptureProbeProcessId = -1;
++    int m_ferricChildCaptureProbeRoutingId = -1;
+ public:
+     // Sentinel to indicate that a behavior should happen on the main frame
+     static constexpr quint64 kUseMainFrameId = -2;
+@@ -108,6 +110,8 @@
+     bool ferricHasObservedPeerConnectionForProbe() const;
+     bool ferricHasNoMediaCaptureActivityForProbe() const;
+     bool ferricHasFrameCaptureActivityForProbe() const;
++    bool ferricBeginChildFrameCaptureProbe();
++    bool ferricEndChildFrameCaptureProbe();
+     void ferricMediaCaptureStartingForProbe();
+     bool ferricPreselectedDesktopAdmissionProbe();
+     bool ferricPreselectedFakeDesktopActivityHandoffProbe();
+--- a/src/core/web_contents_adapter.cpp
++++ b/src/core/web_contents_adapter.cpp
+@@ -189,6 +189,64 @@
+     return capturing;
+ }
+ 
++bool WebContentsAdapter::ferricBeginChildFrameCaptureProbe()
++{
++    if (!isInitialized() || m_ferricChildCaptureProbeProcessId >= 0) {
++        qWarning("Ferric child capture probe admission guard: initialized=%d processId=%d",
++                 isInitialized(), m_ferricChildCaptureProbeProcessId);
++        return false;
++    }
++    auto *main = m_webContents->GetPrimaryMainFrame();
++    if (!main) {
++        qWarning("Ferric child capture probe has no primary main frame");
++        return false;
++    }
++    content::RenderFrameHost *child = nullptr;
++    int frameCount = 0;
++    int pageChildCount = 0;
++    m_webContents->ForEachRenderFrameHost([&](content::RenderFrameHost *frame) {
++        ++frameCount;
++        if (frame != main && &frame->GetPage() == &main->GetPage())
++            ++pageChildCount;
++        // Test-only counter injection: the held lease has already frozen this
++        // live child, so do not pretend this is a renderer/device capture.
++        if (!child && frame != main && &frame->GetPage() == &main->GetPage())
++            child = frame;
++    });
++    if (!child) {
++        qWarning("Ferric child capture probe found no same-Page RFH: frames=%d pageChildren=%d",
++                 frameCount, pageChildCount);
++        return false;
++    }
++    m_ferricChildCaptureProbeProcessId = child->GetProcess()->GetDeprecatedID();
++    m_ferricChildCaptureProbeRoutingId = child->GetRoutingID();
++    static_cast<content::RenderFrameHostImpl *>(child)->OnMediaStreamAdded(
++            content::RenderFrameHostImpl::kCapturingMediaStream);
++    const bool frameCapturing = ferricHasFrameCaptureActivityForProbe();
++    const bool noCapture = ferricHasNoMediaCaptureActivityForProbe();
++    qWarning("Ferric child capture probe counter check: frameCapturing=%d noCapture=%d",
++             frameCapturing, noCapture);
++    return frameCapturing && !noCapture;
++}
++
++bool WebContentsAdapter::ferricEndChildFrameCaptureProbe()
++{
++    if (!isInitialized() || m_ferricChildCaptureProbeProcessId < 0
++            || m_ferricChildCaptureProbeRoutingId < 0)
++        return false;
++    const int processId = m_ferricChildCaptureProbeProcessId;
++    const int routingId = m_ferricChildCaptureProbeRoutingId;
++    m_ferricChildCaptureProbeProcessId = -1;
++    m_ferricChildCaptureProbeRoutingId = -1;
++    auto *frame = content::RenderFrameHost::FromID(processId, routingId);
++    if (!frame || content::WebContents::FromRenderFrameHost(frame) != m_webContents.get())
++        return false;
++    static_cast<content::RenderFrameHostImpl *>(frame)->OnMediaStreamRemoved(
++            content::RenderFrameHostImpl::kCapturingMediaStream);
++    return !ferricHasFrameCaptureActivityForProbe()
++            && ferricHasNoMediaCaptureActivityForProbe();
++}
++
+ void WebContentsAdapter::ferricMediaCaptureStartingForProbe()
+ {
+     // Invoked on the UI sequence before the request enters either the queued
+@@ -454,6 +512,11 @@
+     void RenderFrameCreated(content::RenderFrameHost *) override { finish(false); }
+     void RenderFrameDeleted(content::RenderFrameHost *) override { finish(false); }
+     void RenderFrameHostChanged(content::RenderFrameHost *, content::RenderFrameHost *) override { finish(false); }
++    void OnFrameIsCapturingMediaStreamChanged(content::RenderFrameHost *, bool capturing) override
++    {
++        if (m_held && capturing)
++            finish(false);
++    }
+     void DidStartNavigation(content::NavigationHandle *) override { finish(false); }
+     void PrimaryPageChanged(content::Page &) override { finish(false); }
+     void OnVisibilityChanged(content::Visibility visibility) override
+--- a/src/webenginequick/api/qquickwebengineview_p.h
++++ b/src/webenginequick/api/qquickwebengineview_p.h
+@@ -481,6 +481,8 @@
+     Q_INVOKABLE void ferricReleaseRtcEmptyLeaseForProbe();
+     Q_INVOKABLE bool ferricHasNoMediaCaptureActivityForProbe() const;
+     Q_INVOKABLE bool ferricHasFrameCaptureActivityForProbe() const;
++    Q_INVOKABLE bool ferricBeginChildFrameCaptureProbe();
++    Q_INVOKABLE bool ferricEndChildFrameCaptureProbe();
+ 
+     QQmlComponent *touchHandleDelegate() const;
+     void setTouchHandleDelegate(QQmlComponent *delegagte);
+--- a/src/webenginequick/api/qquickwebengineview.cpp
++++ b/src/webenginequick/api/qquickwebengineview.cpp
+@@ -376,6 +376,8 @@
+     const bool hadProbeState = bool(m_ferricRtcLeaseValid)
+             || bool(m_ferricRtcLeaseRelease) || m_ferricRtcLeaseAcquisitionPending;
+     m_ferricRtcLeaseAcquisitionPending = false;
++    if (adapter)
++        adapter->ferricEndChildFrameCaptureProbe();
+     auto release = std::move(m_ferricRtcLeaseRelease);
+     m_ferricRtcLeaseValid = {};
+     if (release)
+@@ -2568,6 +2570,22 @@
+     return d && d->adapter && d->adapter->ferricHasFrameCaptureActivityForProbe();
+ }
+ 
++bool QQuickWebEngineView::ferricBeginChildFrameCaptureProbe()
++{
++    if (QThread::currentThread() != thread())
++        return false;
++    auto *d = d_func();
++    return d && d->adapter && d->adapter->ferricBeginChildFrameCaptureProbe();
++}
++
++bool QQuickWebEngineView::ferricEndChildFrameCaptureProbe()
++{
++    if (QThread::currentThread() != thread())
++        return false;
++    auto *d = d_func();
++    return d && d->adapter && d->adapter->ferricEndChildFrameCaptureProbe();
++}
++
+ void QQuickWebEngineView::ferricReleaseRtcEmptyLeaseForProbe()
+ {
+     if (QThread::currentThread() != thread())
+         return;

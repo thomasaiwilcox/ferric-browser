@@ -543,6 +543,17 @@ fn hint_payload_carries_unique_bounded_element_ids() {
 }
 
 #[test]
+fn malformed_hint_payload_errors_do_not_include_page_supplied_text() {
+    let sentinel = "page-private-hint-sentinel";
+    let raw = format!(r#"{{"candidates":[{{"kind":"{sentinel}"}}"#);
+    let error = parse_hint_payload(&raw).expect_err("malformed page payload must be rejected");
+
+    assert_eq!(error, "hint candidate JSON is invalid");
+    assert!(!error.contains(sentinel));
+    assert!(!error.contains(&raw));
+}
+
+#[test]
 #[allow(clippy::field_reassign_with_default)]
 fn macro_status_is_redacted_and_rust_formats_its_presentation_text() {
     let mut ui = BrowserUiRust::default();
@@ -826,6 +837,83 @@ fn typed_actions_enforce_their_registry_argument_schema() {
     .expect("declared action arguments remain accepted");
     assert_eq!(action_id, "browser.window.move");
     assert_eq!(command.arguments, vec!["window-42", "name:research"]);
+}
+
+#[test]
+fn versioning_actions_project_to_the_same_closed_command_contract() {
+    for (action, arguments, expected_name) in [
+        ("browser.commit.create", serde_json::json!({"message": "Before trial"}), "commit"),
+        ("browser.stash.create", serde_json::json!({}), "stash"),
+        ("browser.branch.create", serde_json::json!({"name": "trial", "clean": true}), "branch"),
+        ("browser.commit.restore", serde_json::json!({"ref": "main"}), "restore"),
+        ("browser.commit.diff", serde_json::json!({"left": "main", "right": "trial"}), "diff"),
+        ("browser.merge-plan.preview", serde_json::json!({"branch": "trial"}), "merge"),
+        ("browser.merge-plan.apply", serde_json::json!({"plan": "plan"}), "merge-apply"),
+    ] {
+        let (command, _, id) = typed_ipc_action(&serde_json::json!({
+            "action": action, "arguments": arguments,
+        })).expect("registered versioning action");
+        assert_eq!(id, action);
+        assert_eq!(command.name, expected_name);
+        assert!(ferric_browser_core::VersioningCommand::from_parsed(&command, 1).is_ok());
+    }
+    assert!(typed_ipc_action(&serde_json::json!({
+        "action": "browser.merge-plan.preview",
+        "arguments": {"branch": "trial", "cookies": false}
+    })).is_err());
+}
+
+#[test]
+fn versioning_action_reaches_application_gate_without_native_effect() {
+    let (mut application, _, _) =
+        BrowserApplication::bootstrap(Config::default(), PrivacyKind::Normal, "default")
+            .expect("application bootstrap");
+    let before = application.revision();
+    let (command, route, _) = typed_ipc_action(&serde_json::json!({
+        "action": "browser.merge-plan.preview",
+        "arguments": {"branch": "trial"}
+    }))
+    .expect("typed action");
+    let error = application
+        .dispatch_runtime(RuntimeInput::Command(RuntimeCommand::Dispatch(Box::new(
+            RuntimeDispatch {
+                invocation: CommandInvocation::new(command),
+                navigation: NavigationContext::default(),
+                target: route.selector,
+            },
+        ))))
+        .expect_err("cookie-dependent preview remains unavailable");
+    assert!(error.diagnostic_context().contains("reason=cookie-identity-lossy"));
+    assert_eq!(application.revision(), before);
+}
+
+#[test]
+fn versioning_status_command_round_trips_to_typed_ui_acknowledgement() {
+    let (mut application, window, _) =
+        BrowserApplication::bootstrap(Config::default(), PrivacyKind::Normal, "default")
+            .expect("application bootstrap");
+    let before = application.revision();
+    let parsed = parse_chain("versioning-status", ParseInput::Interactive)
+        .expect("registered command syntax");
+    let effects = application
+        .dispatch_runtime(RuntimeInput::Command(RuntimeCommand::Dispatch(Box::new(
+            RuntimeDispatch {
+                invocation: CommandInvocation::new(parsed[0].clone()),
+                navigation: NavigationContext::default(),
+                target: DispatchTarget::Window(window),
+            },
+        ))))
+        .expect("application status effect");
+    let status = effects.iter().find_map(|effect| match effect {
+        RuntimeEffect::Engine(EngineEffect::Versioning(status)) => Some(status),
+        _ => None,
+    }).expect("typed status effect");
+    assert_eq!(
+        browser_ui_versioning::versioning_status_text(status),
+        "Versioning: unavailable; active operations: 0"
+    );
+    assert!(!runtime_bridge::checkpoint_required(&effects));
+    assert_eq!(application.revision(), before);
 }
 
 #[test]
@@ -1235,11 +1323,12 @@ fn ipc_commands_use_typed_arguments_without_shell_parsing() {
         }
     }))
     .expect_err("typed clean-link background open must be rejected");
-    assert!(
-        error
-            .to_string()
-            .contains("cannot be combined with --target tab-bg")
-    );
+    assert_eq!(error.to_string(), "IPC command data is invalid");
+    let public = error.into_public();
+    assert_eq!(public.user_message(), "The command request is invalid.");
+    assert!(public
+        .diagnostic_context()
+        .contains("cannot be combined with --target tab-bg"));
 }
 
 #[test]

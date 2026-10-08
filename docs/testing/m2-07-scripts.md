@@ -56,9 +56,13 @@ requesting `selection` receives a target-validated, bounded asynchronous page
 selection before the process starts. Process completion is reported by the
 existing `operations.query` status model. A caller must explicitly request
 `operations.query` with `include_stderr: true` to receive retained stderr;
-the value is capped at 64 KiB, control-sanitized, and redacts secret-looking
-key/value fields and URL query secrets. Default operation responses and
-completion events omit it.
+stderr input is read to a 64 KiB bound and the retained presentation is capped
+at 4 KiB, control-sanitized, and redacts secret-looking key/value fields, URL
+query secrets, and Unix/Windows/file-URL paths. Default operation responses
+and completion events omit it. To avoid leaking a spaced-path suffix, the rest
+of any stderr line containing a local path is omitted after the redaction.
+The status field in `operations.query` applies the same presentation
+redaction; internal status strings still drive terminal/cancellation logic.
 `operations.cancel` sets a cancellation token consumed by the worker, kills the
 child, and preserves the cancelled state when the worker drains its completion.
 Hint activation now permits a manifest that declares `hint_url`: the selected

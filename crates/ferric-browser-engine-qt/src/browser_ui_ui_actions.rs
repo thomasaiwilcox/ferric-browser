@@ -48,7 +48,7 @@ impl qobject::BrowserUi {
                     self.as_mut()
                         .record_action_audit(&action_id, &operation_id, "accepted", None);
                     self.as_mut()
-                        .set_status_text(QString::from(format!("Executing {action_id}")));
+                        .set_status_text(QString::from("External action started"));
                     true
                 }
                 Err(error) => {
@@ -59,7 +59,7 @@ impl qobject::BrowserUi {
                         "failed",
                         Some(action_failure_category(error.code())),
                     );
-                    self.set_status_text(QString::from(format!("{action_id} failed: {error}")));
+                    self.set_status_text(QString::from("External action failed"));
                     false
                 }
             };
@@ -74,7 +74,7 @@ impl qobject::BrowserUi {
                     self.as_mut()
                         .record_action_audit(&action_id, &operation_id, "accepted", None);
                     self.as_mut()
-                        .set_status_text(QString::from(format!("Executing {action_id}")));
+                        .set_status_text(QString::from("Userscript action started"));
                     true
                 }
                 Err(error) => {
@@ -85,7 +85,7 @@ impl qobject::BrowserUi {
                         "failed",
                         Some(action_failure_category(error.code())),
                     );
-                    self.set_status_text(QString::from(format!("{action_id} failed: {error}")));
+                    self.set_status_text(QString::from("Userscript action failed"));
                     false
                 }
             };
@@ -122,7 +122,7 @@ impl qobject::BrowserUi {
             Ok(_) => {
                 self.as_mut()
                     .record_action_audit(&resolved_id, &operation_id, "accepted", None);
-                self.set_status_text(QString::from(format!("Executing {resolved_id}")));
+                self.set_status_text(QString::from("Action started"));
                 true
             }
             Err(error) => {
@@ -133,7 +133,7 @@ impl qobject::BrowserUi {
                     "failed",
                     Some(action_failure_category(error.code())),
                 );
-                self.set_status_text(QString::from(format!("{resolved_id} failed: {error}")));
+                self.set_status_text(QString::from("Action failed"));
                 false
             }
         }
@@ -170,16 +170,16 @@ impl qobject::BrowserUi {
                 );
                 true
             }
-            Err(error) => {
+            Err(_) => {
                 self.as_mut()
                     .set_external_action_ids(QStringList::default());
                 self.as_mut()
                     .set_external_action_labels(QStringList::default());
                 self.as_mut()
                     .set_external_action_availability(QStringList::default());
-                self.set_status_text(QString::from(format!(
-                    "External actions unavailable: {error}"
-                )));
+                self.set_status_text(QString::from(
+                    "External actions unavailable; details suppressed",
+                ));
                 false
             }
         }
@@ -233,12 +233,13 @@ impl qobject::BrowserUi {
                     .set_status_text(QString::from("Installing userscript…"));
                 true
             }
-            Err(error) => {
-                self.as_mut()
-                    .set_userscript_install_state(QString::from(format!("error:{error}")));
-                self.as_mut().set_status_text(QString::from(format!(
-                    "Userscript installation failed: {error}"
-                )));
+            Err(_error) => {
+                self.as_mut().set_userscript_install_state(QString::from(
+                    "error:userscript installation could not be queued",
+                ));
+                self.as_mut().set_status_text(QString::from(
+                    "Userscript installation could not be queued; details suppressed",
+                ));
                 false
             }
         }
@@ -260,7 +261,8 @@ impl qobject::BrowserUi {
         else {
             return Ok(None);
         };
-        let Some(action) = userscript::registered_actions(&root)?
+        let Some(action) = userscript::registered_actions(&root)
+            .map_err(|_| "userscript action catalog is unavailable; details suppressed")?
             .into_iter()
             .find(|action| action.subject == *subject && action.verb == *verb)
         else {
@@ -348,11 +350,16 @@ impl qobject::BrowserUi {
             .userscript_roots
             .clone()
             .ok_or_else(|| "userscripts are unavailable without configured storage".to_owned())?;
-        let action = userscript::registered_actions(&roots.config)?
+        let action = userscript::registered_actions(&roots.config)
+            .map_err(|_| "userscript action catalog is unavailable; details suppressed")?
             .into_iter()
             .find(|candidate| candidate.id == action_id)
             .ok_or_else(|| "userscript action is not installed".to_owned())?;
-        let manifest = userscript::load(&roots.config, &action.script)?.manifest;
+        let manifest = userscript::load(&roots.config, &action.script)
+            .map_err(
+                |_| "userscript action manifest is unavailable or invalid; details suppressed",
+            )?
+            .manifest;
         let current = current_target(
             self.as_ref().rust().state.as_ref(),
             self.as_ref().rust().tab,

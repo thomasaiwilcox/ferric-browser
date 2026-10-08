@@ -6,19 +6,17 @@ use super::*;
 impl qobject::BrowserUi {
     pub(super) fn ipc_config_get(&self, params: &Value) -> Result<Value, IpcQueryError> {
         let object = query_object(params, "config.get", &["key", "url", "explain"])
-            .map_err(IpcQueryError::Invalid)?;
+            .map_err(|_| IpcQueryError::Invalid)?;
         let key = object
             .get("key")
             .and_then(Value::as_str)
             .filter(|key| !key.is_empty() && key.len() <= 256 && !key.chars().any(char::is_control))
-            .ok_or_else(|| IpcQueryError::Invalid("config.get requires a nonempty key".into()))?;
+            .ok_or(IpcQueryError::Invalid)?;
         if let Some(url) = object.get("url")
             && !url.is_null()
             && url.as_str().is_none()
         {
-            return Err(IpcQueryError::Invalid(
-                "config.get url must be a string or null".into(),
-            ));
+            return Err(IpcQueryError::Invalid);
         }
         let requested_url = object
             .get("url")
@@ -29,37 +27,25 @@ impl qobject::BrowserUi {
                 || url.chars().any(char::is_control)
                 || !url.starts_with("http://") && !url.starts_with("https://")
         }) {
-            return Err(IpcQueryError::Invalid(
-                "config.get url must be a bounded HTTP(S) URL".into(),
-            ));
+            return Err(IpcQueryError::Invalid);
         }
         if let Some(explain) = object.get("explain")
             && explain.as_bool().is_none()
         {
-            return Err(IpcQueryError::Invalid(
-                "config.get explain must be a boolean".into(),
-            ));
+            return Err(IpcQueryError::Invalid);
         }
         let mut value = &self.rust().config;
         for part in key.split('.') {
             value = value
                 .as_object()
                 .and_then(|object| object.get(part))
-                .ok_or_else(|| {
-                    IpcQueryError::NotFound(format!("configuration key not found: {key}"))
-                })?;
+                .ok_or(IpcQueryError::NotFound)?;
         }
         if requested_url.is_some() && !setting_supports_site_scope(key) {
-            return Err(IpcQueryError::Invalid(format!(
-                "configuration key {key} does not support site scope"
-            )));
+            return Err(IpcQueryError::Invalid);
         }
         let base_value = value.clone();
-        let metadata = setting_metadata(key).ok_or_else(|| {
-            IpcQueryError::Invalid(format!(
-                "configuration key is not in the setting registry: {key}"
-            ))
-        })?;
+        let metadata = setting_metadata(key).ok_or(IpcQueryError::Invalid)?;
         let pending_value = self
             .rust()
             .pending_config
@@ -96,12 +82,8 @@ impl qobject::BrowserUi {
             }
         }
         if let Some(url) = requested_url {
-            let config =
-                serde_json::from_value::<Config>(self.rust().config.clone()).map_err(|error| {
-                    IpcQueryError::Invalid(format!(
-                        "validated configuration could not be decoded: {error}"
-                    ))
-                })?;
+            let config = serde_json::from_value::<Config>(self.rust().config.clone())
+                .map_err(|_| IpcQueryError::Invalid)?;
             for rule in matching_site_rules(&config, url) {
                 if let Some(site_value) = rule.set.get(key)
                     && let Ok(site_value) = serde_json::to_value(site_value)

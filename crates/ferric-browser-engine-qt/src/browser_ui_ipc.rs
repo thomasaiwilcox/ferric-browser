@@ -33,6 +33,9 @@ impl qobject::BrowserUi {
             return Ok(result.unwrap_or_else(|| serde_json::json!({"status": "accepted"})));
         }
         let mut command = expanded.into_iter().next().expect("one expanded command");
+        if let Some(result) = self.as_mut().queue_ipc_context_commit(&command, route) {
+            return result;
+        }
         if command.name == "open-current" {
             if route.context.is_some() {
                 return Err("context routing is not valid for open-current".into());
@@ -208,7 +211,7 @@ impl qobject::BrowserUi {
             if accepted {
                 return Ok(serde_json::json!({"status": "accepted"}));
             }
-            return Err(self.as_ref().rust().status_text.to_string());
+            return Err("input workflow command was not accepted".into());
         }
         if command.name == "window-new" {
             if route.context.is_some() {
@@ -277,9 +280,10 @@ impl qobject::BrowserUi {
                 .begin_site_doctor_experiment(&QString::from(kind.as_str()))
                 .to_string();
             if payload.is_empty() {
-                return Err(self.as_ref().rust().status_text.to_string());
+                return Err("Site Doctor experiment could not be started".into());
             }
-            return serde_json::from_str(&payload).map_err(|error| error.to_string());
+            return serde_json::from_str(&payload)
+                .map_err(|_| "Site Doctor result is invalid".to_owned());
         }
         if command.name == "site-doctor-undo" {
             if route.context.is_some() {
@@ -293,7 +297,7 @@ impl qobject::BrowserUi {
                 .as_mut()
                 .finish_site_doctor_experiment(&QString::from(experiment_id.as_str()), false)
             {
-                return Err(self.as_ref().rust().status_text.to_string());
+                return Err("Site Doctor experiment could not be undone".into());
             }
             return Ok(serde_json::json!({"status": "undone", "experiment_id": experiment_id}));
         }
@@ -707,7 +711,7 @@ impl qobject::BrowserUi {
             {
                 return Ok(serde_json::json!({"status": "accepted"}));
             }
-            return Err(self.as_ref().rust().status_text.to_string());
+            return Err("clipboard navigation was not accepted".into());
         }
         if is_library_command(&command.name) {
             if route.context.is_some() {

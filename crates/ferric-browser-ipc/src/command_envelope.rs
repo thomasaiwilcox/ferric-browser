@@ -1,12 +1,13 @@
 //! Typed command envelope shared by command producers and consumers.
 
 use serde_json::{Map, Value};
+use std::fmt;
 
 const MAX_COMMAND_NAME_BYTES: usize = 256;
 const MAX_CONTEXT_TEXT_BYTES: usize = 16 * 1024;
 
 /// Optional routing metadata carried alongside a browser command.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Default, Eq, PartialEq)]
 pub struct CommandContext {
     pub window: Option<String>,
     pub profile: Option<String>,
@@ -14,12 +15,35 @@ pub struct CommandContext {
     pub source: Option<String>,
 }
 
+impl fmt::Debug for CommandContext {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("CommandContext")
+            .field("window_present", &self.window.is_some())
+            .field("profile_present", &self.profile.is_some())
+            .field("context_present", &self.context.is_some())
+            .field("source_present", &self.source.is_some())
+            .finish()
+    }
+}
+
 /// A validated command request at the JSON IPC boundary.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct CommandEnvelope {
     pub command: String,
     pub arguments: Map<String, Value>,
     pub context: CommandContext,
+}
+
+impl fmt::Debug for CommandEnvelope {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("CommandEnvelope")
+            .field("command", &"[redacted]")
+            .field("argument_count", &self.arguments.len())
+            .field("context", &self.context)
+            .finish()
+    }
 }
 
 impl CommandEnvelope {
@@ -189,6 +213,30 @@ mod tests {
                 "context": {"extra": true}
             }))
             .is_err()
+        );
+    }
+
+    #[test]
+    fn debug_redacts_command_values_and_routing_identity() {
+        let sentinel = "private-command-sentinel";
+        let envelope = CommandEnvelope::new(
+            "open".into(),
+            Map::from_iter([("input".into(), Value::String(sentinel.into()))]),
+            CommandContext {
+                profile: Some(sentinel.into()),
+                ..CommandContext::default()
+            },
+        )
+        .expect("valid command envelope");
+
+        let rendered = format!("{envelope:?}");
+        assert!(!rendered.contains(sentinel));
+        assert!(rendered.contains("argument_count: 1"));
+        assert!(rendered.contains("profile_present: true"));
+        assert_eq!(
+            envelope.into_value()["arguments"]["input"],
+            Value::String(sentinel.into()),
+            "debug redaction must not alter the serialized command"
         );
     }
 }

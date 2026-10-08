@@ -2,7 +2,7 @@
 
 use super::{BrowserApplication, BrowserUiRust, TabId, Uuid, Value};
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub(super) struct PendingContextRoute {
     pub(super) route_id: String,
     pub(super) behavior: String,
@@ -16,7 +16,7 @@ pub(super) enum PermissionLifetimeKey {
     ProfileSession,
 }
 
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Eq, Ord, PartialEq, PartialOrd)]
 pub(super) struct PermissionDecisionKey {
     pub(super) scope_id: Uuid,
     pub(super) origin: String,
@@ -55,7 +55,7 @@ impl ProfilePersistence {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 pub(super) struct ContextSnapshot {
     records: Vec<ferric_browser_storage::ContextRecord>,
 }
@@ -81,7 +81,7 @@ pub(super) struct PendingProfileConfiguration {
     pub(super) tab: TabId,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub(super) struct SwitcherQueryCache {
     pub(super) params: Value,
     pub(super) state_revision: u64,
@@ -106,7 +106,7 @@ impl SwitcherQueryCache {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub(super) struct SessionCheckpoint {
     pub(super) dirty: bool,
     pub(super) dirty_since_ms: Option<u64>,

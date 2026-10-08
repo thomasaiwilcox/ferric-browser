@@ -388,7 +388,7 @@ impl qobject::BrowserUi {
             "nodes": nodes,
             "edges": edges,
         }))
-        .map_err(|error| error.to_string())
+        .map_err(|_| "Journey export serialization failed; details suppressed".to_owned())
     }
 
     pub(super) fn journey_export_preview(mut self: Pin<&mut Self>) -> QString {
@@ -398,14 +398,14 @@ impl qobject::BrowserUi {
             rust.profile_persistence.is_durable() && rust.journey_export_payload.is_none()
         };
         if durable_without_payload {
-            let result = self
+            let submitted = self
                 .as_mut()
                 .submit_storage(StorageRequest::JourneyExport)
-                .map_err(|error| error.to_string());
-            if let Err(error) = result {
-                self.as_mut().set_status_text(QString::from(format!(
-                    "Journey export is already loading or unavailable: {error}"
-                )));
+                .is_ok();
+            if !submitted {
+                self.as_mut().set_status_text(QString::from(
+                    "Journey export is already loading or unavailable; details suppressed",
+                ));
             } else {
                 self.as_mut()
                     .set_status_text(QString::from("Loading journey export preview"));
@@ -414,10 +414,10 @@ impl qobject::BrowserUi {
         }
         let payload = match self.as_mut().journey_export_json() {
             Ok(payload) => payload,
-            Err(error) => {
-                self.set_status_text(QString::from(format!(
-                    "Journey export unavailable: {error}"
-                )));
+            Err(_) => {
+                self.set_status_text(QString::from(
+                    "Journey export unavailable; details suppressed",
+                ));
                 return QString::default();
             }
         };
@@ -471,10 +471,10 @@ impl qobject::BrowserUi {
         }
         let payload = match self.as_mut().journey_export_json() {
             Ok(payload) => payload,
-            Err(error) => {
-                self.set_status_text(QString::from(format!(
-                    "Journey export unavailable: {error}"
-                )));
+            Err(_) => {
+                self.set_status_text(QString::from(
+                    "Journey export unavailable; details suppressed",
+                ));
                 return false;
             }
         };
@@ -483,8 +483,8 @@ impl qobject::BrowserUi {
                 self.set_status_text(QString::from("Journey export written"));
                 true
             }
-            Err(error) => {
-                self.set_status_text(QString::from(format!("Journey export failed: {error}")));
+            Err(_) => {
+                self.set_status_text(QString::from("Journey export failed; details suppressed"));
                 false
             }
         }

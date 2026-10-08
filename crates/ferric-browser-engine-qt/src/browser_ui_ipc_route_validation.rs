@@ -32,7 +32,7 @@ impl qobject::BrowserUi {
                         .iter()
                         .find(|context| context.name == context_name)
                 })
-                .ok_or_else(|| format!("context not found: {context_name}"))?;
+                .ok_or_else(|| "requested context is unavailable".to_owned())?;
             if route.open_target == IpcOpenTarget::PrivateWindow {
                 return Err("private-window cannot use a durable context".into());
             }
@@ -59,7 +59,7 @@ impl qobject::BrowserUi {
                 .profiles()
                 .values()
                 .find(|candidate| candidate.label == profile)
-                .ok_or_else(|| format!("profile not found: {profile}"))?;
+                .ok_or_else(|| "requested profile is unavailable".to_owned())?;
             if requested.id != state.windows()[&window].profile {
                 return Err("the requested profile is not an active GUI profile".into());
             }

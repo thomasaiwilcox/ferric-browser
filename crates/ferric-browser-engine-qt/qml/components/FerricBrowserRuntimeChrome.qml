@@ -2,22 +2,33 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
+import QtQml
 import QtWebEngine
 import io.github.ferricbrowser 1.0
-import "../scripts/BrowserScripts.js" as BrowserScripts
 import "../scripts/SpellcheckPresentation.js" as SpellcheckPresentation
+import "../scripts/CleanBranchPopupOwnership.js" as CleanBranchPopupOwnership
 
 FerricBrowserRuntimeRequests {
     id: window
+
+    versionedArchiveHostObject: versionedArchiveLoader
 
     popupWindowComponentObject: popupWindowComponent
     browserWindowComponentObject: browserWindowComponent
     webViewComponentObject: webViewComponent
     webViewsObject: webViews
 
+    function cleanBranchViewReady(view, ui, profile, interceptor) {
+        return !window.windowCleanBranch
+                || CleanBranchPopupOwnership.sourceReady(
+                    window.windowBranchRootWindow, window, ui,
+                    profile, interceptor, view)
+    }
+
     readonly property alias commandSurfaceObject: commandSurface
     readonly property alias searchSurfaceObject: searchSurface
     readonly property alias attachedDevToolsLoaderObject: attachedDevToolsLoader
+    readonly property alias tabStripObject: compactTabStrip
 
     Component {
         id: popupWindowComponent
@@ -151,47 +162,6 @@ GridLayout {
                 }
             }
         }
-        TextField {
-            id: address
-            Layout.fillWidth: true
-            property bool addressEditing: false
-            function refreshAddressPresentation() {
-                if (!addressEditing) {
-                    text = window.addressPresentation(
-                        browserUi.display_url,
-                        width / Math.max(1, font.pixelSize * 0.56))
-                }
-            }
-            text: window.addressPresentation(
-                browserUi.display_url,
-                width / Math.max(1, font.pixelSize * 0.56))
-            placeholderText: "Enter a URL"
-            Accessible.name: "Address"
-            Accessible.description: browserUi.display_url
-            Accessible.role: Accessible.EditableText
-            Accessible.editable: true
-            selectByMouse: true
-            onActiveFocusChanged: {
-                addressEditing = activeFocus
-                if (addressEditing) {
-                    text = browserUi.display_url
-                    cursorPosition = text.length
-                } else {
-                    refreshAddressPresentation()
-                }
-            }
-            onWidthChanged: refreshAddressPresentation()
-            Connections {
-                target: browserUi
-                function onDisplay_urlChanged() {
-                    address.refreshAddressPresentation()
-                }
-            }
-            onAccepted: {
-                browserUi.navigate(text)
-                window.updateActiveTabUrl()
-            }
-        }
         ToolButton {
             text: "⟳"
             Accessible.name: "Reload"
@@ -199,17 +169,6 @@ GridLayout {
                 browserUi.reload()
                 window.activeWebView()?.reload()
             }
-        }
-        Label {
-    text: browserUi.mode + " · " + browserUi.status_text
-          + window.contextStatus(
-              browserUi, window.temporaryProfile, window.profileName,
-              window.ephemeralProfile)
-          + window.siteDoctorBadge(browserUi)
-          + (window.recoveryAvailable ? " · recovery available" : "")
-            Accessible.name: "Browser status"
-            color: window.contextStatusColor(
-                       browserUi, window.primaryTextColor)
         }
         ToolButton {
             text: "Window"
@@ -364,7 +323,11 @@ GridLayout {
 
         Repeater {
             id: tabButtons
-            model: tabs
+            // This compatibility row is permanently collapsed in the
+            // current chrome. Do not create a hidden delegate tree for every
+            // tab; if the row is ever presented again, its model follows the
+            // row visibility.
+            model: parent.visible ? tabs : []
             delegate: RowLayout {
                 property int tabIndex: index
                 spacing: 0
@@ -561,6 +524,12 @@ GridLayout {
         browserUi: window.browserUi
     }
 
+    FerricVersioningConsentHost {
+        anchors.fill: parent
+        z: 75
+        browserWindow: window
+    }
+
     FerricContextRouteDialog {
         id: contextRoutePopup
         browserWindow: window
@@ -631,7 +600,10 @@ GridLayout {
         onRefreshRequested: window.refreshDiagnostics()
         onCopyRequested: window.copyToClipboard(window.diagnosticsText, true)
         onSaveRequested: {
-            window.refreshDiagnostics()
+            if (!browserUi.authorize_diagnostics_export(window.diagnosticsText)) {
+                browserUi.status_text = "Diagnostics preview changed; refresh and review it before saving"
+                return
+            }
             fileDialogSurfaces.diagnosticsExportCurrentFile = "ferric-browser-diagnostics.json"
             fileDialogSurfaces.openDiagnosticsExport()
         }
@@ -787,6 +759,28 @@ GridLayout {
         }
     }
 
+    Loader {
+        anchors.fill: parent
+        z: 72
+        active: window.browserUi.versioning_panel_visible
+                && String(window.browserUi.versioning_archive_view_url || "").length === 0
+        sourceComponent: Component {
+            FerricVersioningPanel {
+                browserWindow: window
+                browserUi: window.browserUi
+            }
+        }
+    }
+
+    FerricVersioningArchiveHost {
+        id: versionedArchiveLoader
+        parent: window.contentItem
+        anchors.fill: parent
+        z: 1000
+        browserWindow: window
+        browserUi: window.browserUi
+    }
+
     FerricLinkPreview {
         browserWindow: window
         previewUi: browserUi
@@ -891,7 +885,15 @@ GridLayout {
                 property var viewHost: window
                 property var viewTabs: tabs
                 property var viewModel: ({})
+                property string modelNavigationUrl: viewModel.loaded
+                    ? String(viewModel.url || "about:blank") : "about:blank"
+                property bool versioningUrlBindingSuspended: false
                 property var viewProfile: browserProfile
+                property var versioningOwnerHost: null
+                property int versioningNavigationEpoch: 0
+                property string versioningTypedGetCandidateUrl: ""
+                property double versioningMethodSequence: -1
+                property bool versioningFormNavigationPending: false
                 property var viewInterceptor: window.primaryRequestInterceptor
                 property bool viewTransientProfile: window.temporaryProfile
                 property bool viewTransferred: false
@@ -918,6 +920,13 @@ GridLayout {
                     effectiveSiteSettings = window.siteRuleSettingsFor(
                         viewUi, webView.url.toString())
                 }
+                onModelNavigationUrlChanged: {
+                    if (versioningUrlBindingSuspended
+                            && !versioningFormNavigationPending
+                            && modelNavigationUrl !== webView.url.toString()) {
+                        versioningUrlBindingSuspended = false
+                    }
+                }
                 Connections {
                     target: viewUi
                     function onSite_experiment_kindChanged() {
@@ -939,7 +948,14 @@ GridLayout {
                     return host.length > 0 && counts[host] !== undefined ? Number(counts[host]) : 0
                 }
                 profile: viewProfile
-                url: viewModel.loaded ? viewModel.url : "about:blank"
+                // A bound URL is a GET navigation command. Release that command
+                // while a form owns the view, then rearm it only for a distinct
+                // model target; mirroring a POST result must not replay as GET.
+                Binding on url {
+                    when: !webView.versioningUrlBindingSuspended
+                    value: webView.modelNavigationUrl
+                    restoreMode: Binding.RestoreNone
+                }
                 audioMuted: !!viewModel.muted
                 zoomFactor: Number(window.siteRuleValue(
                     effectiveSiteSettings, "content.zoom", viewModel.zoom))
@@ -975,7 +991,8 @@ GridLayout {
                         return
                     }
                     var changedUrl = url.toString()
-                    if (viewModel.url !== changedUrl && viewTabs === tabs) {
+                    if (!webView.versioningFormNavigationPending
+                            && viewModel.url !== changedUrl && viewTabs === tabs) {
                         tabs.setProperty(tabIndex, "url", changedUrl)
                     }
                     if (viewTabs === tabs) {
@@ -985,7 +1002,6 @@ GridLayout {
                     }
                     if (viewTabs !== tabs || tabIndex === viewUi.active_tab_index) {
                         if (viewUi === browserUi) {
-                            address.text = browserUi.display_url
                             window.updateMprisForPrimaryView(webView)
                             window.refreshBlockingEvidence()
                         }
@@ -999,8 +1015,29 @@ GridLayout {
                         }
                     }
                 }
+                onLifecycleStateChanged: window.reconcileNativeStashLifecycle(webView)
+                onNavigationRequested: function(request) {
+                    if (!request.isMainFrame)
+                        return
+                    if (request.hasFormData) {
+                        webView.versioningFormNavigationPending = true
+                        webView.versioningUrlBindingSuspended = true
+                    }
+                    webView.versioningMethodSequence = viewInterceptor.mainFrameMethodSequence()
+                    webView.versioningTypedGetCandidateUrl =
+                        request.navigationType === WebEngineNavigationRequest.TypedNavigation
+                        && !request.hasFormData ? request.url.toString() : ""
+                }
                 onLoadingChanged: function(loadRequest) {
                     if (loadRequest.status === WebEngineView.LoadStartedStatus) {
+                        window.startCleanBranchPageNavigation(
+                                    webView, viewUi, tabIndex,
+                                    loadRequest.url.toString())
+                        if (webView.versioningTypedGetCandidateUrl
+                                !== loadRequest.url.toString()) {
+                            webView.versioningTypedGetCandidateUrl = ""
+                        }
+                        webView.versioningNavigationEpoch += 1
                         webView.scrollPositionRestored = false
                         window.clearPageDialogForView(webView)
                         window.clearClientCertificateForView(webView)
@@ -1032,11 +1069,31 @@ GridLayout {
                             viewUi.navigation_started(loadRequest.url.toString())
                         }
                     } else if (loadRequest.status === WebEngineView.LoadSucceededStatus) {
+                        window.recordCleanBranchPageOutcome(
+                                    webView, viewUi, tabIndex, "loaded",
+                                    loadRequest.url.toString())
+                        var finishedFormNavigation = webView.versioningFormNavigationPending
+                        webView.versioningFormNavigationPending = false
                         if (viewTabs === tabs) {
                             viewUi.navigation_committed_for(tabIndex, webView.url.toString(), webView.title)
+                            if (finishedFormNavigation
+                                    && viewModel.url !== webView.url.toString()) {
+                                tabs.setProperty(tabIndex, "url", webView.url.toString())
+                            }
+                            if (webView.versioningTypedGetCandidateUrl
+                                    === webView.url.toString()
+                                    && webView.versioningMethodSequence >= 0
+                                    && viewInterceptor.uniqueMainFrameGetSince(
+                                        webView.versioningMethodSequence,
+                                        webView.url.toString())) {
+                                viewUi.navigation_typed_safe_get_committed_for(
+                                    tabIndex, webView.url.toString())
+                            }
                         } else {
                             viewUi.navigation_committed(webView.url.toString(), webView.title)
                         }
+                        webView.versioningTypedGetCandidateUrl = ""
+                        webView.versioningMethodSequence = -1
                         if (!webView.scrollPositionRestored) {
                             webView.scrollPositionRestored = true
                             window.restoreScrollPosition(webView, viewModel.scrollX, viewModel.scrollY)
@@ -1063,6 +1120,12 @@ GridLayout {
                             window.finishSiteDoctorAfterLoad(viewUi, true)
                         }
                     } else if (loadRequest.status === WebEngineView.LoadFailedStatus) {
+                        window.recordCleanBranchPageOutcome(
+                                    webView, viewUi, tabIndex, "failed",
+                                    loadRequest.url.toString())
+                        webView.versioningFormNavigationPending = false
+                        webView.versioningTypedGetCandidateUrl = ""
+                        webView.versioningMethodSequence = -1
                         if (viewTabs === tabs) {
                             viewUi.navigation_failed_with_details(
                                 tabIndex,
@@ -1081,6 +1144,11 @@ GridLayout {
                     viewUi.finish_print_pdf(filePath, success)
                 }
                 onFileDialogRequested: function(request) {
+                    if (!window.cleanBranchViewReady(
+                            webView, viewUi, viewProfile, viewInterceptor)) {
+                        window.resolveQtRequest(viewUi, request, "file-dialog", "dialogReject", [])
+                        return
+                    }
                     if (viewTabs !== tabs || tabIndex === viewUi.active_tab_index) {
                         window.handleFileDialogRequested(request, webView, viewUi)
                     } else {
@@ -1088,6 +1156,11 @@ GridLayout {
                     }
                 }
                 onPermissionRequested: function(permissionRequest) {
+                    if (!window.cleanBranchViewReady(
+                            webView, viewUi, viewProfile, viewInterceptor)) {
+                        window.resolveQtRequest(viewUi, permissionRequest, "permission", "deny", [])
+                        return
+                    }
                     if (viewTabs !== tabs || tabIndex === viewUi.active_tab_index) {
                         window.handlePermissionRequested(permissionRequest, tabIndex)
                     } else {
@@ -1095,14 +1168,29 @@ GridLayout {
                     }
                 }
                 onJavaScriptDialogRequested: function(request) {
+                    if (!window.cleanBranchViewReady(
+                            webView, viewUi, viewProfile, viewInterceptor)) {
+                        window.resolveQtRequest(viewUi, request, "page-dialog", "dialogReject", [])
+                        return
+                    }
                     window.handleJavaScriptDialogRequested(
                         viewUi, webView, request, viewTransientProfile)
                 }
                 onAuthenticationDialogRequested: function(request) {
+                    if (!window.cleanBranchViewReady(
+                            webView, viewUi, viewProfile, viewInterceptor)) {
+                        window.resolveQtRequest(viewUi, request, "authentication", "dialogReject", [])
+                        return
+                    }
                     window.handleAuthenticationDialogRequested(
                         viewUi, webView, request, viewTransientProfile)
                 }
                 onSelectClientCertificate: function(selection) {
+                    if (!window.cleanBranchViewReady(
+                            webView, viewUi, viewProfile, viewInterceptor)) {
+                        window.resolveQtRequest(viewUi, selection, "client-certificate", "selectNone", [])
+                        return
+                    }
                     if (viewTabs !== tabs || tabIndex === viewUi.active_tab_index) {
                         window.handleClientCertificateRequested(
                             viewUi, webView, selection, viewTransientProfile, window)
@@ -1111,6 +1199,11 @@ GridLayout {
                     }
                 }
                 onCertificateError: function(error) {
+                    if (!window.cleanBranchViewReady(
+                            webView, viewUi, viewProfile, viewInterceptor)) {
+                        window.resolveQtRequest(viewUi, error, "client-certificate", "rejectCertificate", [])
+                        return
+                    }
                     if (viewTabs !== tabs || tabIndex === viewUi.active_tab_index) {
                         window.handleCertificateError(
                             viewUi, webView, error, window)
@@ -1119,6 +1212,11 @@ GridLayout {
                     }
                 }
                 onWebAuthUxRequested: function(request) {
+                    if (!window.cleanBranchViewReady(
+                            webView, viewUi, viewProfile, viewInterceptor)) {
+                        window.resolveQtRequest(viewUi, request, "webauth", "cancel", [])
+                        return
+                    }
                     if (viewTabs !== tabs || tabIndex === viewUi.active_tab_index) {
                         window.handleWebAuthRequested(
                             viewUi, webView, request, window)
@@ -1127,6 +1225,11 @@ GridLayout {
                     }
                 }
                 onContextMenuRequested: function(request) {
+                    if (!window.cleanBranchViewReady(
+                            webView, viewUi, viewProfile, viewInterceptor)) {
+                        request.accepted = true
+                        return
+                    }
                     if (viewTabs !== tabs || tabIndex === viewUi.active_tab_index) {
                         window.handleContextMenuRequested(
                             viewUi, webView, request, window)
@@ -1135,6 +1238,11 @@ GridLayout {
                     }
                 }
                 onDesktopMediaRequested: function(request) {
+                    if (!window.cleanBranchViewReady(
+                            webView, viewUi, viewProfile, viewInterceptor)) {
+                        window.resolveQtRequest(viewUi, request, "desktop-media", "cancel", [])
+                        return
+                    }
                     window.handleDesktopMediaRequested(
                         viewUi, webView, request, window)
                 }
@@ -1168,6 +1276,11 @@ GridLayout {
                     window.clearRendererFailureForView(webView)
                 }
                 onNewWindowRequested: function(request) {
+                    if (window.windowCleanBranch
+                            && !CleanBranchPopupOwnership.sourceReady(
+                                window.windowBranchRootWindow, window, viewUi,
+                                viewProfile, viewInterceptor, webView))
+                        return
                     var popupAllowed = viewTabs === tabs
                             ? viewUi.popup_allowed_for(
                                 tabIndex, request.requestedUrl.toString(), request.userInitiated)
@@ -1176,16 +1289,24 @@ GridLayout {
                     if (!popupAllowed) {
                         return
                     }
+                    if (!window.canRegisterPopupWindow()) {
+                        return
+                    }
                     var popup = popupWindowComponent.createObject(null, {
                         popupRequest: request,
+                        popupOpenerHost: window,
                         popupJourneyToken: viewUi.take_popup_journey_token(
                             request.requestedUrl.toString()),
                         popupProfile: viewProfile,
+                        popupRequestInterceptor: window.windowCleanBranch
+                                ? viewInterceptor : null,
                         popupPermissionUi: viewUi,
                         popupContextName: viewUi.context_name,
                         popupContextLabel: viewUi.context_label,
                         popupPrivateProfile: viewTransientProfile,
                         popupEphemeralProfile: window.ephemeralProfile,
+                        popupBranchToken: window.windowCleanBranch
+                                ? window.windowBoundBranchToken : "",
                         popupProfileName: window.profileName
                     })
                     if (!popup) {
@@ -1379,6 +1500,20 @@ GridLayout {
     }
 
     function submitInteractiveCommand(text) {
+        if (/^switch(?:\s|$)/.test(String(text || "").trim())) {
+            var switched = window.switchVersionedCleanBranch(
+                    browserUi, browserUi, text)
+            if (!switched) {
+                browserUi.status_text = "Clean branch switch refused: target is stale, ambiguous, or unavailable"
+                commandSurface.showFeedback(browserUi.status_text, true)
+                commandSurface.selectAllInput()
+                return
+            }
+            window.pendingInteractiveCommand = ""
+            commandSurface.clearInput()
+            window.showCommandNotice("Live branch window activation requested", false)
+            return
+        }
         var focusedContextWindow = window.focusExistingContextWindow(text, browserUi)
         var succeeded = focusedContextWindow
                 || browserUi.execute_interactive_command(text)

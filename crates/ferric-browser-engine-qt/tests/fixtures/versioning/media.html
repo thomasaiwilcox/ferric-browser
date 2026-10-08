@@ -1,0 +1,12 @@
+<!doctype html><meta charset="utf-8"><title>Versioning media loading</title>
+<h1>Local media metadata fixture</h1>
+<audio id="sample" controls preload="metadata" src="/versioning/media-silence.wav"></audio>
+<script>
+const sample = document.querySelector('#sample');
+window.mediaActionCounts = {play: 0, pause: 0};
+sample.addEventListener('play', () => { window.mediaActionCounts.play += 1; });
+sample.addEventListener('pause', () => { window.mediaActionCounts.pause += 1; });
+sample.addEventListener('loadedmetadata', () => {
+  document.title = 'Versioning media ready';
+});
+</script>

@@ -107,9 +107,11 @@ impl qobject::BrowserUi {
         };
         let mut candidates = match parse_hint_payload(&candidates_json.to_string()) {
             Ok(candidates) => candidates,
-            Err(error) => {
-                self.set_status_text(QString::from(format!("Hints rejected: {error}")));
-                return QString::from(serde_json::json!({"error": error}).to_string());
+            Err(_error) => {
+                self.set_status_text(QString::from(
+                    "Hints rejected: page candidates were invalid",
+                ));
+                return QString::from(r#"{"error":"invalid-candidates"}"#);
             }
         };
         candidates.retain(|candidate| {
@@ -143,22 +145,18 @@ impl qobject::BrowserUi {
             refresh_labels(candidates, previous, &alphabet, minimum_width)
         } {
             Ok(labeled) => labeled,
-            Err(error) => {
-                self.set_status_text(QString::from(format!("Hints rejected: {error}")));
-                return QString::from(serde_json::json!({"error": error.to_string()}).to_string());
+            Err(_error) => {
+                self.set_status_text(QString::from(
+                    "Hints rejected: candidates exceeded safe bounds",
+                ));
+                return QString::from(r#"{"error":"invalid-candidates"}"#);
             }
         };
         let hint_first = self.as_ref().rust().hint_first;
         let hint_index = self.as_ref().rust().hint_index;
         if hint_first && hint_index > labeled.len() {
-            self.set_status_text(QString::from(format!(
-                "Hint index {hint_index} is unavailable; only {} candidate(s)",
-                labeled.len()
-            )));
-            return QString::from(
-                serde_json::json!({"error":"index-unavailable", "available":labeled.len()})
-                    .to_string(),
-            );
+            self.set_status_text(QString::from("Hint index is unavailable for this page"));
+            return QString::from(r#"{"error":"index-unavailable"}"#);
         }
         let auto_follow = match config.hints.auto_follow {
             ferric_browser_config::HintAutoFollow::Always => CoreHintAutoFollow::Always,
@@ -196,10 +194,7 @@ impl qobject::BrowserUi {
             this.hint_values = QString::from(result["hints"].to_string());
         }
         self.as_mut().set_hint_visible(!hint_first);
-        self.set_status_text(QString::from(format!(
-            "{} hint(s) · type a label or click",
-            labeled.len()
-        )));
+        self.set_status_text(QString::from("Hints ready · type a label or click"));
         QString::from(result.to_string())
     }
 
@@ -267,28 +262,8 @@ impl qobject::BrowserUi {
             }
         }
         if update_status {
-            let state = &response["state"];
-            let typed = if state.get("mode").and_then(Value::as_str) == Some("text") {
-                format!(
-                    "/{}",
-                    state
-                        .get("query")
-                        .and_then(Value::as_str)
-                        .unwrap_or_default()
-                )
-            } else {
-                state
-                    .get("prefix")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_owned()
-            };
-            let remaining = state.get("remaining").and_then(Value::as_u64).unwrap_or(0);
-            let total = state.get("total").and_then(Value::as_u64).unwrap_or(0);
-            let target = self.as_ref().rust().hint_rapid_target.clone();
-            self.as_mut().set_status_text(QString::from(format!(
-                "{target} · {typed} · {remaining}/{total}"
-            )));
+            self.as_mut()
+                .set_status_text(QString::from("Hint results updated"));
         }
         QString::from(response.to_string())
     }
@@ -426,8 +401,10 @@ impl qobject::BrowserUi {
     ) -> QString {
         let fresh_value = match serde_json::from_str::<Value>(&fresh_candidate_json.to_string()) {
             Ok(value) => value,
-            Err(error) => {
-                self.set_status_text(QString::from(format!("Hint selection rejected: {error}")));
+            Err(_error) => {
+                self.set_status_text(QString::from(
+                    "Hint selection rejected: invalid candidate data",
+                ));
                 return QString::from(r#"{"error":"invalid-fresh-candidate"}"#);
             }
         };
@@ -444,9 +421,11 @@ impl qobject::BrowserUi {
             .unwrap_or(false);
         let fresh = match parse_hint_candidate(&fresh_value) {
             Ok(candidate) => candidate,
-            Err(error) => {
-                self.set_status_text(QString::from(format!("Hint selection rejected: {error}")));
-                return QString::from(serde_json::json!({"error": error}).to_string());
+            Err(_error) => {
+                self.set_status_text(QString::from(
+                    "Hint selection rejected: invalid candidate data",
+                ));
+                return QString::from(r#"{"error":"invalid-candidate"}"#);
             }
         };
         let Some(target) = current_target(
@@ -490,9 +469,9 @@ impl qobject::BrowserUi {
                 self.set_status_text(QString::from("Hint selection rejected: target changed"));
                 return QString::from(r#"{"error":"target-changed"}"#);
             }
-            Err(error) => {
-                self.set_status_text(QString::from(format!("Hint selection rejected: {error}")));
-                return QString::from(serde_json::json!({"error": error.to_string()}).to_string());
+            Err(_error) => {
+                self.set_status_text(QString::from("Hint selection rejected"));
+                return QString::from(r#"{"error":"invalid-selection"}"#);
             }
         };
         let choose = self.as_ref().rust().hint_rapid_target == "choose" && pending_action.is_none();
@@ -516,8 +495,8 @@ impl qobject::BrowserUi {
             };
             let url = match ValidatedUrl::parse(href) {
                 Ok(url) => url,
-                Err(error) => {
-                    self.set_status_text(QString::from(format!("Hint link rejected: {error}")));
+                Err(_error) => {
+                    self.set_status_text(QString::from("Hint link rejected: invalid destination"));
                     return QString::from(r#"{"error":"invalid-link"}"#);
                 }
             };
@@ -527,18 +506,17 @@ impl qobject::BrowserUi {
                     .execute_registered_userscript_action_for_hint(&action_id, url.as_str())
                 {
                     Ok(response) => response,
-                    Err(error) => {
-                        self.set_status_text(QString::from(format!(
-                            "Hint userscript action rejected: {error}"
-                        )));
+                    Err(_error) => {
+                        self.set_status_text(QString::from(
+                            "Hint userscript action rejected; details suppressed",
+                        ));
                         return QString::from(
                             serde_json::json!({"error":"userscript-action-rejected"}).to_string(),
                         );
                     }
                 };
-                self.as_mut().set_status_text(QString::from(format!(
-                    "Hint userscript action started: {action_id}"
-                )));
+                self.as_mut()
+                    .set_status_text(QString::from("Hint userscript action started"));
                 let mut result = serde_json::json!({
                     "action":"userscript",
                     "action_id":action_id,
@@ -571,10 +549,10 @@ impl qobject::BrowserUi {
                         );
                         let cleaned = match clean_link(url.as_str(), &rules) {
                             Ok(result) => result,
-                            Err(error) => {
-                                self.set_status_text(QString::from(format!(
-                                    "Clean hint link rejected: {error}"
-                                )));
+                            Err(_error) => {
+                                self.set_status_text(QString::from(
+                                    "Clean hint link rejected: destination could not be cleaned",
+                                ));
                                 return QString::from(r#"{"error":"clean-link-rejected"}"#);
                             }
                         };
@@ -608,10 +586,10 @@ impl qobject::BrowserUi {
                         let result =
                             match self.as_mut().open_hint_in_background_tab(target.tab, &url) {
                                 Ok(result) => result,
-                                Err(error) => {
-                                    self.set_status_text(QString::from(format!(
-                                        "Rapid background hint rejected: {error}"
-                                    )));
+                                Err(_error) => {
+                                    self.set_status_text(QString::from(
+                                        "Rapid background hint navigation was rejected",
+                                    ));
                                     return QString::from(
                                         r#"{"error":"background-navigation-rejected"}"#,
                                     );
@@ -637,16 +615,15 @@ impl qobject::BrowserUi {
                             url.as_str(),
                         ) {
                             Ok(response) => response,
-                            Err(error) => {
-                                self.set_status_text(QString::from(format!(
-                                    "Hint userscript rejected: {error}"
-                                )));
+                            Err(_error) => {
+                                self.set_status_text(QString::from(
+                                    "Hint userscript rejected; details suppressed",
+                                ));
                                 return QString::from(r#"{"error":"userscript-rejected"}"#);
                             }
                         };
-                        self.as_mut().set_status_text(QString::from(format!(
-                            "Rapid hint userscript started: {script}"
-                        )));
+                        self.as_mut()
+                            .set_status_text(QString::from("Rapid hint userscript started"));
                         let mut result = serde_json::json!({
                             "action":"userscript",
                             "action_id":format!("userscript.{script}.run"),
@@ -691,10 +668,10 @@ impl qobject::BrowserUi {
                     link_cleaning_policy::active_rules(self.as_ref().rust().storage_roots.as_ref());
                 let cleaned = match clean_link(url.as_str(), &rules) {
                     Ok(result) => result,
-                    Err(error) => {
-                        self.set_status_text(QString::from(format!(
-                            "Clean hint link rejected: {error}"
-                        )));
+                    Err(_error) => {
+                        self.set_status_text(QString::from(
+                            "Clean hint link rejected: destination could not be cleaned",
+                        ));
                         return QString::from(r#"{"error":"clean-link-rejected"}"#);
                     }
                 };
@@ -714,20 +691,18 @@ impl qobject::BrowserUi {
             } else if self.as_ref().rust().hint_rapid_target == "tab-bg" {
                 match self.as_mut().open_hint_in_background_tab(target.tab, &url) {
                     Ok(result) => result,
-                    Err(error) => {
-                        self.set_status_text(QString::from(format!(
-                            "Background hint rejected: {error}"
-                        )));
+                    Err(_error) => {
+                        self.set_status_text(QString::from(
+                            "Background hint navigation was rejected",
+                        ));
                         return QString::from(r#"{"error":"background-navigation-rejected"}"#);
                     }
                 }
             } else if self.as_ref().rust().hint_rapid_target == "tab" {
                 match self.as_mut().open_hint_in_foreground_tab(target.tab, &url) {
                     Ok(result) => result,
-                    Err(error) => {
-                        self.set_status_text(QString::from(format!(
-                            "Hint tab navigation rejected: {error}"
-                        )));
+                    Err(_error) => {
+                        self.set_status_text(QString::from("Hint tab navigation was rejected"));
                         return QString::from(r#"{"error":"tab-navigation-rejected"}"#);
                     }
                 }
@@ -759,17 +734,15 @@ impl qobject::BrowserUi {
                     arguments: vec![target_name.clone(), url.to_string()],
                 }) {
                     Ok(response) => response,
-                    Err(error) => {
-                        self.set_status_text(QString::from(format!(
-                            "Hint external target rejected: {error}"
-                        )));
+                    Err(_error) => {
+                        self.set_status_text(QString::from("Hint external target was rejected"));
                         return QString::from(
                             serde_json::json!({"error":"external-target-rejected"}).to_string(),
                         );
                     }
                 };
                 self.as_mut()
-                    .set_status_text(QString::from(format!("Hint link sent to {target_name}")));
+                    .set_status_text(QString::from("Hint link sent"));
                 let mut result = serde_json::json!({
                     "action":"external-send",
                     "action_id":"browser.link.send",
@@ -809,15 +782,15 @@ impl qobject::BrowserUi {
                         .execute_userscript_for_hint(&script, target, url.as_str())
                     {
                         Ok(response) => response,
-                        Err(error) => {
-                            self.set_status_text(QString::from(format!(
-                                "Hint userscript rejected: {error}"
-                            )));
+                        Err(_error) => {
+                            self.set_status_text(QString::from(
+                                "Hint userscript rejected; details suppressed",
+                            ));
                             return QString::from(r#"{"error":"userscript-rejected"}"#);
                         }
                     };
                 self.as_mut()
-                    .set_status_text(QString::from(format!("Hint userscript started: {script}")));
+                    .set_status_text(QString::from("Hint userscript started"));
                 let mut result = serde_json::json!({
                     "action":"userscript",
                     "action_id":format!("userscript.{script}.run"),
@@ -845,10 +818,8 @@ impl qobject::BrowserUi {
                     .reduce_event(Event::StartNavigation { target, url })
                 {
                     Ok(effects) => effects,
-                    Err(error) => {
-                        self.set_status_text(QString::from(format!(
-                            "Hint navigation rejected: {error}"
-                        )));
+                    Err(_error) => {
+                        self.set_status_text(QString::from("Hint navigation was rejected"));
                         return QString::from(r#"{"error":"navigation-rejected"}"#);
                     }
                 };

@@ -1,5 +1,8 @@
 use crate::{DocumentId, HintSessionId, IdSource, TabId, switcher_rank, tokenize_switcher_query};
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt,
+};
 
 const DEFAULT_HINT_CHARS: &str = "asdfghjkl";
 pub const MAX_HINT_CANDIDATES: usize = 5_000;
@@ -61,14 +64,20 @@ impl HintGeometry {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub struct HintTarget {
     pub tab: TabId,
     pub generation: u64,
     pub document: DocumentId,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+impl fmt::Debug for HintTarget {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("HintTarget([redacted])")
+    }
+}
+
+#[derive(Clone, PartialEq)]
 pub struct HintCandidate {
     pub element_id: u32,
     pub kind: HintKind,
@@ -78,13 +87,33 @@ pub struct HintCandidate {
     pub geometry: HintGeometry,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+impl fmt::Debug for HintCandidate {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("HintCandidate")
+            .field("kind", &self.kind)
+            .field("has_href", &self.href.is_some())
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq)]
 pub struct LabeledHint {
     pub label: String,
     pub candidate: HintCandidate,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+impl fmt::Debug for LabeledHint {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("LabeledHint")
+            .field("label", &"[redacted]")
+            .field("candidate", &self.candidate)
+            .finish()
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
 pub enum HintError {
     TooManyCandidates { count: usize, maximum: usize },
     InvalidGeometry { index: usize },
@@ -97,17 +126,31 @@ pub enum HintError {
     InvalidMinimumWidth,
 }
 
+impl fmt::Debug for HintError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::TooManyCandidates { .. } => formatter.write_str("HintError::TooManyCandidates"),
+            Self::InvalidGeometry { .. } => formatter.write_str("HintError::InvalidGeometry"),
+            Self::EmptyLabel => formatter.write_str("HintError::EmptyLabel"),
+            Self::UnknownLabel(_) => formatter.write_str("HintError::UnknownLabel([redacted])"),
+            Self::StaleTarget => formatter.write_str("HintError::StaleTarget"),
+            Self::WrongFrame => formatter.write_str("HintError::WrongFrame"),
+            Self::CandidateNotVisible => formatter.write_str("HintError::CandidateNotVisible"),
+            Self::InvalidAlphabet => formatter.write_str("HintError::InvalidAlphabet"),
+            Self::InvalidMinimumWidth => formatter.write_str("HintError::InvalidMinimumWidth"),
+        }
+    }
+}
+
 impl std::fmt::Display for HintError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::TooManyCandidates { count, maximum } => {
-                write!(formatter, "hint candidate count {count} exceeds {maximum}")
-            }
-            Self::InvalidGeometry { index } => {
-                write!(formatter, "hint candidate {index} has invalid geometry")
+            Self::TooManyCandidates { .. } => formatter.write_str("too many hint candidates"),
+            Self::InvalidGeometry { .. } => {
+                formatter.write_str("hint candidate geometry is invalid")
             }
             Self::EmptyLabel => formatter.write_str("hint label is empty"),
-            Self::UnknownLabel(label) => write!(formatter, "unknown hint label: {label}"),
+            Self::UnknownLabel(_) => formatter.write_str("unknown hint label"),
             Self::StaleTarget => formatter.write_str("hint target is stale"),
             Self::WrongFrame => formatter.write_str("hint candidate belongs to another frame"),
             Self::CandidateNotVisible => formatter.write_str("hint candidate is no longer visible"),
@@ -119,11 +162,22 @@ impl std::fmt::Display for HintError {
 
 impl std::error::Error for HintError {}
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct HintSession {
     pub id: HintSessionId,
     pub target: HintTarget,
     pub hints: Vec<LabeledHint>,
+}
+
+impl fmt::Debug for HintSession {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("HintSession")
+            .field("id", &"[redacted]")
+            .field("target", &"[redacted]")
+            .field("hint_count", &self.hints.len())
+            .finish()
+    }
 }
 
 impl HintSession {
@@ -362,7 +416,7 @@ fn encode_label(mut index: usize, width: usize, alphabet: &[u8]) -> String {
     String::from_utf8(bytes).expect("hint alphabet is ASCII")
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub enum HintInteractionInput {
     Character(char),
     EnterTextMode,
@@ -376,7 +430,28 @@ pub enum HintInteractionInput {
     Cancel,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+impl fmt::Debug for HintInteractionInput {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Character(_) => {
+                formatter.write_str("HintInteractionInput::Character([redacted])")
+            }
+            Self::SelectLabel(_) => {
+                formatter.write_str("HintInteractionInput::SelectLabel([redacted])")
+            }
+            Self::EnterTextMode => formatter.write_str("HintInteractionInput::EnterTextMode"),
+            Self::Backspace => formatter.write_str("HintInteractionInput::Backspace"),
+            Self::Clear => formatter.write_str("HintInteractionInput::Clear"),
+            Self::Next => formatter.write_str("HintInteractionInput::Next"),
+            Self::Previous => formatter.write_str("HintInteractionInput::Previous"),
+            Self::Activate => formatter.write_str("HintInteractionInput::Activate"),
+            Self::RotateCollision => formatter.write_str("HintInteractionInput::RotateCollision"),
+            Self::Cancel => formatter.write_str("HintInteractionInput::Cancel"),
+        }
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
 pub enum HintInteractionOutcome {
     Updated,
     Activate(String),
@@ -386,7 +461,24 @@ pub enum HintInteractionOutcome {
     Cancel,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+impl fmt::Debug for HintInteractionOutcome {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Activate(_) => {
+                formatter.write_str("HintInteractionOutcome::Activate([redacted])")
+            }
+            Self::InvalidCharacter(_) => {
+                formatter.write_str("HintInteractionOutcome::InvalidCharacter([redacted])")
+            }
+            Self::Updated => formatter.write_str("HintInteractionOutcome::Updated"),
+            Self::NoMatches => formatter.write_str("HintInteractionOutcome::NoMatches"),
+            Self::RotateCollision => formatter.write_str("HintInteractionOutcome::RotateCollision"),
+            Self::Cancel => formatter.write_str("HintInteractionOutcome::Cancel"),
+        }
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
 pub struct HintInteractionSnapshot {
     pub mode: HintInputMode,
     pub prefix: String,
@@ -397,9 +489,24 @@ pub struct HintInteractionSnapshot {
     pub total: usize,
 }
 
+impl fmt::Debug for HintInteractionSnapshot {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("HintInteractionSnapshot")
+            .field("mode", &self.mode)
+            .field("prefix", &"[redacted]")
+            .field("query", &"[redacted]")
+            .field("matching_label_count", &self.matching_labels.len())
+            .field("has_active_label", &self.active_label.is_some())
+            .field("remaining", &self.remaining)
+            .field("total", &self.total)
+            .finish()
+    }
+}
+
 /// Testable keyboard interaction state for an immutable set of hint labels.
 /// Filtering never mutates or reassigns labels.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct HintInteraction {
     hints: Vec<LabeledHint>,
     alphabet: String,
@@ -409,6 +516,19 @@ pub struct HintInteraction {
     query: String,
     matches: Vec<usize>,
     active: usize,
+}
+
+impl fmt::Debug for HintInteraction {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("HintInteraction")
+            .field("hint_count", &self.hints.len())
+            .field("auto_follow", &self.auto_follow)
+            .field("mode", &self.mode)
+            .field("match_count", &self.matches.len())
+            .field("active_index", &self.active)
+            .finish()
+    }
 }
 
 impl HintInteraction {
@@ -674,6 +794,85 @@ mod tests {
             assign_labels_with_options(vec![], "aa", 1),
             Err(HintError::InvalidAlphabet)
         ));
+    }
+
+    #[test]
+    fn hint_debug_redacts_page_text_urls_and_search_query() {
+        let sentinel = "private-hint-sentinel-7d0a";
+        let candidate = HintCandidate {
+            element_id: 41,
+            kind: HintKind::Link,
+            frame_path: sentinel.into(),
+            text: sentinel.into(),
+            href: Some(format!("https://example.test/?q={sentinel}")),
+            geometry: HintGeometry {
+                x: 0.0,
+                y: 0.0,
+                width: 10.0,
+                height: 10.0,
+            },
+        };
+        let hint = LabeledHint {
+            label: "a".into(),
+            candidate: candidate.clone(),
+        };
+        let mut ids = crate::IdSource::new();
+        let target = HintTarget {
+            tab: ids.tab(),
+            generation: 1,
+            document: ids.document(),
+        };
+        let session = HintSession {
+            id: ids.hint_session(),
+            target,
+            hints: vec![hint.clone()],
+        };
+        let outcome = HintInteractionOutcome::Activate(candidate.href.clone().unwrap());
+        let snapshot = HintInteractionSnapshot {
+            mode: HintInputMode::Text,
+            prefix: "a".into(),
+            query: sentinel.into(),
+            matching_labels: vec!["a".into()],
+            active_label: Some("a".into()),
+            remaining: 1,
+            total: 1,
+        };
+        let interaction =
+            HintInteraction::new(vec![hint.clone()], "asdf".into(), HintAutoFollow::Never);
+        let error = HintError::UnknownLabel(sentinel.into());
+
+        for projection in [
+            format!("{candidate:?}"),
+            format!("{hint:?}"),
+            format!("{target:?}"),
+            format!("{session:?}"),
+            format!("{outcome:?}"),
+            format!("{snapshot:?}"),
+            format!("{interaction:?}"),
+            format!("{error:?}"),
+            format!("{error}"),
+        ] {
+            assert!(!projection.contains(sentinel), "{projection}");
+        }
+    }
+
+    #[test]
+    fn hint_error_projections_redact_page_derived_counts_and_positions() {
+        let marker = 987_654_321;
+        let errors = [
+            HintError::TooManyCandidates {
+                count: marker,
+                maximum: marker - 1,
+            },
+            HintError::InvalidGeometry { index: marker },
+        ];
+        let marker_text = marker.to_string();
+
+        for error in errors {
+            for projection in [format!("{error:?}"), format!("{error}")] {
+                assert!(!projection.contains(marker_text.as_str()), "{projection}");
+            }
+        }
     }
 
     #[test]

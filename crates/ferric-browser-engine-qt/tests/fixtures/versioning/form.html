@@ -1,0 +1,11 @@
+<!doctype html><meta charset="utf-8"><title>Versioning form</title>
+<h1>Synthetic form controls</h1>
+<form method="post" action="/versioning/form/result" enctype="multipart/form-data">
+  <label>Text <input name="text" value="synthetic draft"></label>
+  <input type="hidden" name="csrf" value="fixture-only-token">
+  <label>Password <input type="password" name="password" autocomplete="current-password"></label>
+  <label>One-time code <input name="otp" inputmode="numeric" autocomplete="one-time-code"></label>
+  <label>File <input type="file" name="file"></label>
+  <label>Option <select name="option"><option>A</option><option>B</option></select></label>
+  <button type="submit">Submit synthetic form</button>
+</form>

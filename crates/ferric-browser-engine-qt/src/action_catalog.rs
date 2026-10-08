@@ -14,7 +14,7 @@ use serde_json::Value;
 /// This is deliberately smaller than the JSON discovery representation used
 /// by IPC: QML only needs a stable action ID, a label, and whether it can be
 /// offered in the current profile.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
 pub(super) struct ExternalActionPresentation {
     pub(super) id: String,
     pub(super) label: String,
@@ -36,7 +36,7 @@ pub(super) fn external_action_presentations(
         "tab" => "tab",
         "url" => "URL",
         "link" => "link",
-        _ => return Err(format!("unknown external action subject: {subject}")),
+        _ => return Err("unknown external action subject".into()),
     };
 
     Ok(configured_action_targets(config)?
@@ -64,7 +64,7 @@ pub(super) fn action_list_value(subject: Option<&str>) -> Result<Value, String> 
             .iter()
             .any(|definition| definition.subject.as_str() == subject)
     {
-        return Err(format!("unknown action subject: {subject}"));
+        return Err("unknown action subject".into());
     }
     Ok(Value::Array(
         registry
@@ -318,5 +318,11 @@ mod tests {
             .expect("known external action subject");
         assert!(!private[0].available);
         assert!(external_action_presentations(&config, "invalid", false).is_err());
+
+        let sentinel = "https://private.example/?credential=sentinel";
+        let error = action_list_value(Some(sentinel)).expect_err("unknown subject must fail");
+        assert_eq!(error, "unknown action subject");
+        assert!(!error.contains("private.example"));
+        assert!(!error.contains("sentinel"));
     }
 }

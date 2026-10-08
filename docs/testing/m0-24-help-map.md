@@ -24,8 +24,9 @@ After the existing chord delay, incomplete valid keychains also appear in a
 bounded non-modal continuation overlay. It is visual-only, leaves focus with
 the page/browser surface, and disappears on resolution, rejection, or Escape.
 When `discovery.learning_mode` is enabled, successful bindings add the
-registered command name to the status feedback; the mode does not alter
-dispatch, timing, privacy, or keystroke retention.
+registered command name—not the full configured command or its arguments—to
+the status feedback; the mode does not alter dispatch, timing, privacy, or
+keystroke retention.
 
 ## Verification
 

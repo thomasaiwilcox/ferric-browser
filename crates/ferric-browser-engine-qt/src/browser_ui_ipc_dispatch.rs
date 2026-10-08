@@ -287,11 +287,7 @@ impl qobject::BrowserUi {
                 Ok(result) => Response::success(request.id.clone(), result),
                 Err(error) => ipc_failure(&request.id, "E_INVALID_PARAMS", error),
             },
-            _ => ipc_failure(
-                &request.id,
-                "E_UNSUPPORTED",
-                format!("unsupported IPC method: {}", request.method),
-            ),
+            _ => ipc_failure(&request.id, "E_UNSUPPORTED", "unsupported IPC method"),
         }
     }
 }

@@ -93,25 +93,31 @@ FerricModalSurface {
             Accessible.name: "Reduced motion status"
         }
 
-        ScrollView {
-            id: diagnosticsScroll
+        Loader {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            clip: true
+            active: diagnostics.visible
+            sourceComponent: Component {
+                ScrollView {
+                    id: diagnosticsScroll
+                    anchors.fill: parent
+                    clip: true
 
-            TextArea {
-                width: diagnosticsScroll.availableWidth
-                height: Math.max(diagnosticsScroll.availableHeight, contentHeight + 16)
-                text: diagnostics.browserWindow.diagnosticsText
-                readOnly: true
-                selectByMouse: true
-                wrapMode: TextEdit.NoWrap
-                color: diagnostics.browserWindow.primaryTextColor
-                selectionColor: diagnostics.browserWindow.accentColor
-                selectedTextColor: diagnostics.browserWindow.backgroundColor
-                font.family: diagnostics.browserWindow.chromeFontFamily
-                Accessible.name: "Read-only diagnostics snapshot"
-                Accessible.description: "Privacy-safe runtime diagnostics in JSON format"
+                    TextArea {
+                        width: diagnosticsScroll.availableWidth
+                        height: Math.max(diagnosticsScroll.availableHeight, contentHeight + 16)
+                        text: diagnostics.browserWindow.diagnosticsText
+                        readOnly: true
+                        selectByMouse: true
+                        wrapMode: TextEdit.NoWrap
+                        color: diagnostics.browserWindow.primaryTextColor
+                        selectionColor: diagnostics.browserWindow.accentColor
+                        selectedTextColor: diagnostics.browserWindow.backgroundColor
+                        font.family: diagnostics.browserWindow.chromeFontFamily
+                        Accessible.name: "Read-only diagnostics snapshot"
+                        Accessible.description: "Privacy-safe runtime diagnostics in JSON format"
+                    }
+                }
             }
         }
     }

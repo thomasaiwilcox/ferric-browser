@@ -40,6 +40,9 @@ FocusScope {
     Accessible.name: title.length > 0 ? title : commandText
 
     function focusInitialControl() {
+        if (surface.hostWindow && surface.hostWindow.requestActivate) {
+            surface.hostWindow.requestActivate()
+        }
         Qt.callLater(function() {
             if (!surface.visible) {
                 return

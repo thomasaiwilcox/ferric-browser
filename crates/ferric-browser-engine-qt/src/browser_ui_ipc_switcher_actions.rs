@@ -50,9 +50,7 @@ impl qobject::BrowserUi {
             return Err("switcher.activate generation is only valid for tab results".into());
         }
         if !switcher_action_allowed(kind, action) {
-            return Err(format!(
-                "switcher.activate action {action:?} is not allowed for result kind {kind:?}"
-            ));
+            return Err("switcher.activate action is not allowed for this result kind".into());
         }
         let binding = self.as_ref();
         let Some(state) = binding.rust().state.as_ref() else {
@@ -82,7 +80,7 @@ impl qobject::BrowserUi {
                 .ok_or_else(|| "switcher target is stale or unsupported".to_owned())?,
             "context" | "history" | "bookmark" | "quickmark" | "session" | "download"
             | "command" | "action" => false,
-            _ => return Err(format!("unknown switcher result kind: {kind}")),
+            _ => return Err("switcher.activate result kind is unsupported".into()),
         };
         if private {
             return Err("private or ephemeral switcher activation is disabled".into());

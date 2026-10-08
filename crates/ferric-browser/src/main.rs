@@ -179,7 +179,9 @@ impl CliError {
             | ErrorCode::Io
             | ErrorCode::Storage
             | ErrorCode::Engine
-            | ErrorCode::Cancelled => 1,
+            | ErrorCode::Cancelled
+            | ErrorCode::Partial
+            | ErrorCode::OutcomeUnknown => 1,
         }
     }
 }
@@ -1135,10 +1137,20 @@ fn run_gui(plan: &GuiLaunchPlan<'_>) -> Result<(), String> {
     }
     let mut engine = QQmlApplicationEngine::new();
     if let Some(mut engine) = engine.as_mut() {
+        let qml_diagnostics_enabled = std::env::var_os("FERRIC_BROWSER_QML_DIAGNOSTICS").is_some();
+        // INVARIANT: raw Qt warnings can contain source paths; suppress stderr even when
+        // the payload-free opt-in warning counter is disabled.
+        ferric_browser_engine_qt::suppress_qml_warning_stderr(engine.as_mut());
+        if qml_diagnostics_enabled {
+            ferric_browser_engine_qt::enable_qml_diagnostics(engine.as_mut());
+        }
         let qml_failed = Arc::new(AtomicBool::new(false));
         let qml_failed_signal = Arc::clone(&qml_failed);
-        let _qml_failure = engine.as_mut().on_object_creation_failed(move |_, _| {
-            qml_failed_signal.store(true, Ordering::Relaxed);
+        let _qml_failure = engine.as_mut().on_object_creation_failed(move |_, _url| {
+            // INVARIANT: Qt may provide a local source URL; never render it to stderr.
+            if !qml_failed_signal.swap(true, Ordering::Relaxed) {
+                eprintln!("Ferric QML component failed to load; source details suppressed");
+            }
         });
         let initial_url = QString::from(initial_url);
         let mut initial_properties: QMap<QMapPair_QString_QVariant> = QMap::default();
@@ -1262,10 +1274,16 @@ fn run_gui(plan: &GuiLaunchPlan<'_>) -> Result<(), String> {
             QVariant::from(&contexts_json),
         );
         engine.as_mut().set_initial_properties(&initial_properties);
-        engine.load(&QUrl::from(
-            "qrc:/qt/qml/io/github/ferricbrowser/qml/Main.qml",
-        ));
+        let qml_url = QUrl::from("qrc:/qt/qml/io/github/ferricbrowser/qml/Main.qml");
+        engine.as_mut().load(&qml_url);
         if qml_failed.load(Ordering::Relaxed) {
+            if qml_diagnostics_enabled {
+                ferric_browser_engine_qt::dump_qml_component_errors(
+                    engine.as_mut(),
+                    &qml_url,
+                    &initial_properties,
+                );
+            }
             return Err("could not load the browser QML surface".into());
         }
     } else {

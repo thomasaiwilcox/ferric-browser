@@ -219,10 +219,10 @@ impl qobject::BrowserUi {
             Ok(_) => {
                 self.as_ref().rust().storage_library_dirty.set(true);
             }
-            Err(error) => {
-                self.as_mut().set_status_text(QString::from(format!(
-                    "History worker write failed: {error}"
-                )));
+            Err(_) => {
+                self.as_mut().set_status_text(QString::from(
+                    "History worker write failed; details suppressed",
+                ));
             }
         }
     }
@@ -235,10 +235,10 @@ impl qobject::BrowserUi {
             Ok(_) => {
                 self.as_ref().rust().storage_library_dirty.set(true);
             }
-            Err(error) => {
-                self.as_mut().set_status_text(QString::from(format!(
-                    "Permission worker write failed: {error}"
-                )));
+            Err(_) => {
+                self.as_mut().set_status_text(QString::from(
+                    "Permission worker write failed; details suppressed",
+                ));
             }
         }
     }
@@ -251,10 +251,10 @@ impl qobject::BrowserUi {
             Ok(_) => {
                 self.as_ref().rust().storage_library_dirty.set(true);
             }
-            Err(error) => {
-                self.as_mut().set_status_text(QString::from(format!(
-                    "Download worker write failed: {error}"
-                )));
+            Err(_) => {
+                self.as_mut().set_status_text(QString::from(
+                    "Download worker write failed; details suppressed",
+                ));
             }
         }
     }

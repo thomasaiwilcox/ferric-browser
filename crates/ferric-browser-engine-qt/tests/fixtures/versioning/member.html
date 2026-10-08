@@ -1,0 +1,13 @@
+<!doctype html><meta charset="utf-8"><title>Versioning synthetic member</title>
+<h1>Synthetic session accepted</h1>
+<button id="change">Mutate with CSRF coupling</button>
+<form method="post" action="/versioning/session/logout"><button type="submit">Log out</button></form>
+<output id="change-result">not changed</output>
+<script>
+document.querySelector('#change').addEventListener('click', async () => {
+  const reply = await fetch('/versioning/session/change', {
+    method: 'POST', headers: {'X-VB-CSRF': 'synthetic-csrf'}, body: 'synthetic-change'
+  });
+  document.querySelector('#change-result').value = reply.ok ? 'changed' : 'denied';
+});
+</script>

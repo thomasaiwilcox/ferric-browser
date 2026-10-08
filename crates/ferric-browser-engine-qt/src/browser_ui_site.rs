@@ -124,8 +124,9 @@ impl qobject::BrowserUi {
                 self.as_mut().set_site_status(QString::from(&serialized));
                 QString::from(serialized)
             }
-            Err(error) => {
-                self.as_mut().set_status_text(QString::from(error));
+            Err(_) => {
+                self.as_mut()
+                    .set_status_text(QString::from("Site status unavailable; details suppressed"));
                 self.set_site_status(QString::from("{}"));
                 QString::default()
             }
@@ -144,8 +145,8 @@ impl qobject::BrowserUi {
                 serde_json::to_string_pretty(&report)
                     .unwrap_or_else(|_| "{\"error\":\"site report serialization failed\"}".into()),
             ),
-            Err(error) => {
-                self.set_status_text(QString::from(format!("Site report unavailable: {error}")));
+            Err(_) => {
+                self.set_status_text(QString::from("Site report unavailable"));
                 QString::default()
             }
         }
@@ -232,9 +233,9 @@ impl qobject::BrowserUi {
             .unwrap_or_default();
         let config = match serde_json::from_value::<Config>(self.as_ref().rust().config.clone()) {
             Ok(config) => config,
-            Err(error) => {
+            Err(_) => {
                 self.set_status_text(QString::from(format!(
-                    "Site Doctor proposal could not read effective config: {error}"
+                    "Site Doctor proposal could not read effective config; details suppressed"
                 )));
                 return false;
             }
@@ -252,10 +253,14 @@ impl qobject::BrowserUi {
                 toml_string_array_literal(&after)
             )],
         };
-        if let Err(error) = self.as_mut().execute_runtime_config_command(&command) {
-            self.set_status_text(QString::from(format!(
-                "Site Doctor durable fix was not applied: {error}"
-            )));
+        if self
+            .as_mut()
+            .execute_runtime_config_command(&command)
+            .is_err()
+        {
+            self.set_status_text(QString::from(
+                "Site Doctor durable fix was not applied; details suppressed",
+            ));
             return false;
         }
         self.as_mut().reload_blocking_policy();
@@ -282,7 +287,10 @@ impl qobject::BrowserUi {
         let plan: Result<Value, String> = (|| {
             let canonical_requested = safe_site_origin(&requested)
                 .ok_or_else(|| "site-data-clear requires one exact HTTP(S) origin".to_owned())?;
-            let ledger = self.as_ref().ipc_site_status(&Value::Null)?;
+            let ledger = self
+                .as_ref()
+                .ipc_site_status(&Value::Null)
+                .map_err(|_| "site-data policy status is unavailable".to_owned())?;
             if ledger.get("private").and_then(Value::as_bool) == Some(true) {
                 return Err("site-data-clear is unavailable for private sessions".into());
             }
@@ -311,7 +319,7 @@ impl qobject::BrowserUi {
         })();
         QString::from(match plan {
             Ok(value) => value.to_string(),
-            Err(error) => serde_json::json!({"error": error}).to_string(),
+            Err(_) => serde_json::json!({"error": "site-data scope is unavailable"}).to_string(),
         })
     }
 
@@ -325,8 +333,8 @@ impl qobject::BrowserUi {
             self.set_status_text(QString::from("Site-data scope could not be determined"));
             return false;
         };
-        if let Some(error) = plan_value.get("error").and_then(Value::as_str) {
-            self.set_status_text(QString::from(error));
+        if plan_value.get("error").and_then(Value::as_str).is_some() {
+            self.set_status_text(QString::from("Site-data scope is unavailable"));
             return false;
         }
         if !confirmed {
@@ -373,13 +381,13 @@ impl qobject::BrowserUi {
             ));
             return false;
         };
-        if let Some(error) = value.get("error").and_then(Value::as_str) {
+        if value.get("error").and_then(Value::as_str).is_some() {
             self.as_mut()
                 .rust_mut()
                 .as_mut()
                 .get_mut()
                 .pending_engine_action = None;
-            self.set_status_text(QString::from(format!("Site-data clear failed: {error}")));
+            self.set_status_text(QString::from("Site-data clear failed"));
             return false;
         }
         if !value.is_object() || value.get("pending").and_then(Value::as_bool) == Some(true) {
@@ -405,7 +413,7 @@ impl qobject::BrowserUi {
             .rust()
             .registry
             .validate(command, self.as_ref().rust().core_mode)
-            .map_err(|error| error.to_string())?;
+            .map_err(|_| "site-data-clear command is invalid".to_owned())?;
         let (origin, confirmed) = match command.arguments.as_slice() {
             [origin] => (origin.as_str(), false),
             [origin, flag] if flag == "--confirm" => (origin.as_str(), true),
@@ -416,9 +424,9 @@ impl qobject::BrowserUi {
             .site_data_clear_plan(&QString::from(origin))
             .to_string();
         let value = serde_json::from_str::<Value>(&plan)
-            .map_err(|error| format!("site-data scope response was invalid: {error}"))?;
-        if let Some(error) = value.get("error").and_then(Value::as_str) {
-            return Err(error.into());
+            .map_err(|_| "site-data scope response was invalid".to_owned())?;
+        if value.get("error").and_then(Value::as_str).is_some() {
+            return Err("site-data scope is unavailable".into());
         }
         if !confirmed {
             self.set_status_text(QString::from(
@@ -427,7 +435,7 @@ impl qobject::BrowserUi {
             return Ok(value);
         }
         if !self.as_mut().site_data_clear(&QString::from(origin), true) {
-            return Err(self.as_ref().rust().status_text.to_string());
+            return Err("Site-data clearing could not be started; details suppressed".into());
         }
         Ok(serde_json::json!({
             "status": "accepted",
@@ -437,29 +445,56 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn diagnostics_json(mut self: Pin<&mut Self>) -> QString {
-        const MAX_DIAGNOSTICS_TEXT: usize = 48 * 1024;
-
         let result = self.ipc_diagnostics(&Value::Null);
-        let mut serialized = match result {
-            Ok(value) => serde_json::to_string_pretty(&value)
-                .unwrap_or_else(|_| "{\"error\":\"diagnostics serialization failed\"}".into()),
-            Err(error) => serde_json::json!({"error": error}).to_string(),
+        let (serialized, reviewable) = match result {
+            Ok(value) => match serde_json::to_string_pretty(&value) {
+                Ok(serialized) => (serialized, true),
+                Err(_) => (
+                    "{\"error\":\"Diagnostics serialization failed; details suppressed\"}"
+                        .to_owned(),
+                    false,
+                ),
+            },
+            Err(_) => (
+                serde_json::json!({
+                    "error": "Diagnostics unavailable; details suppressed"
+                })
+                .to_string(),
+                false,
+            ),
         };
-        self.as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .diagnostics_preview_payload = Some(serialized.clone());
-        if serialized.len() > MAX_DIAGNOSTICS_TEXT {
-            serialized.truncate(MAX_DIAGNOSTICS_TEXT);
-            serialized.push_str("\n… output truncated by the browser UI");
-        }
-        self.as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .diagnostics_preview_ready = true;
+        let reviewable =
+            reviewable && serialized.len() <= diagnostics::MAX_REVIEWED_DIAGNOSTICS_BYTES;
+        let serialized = if reviewable {
+            serialized
+        } else if serialized.len() > diagnostics::MAX_REVIEWED_DIAGNOSTICS_BYTES {
+            serde_json::json!({
+                "error": "Diagnostics report exceeds the review limit; export is unavailable"
+            })
+            .to_string()
+        } else {
+            serialized
+        };
+        let mut rust = self.as_mut().rust_mut();
+        let this = rust.as_mut().get_mut();
+        this.diagnostics_snapshot_payload = reviewable.then(|| serialized.clone());
+        this.diagnostics_export_payload = None;
         QString::from(serialized)
+    }
+
+    pub(super) fn authorize_diagnostics_export(
+        mut self: Pin<&mut Self>,
+        reviewed_preview: &QString,
+    ) -> bool {
+        let reviewed_preview = reviewed_preview.to_string();
+        let mut rust = self.as_mut().rust_mut();
+        let this = rust.as_mut().get_mut();
+        let authorized = diagnostics::reviewed_diagnostics_match(
+            this.diagnostics_snapshot_payload.as_deref(),
+            &reviewed_preview,
+        );
+        this.diagnostics_export_payload = authorized.then_some(reviewed_preview);
+        authorized
     }
 
     pub(super) fn spellcheck_dictionaries(self: Pin<&mut Self>) -> QStringList {
@@ -471,12 +506,6 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn export_diagnostics(mut self: Pin<&mut Self>, path: &QString) -> bool {
-        if !self.as_ref().rust().diagnostics_preview_ready {
-            self.set_status_text(QString::from(
-                "Diagnostics export requires reviewing the visible preview first",
-            ));
-            return false;
-        }
         let path = path.to_string();
         let path_ref = Path::new(&path);
         if path.is_empty()
@@ -495,7 +524,14 @@ impl qobject::BrowserUi {
             ));
             return false;
         }
-        let Some(payload) = self.as_ref().rust().diagnostics_preview_payload.clone() else {
+        let Some(payload) = self
+            .as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .diagnostics_export_payload
+            .take()
+        else {
             self.set_status_text(QString::from("Diagnostics export is unavailable"));
             return false;
         };
@@ -507,21 +543,11 @@ impl qobject::BrowserUi {
         }
         match atomic_write_private(path_ref, payload.as_bytes()) {
             Ok(()) => {
-                self.as_mut()
-                    .rust_mut()
-                    .as_mut()
-                    .get_mut()
-                    .diagnostics_preview_ready = false;
-                self.as_mut()
-                    .rust_mut()
-                    .as_mut()
-                    .get_mut()
-                    .diagnostics_preview_payload = None;
                 self.set_status_text(QString::from("Diagnostics export written"));
                 true
             }
-            Err(error) => {
-                self.set_status_text(QString::from(format!("Diagnostics export failed: {error}")));
+            Err(_) => {
+                self.set_status_text(QString::from("Diagnostics export failed"));
                 false
             }
         }

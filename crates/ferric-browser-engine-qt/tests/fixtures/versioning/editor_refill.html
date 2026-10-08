@@ -1,0 +1,16 @@
+<!doctype html><meta charset="utf-8"><title>Versioning refill editor</title>
+<h1>Unsaved refill fixture</h1>
+<div id="draft" contenteditable="true" role="textbox">synthetic unsaved text</div>
+<input id="refill-draft" type="text" value="" aria-label="Synthetic refill draft">
+<script>
+const refillDraft = document.querySelector('#refill-draft');
+window.refillDraftEvents = {input: 0, change: 0, focus: 0, blur: 0};
+window.refillAutosaveAttempted = false;
+for (const type of Object.keys(window.refillDraftEvents)) {
+  refillDraft.addEventListener(type, () => { window.refillDraftEvents[type] += 1; });
+}
+refillDraft.addEventListener('blur', () => {
+  window.refillAutosaveAttempted = true;
+  fetch('/versioning/editor/autosave', {method: 'POST', body: refillDraft.value});
+});
+</script>

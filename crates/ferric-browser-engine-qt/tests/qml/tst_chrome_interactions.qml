@@ -4,6 +4,8 @@ import QtTest
 import "../../qml/components"
 import "../../qml/scripts/ChromePresentation.js" as ChromePresentation
 import "../../qml/scripts/KeyboardPresentation.js" as KeyboardPresentation
+import "../../qml/scripts/VersionedRestorePresentation.js" as VersionedRestorePresentation
+import "../../qml/scripts/NativePageCaptureCallbacks.js" as NativePageCaptureCallbacks
 
 TestCase {
     id: chromeTest
@@ -32,6 +34,11 @@ TestCase {
     property int dismissedRecoveries: 0
     property int acceptedCommandDialogs: 0
     property int cancelledCommandDialogs: 0
+    property int acceptedStashDisclosures: 0
+    property int declinedStashDisclosures: 0
+    property int acceptedPageCaptureDisclosures: 0
+    property int declinedPageCaptureDisclosures: 0
+    property string lastStashDisclosureOperation: ""
     property int closedLibraries: 0
     property int openedLibraryEntries: 0
     property string openedLibraryEntryId: ""
@@ -49,6 +56,7 @@ TestCase {
         property int chromeRowHeight: 24
         property int tabBarHeight: 32
         property int inputBarHeight: 32
+        property int statusBarHeight: 32
         property real chromeOpacity: 1.0
         property font font: Qt.font({ family: "monospace", pointSize: 10 })
         property color backgroundColor: "#1e1e2e"
@@ -83,6 +91,9 @@ TestCase {
         }
         function contrastText(background) {
             return ChromePresentation.contrastText(background)
+        }
+        function addressPresentation(url, maximumCharacters) {
+            return String(url).slice(0, maximumCharacters)
         }
     }
 
@@ -145,6 +156,30 @@ TestCase {
                 completionSelected: 0
                 onSubmitted: function(text) { chromeTest.submittedCommand = text }
             }
+        }
+    }
+
+    Component {
+        id: statusBarFixture
+        FerricStatusBar {
+            width: 600
+            browserWindow: theme
+            statusVisible: false
+            mode: "normal"
+            displayUrl: "https://example.test"
+            statusText: "Startup status"
+            contextName: ""
+            contextColor: theme.primaryTextColor
+            profileName: "default"
+            temporaryProfile: false
+            ephemeralProfile: false
+            blockingSiteCount: 0
+            activeTabIndex: 0
+            tabCount: 1
+            engineUpdateNotice: ""
+            macroStatusText: ""
+            activeView: null
+            accessibleDetails: ""
         }
     }
 
@@ -286,6 +321,42 @@ TestCase {
                 } else {
                     chromeTest.cancelledCommandDialogs += 1
                 }
+            }
+        }
+    }
+
+    Component {
+        id: versioningConsentFixture
+        FerricVersioningConsentDialog {
+            browserWindow: theme
+            operationId: "native-operation-1"
+            disclosureText: "This live stash is volatile. Nothing is saved to disk."
+            onAcceptRequested: function(operationId) {
+                chromeTest.acceptedStashDisclosures += 1
+                chromeTest.lastStashDisclosureOperation = operationId
+            }
+            onDeclineRequested: function(operationId) {
+                chromeTest.declinedStashDisclosures += 1
+                chromeTest.lastStashDisclosureOperation = operationId
+            }
+        }
+    }
+
+    Component {
+        id: pageCaptureConsentFixture
+        FerricVersioningConsentDialog {
+            browserWindow: theme
+            operationId: "native-page-operation-1"
+            disclosureText: "This page archive may contain personal data and secrets."
+            pageCaptureMode: true
+            acceptEnabled: true
+            onAcceptRequested: function(operationId) {
+                chromeTest.acceptedPageCaptureDisclosures += 1
+                chromeTest.lastStashDisclosureOperation = operationId
+            }
+            onDeclineRequested: function(operationId) {
+                chromeTest.declinedPageCaptureDisclosures += 1
+                chromeTest.lastStashDisclosureOperation = operationId
             }
         }
     }
@@ -487,6 +558,40 @@ TestCase {
         verify(list)
         tryVerify(function() { return list.itemAtIndex(0) !== null })
         verify(list.itemAtIndex(0).width >= list.width / 4 - 1)
+    }
+
+    function test_tab_strip_updates_after_model_insert() {
+        tabsModel.clear()
+        tabsModel.append({ title: "First", pinned: false, muted: false })
+        var strip = createTemporaryObject(tabFixture, testWindow.contentItem)
+        verify(strip)
+        var list = findChild(strip, "tabList")
+        verify(list)
+        tryCompare(list, "count", 1)
+        tabsModel.append({ title: "Second", pinned: false, muted: false })
+        tryCompare(list, "count", 2)
+        tryVerify(function() { return list.itemAtIndex(1) !== null })
+        compare(strip.Accessible.description, "2 browser tabs")
+    }
+
+    function test_tab_strip_keyboard_and_accessible_activation() {
+        tabsModel.clear()
+        tabsModel.append({ title: "First", pinned: false, muted: false })
+        tabsModel.append({ title: "Second", pinned: false, muted: false })
+        var strip = createTemporaryObject(tabFixture, testWindow.contentItem)
+        verify(strip)
+        var list = findChild(strip, "tabList")
+        verify(list)
+        tryVerify(function() { return list.itemAtIndex(1) !== null })
+        var second = list.itemAtIndex(1)
+        second.forceActiveFocus()
+        tryCompare(second, "activeFocus", true)
+        keyClick(Qt.Key_Return)
+        compare(selectedTabs, 1)
+        keyClick(Qt.Key_Space)
+        compare(selectedTabs, 2)
+        second.Accessible.pressAction()
+        compare(selectedTabs, 3)
     }
 
     function test_mouse_wheel_on_tab_strip_requests_switch() {
@@ -764,6 +869,25 @@ TestCase {
         compare(ChromePresentation.statusBarVisible("command", "hint"), true)
     }
 
+    function test_hidden_statusbar_lazily_creates_content_when_shown() {
+        var statusBar = createTemporaryObject(statusBarFixture,
+                                              testWindow.contentItem)
+        verify(statusBar)
+        var contents = findChild(statusBar, "statusBarContents")
+        verify(contents)
+        compare(contents.item, null)
+
+        statusBar.statusText = "Updated status"
+        statusBar.statusVisible = true
+        tryVerify(function() { return contents.item !== null })
+        var message = findChild(statusBar, "statusMessageLabel")
+        verify(message)
+        compare(message.text, "Updated status")
+
+        statusBar.statusVisible = false
+        tryVerify(function() { return contents.item === null })
+    }
+
     function test_shifted_ascii_key_normalization_preserves_H_binding() {
         compare(KeyboardPresentation.printableKey(
                     "h", Qt.Key_H, true, Qt.Key_A, Qt.Key_Z), "H")
@@ -869,5 +993,1664 @@ TestCase {
         verify(accept)
         mouseClick(accept, accept.width / 2, accept.height / 2)
         compare(acceptedCommandDialogs, 2)
+    }
+
+    function test_versioning_consent_defaults_to_safe_one_use_decline() {
+        var dialog = createTemporaryObject(versioningConsentFixture,
+                                           testWindow.contentItem)
+        verify(dialog)
+        testWindow.requestActivate()
+        tryCompare(testWindow, "active", true)
+        tryCompare(dialog, "currentIndex", 0)
+        compare(dialog.actionEnabled(1), false)
+        keyClick(Qt.Key_Y)
+        dialog.requestAction("accept")
+        compare(acceptedStashDisclosures, 0)
+        keyClick(Qt.Key_Escape)
+        compare(declinedStashDisclosures, 1)
+        compare(lastStashDisclosureOperation, "native-operation-1")
+        dialog.requestAction("decline")
+        compare(declinedStashDisclosures, 1)
+
+        dialog.visible = false
+        dialog.visible = true
+        dialog.acceptEnabled = true
+        tryCompare(dialog, "currentIndex", 0)
+        compare(dialog.actionEnabled(1), true)
+        dialog.requestAction("accept")
+        compare(acceptedStashDisclosures, 1)
+        compare(lastStashDisclosureOperation, "native-operation-1")
+    }
+
+    function test_page_capture_consent_uses_distinct_archive_copy_and_exact_operation() {
+        var dialog = createTemporaryObject(pageCaptureConsentFixture,
+                                           testWindow.contentItem)
+        verify(dialog)
+        compare(dialog.title, "Save a page archive?")
+        compare(dialog.commandText, "archive page")
+        compare(dialog.message, "This page archive may contain personal data and secrets.")
+        keyClick(Qt.Key_Y)
+        compare(acceptedPageCaptureDisclosures, 1)
+        compare(lastStashDisclosureOperation, "native-page-operation-1")
+
+        dialog.decisionTaken = false
+        dialog.requestAction("decline")
+        compare(declinedPageCaptureDisclosures, 1)
+        compare(lastStashDisclosureOperation, "native-page-operation-1")
+    }
+
+    function test_versioned_restore_window_allocation_failure_preserves_source() {
+        var allocations = 0
+        var source = {
+            tabCount: 3,
+            activeUrl: "https://example.test/current",
+            activeWindowId: "source-window",
+            status_text: "before restore"
+        }
+        var factory = {
+            createObject: function(parent, properties) {
+                allocations += 1
+                compare(parent, null)
+                compare(properties.windowRestoreCommitId, "commit-id")
+                return null
+            }
+        }
+        var owner = { canCreate: function() { return true },
+                      retain: function() { fail("Failed allocation must not be retained") } }
+        var child = VersionedRestorePresentation.openRestoreWindow(factory, {
+            windowStartupUrl: "about:blank",
+            windowRestoreCommitId: "commit-id",
+            windowProfileName: "default",
+            windowPrivateProfile: false,
+            windowEphemeralProfile: false
+        }, source, owner)
+        compare(child, null)
+        compare(source.status_text,
+                "Could not create versioned restore window; current work is intact")
+        compare(source.tabCount, 3)
+        compare(source.activeUrl, "https://example.test/current")
+        compare(source.activeWindowId, "source-window")
+
+        var throwingFactory = {
+            createObject: function() { throw new Error("synthetic allocation failure") }
+        }
+        compare(VersionedRestorePresentation.openRestoreWindow(
+                    throwingFactory, {}, source, owner), null)
+        compare(source.tabCount, 3)
+        compare(source.activeUrl, "https://example.test/current")
+        compare(VersionedRestorePresentation.openRestoreWindow(null, {}, source, owner), null)
+        compare(source.tabCount, 3)
+
+        var childDestroyed = false
+        var retainFailureFactory = {
+            createObject: function() {
+                return { destroy: function() { childDestroyed = true } }
+            }
+        }
+        var refusingOwner = { canCreate: function() { return true },
+                              retain: function() { return false } }
+        compare(VersionedRestorePresentation.openRestoreWindow(
+                    retainFailureFactory, {}, source, refusingOwner), null)
+        verify(childDestroyed)
+        compare(source.status_text,
+                "Could not retain versioned restore window; current work is intact")
+        compare(source.tabCount, 3)
+        compare(source.activeUrl, "https://example.test/current")
+        compare(source.activeWindowId, "source-window")
+
+        childDestroyed = false
+        var throwingRetainOwner = {
+            canCreate: function() { return true },
+            retain: function() { throw new Error("synthetic retain failure") }
+        }
+        compare(VersionedRestorePresentation.openRestoreWindow(
+                    retainFailureFactory, {}, source, throwingRetainOwner), null)
+        verify(childDestroyed)
+        compare(source.status_text,
+                "Could not retain versioned restore window; current work is intact")
+        compare(source.tabCount, 3)
+        compare(source.activeUrl, "https://example.test/current")
+        compare(source.activeWindowId, "source-window")
+
+        var allocationsBeforeOwnerFailure = allocations
+        var throwingCapacityOwner = {
+            canCreate: function() { throw new Error("synthetic owner failure") },
+            retain: function() { fail("Unavailable owner must not retain a child") }
+        }
+        compare(VersionedRestorePresentation.openRestoreWindow(
+                    factory, {}, source, throwingCapacityOwner), null)
+        compare(allocations, allocationsBeforeOwnerFailure)
+        compare(source.status_text,
+                "Restore window limit reached or owner unavailable; current work is intact")
+        compare(source.tabCount, 3)
+        compare(source.activeUrl, "https://example.test/current")
+        compare(source.activeWindowId, "source-window")
+    }
+
+    function test_native_page_capture_retirement_is_bounded_and_never_evicts_stale_paths() {
+        var state = {
+            nativePageCaptureRetiredDownloads: ({}),
+            nativePageCaptureRetiredDownloadOrder: [],
+            nativePageCaptureRetiredPaths: ({}),
+            nativePageCaptureRetiredPathOrder: []
+        }
+        var limit = 3
+
+        verify(NativePageCaptureCallbacks.retirementCapacityAvailable(state, limit))
+        verify(NativePageCaptureCallbacks.retireDownload(state, "101", limit))
+        verify(NativePageCaptureCallbacks.retireDownload(state, "101", limit))
+        verify(!NativePageCaptureCallbacks.retireDownload(state, "bad-id", limit))
+        verify(NativePageCaptureCallbacks.retirePath(state,
+                                                     "/private/staging/one/capture.bin",
+                                                     limit))
+        verify(NativePageCaptureCallbacks.retirePath(state,
+                                                     "/private/staging/one/capture.bin",
+                                                     limit))
+        verify(NativePageCaptureCallbacks.retirePath(state,
+                                                     "/private/staging/two/capture.bin",
+                                                     limit))
+        verify(NativePageCaptureCallbacks.retirePath(state,
+                                                     "/private/staging/three/capture.bin",
+                                                     limit))
+        verify(NativePageCaptureCallbacks.isRetiredPath(
+                   state, "/private/staging/one/capture.bin"))
+        verify(NativePageCaptureCallbacks.retireDownload(state, "102", limit))
+        verify(NativePageCaptureCallbacks.retireDownload(state, "103", limit))
+        compare(state.nativePageCaptureRetiredDownloadOrder.length, 3)
+        verify(!NativePageCaptureCallbacks.retirementCapacityAvailable(state, limit))
+        verify(!NativePageCaptureCallbacks.retireDownload(state, "104", limit))
+        verify(!NativePageCaptureCallbacks.retirePath(state,
+                                                      "/private/staging/four/capture.bin",
+                                                      limit))
+        compare(state.nativePageCaptureRetiredDownloadOrder.join(","), "101,102,103")
+        compare(state.nativePageCaptureRetiredPathOrder.length, 3)
+        verify(NativePageCaptureCallbacks.isRetiredPath(
+                   state, "/private/staging/one/capture.bin"))
+
+        verify(NativePageCaptureCallbacks.consumeDownload(state, "101"))
+        verify(!NativePageCaptureCallbacks.consumeDownload(state, "101"))
+        verify(!NativePageCaptureCallbacks.retirementCapacityAvailable(state, limit))
+        verify(NativePageCaptureCallbacks.retireDownload(state, "104", limit))
+        verify(NativePageCaptureCallbacks.isRetiredPath(
+                   state, "/private/staging/one/capture.bin"))
+    }
+
+    function test_exhausted_page_capture_quarantine_stops_saves_for_owner_window() {
+        var cancelledOperations = []
+        var ui = {
+            status_text: "",
+            cancel_native_page_capture_request: function(operation) {
+                cancelledOperations.push(operation)
+            }
+        }
+        var owner = {
+            nativePageCaptureSave: null,
+            nativePageCaptureRetiredDownloads: ({}),
+            nativePageCaptureRetiredDownloadOrder: [],
+            nativePageCaptureRetiredPaths: ({}),
+            nativePageCaptureRetiredPathOrder: [],
+            nativePageCaptureRetiredDownloadLimit: 1,
+            nativePageCaptureRetirementCapacityAvailable: function() {
+                return NativePageCaptureCallbacks.retirementCapacityAvailable(
+                            this, this.nativePageCaptureRetiredDownloadLimit)
+            },
+            retireNativePageCapturePath: function(path) {
+                return NativePageCaptureCallbacks.retirePath(
+                            this, path, this.nativePageCaptureRetiredDownloadLimit)
+            },
+            retireNativePageCaptureDownload: function(id) {
+                return NativePageCaptureCallbacks.retireDownload(
+                            this, id, this.nativePageCaptureRetiredDownloadLimit)
+            },
+            discardNativePageCaptureMutationProbe: function() {},
+            scheduleRuntimeWork: function() {}
+        }
+        verify(owner.retireNativePageCaptureDownload("990"))
+        var timedOutDownload = {
+            cancellations: 0,
+            cancel: function() {
+                compare(owner.nativePageCaptureSave, null)
+                verify(owner.nativePageCaptureRetirementExhausted)
+                this.cancellations++
+            }
+        }
+        var timedOut = {
+            operationId: "exhausted-timeout",
+            path: "/private/staging/exhausted/timeout.mhtml",
+            downloadId: "991",
+            download: timedOutDownload,
+            downloadFinished: false
+        }
+        owner.nativePageCaptureSave = timedOut
+        verify(NativePageCaptureCallbacks.retireTimedOutCapture(owner, ui, timedOut))
+        compare(owner.nativePageCaptureSave, null)
+        verify(owner.nativePageCaptureRetirementExhausted)
+        compare(timedOutDownload.cancellations, 1)
+        compare(cancelledOperations.join(","), "exhausted-timeout")
+        compare(ui.status_text,
+                "Native page-save callback capacity is exhausted; window capture was stopped")
+        verify(NativePageCaptureCallbacks.shouldIgnoreSavePageCompletion(
+                   owner, { isSavePageDownload: true }))
+        verify(!NativePageCaptureCallbacks.shouldIgnoreSavePageCompletion(
+                   owner, { isSavePageDownload: false }))
+
+        var rejectedRequest = {
+            id: "992",
+            isSavePageDownload: true,
+            cancellations: 0,
+            cancel: function() { this.cancellations++ }
+        }
+        verify(NativePageCaptureCallbacks.routeSaveRequest(owner, ui,
+                                                            rejectedRequest, 7))
+        compare(rejectedRequest.cancellations, 1)
+
+        var ordinaryDownload = {
+            isSavePageDownload: false,
+            cancellations: 0,
+            cancel: function() { this.cancellations++ }
+        }
+        verify(!NativePageCaptureCallbacks.routeSaveRequest(owner, ui,
+                                                             ordinaryDownload, 7))
+        compare(ordinaryDownload.cancellations, 0)
+    }
+
+    function test_approved_shutdown_quarantines_late_page_save_without_admission() {
+        verify(NativePageCaptureCallbacks.shutdownApproved({ shutdownApproved: true }))
+        verify(NativePageCaptureCallbacks.shutdownApproved({ windowShutdownApproved: true }))
+        var ui = { status_text: "" }
+        var owner = {
+            shutdownApproved: true,
+            nativePageCaptureSave: null,
+            nativePageCaptureRetiredDownloads: ({}),
+            nativePageCaptureRetiredDownloadOrder: [],
+            nativePageCaptureRetiredPaths: ({}),
+            nativePageCaptureRetiredPathOrder: [],
+            nativePageCaptureRetiredDownloadLimit: 8,
+            retireNativePageCaptureDownload: function(id) {
+                return NativePageCaptureCallbacks.retireDownload(this, id, 8)
+            },
+            retireNativePageCapturePath: function(path) {
+                return NativePageCaptureCallbacks.retirePath(this, path, 8)
+            },
+            isRetiredNativePageCapturePath: function(path) {
+                return NativePageCaptureCallbacks.isRetiredPath(this, path)
+            }
+        }
+        var request = {
+            id: "904",
+            isSavePageDownload: true,
+            savePageFormat: 7,
+            downloadDirectory: "/private/staging/late-shutdown",
+            downloadFileName: "capture.mhtml",
+            cancellations: 0,
+            cancel: function() { this.cancellations++ }
+        }
+        Object.defineProperty(request, "view", { get: function() {
+            throw new Error("late shutdown Save Page must not inspect Qt's view getter")
+        } })
+
+        verify(NativePageCaptureCallbacks.routeSaveRequest(owner, ui, request, 7, true))
+        compare(request.cancellations, 1)
+        verify(owner.nativePageCaptureRetiredDownloads["904"])
+        verify(owner.nativePageCaptureRetiredPaths[
+                   "/private/staging/late-shutdown/capture.mhtml"])
+        compare(ui.status_text, "")
+    }
+
+    function test_shutdown_cancels_rust_owned_capture_before_qt_request() {
+        var events = []
+        var owner = {
+            nativePageCaptureSave: null,
+            nativePageCaptureDisclosure: ["shutdown-operation", "fixed copy"],
+            scheduleRuntimeWork: function(delay) {
+                compare(delay, 0)
+                events.push("schedule")
+            }
+        }
+        var pending = true
+        var ui = {
+            status_text: "",
+            cancel_pending_native_page_capture_for_shutdown: function() {
+                events.push("cancel-rust-owner")
+                if (!pending)
+                    return false
+                pending = false
+                return true
+            }
+        }
+
+        verify(NativePageCaptureCallbacks.cancelPendingCaptureForShutdown(owner, ui))
+        compare(events.join(","), "cancel-rust-owner,schedule")
+        compare(owner.nativePageCaptureDisclosure.length, 0)
+        compare(ui.status_text, "Native page capture cancelled for shutdown")
+        verify(!NativePageCaptureCallbacks.cancelPendingCaptureForShutdown(owner, ui))
+        compare(events.length, 3)
+    }
+
+    function test_shutdown_cancels_native_capture_after_quarantining_exact_request() {
+        var events = []
+        var owner = {
+            nativePageCaptureSave: null,
+            nativePageCaptureRetiredDownloads: ({}),
+            nativePageCaptureRetiredDownloadOrder: [],
+            nativePageCaptureRetiredPaths: ({}),
+            nativePageCaptureRetiredPathOrder: [],
+            nativePageCaptureRetiredDownloadLimit: 8,
+            nativePageCaptureRetirementCapacityAvailable: function() {
+                return NativePageCaptureCallbacks.retirementCapacityAvailable(
+                            this, this.nativePageCaptureRetiredDownloadLimit)
+            },
+            retireNativePageCapturePath: function(path) {
+                events.push("retire-path")
+                return NativePageCaptureCallbacks.retirePath(
+                            this, path, this.nativePageCaptureRetiredDownloadLimit)
+            },
+            retireNativePageCaptureDownload: function(id) {
+                events.push("retire-id")
+                return NativePageCaptureCallbacks.retireDownload(
+                            this, id, this.nativePageCaptureRetiredDownloadLimit)
+            },
+            discardNativePageCaptureMutationProbe: function() {
+                events.push("discard-probe")
+            },
+            scheduleRuntimeWork: function(delay) {
+                compare(delay, 0)
+                events.push("schedule")
+            }
+        }
+        var ui = {
+            status_text: "",
+            cancel_native_page_capture_request: function(operation) {
+                compare(operation, "shutdown-capture")
+                events.push("cancel-operation")
+            }
+        }
+        var capture = {
+            operationId: "shutdown-capture",
+            tabId: "shutdown-tab",
+            path: "/private/staging/shutdown/capture.mhtml",
+            downloadId: "771",
+            downloadFinished: false,
+            mutationProbe: function() {},
+            download: {
+                cancellations: 0,
+                cancel: function() {
+                    compare(owner.nativePageCaptureSave, null)
+                    verify(NativePageCaptureCallbacks.isRetiredPath(
+                               owner, capture.path))
+                    verify(owner.nativePageCaptureRetiredDownloads[capture.downloadId])
+                    events.push("cancel-qt")
+                    this.cancellations++
+                }
+            }
+        }
+        owner.nativePageCaptureSave = capture
+
+        verify(NativePageCaptureCallbacks.cancelCaptureForShutdown(
+                   owner, ui, capture))
+        compare(owner.nativePageCaptureSave, null)
+        compare(capture.download.cancellations, 1)
+        verify(NativePageCaptureCallbacks.isRetiredPath(owner, capture.path))
+        verify(owner.nativePageCaptureRetiredDownloads[capture.downloadId])
+        compare(events.join(","),
+                "retire-path,retire-id,discard-probe,cancel-qt,cancel-operation,schedule")
+        compare(ui.status_text, "Native page capture cancelled for shutdown")
+    }
+
+    function test_shutdown_cancels_finished_qt_capture_without_recancelling_download() {
+        var cancelledOperations = []
+        var owner = {
+            nativePageCaptureSave: null,
+            nativePageCaptureRetiredDownloads: ({}),
+            nativePageCaptureRetiredDownloadOrder: [],
+            nativePageCaptureRetiredPaths: ({}),
+            nativePageCaptureRetiredPathOrder: [],
+            nativePageCaptureRetiredDownloadLimit: 8,
+            nativePageCaptureRetirementCapacityAvailable: function() {
+                return NativePageCaptureCallbacks.retirementCapacityAvailable(this, 8)
+            },
+            retireNativePageCapturePath: function(path) {
+                return NativePageCaptureCallbacks.retirePath(this, path, 8)
+            },
+            retireNativePageCaptureDownload: function(id) {
+                return NativePageCaptureCallbacks.retireDownload(this, id, 8)
+            },
+            discardNativePageCaptureMutationProbe: function() {},
+            scheduleRuntimeWork: function() {}
+        }
+        var ui = {
+            status_text: "",
+            cancel_native_page_capture_request: function(operation) {
+                cancelledOperations.push(operation)
+            }
+        }
+        var capture = {
+            operationId: "finished-shutdown-capture",
+            path: "/private/staging/shutdown/finished.mhtml",
+            downloadId: "772",
+            downloadFinished: true,
+            download: { cancellations: 0, cancel: function() { this.cancellations++ } }
+        }
+        owner.nativePageCaptureSave = capture
+
+        verify(NativePageCaptureCallbacks.cancelCaptureForShutdown(owner, ui, capture))
+        compare(capture.download.cancellations, 0)
+        compare(owner.nativePageCaptureSave, null)
+        verify(NativePageCaptureCallbacks.isRetiredPath(owner, capture.path))
+        verify(owner.nativePageCaptureRetiredDownloads[capture.downloadId])
+        compare(cancelledOperations.join(","), "finished-shutdown-capture")
+    }
+
+    function test_profile_admitted_unpermitted_save_page_skips_view_getter() {
+        var owner = {
+            nativePageCaptureSave: null,
+            nativePageCaptureRetiredDownloads: ({}),
+            nativePageCaptureRetiredDownloadOrder: [],
+            nativePageCaptureRetiredPaths: ({}),
+            nativePageCaptureRetiredPathOrder: [],
+            nativePageCaptureRetirementExhausted: false,
+            isRetiredNativePageCapturePath: function(path) {
+                return NativePageCaptureCallbacks.isRetiredPath(this, path)
+            }
+        }
+        var ui = { status_text: "" }
+        var request = {
+            id: "998",
+            isSavePageDownload: true,
+            cancellations: 0,
+            cancel: function() { this.cancellations++ }
+        }
+        Object.defineProperty(request, "view", { get: function() {
+            throw new Error("profile-admitted Save Page must not inspect Qt's view getter")
+        } })
+        verify(!NativePageCaptureCallbacks.routeSaveRequest(
+                   owner, ui, request, 7, true))
+        compare(request.cancellations, 0)
+    }
+
+    function test_exhausted_terminal_retirement_cancels_window_without_advancing_partial_capture() {
+        var failedPages = []
+        var cancelledOperations = []
+        var ui = {
+            status_text: "",
+            fail_native_window_capture_page: function() {
+                failedPages.push(true)
+                return true
+            },
+            cancel_native_page_capture_request: function(operation) {
+                cancelledOperations.push(operation)
+            }
+        }
+        var owner = {
+            nativePageCaptureSave: null,
+            nativePageCaptureRetiredDownloads: ({}),
+            nativePageCaptureRetiredDownloadOrder: [],
+            nativePageCaptureRetiredPaths: ({}),
+            nativePageCaptureRetiredPathOrder: [],
+            nativePageCaptureRetiredDownloadLimit: 1,
+            nativePageCaptureRetirementCapacityAvailable: function() {
+                return NativePageCaptureCallbacks.retirementCapacityAvailable(
+                            this, this.nativePageCaptureRetiredDownloadLimit)
+            },
+            retireNativePageCapturePath: function(path) {
+                return NativePageCaptureCallbacks.retirePath(
+                            this, path, this.nativePageCaptureRetiredDownloadLimit)
+            },
+            retireNativePageCaptureDownload: function(id) {
+                return NativePageCaptureCallbacks.retireDownload(
+                            this, id, this.nativePageCaptureRetiredDownloadLimit)
+            },
+            discardNativePageCaptureMutationProbe: function() {},
+            scheduleRuntimeWork: function() {}
+        }
+        verify(owner.retireNativePageCaptureDownload("993"))
+        var download = { id: "994", cancellations: 0, cancel: function() {
+            this.cancellations++
+        } }
+        var capture = {
+            operationId: "exhausted-terminal",
+            tabId: "partial-page",
+            path: "/private/staging/exhausted/terminal.mhtml",
+            downloadId: "994",
+            download: download,
+            downloadFinished: false
+        }
+        owner.nativePageCaptureSave = capture
+        verify(NativePageCaptureCallbacks.retireTerminalCapture(
+                   owner, ui, capture, download, "interrupted"))
+        compare(owner.nativePageCaptureSave, null)
+        verify(owner.nativePageCaptureRetirementExhausted)
+        compare(download.cancellations, 0)
+        compare(failedPages.length, 0)
+        compare(cancelledOperations.join(","), "exhausted-terminal")
+        verify(NativePageCaptureCallbacks.shouldIgnoreSavePageCompletion(
+                   owner, { isSavePageDownload: true }))
+    }
+
+    function test_interrupted_native_save_poisons_only_its_tab_for_this_window() {
+        var owner = {
+            nativePageCaptureSave: null,
+            nativePageCaptureRetiredDownloads: ({}),
+            nativePageCaptureRetiredDownloadOrder: [],
+            nativePageCaptureRetiredPaths: ({}),
+            nativePageCaptureRetiredPathOrder: [],
+            nativePageCapturePoisonedTabIds: [],
+            nativePageCaptureRetiredDownloadLimit: 8,
+            nativePageCaptureRetirementCapacityAvailable: function() {
+                return NativePageCaptureCallbacks.retirementCapacityAvailable(this, 8)
+            },
+            retireNativePageCapturePath: function(path) {
+                return NativePageCaptureCallbacks.retirePath(this, path, 8)
+            },
+            retireNativePageCaptureDownload: function(id) {
+                return NativePageCaptureCallbacks.retireDownload(this, id, 8)
+            },
+            isRetiredNativePageCapturePath: function(path) {
+                return NativePageCaptureCallbacks.isRetiredPath(this, path)
+            },
+            discardNativePageCaptureMutationProbe: function() {},
+            scheduleRuntimeWork: function() {}
+        }
+        var ui = {
+            status_text: "",
+            fail_native_window_capture_page: function() { return true },
+            cancel_native_page_capture_request: function() {}
+        }
+        var view = { url: "https://example.test/interrupted" }
+        var path = "/private/staging/interrupted/capture.mhtml"
+        var download = { id: "995" }
+        var capture = {
+            operationId: "interrupted-tab-operation",
+            tabId: "interrupted-tab",
+            path: path,
+            view: view,
+            downloadId: "995",
+            download: download,
+            downloadFinished: false
+        }
+        owner.nativePageCaptureSave = capture
+        verify(NativePageCaptureCallbacks.retireTerminalCapture(
+                   owner, ui, capture, download, "interrupted"))
+        verify(NativePageCaptureCallbacks.captureTabIsPoisoned(
+                   owner, "interrupted-tab"))
+        verify(!NativePageCaptureCallbacks.captureTabIsPoisoned(
+                   owner, "other-tab"))
+        compare(owner.nativePageCapturePoisonedTabIds.join(","), "interrupted-tab")
+        var repeatedRequest = {
+            id: "995",
+            isSavePageDownload: true,
+            savePageFormat: 7,
+            downloadDirectory: "/user/chosen",
+            downloadFileName: "late.mhtml",
+            cancellations: 0,
+            cancel: function() { this.cancellations++ }
+        }
+        Object.defineProperty(repeatedRequest, "view", { get: function() {
+            throw new Error("retired request must not inspect Qt's view getter")
+        } })
+        verify(NativePageCaptureCallbacks.routeSaveRequest(
+                   owner, ui, repeatedRequest, 7))
+        compare(repeatedRequest.cancellations, 1)
+        verify(owner.nativePageCaptureRetiredDownloads["995"])
+
+        var poisonedView = { url: "https://example.test/interrupted" }
+        var laterPageSave = {
+            id: "997",
+            isSavePageDownload: true,
+            savePageFormat: 7,
+            downloadDirectory: "/user/chosen",
+            downloadFileName: "page.mhtml",
+            cancellations: 0,
+            cancel: function() { this.cancellations++ }
+        }
+        Object.defineProperty(laterPageSave, "view", { get: function() {
+            throw new Error("poisoned profile fallback must not inspect Qt's view getter")
+        } })
+        verify(NativePageCaptureCallbacks.routeSaveRequest(owner, ui,
+                                                            laterPageSave, 7))
+        compare(laterPageSave.cancellations, 1)
+        verify(owner.nativePageCaptureRetiredDownloads["997"])
+        compare(ui.status_text,
+                "Page saves are unavailable after an interrupted native save")
+        verify(!NativePageCaptureCallbacks.routeSaveRequest(owner, ui, {
+            isSavePageDownload: false
+        }, 7))
+
+        var finishedCancellation = {
+            tabId: "finished-cancel-tab",
+            path: "/private/staging/finished-cancel/capture.mhtml",
+            downloadFinished: true
+        }
+        verify(NativePageCaptureCallbacks.poisonCaptureTab(
+                   owner, finishedCancellation, true))
+        verify(NativePageCaptureCallbacks.captureTabIsPoisoned(
+                   owner, "finished-cancel-tab"))
+
+        var completed = {
+            tabId: "completed-tab",
+            path: "/private/staging/completed/capture.mhtml",
+            downloadId: "996",
+            downloadFinished: true
+        }
+        verify(NativePageCaptureCallbacks.retireCaptureIdentities(owner, completed, []))
+        verify(!NativePageCaptureCallbacks.captureTabIsPoisoned(
+                   owner, "completed-tab"))
+    }
+
+    function test_native_page_capture_request_route_rejects_duplicates_and_mismatches() {
+        var cancelledOperations = []
+        var admitted = []
+        var ui = {
+            status_text: "",
+            note_native_page_capture_download_requested: function(operation, id, path,
+                                                                   save, mhtml, permit) {
+                admitted.push({ operation: operation, id: id, path: path,
+                                save: save, mhtml: mhtml, permit: permit })
+                return true
+            },
+            cancel_native_page_capture_request: function(operation) {
+                cancelledOperations.push(operation)
+            }
+        }
+        var owner = {
+            nativePageCaptureSave: null,
+            nativePageCaptureRetiredDownloads: ({}),
+            nativePageCaptureRetiredDownloadOrder: [],
+            nativePageCaptureRetiredPaths: ({}),
+            nativePageCaptureRetiredPathOrder: [],
+            retireNativePageCapturePath: function(path) {
+                return NativePageCaptureCallbacks.retirePath(this, path, 8)
+            },
+            retireNativePageCaptureDownload: function(id) {
+                return NativePageCaptureCallbacks.retireDownload(this, id, 8)
+            },
+            isRetiredNativePageCapturePath: function(path) {
+                return NativePageCaptureCallbacks.isRetiredPath(this, path)
+            },
+            rejectNativePageCaptureRequest: function(capture, download, id) {
+                return NativePageCaptureCallbacks.rejectCaptureRequest(
+                            this, ui, capture, download, id)
+            },
+            discardNativePageCaptureMutationProbe: function() {},
+            scheduleRuntimeWork: function() {},
+            downloadStateName: function() { return "in-progress" }
+        }
+        var view = { url: "https://example.test/" }
+        var path = "/private/staging/exact/capture.mhtml"
+        function request(id, observedPath, observedView, throwViewGetter) {
+            var slash = observedPath.lastIndexOf("/")
+            var result = {
+                id: id,
+                isSavePageDownload: true,
+                savePageFormat: 7,
+                downloadDirectory: observedPath.slice(0, slash),
+                downloadFileName: observedPath.slice(slash + 1),
+                cancellations: 0,
+                stateChanged: { connect: function() {} },
+                cancel: function() { this.cancellations++ }
+            }
+            if (throwViewGetter) {
+                Object.defineProperty(result, "view", { get: function() {
+                    throw new Error("exact permit path must not inspect Qt's view getter")
+                } })
+            } else {
+                result.view = observedView
+            }
+            return result
+        }
+        var capture = {
+            operationId: "exact-operation", path: path, view: view,
+            downloadId: "", download: null
+        }
+        owner.nativePageCaptureSave = capture
+        var first = request("701", path, null, true)
+        verify(NativePageCaptureCallbacks.routeSaveRequest(owner, ui, first, 7))
+        compare(admitted.length, 1)
+        compare(admitted[0].id, "701")
+        compare(admitted[0].path, path)
+        verify(admitted[0].save && admitted[0].mhtml && admitted[0].permit)
+        compare(capture.download, first)
+        var duplicate = request("702", path, null, true)
+        verify(NativePageCaptureCallbacks.routeSaveRequest(owner, ui, duplicate, 7))
+        compare(admitted.length, 1)
+        compare(first.cancellations, 1)
+        compare(duplicate.cancellations, 1)
+        compare(cancelledOperations.join(","), "exact-operation")
+        compare(owner.nativePageCaptureSave, null)
+        verify(NativePageCaptureCallbacks.isRetiredPath(owner, path))
+        var late = request("703", path, view)
+        verify(NativePageCaptureCallbacks.routeSaveRequest(owner, ui, late, 7))
+        compare(late.cancellations, 1)
+
+        var nextPath = "/private/staging/next/capture.mhtml"
+        var nextCapture = {
+            operationId: "next-operation", path: nextPath, view: view,
+            downloadId: "", download: null
+        }
+        owner.nativePageCaptureSave = nextCapture
+        var mismatch = request("704", "/private/staging/wrong/capture.mhtml", null, true)
+        verify(NativePageCaptureCallbacks.routeSaveRequest(owner, ui, mismatch, 7))
+        compare(mismatch.cancellations, 1)
+        compare(cancelledOperations.join(","), "exact-operation,next-operation")
+        compare(admitted.length, 1)
+
+        var formatMismatchPath = "/private/staging/format-mismatch/capture.mhtml"
+        owner.nativePageCaptureSave = {
+            operationId: "format-mismatch-operation", path: formatMismatchPath,
+            view: view, downloadId: "", download: null
+        }
+        var formatMismatch = request("705", formatMismatchPath, null, true)
+        formatMismatch.savePageFormat = 8
+        verify(NativePageCaptureCallbacks.routeSaveRequest(owner, ui, formatMismatch, 7))
+        compare(formatMismatch.cancellations, 1)
+        compare(admitted.length, 1)
+        compare(cancelledOperations.join(","),
+                "exact-operation,next-operation,format-mismatch-operation")
+        compare(owner.nativePageCaptureSave, null)
+        verify(NativePageCaptureCallbacks.isRetiredPath(owner, formatMismatchPath))
+    }
+
+    function test_public_save_page_path_is_bounded_before_owner_matching() {
+        compare(NativePageCaptureCallbacks.publicSavePagePath({
+            isSavePageDownload: true,
+            downloadDirectory: "/private/stage",
+            downloadFileName: "capture.mhtml"
+        }), "/private/stage/capture.mhtml")
+        compare(NativePageCaptureCallbacks.publicSavePagePath({
+            isSavePageDownload: true,
+            downloadDirectory: "/private/" + Array(4090).join("x"),
+            downloadFileName: "capture.mhtml"
+        }), "")
+        compare(NativePageCaptureCallbacks.publicSavePagePath({
+            isSavePageDownload: true,
+            downloadDirectory: "/private/stage",
+            downloadFileName: Array(257).join("x")
+        }), "")
+    }
+
+    function test_native_page_capture_cancels_at_first_observed_size_overshoot() {
+        var failures = []
+        var cancellations = []
+        var admitted = []
+        var owner = {
+            nativePageCaptureSave: null,
+            nativePageCaptureRetiredDownloads: ({}),
+            nativePageCaptureRetiredDownloadOrder: [],
+            nativePageCaptureRetiredPaths: ({}),
+            nativePageCaptureRetiredPathOrder: [],
+            nativePageCaptureRetirementCapacityAvailable: function() {
+                return NativePageCaptureCallbacks.retirementCapacityAvailable(this, 8)
+            },
+            retireNativePageCapturePath: function(path) {
+                return NativePageCaptureCallbacks.retirePath(this, path, 8)
+            },
+            retireNativePageCaptureDownload: function(id) {
+                return NativePageCaptureCallbacks.retireDownload(this, id, 8)
+            },
+            isRetiredNativePageCapturePath: function(path) {
+                return NativePageCaptureCallbacks.isRetiredPath(this, path)
+            },
+            rejectNativePageCaptureRequest: function(capture, download, id) {
+                return NativePageCaptureCallbacks.rejectCaptureRequest(
+                            this, ui, capture, download, id)
+            },
+            discardNativePageCaptureMutationProbe: function() {},
+            scheduleRuntimeWork: function() {},
+            downloadStateName: function(download) {
+                return download.cancellations > 0 ? "cancelled" : "in-progress"
+            }
+        }
+        var ui = {
+            status_text: "",
+            note_native_page_capture_download_requested: function(
+                    operation, id, path, save, mhtml, view) {
+                admitted.push([operation, id, path, save, mhtml, view])
+                return true
+            },
+            fail_native_window_capture_page: function(
+                    operation, tab, reason, path, id) {
+                failures.push([operation, tab, reason, path, id])
+                return operation.indexOf("oversized-partial") === 0
+            },
+            cancel_native_page_capture_request: function(operation) {
+                cancellations.push(operation)
+            }
+        }
+        var view = { url: "https://example.test/large" }
+        var path = "/private/staging/large/capture.mhtml"
+        var bytesChanged = { callback: null, connect: function(callback) {
+            this.callback = callback
+        } }
+        var request = {
+            id: "805",
+            isSavePageDownload: true,
+            savePageFormat: 7,
+            view: view,
+            downloadDirectory: "/private/staging/large",
+            downloadFileName: "capture.mhtml",
+            receivedBytes: 0,
+            receivedBytesChanged: bytesChanged,
+            stateChanged: { connect: function() {} },
+            cancellations: 0,
+            cancel: function() {
+                verify(NativePageCaptureCallbacks.isRetiredPath(owner, path))
+                verify(owner.nativePageCaptureRetiredDownloads["805"] === true)
+                this.cancellations++
+            }
+        }
+        owner.nativePageCaptureSave = {
+            operationId: "oversized-partial",
+            tabId: "large-tab",
+            maxArchiveBytes: 100,
+            path: path,
+            view: view,
+            downloadId: "",
+            download: null,
+            downloadFinished: false
+        }
+
+        verify(NativePageCaptureCallbacks.routeSaveRequest(owner, ui, request, 7))
+        compare(admitted.length, 1)
+        verify(typeof bytesChanged.callback === "function")
+        request.receivedBytes = 100
+        bytesChanged.callback()
+        compare(owner.nativePageCaptureSave.operationId, "oversized-partial")
+        request.receivedBytes = 101
+        bytesChanged.callback()
+
+        compare(request.cancellations, 1)
+        compare(failures.length, 1)
+        compare(failures[0].join("|"),
+                "oversized-partial|large-tab|invalid-archive|" + path + "|805")
+        compare(owner.nativePageCaptureSave, null)
+        compare(cancellations.length, 0)
+        compare(ui.status_text,
+                "An oversized page archive was discarded; continuing window capture")
+        verify(NativePageCaptureCallbacks.isRetiredPath(owner, path))
+        verify(owner.nativePageCaptureRetiredDownloads["805"] === true)
+        bytesChanged.callback()
+        compare(failures.length, 1)
+        compare(request.cancellations, 1)
+
+        var replacementCapture = {
+            operationId: "next-partial-page",
+            tabId: "next-tab",
+            maxArchiveBytes: 100,
+            path: "/private/staging/next/capture.mhtml",
+            downloadId: "",
+            download: null,
+            downloadFinished: false
+        }
+        owner.nativePageCaptureSave = replacementCapture
+        bytesChanged.callback()
+        compare(owner.nativePageCaptureSave, replacementCapture)
+        compare(failures.length, 1)
+        compare(cancellations.length, 0)
+
+        var strictPath = "/private/staging/strict-large/capture.mhtml"
+        var strictView = { url: "https://example.test/strict-large" }
+        var strictBytesChanged = { callback: null, connect: function(callback) {
+            this.callback = callback
+        } }
+        var strictRequest = {
+            id: "806",
+            isSavePageDownload: true,
+            savePageFormat: 7,
+            view: strictView,
+            downloadDirectory: "/private/staging/strict-large",
+            downloadFileName: "capture.mhtml",
+            receivedBytes: 0,
+            receivedBytesChanged: strictBytesChanged,
+            stateChanged: { connect: function() {} },
+            cancellations: 0,
+            cancel: function() {
+                verify(NativePageCaptureCallbacks.isRetiredPath(owner, strictPath))
+                verify(owner.nativePageCaptureRetiredDownloads["806"] === true)
+                this.cancellations++
+            }
+        }
+        owner.nativePageCaptureSave = {
+            operationId: "oversized-strict",
+            tabId: "strict-tab",
+            maxArchiveBytes: 100,
+            path: strictPath,
+            view: strictView,
+            downloadId: "",
+            download: null,
+            downloadFinished: false
+        }
+        verify(NativePageCaptureCallbacks.routeSaveRequest(
+                   owner, ui, strictRequest, 7))
+        strictRequest.receivedBytes = 101
+        strictBytesChanged.callback()
+        compare(strictRequest.cancellations, 1)
+        compare(failures.length, 2)
+        compare(failures[1].join("|"),
+                "oversized-strict|strict-tab|invalid-archive|" + strictPath + "|806")
+        compare(cancellations.join(","), "oversized-strict")
+        compare(owner.nativePageCaptureSave, null)
+        compare(ui.status_text, "Page archive exceeded its size limit and was discarded")
+
+        var completedPath = "/private/staging/completed-large/capture.mhtml"
+        var completedDownload = {
+            receivedBytes: 101,
+            cancellations: 0,
+            cancel: function() { this.cancellations++ }
+        }
+        var completedCapture = {
+            operationId: "oversized-partial-completed",
+            tabId: "completed-large-tab",
+            maxArchiveBytes: 100,
+            path: completedPath,
+            downloadId: "807",
+            download: completedDownload,
+            downloadFinished: true
+        }
+        owner.nativePageCaptureSave = completedCapture
+        verify(NativePageCaptureCallbacks.retireOversizedCapture(
+                   owner, ui, completedCapture, completedDownload))
+        compare(completedDownload.cancellations, 0)
+        compare(failures.length, 3)
+        compare(failures[2].join("|"),
+                "oversized-partial-completed|completed-large-tab|invalid-archive|"
+                + completedPath + "|807")
+        verify(NativePageCaptureCallbacks.isRetiredPath(owner, completedPath))
+        verify(owner.nativePageCaptureRetiredDownloads["807"] === true)
+    }
+
+    function test_partial_window_navigation_before_save_request_is_page_local() {
+        var failures = []
+        var cancellations = []
+        var ui = {
+            status_text: "",
+            note_native_page_capture_download_requested: function() { return false },
+            fail_native_window_capture_page: function(operation, tab, reason, path, id) {
+                failures.push([operation, tab, reason, path, id])
+                return true
+            },
+            cancel_native_page_capture_request: function(operation) {
+                cancellations.push(operation)
+            }
+        }
+        var owner = {
+            nativePageCaptureSave: null,
+            nativePageCaptureRetiredDownloads: ({}),
+            nativePageCaptureRetiredDownloadOrder: [],
+            nativePageCaptureRetiredPaths: ({}),
+            nativePageCaptureRetiredPathOrder: [],
+            retireNativePageCapturePath: function(path) {
+                return NativePageCaptureCallbacks.retirePath(this, path, 8)
+            },
+            retireNativePageCaptureDownload: function(id) {
+                return NativePageCaptureCallbacks.retireDownload(this, id, 8)
+            },
+            isRetiredNativePageCapturePath: function(path) {
+                return NativePageCaptureCallbacks.isRetiredPath(this, path)
+            },
+            rejectNativePageCaptureRequest: function(capture, download, id) {
+                return NativePageCaptureCallbacks.rejectCaptureRequest(
+                            this, ui, capture, download, id)
+            },
+            discardNativePageCaptureMutationProbe: function() {},
+            scheduleRuntimeWork: function() {}
+        }
+        var path = "/private/staging/window/capture.bin"
+        var view = { url: "https://example.test/new" }
+        var capture = {
+            operationId: "window-operation", tabId: "tab-one", path: path,
+            view: view, capturedUrl: "https://example.test/original",
+            downloadId: "", download: null
+        }
+        var request = {
+            id: "803", isSavePageDownload: true, savePageFormat: 7,
+            view: view, downloadDirectory: "/private/staging/window",
+            downloadFileName: "capture.bin", cancellations: 0,
+            cancel: function() { this.cancellations++ }
+        }
+        owner.nativePageCaptureSave = capture
+        verify(NativePageCaptureCallbacks.routeSaveRequest(owner, ui, request, 7))
+        compare(failures.length, 1)
+        compare(failures[0].join("|"),
+                "window-operation|tab-one|document-changed|" + path + "|")
+        compare(cancellations.length, 0)
+        compare(request.cancellations, 1)
+        compare(owner.nativePageCaptureSave, null)
+        verify(NativePageCaptureCallbacks.isRetiredPath(owner, path))
+        verify(NativePageCaptureCallbacks.consumeDownload(owner, "803"))
+
+        var unchangedPath = "/private/staging/window/unchanged.bin"
+        var unchangedView = { url: "https://example.test/original" }
+        owner.nativePageCaptureSave = {
+            operationId: "unchanged-operation", tabId: "tab-two",
+            path: unchangedPath, view: unchangedView,
+            capturedUrl: unchangedView.url, downloadId: "", download: null
+        }
+        var unchangedRequest = {
+            id: "804", isSavePageDownload: true, savePageFormat: 7,
+            view: unchangedView, downloadDirectory: "/private/staging/window",
+            downloadFileName: "unchanged.bin", cancellations: 0,
+            cancel: function() { this.cancellations++ }
+        }
+        verify(NativePageCaptureCallbacks.routeSaveRequest(
+                   owner, ui, unchangedRequest, 7))
+        compare(failures.length, 1)
+        compare(cancellations.join(","), "unchanged-operation")
+        compare(unchangedRequest.cancellations, 1)
+    }
+
+    function test_closing_captured_view_quarantines_before_qt_destroys_it() {
+        var failures = []
+        var cancellations = []
+        var owner = {
+            nativePageCaptureSave: null,
+            nativePageCaptureRetiredDownloads: ({}),
+            nativePageCaptureRetiredDownloadOrder: [],
+            nativePageCaptureRetiredPaths: ({}),
+            nativePageCaptureRetiredPathOrder: [],
+            discardedProbes: 0,
+            scheduledWork: 0,
+            nativePageCaptureRetirementCapacityAvailable: function() {
+                return NativePageCaptureCallbacks.retirementCapacityAvailable(this, 8)
+            },
+            retireNativePageCapturePath: function(path) {
+                return NativePageCaptureCallbacks.retirePath(this, path, 8)
+            },
+            retireNativePageCaptureDownload: function(id) {
+                return NativePageCaptureCallbacks.retireDownload(this, id, 8)
+            },
+            discardNativePageCaptureMutationProbe: function() {
+                this.discardedProbes++
+            },
+            scheduleRuntimeWork: function() { this.scheduledWork++ }
+        }
+        var ui = {
+            status_text: "",
+            fail_native_window_capture_page: function(operation, tab, reason, path, id) {
+                failures.push([operation, tab, reason, path, id])
+                return operation === "partial-close"
+            },
+            cancel_native_page_capture_request: function(operation) {
+                cancellations.push(operation)
+            }
+        }
+        var view = { url: "https://example.test/first" }
+        var path = "/private/staging/window/capture.bin"
+        var capture = {
+            operationId: "partial-close", tabId: "first-tab",
+            view: view, path: path, downloadId: "905",
+            downloadFinished: false,
+            download: {
+                cancel: function() {
+                    compare(owner.nativePageCaptureSave, null)
+                    verify(NativePageCaptureCallbacks.isRetiredPath(owner, path))
+                    verify(owner.nativePageCaptureRetiredDownloads["905"] === true)
+                }
+            }
+        }
+        owner.nativePageCaptureSave = capture
+        verify(!NativePageCaptureCallbacks.retireClosingView(owner, ui, {}))
+        compare(owner.nativePageCaptureSave, capture)
+        verify(NativePageCaptureCallbacks.retireClosingView(owner, ui, view))
+        compare(failures[0].join("|"),
+                "partial-close|first-tab|native-view-lost|" + path + "|905")
+        compare(cancellations.length, 0)
+        compare(owner.discardedProbes, 1)
+        compare(owner.scheduledWork, 1)
+        compare(ui.status_text,
+                "The closed page could not be archived; continuing the partial capture")
+        verify(!NativePageCaptureCallbacks.retireClosingView(owner, ui, view))
+
+        var finishedView = { url: "https://example.test/finished" }
+        var finishedPath = "/private/staging/window/finished.bin"
+        var finishedCapture = {
+            operationId: "finished-close", tabId: "third-tab",
+            view: finishedView, path: finishedPath, downloadId: "906",
+            downloadFinished: true
+        }
+        owner.nativePageCaptureSave = finishedCapture
+        verify(!NativePageCaptureCallbacks.retireClosingView(owner, ui, finishedView))
+        compare(owner.nativePageCaptureSave, finishedCapture)
+        compare(failures.length, 1)
+        compare(cancellations.length, 0)
+        verify(!owner.nativePageCaptureRetiredPaths[finishedPath])
+        verify(!owner.nativePageCaptureRetiredDownloads["906"])
+
+        var strictView = { url: "https://example.test/strict" }
+        owner.nativePageCaptureSave = {
+            operationId: "strict-close", tabId: "second-tab",
+            view: strictView, path: "", downloadId: "",
+            downloadFinished: false
+        }
+        verify(NativePageCaptureCallbacks.retireClosingView(owner, ui, strictView))
+        compare(cancellations.join(","), "strict-close")
+        compare(ui.status_text, "Window capture was cancelled because a page closed")
+        compare(owner.nativePageCaptureSave, null)
+    }
+
+    function test_native_page_capture_deadline_retires_exact_save_before_qt_cancel() {
+        var observations = []
+        var cancellations = []
+        var owner = {
+            nativePageCaptureSave: null,
+            nativePageCaptureRetiredDownloads: ({}),
+            nativePageCaptureRetiredDownloadOrder: [],
+            nativePageCaptureRetiredPaths: ({}),
+            nativePageCaptureRetiredPathOrder: [],
+            discardedProbes: 0,
+            scheduledWork: 0,
+            retireNativePageCapturePath: function(path) {
+                return NativePageCaptureCallbacks.retirePath(this, path, 8)
+            },
+            retireNativePageCaptureDownload: function(id) {
+                return NativePageCaptureCallbacks.retireDownload(this, id, 8)
+            },
+            discardNativePageCaptureMutationProbe: function() {
+                this.discardedProbes++
+            },
+            scheduleRuntimeWork: function() { this.scheduledWork++ }
+        }
+        var ui = {
+            status_text: "",
+            fail_native_window_capture_page: function(operation, tab, reason, path, id) {
+                observations.push([operation, tab, reason, path, id])
+                return operation === "partial-operation"
+            },
+            cancel_native_page_capture_request: function(operation) {
+                cancellations.push(operation)
+            }
+        }
+        var path = "/private/staging/window/capture.bin"
+        var download = {
+            cancel: function() {
+                verify(owner.nativePageCaptureSave === null)
+                verify(NativePageCaptureCallbacks.isRetiredPath(owner, path))
+                verify(owner.nativePageCaptureRetiredDownloads["901"] === true)
+            }
+        }
+        var capture = {
+            operationId: "partial-operation", tabId: "first-tab",
+            path: path, downloadId: "901", download: download,
+            downloadFinished: false
+        }
+        owner.nativePageCaptureSave = capture
+        verify(NativePageCaptureCallbacks.retireTimedOutCapture(owner, ui, capture))
+        compare(observations[0].join("|"),
+                "partial-operation|first-tab|timeout|" + path + "|901")
+        compare(cancellations.length, 0)
+        compare(owner.discardedProbes, 1)
+        compare(owner.scheduledWork, 1)
+        verify(!NativePageCaptureCallbacks.retireTimedOutCapture(owner, ui, capture))
+
+        var finished = {
+            operationId: "finished-operation", tabId: "second-tab",
+            path: "/private/staging/window/finished.bin",
+            downloadId: "902", downloadFinished: true
+        }
+        owner.nativePageCaptureSave = finished
+        verify(!NativePageCaptureCallbacks.retireTimedOutCapture(owner, ui, finished))
+        compare(owner.nativePageCaptureSave, finished)
+
+        var strict = {
+            operationId: "strict-operation", tabId: "second-tab",
+            path: "/private/staging/window/strict.bin",
+            downloadId: "", downloadFinished: false
+        }
+        owner.nativePageCaptureSave = strict
+        verify(NativePageCaptureCallbacks.retireTimedOutCapture(owner, ui, strict))
+        compare(cancellations.join(","), "strict-operation")
+        compare(owner.nativePageCaptureSave, null)
+    }
+
+    function test_native_page_capture_terminal_state_retires_only_exact_request_once() {
+        var cancelledOperations = []
+        var ui = {
+            status_text: "",
+            cancel_native_page_capture_request: function(operationId) {
+                cancelledOperations.push(operationId)
+            }
+        }
+        var owner = {
+            nativePageCaptureSave: null,
+            nativePageCaptureRetiredDownloads: ({}),
+            nativePageCaptureRetiredDownloadOrder: [],
+            nativePageCaptureRetiredPaths: ({}),
+            nativePageCaptureRetiredPathOrder: [],
+            discardedProbes: 0,
+            scheduledWork: 0,
+            retireNativePageCapturePath: function(path) {
+                return NativePageCaptureCallbacks.retirePath(this, path, 8)
+            },
+            retireNativePageCaptureDownload: function(id) {
+                return NativePageCaptureCallbacks.retireDownload(this, id, 8)
+            },
+            discardNativePageCaptureMutationProbe: function() {
+                this.discardedProbes += 1
+            },
+            scheduleRuntimeWork: function() {
+                this.scheduledWork += 1
+            }
+        }
+        var download = { id: "501" }
+        var capture = {
+            operationId: "exact-operation",
+            downloadId: "501",
+            download: download,
+            downloadFinished: false,
+            path: "/private/staging/exact/capture.mhtml"
+        }
+        owner.nativePageCaptureSave = capture
+
+        verify(!NativePageCaptureCallbacks.retireTerminalCapture(
+                   owner, ui, capture, null, "cancelled"))
+        verify(!NativePageCaptureCallbacks.retireTerminalCapture(
+                   owner, ui, capture, { id: "501" }, "cancelled"))
+        verify(!NativePageCaptureCallbacks.retireTerminalCapture(
+                   owner, ui, capture, download, "completed"))
+        compare(cancelledOperations.length, 0)
+        compare(owner.nativePageCaptureRetiredPathOrder.length, 0)
+        compare(owner.nativePageCaptureSave, capture)
+
+        verify(NativePageCaptureCallbacks.retireTerminalCapture(
+                   owner, ui, capture, download, "cancelled"))
+        compare(cancelledOperations.join(","), "exact-operation")
+        compare(owner.discardedProbes, 1)
+        compare(owner.scheduledWork, 1)
+        compare(owner.nativePageCaptureSave, null)
+        compare(ui.status_text, "Page archive save was cancelled and discarded")
+        verify(NativePageCaptureCallbacks.isRetiredPath(owner, capture.path))
+        verify(NativePageCaptureCallbacks.consumeDownload(owner, "501"))
+        verify(!NativePageCaptureCallbacks.retireTerminalCapture(
+                   owner, ui, capture, download, "cancelled"))
+        compare(cancelledOperations.length, 1)
+        compare(owner.discardedProbes, 1)
+
+        var nextDownload = { id: "502" }
+        var nextCapture = {
+            operationId: "next-operation",
+            downloadId: "502",
+            download: nextDownload,
+            downloadFinished: true,
+            path: "/private/staging/next/capture.mhtml"
+        }
+        owner.nativePageCaptureSave = nextCapture
+        verify(!NativePageCaptureCallbacks.retireTerminalCapture(
+                   owner, ui, nextCapture, nextDownload, "interrupted"))
+        compare(owner.nativePageCaptureSave, nextCapture)
+        nextCapture.downloadFinished = false
+        verify(!NativePageCaptureCallbacks.retireTerminalCapture(
+                   owner, ui, capture, download, "interrupted"))
+        verify(NativePageCaptureCallbacks.retireTerminalCapture(
+                   owner, ui, nextCapture, nextDownload, "interrupted"))
+        compare(cancelledOperations.join(","), "exact-operation,next-operation")
+        compare(ui.status_text, "Page archive save was interrupted and discarded")
+        compare(owner.scheduledWork, 2)
+    }
+
+    function test_partial_window_terminal_state_advances_only_exact_page() {
+        var failedPages = []
+        var cancelledOperations = []
+        var ui = {
+            status_text: "",
+            fail_native_window_capture_page: function(operation, tab, reason, path, id) {
+                failedPages.push([operation, tab, reason, path, id])
+                return operation === "window-operation" && tab === "tab-two"
+            },
+            cancel_native_page_capture_request: function(operation) {
+                cancelledOperations.push(operation)
+            }
+        }
+        var owner = {
+            nativePageCaptureSave: null,
+            nativePageCaptureRetiredDownloads: ({}),
+            nativePageCaptureRetiredDownloadOrder: [],
+            nativePageCaptureRetiredPaths: ({}),
+            nativePageCaptureRetiredPathOrder: [],
+            retireNativePageCapturePath: function(path) {
+                return NativePageCaptureCallbacks.retirePath(this, path, 8)
+            },
+            retireNativePageCaptureDownload: function(id) {
+                return NativePageCaptureCallbacks.retireDownload(this, id, 8)
+            },
+            discardNativePageCaptureMutationProbe: function() {},
+            scheduleRuntimeWork: function() {}
+        }
+        var download = { id: "602" }
+        var capture = {
+            operationId: "window-operation",
+            tabId: "tab-two",
+            downloadId: "602",
+            download: download,
+            downloadFinished: false,
+            path: "/private/staging/window/capture-page-1.bin"
+        }
+        owner.nativePageCaptureSave = capture
+        verify(NativePageCaptureCallbacks.retireTerminalCapture(
+                   owner, ui, capture, download, "interrupted"))
+        compare(failedPages.length, 1)
+        compare(failedPages[0].join("|"),
+                "window-operation|tab-two|interrupted|/private/staging/window/capture-page-1.bin|602")
+        compare(cancelledOperations.length, 0)
+        compare(owner.nativePageCaptureSave, null)
+        verify(NativePageCaptureCallbacks.isRetiredPath(owner, capture.path))
+        verify(NativePageCaptureCallbacks.consumeDownload(owner, "602"))
+    }
+
+    function test_page_capture_probe_refuses_changed_view_or_route() {
+        var capturedView = { url: "https://example.test/original" }
+        var otherView = { url: "https://example.test/original" }
+        var capture = { view: capturedView, capturedUrl: "https://example.test/original" }
+        var facts = { observed_url: "https://example.test/original" }
+        compare(NativePageCaptureCallbacks.mutationEvidenceForCurrentView(
+                    capture, facts, "observed-stable", capturedView), "observed-stable")
+        compare(NativePageCaptureCallbacks.mutationEvidenceForCurrentView(
+                    capture, facts, "invalid", capturedView), "not-observed")
+        compare(NativePageCaptureCallbacks.mutationEvidenceForCurrentView(
+                    capture, facts, "observed-stable", otherView), "document-changed")
+        capturedView.url = "https://example.test/next"
+        compare(NativePageCaptureCallbacks.mutationEvidenceForCurrentView(
+                    capture, facts, "observed-stable", capturedView), "document-changed")
+        facts.observed_url = "https://example.test/next"
+        compare(NativePageCaptureCallbacks.mutationEvidenceForCurrentView(
+                    capture, facts, "observed-stable", capturedView), "document-changed")
+        capture.view = { get url() { throw new Error("destroyed view") } }
+        compare(NativePageCaptureCallbacks.mutationEvidenceForCurrentView(
+                    capture, facts, "not-observed", capture.view), "document-changed")
+    }
+
+    function test_page_capture_completion_requires_retained_request_and_live_view() {
+        var view = { url: "https://example.test/original" }
+        var download = { id: "705" }
+        Object.defineProperty(download, "view", { get: function() {
+            throw new Error("destroyed Qt view getter must not run")
+        } })
+        var capture = { view: view, download: download }
+        var accepted = NativePageCaptureCallbacks.completionViewFacts(
+                    capture, download, view)
+        compare(accepted.request_matches, true)
+        compare(accepted.view_matches, true)
+        compare(accepted.observed_url, view.url)
+        var wrongRequest = NativePageCaptureCallbacks.completionViewFacts(
+                    capture, { id: "705" }, view)
+        compare(wrongRequest.request_matches, false)
+        compare(wrongRequest.view_matches, false)
+        var closed = NativePageCaptureCallbacks.completionViewFacts(
+                    capture, download, null)
+        compare(closed.request_matches, true)
+        compare(closed.view_matches, false)
+        compare(closed.observed_url, "")
+        var switched = NativePageCaptureCallbacks.completionViewFacts(
+                    capture, download, { url: view.url })
+        compare(switched.view_matches, false)
+        capture.view = { get url() { throw new Error("destroyed captured view") } }
+        var destroyed = NativePageCaptureCallbacks.completionViewFacts(
+                    capture, download, capture.view)
+        compare(destroyed.view_matches, false)
+        compare(destroyed.observed_url, "")
+    }
+
+    function test_page_capture_is_revalidated_after_async_collection_before_save() {
+        var view = { url: "https://example.test/original" }
+        var capture = { view: view, capturedUrl: view.url }
+        compare(NativePageCaptureCallbacks.preSaveCaptureStatus(capture, view),
+                "current")
+        compare(NativePageCaptureCallbacks.preSaveCaptureStatus(capture, null),
+                "native-view-lost")
+        compare(NativePageCaptureCallbacks.preSaveCaptureStatus(
+                    capture, { url: view.url }), "native-view-lost")
+
+        view.url = "https://example.test/next"
+        compare(NativePageCaptureCallbacks.preSaveCaptureStatus(capture, view),
+                "document-changed")
+        view.url = ""
+        compare(NativePageCaptureCallbacks.preSaveCaptureStatus(capture, view),
+                "native-view-lost")
+        view.url = "https://example.test/next"
+
+        capture.view = { get url() { throw new Error("destroyed view") } }
+        compare(NativePageCaptureCallbacks.preSaveCaptureStatus(
+                    capture, capture.view), "native-view-lost")
+        compare(NativePageCaptureCallbacks.preSaveCaptureStatus(
+                    { view: view, capturedUrl: "" }, view), "native-view-lost")
+    }
+
+    function test_page_capture_completion_classifies_missing_view_separately() {
+        var completed = {
+            terminal_state: "completed",
+            received_bytes: 64,
+            view_matches: true,
+            mutation_evidence: "observed-stable"
+        }
+        compare(NativePageCaptureCallbacks.completedArchiveFailure(
+                    completed, 128, true), "")
+        completed.view_matches = false
+        completed.mutation_evidence = "document-changed"
+        compare(NativePageCaptureCallbacks.completedArchiveFailure(
+                    completed, 128, true), "native-view-lost")
+
+        completed.view_matches = true
+        compare(NativePageCaptureCallbacks.completedArchiveFailure(
+                    completed, 128, true), "document-changed")
+        completed.terminal_state = "cancelled"
+        compare(NativePageCaptureCallbacks.completedArchiveFailure(
+                    completed, 128, true), "cancelled")
+        completed.terminal_state = "interrupted"
+        compare(NativePageCaptureCallbacks.completedArchiveFailure(
+                    completed, 128, true), "interrupted")
+        completed.terminal_state = "completed"
+        completed.received_bytes = 0
+        compare(NativePageCaptureCallbacks.completedArchiveFailure(
+                    completed, 128, true), "empty-archive")
+        completed.received_bytes = 129
+        compare(NativePageCaptureCallbacks.completedArchiveFailure(
+                    completed, 128, true), "invalid-archive")
+        completed.received_bytes = 64.5
+        compare(NativePageCaptureCallbacks.completedArchiveFailure(
+                    completed, 128, true), "invalid-archive")
+        completed.received_bytes = 64
+        compare(NativePageCaptureCallbacks.completedArchiveFailure(
+                    completed, 128, false), "invalid-archive")
+        compare(NativePageCaptureCallbacks.completedArchiveFailure(
+                    null, 128, true), "invalid-archive")
+    }
+
+    function test_superseded_page_capture_retires_exact_native_request_before_replacement() {
+        var cancellations = []
+        var oldCapture = {
+            operationId: "old-operation",
+            downloadId: "601",
+            path: "/private/staging/old/capture.mhtml",
+            downloadFinished: false,
+            download: {
+                cancel: function() {
+                    compare(owner.nativePageCaptureSave, null)
+                    verify(NativePageCaptureCallbacks.isRetiredPath(
+                               owner, oldCapture.path))
+                    verify(owner.nativePageCaptureRetiredDownloads["601"] === true)
+                    cancellations.push("native")
+                }
+            }
+        }
+        var owner = {
+            nativePageCaptureSave: oldCapture,
+            nativePageCaptureRetiredDownloads: ({}),
+            nativePageCaptureRetiredDownloadOrder: [],
+            nativePageCaptureRetiredPaths: ({}),
+            nativePageCaptureRetiredPathOrder: [],
+            discardedProbes: 0,
+            retireNativePageCapturePath: function(path) {
+                return NativePageCaptureCallbacks.retirePath(this, path, 8)
+            },
+            retireNativePageCaptureDownload: function(id) {
+                return NativePageCaptureCallbacks.retireDownload(this, id, 8)
+            },
+            discardNativePageCaptureMutationProbe: function() {
+                this.discardedProbes += 1
+            }
+        }
+        var ui = {
+            cancel_native_page_capture_request: function(operation) {
+                cancellations.push(operation)
+            }
+        }
+        verify(!NativePageCaptureCallbacks.retireSupersededCapture(
+                   owner, ui, oldCapture, "old-operation"))
+        verify(!NativePageCaptureCallbacks.retireSupersededCapture(
+                   owner, ui, oldCapture, ""))
+        compare(owner.nativePageCaptureSave, oldCapture)
+        verify(NativePageCaptureCallbacks.retireSupersededCapture(
+                   owner, ui, oldCapture, "new-operation"))
+        compare(owner.nativePageCaptureSave, null)
+        compare(owner.discardedProbes, 1)
+        compare(cancellations.join(","), "native,old-operation")
+        verify(!NativePageCaptureCallbacks.retireSupersededCapture(
+                   owner, ui, oldCapture, "next-operation"))
+        compare(cancellations.length, 2)
+    }
+
+    function test_superseded_page_capture_fails_closed_if_exact_quarantine_is_full() {
+        var nativeCancels = 0
+        var rustCancels = 0
+        var capture = {
+            operationId: "old-operation",
+            downloadId: "602",
+            path: "/private/staging/old/capture.mhtml",
+            downloadFinished: false,
+            download: { cancel: function() { nativeCancels++ } }
+        }
+        var owner = {
+            nativePageCaptureSave: capture,
+            retiredPaths: 0,
+            discardedProbes: 0,
+            retireNativePageCapturePath: function() {
+                this.retiredPaths++
+                return false
+            },
+            retireNativePageCaptureDownload: function() {
+                fail("download ID must not be retired after path quarantine refusal")
+            },
+            discardNativePageCaptureMutationProbe: function() {
+                this.discardedProbes++
+            }
+        }
+        var ui = {
+            cancel_native_page_capture_request: function() { rustCancels++ }
+        }
+        verify(!NativePageCaptureCallbacks.retireSupersededCapture(
+                   owner, ui, capture, "new-operation"))
+        compare(owner.nativePageCaptureSave, null)
+        verify(owner.nativePageCaptureRetirementExhausted)
+        compare(owner.retiredPaths, 1)
+        compare(owner.discardedProbes, 1)
+        compare(nativeCancels, 1)
+        compare(rustCancels, 1)
+        verify(NativePageCaptureCallbacks.shouldIgnoreSavePageCompletion(
+                   owner, { isSavePageDownload: true }))
+    }
+
+    function test_rejected_page_capture_quarantines_before_cancelling_both_saves() {
+        var cancellations = []
+        var cancelledOperations = []
+        var owner = {
+            nativePageCaptureSave: null,
+            nativePageCaptureRetiredDownloads: ({}),
+            nativePageCaptureRetiredDownloadOrder: [],
+            nativePageCaptureRetiredPaths: ({}),
+            nativePageCaptureRetiredPathOrder: [],
+            discardedProbes: 0,
+            scheduledWork: 0,
+            retireNativePageCapturePath: function(path) {
+                return NativePageCaptureCallbacks.retirePath(this, path, 8)
+            },
+            retireNativePageCaptureDownload: function(id) {
+                return NativePageCaptureCallbacks.retireDownload(this, id, 8)
+            },
+            discardNativePageCaptureMutationProbe: function() {
+                compare(this.nativePageCaptureSave, null)
+                this.discardedProbes += 1
+            },
+            scheduleRuntimeWork: function() {
+                this.scheduledWork += 1
+            }
+        }
+        var ui = {
+            status_text: "",
+            cancel_native_page_capture_request: function(operationId) {
+                cancelledOperations.push(operationId)
+            }
+        }
+        var original = {
+            cancel: function() {
+                cancellations.push({ id: "601",
+                    pathRetired: NativePageCaptureCallbacks.isRetiredPath(
+                        owner, "/private/staging/capture.mhtml"),
+                    idRetired: owner.nativePageCaptureRetiredDownloads["601"] === true,
+                    currentCleared: owner.nativePageCaptureSave === null })
+            }
+        }
+        var duplicate = {
+            cancel: function() {
+                cancellations.push({ id: "602",
+                    pathRetired: NativePageCaptureCallbacks.isRetiredPath(
+                        owner, "/private/staging/capture.mhtml"),
+                    idRetired: owner.nativePageCaptureRetiredDownloads["602"] === true,
+                    currentCleared: owner.nativePageCaptureSave === null })
+            }
+        }
+        var capture = {
+            operationId: "duplicate-operation",
+            downloadId: "601",
+            download: original,
+            path: "/private/staging/capture.mhtml"
+        }
+        owner.nativePageCaptureSave = capture
+        verify(NativePageCaptureCallbacks.rejectCaptureRequest(
+                   owner, ui, capture, duplicate, "602"))
+        compare(cancellations.length, 2)
+        compare(cancellations[0].id, "601")
+        compare(cancellations[1].id, "602")
+        for (var i = 0; i < cancellations.length; ++i) {
+            verify(cancellations[i].pathRetired)
+            verify(cancellations[i].idRetired)
+            verify(cancellations[i].currentCleared)
+        }
+        compare(cancelledOperations.join(","), "duplicate-operation")
+        compare(ui.status_text,
+                "Page archive save did not match the captured page and was discarded")
+        compare(owner.discardedProbes, 1)
+        compare(owner.scheduledWork, 1)
+        verify(!NativePageCaptureCallbacks.rejectCaptureRequest(
+                   owner, ui, capture, duplicate, "602"))
+        compare(cancellations.length, 2)
+
+        var nextCapture = {
+            operationId: "mismatched-operation",
+            downloadId: "",
+            download: null,
+            path: "/private/staging/next.mhtml"
+        }
+        var throwingCancelInvoked = false
+        var throwingDownload = {
+            cancel: function() {
+                throwingCancelInvoked = true
+                throw new Error("synthetic Qt cancellation failure")
+            }
+        }
+        owner.nativePageCaptureSave = nextCapture
+        var staleRequestCancelled = false
+        var staleRequest = { cancel: function() { staleRequestCancelled = true } }
+        verify(!NativePageCaptureCallbacks.rejectCaptureRequest(
+                   owner, ui, capture, staleRequest, "604"))
+        verify(staleRequestCancelled)
+        verify(owner.nativePageCaptureRetiredDownloads["604"] === true)
+        compare(owner.nativePageCaptureSave, nextCapture)
+        verify(NativePageCaptureCallbacks.rejectCaptureRequest(
+                   owner, ui, nextCapture, throwingDownload, "603"))
+        verify(throwingCancelInvoked)
+        compare(cancellations.length, 2)
+        compare(cancelledOperations.join(","),
+                "duplicate-operation,mismatched-operation")
+        verify(NativePageCaptureCallbacks.isRetiredPath(
+                   owner, "/private/staging/next.mhtml"))
+        verify(owner.nativePageCaptureRetiredDownloads["603"] === true)
     }
 }

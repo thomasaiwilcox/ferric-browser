@@ -19,7 +19,7 @@ const MAX_METADATA_BYTES: u64 = 8 * 1024;
 const MAX_METADATA_FIELD_BYTES: usize = 4096;
 const MAX_HOST_RULES: usize = 100_000;
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct PolicySnapshot {
     pub blocked_hosts: Vec<String>,
     pub exception_hosts: Vec<String>,
@@ -35,6 +35,31 @@ pub struct PolicySnapshot {
     pub compile_failures: Vec<String>,
     pub adblock_engine: Option<AdblockEngineHandle>,
     pub adblock_source_ids: Vec<String>,
+}
+
+impl std::fmt::Debug for PolicySnapshot {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("PolicySnapshot")
+            .field("blocked_host_count", &self.blocked_hosts.len())
+            .field("exception_host_count", &self.exception_hosts.len())
+            .field("blocked_rule_list_count", &self.blocked_rule_lists.len())
+            .field(
+                "exception_rule_list_count",
+                &self.exception_rule_lists.len(),
+            )
+            .field("cosmetic_rule_count", &self.cosmetic_rules.len())
+            .field("cosmetic_exception_count", &self.cosmetic_exceptions.len())
+            .field("bypass_site_count", &self.bypass_sites.len())
+            .field("security_deny_host_count", &self.security_deny_hosts.len())
+            .field("loaded_list_count", &self.loaded_lists.len())
+            .field("list_metadata_count", &self.list_metadata.len())
+            .field("skipped_list_count", &self.skipped_lists.len())
+            .field("compile_failure_count", &self.compile_failures.len())
+            .field("has_adblock_engine", &self.adblock_engine.is_some())
+            .field("adblock_source_count", &self.adblock_source_ids.len())
+            .finish()
+    }
 }
 
 pub struct AdblockEngineHandle(Box<AdblockEngine>);
@@ -179,7 +204,7 @@ pub unsafe extern "C" fn ferric_browser_adblock_check(
     result.should_block()
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+#[derive(Clone, Default, Eq, PartialEq, Serialize)]
 pub struct ListMetadata {
     pub id: String,
     pub bytes: u64,
@@ -187,12 +212,34 @@ pub struct ListMetadata {
     pub etag_present: bool,
 }
 
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+impl std::fmt::Debug for ListMetadata {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ListMetadata")
+            .field("id", &"[REDACTED]")
+            .field("bytes", &self.bytes)
+            .field("has_last_modified", &self.last_modified.is_some())
+            .field("etag_present", &self.etag_present)
+            .finish()
+    }
+}
+
+#[derive(Clone, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct CosmeticRule {
     #[serde(rename = "host")]
     pub host_pattern: String,
     #[serde(rename = "selector")]
     pub selector: String,
+}
+
+impl std::fmt::Debug for CosmeticRule {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CosmeticRule")
+            .field("host_pattern", &"[REDACTED]")
+            .field("selector", &"[REDACTED]")
+            .finish()
+    }
 }
 
 /// Compiles the bounded cached ABP lists off the request callback. The
@@ -347,8 +394,9 @@ pub fn load(roots: Option<&StorageRoots>, config: &Value) -> PolicySnapshot {
     } else {
         match AdblockEngineHandle::compile(&engine_lists) {
             Ok(engine) => Some(engine),
-            Err(error) => {
-                compile_failures.push(format!("adblock-engine: {error}"));
+            Err(_) => {
+                compile_failures
+                    .push("adblock-engine compilation failed; details suppressed".into());
                 None
             }
         }
@@ -750,8 +798,8 @@ fn valid_host_pattern(host: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        load, parse_list, sha256_hex, source_cache_id, valid_cosmetic_selector, valid_host_pattern,
-        valid_https_source, validate_download,
+        CosmeticRule, ListMetadata, PolicySnapshot, load, parse_list, sha256_hex, source_cache_id,
+        valid_cosmetic_selector, valid_host_pattern, valid_https_source, validate_download,
     };
     use ferric_browser_storage::{RootSpec, StorageRoots};
     use serde_json::json;
@@ -760,6 +808,40 @@ mod tests {
         fs,
         time::{SystemTime, UNIX_EPOCH},
     };
+
+    #[test]
+    fn policy_snapshot_debug_redacts_rules_sources_and_compile_diagnostics() {
+        let sentinel = "private-policy-debug-sentinel-72c1";
+        let snapshot = PolicySnapshot {
+            blocked_hosts: vec![sentinel.into()],
+            cosmetic_rules: vec![CosmeticRule {
+                host_pattern: sentinel.into(),
+                selector: sentinel.into(),
+            }],
+            loaded_lists: vec![sentinel.into()],
+            compile_failures: vec![sentinel.into()],
+            bypass_sites: vec![sentinel.into()],
+            ..PolicySnapshot::default()
+        };
+        let debug = format!("{snapshot:?}");
+        assert!(debug.contains("blocked_host_count: 1"));
+        assert!(debug.contains("cosmetic_rule_count: 1"));
+        assert!(debug.contains("compile_failure_count: 1"));
+        assert!(!debug.contains(sentinel));
+
+        let metadata = ListMetadata {
+            id: sentinel.into(),
+            bytes: 42,
+            last_modified: Some(sentinel.into()),
+            etag_present: true,
+        };
+        let rule = CosmeticRule {
+            host_pattern: sentinel.into(),
+            selector: sentinel.into(),
+        };
+        assert!(!format!("{metadata:?}").contains(sentinel));
+        assert!(!format!("{rule:?}").contains(sentinel));
+    }
 
     #[test]
     fn parses_host_rules_and_exceptions_but_ignores_cosmetic_rules() {

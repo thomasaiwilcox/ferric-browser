@@ -101,7 +101,7 @@ pub(super) fn typed_ipc_action(
     } else if CommandRegistry::default_v1().resolve(action).is_ok() {
         (action.to_owned(), format!("legacy.command.{action}"))
     } else {
-        return Err(format!("unknown action: {action}").into());
+        return Err("unknown action".into());
     };
     let definition = action_registry.resolve(action);
     if let Some(definition) = definition {
@@ -118,6 +118,13 @@ pub(super) fn typed_ipc_action(
     let link_action = action_registry
         .resolve(action)
         .is_some_and(|definition| definition.subject == ActionSubject::Link);
+    if action == "browser.merge-plan.preview"
+        && let Some(arguments) = command["arguments"].as_object_mut()
+    {
+        // The action identity fixes this option; callers cannot supply a
+        // conflicting value or bypass the closed command grammar.
+        arguments.insert("cookies".into(), Value::Bool(true));
+    }
     if let Some(definition) = action_registry.resolve(action)
         && definition.command == "yank"
         && let Some(arguments) = command["arguments"].as_object_mut()
@@ -166,10 +173,7 @@ fn validate_action_arguments(
             .iter()
             .any(|argument| argument.name == *key)
         {
-            return Err(format!(
-                "action {} does not accept argument {key}",
-                definition.id
-            ));
+            return Err("action does not accept an unsupported argument".into());
         }
     }
     for argument in &definition.arguments {
@@ -200,4 +204,40 @@ fn validate_action_arguments(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::typed_ipc_action;
+    use serde_json::json;
+
+    #[test]
+    fn public_action_decoder_diagnostics_redact_untrusted_ids_and_keys() {
+        let sentinel = "https://private.example/?credential=sentinel";
+        let unknown_action = typed_ipc_action(&json!({"action": sentinel}))
+            .expect_err("unknown action must be rejected")
+            .into_public();
+        assert_eq!(unknown_action.diagnostic_context(), "unknown action");
+        assert!(!unknown_action.diagnostic_context().contains(sentinel));
+
+        let mut arguments = serde_json::Map::new();
+        arguments.insert("source".into(), json!("title"));
+        arguments.insert(sentinel.into(), json!(true));
+        let unknown_argument = typed_ipc_action(&json!({
+            "action": "browser.url.copy",
+            "arguments": arguments
+        }))
+        .expect_err("unknown action argument must be rejected")
+        .into_public();
+        assert_eq!(
+            unknown_argument.diagnostic_context(),
+            "action does not accept an unsupported argument"
+        );
+        assert!(
+            !unknown_argument
+                .diagnostic_context()
+                .contains("private.example")
+        );
+        assert!(!unknown_argument.diagnostic_context().contains("sentinel"));
+    }
 }

@@ -19,10 +19,10 @@ impl qobject::BrowserUi {
                 self.as_ref().rust().storage_library_dirty.set(true);
                 true
             }
-            Err(error) => {
-                self.as_mut().set_status_text(QString::from(format!(
-                    "Download update could not be scheduled: {error}"
-                )));
+            Err(_) => {
+                self.as_mut().set_status_text(QString::from(
+                    "Download update could not be scheduled; details suppressed",
+                ));
                 false
             }
         };
@@ -58,10 +58,10 @@ impl qobject::BrowserUi {
                 self.as_ref().rust().storage_library_dirty.set(true);
                 true
             }
-            Err(error) => {
-                self.set_status_text(QString::from(format!(
-                    "Permission write could not be scheduled: {error}"
-                )));
+            Err(_) => {
+                self.set_status_text(QString::from(
+                    "Permission write could not be scheduled; details suppressed",
+                ));
                 false
             }
         }
@@ -76,9 +76,9 @@ impl qobject::BrowserUi {
             visits: vec![visit],
         }) {
             Ok(()) => self.as_ref().rust().storage_library_dirty.set(true),
-            Err(error) => self.set_status_text(QString::from(format!(
-                "History write could not be scheduled: {error}"
-            ))),
+            Err(_) => self.set_status_text(QString::from(
+                "History write could not be scheduled; details suppressed",
+            )),
         }
     }
 
@@ -398,10 +398,10 @@ impl qobject::BrowserUi {
                             .insert(ticket, mapping);
                     }
                 }
-                Err(error) => {
-                    self.as_mut().set_status_text(QString::from(format!(
-                        "Journey write could not be scheduled; history retained: {error}"
-                    )));
+                Err(_) => {
+                    self.as_mut().set_status_text(QString::from(
+                        "Journey write could not be scheduled; history retained; details suppressed",
+                    ));
                 }
             }
         }

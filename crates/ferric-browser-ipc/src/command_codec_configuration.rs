@@ -94,7 +94,7 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
                     value if !value.starts_with('-') && key.is_none() => {
                         key = Some(value.to_owned());
                     }
-                    value => return Err(format!("unknown get option or extra argument: {value}")),
+                    _ => return Err("get contains an unknown option or extra argument".into()),
                 }
                 index += 1;
             }

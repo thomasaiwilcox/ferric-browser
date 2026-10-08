@@ -1,0 +1,11 @@
+<!doctype html><meta charset="utf-8"><title>Versioning hostile archive fixture</title>
+<style>@import url('{{REMOTE_BASE}}/versioning/archive.css');</style>
+<img src="{{REMOTE_BASE}}/versioning/archive-image" alt="remote image">
+<iframe src="{{REMOTE_BASE}}/versioning/archive-frame" title="remote frame"></iframe>
+<form method="post" action="{{REMOTE_BASE}}/versioning/archive-form">
+  <button type="submit">Attempt remote form</button>
+</form>
+<a href="{{REMOTE_BASE}}/versioning/archive-download" download="fixture.txt">Attempt download</a>
+<a href="mailto:fixture@example.invalid">Attempt external protocol</a>
+<button onclick="window.open('{{REMOTE_BASE}}/versioning/archive-popup')">Attempt popup</button>
+<button onclick="location.href='{{REMOTE_BASE}}/versioning/archive-redirect'">Attempt redirect</button>

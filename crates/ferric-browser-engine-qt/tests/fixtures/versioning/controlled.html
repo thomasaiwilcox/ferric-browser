@@ -1,0 +1,10 @@
+<!doctype html><meta charset="utf-8"><title>Versioning controlled input</title>
+<h1>Controlled input fixture</h1>
+<label>Model-backed value <input id="controlled" value="model-original"></label>
+<output id="model">model-original</output>
+<script>
+let model = 'model-original';
+const input = document.querySelector('#controlled');
+input.addEventListener('input', () => { model = input.value; document.querySelector('#model').value = model; });
+setInterval(() => { if (input.value !== model) input.value = model; }, 250);
+</script>

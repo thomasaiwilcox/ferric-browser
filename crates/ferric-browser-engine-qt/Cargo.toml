@@ -11,6 +11,12 @@ links = "ferric_browser_engine_qt"
 [lib]
 crate-type = ["lib", "staticlib"]
 
+[features]
+# Enabled only by the disposable native archive campaign.
+native-archive-fault-test = ["ferric-browser-storage/native-archive-fault-test"]
+# Opt-in native journey while VB-059 and release qualification remain open.
+unqualified-clean-branch-test = ["ferric-browser-application/unqualified-clean-branch-test"]
+
 [dependencies]
 adblock.workspace = true
 ferric-browser-config = { version = "0.1.0", path = "../ferric-browser-config" }

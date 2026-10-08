@@ -46,8 +46,13 @@ impl qobject::BrowserUi {
                     "userscripts are unavailable without configured storage",
                 );
             }
-            Some(Err(error)) => {
-                return ipc_action_failure(&request.id, action_id, "unissued", error);
+            Some(Err(_)) => {
+                return ipc_action_failure(
+                    &request.id,
+                    action_id,
+                    "unissued",
+                    "userscript action catalog is unavailable; details suppressed",
+                );
             }
             Some(Ok(actions)) => {
                 let Some(action) = actions.iter().find(|action| action.id == action_id) else {

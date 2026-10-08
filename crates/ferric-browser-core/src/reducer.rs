@@ -3,19 +3,25 @@ use std::fmt;
 use crate::{
     ApplicationState, DocumentId, ExistenceState, JourneyEdgeKind, JourneyNodeId, LoadingState,
     Mode, PrivacyKind, ProfileId, RendererState, ResourceLifecycle, SearchCase, SearchState, TabId,
-    ValidatedUrl, WindowId,
+    ValidatedUrl, VersioningEngineEffect, VersioningEvent, VersioningRequest, WindowId,
 };
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub struct Target {
     pub tab: TabId,
     pub generation: u64,
     pub document: DocumentId,
 }
 
+impl fmt::Debug for Target {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("Target([redacted])")
+    }
+}
+
 /// State copied across same-profile windows while the live engine view is
 /// reparented by the UI adapter.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct TabTransfer {
     pub url: Option<String>,
     pub title: String,
@@ -25,8 +31,24 @@ pub struct TabTransfer {
     pub zoom_hundredths: u32,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+impl fmt::Debug for TabTransfer {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("TabTransfer")
+            .field("has_url", &self.url.is_some())
+            .field("title", &"[redacted]")
+            .field("loading", &self.loading)
+            .field("pinned", &self.pinned)
+            .field("muted", &self.muted)
+            .field("zoom_hundredths", &self.zoom_hundredths)
+            .finish()
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
 pub enum Event {
+    Versioning(VersioningEvent),
+    VersioningRequest(VersioningRequest),
     CreateProfile {
         label: String,
         privacy: PrivacyKind,
@@ -176,15 +198,77 @@ pub enum Event {
     RequestShutdown,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+impl fmt::Debug for Event {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let variant = match self {
+            Self::Versioning(_) => "Versioning",
+            Self::VersioningRequest(_) => "VersioningRequest",
+            Self::CreateProfile { .. } => "CreateProfile",
+            Self::CreateWindow { .. } => "CreateWindow",
+            Self::SetWindowContext { .. } => "SetWindowContext",
+            Self::OpenTab { .. } => "OpenTab",
+            Self::OpenTabWithNavigation { .. } => "OpenTabWithNavigation",
+            Self::FocusWindow { .. } => "FocusWindow",
+            Self::SetActiveWindow { .. } => "SetActiveWindow",
+            Self::ActivateTab { .. } => "ActivateTab",
+            Self::OpenPopup { .. } => "OpenPopup",
+            Self::MoveTab { .. } => "MoveTab",
+            Self::TransferTabOut { .. } => "TransferTabOut",
+            Self::TransferTabIn { .. } => "TransferTabIn",
+            Self::SetTabPinned { .. } => "SetTabPinned",
+            Self::SetTabMuted { .. } => "SetTabMuted",
+            Self::SetTabZoom { .. } => "SetTabZoom",
+            Self::StartNavigation { .. } => "StartNavigation",
+            Self::CommitNavigation { .. } => "CommitNavigation",
+            Self::CommitNavigationWithTransition { .. } => "CommitNavigationWithTransition",
+            Self::SameDocumentNavigation { .. } => "SameDocumentNavigation",
+            Self::CompleteNavigation { .. } => "CompleteNavigation",
+            Self::FailNavigation { .. } => "FailNavigation",
+            Self::Reload { .. } => "Reload",
+            Self::Stop { .. } => "Stop",
+            Self::TraverseHistory { .. } => "TraverseHistory",
+            Self::StartSearch { .. } => "StartSearch",
+            Self::SearchNext { .. } => "SearchNext",
+            Self::EndSearch { .. } => "EndSearch",
+            Self::RendererTerminated { .. } => "RendererTerminated",
+            Self::CloseTab { .. } => "CloseTab",
+            Self::SuspendTab { .. } => "SuspendTab",
+            Self::DiscardTab { .. } => "DiscardTab",
+            Self::ResumeTab { .. } => "ResumeTab",
+            Self::ViewClosed { .. } => "ViewClosed",
+            Self::PushMode { .. } => "PushMode",
+            Self::PopMode { .. } => "PopMode",
+            Self::Escape { .. } => "Escape",
+            Self::ClearJourney { .. } => "ClearJourney",
+            Self::RequestShutdown => "RequestShutdown",
+        };
+        write!(formatter, "Event::{variant}([redacted])")
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
 pub enum Effect {
     Engine(EngineEffect),
     Persist(PersistEffect),
     Diagnostic(Diagnostic),
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+impl fmt::Debug for Effect {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Engine(_) => formatter.write_str("Effect::Engine([redacted])"),
+            Self::Persist(effect) => formatter
+                .debug_tuple("Effect::Persist")
+                .field(effect)
+                .finish(),
+            Self::Diagnostic(_) => formatter.write_str("Effect::Diagnostic([redacted])"),
+        }
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
 pub enum EngineEffect {
+    Versioning(VersioningEngineEffect),
     Navigate {
         target: Target,
         url: ValidatedUrl,
@@ -225,6 +309,24 @@ pub enum EngineEffect {
     },
 }
 
+impl fmt::Debug for EngineEffect {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let variant = match self {
+            Self::Versioning(_) => "Versioning",
+            Self::Navigate { .. } => "Navigate",
+            Self::Reload { .. } => "Reload",
+            Self::Stop { .. } => "Stop",
+            Self::TraverseHistory { .. } => "TraverseHistory",
+            Self::FindText { .. } => "FindText",
+            Self::ClearFindText { .. } => "ClearFindText",
+            Self::CloseView { .. } => "CloseView",
+            Self::SetTabLifecycle { .. } => "SetTabLifecycle",
+            Self::ReparentView { .. } => "ReparentView",
+        };
+        write!(formatter, "EngineEffect::{variant}([redacted])")
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PersistEffect {
     Snapshot { revision: u64 },
@@ -236,8 +338,9 @@ pub enum Diagnostic {
     PopupBlocked { opener: TabId },
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub enum ReduceError {
+    Versioning(crate::BranchError),
     UnknownProfile(ProfileId),
     UnknownWindow(WindowId),
     UnknownTab(TabId),
@@ -250,9 +353,40 @@ pub enum ReduceError {
     InvalidZoom,
 }
 
+impl fmt::Debug for ReduceError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let variant = match self {
+            Self::Versioning(_) => "Versioning",
+            Self::UnknownProfile(_) => "UnknownProfile",
+            Self::UnknownWindow(_) => "UnknownWindow",
+            Self::UnknownTab(_) => "UnknownTab",
+            Self::WrongProfile => "WrongProfile",
+            Self::TabAlreadyInWindow => "TabAlreadyInWindow",
+            Self::InvalidActivation => "InvalidActivation",
+            Self::TabNotHidden => "TabNotHidden",
+            Self::InvalidLifecycle => "InvalidLifecycle",
+            Self::ShutdownInProgress => "ShutdownInProgress",
+            Self::InvalidZoom => "InvalidZoom",
+        };
+        write!(formatter, "ReduceError::{variant}([redacted])")
+    }
+}
+
 impl fmt::Display for ReduceError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "{self:?}")
+        formatter.write_str(match self {
+            Self::Versioning(_) => "versioning state transition failed",
+            Self::UnknownProfile(_) => "profile was not found",
+            Self::UnknownWindow(_) => "window was not found",
+            Self::UnknownTab(_) => "tab was not found",
+            Self::WrongProfile => "operation targets the wrong profile",
+            Self::TabAlreadyInWindow => "tab already belongs to a window",
+            Self::InvalidActivation => "profile activation is invalid",
+            Self::TabNotHidden => "tab is not hidden",
+            Self::InvalidLifecycle => "lifecycle transition is invalid",
+            Self::ShutdownInProgress => "browser shutdown is in progress",
+            Self::InvalidZoom => "zoom value is invalid",
+        })
     }
 }
 
@@ -317,6 +451,130 @@ fn commit_navigation(
 pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>, ReduceError> {
     let mut effects = Vec::new();
     match event {
+        Event::VersioningRequest(request) => {
+            ensure_running(state)?;
+            if !state.windows.contains_key(&request.window()) {
+                return Err(ReduceError::UnknownWindow(request.window()));
+            }
+            if let Some(target) = request.target() {
+                let tab = state
+                    .tabs
+                    .get(&target.tab)
+                    .ok_or(ReduceError::UnknownTab(target.tab))?;
+                if tab.window != request.window()
+                    || tab.generation != target.generation
+                    || tab.document != target.document
+                    || tab.existence != ExistenceState::Live
+                {
+                    return Err(ReduceError::InvalidActivation);
+                }
+            }
+            effects.push(Effect::Engine(EngineEffect::Versioning(
+                VersioningEngineEffect::Request(request),
+            )));
+        }
+        Event::Versioning(action) => {
+            ensure_running(state)?;
+            let identity_members = match &action {
+                VersioningEvent::BindStructuralIdentity { window, pages, .. }
+                | VersioningEvent::BindRestoredLineage { window, pages } => Some((window, pages)),
+                _ => None,
+            };
+            if let Some((window, pages)) = identity_members {
+                let window_state = state
+                    .windows
+                    .get(window)
+                    .ok_or(ReduceError::UnknownWindow(*window))?;
+                let profile = state
+                    .profiles
+                    .get(&window_state.profile)
+                    .ok_or(ReduceError::UnknownProfile(window_state.profile))?;
+                if profile.privacy != PrivacyKind::Normal {
+                    return Err(ReduceError::Versioning(crate::BranchError::WrongProfile));
+                }
+                for (tab, _) in pages {
+                    let page = state.tabs.get(tab).ok_or(ReduceError::UnknownTab(*tab))?;
+                    if page.window != *window
+                        || page.profile != window_state.profile
+                        || !window_state.tabs.contains(tab)
+                        || page.existence != ExistenceState::Live
+                    {
+                        return Err(ReduceError::Versioning(
+                            crate::BranchError::RetainedOwnerMismatch,
+                        ));
+                    }
+                }
+            }
+            if let VersioningEvent::BindTransientChildLineage { window, pages, .. } = &action {
+                let window_state = state
+                    .windows
+                    .get(window)
+                    .ok_or(ReduceError::UnknownWindow(*window))?;
+                let profile = state
+                    .profiles
+                    .get(&window_state.profile)
+                    .ok_or(ReduceError::UnknownProfile(window_state.profile))?;
+                if profile.privacy != PrivacyKind::Ephemeral || pages.is_empty() {
+                    return Err(ReduceError::Versioning(crate::BranchError::WrongProfile));
+                }
+                for (tab, _, _) in pages {
+                    let page = state.tabs.get(tab).ok_or(ReduceError::UnknownTab(*tab))?;
+                    if page.window != *window
+                        || page.profile != window_state.profile
+                        || !window_state.tabs.contains(tab)
+                        || page.existence != ExistenceState::Live
+                    {
+                        return Err(ReduceError::Versioning(
+                            crate::BranchError::RetainedOwnerMismatch,
+                        ));
+                    }
+                }
+            }
+            if let VersioningEvent::PrepareBranch { profile, .. } = &action
+                && !state.profiles.contains_key(profile)
+            {
+                return Err(ReduceError::UnknownProfile(*profile));
+            }
+            if let VersioningEvent::PrepareRetained { owner, .. }
+            | VersioningEvent::PrepareStash { owner, .. } = &action
+                && !retained_owner_is_current(state, *owner)
+            {
+                return Err(ReduceError::Versioning(
+                    crate::BranchError::RetainedOwnerMismatch,
+                ));
+            }
+            if let VersioningEvent::AcquireRetained { view } = &action
+                && let Some(record) = state.versioning.retained().get(view)
+                && !retained_owner_is_current(state, record.owner())
+            {
+                return Err(ReduceError::Versioning(
+                    crate::BranchError::RetainedOwnerMismatch,
+                ));
+            }
+            if let VersioningEvent::BeginRetainedTransfer {
+                destination,
+                window,
+                ..
+            }
+            | VersioningEvent::AdoptRetained {
+                destination,
+                window,
+                ..
+            } = &action
+                && state
+                    .windows
+                    .get(window)
+                    .is_none_or(|target| target.profile != destination.runtime_profile())
+            {
+                return Err(ReduceError::Versioning(crate::BranchError::WrongProfile));
+            }
+            state
+                .versioning
+                .apply(action)
+                .map_err(ReduceError::Versioning)?;
+            // Explicit versioning records are not ordinary recovery snapshots.
+            state.revision = state.revision.checked_add(1).expect("revision exhausted");
+        }
         Event::CreateProfile { label, privacy } => {
             ensure_running(state)?;
             let id = state.ids.profile();
@@ -487,6 +745,11 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
             index,
         } => {
             ensure_running(state)?;
+            if state.versioning.owns_tab(tab) {
+                return Err(ReduceError::Versioning(
+                    crate::BranchError::RetainedWorkOwned,
+                ));
+            }
             let tab_state = state.tabs.get(&tab).ok_or(ReduceError::UnknownTab(tab))?;
             if tab_state.existence != ExistenceState::Live {
                 return Err(ReduceError::InvalidActivation);
@@ -582,6 +845,11 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
         }
         Event::TransferTabOut { tab } => {
             ensure_running(state)?;
+            if state.versioning.owns_tab(tab) {
+                return Err(ReduceError::Versioning(
+                    crate::BranchError::RetainedWorkOwned,
+                ));
+            }
             let tab_state = state.tabs.get(&tab).ok_or(ReduceError::UnknownTab(tab))?;
             if tab_state.existence != ExistenceState::Live {
                 return Err(ReduceError::InvalidActivation);
@@ -616,6 +884,7 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
                     .active_tab = active;
             }
             state.tabs.remove(&tab);
+            state.versioning.forget_structural_page(tab);
             persist(state, &mut effects);
         }
         Event::TransferTabIn { window, transfer } => {
@@ -756,6 +1025,7 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
                 generation: tab.generation,
                 document: tab.document,
             };
+            mark_retention_lost_for_tab(state, target.tab)?;
             if had_search {
                 effects.push(Effect::Engine(EngineEffect::ClearFindText { target }));
             }
@@ -992,8 +1262,14 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
             };
             tab.renderer = RendererState::Terminated;
             tab.loading = LoadingState::Failed;
+            mark_retention_lost_for_tab(state, target.tab)?;
         }
         Event::CloseTab { tab } => {
+            if state.versioning.owns_tab(tab) {
+                return Err(ReduceError::Versioning(
+                    crate::BranchError::RetainedWorkOwned,
+                ));
+            }
             let tab_state = state
                 .tabs
                 .get_mut(&tab)
@@ -1060,6 +1336,11 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
         }
         Event::DiscardTab { tab } => {
             ensure_running(state)?;
+            if state.versioning.owns_tab(tab) {
+                return Err(ReduceError::Versioning(
+                    crate::BranchError::RetainedWorkOwned,
+                ));
+            }
             let generation = {
                 let tab_state = state.tabs.get(&tab).ok_or(ReduceError::UnknownTab(tab))?;
                 if tab_state.existence != ExistenceState::Live {
@@ -1125,6 +1406,7 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
             }
             let window_id = tab_state.window;
             let removed = state.tabs.remove(&tab).expect("tab checked above");
+            state.versioning.forget_structural_page(tab);
             debug_assert_eq!(removed.existence, ExistenceState::Closing);
             let window = state.windows.get_mut(&window_id).expect("tab invariant");
             window.tabs.retain(|candidate| *candidate != tab);
@@ -1199,6 +1481,53 @@ fn ensure_running(state: &ApplicationState) -> Result<(), ReduceError> {
     } else {
         Ok(())
     }
+}
+
+fn mark_retention_lost_for_tab(
+    state: &mut ApplicationState,
+    tab: TabId,
+) -> Result<(), ReduceError> {
+    let affected = state
+        .versioning
+        .retained()
+        .iter()
+        .filter_map(|(view, record)| {
+            (record.owner().target().tab == tab
+                && !matches!(
+                    record.lifecycle(),
+                    crate::versioning::RetainedLifecycle::Lost
+                        | crate::versioning::RetainedLifecycle::Discarded
+                ))
+            .then_some(*view)
+        })
+        .collect::<Vec<_>>();
+    for view in affected {
+        state
+            .versioning
+            .apply(VersioningEvent::LoseRetained { view })
+            .map_err(ReduceError::Versioning)?;
+        state.revision = state.revision.checked_add(1).expect("revision exhausted");
+    }
+    Ok(())
+}
+
+fn retained_owner_is_current(state: &ApplicationState, owner: crate::CapturedOwner) -> bool {
+    let target = owner.target();
+    let Some(window) = state.windows.get(&owner.window()) else {
+        return false;
+    };
+    let Some(tab) = state.tabs.get(&target.tab) else {
+        return false;
+    };
+    window.profile == owner.native().runtime_profile()
+        && window.tabs.contains(&target.tab)
+        && tab.profile == window.profile
+        && tab.window == owner.window()
+        && tab.generation == target.generation
+        && tab.document == target.document
+        && tab.existence == ExistenceState::Live
+        && tab.renderer == RendererState::Healthy
+        && tab.resources != ResourceLifecycle::Discarded
 }
 
 fn add_tab(
@@ -1364,6 +1693,7 @@ impl ApplicationState {
             return Err("active window is missing");
         }
         self.journey.validate_profiles(&self.profiles)?;
+        self.versioning.validate()?;
         Ok(())
     }
 }
@@ -1371,6 +1701,24 @@ impl ApplicationState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reducer_error_diagnostics_redact_runtime_ids() {
+        let errors = [
+            ReduceError::UnknownProfile(ProfileId::from_raw(0x51_7e_11)),
+            ReduceError::UnknownWindow(WindowId::from_raw(0x51_7e_12)),
+            ReduceError::UnknownTab(TabId::from_raw(0x51_7e_13)),
+        ];
+
+        for error in errors {
+            for diagnostic in [format!("{error:?}"), error.to_string()] {
+                assert!(!diagnostic.contains("517e"));
+                assert!(!diagnostic.contains("profile-"));
+                assert!(!diagnostic.contains("window-"));
+                assert!(!diagnostic.contains("tab-"));
+            }
+        }
+    }
 
     fn url(value: &str) -> ValidatedUrl {
         ValidatedUrl::parse(value).expect("test URL")
@@ -1403,6 +1751,46 @@ mod tests {
         assert_eq!(state.active_tab().map(|tab| tab.id), Some(tab));
         assert_eq!(target.tab, tab);
         assert!(state.validate().is_ok());
+    }
+
+    #[test]
+    fn event_and_transfer_debug_redact_page_data() {
+        let sentinel = "private-event-page-data-sentinel";
+        let (_, _, window, _, target) = setup();
+        let page_url = url(&format!("https://example.test/{sentinel}?query=private"));
+        let transfer = TabTransfer {
+            url: Some(page_url.to_string()),
+            title: sentinel.into(),
+            loading: LoadingState::Committed,
+            pinned: false,
+            muted: false,
+            zoom_hundredths: 100,
+        };
+        let events = [
+            Event::CommitNavigation {
+                target,
+                url: page_url.clone(),
+                title: sentinel.into(),
+            },
+            Event::StartSearch {
+                target,
+                query: sentinel.into(),
+                backward: false,
+                case: SearchCase::Sensitive,
+            },
+            Event::TransferTabIn { window, transfer },
+            Event::ClearJourney {
+                since: None,
+                origin: Some(sentinel.into()),
+            },
+        ];
+
+        for event in events {
+            let debug = format!("{event:?}");
+            assert!(!debug.contains(sentinel));
+            assert!(!debug.contains("query=private"));
+        }
+        assert_eq!(format!("{target:?}"), "Target([redacted])");
     }
 
     #[test]

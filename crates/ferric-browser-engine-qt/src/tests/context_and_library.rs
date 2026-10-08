@@ -310,6 +310,59 @@ fn ipc_library_commands_use_typed_fields() {
 }
 
 #[test]
+fn session_private_results_are_revalidated_before_ui_exposure() {
+    let sessions = include_str!("../browser_ui_sessions.rs");
+    let library = include_str!("../browser_ui_library.rs");
+    let profile_setup = include_str!("../browser_ui_profile_setup.rs");
+    let runtime = include_str!("../browser_ui_runtime.rs");
+    let switcher = include_str!("../browser_ui_query_switcher.rs");
+
+    let restore_consumer = sessions
+        .split("pub(super) fn take_session_restore_values")
+        .nth(1)
+        .and_then(|tail| tail.split("pub(super) fn take_session_preview").next())
+        .expect("restore payload consumer");
+    let preview_consumer = sessions
+        .split("pub(super) fn take_session_preview")
+        .nth(1)
+        .and_then(|tail| tail.split("pub(super) fn clear_link_preview").next())
+        .expect("preview payload consumer");
+    let restore_gate = restore_consumer
+        .find("session_profile_access_allowed")
+        .expect("restore access recheck");
+    let restore_read = restore_consumer
+        .find("std::mem::take(&mut this.session_restore_values)")
+        .expect("restore payload read");
+    let preview_gate = preview_consumer
+        .find("session_profile_access_allowed")
+        .expect("preview access recheck");
+    let preview_read = preview_consumer
+        .find("std::mem::take(&mut this.session_preview)")
+        .expect("preview payload read");
+    assert!(restore_gate < restore_read);
+    assert!(preview_gate < preview_read);
+    assert!(library.contains("this.session_preview = if pending"));
+    assert!(library.contains("session_list_request_should_start"));
+    assert!(library.contains("session_names_pending = true"));
+    assert!(library.contains("session_names_ticket = Some(ticket)"));
+    assert!(sessions.contains("session_save_ticket = Some(ticket)"));
+    assert!(sessions.contains("session_delete_ticket = Some(ticket)"));
+    assert!(sessions.contains("session_restore_ticket = Some(ticket)"));
+    assert!(library.contains("this.session_restore_ticket.map(StorageTicket::value)"));
+    assert!(library.contains("this.session_names_ticket.map(StorageTicket::value)"));
+    assert!(library.contains("this.session_save_ticket.map(StorageTicket::value)"));
+    assert!(library.contains("this.session_delete_ticket.map(StorageTicket::value)"));
+    assert!(library.contains("session_checkpoint_clear_ticket"));
+    assert!(runtime.contains("session_checkpoint_clear_ticket = Some(ticket)"));
+    assert!(profile_setup.contains("this.session_names_ticket = None"));
+    assert!(profile_setup.contains("this.session_restore_ticket = None"));
+    assert!(profile_setup.contains("this.session_save_ticket = None"));
+    assert!(profile_setup.contains("this.session_delete_ticket = None"));
+    assert!(profile_setup.contains("this.session_checkpoint_clear_ticket = None"));
+    assert!(switcher.contains("&& self.session_profile_access_allowed()"));
+}
+
+#[test]
 fn ipc_link_commands_use_one_optional_typed_url() {
     let (command, _) = typed_ipc_command(&serde_json::json!({
         "command": "url-explain",
@@ -1049,7 +1102,8 @@ fn action_command_maps_subject_and_verb_to_a_registered_executor() {
         include_str!("../../qml/scripts/SpellcheckPresentation.js"),
     ]
     .concat();
-    let reopen_confirmation = include_str!("../../qml/components/FerricReopenWindowConfirmation.qml");
+    let reopen_confirmation =
+        include_str!("../../qml/components/FerricReopenWindowConfirmation.qml");
     let downloads = include_str!("../../qml/components/FerricDownloadManager.qml");
     let source = ADAPTER_SOURCE;
     let hint_policy = include_str!("../hint_policy.rs");
@@ -1138,9 +1192,19 @@ fn action_command_maps_subject_and_verb_to_a_registered_executor() {
     assert!(qml.contains("secondaryProfile.cancelPendingDownload()"));
     assert!(qml.contains("secondaryWindow.pendingDownloadRequests"));
     assert!(qml.contains("secondaryDownloadChooser.open()"));
-    assert!(qml.contains("secondaryWindow.pendingDownloadRequests = ({})"));
-    assert!(qml.contains("download.view"));
-    assert!(qml.contains("function downloadOwnerFor(download)"));
+    let download_routing = include_str!("../../qml/scripts/ProfileDownloadRouting.js");
+    assert!(download_routing.contains("completionRequests[id] = download"));
+    assert!(qml.contains("popupWindow, download, function(request)"));
+    assert!(qml.contains("ProfileDownloadRouting.retainAndCancelIfShutdownApproved("));
+    assert!(!qml.contains("window.activeDownloads = ({})"));
+    assert!(!qml.contains("secondaryWindow.activeDownloads = ({})"));
+    assert!(!qml.contains("popupWindow.activeDownloads = ({})"));
+    assert!(!qml.contains("secondaryWindow.pendingDownloadRequests = ({})"));
+    assert!(!qml.contains("download.view"));
+    assert!(qml.contains("function downloadOwnerFor(download, inspectView)"));
+    assert!(qml.contains("downloadOwnerFor(download, false)"));
+    assert!(qml.contains("var view = null"));
+    assert!(qml.contains("ProfileDownloadRouting.boundProfileOwner("));
     assert!(qml.contains("id: popupDownloadChooser"));
     assert!(qml.contains("owner.handleDownloadRequested(download)"));
     assert!(qml.contains("popupWindow.cancelPendingDownload()"));

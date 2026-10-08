@@ -12,7 +12,8 @@ impl qobject::BrowserUi {
     pub(super) fn ipc_actions_query(&self, params: &Value) -> Result<Value, String> {
         query_empty_object_or_null(params, "actions.query")?;
         let actions = ActionRegistry::default_v1();
-        let targets = configured_action_targets(&self.rust().config)?;
+        let targets = configured_action_targets(&self.rust().config)
+            .map_err(|_| "configured action catalog is unavailable; details suppressed")?;
         let mut values = actions.definitions().iter().map(|definition| serde_json::json!({
                 "id": definition.id,
                 "subject": definition.subject.as_str(),
@@ -38,7 +39,7 @@ impl qobject::BrowserUi {
         values.extend(targets.iter().flat_map(|(name, target)| {
             configured_action_target_values(name, target, self.active_profile_is_transient())
         }));
-        values.extend(userscript_action_values(
+        let userscript_actions = userscript_action_values(
             self.rust()
                 .userscript_roots
                 .as_ref()
@@ -47,7 +48,9 @@ impl qobject::BrowserUi {
             self.rust().state.is_some(),
             self.rust().profile_persistence.is_durable(),
             self.active_profile_is_transient(),
-        )?);
+        )
+        .map_err(|_| "userscript action catalog is unavailable; details suppressed")?;
+        values.extend(userscript_actions);
         Ok(serde_json::json!({
             "sequence": self.rust().ipc_sequence,
             "actions": values

@@ -1,3 +1,5 @@
+use std::fmt;
+
 const GLOBAL_SCOPES: &[&str] = &["global"];
 const PROFILE_SCOPES: &[&str] = &["profile"];
 const GLOBAL_PROFILE_SCOPES: &[&str] = &["global", "profile"];
@@ -60,12 +62,24 @@ impl SettingRegistry {
 }
 
 /// A configuration value that cannot affect the current process immediately.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct PendingSettingChange {
     pub key: String,
     pub current: toml::Value,
     pub pending: toml::Value,
     pub apply_time: &'static str,
+}
+
+impl fmt::Debug for PendingSettingChange {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("PendingSettingChange")
+            .field("key", &"[redacted]")
+            .field("current", &"[redacted]")
+            .field("pending", &"[redacted]")
+            .field("apply_time", &self.apply_time)
+            .finish()
+    }
 }
 
 macro_rules! setting_metadata {
@@ -549,6 +563,24 @@ pub(super) const SETTING_METADATA: &[SettingMetadata] = &[
         GLOBAL_SCOPES,
         "live",
         "durable-storage",
+        "sensitive"
+    ),
+    setting_metadata!(
+        "versioning.page_capture",
+        "enum",
+        "ask",
+        GLOBAL_PROFILE_SCOPES,
+        "live",
+        "versioning-archive-capture",
+        "sensitive"
+    ),
+    setting_metadata!(
+        "versioning.editable_capture",
+        "enum",
+        "ask",
+        GLOBAL_PROFILE_SCOPES,
+        "live",
+        "versioning-editable-capture",
         "sensitive"
     ),
     setting_metadata!(

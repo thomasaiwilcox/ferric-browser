@@ -1,10 +1,9 @@
 //! Lifecycle records and cleanup for browser-owned external editor processes.
 //!
-//! This is platform integration: it owns process groups, temporary artifacts,
-//! and bounded stderr presentation. The Qt composition root retains the user
-//! interaction and reducer dispatch decisions.
-
-use crate::process_output::sanitize_process_stderr;
+//! This is platform integration: it owns process groups and temporary
+//! artifacts. External editor output is deliberately discarded at the process
+//! boundary; the Qt composition root retains user interaction and reducer
+//! dispatch decisions.
 use ferric_browser_core::Target;
 use std::{
     fs,
@@ -20,7 +19,7 @@ use std::{
 
 const CHILD_TERMINATION_GRACE: Duration = Duration::from_millis(500);
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub(super) struct PendingEditor {
     pub(super) token: String,
     pub(super) target: Target,
@@ -33,15 +32,11 @@ pub(super) struct PendingEditor {
     pub(super) created_at: Instant,
 }
 
-pub(super) type ConfigEditStderr = Arc<Mutex<Option<Result<Vec<u8>, String>>>>;
-
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub(super) struct PendingConfigEdit {
     pub(super) token: String,
-    pub(super) path: PathBuf,
     pub(super) process: Arc<Mutex<Option<Child>>>,
     pub(super) exit_status: Option<ExitStatus>,
-    pub(super) stderr: ConfigEditStderr,
 }
 
 impl Drop for PendingConfigEdit {
@@ -131,31 +126,17 @@ pub(super) fn try_wait_editor_process(
     };
     let status = child_process
         .try_wait()
-        .map_err(|error| format!("editor wait failed: {error}"))?;
+        .map_err(|_| "editor process status is unavailable".to_owned())?;
     if status.is_some() {
         child.take();
     }
     Ok(status)
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub(super) struct EditorCompletion {
     pub(super) token: String,
     pub(super) original: String,
     pub(super) updated: Option<String>,
     pub(super) error: Option<String>,
-    pub(super) stderr: Option<String>,
-}
-
-pub(super) fn join_editor_stderr(
-    reader: &mut Option<thread::JoinHandle<Result<Vec<u8>, String>>>,
-) -> Option<String> {
-    let result = reader.take()?.join().ok()?;
-    match result {
-        Ok(bytes) => {
-            let text = sanitize_process_stderr(&bytes);
-            (!text.is_empty()).then_some(text)
-        }
-        Err(error) => Some(error),
-    }
 }

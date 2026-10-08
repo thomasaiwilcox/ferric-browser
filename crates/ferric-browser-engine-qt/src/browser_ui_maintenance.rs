@@ -1,13 +1,15 @@
+use super::ipc_window_route::{enqueue_routed, explicit_window_target, reject_routed, take_routed};
 use super::{
     Arc, AtomicBool, ConfigReloadWorker, ConfigWriteWorker, CxxQtType, EditorWriteWorker,
     HyprlandWorker, MAX_ACTION_AUDIT_RECORDS, NetworkPolicyWorker, Ordering, Pin,
     PortalProbeWorker, PrintWorker, ProfileDeleteWorker, ProfileListWorker, ProfilePreviewWorker,
-    ReducedMotionProbeWorker, SystemFontScaleProbeWorker, Threading, UserscriptManagerWorker,
-    action_audit_record, captured_target_is_current, elapsed_ms, has_pending_requests,
-    install_pending_request_waker, ipc_failure, operation_is_terminal, operation_status_kind,
-    publish_ipc_event, qobject, remember_operation_stderr, subscribe_event_stream,
-    take_pending_request,
+    QString, QStringList, ReducedMotionProbeWorker, SystemFontScaleProbeWorker, Threading,
+    UserscriptManagerWorker, action_audit_record, captured_target_is_current, elapsed_ms,
+    has_pending_requests, install_pending_request_waker, ipc_failure, operation_is_terminal,
+    operation_status_kind, publish_ipc_event, qobject, remember_operation_stderr,
+    subscribe_event_stream, take_pending_request,
 };
+use ferric_browser_core::WindowId;
 
 impl qobject::BrowserUi {
     pub(super) fn refresh_operations(mut self: Pin<&mut Self>) {
@@ -60,7 +62,7 @@ impl qobject::BrowserUi {
                         .execute_userscript_action(completion.target, action)
                     {
                         Ok(()) => format!("{status}; action applied"),
-                        Err(error) => format!("failed (userscript action: {error})"),
+                        Err(_) => "failed (userscript action failed)".into(),
                     }
                 } else {
                     "failed (userscript result target is stale)".into()
@@ -230,11 +232,43 @@ impl qobject::BrowserUi {
         -1
     }
 
-    pub(super) fn poll_ipc(mut self: Pin<&mut Self>) {
+    pub(super) fn poll_ipc(mut self: Pin<&mut Self>) -> QStringList {
+        let mut routed_windows = Vec::new();
         for _ in 0..ferric_browser_ipc::MAX_PENDING_REQUESTS {
             let Some(pending) = take_pending_request() else {
                 break;
             };
+            let target = explicit_window_target(pending.request()).and_then(|window| {
+                if self.as_ref().rust().window == Some(window) {
+                    return None;
+                }
+                let id = window.to_string();
+                let binding = self.as_ref();
+                let mut matches = binding
+                    .rust()
+                    .live_window_registry
+                    .iter()
+                    .filter(|entry| entry.id == id && !entry.owner_token.is_empty());
+                let entry = matches.next()?;
+                matches
+                    .next()
+                    .is_none()
+                    .then(|| (window, entry.owner_token.clone()))
+            });
+            if let Some((window, token)) = target {
+                let id = window.to_string();
+                if let Err(pending) = enqueue_routed(window, token, pending) {
+                    let response = ipc_failure(
+                        &pending.request().id,
+                        "E_BUSY",
+                        "window request handoff is full",
+                    );
+                    let _ = pending.respond(&response);
+                } else if !routed_windows.contains(&id) {
+                    routed_windows.push(id);
+                }
+                continue;
+            }
             let event_stream = if pending.request().method == "events.subscribe" {
                 pending.clone_stream().map(Some)
             } else {
@@ -249,14 +283,53 @@ impl qobject::BrowserUi {
             if response.error.is_none()
                 && let Ok(Some(stream)) = event_stream
                 && let Ok(event_types) = event_types
-                && let Err(error) = subscribe_event_stream(stream, event_types)
+                && subscribe_event_stream(stream, event_types).is_err()
             {
-                response = ipc_failure(&pending.request().id, "E_IO", error);
+                response = ipc_failure(
+                    &pending.request().id,
+                    "E_IO",
+                    "IPC event subscription is unavailable; details suppressed",
+                );
             }
             let _ = pending.respond(&response);
         }
         if has_pending_requests() {
             self.as_mut().runtime_work_available();
         }
+        routed_windows.into_iter().map(QString::from).collect()
+    }
+
+    pub(super) fn poll_routed_ipc(mut self: Pin<&mut Self>) -> i32 {
+        let Some(window) = self.as_ref().rust().window else {
+            return 0;
+        };
+        let token = self.as_ref().rust().window_token.to_string();
+        let pending = take_routed(window, &token);
+        let count = i32::try_from(pending.len()).unwrap_or(i32::MAX);
+        for request in pending {
+            let response = self.as_mut().handle_ipc_request(request.request());
+            let _ = request.respond(&response);
+        }
+        count
+    }
+
+    pub(super) fn reject_routed_ipc(self: Pin<&mut Self>, window_id: &QString) -> i32 {
+        if self.as_ref().rust().window.is_none() {
+            return 0;
+        }
+        let Some(window) = WindowId::from_display(&window_id.to_string()) else {
+            return 0;
+        };
+        let pending = reject_routed(window);
+        let count = i32::try_from(pending.len()).unwrap_or(i32::MAX);
+        for request in pending {
+            let response = ipc_failure(
+                &request.request().id,
+                "E_NOT_FOUND",
+                "requested window owner is no longer available",
+            );
+            let _ = request.respond(&response);
+        }
+        count
     }
 }

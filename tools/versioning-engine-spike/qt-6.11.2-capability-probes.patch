@@ -1,0 +1,1224 @@
+--- a/src/core/api/qwebenginecookiestore.h
++++ b/src/core/api/qwebenginecookiestore.h
+@@ -45,6 +45,38 @@
+     void deleteAllCookies();
+     void loadAllCookies();
+ 
++    // Ferric's isolated engine experiment ONLY. Not a supported Qt API or a
++    // production capability certificate. Both stores must be disposable and
++    // unused; this operation inserts synthetic cookies and never deletes them.
++    enum class FerricProbeStatus {
++        ExactReadback, UnsupportedRecord, Unavailable, NonEmptyStore,
++        MutationRejected, ReadbackMismatch, TimedOut, OwnerLost
++    };
++    enum class FerricSyntheticPreflightCase { None, LegacyUnknownSource, OlderOverlongExpiry };
++    struct FerricProbeResult {
++        FerricProbeStatus status;
++        int sourceCount;
++        int destinationCount;
++    };
++    void ferricCookieCloneProbe(QWebEngineCookieStore *destination, bool nonceFixture,
++                               std::function<void(FerricProbeResult)> completion);
++    // Research-only transient opaque partition fixture; no real profile data.
++    void ferricCookieOpaquePartitionProbe(QWebEngineCookieStore *destination,
++                                         std::function<void(FerricProbeResult)> completion);
++    // Research-only rejected destination setter after one successful write.
++    // A failed child is disposable and must never be exposed as a branch.
++    void ferricCookieMidCopyRejectProbe(QWebEngineCookieStore *destination,
++                                       std::function<void(FerricProbeResult)> completion);
++    // Research-only copy of cookies created by the owned loopback HTTPS fixture.
++    // The caller owns/discards both disposable profiles; this is not a backend.
++    void ferricCookieCopyExistingProbe(QWebEngineCookieStore *destination,
++                                      std::function<void(FerricProbeResult)> completion);
++    // Research-only substitution after a valid synthetic source snapshot.
++    // It does not create a real legacy/older cookie in the source profile.
++    void ferricCookieSyntheticPreflightProbe(QWebEngineCookieStore *destination,
++                                            FerricSyntheticPreflightCase fixture,
++                                            std::function<void(FerricProbeResult)> completion);
++
+ Q_SIGNALS:
+     void cookieAdded(const QNetworkCookie &cookie);
+     void cookieRemoved(const QNetworkCookie &cookie);
+--- a/src/core/api/qwebenginecookiestore.cpp
++++ b/src/core/api/qwebenginecookiestore.cpp
+@@ -11,6 +11,7 @@
+ 
+ #include <QByteArray>
+ #include <QUrl>
++#include <QThread>
+ 
+ namespace {
+ 
+@@ -25,6 +26,98 @@
+ 
+ using namespace QtWebEngineCore;
+ 
++void QWebEngineCookieStore::ferricCookieCloneProbe(
++        QWebEngineCookieStore *destination, bool nonceFixture,
++        std::function<void(FerricProbeResult)> completion)
++{
++    if (!completion)
++        return;
++    Q_D(QWebEngineCookieStore);
++    if (!destination || destination == this || QThread::currentThread() != thread()
++            || destination->thread() != thread() || !d->delegate
++            || !destination->d_func()->delegate || d->filterCallback
++            || destination->d_func()->filterCallback) {
++        completion({FerricProbeStatus::Unavailable, 0, 0});
++        return;
++    }
++    d->delegate->ferricCookieCloneProbe(destination->d_func()->delegate, nonceFixture,
++                                      std::move(completion));
++}
++
++void QWebEngineCookieStore::ferricCookieOpaquePartitionProbe(
++        QWebEngineCookieStore *destination, std::function<void(FerricProbeResult)> completion)
++{
++    if (!completion)
++        return;
++    Q_D(QWebEngineCookieStore);
++    if (!destination || destination == this || QThread::currentThread() != thread()
++            || destination->thread() != thread() || !d->delegate
++            || !destination->d_func()->delegate || d->filterCallback
++            || destination->d_func()->filterCallback) {
++        completion({FerricProbeStatus::Unavailable, 0, 0});
++        return;
++    }
++    d->delegate->ferricCookieCloneProbe(destination->d_func()->delegate, false,
++                                       std::move(completion), false,
++                                       FerricSyntheticPreflightCase::None, true);
++}
++
++void QWebEngineCookieStore::ferricCookieMidCopyRejectProbe(
++        QWebEngineCookieStore *destination, std::function<void(FerricProbeResult)> completion)
++{
++    if (!completion)
++        return;
++    Q_D(QWebEngineCookieStore);
++    if (!destination || destination == this || QThread::currentThread() != thread()
++            || destination->thread() != thread() || !d->delegate
++            || !destination->d_func()->delegate || d->filterCallback
++            || destination->d_func()->filterCallback) {
++        completion({FerricProbeStatus::Unavailable, 0, 0});
++        return;
++    }
++    d->delegate->ferricCookieCloneProbe(destination->d_func()->delegate, false,
++                                       std::move(completion), false,
++                                       FerricSyntheticPreflightCase::None, false, true);
++}
++
++void QWebEngineCookieStore::ferricCookieCopyExistingProbe(
++        QWebEngineCookieStore *destination,
++        std::function<void(FerricProbeResult)> completion)
++{
++    if (!completion)
++        return;
++    Q_D(QWebEngineCookieStore);
++    if (!destination || destination == this || QThread::currentThread() != thread()
++            || destination->thread() != thread() || !d->delegate
++            || !destination->d_func()->delegate || d->filterCallback
++            || destination->d_func()->filterCallback) {
++        completion({FerricProbeStatus::Unavailable, 0, 0});
++        return;
++    }
++    d->delegate->ferricCookieCloneProbe(destination->d_func()->delegate, false,
++                                      std::move(completion), true);
++}
++
++void QWebEngineCookieStore::ferricCookieSyntheticPreflightProbe(
++        QWebEngineCookieStore *destination, FerricSyntheticPreflightCase fixture,
++        std::function<void(FerricProbeResult)> completion)
++{
++    if (!completion)
++        return;
++    Q_D(QWebEngineCookieStore);
++    if ((fixture != FerricSyntheticPreflightCase::LegacyUnknownSource
++                && fixture != FerricSyntheticPreflightCase::OlderOverlongExpiry)
++            || !destination || destination == this
++            || QThread::currentThread() != thread() || destination->thread() != thread()
++            || !d->delegate || !destination->d_func()->delegate || d->filterCallback
++            || destination->d_func()->filterCallback) {
++        completion({FerricProbeStatus::Unavailable, 0, 0});
++        return;
++    }
++    d->delegate->ferricCookieCloneProbe(destination->d_func()->delegate, false,
++                                       std::move(completion), false, fixture);
++}
++
+ QWebEngineCookieStorePrivate::QWebEngineCookieStorePrivate(QWebEngineCookieStore *q)
+     : q_ptr(q)
+     , m_deleteSessionCookiesPending(false)
+--- a/src/core/net/cookie_monster_delegate_qt.h
++++ b/src/core/net/cookie_monster_delegate_qt.h
+@@ -35,6 +35,7 @@
+ #endif
+ 
+ #include <QPointer>
++#include "api/qwebenginecookiestore.h"
+ 
+ QT_FORWARD_DECLARE_CLASS(QNetworkCookie)
+ QT_FORWARD_DECLARE_CLASS(QWebEngineCookieStore)
+@@ -45,6 +46,9 @@
+ 
+ class Q_WEBENGINECORE_EXPORT CookieMonsterDelegateQt : public base::RefCountedThreadSafe<CookieMonsterDelegateQt>
+ {
++    friend class FerricCookieProbeOperation;
++    quint64 m_ferricGeneration = 0;
++    bool m_ferricProbeBusy = false;
+     QPointer<QWebEngineCookieStore> m_client;
+     std::vector<std::unique_ptr<net::CookieChangeSubscription>> m_subscriptions;
+ 
+@@ -63,6 +67,13 @@
+     void setCookie(const QNetworkCookie &cookie, const QUrl &origin);
+     void deleteCookie(const QNetworkCookie &cookie, const QUrl &origin);
+     void getAllCookies();
++    void ferricCookieCloneProbe(CookieMonsterDelegateQt *destination, bool nonceFixture,
++                               std::function<void(QWebEngineCookieStore::FerricProbeResult)> completion,
++                               bool existingSource = false,
++                               QWebEngineCookieStore::FerricSyntheticPreflightCase syntheticCase =
++                                       QWebEngineCookieStore::FerricSyntheticPreflightCase::None,
++                               bool opaqueFixture = false,
++                               bool destinationRejectFixture = false);
+     void deleteSessionCookies();
+     void deleteAllCookies();
+ 
+--- a/src/core/net/cookie_monster_delegate_qt.cpp
++++ b/src/core/net/cookie_monster_delegate_qt.cpp
+@@ -13,9 +13,347 @@
+ #include "type_conversion.h"
+ 
+ #include <QNetworkCookie>
++#include <QTimer>
++
++#include <algorithm>
+ 
+ namespace QtWebEngineCore {
+ 
++// Diagnostic-only, synthetic round trip. Never use this as a fresh-profile
++// ownership check, a live-profile write lock, or a cookie-merge implementation.
++// All canonical records stay in native memory; completion is counts/status only.
++class FerricCookieProbeOperation final : public QObject
++{
++    using Status = QWebEngineCookieStore::FerricProbeStatus;
++    using Result = QWebEngineCookieStore::FerricProbeResult;
++    using SyntheticCase = QWebEngineCookieStore::FerricSyntheticPreflightCase;
++    scoped_refptr<CookieMonsterDelegateQt> m_source;
++    scoped_refptr<CookieMonsterDelegateQt> m_destination;
++    QPointer<QWebEngineCookieStore> m_sourceOwner;
++    QPointer<QWebEngineCookieStore> m_destinationOwner;
++    quint64 m_sourceGeneration;
++    quint64 m_destinationGeneration;
++    std::function<void(Result)> m_completion;
++    net::CookieList m_expected;
++    net::CookieList m_snapshot;
++    QTimer m_timeout;
++    bool m_done = false;
++    bool m_nonceFixture;
++    bool m_existingSource;
++    SyntheticCase m_syntheticCase;
++    bool m_opaqueFixture;
++    bool m_destinationRejectFixture;
++    int m_destinationCount = 0;
++
++    bool valid()
++    {
++        if (m_done)
++            return false;
++        if (!m_sourceOwner || !m_destinationOwner
++                || m_source->m_client != m_sourceOwner
++                || m_destination->m_client != m_destinationOwner
++                || m_sourceGeneration != m_source->m_ferricGeneration
++                || m_destinationGeneration != m_destination->m_ferricGeneration
++                || !m_source->hasCookieMonster() || !m_destination->hasCookieMonster()) {
++            finish(Status::OwnerLost);
++            return false;
++        }
++        return true;
++    }
++
++    void finish(Status status)
++    {
++        if (m_done)
++            return;
++        m_done = true;
++        m_timeout.stop();
++        const Result result{status, int(m_snapshot.size()), m_destinationCount};
++        m_expected.clear();
++        m_snapshot.clear();
++        m_source->m_ferricProbeBusy = false;
++        m_destination->m_ferricProbeBusy = false;
++        auto completion = std::move(m_completion);
++        deleteLater();
++        completion(result);
++    }
++
++    static bool exact(const net::CookieList &expected, const net::CookieList &actual)
++    {
++        if (expected.size() != actual.size())
++            return false;
++        for (const auto &cookie : expected) {
++            if (std::count_if(actual.begin(), actual.end(), [&](const auto &candidate) {
++                    return cookie.HasEquivalentDataMembers(candidate);
++                }) != 1)
++                return false;
++        }
++        return true;
++    }
++
++    bool createFixture()
++    {
++        const auto now = base::Time::Now();
++        const GURL origin("https://fixture.test:8443/");
++        const char *lines[] = {
++            "host_strict=synthetic; Secure; SameSite=Strict",
++            "domain_lax=synthetic; Domain=fixture.test; Secure; SameSite=Lax",
++            "host_none=synthetic; Secure; SameSite=None",
++            "host_unspecified=synthetic; Secure",
++            "persistent=synthetic; Secure; Max-Age=3600",
++            "http_only=synthetic; Secure; HttpOnly",
++            "path=synthetic; Secure; Path=/scoped",
++            "priority_low=synthetic; Secure; Priority=Low",
++            "priority_high=synthetic; Secure; Priority=High",
++            "collision=synthetic; Secure; SameSite=None; Path=/partition"
++        };
++        auto add = [&](const GURL &url, const char *line,
++                       std::optional<net::CookiePartitionKey> partition,
++                       net::CookieSourceType type) {
++            net::CookieInclusionStatus status;
++            auto cookie = net::CanonicalCookie::Create(url, line, now, std::nullopt,
++                                                       partition, type, &status);
++            if (!cookie || !status.IsInclude())
++                return false;
++            m_expected.push_back(*cookie);
++            return true;
++        };
++        for (const auto *line : lines) {
++            if (!add(origin, line, std::nullopt, net::CookieSourceType::kHTTP))
++                return false;
++        }
++        using Bit = net::CookiePartitionKey::AncestorChainBit;
++        for (const auto &key : {
++                 net::CookiePartitionKey::FromURLForTesting(GURL("https://top-a.test"), Bit::kSameSite),
++                 net::CookiePartitionKey::FromURLForTesting(GURL("https://top-a.test"), Bit::kCrossSite),
++                 net::CookiePartitionKey::FromURLForTesting(GURL("https://top-b.test"), Bit::kCrossSite)}) {
++            if (!add(origin, "collision=synthetic; Secure; SameSite=None; Path=/partition; Partitioned",
++                     key, net::CookieSourceType::kHTTP))
++                return false;
++        }
++        if (!add(GURL("http://fixture.test:8080/"), "insecure=synthetic", std::nullopt,
++                 net::CookieSourceType::kScript))
++            return false;
++        if (m_nonceFixture) {
++            auto key = net::CookiePartitionKey::FromURLForTesting(
++                    GURL("https://top-a.test"), Bit::kCrossSite, base::UnguessableToken::Create());
++            if (!add(origin, "nonced=synthetic; Secure; SameSite=None; Partitioned", key,
++                     net::CookieSourceType::kOther))
++                return false;
++        }
++        if (m_opaqueFixture) {
++            auto key = net::CookiePartitionKey::FromURLForTesting(
++                    GURL("data:text/plain,opaque-fixture"), Bit::kCrossSite);
++            if (!key.site().opaque()
++                    || !add(origin, "opaque=synthetic; Secure; SameSite=None; Partitioned", key,
++                            net::CookieSourceType::kHTTP))
++                return false;
++        }
++        return true;
++    }
++
++    bool substituteUnsupportedCandidate()
++    {
++        if (m_syntheticCase == SyntheticCase::None)
++            return true;
++        if (m_snapshot.empty())
++            return false;
++        // Deliberately substitute only the last in-memory candidate after the
++        // actual safe source was read. This cannot claim a real legacy profile.
++        const auto now = base::Time::Now();
++        const bool legacy = m_syntheticCase == SyntheticCase::LegacyUnknownSource;
++        auto candidate = net::CanonicalCookie::CreateUnsafeCookieForTesting(
++                "synthetic_unsupported", "synthetic", "fixture.test", "/", now,
++                now + (legacy ? base::Hours(1) : base::Days(800)), now, now,
++                true, false, net::CookieSameSite::LAX_MODE,
++                net::CookiePriority::COOKIE_PRIORITY_MEDIUM, std::nullopt,
++                net::CookieSourceScheme::kSecure, 443,
++                legacy ? net::CookieSourceType::kUnknown : net::CookieSourceType::kHTTP);
++        if (!candidate)
++            return false;
++        m_snapshot.back() = std::move(*candidate);
++        return true;
++    }
++
++    void writeNext(bool source, size_t index)
++    {
++        if (!valid())
++            return;
++        const auto &cookies = source ? m_expected : m_snapshot;
++        if (index == cookies.size()) {
++            if (source)
++                capture();
++            else
++                readback();
++            return;
++        }
++        const auto &cookie = cookies[index];
++        auto url = net::cookie_util::SimulatedCookieSource(
++                cookie, cookie.SourceScheme() == net::CookieSourceScheme::kSecure ? "https" : "http");
++        const auto port = std::to_string(cookie.SourcePort());
++        GURL::Replacements replacements;
++        replacements.SetPortStr(port);
++        url = url.ReplaceComponents(replacements);
++        // Inject an actual setter rejection after the first child write. The
++        // second fixture cookie is Secure, so an HTTP source URL must fail.
++        if (!source && m_destinationRejectFixture && index == 1)
++            url = GURL("http://fixture.test/");
++        if (!url.is_valid() || cookie.SourcePort() < 0 || cookie.SourcePort() > 65535) {
++            finish(Status::UnsupportedRecord);
++            return;
++        }
++        net::CookieOptions options;
++        options.set_include_httponly();
++        options.set_same_site_cookie_context(net::CookieOptions::SameSiteCookieContext::MakeInclusiveForSet());
++        auto *delegate = source ? m_source.get() : m_destination.get();
++        if (!source)
++            m_destinationCount = -1; // unknown until an explicit child read-back
++        delegate->m_mojoCookieManager->SetCanonicalCookie(cookie, url, options, base::BindOnce(
++                [](QPointer<FerricCookieProbeOperation> self, bool source, size_t index,
++                   net::CookieAccessResult result) {
++                    if (!self || !self->valid())
++                        return;
++                    if (!result.status.IsInclude()) {
++                        self->finish(Status::MutationRejected);
++                        return;
++                    }
++                    self->writeNext(source, index + 1);
++                }, QPointer(this), source, index));
++    }
++
++    void capture()
++    {
++        m_source->m_mojoCookieManager->GetAllCookies(base::BindOnce(
++                [](QPointer<FerricCookieProbeOperation> self, const net::CookieList &cookies) {
++                    if (!self || !self->valid())
++                        return;
++                    // Synthetic bounded fixture only. A production adapter needs
++                    // an engine-side byte/count limit before IPC allocation too.
++                    if (cookies.size() > 64
++                            || (!self->m_existingSource && !exact(self->m_expected, cookies))) {
++                        self->finish(Status::ReadbackMismatch);
++                        return;
++                    }
++                    self->m_snapshot = cookies;
++                    if (!self->substituteUnsupportedCandidate()) {
++                        self->finish(Status::Unavailable);
++                        return;
++                    }
++                    for (const auto &cookie : self->m_snapshot) {
++                        if ((cookie.PartitionKey() && (!cookie.PartitionKey()->IsSerializeable()
++                                || cookie.PartitionKey()->nonce()))
++                                || cookie.SourceScheme() == net::CookieSourceScheme::kUnset
++                                || cookie.SourceType() == net::CookieSourceType::kUnknown
++                                || cookie.SourcePort() < 0 || cookie.SourcePort() > 65535
++                                || net::CanonicalCookie::ValidateAndAdjustExpiryDate(
++                                        cookie.ExpiryDate(), cookie.CreationDate(), cookie.SourceScheme())
++                                           != cookie.ExpiryDate()) {
++                            // Refuse the entire copy, before touching the child.
++                            self->verifyRefusal();
++                            return;
++                        }
++                    }
++                    self->writeNext(false, 0);
++                }, QPointer(this)));
++    }
++
++    void readback()
++    {
++        m_destination->m_mojoCookieManager->GetAllCookies(base::BindOnce(
++                [](QPointer<FerricCookieProbeOperation> self, const net::CookieList &cookies) {
++                    if (!self || !self->valid())
++                        return;
++                    self->m_destinationCount = int(cookies.size());
++                    self->finish(exact(self->m_snapshot, cookies)
++                                     ? Status::ExactReadback : Status::ReadbackMismatch);
++                }, QPointer(this)));
++    }
++
++    void verifyRefusal()
++    {
++        m_destination->m_mojoCookieManager->GetAllCookies(base::BindOnce(
++                [](QPointer<FerricCookieProbeOperation> self, const net::CookieList &cookies) {
++                    if (!self || !self->valid())
++                        return;
++                    self->m_destinationCount = int(cookies.size());
++                    self->finish(cookies.empty() ? Status::UnsupportedRecord : Status::ReadbackMismatch);
++                }, QPointer(this)));
++    }
++
++public:
++    FerricCookieProbeOperation(CookieMonsterDelegateQt *source,
++                              CookieMonsterDelegateQt *destination, bool nonceFixture,
++                              std::function<void(Result)> completion, bool existingSource,
++                              SyntheticCase syntheticCase, bool opaqueFixture,
++                              bool destinationRejectFixture)
++        : m_source(source), m_destination(destination), m_sourceOwner(source->m_client),
++          m_destinationOwner(destination->m_client), m_sourceGeneration(source->m_ferricGeneration),
++          m_destinationGeneration(destination->m_ferricGeneration),
++          m_completion(std::move(completion)), m_nonceFixture(nonceFixture),
++          m_existingSource(existingSource), m_syntheticCase(syntheticCase),
++          m_opaqueFixture(opaqueFixture), m_destinationRejectFixture(destinationRejectFixture)
++    {
++        source->m_ferricProbeBusy = destination->m_ferricProbeBusy = true;
++        connect(m_sourceOwner, &QObject::destroyed, this, [this] { finish(Status::OwnerLost); });
++        connect(m_destinationOwner, &QObject::destroyed, this, [this] { finish(Status::OwnerLost); });
++        connect(&m_timeout, &QTimer::timeout, this, [this] { finish(Status::TimedOut); });
++        m_timeout.setSingleShot(true);
++        m_timeout.start(20000);
++    }
++
++    void start()
++    {
++        if (!valid())
++            return;
++        m_source->m_mojoCookieManager->GetAllCookies(base::BindOnce(
++                [](QPointer<FerricCookieProbeOperation> self, const net::CookieList &sourceCookies) {
++                    if (!self || !self->valid())
++                        return;
++                    if (!self->m_existingSource && !sourceCookies.empty()) {
++                        self->finish(Status::NonEmptyStore);
++                        return;
++                    }
++                    self->m_destination->m_mojoCookieManager->GetAllCookies(base::BindOnce(
++                            [](QPointer<FerricCookieProbeOperation> self, const net::CookieList &cookies) {
++                                if (!self || !self->valid())
++                                    return;
++                                if (!cookies.empty()) {
++                                    self->finish(Status::NonEmptyStore);
++                                    return;
++                                }
++                                if (self->m_existingSource) {
++                                    self->capture();
++                                    return;
++                                }
++                                if (!self->createFixture()) {
++                                    self->finish(Status::Unavailable);
++                                    return;
++                                }
++                                self->writeNext(true, 0);
++                            }, self));
++                }, QPointer(this)));
++    }
++};
++
++void CookieMonsterDelegateQt::ferricCookieCloneProbe(
++        CookieMonsterDelegateQt *destination, bool nonceFixture,
++        std::function<void(QWebEngineCookieStore::FerricProbeResult)> completion,
++        bool existingSource, QWebEngineCookieStore::FerricSyntheticPreflightCase syntheticCase,
++        bool opaqueFixture, bool destinationRejectFixture)
++{
++    if ((nonceFixture && opaqueFixture) || (destinationRejectFixture && (nonceFixture || opaqueFixture
++            || existingSource || syntheticCase != QWebEngineCookieStore::FerricSyntheticPreflightCase::None))
++            || destination == this
++            || !hasCookieMonster() || !destination->hasCookieMonster()
++            || !m_client || !destination->m_client || m_hasFilter || destination->m_hasFilter
++            || m_ferricProbeBusy || destination->m_ferricProbeBusy) {
++        completion({QWebEngineCookieStore::FerricProbeStatus::Unavailable, 0, 0});
++        return;
++    }
++    (new FerricCookieProbeOperation(this, destination, nonceFixture,
++                                   std::move(completion), existingSource, syntheticCase,
++                                   opaqueFixture, destinationRejectFixture))->start();
++}
++
+ class CookieChangeListener : public network::mojom::CookieChangeListener
+ {
+ public:
+@@ -177,6 +515,7 @@
+ 
+ void CookieMonsterDelegateQt::unsetMojoCookieManager()
+ {
++    ++m_ferricGeneration;
+     m_receiver.reset();
+     m_filterReceiver.reset();
+     m_mojoCookieManager.reset();
+--- a/src/core/api/qwebenginepage.h
++++ b/src/core/api/qwebenginepage.h
+@@ -324,6 +324,31 @@
+ 
+     LifecycleState recommendedState() const;
+ 
++    // Isolated Ferric diagnostic. Unknown includes zero observed connections;
++    // this API NEVER certifies absence or authorizes freezing/stashing.
++    enum class FerricRtcProbeState { Unknown, ObservedPeerConnection };
++    FerricRtcProbeState ferricRtcProbeState() const;
++    // Disposable OTR fixtures ONLY: intentionally freezes and then restores the
++    // page, even if a peer exists. EmptyRegistriesAfterFreeze is a diagnostic
++    // observation, never a production Clear/admission result.
++    enum class FerricRtcRegistryProbeState { Unknown, RegisteredAfterFreeze, EmptyRegistriesAfterFreeze };
++    struct FerricRtcRegistryProbeResult {
++        FerricRtcRegistryProbeState state;
++        int frameCount;
++        int processCount;
++    };
++    void ferricRtcFrozenRegistryProbe(std::function<void(FerricRtcRegistryProbeResult)> completion);
++    struct FerricRtcFrozenLeaseProbeResult {
++        FerricRtcRegistryProbeResult result;
++        // Diagnostic lease only. The scope check is synchronous and cannot
++        // certify media/capture activity or a later production stash.
++        std::function<bool()> scopeStillHeld;
++        std::function<void()> release;
++    };
++    void ferricRtcAcquireFrozenRegistryLeaseProbe(
++            std::function<void(FerricRtcFrozenLeaseProbeResult)> completion,
++            std::function<void()> invalidated);
++
+     bool isVisible() const;
+     void setVisible(bool visible);
+ 
+--- a/src/core/api/qwebenginepage.cpp
++++ b/src/core/api/qwebenginepage.cpp
+@@ -2484,6 +2484,52 @@
+     return static_cast<LifecycleState>(d->adapter->recommendedState());
+ }
+ 
++QWebEnginePage::FerricRtcProbeState QWebEnginePage::ferricRtcProbeState() const
++{
++    Q_D(const QWebEnginePage);
++    return d->adapter->ferricHasObservedPeerConnectionForProbe()
++            ? FerricRtcProbeState::ObservedPeerConnection : FerricRtcProbeState::Unknown;
++}
++
++void QWebEnginePage::ferricRtcFrozenRegistryProbe(
++        std::function<void(FerricRtcRegistryProbeResult)> completion)
++{
++    if (!completion)
++        return;
++    if (QThread::currentThread() != thread() || !profile()->isOffTheRecord()) {
++        completion({FerricRtcRegistryProbeState::Unknown, 0, 0});
++        return;
++    }
++    Q_D(QWebEnginePage);
++    d->adapter->ferricRtcFrozenRegistryProbe(this,
++            [completion = std::move(completion)](bool known, bool registered, int count, int processes) {
++        completion({!known ? FerricRtcRegistryProbeState::Unknown
++                           : registered ? FerricRtcRegistryProbeState::RegisteredAfterFreeze
++                                        : FerricRtcRegistryProbeState::EmptyRegistriesAfterFreeze, count, processes});
++    });
++}
++
++void QWebEnginePage::ferricRtcAcquireFrozenRegistryLeaseProbe(
++        std::function<void(FerricRtcFrozenLeaseProbeResult)> completion,
++        std::function<void()> invalidated)
++{
++    if (!completion)
++        return;
++    if (QThread::currentThread() != thread() || !profile()->isOffTheRecord()) {
++        completion({{FerricRtcRegistryProbeState::Unknown, 0, 0}, {}, {}});
++        return;
++    }
++    Q_D(QWebEnginePage);
++    d->adapter->ferricRtcAcquireFrozenRegistryLeaseProbe(this,
++            [completion = std::move(completion)](bool known, bool registered, int count, int processes,
++                    std::function<bool()> held, std::function<void()> release) {
++        completion({{!known ? FerricRtcRegistryProbeState::Unknown
++                            : registered ? FerricRtcRegistryProbeState::RegisteredAfterFreeze
++                                         : FerricRtcRegistryProbeState::EmptyRegistriesAfterFreeze,
++                     count, processes}, std::move(held), std::move(release)});
++    }, std::move(invalidated));
++}
++
+ /*!
+   \property QWebEnginePage::visible
+   \since 5.14
+--- a/src/core/web_contents_adapter.h
++++ b/src/core/web_contents_adapter.h
+@@ -75,6 +75,9 @@
+ class WebChannelIPCTransportHost;
+ 
+ class Q_WEBENGINECORE_EXPORT WebContentsAdapter : public QEnableSharedFromThis<WebContentsAdapter> {
++    friend class FerricRtcRegistryProbeOperation;
++    bool m_ferricRtcProbeBusy = false;
++    std::function<void()> m_ferricRtcHeldScriptInvalidator;
+ public:
+     // Sentinel to indicate that a behavior should happen on the main frame
+     static constexpr quint64 kUseMainFrameId = -2;
+@@ -101,6 +104,12 @@
+     LifecycleState lifecycleState() const;
+     void setLifecycleState(LifecycleState state);
+     LifecycleState recommendedState() const;
++    bool ferricHasObservedPeerConnectionForProbe() const;
++    void ferricRtcFrozenRegistryProbe(QObject *owner,
++                                      std::function<void(bool, bool, int, int)> completion);
++    void ferricRtcAcquireFrozenRegistryLeaseProbe(QObject *owner,
++            std::function<void(bool, bool, int, int, std::function<bool()>, std::function<void()>)> completion,
++            std::function<void()> invalidated);
+ 
+     bool isVisible() const;
+     void setVisible(bool visible);
+--- a/src/core/web_contents_adapter.cpp
++++ b/src/core/web_contents_adapter.cpp
+@@ -20,6 +20,7 @@
+ #include "permission_manager_qt.h"
+ #include "profile_adapter.h"
+ #include "profile_qt.h"
++#include "qwebenginepage.h"
+ #include "qwebengineloadinginfo.h"
+ #include "renderer_host/web_engine_page_host.h"
+ #include "render_widget_host_view_qt.h"
+@@ -29,6 +30,7 @@
+ #include "web_engine_settings.h"
+ 
+ #include "base/command_line.h"
++#include "base/no_destructor.h"
+ #include "base/metrics/user_metrics.h"
+ #include "base/task/current_thread.h"
+ #include "base/task/sequence_manager/sequence_manager_impl.h"
+@@ -40,6 +42,7 @@
+ #include "components/embedder_support/user_agent_utils.h"
+ #include "components/favicon/core/favicon_service.h"
+ #include "content/browser/renderer_host/render_view_host_impl.h"
++#include "content/browser/renderer_host/render_frame_host_impl.h"
+ #include "content/browser/renderer_host/text_input_manager.h"
+ #include "content/browser/web_contents/web_contents_impl.h"
+ #include "content/public/browser/devtools_agent_host.h"
+@@ -47,6 +50,12 @@
+ #include "content/public/browser/download_request_utils.h"
+ #include "content/public/browser/host_zoom_map.h"
+ #include "content/public/browser/navigation_entry.h"
++#include "content/public/browser/peer_connection_tracker_host_observer.h"
++#include "content/public/browser/render_frame_host.h"
++#include "content/public/browser/web_contents_observer.h"
++#include "content/public/browser/site_instance.h"
++#include "mojo/public/cpp/bindings/associated_remote.h"
++#include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
+ #include "content/public/browser/navigation_entry_restore_context.h"
+ #include "content/public/browser/render_view_host.h"
+ #include "content/public/browser/favicon_status.h"
+@@ -69,12 +78,16 @@
+ #include <QtCore/QElapsedTimer>
+ #include <QtCore/QMimeData>
+ #include <QtCore/QTemporaryDir>
++#include <QtCore/QTimer>
+ #include <QtGui/QDrag>
+ #include <QtGui/QDragEnterEvent>
+ #include <QtGui/QGuiApplication>
+ #include <QtGui/QPageLayout>
+ #include <QtGui/QPixmap>
+ #include <QtGui/QStyleHints>
++#include <set>
++#include <algorithm>
++#include <vector>
+ 
+ #if QT_CONFIG(accessibility)
+ #include "browser_accessibility_qt.h"
+@@ -99,6 +112,342 @@
+ 
+ namespace QtWebEngineCore {
+ 
++namespace {
++// Intentionally observation-only. A late subscription, pending renderer IPC,
++// closed-but-not-removed connection or frame replacement defeats absence proof.
++// No URL, RTC configuration, SDP, ICE data, updates or stats are retained.
++class FerricRtcProbeObserver final : public content::PeerConnectionTrackerHostObserver
++{
++    std::set<std::pair<content::GlobalRenderFrameHostId, int>> m_connections;
++    bool m_overflow = false;
++public:
++    void OnPeerConnectionAdded(content::GlobalRenderFrameHostId frame, int lid,
++                               base::ProcessId, const std::string &, const std::string &) override
++    {
++        if (m_connections.size() >= 4096) {
++            m_connections.clear();
++            m_overflow = true;
++        }
++        if (!m_overflow)
++            m_connections.emplace(frame, lid);
++    }
++
++    void OnPeerConnectionRemoved(content::GlobalRenderFrameHostId frame, int lid) override
++    {
++        m_connections.erase({frame, lid});
++    }
++
++    bool observedFor(content::WebContents *contents) const
++    {
++        if (m_overflow)
++            return false; // public result remains Unknown, never Clear
++        for (const auto &[id, lid] : m_connections) {
++            auto *frame = content::RenderFrameHost::FromID(id);
++            if (frame && frame->IsRenderFrameLive()
++                    && content::WebContents::FromRenderFrameHost(frame) == contents)
++                return true;
++        }
++        return false;
++    }
++};
++} // namespace
++
++bool WebContentsAdapter::ferricHasObservedPeerConnectionForProbe() const
++{
++    if (!isInitialized())
++        return false;
++    // Browser-UI-thread use only, as with the surrounding adapter APIs. A
++    // process-lifetime observer avoids registration gaps between probe reads.
++    static base::NoDestructor<FerricRtcProbeObserver> observer;
++    return observer->observedFor(m_webContents.get());
++}
++
++// Experimental witness only: the optional held lease is a short-lived,
++// off-the-record fixture boundary, not production media/capture admission.
++// Every missing/changing identity is Unknown. The fixture may intentionally
++// freeze a synthetic active peer.
++class FerricRtcRegistryProbeOperation final : public QObject,
++                                             public content::WebContentsObserver
++{
++    struct Frame {
++        content::GlobalRenderFrameHostId id;
++        base::UnguessableToken document;
++        mojo::AssociatedRemote<qtwebenginepage::mojom::FerricRtcProbeFrame> remote;
++    };
++    QWeakPointer<WebContentsAdapter> m_adapter;
++    QPointer<QObject> m_owner;
++    std::function<void(bool, bool, int, int, std::function<bool()>, std::function<void()>)> m_completion;
++    std::function<void()> m_invalidated;
++    std::vector<Frame> m_frames;
++    std::set<content::RenderProcessHost *> m_processes;
++    QTimer m_deadline;
++    bool m_done = false;
++    bool m_retainEmpty = false;
++    bool m_held = false;
++    bool m_freezeRequested = false;
++    bool m_anyRegistered = false;
++    bool m_anyUnfrozen = false;
++    int m_pending = 0;
++    int m_round = 0;
++
++    void finish(bool known, bool registered = false, bool intentionalRelease = false)
++    {
++        if (m_done)
++            return;
++        m_done = true;
++        m_deadline.stop();
++        const bool wasHeld = m_held;
++        m_held = false;
++        const int count = int(m_frames.size());
++        auto adapter = m_adapter.toStrongRef();
++        auto *contents = web_contents();
++        Observe(nullptr);
++        m_frames.clear();
++        if (adapter) {
++            adapter->m_ferricRtcHeldScriptInvalidator = {};
++            adapter->m_ferricRtcProbeBusy = false;
++            if (m_owner && m_freezeRequested && adapter->webContents() == contents
++                    && adapter->lifecycleState() == WebContentsAdapter::LifecycleState::Frozen)
++                adapter->setLifecycleState(WebContentsAdapter::LifecycleState::Active);
++        }
++        auto completion = std::move(m_completion);
++        auto invalidated = std::move(m_invalidated);
++        deleteLater();
++        if (completion)
++            completion(known, registered, count, int(m_processes.size()), {}, {});
++        if (wasHeld && !intentionalRelease && invalidated)
++            invalidated();
++    }
++
++    void retainEmpty()
++    {
++        if (!validScope()) {
++            finish(false);
++            return;
++        }
++        m_held = true;
++        auto adapter = m_adapter.toStrongRef();
++        QPointer<FerricRtcRegistryProbeOperation> self(this);
++        adapter->m_ferricRtcHeldScriptInvalidator = [self] {
++            if (self && self->m_held)
++                self->finish(false);
++        };
++        // A bounded experiment must restore its fixture even if its caller
++        // forgets release. A production stash needs separate lease ownership.
++        m_deadline.start(60000);
++        auto completion = std::move(m_completion);
++        completion(true, false, int(m_frames.size()), int(m_processes.size()),
++                [self] {
++            if (!self || !self->m_held)
++                return false;
++            if (!self->validScope()) {
++                self->finish(false);
++                return false;
++            }
++            return true;
++        }, [self] {
++            if (self && self->m_held)
++                self->finish(false, false, true);
++        });
++    }
++
++    bool usable(content::RenderFrameHost *frame) const
++    {
++        return frame && frame->IsRenderFrameLive()
++                && frame->IsInLifecycleState(content::RenderFrameHost::LifecycleState::kActive)
++                && content::WebContents::FromRenderFrameHost(frame) == web_contents();
++    }
++
++    bool validScope() const
++    {
++        auto adapter = m_adapter.toStrongRef();
++        auto *contents = web_contents();
++        if (m_done || !m_owner || !adapter || !contents || adapter->webContents() != contents
++                || contents->IsLoading() || adapter->isVisible()
++                || (m_retainEmpty && !adapter->m_javaScriptCallbacks.isEmpty())
++                || adapter->lifecycleState() != (m_freezeRequested
++                        ? WebContentsAdapter::LifecycleState::Frozen
++                        : WebContentsAdapter::LifecycleState::Active))
++            return false;
++        auto *main = contents->GetPrimaryMainFrame();
++        if (!usable(main) || main->GetSiteInstance()->GetRelatedActiveContentsCount() != 1)
++            return false;
++        size_t count = 0;
++        bool valid = true;
++        main->ForEachRenderFrameHostWithAction([&](content::RenderFrameHost *frame) {
++            if (!usable(frame) || ++count > 128) {
++                valid = false;
++                return content::RenderFrameHost::FrameIterationAction::kStop;
++            }
++            const auto it = std::find_if(m_frames.begin(), m_frames.end(), [&](const Frame &entry) {
++                return entry.id == frame->GetGlobalId();
++            });
++            if (it == m_frames.end() || it->document
++                    != static_cast<content::RenderFrameHostImpl *>(frame)->GetDocumentToken().value()) {
++                valid = false;
++                return content::RenderFrameHost::FrameIterationAction::kStop;
++            }
++            return content::RenderFrameHost::FrameIterationAction::kContinue;
++        });
++        return valid && count == m_frames.size() && count > 0;
++    }
++
++    void readRound()
++    {
++        if (!validScope() || ++m_round > 128) {
++            finish(false);
++            return;
++        }
++        m_pending = int(m_frames.size());
++        m_anyRegistered = false;
++        m_anyUnfrozen = false;
++        for (size_t index = 0; index < m_frames.size(); ++index) {
++            m_frames[index].remote->ReadRegistry(base::BindOnce(
++                    [](QPointer<FerricRtcRegistryProbeOperation> self, size_t index, int round,
++                       bool available, bool frozen, bool registered, uint64_t high, uint64_t low) {
++                if (!self || self->m_done || round != self->m_round)
++                    return;
++                if (!self->validScope()) {
++                    self->finish(false);
++                    return;
++                }
++                const auto &expected = self->m_frames[index].document;
++                if (!available || high != expected.GetHighForSerialization()
++                        || low != expected.GetLowForSerialization()
++                        || (!self->m_freezeRequested && frozen)) {
++                    self->finish(false);
++                    return;
++                }
++                self->m_anyRegistered |= registered;
++                self->m_anyUnfrozen |= !frozen;
++                if (--self->m_pending != 0)
++                    return;
++                if (!self->m_freezeRequested) {
++                    // All receivers are bound before freezing. Binding a fresh
++                    // frame receiver after freeze could stall on a frozen queue.
++                    self->m_freezeRequested = true;
++                    auto adapter = self->m_adapter.toStrongRef();
++                    if (!adapter) {
++                        self->finish(false);
++                        return;
++                    }
++                    adapter->setLifecycleState(WebContentsAdapter::LifecycleState::Frozen);
++                    self->readRound();
++                } else if (self->m_anyUnfrozen) {
++                    // Retry only to await an actual native frozen-state report,
++                    // never to infer absence from elapsed time or quiet IPC.
++                    QTimer::singleShot(10, self, [self] {
++                        if (self && !self->m_done)
++                            self->readRound();
++                    });
++                } else {
++                    if (self->m_retainEmpty && !self->m_anyRegistered)
++                        self->retainEmpty();
++                    else
++                        self->finish(true, self->m_anyRegistered);
++                }
++            }, QPointer(this), index, m_round));
++        }
++    }
++
++    void RenderFrameCreated(content::RenderFrameHost *) override { finish(false); }
++    void RenderFrameDeleted(content::RenderFrameHost *) override { finish(false); }
++    void RenderFrameHostChanged(content::RenderFrameHost *, content::RenderFrameHost *) override { finish(false); }
++    void DidStartNavigation(content::NavigationHandle *) override { finish(false); }
++    void PrimaryPageChanged(content::Page &) override { finish(false); }
++    void OnVisibilityChanged(content::Visibility visibility) override
++    {
++        if (m_held && visibility == content::Visibility::VISIBLE)
++            finish(false);
++    }
++    void WebContentsDestroyed() override { finish(false); }
++
++public:
++    FerricRtcRegistryProbeOperation(const QSharedPointer<WebContentsAdapter> &adapter,
++                                   QObject *owner,
++                                   std::function<void(bool, bool, int, int, std::function<bool()>, std::function<void()>)> completion,
++                                   std::function<void()> invalidated, bool retainEmpty)
++        : content::WebContentsObserver(adapter->webContents()), m_adapter(adapter.toWeakRef()),
++          m_owner(owner), m_completion(std::move(completion)), m_invalidated(std::move(invalidated)),
++          m_retainEmpty(retainEmpty)
++    {
++        connect(owner, &QObject::destroyed, this, [this] { finish(false); });
++        if (auto *page = qobject_cast<QWebEnginePage *>(owner)) {
++            connect(page, &QWebEnginePage::lifecycleStateChanged, this,
++                    [this](QWebEnginePage::LifecycleState state) {
++                if (m_held && state != QWebEnginePage::LifecycleState::Frozen)
++                    finish(false);
++            });
++        }
++        m_deadline.setSingleShot(true);
++        connect(&m_deadline, &QTimer::timeout, this, [this] { finish(false); });
++        m_deadline.start(20000);
++    }
++
++    void start()
++    {
++        auto *main = web_contents()->GetPrimaryMainFrame();
++        if (!usable(main)) {
++            finish(false);
++            return;
++        }
++        m_frames.reserve(128);
++        bool valid = true;
++        main->ForEachRenderFrameHostWithAction([&](content::RenderFrameHost *frame) {
++            if (!usable(frame) || m_frames.size() >= 128) {
++                valid = false;
++                return content::RenderFrameHost::FrameIterationAction::kStop;
++            }
++            m_frames.push_back({frame->GetGlobalId(),
++                    static_cast<content::RenderFrameHostImpl *>(frame)->GetDocumentToken().value(), {}});
++            m_processes.insert(frame->GetProcess());
++            auto &remote = m_frames.back().remote;
++            frame->GetRemoteAssociatedInterfaces()->GetInterface(remote.BindNewEndpointAndPassReceiver());
++            remote.set_disconnect_handler(base::BindOnce([](QPointer<FerricRtcRegistryProbeOperation> self) {
++                if (self && !self->m_done)
++                    self->finish(false);
++            }, QPointer(this)));
++            return content::RenderFrameHost::FrameIterationAction::kContinue;
++        });
++        if (!valid) {
++            finish(false);
++            return;
++        }
++        readRound();
++    }
++};
++
++void WebContentsAdapter::ferricRtcFrozenRegistryProbe(QObject *owner,
++                                                     std::function<void(bool, bool, int, int)> completion)
++{
++    if (!owner || !isInitialized() || m_ferricRtcProbeBusy || isVisible() || hasInspector()
++            || isInspector() || lifecycleState() != LifecycleState::Active || m_webContents->IsLoading()) {
++        completion(false, false, 0, 0);
++        return;
++    }
++    m_ferricRtcProbeBusy = true;
++    (new FerricRtcRegistryProbeOperation(sharedFromThis(), owner,
++            [completion = std::move(completion)](bool known, bool registered, int frames, int processes,
++                                                std::function<bool()>, std::function<void()>) {
++        completion(known, registered, frames, processes);
++    }, {}, false))->start();
++}
++
++void WebContentsAdapter::ferricRtcAcquireFrozenRegistryLeaseProbe(QObject *owner,
++        std::function<void(bool, bool, int, int, std::function<bool()>, std::function<void()>)> completion,
++        std::function<void()> invalidated)
++{
++    if (!owner || !isInitialized() || m_ferricRtcProbeBusy || !m_javaScriptCallbacks.isEmpty()
++            || isVisible() || hasInspector()
++            || isInspector() || lifecycleState() != LifecycleState::Active || m_webContents->IsLoading()) {
++        completion(false, false, 0, 0, {}, {});
++        return;
++    }
++    m_ferricRtcProbeBusy = true;
++    (new FerricRtcRegistryProbeOperation(sharedFromThis(), owner,
++            std::move(completion), std::move(invalidated), true))->start();
++}
++
+ #define CHECK_INITIALIZED(return_value)         \
+     if (!isInitialized())                       \
+         return return_value
+@@ -1072,9 +1421,15 @@
+ void WebContentsAdapter::runJavaScript(const QString &javaScript, quint32 worldId, quint64 frameId,
+                                        const std::function<void(const QVariant &)> &callback)
+ {
++    // Qt's explicit script injection runs even while Chromium reports Frozen.
++    // Revoke the experimental absence lease and thaw before dispatching it.
++    const auto retained = sharedFromThis();
++    const auto safeCallback = callback;
++    if (auto invalidate = m_ferricRtcHeldScriptInvalidator)
++        invalidate();
+     auto exit = [&] {
+-        if (callback)
+-            callback(QVariant());
++        if (safeCallback)
++            safeCallback(QVariant());
+     };
+ 
+     if (!isInitialized())
+@@ -1087,12 +1442,15 @@
+         return exit();
+     }
+ 
+-    content::RenderFrameHost::JavaScriptResultCallback internalCallback = base::NullCallback();
+-    if (callback) {
+-        internalCallback = base::BindOnce(&callbackOnEvaluateJS, this, m_nextRequestId);
+-        m_javaScriptCallbacks.insert(m_nextRequestId, callback);
+-        ++m_nextRequestId;
+-    }
++    // Track even fire-and-forget application scripts. A result callback is the
++    // conservative completion boundary for a script already sent to Chromium.
++    content::RenderFrameHost::JavaScriptResultCallback internalCallback =
++            base::BindOnce(&callbackOnEvaluateJS, this, m_nextRequestId);
++    m_javaScriptCallbacks.insert(m_nextRequestId, [safeCallback](const QVariant &value) {
++        if (safeCallback)
++            safeCallback(value);
++    });
++    ++m_nextRequestId;
+     if (worldId == 0)
+         rfh->ExecuteJavaScript(toString16(javaScript), std::move(internalCallback));
+     else
+--- a/src/core/renderer/web_engine_page_render_frame.h
++++ b/src/core/renderer/web_engine_page_render_frame.h
+@@ -15,6 +15,21 @@
+ 
+ namespace QtWebEngineCore {
+ 
++// Independent of Qt's main-frame-only page interface: every live frame needs
++// its own document-bound witness, including ordinary and out-of-process children.
++class FerricRtcProbeRenderFrame : private content::RenderFrameObserver,
++                                  public qtwebenginepage::mojom::FerricRtcProbeFrame
++{
++public:
++    explicit FerricRtcProbeRenderFrame(content::RenderFrame *frame);
++
++private:
++    void ReadRegistry(ReadRegistryCallback callback) override;
++    void BindRtcProbe(mojo::PendingAssociatedReceiver<qtwebenginepage::mojom::FerricRtcProbeFrame> receiver);
++    void OnDestruct() override { delete this; }
++    mojo::AssociatedReceiver<qtwebenginepage::mojom::FerricRtcProbeFrame> m_rtcProbeBinding;
++};
++
+ class WebEnginePageRenderFrame : private content::RenderFrameObserver,
+                                  public qtwebenginepage::mojom::WebEnginePageRenderFrame
+ {
+--- a/src/core/renderer/web_engine_page_render_frame.cpp
++++ b/src/core/renderer/web_engine_page_render_frame.cpp
+@@ -8,6 +8,7 @@
+ #include "third_party/blink/public/common/associated_interfaces/associated_interface_registry.h"
+ #include "third_party/blink/public/common/metrics/document_update_reason.h"
+ #include "third_party/blink/public/platform/web_string.h"
++#include "third_party/blink/public/platform/scheduler/web_agent_group_scheduler.h"
+ #include "third_party/blink/public/web/web_frame_content_dumper.h"
+ #include "third_party/blink/public/web/web_local_frame.h"
+ #include "third_party/blink/public/web/web_view.h"
+@@ -15,6 +16,9 @@
+ // Pretend we are part of blink to access non public blink headers:
+ #define INSIDE_BLINK 1
+ #include "third_party/blink/renderer/core/frame/web_local_frame_impl.h"
++#include "third_party/blink/renderer/core/frame/local_dom_window.h"
++#include "third_party/blink/renderer/core/page/page.h"
++#include "third_party/blink/renderer/modules/peerconnection/peer_connection_tracker.h"
+ #include "third_party/blink/renderer/platform/heap/thread_state.h"
+ #undef INSIDE_BLINK
+ 
+@@ -50,6 +54,41 @@
+             base::BindRepeating(&WebEnginePageRenderFrame::BindReceiver, base::Unretained(this)));
+ }
+ 
++FerricRtcProbeRenderFrame::FerricRtcProbeRenderFrame(content::RenderFrame *render_frame)
++    : content::RenderFrameObserver(render_frame), m_rtcProbeBinding(this)
++{
++    render_frame->GetAssociatedInterfaceRegistry()->AddInterface<qtwebenginepage::mojom::FerricRtcProbeFrame>(
++            base::BindRepeating(&FerricRtcProbeRenderFrame::BindRtcProbe, base::Unretained(this)));
++}
++
++void FerricRtcProbeRenderFrame::BindRtcProbe(
++        mojo::PendingAssociatedReceiver<qtwebenginepage::mojom::FerricRtcProbeFrame> receiver)
++{
++    auto *frame = render_frame()->GetWebFrame();
++    if (!frame || !frame->GetAgentGroupScheduler())
++        return;
++    m_rtcProbeBinding.reset();
++    m_rtcProbeBinding.Bind(std::move(receiver), frame->GetAgentGroupScheduler()->DefaultTaskRunner());
++}
++
++void FerricRtcProbeRenderFrame::ReadRegistry(ReadRegistryCallback callback)
++{
++    CHECK(blink::IsMainThread());
++    auto *webFrame = render_frame()->GetWebFrame();
++    auto *frame = webFrame ? To<blink::WebLocalFrameImpl>(webFrame)->GetFrame() : nullptr;
++    auto *document = frame ? frame->GetDocument() : nullptr;
++    auto *window = frame ? frame->DomWindow() : nullptr;
++    auto *page = frame ? frame->GetPage() : nullptr;
++    if (!document || !document->IsActive() || !window || window->IsContextDestroyed() || !page) {
++        std::move(callback).Run(false, false, false, 0, 0);
++        return;
++    }
++    const auto &token = document->Token().value();
++    std::move(callback).Run(true, page->Frozen() && window->IsContextFrozen(),
++                            blink::PeerConnectionTracker::FerricHasRegisteredPeerConnection(*window),
++                            token.GetHighForSerialization(), token.GetLowForSerialization());
++}
++
+ void WebEnginePageRenderFrame::BindReceiver(
+         mojo::PendingAssociatedReceiver<qtwebenginepage::mojom::WebEnginePageRenderFrame> receiver)
+ {
+--- a/src/core/renderer/content_renderer_client_qt.cpp
++++ b/src/core/renderer/content_renderer_client_qt.cpp
+@@ -176,6 +176,7 @@
+ {
+     QtWebEngineCore::RenderFrameObserverQt *render_frame_observer =
+             new QtWebEngineCore::RenderFrameObserverQt(render_frame, m_webCacheImpl.data());
++    new FerricRtcProbeRenderFrame(render_frame);
+     if (render_frame->IsMainFrame()) {
+ #if QT_CONFIG(webengine_webchannel)
+         new WebChannelIPCTransport(render_frame);
+--- a/src/3rdparty/chromium/qtwebengine/browser/qtwebenginepage.mojom
++++ b/src/3rdparty/chromium/qtwebengine/browser/qtwebenginepage.mojom
+@@ -1,8 +1,14 @@
+ module qtwebenginepage.mojom;
+ 
++// Diagnostic-only, separately bound on the agent-group control task runner.
++// This is not a production admission or "Clear" certificate.
++interface FerricRtcProbeFrame {
++  ReadRegistry() => (bool available, bool frozen, bool registered,
++                    uint64 document_high, uint64 document_low);
++};
++
+ interface WebEnginePageRenderFrame {
+   FetchDocumentMarkup(uint64 requestId) => (uint64 requestId, string markup);
+   FetchDocumentInnerText(uint64 requestId) => (uint64 requestId, string text);
+   SetBackgroundColor(uint32 color);
+ };
+-
+--- a/src/3rdparty/chromium/third_party/blink/renderer/modules/peerconnection/peer_connection_tracker.h
++++ b/src/3rdparty/chromium/third_party/blink/renderer/modules/peerconnection/peer_connection_tracker.h
+@@ -54,6 +54,12 @@
+   static PeerConnectionTracker& From(LocalDOMWindow& window);
+   static PeerConnectionTracker* From(LocalFrame& frame);
+   static PeerConnectionTracker* From(WebLocalFrame& frame);
++  // Ferric's disposable native experiment. Do not create a tracker merely to
++  // query it, and do not expose configurations, stats or connection objects.
++  static bool FerricHasRegisteredPeerConnection(LocalDOMWindow& window) {
++    auto* tracker = Supplement<LocalDOMWindow>::From<PeerConnectionTracker>(window);
++    return tracker && !tracker->peer_connection_local_id_map_.empty();
++  }
+   PeerConnectionTracker(
+       LocalDOMWindow& window,
+       scoped_refptr<base::SingleThreadTaskRunner> main_thread_task_runner,

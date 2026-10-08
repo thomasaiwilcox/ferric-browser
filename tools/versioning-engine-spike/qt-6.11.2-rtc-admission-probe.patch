@@ -1,0 +1,588 @@
+--- a/src/core/api/qwebenginepage.cpp
++++ b/src/core/api/qwebenginepage.cpp
+@@ -2530,6 +2530,22 @@
+     }, std::move(invalidated));
+ }
+ 
++bool QWebEnginePage::ferricPreselectedDesktopAdmissionProbe()
++{
++    if (QThread::currentThread() != thread() || !profile()->isOffTheRecord())
++        return false;
++    Q_D(QWebEnginePage);
++    return d->adapter->ferricPreselectedDesktopAdmissionProbe();
++}
++
++bool QWebEnginePage::ferricPreselectedFakeDesktopActivityHandoffProbe()
++{
++    if (QThread::currentThread() != thread() || !profile()->isOffTheRecord())
++        return false;
++    Q_D(QWebEnginePage);
++    return d->adapter->ferricPreselectedFakeDesktopActivityHandoffProbe();
++}
++
+ /*!
+   \property QWebEnginePage::visible
+   \since 5.14
+--- a/src/core/api/qwebenginepage.h
++++ b/src/core/api/qwebenginepage.h
+@@ -348,6 +348,9 @@
+     void ferricRtcAcquireFrozenRegistryLeaseProbe(
+             std::function<void(FerricRtcFrozenLeaseProbeResult)> completion,
+             std::function<void()> invalidated);
++    // Test-only research route into Qt's preselected desktop request branch.
++    bool ferricPreselectedDesktopAdmissionProbe();
++    bool ferricPreselectedFakeDesktopActivityHandoffProbe();
+ 
+     bool isVisible() const;
+     void setVisible(bool visible);
+--- a/src/core/media_capture_devices_dispatcher.cpp
++++ b/src/core/media_capture_devices_dispatcher.cpp
+@@ -50,6 +50,34 @@
+ using blink::mojom::MediaStreamRequestResult;
+ using blink::mojom::MediaStreamType;
+ 
++class FerricMediaCaptureAdmission
++{
++public:
++    explicit FerricMediaCaptureAdmission(WebContentsDelegateQt *delegate)
++        : m_delegate(delegate ? delegate->AsWeakPtr() : base::WeakPtr<WebContentsDelegateQt>())
++    {
++        if (m_delegate) {
++            m_pending = true;
++            m_delegate->beginPendingMediaCaptureForProbe();
++        }
++    }
++
++    ~FerricMediaCaptureAdmission() { finish(); }
++
++    void finish()
++    {
++        if (!m_pending)
++            return;
++        m_pending = false;
++        if (m_delegate)
++            m_delegate->endPendingMediaCaptureForProbe();
++    }
++
++private:
++    base::WeakPtr<WebContentsDelegateQt> m_delegate;
++    bool m_pending = false;
++};
++
+ namespace {
+ 
+ const blink::MediaStreamDevice *findDeviceWithId(const blink::MediaStreamDevices &devices, const std::string &deviceId)
+@@ -297,9 +325,11 @@
+ class MediaStreamUIQt : public content::MediaStreamUI
+ {
+ public:
+-    MediaStreamUIQt(content::WebContents *webContents, const blink::mojom::StreamDevices &devices)
++    MediaStreamUIQt(content::WebContents *webContents, const blink::mojom::StreamDevices &devices,
++                    std::unique_ptr<FerricMediaCaptureAdmission> admission)
+         : m_delegate(static_cast<WebContentsDelegateQt *>(webContents->GetDelegate())->AsWeakPtr())
+         , m_devices(devices)
++        , m_admission(std::move(admission))
+     {
+         DCHECK(m_devices.audio_device.has_value() ||
+                m_devices.video_device.has_value());
+@@ -328,6 +358,8 @@
+         m_onStop = std::move(stop);
+         if (m_delegate)
+             m_delegate->addDevices(m_devices);
++        // Active counts are visible before the pending handoff is retired.
++        m_admission.reset();
+         return 0;
+     }
+     void OnDeviceStopped(const std::string &label, const content::DesktopMediaID &media_id) override
+@@ -339,6 +371,7 @@
+     {}
+     base::WeakPtr<WebContentsDelegateQt> m_delegate;
+     const blink::mojom::StreamDevices m_devices;
++    std::unique_ptr<FerricMediaCaptureAdmission> m_admission;
+     bool m_started = false;
+     base::RepeatingClosure m_onStop; // currently unused
+ };
+@@ -346,8 +379,8 @@
+ 
+ MediaCaptureDevicesDispatcher::PendingAccessRequest::PendingAccessRequest(
+         const content::MediaStreamRequest &request, content::MediaResponseCallback callback,
+-        content::DesktopMediaID id)
+-    : request(request), callback(std::move(callback)), mediaId(id)
++        content::DesktopMediaID id, std::unique_ptr<FerricMediaCaptureAdmission> admission)
++    : request(request), callback(std::move(callback)), mediaId(id), admission(std::move(admission))
+ {
+ }
+ 
+@@ -413,6 +446,7 @@
+     }
+ 
+     content::MediaResponseCallback callback = std::move(queue.front()->callback);
++    std::unique_ptr<FerricMediaCaptureAdmission> admission = std::move(queue.front()->admission);
+     queue.pop_front();
+ 
+     if (!queue.empty()) {
+@@ -424,12 +458,15 @@
+                                       base::Unretained(this), webContents));
+     }
+ 
+-    if (deviceSet.stream_devices.empty())
++    if (deviceSet.stream_devices.empty()) {
++        admission.reset();
+         std::move(callback).Run(deviceSet, MediaStreamRequestResult::INVALID_STATE,
+                                 std::unique_ptr<content::MediaStreamUI>());
+-    else
++    } else {
+         std::move(callback).Run(deviceSet, MediaStreamRequestResult::OK,
+-                                std::make_unique<MediaStreamUIQt>(webContents, *deviceSet.stream_devices[0]));
++                                std::make_unique<MediaStreamUIQt>(webContents, *deviceSet.stream_devices[0],
++                                                                 std::move(admission)));
++    }
+ }
+ 
+ MediaCaptureDevicesDispatcher *MediaCaptureDevicesDispatcher::GetInstance()
+@@ -480,24 +517,26 @@
+     bool hasDeviceId = MediaCaptureDevicesDispatcher::hasDeviceId(request);
+     WebContentsDelegateQt *delegate = static_cast<WebContentsDelegateQt *>(webContents->GetDelegate());
+     WebContentsAdapterClient *adapterClient = delegate->adapterClient();
++    auto admission = std::make_unique<FerricMediaCaptureAdmission>(delegate);
+ 
+     if (flags.testFlag(WebContentsAdapterClient::MediaDesktopVideoCapture)) {
+         const bool screenCaptureEnabled = adapterClient->webEngineSettings()->testAttribute(
+                 QWebEngineSettings::ScreenCaptureEnabled);
+         const bool originIsSecure = network::IsUrlPotentiallyTrustworthy(request.security_origin);
+         if (!screenCaptureEnabled || !originIsSecure || (id.is_null() && !hasDeviceId)) {
++            admission.reset();
+             std::move(callback).Run(blink::mojom::StreamDevicesSet(), MediaStreamRequestResult::INVALID_STATE, std::unique_ptr<content::MediaStreamUI>());
+             return;
+         }
+ 
+         if (hasDeviceId) {
+             // Non-empty device id from the chooseDesktopMedia() extension API.
+-            processDesktopCaptureAccessRequest(webContents, request, std::move(callback));
++            processDesktopCaptureAccessRequest(webContents, request, std::move(callback), std::move(admission));
+             return;
+         }
+     }
+ 
+-    enqueueMediaAccessRequest(webContents, request, std::move(callback), id);
++    enqueueMediaAccessRequest(webContents, request, std::move(callback), id, std::move(admission));
+ 
+     PermissionManagerQt *permissionManager = static_cast<PermissionManagerQt *>(
+         webContents->GetBrowserContext()->GetPermissionControllerDelegate());
+@@ -511,7 +550,10 @@
+             toQt(request.url_origin)));
+ }
+ 
+-void MediaCaptureDevicesDispatcher::processDesktopCaptureAccessRequest(content::WebContents *webContents, const content::MediaStreamRequest &request, content::MediaResponseCallback callback)
++void MediaCaptureDevicesDispatcher::processDesktopCaptureAccessRequest(
++        content::WebContents *webContents, const content::MediaStreamRequest &request,
++        content::MediaResponseCallback callback,
++        std::unique_ptr<FerricMediaCaptureAdmission> admission)
+ {
+     blink::mojom::StreamDevicesSet deviceSet;
+ 
+@@ -534,6 +576,7 @@
+ 
+     // Received invalid device id.
+     if (mediaId.type == content::DesktopMediaID::TYPE_NONE) {
++        admission.reset();
+         std::move(callback).Run(deviceSet, MediaStreamRequestResult::INVALID_STATE, std::unique_ptr<content::MediaStreamUI>());
+         return;
+     }
+@@ -548,22 +591,27 @@
+     blink::mojom::StreamDevices &stream_devices = *deviceSet.stream_devices[0];
+     getDevicesForDesktopCapture(request, webContents, mediaId, captureAudio, request.disable_local_echo, stream_devices);
+ 
+-    if (deviceSet.stream_devices.empty())
++    if (deviceSet.stream_devices.empty()) {
++        admission.reset();
+         std::move(callback).Run(deviceSet, MediaStreamRequestResult::INVALID_STATE,
+                                 std::unique_ptr<content::MediaStreamUI>());
+-    else
++    } else {
+         std::move(callback).Run(deviceSet, MediaStreamRequestResult::OK,
+-                                std::make_unique<MediaStreamUIQt>(webContents, *deviceSet.stream_devices[0]));
++                                std::make_unique<MediaStreamUIQt>(webContents, *deviceSet.stream_devices[0],
++                                                                 std::move(admission)));
++    }
+ }
+ 
+ void MediaCaptureDevicesDispatcher::enqueueMediaAccessRequest(
+         content::WebContents *webContents, const content::MediaStreamRequest &request,
+-        content::MediaResponseCallback callback, content::DesktopMediaID id)
++        content::MediaResponseCallback callback, content::DesktopMediaID id,
++        std::unique_ptr<FerricMediaCaptureAdmission> admission)
+ {
+     DCHECK_CURRENTLY_ON(BrowserThread::UI);
+ 
+     RequestsQueue &queue = m_pendingRequests[webContents];
+-    queue.push_back(std::make_unique<PendingAccessRequest>(request, std::move(callback), id));
++    queue.push_back(std::make_unique<PendingAccessRequest>(request, std::move(callback), id,
++                                                           std::move(admission)));
+ }
+ 
+ void MediaCaptureDevicesDispatcher::ProcessQueuedAccessRequest(content::WebContents *webContents)
+--- a/src/core/media_capture_devices_dispatcher.h
++++ b/src/core/media_capture_devices_dispatcher.h
+@@ -17,6 +17,8 @@
+ 
+ namespace QtWebEngineCore {
+ 
++class FerricMediaCaptureAdmission;
++
+ // This singleton is used to receive updates about media events from the content
+ // layer. Based on Chrome's implementation.
+ class MediaCaptureDevicesDispatcher : public content::MediaObserver,
+@@ -56,12 +58,14 @@
+ 
+     struct PendingAccessRequest {
+         PendingAccessRequest(const content::MediaStreamRequest &request,
+-                             content::MediaResponseCallback callback, content::DesktopMediaID id);
++                             content::MediaResponseCallback callback, content::DesktopMediaID id,
++                             std::unique_ptr<FerricMediaCaptureAdmission> admission);
+         ~PendingAccessRequest();
+ 
+         content::MediaStreamRequest request;
+         content::MediaResponseCallback callback;
+         content::DesktopMediaID mediaId;
++        std::unique_ptr<FerricMediaCaptureAdmission> admission;
+     };
+     typedef base::circular_deque<std::unique_ptr<PendingAccessRequest>> RequestsQueue;
+     typedef base::flat_map<content::WebContents *, RequestsQueue> RequestsQueues;
+@@ -74,9 +78,11 @@
+ 
+     // Helpers for ProcessMediaAccessRequest().
+     void handleRequest(content::WebContents *, const content::MediaStreamRequest &, content::MediaResponseCallback);
+-    void processDesktopCaptureAccessRequest(content::WebContents *, const content::MediaStreamRequest &, content::MediaResponseCallback);
++    void processDesktopCaptureAccessRequest(content::WebContents *, const content::MediaStreamRequest &, content::MediaResponseCallback,
++                                            std::unique_ptr<FerricMediaCaptureAdmission> admission);
+     void enqueueMediaAccessRequest(content::WebContents *, const content::MediaStreamRequest &,
+-                                   content::MediaResponseCallback, content::DesktopMediaID);
++                                   content::MediaResponseCallback, content::DesktopMediaID,
++                                   std::unique_ptr<FerricMediaCaptureAdmission> admission);
+     void ProcessQueuedAccessRequest(content::WebContents *);
+ 
+     // Called by the MediaObserver() functions, executed on UI thread.
+--- a/src/core/web_contents_adapter.cpp
++++ b/src/core/web_contents_adapter.cpp
+@@ -25,6 +25,7 @@
+ #include "renderer_host/web_engine_page_host.h"
+ #include "render_widget_host_view_qt.h"
+ #include "type_conversion.h"
++#include "web_contents_delegate_qt.h"
+ #include "web_contents_view_qt.h"
+ #include "web_engine_context.h"
+ #include "web_engine_settings.h"
+@@ -45,6 +46,9 @@
+ #include "content/browser/renderer_host/render_frame_host_impl.h"
+ #include "content/browser/renderer_host/text_input_manager.h"
+ #include "content/browser/web_contents/web_contents_impl.h"
++#include "content/public/browser/media_stream_request.h"
++#include "third_party/blink/public/mojom/mediastream/media_stream.mojom.h"
++#include "content/public/browser/render_process_host.h"
+ #include "content/public/browser/devtools_agent_host.h"
+ #include "content/public/browser/download_manager.h"
+ #include "content/public/browser/download_request_utils.h"
+@@ -162,6 +166,101 @@
+     return observer->observedFor(m_webContents.get());
+ }
+ 
++bool WebContentsAdapter::ferricHasNoMediaCaptureActivityForProbe() const
++{
++    if (!isInitialized() || !m_webContents->GetDelegate())
++        return false;
++    const auto *delegate = static_cast<WebContentsDelegateQt *>(m_webContents->GetDelegate());
++    return delegate->hasNoMediaCaptureActivityForProbe()
++            && !m_webContents->IsBeingCaptured()
++            && !ferricHasFrameCaptureActivityForProbe();
++}
++
++bool WebContentsAdapter::ferricHasFrameCaptureActivityForProbe() const
++{
++    if (!isInitialized())
++        return false;
++    bool capturing = false;
++    m_webContents->ForEachRenderFrameHost([&](content::RenderFrameHost *frame) {
++        auto *implementation = static_cast<content::RenderFrameHostImpl *>(frame);
++        capturing |= implementation->HasMediaStreams(
++                content::RenderFrameHostImpl::kCapturingMediaStream);
++    });
++    return capturing;
++}
++
++void WebContentsAdapter::ferricMediaCaptureStartingForProbe()
++{
++    // Invoked on the UI sequence before the request enters either the queued
++    // permission path or Qt's selected-desktop fast path.
++    auto invalidate = m_ferricRtcMediaActivityInvalidator;
++    if (invalidate)
++        invalidate();
++}
++
++bool WebContentsAdapter::ferricPreselectedDesktopAdmissionProbe()
++{
++    if (!isInitialized())
++        return false;
++    auto *contents = m_webContents.get();
++    auto *main = contents ? contents->GetPrimaryMainFrame() : nullptr;
++    if (!main || !main->IsRenderFrameLive())
++        return false;
++
++    const url::Origin origin = main->GetLastCommittedOrigin();
++    content::MediaStreamRequest request(
++            main->GetProcess()->GetDeprecatedID(), main->GetRoutingID(), 1, origin, true,
++            blink::MEDIA_GENERATE_STREAM, {}, {"ferric-invalid-desktop-source"},
++            blink::mojom::MediaStreamType::NO_SERVICE,
++            blink::mojom::MediaStreamType::DISPLAY_VIDEO_CAPTURE, false, false, false);
++    bool refused = false;
++    content::MediaResponseCallback callback = base::BindOnce(
++            [](bool *refused, const blink::mojom::StreamDevicesSet &,
++               blink::mojom::MediaStreamRequestResult result,
++               std::unique_ptr<content::MediaStreamUI> ui) {
++        *refused = result == blink::mojom::MediaStreamRequestResult::INVALID_STATE && !ui;
++    }, &refused);
++    MediaCaptureDevicesDispatcher::GetInstance()->processMediaAccessRequest(
++            contents, request, std::move(callback), content::DesktopMediaID());
++    return refused;
++}
++
++bool WebContentsAdapter::ferricPreselectedFakeDesktopActivityHandoffProbe()
++{
++    if (!isInitialized())
++        return false;
++    auto *contents = m_webContents.get();
++    auto *main = contents ? contents->GetPrimaryMainFrame() : nullptr;
++    auto *delegate = contents
++            ? static_cast<WebContentsDelegateQt *>(contents->GetDelegate()) : nullptr;
++    if (!main || !main->IsRenderFrameLive() || !delegate)
++        return false;
++    if (!delegate->mediaActivityCounterBoundaryProbe())
++        return false;
++
++    const url::Origin origin = main->GetLastCommittedOrigin();
++    content::MediaStreamRequest request(
++            main->GetProcess()->GetDeprecatedID(), main->GetRoutingID(), 1, origin, true,
++            blink::MEDIA_GENERATE_STREAM, {}, {"screen:-3:0"},
++            blink::mojom::MediaStreamType::NO_SERVICE,
++            blink::mojom::MediaStreamType::DISPLAY_VIDEO_CAPTURE, false, false, false);
++    bool activeHandoffObserved = false;
++    content::MediaResponseCallback callback = base::BindOnce(
++            [](WebContentsDelegateQt *delegate, bool *observed,
++               const blink::mojom::StreamDevicesSet &devices,
++               blink::mojom::MediaStreamRequestResult result,
++               std::unique_ptr<content::MediaStreamUI> ui) {
++        if (result != blink::mojom::MediaStreamRequestResult::OK || !ui
++                || devices.stream_devices.size() != 1)
++            return;
++        ui->OnStarted({}, {}, "ferric-fake-desktop", {}, {});
++        *observed = !delegate->hasNoMediaCaptureActivityForProbe();
++    }, delegate, &activeHandoffObserved);
++    MediaCaptureDevicesDispatcher::GetInstance()->processMediaAccessRequest(
++            contents, request, std::move(callback), content::DesktopMediaID());
++    return activeHandoffObserved && delegate->hasNoMediaCaptureActivityForProbe();
++}
++
+ // Experimental witness only: the optional held lease is a short-lived,
+ // off-the-record fixture boundary, not production media/capture admission.
+ // Every missing/changing identity is Unknown. The fixture may intentionally
+@@ -205,6 +289,7 @@
+         m_frames.clear();
+         if (adapter) {
+             adapter->m_ferricRtcHeldScriptInvalidator = {};
++            adapter->m_ferricRtcMediaActivityInvalidator = {};
+             adapter->m_ferricRtcProbeBusy = false;
+             if (m_owner && m_freezeRequested && adapter->webContents() == contents
+                     && adapter->lifecycleState() == WebContentsAdapter::LifecycleState::Frozen)
+@@ -265,6 +350,7 @@
+         if (m_done || !m_owner || !adapter || !contents || adapter->webContents() != contents
+                 || contents->IsLoading() || adapter->isVisible()
+                 || (m_retainEmpty && !adapter->m_javaScriptCallbacks.isEmpty())
++                || (m_retainEmpty && !adapter->ferricHasNoMediaCaptureActivityForProbe())
+                 || adapter->lifecycleState() != (m_freezeRequested
+                         ? WebContentsAdapter::LifecycleState::Frozen
+                         : WebContentsAdapter::LifecycleState::Active))
+@@ -386,6 +472,16 @@
+ 
+     void start()
+     {
++        auto adapter = m_adapter.toStrongRef();
++        if (!adapter) {
++            finish(false);
++            return;
++        }
++        QPointer<FerricRtcRegistryProbeOperation> self(this);
++        adapter->m_ferricRtcMediaActivityInvalidator = [self] {
++            if (self && !self->m_done)
++                self->finish(false);
++        };
+         auto *main = web_contents()->GetPrimaryMainFrame();
+         if (!usable(main)) {
+             finish(false);
+@@ -438,6 +534,7 @@
+         std::function<void()> invalidated)
+ {
+     if (!owner || !isInitialized() || m_ferricRtcProbeBusy || !m_javaScriptCallbacks.isEmpty()
++            || !ferricHasNoMediaCaptureActivityForProbe()
+             || isVisible() || hasInspector()
+             || isInspector() || lifecycleState() != LifecycleState::Active || m_webContents->IsLoading()) {
+         completion(false, false, 0, 0, {}, {});
+@@ -1422,10 +1519,10 @@
+                                        const std::function<void(const QVariant &)> &callback)
+ {
+     // Qt's explicit script injection runs even while Chromium reports Frozen.
+-    // Revoke the experimental absence lease and thaw before dispatching it.
++    // Revoke an in-progress admission/held lease and thaw before dispatching it.
+     const auto retained = sharedFromThis();
+     const auto safeCallback = callback;
+-    if (auto invalidate = m_ferricRtcHeldScriptInvalidator)
++    if (auto invalidate = m_ferricRtcMediaActivityInvalidator)
+         invalidate();
+     auto exit = [&] {
+         if (safeCallback)
+--- a/src/core/web_contents_adapter.h
++++ b/src/core/web_contents_adapter.h
+@@ -78,6 +78,7 @@
+     friend class FerricRtcRegistryProbeOperation;
+     bool m_ferricRtcProbeBusy = false;
+     std::function<void()> m_ferricRtcHeldScriptInvalidator;
++    std::function<void()> m_ferricRtcMediaActivityInvalidator;
+ public:
+     // Sentinel to indicate that a behavior should happen on the main frame
+     static constexpr quint64 kUseMainFrameId = -2;
+@@ -105,6 +106,11 @@
+     void setLifecycleState(LifecycleState state);
+     LifecycleState recommendedState() const;
+     bool ferricHasObservedPeerConnectionForProbe() const;
++    bool ferricHasNoMediaCaptureActivityForProbe() const;
++    bool ferricHasFrameCaptureActivityForProbe() const;
++    void ferricMediaCaptureStartingForProbe();
++    bool ferricPreselectedDesktopAdmissionProbe();
++    bool ferricPreselectedFakeDesktopActivityHandoffProbe();
+     void ferricRtcFrozenRegistryProbe(QObject *owner,
+                                       std::function<void(bool, bool, int, int)> completion);
+     void ferricRtcAcquireFrozenRegistryLeaseProbe(QObject *owner,
+--- a/src/core/web_contents_delegate_qt.cpp
++++ b/src/core/web_contents_delegate_qt.cpp
+@@ -60,6 +60,8 @@
+ #include <QTimer>
+ #include <QWindow>
+ 
++#include <limits>
++
+ using namespace Qt::StringLiterals;
+ 
+ namespace QtWebEngineCore {
+@@ -1035,6 +1037,62 @@
+     return m_videoStreamCount;
+ }
+ 
++void WebContentsDelegateQt::beginPendingMediaCaptureForProbe()
++{
++    // A saturated/poisoned count can never certify absence. Bound attacker-
++    // influenced requests instead of allowing the diagnostic count to wrap.
++    if (m_ferricPendingMediaCaptureCount >= 0) {
++        if (m_ferricPendingMediaCaptureCount < 512)
++            ++m_ferricPendingMediaCaptureCount;
++        else
++            m_ferricPendingMediaCaptureCount = -1;
++    }
++
++    if (auto *adapter = webContentsAdapter())
++        adapter->ferricMediaCaptureStartingForProbe();
++}
++
++void WebContentsDelegateQt::endPendingMediaCaptureForProbe()
++{
++    if (m_ferricPendingMediaCaptureCount > 0)
++        --m_ferricPendingMediaCaptureCount;
++}
++
++bool WebContentsDelegateQt::hasNoMediaCaptureActivityForProbe() const
++{
++    return !m_ferricMediaActivityCounterPoisoned
++            && m_ferricPendingMediaCaptureCount == 0 && m_audioStreamCount == 0
++            && m_videoStreamCount == 0 && m_mirroringStreamCount == 0
++            && m_desktopStreamCount == 0;
++}
++
++bool WebContentsDelegateQt::mediaActivityCounterBoundaryProbe()
++{
++    if (!hasNoMediaCaptureActivityForProbe())
++        return false;
++    int pendingCount = 512;
++    if (pendingCount < 512)
++        ++pendingCount;
++    else
++        pendingCount = -1;
++    const bool refusedPendingSaturation = pendingCount < 0;
++    m_audioStreamCount = std::numeric_limits<int>::max();
++    blink::MediaStreamDevice probeDevice(
++            blink::mojom::MediaStreamType::DEVICE_AUDIO_CAPTURE,
++            "ferric-counter-probe", "Ferric counter probe");
++    addDevice(probeDevice);
++    const bool refusedOverflow = m_ferricMediaActivityCounterPoisoned
++            && m_audioStreamCount == std::numeric_limits<int>::max();
++    m_audioStreamCount = 0;
++    m_ferricMediaActivityCounterPoisoned = false;
++    removeDevice(probeDevice);
++    const bool refusedUnderflow = m_ferricMediaActivityCounterPoisoned
++            && m_audioStreamCount == 0;
++    m_ferricMediaActivityCounterPoisoned = false;
++    return refusedPendingSaturation && refusedOverflow && refusedUnderflow
++            && hasNoMediaCaptureActivityForProbe();
++}
++
+ void WebContentsDelegateQt::addDevices(const blink::mojom::StreamDevices &devices)
+ {
+     if (devices.audio_device.has_value())
+@@ -1057,12 +1115,22 @@
+ 
+ void WebContentsDelegateQt::addDevice(const blink::MediaStreamDevice &device)
+ {
+-    ++streamCount(device.type);
++    int &count = streamCount(device.type);
++    if (count < 0 || count == std::numeric_limits<int>::max()) {
++        m_ferricMediaActivityCounterPoisoned = true;
++        return;
++    }
++    ++count;
+ }
+ 
+ void WebContentsDelegateQt::removeDevice(const blink::MediaStreamDevice &device)
+ {
+-    --streamCount(device.type);
++    int &count = streamCount(device.type);
++    if (count <= 0) {
++        m_ferricMediaActivityCounterPoisoned = true;
++        return;
++    }
++    --count;
+ }
+ 
+ FrameFocusedObserver::FrameFocusedObserver(WebContentsAdapterClient *adapterClient)
+--- a/src/core/web_contents_delegate_qt.h
++++ b/src/core/web_contents_delegate_qt.h
+@@ -172,6 +172,13 @@
+     bool isMirroring() const { return m_mirroringStreamCount > 0; }
+     bool isCapturingDesktop() const { return m_desktopStreamCount > 0; }
+ 
++    // Research-only RTC absence interlock. A pending permission/stream request
++    // is retained until MediaStreamUIQt::OnStarted or its destruction.
++    void beginPendingMediaCaptureForProbe();
++    void endPendingMediaCaptureForProbe();
++    bool hasNoMediaCaptureActivityForProbe() const;
++    bool mediaActivityCounterBoundaryProbe();
++
+     base::WeakPtr<WebContentsDelegateQt> AsWeakPtr() { return m_weakPtrFactory.GetWeakPtr(); }
+ 
+ private:
+@@ -201,6 +208,9 @@
+     int m_videoStreamCount = 0;
+     int m_mirroringStreamCount = 0;
+     int m_desktopStreamCount = 0;
++    // Negative and saturated values intentionally remain non-clear.
++    int m_ferricPendingMediaCaptureCount = 0;
++    bool m_ferricMediaActivityCounterPoisoned = false;
+     mutable bool m_pendingUrlUpdate = false;
+ 
+     struct LoadingInfo {

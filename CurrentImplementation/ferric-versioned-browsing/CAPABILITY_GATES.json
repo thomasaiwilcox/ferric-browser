@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "baseline_main": "deea458d92bcf6d8fbea7b04af17823b5882cc1b",
+  "meaning": "primitive_gate permits implementation tests; production_enabled additionally requires feature release qualification. Values below are initial authoring state, not measurements.",
+  "capabilities": {
+    "versioning.structural": {
+      "primitive_gate": "unqualified",
+      "production_enabled": false,
+      "backend": "qt-public-default",
+      "scope": null,
+      "engine_fingerprint": null,
+      "evidence_ids": ["VB-016", "VB-022", "VB-024", "VB-066"],
+      "reason": "Structural commits, scoped new-window restore and linked clean-branch structural export have focused evidence. Current-window replacement is separately blocked under VB-096; production structural release qualification remains incomplete."
+    },
+    "versioning.live_retention": {
+      "primitive_gate": "supported",
+      "production_enabled": false,
+      "backend": "qt-public-default",
+      "scope": "retention-owned-same-profile-wayland",
+      "engine_fingerprint": {
+        "qt": "6.11.2",
+        "qt_webengine": "6.11.2",
+        "chromium_base": "140.0.7339.225",
+        "chromium_security_patch": "151.0.7922.71",
+        "compositor": "Hyprland 0.56.2"
+      },
+      "evidence_ids": ["VB-003"],
+      "reason": "Retention-owned same-profile view freeze, source-window close and resume passed on Wayland; production lifetime and renderer-loss handling remain unqualified."
+    },
+    "versioning.archive_capture": {
+      "primitive_gate": "supported",
+      "production_enabled": false,
+      "backend": "qt-public-default",
+      "scope": "single-view-exact-path-mhtml-wayland",
+      "engine_fingerprint": {
+        "qt": "6.11.2",
+        "qt_webengine": "6.11.2",
+        "chromium_base": "140.0.7339.225",
+        "chromium_security_patch": "151.0.7922.71",
+        "compositor": "Hyprland 0.56.2"
+      },
+      "evidence_ids": ["VB-004"],
+      "reason": "Public MHTML save, exact view/path correlation and completed state passed on Wayland; production capture orchestration remains disabled."
+    },
+    "versioning.archive_offline": {
+      "primitive_gate": "unqualified",
+      "production_enabled": false,
+      "backend": "qt-public-default",
+      "scope": null,
+      "engine_fingerprint": null,
+      "evidence_ids": ["VB-004", "VB-051", "VB-052"],
+      "reason": "The Qt 6.11.2 native hostile-MHTML fixture preserves remote CSS/image/frame/form references and observes zero archive callbacks and zero network traffic while a separate source-profile control request succeeds; this is renderer/MHTML-sandbox suppression, not per-resource interceptor-block evidence. Restricted OTR rendering and real-window cleanup pass, but broader visible multi-window/failure/release qualification remains incomplete."
+    },
+    "versioning.semantic_restore": {
+      "primitive_gate": "unqualified",
+      "production_enabled": false,
+      "backend": "qt-public-default",
+      "scope": null,
+      "engine_fingerprint": null,
+      "evidence_ids": [],
+      "reason": "Bounded reconstruction has not been implemented or tested."
+    },
+    "versioning.clean_branch": {
+      "primitive_gate": "unqualified",
+      "production_enabled": false,
+      "backend": "qt-public-default",
+      "scope": null,
+      "engine_fingerprint": null,
+      "evidence_ids": ["VB-058", "VB-059", "VB-066"],
+      "reason": "Visible-parent single-tab native journeys and scoped structural export pass behind unqualified-clean-branch-test. Multi-view window branching, compositor focus, popup/permission journeys, fault teardown and release qualification remain; hidden-parent retention is separate."
+    },
+    "versioning.cookie_identity": {
+      "primitive_gate": "unsupported",
+      "production_enabled": false,
+      "backend": "qt-public-default",
+      "scope": null,
+      "engine_fingerprint": null,
+      "evidence_ids": ["VB-005"],
+      "reason": "Installed QNetworkCookie parsing loses Partitioned identity; only a separately proven exact scope/backend may override."
+    },
+    "versioning.cookie_snapshot": {
+      "primitive_gate": "unsupported",
+      "production_enabled": false,
+      "backend": "qt-public-default",
+      "scope": null,
+      "engine_fingerprint": null,
+      "evidence_ids": ["VB-005"],
+      "reason": "Native loadAllCookies observations have no public completion or atomic snapshot boundary; a quiet interval is unknown."
+    },
+    "versioning.cookie_seed_verify": {
+      "primitive_gate": "unsupported",
+      "production_enabled": false,
+      "backend": "qt-public-default",
+      "scope": null,
+      "engine_fingerprint": null,
+      "evidence_ids": ["VB-005"],
+      "reason": "Synthetic SameSite Strict input returned as Default in the public native callback; general exact seed/read-back is unsupported."
+    },
+    "versioning.cookie_merge_apply": {
+      "primitive_gate": "unsupported",
+      "production_enabled": false,
+      "backend": "qt-public-default",
+      "scope": null,
+      "engine_fingerprint": null,
+      "evidence_ids": ["VB-005"],
+      "reason": "Public asynchronous mutations provide no transaction/CAS or complete concurrent-write coordination contract."
+    }
+  }
+}

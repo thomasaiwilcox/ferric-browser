@@ -37,18 +37,24 @@ FerricCommandDialog {
         }
     }
 
-    ScrollView {
+    Loader {
         anchors.fill: parent
-        clip: true
+        active: preview.visible
+        sourceComponent: Component {
+            ScrollView {
+                anchors.fill: parent
+                clip: true
 
-        TextArea {
-            width: parent.width
-            text: preview.browserWindow.sessionPreviewText
-            readOnly: true
-            wrapMode: TextEdit.Wrap
-            color: preview.browserWindow.primaryTextColor
-            background: Rectangle { color: preview.browserWindow.surfaceColor }
-            Accessible.name: "Validated session descriptors"
+                TextArea {
+                    width: parent.width
+                    text: preview.browserWindow.sessionPreviewText
+                    readOnly: true
+                    wrapMode: TextEdit.Wrap
+                    color: preview.browserWindow.primaryTextColor
+                    background: Rectangle { color: preview.browserWindow.surfaceColor }
+                    Accessible.name: "Validated session descriptors"
+                }
+            }
         }
     }
 }

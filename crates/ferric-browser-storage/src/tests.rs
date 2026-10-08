@@ -12,7 +12,7 @@ fn temp_path(label: &str) -> PathBuf {
 fn migration_configures_durable_profile_storage() {
     let path = temp_path("migration");
     let store = ProfileStore::open(&path, StoreMode::Normal).expect("open");
-    assert_eq!(store.schema_version(), 3);
+    assert_eq!(store.schema_version(), 4);
     let foreign_keys: i64 = store
         .connection
         .query_row("PRAGMA foreign_keys", [], |row| row.get(0))
@@ -21,11 +21,281 @@ fn migration_configures_durable_profile_storage() {
         .connection
         .query_row("PRAGMA synchronous", [], |row| row.get(0))
         .expect("pragma");
+    let wal_autocheckpoint: i64 = store
+        .connection
+        .query_row("PRAGMA wal_autocheckpoint", [], |row| row.get(0))
+        .expect("WAL auto-checkpoint pragma");
+    let journal_size_limit: i64 = store
+        .connection
+        .query_row("PRAGMA journal_size_limit", [], |row| row.get(0))
+        .expect("journal size pragma");
     assert_eq!(foreign_keys, 1);
     assert_eq!(synchronous, 2);
+    assert_eq!(wal_autocheckpoint, PROFILE_WAL_AUTOCHECKPOINT_PAGES);
+    assert_eq!(journal_size_limit, PROFILE_WAL_RETAINED_BYTES);
     let _ = std::fs::remove_file(path);
     let _ = std::fs::remove_file(format!("{}-wal", store.path().display()));
     let _ = std::fs::remove_file(format!("{}-shm", store.path().display()));
+}
+
+#[test]
+fn versioning_index_is_created_with_the_normal_profile_store_and_reopens() {
+    let path = temp_path("versioning-index-fresh");
+    {
+        let store = ProfileStore::open(&path, StoreMode::Normal).expect("fresh profile");
+        for table in [
+            "vb_commits",
+            "vb_objects",
+            "vb_commit_objects",
+            "vb_refs",
+            "vb_journal",
+            "vb_operations",
+        ] {
+            let count: i64 = store
+                .connection
+                .query_row(
+                    "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?1",
+                    [table],
+                    |row| row.get(0),
+                )
+                .expect("schema query");
+            assert_eq!(count, 1, "missing {table}");
+        }
+        let versions: Vec<i64> = store
+            .connection
+            .prepare("SELECT version FROM schema_migrations ORDER BY version")
+            .expect("migration query")
+            .query_map([], |row| row.get(0))
+            .expect("migration rows")
+            .collect::<Result<_, _>>()
+            .expect("migration versions");
+        assert_eq!(versions, [3, 4]);
+    }
+    let reopened = ProfileStore::open(&path, StoreMode::Normal).expect("reopen");
+    assert_eq!(reopened.schema_version(), 4);
+    drop(reopened);
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn concurrent_first_open_accepts_a_schema_committed_after_preflight() {
+    let path = temp_path("versioning-stale-first-open");
+    let first = Connection::open(&path).expect("first preflight connection");
+    let second = Connection::open(&path).expect("second preflight connection");
+    // Both owners observed an empty database before either acquired the
+    // migration write lock. The second must re-read under that lock.
+    migrate(&first, None).expect("first migration");
+    migrate(&second, None).expect("second owner adopts committed schema");
+    assert_eq!(inspect_store(&path).schema_version, Some(SCHEMA_VERSION));
+    drop(second);
+    drop(first);
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn concurrent_upgrade_accepts_a_schema_committed_after_preflight() {
+    let path = temp_path("versioning-stale-upgrade");
+    let first = Connection::open(&path).expect("first upgrade connection");
+    install_base_schema(&first).expect("schema three fixture");
+    let second = Connection::open(&path).expect("second upgrade connection");
+    migrate(&first, Some(BASE_SCHEMA_VERSION)).expect("first upgrade");
+    migrate(&second, Some(BASE_SCHEMA_VERSION)).expect("second owner adopts upgraded schema");
+    assert_eq!(inspect_store(&path).schema_version, Some(SCHEMA_VERSION));
+    drop(second);
+    drop(first);
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn concurrent_normal_profile_open_serializes_first_schema_setup() {
+    let path = temp_path("versioning-parallel-first-open");
+    let barrier = std::sync::Arc::new(std::sync::Barrier::new(8));
+    let workers = (0..8)
+        .map(|_| {
+            let path = path.clone();
+            let barrier = barrier.clone();
+            std::thread::spawn(move || {
+                barrier.wait();
+                let store = ProfileStore::open(&path, StoreMode::Normal).expect("parallel open");
+                assert_eq!(store.schema_version(), SCHEMA_VERSION);
+            })
+        })
+        .collect::<Vec<_>>();
+    for worker in workers {
+        worker.join().expect("parallel opener");
+    }
+    assert_eq!(inspect_store(&path).schema_version, Some(SCHEMA_VERSION));
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn normal_profile_worker_reaches_versioning_schema() {
+    let path = temp_path("versioning-index-worker");
+    let mut worker = ProfileStoreWorker::spawn(&path).expect("normal worker");
+    worker.request_library(1).expect("submit worker query");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    loop {
+        if let Some(result) = worker.poll_library() {
+            result.expect("worker opened the profile store");
+            break;
+        }
+        assert!(std::time::Instant::now() < deadline, "worker timed out");
+        std::thread::yield_now();
+    }
+    drop(worker);
+    assert_eq!(inspect_store(&path).schema_version, Some(4));
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn versioning_index_upgrades_schema_three_without_losing_existing_data() {
+    let path = temp_path("versioning-index-upgrade");
+    let connection = Connection::open(&path).expect("fixture database");
+    install_base_schema(&connection).expect("schema three fixture");
+    connection.execute(
+        "INSERT INTO bookmarks(id,url,title,created_at,updated_at) VALUES ('old','https://example.test/','Old',1,1)",
+        [],
+    ).expect("seed legacy data");
+    drop(connection);
+    let store = ProfileStore::open(&path, StoreMode::Normal).expect("upgrade");
+    let title: String = store
+        .connection
+        .query_row("SELECT title FROM bookmarks WHERE id='old'", [], |row| {
+            row.get(0)
+        })
+        .expect("preserved row");
+    assert_eq!(title, "Old");
+    let count: i64 = store
+        .connection
+        .query_row(
+            "SELECT count(*) FROM schema_migrations WHERE version=4",
+            [],
+            |row| row.get(0),
+        )
+        .expect("migration version");
+    assert_eq!(count, 1);
+    drop(store);
+    ProfileStore::open(&path, StoreMode::Normal).expect("reopen upgraded store");
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn versioning_migration_failure_rolls_back_and_can_be_retried() {
+    let path = temp_path("versioning-index-rollback");
+    let connection = Connection::open(&path).expect("fixture database");
+    install_base_schema(&connection).expect("schema three fixture");
+    connection
+        .execute_batch("CREATE VIEW vb_refs AS SELECT 1 AS id")
+        .expect("schema collision");
+    drop(connection);
+    assert!(ProfileStore::open(&path, StoreMode::Normal).is_err());
+    let connection = Connection::open(&path).expect("inspect failed upgrade");
+    let version: i64 = connection
+        .query_row("SELECT max(version) FROM schema_migrations", [], |row| {
+            row.get(0)
+        })
+        .expect("migration rollback");
+    assert_eq!(version, 3);
+    let created: i64 = connection
+        .query_row(
+            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name LIKE 'vb_%'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("table rollback");
+    assert_eq!(created, 0);
+    connection
+        .execute_batch("DROP VIEW vb_refs")
+        .expect("remove collision");
+    drop(connection);
+    ProfileStore::open(&path, StoreMode::Normal).expect("retry upgrade");
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn corrupted_versioning_schema_is_refused_without_recreation() {
+    let path = temp_path("versioning-index-corrupt");
+    let store = ProfileStore::open(&path, StoreMode::Normal).expect("new store");
+    drop(store);
+    let connection = Connection::open(&path).expect("corrupt fixture");
+    connection
+        .execute_batch("DROP TABLE vb_refs")
+        .expect("drop versioning table");
+    drop(connection);
+    let original = std::fs::read(&path).expect("original database");
+    let error = ProfileStore::open(&path, StoreMode::Normal).expect_err("incomplete schema");
+    assert!(matches!(error, StoreError::Corrupt(reason) if reason.contains("versioning index")));
+    assert_eq!(std::fs::read(&path).expect("database unchanged"), original);
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn versioning_refs_and_parent_links_reject_wrong_profile() {
+    let path = temp_path("versioning-index-owners");
+    let store = ProfileStore::open(&path, StoreMode::Normal).expect("open");
+    let a = uuid::Uuid::new_v4().to_string();
+    let b = uuid::Uuid::new_v4().to_string();
+    let commit_a = uuid::Uuid::new_v4().to_string();
+    let commit_b = uuid::Uuid::new_v4().to_string();
+    let hash = "a".repeat(64);
+    store.connection.execute(
+        "INSERT INTO vb_commits(id,profile_uuid,created_at,message,manifest_schema,manifest_bytes,manifest_hash,pinned)
+         VALUES (?1,?2,1,'safe',1,x'7b7d',?3,0)",
+        params![commit_a, a, hash],
+    ).expect("seed profile a");
+    let lookup: Option<String> = store
+        .connection
+        .query_row(
+            "SELECT id FROM vb_commits WHERE id=?1 AND profile_uuid=?2",
+            params![commit_a, b],
+            |row| row.get(0),
+        )
+        .optional()
+        .expect("profile-scoped lookup");
+    assert!(lookup.is_none());
+    assert!(store.connection.execute(
+        "INSERT INTO vb_refs(id,profile_uuid,kind,name,commit_id,updated_at) VALUES ('ref',?1,'branch','main',?2,1)",
+        params![b, commit_a],
+    ).is_err());
+    assert!(store.connection.execute(
+        "INSERT INTO vb_commits(id,profile_uuid,parent_id,created_at,message,manifest_schema,manifest_bytes,manifest_hash,pinned)
+         VALUES (?1,?2,?3,1,'safe',1,x'7b7d',?4,0)",
+        params![commit_b, b, commit_a, hash],
+    ).is_err());
+    store.connection.execute(
+        "INSERT INTO vb_objects(hash,kind,bytes,state,created_at) VALUES (?1,'archive',2,'ready',1)",
+        params![hash],
+    ).expect("seed object metadata");
+    let link = "INSERT INTO vb_commit_objects(commit_id,object_hash,role,logical_page_id)
+                VALUES (?1,?2,'archive',NULL)";
+    store
+        .connection
+        .execute(link, params![commit_a, hash])
+        .expect("first object link");
+    assert!(
+        store
+            .connection
+            .execute(link, params![commit_a, hash])
+            .is_err()
+    );
+    assert!(
+        store
+            .connection
+            .execute(link, params![commit_b, hash])
+            .is_err()
+    );
+    drop(store);
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn transient_store_mode_does_not_create_a_versioning_database() {
+    let path = temp_path("versioning-index-transient");
+    assert!(matches!(
+        ProfileStore::open(&path, StoreMode::Private),
+        Err(StoreError::PrivateNoDurableState)
+    ));
+    assert!(!path.exists());
 }
 
 #[test]
@@ -154,19 +424,110 @@ fn flush_checkpoints_committed_metadata_for_reopen() {
             .record_visit("https://example.test/flush", "Flush", "navigate", 1)
             .expect("record visit");
         store.flush().expect("checkpoint");
-        assert_eq!(
-            store
-                .connection
-                .query_row("PRAGMA wal_checkpoint(PASSIVE)", [], |row| row
-                    .get::<_, i64>(0))
-                .expect("checkpoint status"),
-            0
+        let wal_path = PathBuf::from(format!("{}-wal", path.display()));
+        assert!(
+            !wal_path.exists() || fs::metadata(&wal_path).expect("WAL metadata").len() == 0,
+            "shutdown flush should truncate the idle WAL"
         );
     }
     let reopened = ProfileStore::open(&path, StoreMode::Normal).expect("reopen");
     assert_eq!(
         reopened.history(10).expect("history")[0].url,
         "https://example.test/flush"
+    );
+    drop(reopened);
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_file(format!("{}-wal", path.display()));
+    let _ = std::fs::remove_file(format!("{}-shm", path.display()));
+}
+
+#[test]
+fn flush_refuses_to_claim_success_while_another_connection_pins_the_wal() {
+    let path = temp_path("flush-busy");
+    let store = ProfileStore::open(&path, StoreMode::Normal).expect("open profile");
+    store
+        .record_visit(
+            "https://example.test/before-reader",
+            "Before",
+            "navigate",
+            1,
+        )
+        .expect("write first visit");
+
+    let reader = Connection::open(&path).expect("open independent reader");
+    reader
+        .execute_batch("BEGIN DEFERRED;")
+        .expect("begin WAL snapshot");
+    let _: i64 = reader
+        .query_row("SELECT COUNT(*) FROM visits", [], |row| row.get(0))
+        .expect("pin reader snapshot");
+
+    store
+        .record_visit("https://example.test/after-reader", "After", "navigate", 2)
+        .expect("write beyond pinned reader snapshot");
+    assert!(matches!(store.flush(), Err(StoreError::CheckpointBusy)));
+
+    reader
+        .execute_batch("ROLLBACK;")
+        .expect("release reader snapshot");
+    store.flush().expect("checkpoint after reader releases WAL");
+    drop(reader);
+    drop(store);
+    let _ = fs::remove_file(&path);
+    let _ = fs::remove_file(format!("{}-wal", path.display()));
+    let _ = fs::remove_file(format!("{}-shm", path.display()));
+}
+
+#[test]
+fn profile_flush_truncates_large_wal_to_the_retained_size_limit() {
+    const PAYLOAD_BYTES: i64 = 20 * 1024 * 1024;
+
+    let path = temp_path("wal-retention-limit");
+    {
+        let store = ProfileStore::open(&path, StoreMode::Normal).expect("open");
+        store
+            .connection
+            .execute_batch(&format!(
+                "CREATE TABLE wal_limit_probe(payload BLOB);
+                 BEGIN IMMEDIATE;
+                 INSERT INTO wal_limit_probe VALUES (zeroblob({PAYLOAD_BYTES}));
+                 COMMIT;"
+            ))
+            .expect("large bounded transaction");
+        assert_eq!(
+            store
+                .connection
+                .query_row("SELECT length(payload) FROM wal_limit_probe", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .expect("committed probe payload"),
+            PAYLOAD_BYTES
+        );
+        // SQLite's automatic PASSIVE checkpoint does not truncate a WAL file;
+        // orderly flush uses TRUNCATE and applies the configured size limit.
+        store
+            .flush()
+            .expect("truncate committed WAL on orderly flush");
+        let wal_path = PathBuf::from(format!("{}-wal", path.display()));
+        let wal_bytes = match fs::metadata(&wal_path) {
+            Ok(metadata) => metadata.len(),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => 0,
+            Err(error) => panic!("WAL metadata: {error}"),
+        };
+        assert!(
+            wal_bytes <= PROFILE_WAL_RETAINED_BYTES as u64,
+            "orderly flush should respect the configured retained-size limit"
+        );
+    }
+    let reopened = ProfileStore::open(&path, StoreMode::Normal).expect("reopen");
+    assert_eq!(
+        reopened
+            .connection
+            .query_row("SELECT length(payload) FROM wal_limit_probe", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .expect("durable probe payload"),
+        PAYLOAD_BYTES
     );
     drop(reopened);
     let _ = std::fs::remove_file(&path);
@@ -201,6 +562,23 @@ fn sqlite_full_is_reported_as_a_recoverable_disk_full_error() {
     let error = StoreError::from(sqlite_error);
     assert!(matches!(error, StoreError::DiskFull));
     assert!(error.to_string().contains("free disk space and retry once"));
+}
+
+#[test]
+fn storage_error_debug_and_display_redact_database_diagnostics() {
+    let sentinel = "private-profile-path-and-sql-sentinel";
+    let errors = [
+        StoreError::Corrupt(sentinel.to_owned()),
+        StoreError::Sql(rusqlite::Error::InvalidColumnName(sentinel.to_owned())),
+    ];
+    for error in errors {
+        assert!(!format!("{error:?}").contains(sentinel));
+        assert!(!error.to_string().contains(sentinel));
+    }
+
+    let worker_error = StorageWorkerError::Spawn(sentinel.to_owned());
+    assert!(!format!("{worker_error:?}").contains(sentinel));
+    assert!(!worker_error.to_string().contains(sentinel));
 }
 
 #[test]
@@ -290,6 +668,19 @@ fn visits_deduplicate_pages_but_retain_visit_events() {
         .expect("count");
     assert_eq!(visits, 2);
     drop(store);
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn corrupt_store_inspection_redacts_private_path_diagnostics() {
+    let path = temp_path("private-inspection-path-sentinel");
+    std::fs::write(&path, b"not a sqlite database").expect("write corrupt fixture");
+
+    let inspection = inspect_store(&path);
+    let projection = format!("{inspection:?} {}", inspection.reason.as_str());
+    assert_eq!(inspection.status, "corrupt");
+    assert!(!projection.contains("private-inspection-path-sentinel"));
+
     let _ = std::fs::remove_file(path);
 }
 
@@ -949,6 +1340,77 @@ fn downloads_round_trip_lifecycle_and_order() {
     assert_eq!(record.completed_at, Some(3));
     assert_eq!(store.downloads().expect("list").len(), 1);
     assert!(store.download("missing").expect("missing").is_none());
+    drop(store);
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn download_progress_survives_terminal_engine_counter_reset() {
+    let path = temp_path("download-progress-reset");
+    let store = ProfileStore::open(&path, StoreMode::Normal).expect("open");
+    store
+        .create_download(
+            "download-1",
+            "https://example.test/file.bin",
+            "/tmp/file.bin",
+            DownloadState::Offered,
+            1,
+        )
+        .expect("create");
+    store
+        .update_download("download-1", DownloadState::InProgress, 65_536, None)
+        .expect("progress");
+    store
+        .update_download("download-1", DownloadState::Paused, 0, None)
+        .expect("single-update counter reset");
+    assert_eq!(
+        store
+            .download("download-1")
+            .expect("read")
+            .expect("record")
+            .bytes_received,
+        65_536
+    );
+    store
+        .update_download_batch(&[DownloadUpdate {
+            id: "download-1".to_owned(),
+            state: DownloadState::Cancelled,
+            bytes_received: 0,
+            completed_at: None,
+        }])
+        .expect("terminal counter reset");
+    let record = store.download("download-1").expect("read").expect("record");
+    assert_eq!(record.state, DownloadState::Cancelled);
+    assert_eq!(record.bytes_received, 65_536);
+
+    store
+        .create_download(
+            "download-1",
+            "https://example.test/next.bin",
+            "/tmp/next.bin",
+            DownloadState::Offered,
+            2,
+        )
+        .expect("new request with reused engine ID");
+    assert_eq!(
+        store
+            .download("download-1")
+            .expect("read")
+            .expect("record")
+            .bytes_received,
+        0
+    );
+    store
+        .update_download("download-1", DownloadState::Completed, 1, Some(3))
+        .expect("new completion");
+    assert_eq!(
+        store
+            .download("download-1")
+            .expect("read")
+            .expect("record")
+            .bytes_received,
+        1
+    );
     drop(store);
     let _ = std::fs::remove_file(path);
 }

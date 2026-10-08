@@ -1,12 +1,22 @@
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, fmt};
 
 const MAX_RULES: usize = 512;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub enum HostPattern {
     Any,
     Exact(String),
     Subdomains(String),
+}
+
+impl fmt::Debug for HostPattern {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::Any => "HostPattern::Any",
+            Self::Exact(_) => "HostPattern::Exact([redacted])",
+            Self::Subdomains(_) => "HostPattern::Subdomains([redacted])",
+        })
+    }
 }
 
 impl HostPattern {
@@ -21,18 +31,40 @@ impl HostPattern {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct CleaningRule {
     pub id: String,
     pub host: HostPattern,
     pub remove_parameters: BTreeSet<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+impl fmt::Debug for CleaningRule {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("CleaningRule")
+            .field("id", &"[redacted]")
+            .field("host", &self.host)
+            .field("remove_parameter_count", &self.remove_parameters.len())
+            .finish()
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
 pub struct CleaningRules {
     pub revision: String,
     pub source: String,
     pub rules: Vec<CleaningRule>,
+}
+
+impl fmt::Debug for CleaningRules {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("CleaningRules")
+            .field("revision", &"[redacted]")
+            .field("source", &"[redacted]")
+            .field("rule_count", &self.rules.len())
+            .finish()
+    }
 }
 
 impl CleaningRules {
@@ -71,7 +103,7 @@ impl CleaningRules {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct CleanLinkResult {
     pub original: String,
     pub cleaned: String,
@@ -80,6 +112,21 @@ pub struct CleanLinkResult {
     pub removed_parameters: Vec<String>,
     pub retained_parameters: Vec<String>,
     pub explanation: String,
+}
+
+impl fmt::Debug for CleanLinkResult {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("CleanLinkResult")
+            .field("original", &"[redacted]")
+            .field("cleaned", &"[redacted]")
+            .field("changed", &self.changed)
+            .field("applied_rule_count", &self.applied_rules.len())
+            .field("removed_parameter_count", &self.removed_parameters.len())
+            .field("retained_parameter_count", &self.retained_parameters.len())
+            .field("explanation", &"[redacted]")
+            .finish()
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -345,5 +392,34 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn clean_link_debug_redacts_url_and_query_metadata() {
+        let sentinel = "private-clean-link-sentinel-c033";
+        let result = clean_link(
+            &format!("https://example.test/?private={sentinel}&utm_source=campaign"),
+            &builtin_rules(),
+        )
+        .expect("clean link");
+
+        assert!(result.cleaned.contains(sentinel));
+        assert!(!format!("{result:?}").contains(sentinel));
+        assert!(!format!("{result:?}").contains("utm_source"));
+    }
+
+    #[test]
+    fn cleaning_rule_debug_redacts_private_rule_metadata() {
+        let sentinel = "private-cleaning-rule-sentinel-204b";
+        let rule = CleaningRule {
+            id: sentinel.into(),
+            host: HostPattern::Exact(sentinel.into()),
+            remove_parameters: [sentinel.into()].into_iter().collect(),
+        };
+        let rules = CleaningRules::new(sentinel, sentinel, vec![rule.clone()]).expect("rules");
+
+        assert!(!format!("{:?}", rule.host).contains(sentinel));
+        assert!(!format!("{rule:?}").contains(sentinel));
+        assert!(!format!("{rules:?}").contains(sentinel));
     }
 }

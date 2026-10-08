@@ -1,0 +1,8 @@
+<!doctype html><meta charset="utf-8"><title>Versioning mutation</title>
+<h1>Continuously mutating fixture</h1>
+<output id="revision">0</output>
+<a id="navigate" href="/versioning/document">Navigate during capture</a>
+<script>
+let revision = 0;
+setInterval(() => { document.querySelector('#revision').textContent = String(++revision); }, 10);
+</script>

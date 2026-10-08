@@ -7,10 +7,13 @@ import io.github.ferricbrowser 1.0
 import "../scripts/BrowserScripts.js" as BrowserScripts
 import "../scripts/ChromePresentation.js" as ChromePresentation
 import "../scripts/SpellcheckPresentation.js" as SpellcheckPresentation
+import "../scripts/ContextCaptureCoordinator.js" as ContextCaptureCoordinator
+import "../scripts/PopupWindowOwnership.js" as PopupWindowOwnership
 
 ApplicationWindow {
     id: window
     readonly property alias primaryBrowserUi: browserUi
+    readonly property alias versioningWindowOwner: versioningWindowOwnerController
     readonly property alias blocklistUpdaterObject: blocklistUpdater
     readonly property alias linkRuleUpdaterObject: linkRuleUpdater
     readonly property alias mprisControllerObject: mprisController
@@ -41,12 +44,13 @@ ApplicationWindow {
     readonly property alias browserWindowFactory: window.browserWindowComponentObject
     readonly property alias popupWindowFactory: window.popupWindowComponentObject
     readonly property alias webViewFactory: window.webViewComponentObject
-    readonly property alias primaryRequestInterceptor: requestInterceptor
+    readonly property var primaryRequestInterceptor:
+        window.versioningRestoreSharedInterceptor || requestInterceptor
     readonly property alias devToolsWindowFactory: devToolsWindowComponent
     objectName: "ferric_browserWindow"
     width: 1280
     height: 800
-    visible: true
+    visible: !window.windowCleanBranch
     title: window.ephemeralProfile
            ? "Ferric Browser · " + window.profileLabel
              + (!window.tabStripVisible ? " · " + browserUi.tab_count + " tabs" : "")
@@ -81,6 +85,7 @@ ApplicationWindow {
     property alias modeFocusReturnTarget: focusOverlayController.modeFocusReturnTarget
     property alias modeFocusCaptured: focusOverlayController.modeFocusCaptured
     readonly property bool browserKeyFocusActive: !window.browserChromeInputActive
+                                                  && !window.versioningRestoreEditableDialogVisible
     property color backgroundColor: "#1e1e2e"
     property color surfaceColor: "#313244"
     property color panelColor: "#181825"
@@ -123,9 +128,12 @@ ApplicationWindow {
            ? tabBarHeight : 0)
     readonly property real chromeOpacity: 1.0
     property var browserWindowRegistry: []
+    signal versioningDiscoveryChanged()
     property var popupWindowRegistry: []
     property bool applicationShutdownInProgress: false
     property bool applicationShutdownForcePromptVisible: false
+    property var versionedArchiveHostObject: null
+    property bool archiveShutdownCloseRequested: false
     property bool devToolsVisible: false
     property bool devToolsDetached: false
     property var devToolsExternalView: null
@@ -135,6 +143,7 @@ ApplicationWindow {
     property double applicationShutdownStartedAt: 0
     property int applicationShutdownGeneration: 0
     property alias ephemeralProfileOwners: windowRegistryController.ephemeralProfileOwners
+    property alias cleanBranchOwners: windowRegistryController.cleanBranchOwners
     property bool libraryJourneyGraphMode: false
     property bool libraryJourneyCurrentOnly: false
     property string libraryJourneySearchText: ""
@@ -214,6 +223,19 @@ ApplicationWindow {
         id: windowRegistryController
         browserWindow: window
         browserUi: window.primaryBrowserUi
+    }
+
+    FerricVersioningWindowOwner {
+        id: versioningWindowOwnerController
+        hostWindow: window
+        parentOwner: window.versioningRestoreParentOwner
+        onDiscoveryChanged: {
+            window.publishBrowserWindowRegistry()
+            // The timeout prompt stops polling. A child can still complete
+            // its reviewed close afterward, so recheck before forcing quit.
+            if (window.applicationShutdownInProgress)
+                Qt.callLater(window.advanceApplicationShutdown)
+        }
     }
 
     FerricRequestPresentationController {
@@ -550,7 +572,7 @@ ApplicationWindow {
                     entry.notification.close()
                 }
                 if (entry.ui) {
-                    entry.ui.status_text = "Desktop notification revoked for " + pendingOrigin
+                    entry.ui.status_text = "Desktop notification permission revoked"
                 }
             } else {
                 retained.push(entry)
@@ -592,7 +614,7 @@ ApplicationWindow {
                 || !window.desktopNotificationsEnabled(ui)) {
             notification.close()
             if (ui) {
-                ui.status_text = "Desktop notification blocked for " + origin
+                ui.status_text = "Desktop notification blocked"
             }
             return
         }
@@ -635,15 +657,11 @@ ApplicationWindow {
             window.forgetNotificationOwner(notification)
         })
         if (notificationPresenter.present(notification, profileScope, origin)) {
-            ui.status_text = privateProfile
-                    ? "Private desktop notification shown for " + origin
-                    : "Desktop notification shown for " + origin
+            ui.status_text = "Desktop notification shown"
             return
         }
         notification.show()
-        ui.status_text = privateProfile
-                ? "Private desktop notification shown for " + origin
-                : "Desktop notification shown for " + origin
+        ui.status_text = "Desktop notification shown"
     }
 
     function focusTargetAvailable(target) {
@@ -828,7 +846,9 @@ ApplicationWindow {
         var privateFlags = []
         var ephemeralFlags = []
         var tabCounts = []
-        var entries = window.browserWindowRegistry || []
+        var localEntries = window.browserWindowRegistry || []
+        var entries = localEntries.concat(window.versioningWindowOwner.discoveryEntries(
+                                               Math.max(0, 64 - localEntries.length)))
         for (var i = 0; i < entries.length && ids.length < 64; ++i) {
             var entry = entries[i]
             if (!entry || !entry.ui || !entry.host) {
@@ -845,6 +865,89 @@ ApplicationWindow {
         }
         browserUi.publish_live_window_registry(
                     ids, ownerTokens, profiles, privateFlags, ephemeralFlags, tabCounts)
+        window.versioningDiscoveryChanged()
+    }
+
+    // Window IDs and handles are routing hints only. Rust keeps the saved
+    // membership, captures, binding plans, and one-use owner receipts.
+    function commitSavedContext(sourceUi) {
+        var sourceEntry = window.browserWindowEntryForUi(sourceUi)
+        var entries = (window.browserWindowRegistry || []).concat(
+                    window.versioningWindowOwner.discoveryEntries(64))
+        return ContextCaptureCoordinator.commitSavedContext(
+                    sourceUi, sourceEntry, entries)
+    }
+
+    function saveContextMembership(sourceUi) {
+        var sourceEntry = window.browserWindowEntryForUi(sourceUi)
+        var entries = (window.browserWindowRegistry || []).concat(
+                    window.versioningWindowOwner.discoveryEntries(64))
+        return ContextCaptureCoordinator.saveContextMembership(
+                    sourceUi, sourceEntry, entries)
+    }
+
+    // The authenticated instance owner has already selected a typed, exact
+    // secondary window and placed its request in a bounded Rust mailbox.
+    // QML transports only the target identity, never command payloads.
+    function dispatchRoutedIpc(windowIds) {
+        if (!windowIds || windowIds.length === 0)
+            return
+        var entries = (window.browserWindowRegistry || []).concat(
+                    window.versioningWindowOwner.discoveryEntries(64))
+        for (var i = 0; i < windowIds.length; ++i) {
+            var id = String(windowIds[i] || "")
+            var match = null
+            var ambiguous = false
+            for (var j = 0; j < entries.length; ++j) {
+                var entry = entries[j]
+                if (!entry || !entry.ui || !entry.host
+                        || String(entry.coreWindowId || "") !== id) {
+                    continue
+                }
+                if (match !== null) {
+                    ambiguous = true
+                    break
+                }
+                match = entry
+            }
+            if (!ambiguous && match !== null && match.ui !== browserUi
+                    && String(match.ui.core_window_id || "") === id
+                    && String(match.ui.window_token || "")
+                            === String(match.windowToken || "")
+                    && Number(match.ui.poll_routed_ipc()) > 0) {
+                match.host.scheduleRuntimeWork(0)
+            } else {
+                browserUi.reject_routed_ipc(id)
+            }
+        }
+    }
+
+    function refreshBrowserWindowIdentity(ui) {
+        var entries = window.browserWindowRegistry || []
+        var coreWindowId = String(ui.core_window_id || "")
+        if (coreWindowId.length > 0) {
+            for (var otherIndex = 0; otherIndex < entries.length; ++otherIndex) {
+                var other = entries[otherIndex]
+                if (other && other.ui !== ui && other.coreWindowId === coreWindowId) {
+                    ui.status_text = "Window identity collision; cross-window routing unavailable"
+                    return
+                }
+            }
+        }
+        for (var i = 0; i < entries.length; ++i) {
+            var entry = entries[i]
+            if (entry && entry.ui === ui) {
+                var windowToken = String(ui.window_token || "")
+                if (entry.coreWindowId !== coreWindowId
+                        || entry.windowToken !== windowToken) {
+                    entry.coreWindowId = coreWindowId
+                    entry.windowToken = windowToken
+                    window.browserWindowRegistry = entries
+                    window.publishBrowserWindowRegistry()
+                }
+                return
+            }
+        }
     }
 
     function updateBrowserWindowView(ui, view) {
@@ -934,44 +1037,47 @@ ApplicationWindow {
     }
 
     function registerPopupWindow(hostWindow, openerUi, view) {
-        if (!hostWindow) {
-            return false
-        }
-        var entries = (window.popupWindowRegistry || []).filter(function(entry) {
-            return entry && entry.host && entry.host !== hostWindow
-        })
-        entries.push({ host: hostWindow, ui: openerUi || browserUi, view: view || null })
-        window.popupWindowRegistry = entries
-        return true
+        return PopupWindowOwnership.registerPopupWindow(
+                    window, hostWindow, openerUi || browserUi, view)
+    }
+
+    function canRegisterPopupWindow() {
+        return PopupWindowOwnership.canRegisterPopupWindow(window)
     }
 
     function unregisterPopupWindow(hostWindow) {
-        window.popupWindowRegistry = (window.popupWindowRegistry || []).filter(
-                    function(entry) { return entry && entry.host && entry.host !== hostWindow })
+        return PopupWindowOwnership.unregisterPopupWindow(window, hostWindow)
     }
 
     function shutdownParticipantCount() {
-        var count = 0
+        var count = window.versioningWindowOwner.totalOwnedWindows(
+                    window.versioningWindowOwner.maximumWindows)
         var windows = window.browserWindowRegistry || []
         for (var i = 0; i < windows.length; ++i) {
-            if (windows[i] && windows[i].host && windows[i].host !== window) {
+            if (windows[i] && windows[i].host && windows[i].host !== window
+                    && !window.versioningWindowOwner.containsHost(windows[i].host)) {
                 ++count
             }
         }
-        var popups = window.popupWindowRegistry || []
-        for (var j = 0; j < popups.length; ++j) {
-            if (popups[j] && popups[j].host) {
-                ++count
-            }
-        }
-        return count
+        var popupHosts = PopupWindowOwnership.snapshotPopupHosts(window)
+        // Unknown popup ownership is an outstanding shutdown participant.
+        return popupHosts === null ? count + 1 : count + popupHosts.length
     }
 
     function abortApplicationShutdown() {
         if (!window.applicationShutdownInProgress) {
+            // An owning window may cancel while this child is still showing
+            // its page/download review, before the shutdown gate has started.
+            window.shutdownConfirmationVisible = false
+            window.shutdownPromptVisible = false
+            window.shutdownPagePromptVisible = false
+            window.shutdownPagePromptSnapshot = null
+            window.shutdownPageProbeGeneration += 1
+            shutdownPageProbeTimer.stop()
             return
         }
         window.applicationShutdownInProgress = false
+        window.archiveShutdownCloseRequested = false
         window.applicationShutdownGeneration += 1
         window.applicationShutdownStage = "Shutdown cancelled"
         window.applicationShutdownForcePromptVisible = false
@@ -979,13 +1085,15 @@ ApplicationWindow {
         applicationShutdownTimer.stop()
         shutdownPageProbeTimer.stop()
         browserUi.end_shutdown_gate()
+        window.versioningWindowOwner.cancelCloseAll()
         window.shutdownConfirmationVisible = false
         window.shutdownPromptVisible = false
         window.shutdownPagePromptVisible = false
+        window.shutdownPagePromptSnapshot = null
         var windows = window.browserWindowRegistry || []
         for (var i = 0; i < windows.length; ++i) {
             var host = windows[i] && windows[i].host
-            if (host && host !== window) {
+            if (host && host !== window && !window.versioningWindowOwner.containsHost(host)) {
                 host.windowCloseConfirmationVisible = false
                 host.windowShutdownPromptVisible = false
                 host.windowShutdownStoragePromptVisible = false
@@ -994,10 +1102,10 @@ ApplicationWindow {
                 }
             }
         }
-        var popups = window.popupWindowRegistry || []
-        for (var j = 0; j < popups.length; ++j) {
-            var popup = popups[j] && popups[j].host
-            if (popup) {
+        var popupHosts = PopupWindowOwnership.snapshotPopupHosts(window)
+        if (popupHosts !== null) {
+            for (var j = 0; j < popupHosts.length; ++j) {
+                var popup = popupHosts[j]
                 popup.windowCloseConfirmationVisible = false
                 popup.windowShutdownPromptVisible = false
                 if (popup.cancelPageStateProbe) {
@@ -1005,12 +1113,15 @@ ApplicationWindow {
                 }
             }
         }
-        browserUi.status_text = "Shutdown cancelled"
+        browserUi.status_text = popupHosts === null
+                ? "Shutdown cancelled; popup ownership is unavailable"
+                : "Shutdown cancelled"
     }
 
     function finishApplicationShutdown() {
         if (!window.applicationShutdownInProgress
-                || window.shutdownParticipantCount() > 0) {
+                || window.shutdownParticipantCount() > 0
+                || !browserUi.versioned_archive_shutdown_ready()) {
             return
         }
         window.applicationShutdownStage = "Flushing Rust metadata"
@@ -1029,7 +1140,7 @@ ApplicationWindow {
         window.applicationShutdownForcePromptVisible = false
         window.shutdownPageProbeGeneration += 1
         window.shutdownApproved = true
-        Qt.quit()
+        window.finishOwnedWindowClose()
     }
 
     function advanceApplicationShutdown() {
@@ -1039,6 +1150,23 @@ ApplicationWindow {
         }
         var remaining = window.shutdownParticipantCount()
         var elapsed = Date.now() - window.applicationShutdownStartedAt
+        if (!browserUi.versioned_archive_shutdown_ready()) {
+            window.applicationShutdownStage = "Closing stored archive"
+            var archiveUrl = String(browserUi.versioning_archive_view_url || "")
+            var host = window.versionedArchiveHostObject
+            if (archiveUrl.length > 0 && host && host.item
+                    && (!window.archiveShutdownCloseRequested
+                        || host.item.closeRetryAvailable)) {
+                window.archiveShutdownCloseRequested = host.closeArchive()
+            }
+            if (elapsed >= 10000) {
+                window.applicationShutdownStage =
+                        "Stored archive did not finish closing safely"
+                window.applicationShutdownForcePromptVisible = true
+                applicationShutdownTimer.stop()
+            }
+            return
+        }
         window.applicationShutdownStage = remaining > 0
                 ? "Closing " + remaining + " browser window(s)"
                 : "Flushing Rust metadata"
@@ -1058,25 +1186,35 @@ ApplicationWindow {
         if (window.applicationShutdownInProgress) {
             return
         }
+        var popupHosts = PopupWindowOwnership.snapshotPopupHosts(window)
+        if (popupHosts === null) {
+            browserUi.status_text = "Could not safely resolve popup window ownership"
+            return
+        }
+        // Close popup admission before entering the shutdown gate, which may
+        // synchronously trigger callbacks that would otherwise create owners.
+        window.applicationShutdownInProgress = true
         if (!browserUi.begin_shutdown_gate()) {
+            window.applicationShutdownInProgress = false
             browserUi.status_text = "Could not start the shutdown gate"
             return
         }
-        window.applicationShutdownInProgress = true
+        window.archiveShutdownCloseRequested = false
         window.applicationShutdownForcePromptVisible = false
         window.applicationShutdownStage = "Resolving browser windows"
         window.applicationShutdownStartedAt = Date.now()
         window.applicationShutdownGeneration += 1
+        window.versioningWindowOwner.requestCloseAll()
         var windows = (window.browserWindowRegistry || []).slice(0)
         for (var i = 0; i < windows.length; ++i) {
             var host = windows[i] && windows[i].host
-            if (host && host !== window && !host.windowShutdownApproved) {
+            if (host && host !== window && !host.windowShutdownApproved
+                    && !window.versioningWindowOwner.containsHost(host)) {
                 host.continueQuitRequest()
             }
         }
-        var popups = (window.popupWindowRegistry || []).slice(0)
-        for (var j = 0; j < popups.length; ++j) {
-            var popup = popups[j] && popups[j].host
+        for (var j = 0; j < popupHosts.length; ++j) {
+            var popup = popupHosts[j]
             if (popup && !popup.windowShutdownApproved) {
                 popup.continueQuitRequest()
             }
@@ -1094,7 +1232,17 @@ ApplicationWindow {
         window.applicationShutdownInProgress = false
         window.applicationShutdownForcePromptVisible = false
         window.shutdownApproved = true
-        Qt.quit()
+        window.finishOwnedWindowClose()
+    }
+
+    // A restore destination owns its window, not the process. In particular,
+    // closing that destination must not close the still-live source window.
+    function finishOwnedWindowClose() {
+        if (window.instanceRequestOwner) {
+            Qt.quit()
+        } else {
+            window.close()
+        }
     }
 
     function retainEphemeralProfileOwner(profile, token) {
@@ -1103,6 +1251,22 @@ ApplicationWindow {
 
     function releaseEphemeralProfileOwner(profile, token) {
         return windowRegistryController.releaseEphemeralProfileOwner(profile, token)
+    }
+
+    function retainCleanBranchOwner(token, host, profile, view) {
+        return windowRegistryController.retainCleanBranchOwner(token, host, profile, view)
+    }
+
+    function cleanBranchOwner(token) {
+        if (window.windowCleanBranch
+                && String(token || "") === window.windowBoundBranchToken
+                && window.windowBranchRootWindow)
+            return window.windowBranchRootWindow.cleanBranchOwner(token)
+        return windowRegistryController.cleanBranchOwner(token)
+    }
+
+    function releaseCleanBranchOwner(token, host, profile, view) {
+        return windowRegistryController.releaseCleanBranchOwner(token, host, profile, view)
     }
 
     function switcherOwner(result) {
@@ -1181,16 +1345,40 @@ ApplicationWindow {
                 return true
             }
         }
-        var popups = window.popupWindowRegistry || []
+        var popups = window.rootPopupEntriesSnapshot()
+        if (popups === null) {
+            browserUi.status_text = "Notification source owner is unavailable"
+            return false
+        }
         for (var j = 0; j < popups.length; ++j) {
             var popup = popups[j]
-            if (tryEntry(popup, popup && popup.view,
-                         popup && popup.host && popup.host.popupPrivateProfile)) {
+            var popupPrivateProfile
+            try {
+                popupPrivateProfile = popup.host.popupPrivateProfile
+            } catch (error) {
+                browserUi.status_text = "Notification source owner is unavailable"
+                return false
+            }
+            if (tryEntry(popup, popup.view, popupPrivateProfile)) {
                 return true
             }
         }
         browserUi.status_text = "Notification source is no longer open"
         return false
+    }
+
+    function rootPopupEntriesSnapshot() {
+        try {
+            var owner = window.versioningWindowOwner
+            if (!owner || typeof owner.rootOwner !== "function")
+                return null
+            var root = owner.rootOwner()
+            if (!root || !root.hostWindow)
+                return null
+            return PopupWindowOwnership.snapshotPopupEntries(root.hostWindow)
+        } catch (error) {
+            return null
+        }
     }
 
     function focusExistingContextWindow(commandText, sourceUi) {
@@ -1416,6 +1604,58 @@ ApplicationWindow {
     }
     property string startupUrl: "about:blank"
     property var startupAdditionalUrls: []
+    // A trusted, exact-ID restore child starts with its initial blank tab and
+    // waits for the profile-bound Rust plan before it navigates or allocates
+    // any restored tabs.
+    property var tabCapableWindowFactory: null
+    // A clean window branch is a hidden, separately owned tab-capable
+    // off-record application until its entire ordered native view set and
+    // Rust lineage have been published. The first view anchors its lease.
+    property string windowBranchToken: ""
+    property string windowBoundBranchToken: ""
+    property bool windowBranchTokenLocked: false
+    readonly property bool windowCleanBranch: windowBranchTokenLocked
+            ? windowBoundBranchToken.length > 0 : windowBranchToken.length > 0
+    property bool windowCleanBranchPublished: false
+    property bool windowCleanBranchNativeBound: false
+    property bool windowCleanBranchLineagePublished: false
+    property var windowBranchParentUi: null
+    property var windowBranchRootWindow: null
+    property var windowBranchGroupViews: []
+    property var windowBranchFirstView: null
+    property var windowBranchDeferredNavigations: []
+    property var windowBranchPageOutcomeIds: []
+    property var windowBranchPageOutcomes: []
+    property var windowBranchPageExpectedUrls: []
+    property var windowBranchPageNavigationStarted: []
+    property var windowBranchPageStartedAt: []
+    readonly property var windowBranchUi: browserUi
+    readonly property var windowBranchProfile: browserProfile
+    readonly property var windowBranchInitialView: windowBranchFirstView
+    property var windowSharedProfile: null
+    readonly property var windowRequestInterceptor: window.primaryRequestInterceptor
+    onWindowBranchTokenChanged: {
+        if (windowBranchTokenLocked && windowBranchToken !== windowBoundBranchToken) {
+            window.visible = false
+            Qt.callLater(function() { window.destroy() })
+        }
+    }
+    // Only the instance's entry window may own the process-global IPC queue.
+    // Tab-capable restore children still pump their own application workers.
+    property bool instanceRequestOwner: true
+    property string versioningRestoreStartupCommitId: ""
+    property var versioningRestoreSourceUi: null
+    property var versioningRestoreParentOwner: null
+    property var versioningRestoreSharedProfile: null
+    property var versioningRestoreSharedInterceptor: null
+    property bool versioningRestoreStartupMediaPositions: false
+    property bool versioningRestoreStartupEditableDrafts: false
+    property bool versioningRestoreEditableReviewEnabled: false
+    property bool versioningRestoreEditableDialogVisible: false
+    property string versioningOpenRestoreCommitId: ""
+    property double versioningOpenRestoreOptionsAt: 0
+    property bool versioningOpenRestoreMediaPositionsRequested: false
+    property bool versioningOpenRestoreEditableDraftsRequested: false
     property string startupEntryPoint: "typed-initial-url"
     property bool startupTrustedLocalInput: false
     property bool startupBackground: false
@@ -1478,6 +1718,7 @@ ApplicationWindow {
     property int webNotificationSequence: 0
     property var activeDownloads: ({})
     property var pendingDownloadRequests: ({})
+    property var downloadCompletionRequests: ({})
     property var notificationOwners: []
     property var pendingPortalNotifications: []
     property var pendingExternalUris: []
@@ -1549,8 +1790,10 @@ ApplicationWindow {
     property bool shutdownConfirmationVisible: false
     property string shutdownConfirmationCommand: ":window-close"
     property bool shutdownPromptVisible: false
+    property bool shutdownWaitingForDownloadFinishes: false
     property bool shutdownPagePromptVisible: false
     property string shutdownPagePromptReason: ""
+    property var shutdownPagePromptSnapshot: null
     property int shutdownPageProbeGeneration: 0
     property bool shutdownApproved: false
     property bool switcherVisible: false
@@ -1596,8 +1839,16 @@ ApplicationWindow {
             return false
         }
         var resolved = window.resolvedQtRequests || []
+        var acceptedDownload = null
         for (var i = 0; i < resolved.length; ++i) {
             if (resolved[i] && resolved[i].request === request) {
+                if (kind === "download" && method === "cancel"
+                        && resolved[i].kind === "download"
+                        && resolved[i].method === "accept"
+                        && !request.isFinished) {
+                    acceptedDownload = resolved[i]
+                    break
+                }
                 window.noteQtResolution(ui, kind, "duplicate")
                 return false
             }
@@ -1611,7 +1862,10 @@ ApplicationWindow {
             window.noteQtResolution(ui, kind, "error")
             return false
         }
-        resolved.push({ request: request, kind: String(kind) })
+        if (acceptedDownload)
+            acceptedDownload.method = "cancel"
+        else
+            resolved.push({ request: request, kind: String(kind), method: String(method) })
         if (resolved.length > 256) {
             resolved.shift()
         }
@@ -1709,28 +1963,23 @@ ApplicationWindow {
         var hostValue = view && view.url ? view.url.host : ""
         var host = hostValue === undefined || hostValue === null
                 ? "" : String(hostValue)
-        var counts = requestInterceptor.blockedSiteCounts || ({})
+        var counts = window.primaryRequestInterceptor.blockedSiteCounts || ({})
         return host.length > 0 && counts[host] !== undefined ? Number(counts[host]) : 0
     }
     readonly property int browserScriptWorld: WebEngineScript.ApplicationWorld
     readonly property string browserScriptBundleVersion: "1"
 
-    WebEngineProfilePrototype {
+    FerricVersioningProfileHost {
         id: browserProfilePrototype
-        storageName: window.temporaryProfile ? "" : "ferric-browser-" + window.profileName
-        persistentStoragePath: window.temporaryProfile || window.storageBasePath.length === 0
-                ? ""
-                : window.storageBasePath + "/webengine/" + window.profileName
-        cachePath: window.temporaryProfile || window.storageBasePath.length === 0
-                ? ""
-                : window.storageBasePath + "/webengine-cache/" + window.profileName
-        persistentPermissionsPolicy: WebEngineProfile.AskEveryTime
+        browserWindow: window
+        sharedProfile: window.versioningRestoreSharedProfile
     }
 
     property var browserProfile: null
 
     Connections {
         target: browserProfile
+        enabled: !window.versioningRestoreSharedProfile
 
         function onDownloadRequested(download) {
             window.handleDownloadRequested(download)
@@ -1761,15 +2010,16 @@ ApplicationWindow {
     }
 
     function refreshBlockingEvidence() {
-        var blockedRequests = Number(requestInterceptor.blockedCount)
-        var unknownRequests = Number(requestInterceptor.unknownContextCount)
+        var interceptor = window.primaryRequestInterceptor
+        var blockedRequests = Number(interceptor.blockedCount)
+        var unknownRequests = Number(interceptor.unknownContextCount)
         browserUi.publish_blocking_live_counts(
                     blockedRequests, unknownRequests, window.activeBlockedRequestCount)
         var activeView = window.activeWebView()
         var activeHost = activeView && activeView.url ? activeView.url.host : ""
         browserUi.set_blocking_active_evidence(
-                    requestInterceptor.blockedRequestExplanationFields(activeHost),
-                    requestInterceptor.blockedRequestDecisionFields(activeHost))
+                    interceptor.blockedRequestExplanationFields(activeHost),
+                    interceptor.blockedRequestDecisionFields(activeHost))
     }
 
     NotificationPresenter {
@@ -1862,6 +2112,9 @@ ApplicationWindow {
                 if (entry && entry.ui && entry.ui.poll_storage_library()) {
                     consumed = true
                 }
+            }
+            if (consumed) {
+                window.scheduleRuntimeWork(0)
             }
             if (consumed && window.switcherVisible) {
                 window.refreshSwitcher()
@@ -2018,6 +2271,10 @@ ApplicationWindow {
         id: browserUi
         status_text: "Ready"
         onRuntime_work_available: window.scheduleRuntimeWork(0)
+        // A restore plan can replace the reducer's tab set in an asynchronous
+        // worker callback. Reconcile the native tab model when that projection
+        // changes, even if no further input arrives in the destination window.
+        onTab_countChanged: window.scheduleRuntimeWork(0)
         onStatus_textChanged: {
             window.scheduleRuntimeWork(0)
             if (window.commandNoticeVisible && browserUi.mode !== "command"
@@ -2120,8 +2377,7 @@ ApplicationWindow {
         repeat: false
         onTriggered: {
             window.shutdownPageProbeGeneration += 1
-            window.shutdownPagePromptReason = "Page state check timed out."
-            window.shutdownPagePromptVisible = true
+            window.showShutdownPagePrompt("Page state check timed out.")
             browserUi.status_text = "Page state check timed out; choose Close anyway"
         }
     }

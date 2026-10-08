@@ -2,8 +2,8 @@ use super::{
     Arc, Command, CommandExt, CxxQtType, Duration, EditorCompletion, EditorWriteWorker, Mutex,
     Ordering, PAGE_SCRIPT_DEADLINE, Path, Pin, QString, Stdio, Uuid, Value,
     cleanup_editor_artifact, current_target, discard_editor_request,
-    finish_pending_selection_operation, fs, join_editor_stderr, qobject, read_bounded,
-    safe_ipc_url, terminate_editor_process, thread, try_wait_editor_process,
+    finish_pending_selection_operation, fs, qobject, safe_ipc_url, terminate_editor_process,
+    thread, try_wait_editor_process,
 };
 
 impl qobject::BrowserUi {
@@ -118,11 +118,8 @@ impl qobject::BrowserUi {
             Ok(value) => value,
             Err(_) => return fail(self, "Action target selection extraction failed".into()),
         };
-        if let Some(error) = value.get("error").and_then(Value::as_str) {
-            return fail(
-                self,
-                format!("Action target selection unavailable: {error}"),
-            );
+        if value.get("error").and_then(Value::as_str).is_some() {
+            return fail(self, "Action target selection unavailable".into());
         }
         let Some(selection) = value.get("text").and_then(Value::as_str) else {
             return fail(self, "Action target selection returned invalid text".into());
@@ -173,14 +170,11 @@ impl qobject::BrowserUi {
             .as_mut()
             .start_action_target_process(&argv, pending.target_config.detach)
         {
-            Ok(operation_id) => {
-                self.set_status_text(QString::from(format!(
-                    "Sent selection to {}: {operation_id}",
-                    pending.target_name
-                )));
+            Ok(_) => {
+                self.set_status_text(QString::from("Selection sent to configured action target"));
                 true
             }
-            Err(error) => fail(self, format!("action target failed: {error}")),
+            Err(_) => fail(self, "Action target failed".into()),
         }
     }
 
@@ -267,8 +261,8 @@ impl qobject::BrowserUi {
             self.set_status_text(QString::from("Selection extraction returned invalid data"));
             return false;
         };
-        if let Some(error) = object.get("error").and_then(Value::as_str) {
-            self.set_status_text(QString::from(format!("Selection not copied: {error}")));
+        if object.get("error").and_then(Value::as_str).is_some() {
+            self.set_status_text(QString::from("Selection could not be copied"));
             return false;
         }
         let Some(text) = object.get("text").and_then(Value::as_str) else {
@@ -337,8 +331,8 @@ impl qobject::BrowserUi {
             Ok(value) => value,
             Err(_) => return fail(self, "Userscript selection extraction failed".into()),
         };
-        if let Some(error) = value.get("error").and_then(Value::as_str) {
-            return fail(self, format!("Userscript selection unavailable: {error}"));
+        if value.get("error").and_then(Value::as_str).is_some() {
+            return fail(self, "Userscript selection unavailable".into());
         }
         let Some(text) = value.get("text").and_then(Value::as_str) else {
             return fail(self, "Userscript selection returned invalid text".into());
@@ -362,7 +356,7 @@ impl qobject::BrowserUi {
                 self.set_status_text(QString::from("Userscript selection started"));
                 true
             }
-            Err(error) => fail(self, format!("Userscript selection failed: {error}")),
+            Err(_) => fail(self, "Userscript selection failed".into()),
         }
     }
 
@@ -430,8 +424,8 @@ impl qobject::BrowserUi {
             self.set_status_text(QString::from("Caret operation returned invalid data"));
             return false;
         };
-        if let Some(error) = object.get("error").and_then(Value::as_str) {
-            self.set_status_text(QString::from(format!("Caret operation rejected: {error}")));
+        if object.get("error").and_then(Value::as_str).is_some() {
+            self.set_status_text(QString::from("Caret operation was rejected"));
             return false;
         }
         if object.get("ok").and_then(Value::as_bool) != Some(true) {
@@ -501,8 +495,8 @@ impl qobject::BrowserUi {
             self.set_status_text(QString::from("Editor extraction returned invalid data"));
             return false;
         };
-        if let Some(error) = object.get("error").and_then(Value::as_str) {
-            self.finish_editor_error(&token, error);
+        if object.get("error").and_then(Value::as_str).is_some() {
+            self.finish_editor_error(&token, "page did not provide editable text");
             return false;
         }
         let Some(text) = object.get("text").and_then(Value::as_str) else {
@@ -558,8 +552,8 @@ impl qobject::BrowserUi {
             .as_mut()
             .ok_or_else(|| "editor writer is unavailable".to_owned())
             .and_then(|worker| worker.request(file.clone(), text.as_bytes().to_vec()));
-        if let Err(error) = request {
-            self.finish_editor_error(&token, &format!("could not queue editor file: {error}"));
+        if request.is_err() {
+            self.finish_editor_error(&token, "editor file preparation was refused");
             return false;
         }
         {
@@ -614,8 +608,8 @@ impl qobject::BrowserUi {
                 self.finish_editor_error(&token, "editor file result became stale");
                 return;
             }
-            Err(error) => {
-                self.finish_editor_error(&token, &format!("could not write editor file: {error}"));
+            Err(_) => {
+                self.finish_editor_error(&token, "editor file could not be written");
                 return;
             }
         };
@@ -633,9 +627,9 @@ impl qobject::BrowserUi {
         let editor_dir = path.parent().unwrap_or_else(|| Path::new("."));
         let (executable, args) = match self.editor_argv(&path) {
             Ok(editor) => editor,
-            Err(error) => {
+            Err(_) => {
                 cleanup_editor_artifact(&path, private_temporary);
-                self.finish_editor_error(&token, &error);
+                self.finish_editor_error(&token, "configured editor command is unavailable");
                 return;
             }
         };
@@ -645,15 +639,11 @@ impl qobject::BrowserUi {
             .current_dir(editor_dir)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::piped());
+            .stderr(Stdio::null());
         #[cfg(unix)]
         editor_command.process_group(0);
         match editor_command.spawn() {
-            Ok(mut child) => {
-                let stderr = child
-                    .stderr
-                    .take()
-                    .map(|stderr| thread::spawn(move || read_bounded(stderr, 64 * 1024)));
+            Ok(child) => {
                 let process = Arc::new(Mutex::new(Some(child)));
                 let cancellation = Arc::clone(&pending.cancellation);
                 let completions = Arc::clone(&self.as_ref().rust().editor_completions);
@@ -667,7 +657,6 @@ impl qobject::BrowserUi {
                     current.process = Some(Arc::clone(&process));
                 }
                 thread::spawn(move || {
-                    let mut stderr = stderr;
                     let completion = loop {
                         if cancellation.load(Ordering::Acquire) {
                             terminate_editor_process(&process);
@@ -686,7 +675,6 @@ impl qobject::BrowserUi {
                                             original: pending.original.clone(),
                                             updated: Some(updated),
                                             error: None,
-                                            stderr: join_editor_stderr(&mut stderr),
                                         }
                                     }
                                     Ok(_) => EditorCompletion {
@@ -694,34 +682,30 @@ impl qobject::BrowserUi {
                                         original: pending.original.clone(),
                                         updated: None,
                                         error: Some("edited text is too large or invalid".into()),
-                                        stderr: join_editor_stderr(&mut stderr),
                                     },
-                                    Err(error) => EditorCompletion {
+                                    Err(_) => EditorCompletion {
                                         token: pending.token.clone(),
                                         original: pending.original.clone(),
                                         updated: None,
-                                        error: Some(format!("could not read edited text: {error}")),
-                                        stderr: join_editor_stderr(&mut stderr),
+                                        error: Some("could not read edited text".into()),
                                     },
                                 };
                             }
-                            Ok(Some(status)) => {
+                            Ok(Some(_)) => {
                                 break EditorCompletion {
                                     token: pending.token.clone(),
                                     original: pending.original.clone(),
                                     updated: None,
-                                    error: Some(format!("editor exited with status {status}")),
-                                    stderr: join_editor_stderr(&mut stderr),
+                                    error: Some("editor exited unsuccessfully".into()),
                                 };
                             }
                             Ok(None) => thread::sleep(Duration::from_millis(20)),
-                            Err(error) => {
+                            Err(_) => {
                                 break EditorCompletion {
                                     token: pending.token.clone(),
                                     original: pending.original.clone(),
                                     updated: None,
-                                    error: Some(error),
-                                    stderr: join_editor_stderr(&mut stderr),
+                                    error: Some("editor process could not be monitored".into()),
                                 };
                             }
                         }
@@ -736,13 +720,13 @@ impl qobject::BrowserUi {
                 });
                 self.set_status_text(QString::from("External editor started"));
             }
-            Err(error) => {
+            Err(_) => {
                 let mut rust = self.as_mut().rust_mut();
                 let this = rust.as_mut().get_mut();
                 if let Some(request) = this.pending_editor.take() {
                     discard_editor_request(request);
                 }
-                self.set_status_text(QString::from(format!("Editor could not start: {error}")));
+                self.set_status_text(QString::from("External editor could not start"));
             }
         }
     }
@@ -756,8 +740,6 @@ impl qobject::BrowserUi {
             .set_editor_completion_updated(QString::default());
         self.as_mut()
             .set_editor_completion_error(QString::default());
-        self.as_mut()
-            .set_editor_completion_stderr(QString::default());
         let completion = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
@@ -783,8 +765,6 @@ impl qobject::BrowserUi {
             .set_editor_completion_updated(QString::from(completion.updated.unwrap_or_default()));
         self.as_mut()
             .set_editor_completion_error(QString::from(completion.error.unwrap_or_default()));
-        self.as_mut()
-            .set_editor_completion_stderr(QString::from(completion.stderr.unwrap_or_default()));
         true
     }
 
@@ -830,8 +810,8 @@ impl qobject::BrowserUi {
             self.set_status_text(QString::from("Editor write-back returned invalid data"));
             return false;
         };
-        if let Some(error) = object.get("error").and_then(Value::as_str) {
-            self.set_status_text(QString::from(format!("Editor not applied: {error}")));
+        if object.get("error").and_then(Value::as_str).is_some() {
+            self.set_status_text(QString::from("External changes could not be applied"));
             return false;
         }
         if object.get("ok").and_then(Value::as_bool) != Some(true) {
@@ -842,7 +822,7 @@ impl qobject::BrowserUi {
         true
     }
 
-    pub(super) fn finish_editor_error(mut self: Pin<&mut Self>, token: &str, error: &str) {
+    pub(super) fn finish_editor_error(mut self: Pin<&mut Self>, token: &str, _error: &str) {
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
         if this
@@ -854,6 +834,8 @@ impl qobject::BrowserUi {
                 discard_editor_request(pending);
             }
         }
-        self.set_status_text(QString::from(format!("Editor not started: {error}")));
+        self.set_status_text(QString::from(
+            "External editor could not complete the request",
+        ));
     }
 }

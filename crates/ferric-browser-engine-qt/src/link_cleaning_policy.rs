@@ -19,7 +19,7 @@ const MAX_VALIDATOR_BYTES: usize = 4096;
 const ACCEPTED_BUNDLE_FILE: &str = "accepted.bundle";
 const ACCEPTED_METADATA_FILE: &str = "accepted.meta";
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct Manifest {
     schema: u32,
     revision: String,
@@ -29,14 +29,14 @@ struct Manifest {
     corpus: Vec<CorpusCase>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct ManifestRule {
     id: String,
     host: String,
     parameters: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct CorpusCase {
     id: String,
     input: String,
@@ -95,17 +95,17 @@ pub fn diagnostic_snapshot(roots: Option<&StorageRoots>) -> Value {
                 "automatic": "configured-normal-profile"
             }),
         ),
-        Some(Ok((bundle, Err(error)))) => json!({
+        Some(Ok((bundle, Err(_)))) => json!({
             "status": "invalid",
-            "reason": format!("cached clean-link corpus audit failed: {error}"),
-            "revision": bundle.manifest.revision,
+            "reason": "cached clean-link corpus audit failed",
+            "revision": diagnostic_revision(&bundle.manifest.revision),
             "update": {
                 "status": "rejected-fallback",
                 "last_accepted_snapshot": "compiled-reviewed",
             "automatic": "configured-normal-profile"
             }
         }),
-        Some(Err(error)) => match compiled {
+        Some(Err(_)) => match compiled {
             Ok((bundle, passed)) => bundle_diagnostic(
                 bundle,
                 passed,
@@ -113,12 +113,12 @@ pub fn diagnostic_snapshot(roots: Option<&StorageRoots>) -> Value {
                     "status": "rejected-fallback",
                     "last_accepted_snapshot": "compiled-reviewed",
                     "automatic": "configured-normal-profile",
-                    "reason": error
+                    "reason": "cached clean-link bundle was rejected"
                 }),
             ),
-            Err(compiled_error) => json!({
+            Err(_) => json!({
                 "status": "invalid",
-                "reason": format!("compiled audit failed: {compiled_error}; cached candidate rejected"),
+                "reason": "compiled clean-link audit failed; cached candidate rejected",
                 "update": {
                     "status": "rejected-fallback",
                     "automatic": "configured-normal-profile"
@@ -135,9 +135,9 @@ pub fn diagnostic_snapshot(roots: Option<&StorageRoots>) -> Value {
                     "automatic": "configured-normal-profile"
                 }),
             ),
-            Err(error) => json!({
+            Err(_) => json!({
                 "status": "invalid",
-                "reason": format!("clean-link rule audit failed: {error}"),
+                "reason": "clean-link rule audit failed",
                 "update": {
                     "status": "not-configured",
                 "automatic": "configured-normal-profile"
@@ -148,6 +148,12 @@ pub fn diagnostic_snapshot(roots: Option<&StorageRoots>) -> Value {
 }
 
 fn bundle_diagnostic(bundle: ReviewedBundle, passed: usize, update: Value) -> Value {
+    let source = if bundle.manifest.source == "compiled-reviewed" {
+        "compiled-reviewed"
+    } else {
+        "accepted-reviewed-bundle"
+    };
+    let revision = diagnostic_revision(&bundle.manifest.revision);
     let mut update = update;
     if let Some(object) = update.as_object_mut() {
         object.insert(
@@ -160,16 +166,29 @@ fn bundle_diagnostic(bundle: ReviewedBundle, passed: usize, update: Value) -> Va
     }
     json!({
         "status": "available",
-        "revision": bundle.manifest.revision,
-        "source": bundle.manifest.source,
+        "revision": revision,
+        "source": source,
         "manifest_sha256": bundle.checksum,
         "rule_count": bundle.rules.rules.len(),
         "corpus_cases": bundle.manifest.corpus.len(),
         "corpus_passed": passed,
-        "changelog": bundle.manifest.changelog,
+        "changelog_available": !bundle.manifest.changelog.is_empty(),
         "update": update,
-        "reason": "active rule revision and corpus audit metadata; URLs from corpus cases are excluded"
+        "reason": "active rule revision and corpus audit metadata; manifest prose and corpus URLs are excluded"
     })
+}
+
+fn diagnostic_revision(value: &str) -> &str {
+    if value.len() <= 64
+        && !value.is_empty()
+        && value.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || b"._-".contains(&byte)
+        })
+    {
+        value
+    } else {
+        "[redacted]"
+    }
 }
 
 pub fn accept_downloaded_bundle_with_metadata(
@@ -207,7 +226,7 @@ pub fn accept_downloaded_bundle_with_metadata(
     };
     Ok(json!({
         "status": "accepted",
-        "revision": bundle.manifest.revision,
+        "revision": diagnostic_revision(&bundle.manifest.revision),
         "manifest_sha256": checksum,
         "corpus_passed": passed,
         "corpus_cases": bundle.manifest.corpus.len(),
@@ -456,6 +475,50 @@ mod tests {
         assert_eq!(value["corpus_passed"], value["corpus_cases"]);
         assert!(!value.to_string().contains("example.test"));
         assert_eq!(value["update"]["automatic"], "configured-normal-profile");
+    }
+
+    #[test]
+    fn diagnostics_do_not_echo_cached_manifest_parse_details() {
+        let roots = StorageRoots::resolve(RootSpec::Temporary).expect("temporary roots");
+        let cache = roots.cache.join("link-cleaning");
+        fs::create_dir_all(&cache).expect("cache directory");
+        fs::write(
+            cache.join("accepted.bundle"),
+            b"private-manifest-sentinel: /home/person/profile.sqlite",
+        )
+        .expect("invalid cached bundle");
+
+        let value = diagnostic_snapshot(Some(&roots));
+        assert_eq!(value["status"], "available");
+        assert_eq!(value["update"]["status"], "rejected-fallback");
+        assert!(!value.to_string().contains("private-manifest-sentinel"));
+        assert!(!value.to_string().contains("/home/person/profile.sqlite"));
+        roots.cleanup().expect("cleanup");
+    }
+
+    #[test]
+    fn diagnostics_omit_downloaded_manifest_prose() {
+        let roots = StorageRoots::resolve(RootSpec::Temporary).expect("temporary roots");
+        let candidate = MANIFEST_SOURCE
+            .replace("source = \"compiled-reviewed\"", "source = \"remote-reviewed\"")
+            .replace(
+                "Add a reviewed tracking-parameter corpus with explicit high-value non-removal cases.",
+                "private-manifest-sentinel /home/person/diagnostic-profile.sqlite",
+            );
+        let checksum = super::super::network_policy::sha256_hex(candidate.as_bytes());
+        accept_downloaded_bundle_with_metadata(&roots, candidate.as_bytes(), &checksum, "", "")
+            .expect("syntactically valid candidate accepted");
+
+        let value = diagnostic_snapshot(Some(&roots));
+        assert_eq!(value["source"], "accepted-reviewed-bundle");
+        assert_eq!(value["changelog_available"], true);
+        assert!(!value.to_string().contains("private-manifest-sentinel"));
+        assert!(
+            !value
+                .to_string()
+                .contains("/home/person/diagnostic-profile.sqlite")
+        );
+        roots.cleanup().expect("cleanup");
     }
 
     #[test]

@@ -72,9 +72,9 @@ pub(super) fn history_clear(
                 index += 1;
             }
             value if value.starts_with("--") => {
-                return Err(format!("unknown history-clear option: {value}"));
+                return Err("history-clear has an unsupported option".into());
             }
-            value => return Err(format!("unexpected history-clear argument: {value}")),
+            _ => return Err("history-clear has an unexpected argument".into()),
         }
         index += 1;
     }
@@ -292,6 +292,30 @@ mod tests {
             vec!["auto\n".into()],
         ] {
             assert_eq!(scroll_target(&arguments), Err(error.into()));
+        }
+    }
+
+    #[test]
+    fn history_clear_rejection_diagnostics_redact_supplied_values() {
+        let private_value = "https://private.example/path?credential=sentinel";
+        for (argument, expected) in [
+            (
+                format!("--token={private_value}"),
+                "history-clear has an unsupported option",
+            ),
+            (
+                private_value.to_owned(),
+                "history-clear has an unexpected argument",
+            ),
+        ] {
+            let error = history_clear(&ParsedCommand {
+                name: "history-clear".into(),
+                arguments: vec![argument],
+            })
+            .expect_err("unsupported argument should be rejected");
+            assert_eq!(error, expected);
+            assert!(!error.contains("private.example"));
+            assert!(!error.contains("sentinel"));
         }
     }
 }

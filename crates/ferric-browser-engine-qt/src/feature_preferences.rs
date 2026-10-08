@@ -6,7 +6,7 @@
 
 use ferric_browser_config::Config;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 #[allow(clippy::struct_excessive_bools)]
 pub(super) struct FeaturePreferences {
     pub switcher_max_results: i32,
@@ -20,6 +20,37 @@ pub(super) struct FeaturePreferences {
     pub blocking_update_interval_hours: i32,
     pub link_cleaning_update_source: String,
     pub link_cleaning_update_sha256: String,
+}
+
+impl std::fmt::Debug for FeaturePreferences {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("FeaturePreferences")
+            .field("switcher_max_results", &self.switcher_max_results)
+            .field("downloads_ask_destination", &self.downloads_ask_destination)
+            .field(
+                "desktop_notifications_enabled",
+                &self.desktop_notifications_enabled,
+            )
+            .field(
+                "desktop_media_keys_enabled",
+                &self.desktop_media_keys_enabled,
+            )
+            .field("push_service_enabled", &self.push_service_enabled)
+            .field("spellcheck_enabled", &self.spellcheck_enabled)
+            .field(
+                "spellcheck_language_count",
+                &self.spellcheck_languages.len(),
+            )
+            .field("blocking_list_count", &self.blocking_list_ids.len())
+            .field(
+                "blocking_update_interval_hours",
+                &self.blocking_update_interval_hours,
+            )
+            .field("link_cleaning_update_source", &"[REDACTED]")
+            .field("link_cleaning_update_sha256", &"[REDACTED]")
+            .finish()
+    }
 }
 
 #[must_use]
@@ -67,8 +98,8 @@ mod tests {
         config.desktop.media_keys = false;
         config.privacy.push_service = true;
         config.spellcheck.enabled = false;
-        config.spellcheck.languages = vec!["en-GB".into(), "de".into()];
-        config.blocking.lists = vec!["easylist".into()];
+        config.spellcheck.languages = vec!["private-language-sentinel".into()];
+        config.blocking.lists = vec!["private-blocklist-sentinel".into()];
         config.links.cleaning.update_source = Some("https://example.test/rules.json".into());
         config.links.cleaning.update_sha256 = Some("abc123".into());
 
@@ -81,12 +112,17 @@ mod tests {
                 desktop_media_keys_enabled: false,
                 push_service_enabled: true,
                 spellcheck_enabled: false,
-                spellcheck_languages: vec!["en-GB".into(), "de".into()],
-                blocking_list_ids: vec!["easylist".into()],
+                spellcheck_languages: vec!["private-language-sentinel".into()],
+                blocking_list_ids: vec!["private-blocklist-sentinel".into()],
                 blocking_update_interval_hours: 168,
                 link_cleaning_update_source: "https://example.test/rules.json".into(),
                 link_cleaning_update_sha256: "abc123".into(),
             }
         );
+        let debug = format!("{:?}", project(&config));
+        assert!(!debug.contains("private-language-sentinel"));
+        assert!(!debug.contains("private-blocklist-sentinel"));
+        assert!(!debug.contains("https://example.test/rules.json"));
+        assert!(!debug.contains("abc123"));
     }
 }

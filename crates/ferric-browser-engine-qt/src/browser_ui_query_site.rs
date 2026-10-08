@@ -3,6 +3,14 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
 
+fn unavailable_userscript_inventory(_diagnostic: &str) -> Value {
+    serde_json::json!({
+        "status": "unavailable",
+        "reason": "userscript inventory is unavailable",
+        "provenance": "profile-userscript-manifests"
+    })
+}
+
 impl qobject::BrowserUi {
     pub(super) fn ipc_site_status(&self, params: &Value) -> Result<Value, String> {
         let Some(state) = self.rust().state.as_ref() else {
@@ -98,11 +106,7 @@ impl qobject::BrowserUi {
                     "matching_active_site": userscripts_available,
                     "provenance": "profile-userscript-manifests"
                 }),
-                Err(reason) => serde_json::json!({
-                    "status": "unavailable",
-                    "reason": bounded_navigation_failure_detail(&reason),
-                    "provenance": "profile-userscript-manifests"
-                }),
+                Err(reason) => unavailable_userscript_inventory(&reason),
             }
         } else {
             serde_json::json!({
@@ -237,7 +241,7 @@ impl qobject::BrowserUi {
             "private": private,
             "url": if private { Value::Null } else { Value::String(tab.and_then(|tab| tab.url.as_deref()).map_or_else(|| "about:blank".into(), safe_ipc_url)) },
             "origin": if private { Value::Null } else { origin.as_ref().map_or(Value::Null, |origin| Value::String(origin.clone())) },
-            "title": if private { Value::Null } else { Value::String(tab.map_or_else(String::new, |tab| tab.title.replace(['\n', '\r'], " "))) },
+            "title": if private { Value::Null } else { Value::String(tab.map_or_else(String::new, |tab| sanitize_untrusted_title(&tab.title))) },
             "capture": {
                 "tab_id": tab.map(|tab| tab.id.to_string()),
                 "window_id": tab.map(|tab| tab.window.to_string()),
@@ -447,7 +451,7 @@ impl qobject::BrowserUi {
         Ok(serde_json::json!({
             "sequence": self.rust().ipc_sequence,
             "enabled": self.rust().blocking_enabled,
-            "status": self.rust().status_text.to_string(),
+            "status": if self.rust().blocking_enabled { "enabled" } else { "disabled" },
             "bypass_sites": list_value(&self.rust().blocking_bypass_sites),
             "loaded_lists": json_array(&self.rust().blocking_loaded_lists),
             "list_metadata": json_array(&self.rust().blocking_list_metadata),
@@ -510,5 +514,19 @@ impl qobject::BrowserUi {
 
     pub(super) fn ipc_operations_query(&self, params: &Value) -> Result<Value, String> {
         operations_query_value(self.rust(), params)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::unavailable_userscript_inventory;
+
+    #[test]
+    fn userscript_inventory_failure_does_not_project_diagnostics() {
+        let sentinel = "/private/profile/userscripts/secret.user.js: permission denied";
+        let projected = unavailable_userscript_inventory(sentinel);
+        assert_eq!(projected["status"], "unavailable");
+        assert_eq!(projected["reason"], "userscript inventory is unavailable");
+        assert!(!projected.to_string().contains(sentinel));
     }
 }

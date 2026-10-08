@@ -82,7 +82,7 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
                         index += 1;
                     }
                     "--private" if !private => private = true,
-                    option => return Err(format!("unknown window-new option: {option}")),
+                    _ => return Err("window-new contains an unknown option".into()),
                 }
                 index += 1;
             }

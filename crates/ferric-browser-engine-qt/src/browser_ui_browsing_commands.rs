@@ -5,10 +5,22 @@ use super::{
     parse_scroll_target_options, parse_search_next_options, qobject, safe_ipc_url,
 };
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Eq, PartialEq)]
 pub(super) enum ScrollTargetEffect {
     StartHints,
     QueueEngineAction(String),
+}
+
+impl std::fmt::Debug for ScrollTargetEffect {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::StartHints => formatter.write_str("StartHints"),
+            Self::QueueEngineAction(_) => formatter
+                .debug_tuple("QueueEngineAction")
+                .field(&"[REDACTED]")
+                .finish(),
+        }
+    }
 }
 
 pub(super) fn dispatch_scroll_target_command(
@@ -374,7 +386,7 @@ impl qobject::BrowserUi {
                     break;
                 }
                 value if value.starts_with("--") => {
-                    return Err(format!("unknown search option: {value}"));
+                    return Err("search has an unsupported option".into());
                 }
                 value => query.push(value.to_owned()),
             }
@@ -579,5 +591,20 @@ impl qobject::BrowserUi {
                 }
             },
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ScrollTargetEffect;
+
+    #[test]
+    fn queued_scroll_debug_redacts_tab_route_identity() {
+        let effect = ScrollTargetEffect::QueueEngineAction(
+            "scroll-target\tprivate-tab-id-sentinel\ttop".into(),
+        );
+        let debug = format!("{effect:?}");
+        assert!(debug.contains("REDACTED"));
+        assert!(!debug.contains("private-tab-id-sentinel"));
     }
 }

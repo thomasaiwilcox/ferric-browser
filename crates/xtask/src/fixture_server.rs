@@ -6,8 +6,10 @@ use std::{
     net::{TcpListener, TcpStream, ToSocketAddrs},
     process::{Command, Stdio},
     thread,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::Duration,
 };
+
+mod versioning_fixtures;
 
 const MAX_HEADER_BYTES: usize = 32 * 1024;
 const MAX_BODY_BYTES: usize = 64 * 1024;
@@ -20,6 +22,7 @@ struct FixtureRequest {
     target: String,
     headers: BTreeMap<String, String>,
     body: Vec<u8>,
+    secure_transport: bool,
 }
 
 #[derive(Debug)]
@@ -32,6 +35,21 @@ struct FixtureResponse {
     websocket_accept: Option<String>,
     www_authenticate: bool,
     websocket: bool,
+    set_cookies: Vec<&'static str>,
+    byte_range: Option<ByteRangeResponse>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ByteRangeResponse {
+    Full,
+    Partial {
+        start: usize,
+        end: usize,
+        total: usize,
+    },
+    Unsatisfiable {
+        total: usize,
+    },
 }
 
 /// Runs the deterministic loopback fixture server.
@@ -74,11 +92,11 @@ pub fn run(arguments: &[String]) -> Result<(), String> {
 
     validate_loopback_bind(&bind)?;
     if https {
-        return run_https(&bind, once);
+        return run_https(&bind, once, exit_on_path.as_deref());
     }
     let listener =
         TcpListener::bind(&bind).map_err(|error| format!("could not bind {bind}: {error}"))?;
-    run_http_listener(listener, once, "http", true, exit_on_path.as_deref())
+    run_http_listener(listener, once, "http", false, true, exit_on_path.as_deref())
 }
 
 fn validate_loopback_bind(bind: &str) -> Result<(), String> {
@@ -97,6 +115,7 @@ fn run_http_listener(
     listener: TcpListener,
     once: bool,
     scheme: &str,
+    secure_transport: bool,
     announce: bool,
     exit_on_path: Option<&str>,
 ) -> Result<(), String> {
@@ -110,16 +129,18 @@ fn run_http_listener(
             .map_err(|error| format!("could not flush fixture address: {error}"))?;
     }
 
+    let mut versioning_state = versioning_fixtures::SessionState::default();
     for stream in listener.incoming() {
         match stream {
             Ok(mut stream) => {
-                let request_path = match serve_connection(&mut stream) {
-                    Ok(path) => Some(path),
-                    Err(error) => {
-                        eprintln!("fixture-server: {error}");
-                        None
-                    }
-                };
+                let request_path =
+                    match serve_connection(&mut stream, secure_transport, &mut versioning_state) {
+                        Ok(path) => Some(path),
+                        Err(error) => {
+                            eprintln!("fixture-server: {error}");
+                            None
+                        }
+                    };
                 if exit_on_path.is_some() && request_path.is_some() {
                     println!(
                         "FERRIC_BROWSER_FIXTURE_EVENT path={}",
@@ -146,7 +167,9 @@ fn run_http_listener(
     Ok(())
 }
 
-fn run_https(bind: &str, once: bool) -> Result<(), String> {
+// Certificate setup, proxy supervision and teardown form one ownership scope.
+#[allow(clippy::too_many_lines)]
+fn run_https(bind: &str, once: bool, exit_on_path: Option<&str>) -> Result<(), String> {
     if !command_available("openssl") || !command_available("socat") {
         return Err(
             "HTTPS fixtures require both openssl and socat; use the HTTP fixture or install the development tools"
@@ -168,17 +191,15 @@ fn run_https(bind: &str, once: bool) -> Result<(), String> {
         return Err("HTTPS fixture mode requires an IPv4 loopback bind address".into());
     }
 
-    let directory = std::env::temp_dir().join(format!(
-        "ferric-browser-fixture-{}-{}",
-        std::process::id(),
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_or(0, |duration| duration.as_nanos())
-    ));
-    fs::create_dir(&directory)
-        .map_err(|error| format!("could not create HTTPS fixture directory: {error}"))?;
-    let certificate = directory.join("fixture-cert.pem");
-    let key = directory.join("fixture-key.pem");
+    let directory = super::DisposableDirectory::new("ferric-browser-fixture")?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700))
+            .map_err(|error| format!("could not protect HTTPS fixture directory: {error}"))?;
+    }
+    let certificate = directory.path().join("fixture-cert.pem");
+    let key = directory.path().join("fixture-key.pem");
     let certificate_status = Command::new("openssl")
         .args([
             "req",
@@ -202,7 +223,6 @@ fn run_https(bind: &str, once: bool) -> Result<(), String> {
         .status()
         .map_err(|error| format!("could not generate HTTPS fixture certificate: {error}"))?;
     if !certificate_status.success() {
-        let _ = fs::remove_dir_all(&directory);
         return Err("openssl could not generate the HTTPS fixture certificate".into());
     }
     let listener = format!(
@@ -212,11 +232,6 @@ fn run_https(bind: &str, once: bool) -> Result<(), String> {
         key.display(),
         if once { "" } else { ",fork" }
     );
-    let backend_thread = thread::spawn(move || {
-        if let Err(error) = run_http_listener(backend, once, "https-backend", false, None) {
-            eprintln!("fixture-server: HTTPS backend: {error}");
-        }
-    });
     let mut proxy = match Command::new("socat")
         .arg(listener)
         .arg(format!("TCP:{backend_address}"))
@@ -227,21 +242,65 @@ fn run_https(bind: &str, once: bool) -> Result<(), String> {
     {
         Ok(proxy) => proxy,
         Err(error) => {
-            let _ = fs::remove_dir_all(&directory);
             return Err(format!("could not start HTTPS fixture proxy: {error}"));
         }
     };
+    let shutdown_on_path = exit_on_path.is_some() && !once;
+    let exit_on_path = exit_on_path.map(str::to_owned);
+    let backend_thread = thread::spawn(move || {
+        run_http_listener(
+            backend,
+            once,
+            "https-backend",
+            true,
+            false,
+            exit_on_path.as_deref(),
+        )
+    });
     println!("FERRIC_BROWSER_FIXTURE_READY https://{address}");
+    println!("FERRIC_BROWSER_FIXTURE_CERT {}", certificate.display());
     io::stdout()
         .flush()
         .map_err(|error| format!("could not flush fixture address: {error}"))?;
+    if shutdown_on_path {
+        while !backend_thread.is_finished() {
+            if let Some(status) = proxy
+                .try_wait()
+                .map_err(|error| format!("could not poll HTTPS fixture proxy: {error}"))?
+            {
+                return Err(format!(
+                    "HTTPS fixture proxy exited before shutdown: {status}"
+                ));
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+        let backend_result = backend_thread
+            .join()
+            .map_err(|_| "HTTPS fixture backend panicked".to_owned())?;
+        let _ = proxy.kill();
+        let _ = proxy.wait();
+        return backend_result;
+    }
     let status = proxy
         .wait()
         .map_err(|error| format!("HTTPS fixture proxy failed: {error}"))?;
     if once {
-        let _ = backend_thread.join();
+        // A TLS handshake can fail before socat opens the HTTP backend. The
+        // one-shot backend still needs a bounded request to leave its accept
+        // loop so the temporary certificate directory is removed.
+        if !backend_thread.is_finished() {
+            if let Ok(mut stream) =
+                TcpStream::connect_timeout(&backend_address, Duration::from_millis(250))
+            {
+                let _ = stream.write_all(
+                    b"GET /versioning/fault/close HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
+                );
+            }
+        }
+        backend_thread
+            .join()
+            .map_err(|_| "HTTPS fixture backend panicked".to_owned())??;
     }
-    let _ = fs::remove_dir_all(&directory);
     if status.success() {
         Ok(())
     } else {
@@ -258,24 +317,84 @@ fn command_available(name: &str) -> bool {
         .is_ok_and(|status| status.success())
 }
 
-fn serve_connection(stream: &mut TcpStream) -> Result<String, String> {
+fn serve_connection(
+    stream: &mut TcpStream,
+    secure_transport: bool,
+    versioning_state: &mut versioning_fixtures::SessionState,
+) -> Result<String, String> {
     stream
         .set_read_timeout(Some(Duration::from_secs(2)))
         .map_err(|error| format!("could not configure read timeout: {error}"))?;
-    let request = read_request(stream)?;
-    let response = route_request(&request);
-    write_response(stream, &response)?;
-    if response.websocket {
-        serve_websocket(stream)?;
-    }
+    let request = read_request(stream, secure_transport)?;
     let path = request
         .target
         .split_once('?')
         .map_or_else(|| request.target.clone(), |(path, _)| path.to_owned());
+    if path == "/versioning/form/result" {
+        eprintln!(
+            "fixture-server: form result method={} body_bytes={}",
+            request.method,
+            request.body.len()
+        );
+    }
+    if matches!(
+        path.as_str(),
+        "/versioning/redirect-303/submit"
+            | "/versioning/redirect-303/result"
+            | "/versioning/redirect-307/submit"
+            | "/versioning/redirect-307/result"
+    ) {
+        eprintln!(
+            "fixture-server: redirect path={} method={} body_bytes={}",
+            path,
+            request.method,
+            request.body.len()
+        );
+    }
+    if path == "/versioning/fault/close" {
+        return Ok(path);
+    }
+    if request.method == "GET" && path == "/versioning/slow-download" {
+        write_slow_download(stream)?;
+        return Ok(path);
+    }
+    let response = route_request_with_state(&request, versioning_state);
+    if path == "/versioning/fault/slow" {
+        thread::sleep(Duration::from_millis(750));
+    }
+    write_response(stream, &response)?;
+    if response.websocket {
+        serve_websocket(stream)?;
+    }
     Ok(path)
 }
 
-fn read_request(stream: &mut TcpStream) -> Result<FixtureRequest, String> {
+// A bounded transfer gives native shutdown tests a real in-progress request.
+// It is deliberately local, synthetic, and slow enough to exercise the UI
+// before the terminal Qt callback can run.
+fn write_slow_download(stream: &mut TcpStream) -> Result<(), String> {
+    const CHUNK_BYTES: usize = 32 * 1024;
+    const CHUNKS: usize = 256;
+    let header = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n\
+         Content-Disposition: attachment; filename=synthetic-slow.bin\r\n\
+         Content-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
+        CHUNK_BYTES * CHUNKS
+    );
+    stream
+        .write_all(header.as_bytes())
+        .map_err(|error| format!("could not write slow-download headers: {error}"))?;
+    let chunk = vec![b'F'; CHUNK_BYTES];
+    for _ in 0..CHUNKS {
+        stream
+            .write_all(&chunk)
+            .map_err(|error| format!("slow-download client closed: {error}"))?;
+        thread::sleep(Duration::from_millis(100));
+    }
+    Ok(())
+}
+
+fn read_request(stream: &mut TcpStream, secure_transport: bool) -> Result<FixtureRequest, String> {
     let mut bytes = Vec::new();
     let header_end = loop {
         let mut chunk = [0_u8; 4096];
@@ -358,6 +477,7 @@ fn read_request(stream: &mut TcpStream) -> Result<FixtureRequest, String> {
         target,
         headers,
         body: bytes[header_end..header_end + content_length].to_vec(),
+        secure_transport,
     })
 }
 
@@ -382,9 +502,24 @@ fn write_response(stream: &mut TcpStream, response: &FixtureResponse) -> Result<
         .map_or(String::new(), |value| {
             format!("Sec-WebSocket-Accept: {value}\r\n")
         });
+    let mut cookie_headers = String::new();
+    for cookie in &response.set_cookies {
+        write!(&mut cookie_headers, "Set-Cookie: {cookie}\r\n")
+            .map_err(|error| format!("could not format fixture cookie header: {error}"))?;
+    }
+    let byte_range_headers = match response.byte_range {
+        None => String::new(),
+        Some(ByteRangeResponse::Full) => "Accept-Ranges: bytes\r\n".to_owned(),
+        Some(ByteRangeResponse::Partial { start, end, total }) => {
+            format!("Accept-Ranges: bytes\r\nContent-Range: bytes {start}-{end}/{total}\r\n")
+        }
+        Some(ByteRangeResponse::Unsatisfiable { total }) => {
+            format!("Accept-Ranges: bytes\r\nContent-Range: bytes */{total}\r\n")
+        }
+    };
     let head = format!(
         "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\n\
-         Cache-Control: no-store\r\n{}{}{}{}Access-Control-Allow-Origin: *\r\n\r\n",
+         Cache-Control: no-store\r\n{}{}{}{}{}{}Access-Control-Allow-Origin: *\r\n\r\n",
         response.status,
         response.reason,
         response.content_type,
@@ -392,7 +527,9 @@ fn write_response(stream: &mut TcpStream, response: &FixtureResponse) -> Result<
         websocket,
         location,
         auth,
-        websocket_accept
+        websocket_accept,
+        cookie_headers,
+        byte_range_headers
     );
     stream
         .write_all(head.as_bytes())
@@ -401,13 +538,19 @@ fn write_response(stream: &mut TcpStream, response: &FixtureResponse) -> Result<
 }
 
 #[allow(clippy::too_many_lines)]
-fn route_request(request: &FixtureRequest) -> FixtureResponse {
+fn route_request_with_state(
+    request: &FixtureRequest,
+    versioning_state: &mut versioning_fixtures::SessionState,
+) -> FixtureResponse {
     let path = request
         .target
         .split_once('?')
         .map_or(request.target.as_str(), |(path, _)| path);
     if path == "/websocket" {
         return websocket_response(request);
+    }
+    if let Some(response) = versioning_fixtures::route(request, path, versioning_state) {
+        return response;
     }
     match (request.method.as_str(), path) {
         ("GET", "/") => html_response(
@@ -525,6 +668,8 @@ fn route_request(request: &FixtureRequest) -> FixtureResponse {
             websocket_accept: None,
             www_authenticate: false,
             websocket: false,
+            set_cookies: Vec::new(),
+            byte_range: None,
         },
         ("GET", "/auth") => FixtureResponse {
             status: 401,
@@ -535,6 +680,8 @@ fn route_request(request: &FixtureRequest) -> FixtureResponse {
             websocket_accept: None,
             www_authenticate: true,
             websocket: false,
+            set_cookies: Vec::new(),
+            byte_range: None,
         },
         ("GET", "/popup") => html_response(
             "Popup fixture",
@@ -609,8 +756,15 @@ fn route_request(request: &FixtureRequest) -> FixtureResponse {
             websocket_accept: None,
             www_authenticate: false,
             websocket: false,
+            set_cookies: Vec::new(),
+            byte_range: None,
         },
     }
+}
+
+#[cfg(test)]
+fn route_request(request: &FixtureRequest) -> FixtureResponse {
+    route_request_with_state(request, &mut versioning_fixtures::SessionState::default())
 }
 
 fn html_response(title: &'static str, body: &str) -> FixtureResponse {
@@ -627,6 +781,8 @@ fn html_response(title: &'static str, body: &str) -> FixtureResponse {
         websocket_accept: None,
         www_authenticate: false,
         websocket: false,
+        set_cookies: Vec::new(),
+        byte_range: None,
     }
 }
 
@@ -646,6 +802,8 @@ fn redirect_response(status: u16, location: &'static str) -> FixtureResponse {
         websocket_accept: None,
         www_authenticate: false,
         websocket: false,
+        set_cookies: Vec::new(),
+        byte_range: None,
     }
 }
 
@@ -659,6 +817,8 @@ fn script_response(body: &str) -> FixtureResponse {
         websocket_accept: None,
         www_authenticate: false,
         websocket: false,
+        set_cookies: Vec::new(),
+        byte_range: None,
     }
 }
 
@@ -717,6 +877,8 @@ fn websocket_response(request: &FixtureRequest) -> FixtureResponse {
         websocket_accept: Some(base64_encode(&sha1(&input))),
         www_authenticate: false,
         websocket: true,
+        set_cookies: Vec::new(),
+        byte_range: None,
     }
 }
 
@@ -730,6 +892,8 @@ fn websocket_rejection() -> FixtureResponse {
         websocket_accept: None,
         www_authenticate: false,
         websocket: false,
+        set_cookies: Vec::new(),
+        byte_range: None,
     }
 }
 
@@ -864,6 +1028,7 @@ mod tests {
             target: target.to_owned(),
             headers: BTreeMap::new(),
             body: body.to_vec(),
+            secure_transport: false,
         }
     }
 
@@ -885,6 +1050,121 @@ mod tests {
         assert_eq!(
             replay.location.as_deref(),
             Some("/post-307-result?replayed=1")
+        );
+    }
+
+    #[test]
+    fn versioning_post_redirects_require_the_expected_method_and_body() {
+        let body = b"redirect=synthetic";
+        let see_other = route_request(&request("POST", "/versioning/redirect-303/submit", body));
+        assert_eq!(see_other.status, 303);
+        assert_eq!(
+            see_other.location.as_deref(),
+            Some("/versioning/redirect-303/result")
+        );
+        assert_eq!(
+            route_request(&request("GET", "/versioning/redirect-303/result", &[])).status,
+            200
+        );
+        assert_eq!(
+            route_request(&request("POST", "/versioning/redirect-303/result", body)).status,
+            404
+        );
+        let preserve = route_request(&request("POST", "/versioning/redirect-307/submit", body));
+        assert_eq!(preserve.status, 307);
+        assert_eq!(
+            preserve.location.as_deref(),
+            Some("/versioning/redirect-307/result")
+        );
+        assert_eq!(
+            route_request(&request("POST", "/versioning/redirect-307/result", body)).status,
+            200
+        );
+        assert_eq!(
+            route_request(&request("GET", "/versioning/redirect-307/result", &[])).status,
+            404
+        );
+    }
+
+    #[test]
+    fn versioning_document_counter_records_only_exact_gets() {
+        let mut session = versioning_fixtures::SessionState::default();
+        let count = || request("GET", "/versioning/document-request-count", &[]);
+        assert_eq!(
+            versioning_fixtures::route(
+                &count(),
+                "/versioning/document-request-count",
+                &mut session
+            )
+            .expect("counter route")
+            .body,
+            b"0"
+        );
+        assert!(
+            versioning_fixtures::route(
+                &request("GET", "/versioning/document", &[]),
+                "/versioning/document",
+                &mut session,
+            )
+            .is_some()
+        );
+        assert_eq!(
+            versioning_fixtures::route(
+                &request("POST", "/versioning/document", &[]),
+                "/versioning/document",
+                &mut session,
+            )
+            .expect("versioning fallback")
+            .status,
+            404
+        );
+        assert_eq!(
+            versioning_fixtures::route(
+                &count(),
+                "/versioning/document-request-count",
+                &mut session
+            )
+            .expect("counter route")
+            .body,
+            b"1"
+        );
+    }
+
+    #[test]
+    fn versioning_form_counter_records_only_nonempty_posts() {
+        let mut session = versioning_fixtures::SessionState::default();
+        let count = || request("GET", "/versioning/form-post-count", &[]);
+        assert_eq!(
+            versioning_fixtures::route(&count(), "/versioning/form-post-count", &mut session)
+                .expect("counter route")
+                .body,
+            b"0"
+        );
+        assert_eq!(
+            versioning_fixtures::route(
+                &request("POST", "/versioning/form/result", b"synthetic=1"),
+                "/versioning/form/result",
+                &mut session,
+            )
+            .expect("form result")
+            .status,
+            200
+        );
+        assert_eq!(
+            versioning_fixtures::route(
+                &request("POST", "/versioning/form/result", &[]),
+                "/versioning/form/result",
+                &mut session,
+            )
+            .expect("versioning fallback")
+            .status,
+            404
+        );
+        assert_eq!(
+            versioning_fixtures::route(&count(), "/versioning/form-post-count", &mut session)
+                .expect("counter route")
+                .body,
+            b"1"
         );
     }
 
@@ -984,5 +1264,290 @@ mod tests {
         assert!(validate_loopback_bind("127.0.0.1:0").is_ok());
         assert!(validate_loopback_bind("[::1]:0").is_ok());
         assert!(validate_loopback_bind("0.0.0.0:0").is_err());
+    }
+
+    #[test]
+    fn versioning_pages_are_bounded_and_cover_distinct_behaviours() {
+        for (path, marker) in [
+            ("/versioning/", "Disposable Versioning fixtures"),
+            ("/versioning/document", "id=\"inner\""),
+            ("/versioning/form", "autocomplete=\"one-time-code\""),
+            ("/versioning/controlled", "model-original"),
+            ("/versioning/editor", "contenteditable=\"true\""),
+            ("/versioning/media", "preload=\"metadata\""),
+            ("/versioning/lifecycle", "addEventListener('freeze'"),
+            ("/versioning/mutation", "revision"),
+            ("/versioning/frames", "same-origin"),
+            ("/versioning/frame-child", "mode: 'closed'"),
+            ("/versioning/frame-branch", "frame-branch-left"),
+            ("/versioning/frame-branch-left", "branch=left-a"),
+            ("/versioning/frame-branch-right", "branch=right-a"),
+            (
+                "/versioning/frame-branch-leaf?branch=left-a",
+                "Finite branch leaf",
+            ),
+            ("/versioning/activity", "new WebSocket"),
+            ("/versioning/archive", "archive-form"),
+            ("/versioning/session/login", "account"),
+        ] {
+            let response = route_request(&request("GET", path, &[]));
+            assert_eq!(response.status, 200, "{path}");
+            assert!(response.body.len() <= MAX_BODY_BYTES, "{path}");
+            let body = String::from_utf8(response.body).expect("UTF-8 fixture");
+            assert!(body.contains(marker), "{path} missing {marker}");
+            if path == "/versioning/mutation" {
+                assert!(body.contains("textContent = String(++revision)"));
+                assert!(!body.contains(".value = String(++revision)"));
+            }
+        }
+        for path in [
+            "/versioning/activity/poll",
+            "/versioning/activity/worker.js",
+            "/versioning/activity/sw.js",
+            "/versioning/archive.css",
+            "/versioning/archive-image",
+            "/versioning/archive-frame",
+            "/versioning/fault/slow",
+            "/versioning/fault/error",
+        ] {
+            let response = route_request(&request("GET", path, &[]));
+            assert!(response.status == 200 || response.status == 503, "{path}");
+            assert!(response.body.len() <= MAX_BODY_BYTES, "{path}");
+        }
+        assert_eq!(
+            route_request(&request("GET", "/versioning/unknown", &[])).status,
+            404
+        );
+    }
+
+    #[test]
+    fn versioning_form_result_requires_post_without_echoing_inputs() {
+        let body = b"password=synthetic-secret&csrf=fixture-only-token";
+        let response = route_request(&request("POST", "/versioning/form/result", body));
+        assert_eq!(response.status, 200);
+        assert!(String::from_utf8_lossy(&response.body).contains("Synthetic POST result"));
+        assert!(!String::from_utf8_lossy(&response.body).contains("synthetic-secret"));
+        assert_eq!(
+            route_request(&request("GET", "/versioning/form/result", &[])).status,
+            404
+        );
+    }
+
+    #[test]
+    fn versioning_media_fixture_is_one_second_local_wav() {
+        let response = route_request(&request("GET", "/versioning/media-silence.wav", &[]));
+        assert_eq!(response.status, 200);
+        assert_eq!(response.content_type, "audio/wav");
+        assert_eq!(response.body.len(), 8_044);
+        assert_eq!(&response.body[..4], b"RIFF");
+        assert_eq!(&response.body[8..12], b"WAVE");
+        assert_eq!(&response.body[36..40], b"data");
+        assert!(response.body[44..].iter().all(|sample| *sample == 0x80));
+        assert_eq!(response.byte_range, Some(ByteRangeResponse::Full));
+    }
+
+    #[test]
+    fn versioning_media_fixture_supports_single_byte_ranges() {
+        let mut request = request("GET", "/versioning/media-silence.wav", &[]);
+        request.headers.insert("range".into(), "bytes=0-".into());
+        let complete_range = route_request(&request);
+        assert_eq!(complete_range.status, 206);
+        assert_eq!(complete_range.body.len(), 8_044);
+        assert_eq!(
+            complete_range.byte_range,
+            Some(ByteRangeResponse::Partial {
+                start: 0,
+                end: 8_043,
+                total: 8_044,
+            })
+        );
+
+        request.headers.insert("range".into(), "bytes=44-47".into());
+        let samples = route_request(&request);
+        assert_eq!(samples.status, 206);
+        assert_eq!(samples.body, vec![0x80; 4]);
+        assert_eq!(
+            samples.byte_range,
+            Some(ByteRangeResponse::Partial {
+                start: 44,
+                end: 47,
+                total: 8_044,
+            })
+        );
+
+        request.headers.insert("range".into(), "bytes=-4".into());
+        let suffix = route_request(&request);
+        assert_eq!(suffix.status, 206);
+        assert_eq!(suffix.body, vec![0x80; 4]);
+        assert_eq!(
+            suffix.byte_range,
+            Some(ByteRangeResponse::Partial {
+                start: 8_040,
+                end: 8_043,
+                total: 8_044,
+            })
+        );
+
+        request.headers.insert("range".into(), "bytes=8044-".into());
+        let unsatisfiable = route_request(&request);
+        assert_eq!(unsatisfiable.status, 416);
+        assert!(unsatisfiable.body.is_empty());
+        assert_eq!(
+            unsatisfiable.byte_range,
+            Some(ByteRangeResponse::Unsatisfiable { total: 8_044 })
+        );
+
+        request
+            .headers
+            .insert("range".into(), "bytes=0-1,4-5".into());
+        let unsupported_multipart = route_request(&request);
+        assert_eq!(unsupported_multipart.status, 200);
+        assert_eq!(
+            unsupported_multipart.byte_range,
+            Some(ByteRangeResponse::Full)
+        );
+    }
+
+    #[test]
+    fn editor_download_arm_applies_to_exactly_one_future_editor_load() {
+        let mut state = versioning_fixtures::SessionState::default();
+        let editor = request("GET", "/versioning/editor", &[]);
+        let plain = route_request_with_state(&editor, &mut state);
+        assert!(!String::from_utf8_lossy(&plain.body).contains("slow-download?armed=1"));
+
+        let arm = route_request_with_state(
+            &request("POST", "/versioning/editor/arm-download", &[]),
+            &mut state,
+        );
+        assert_eq!(arm.status, 200);
+        let armed = route_request_with_state(&editor, &mut state);
+        assert!(String::from_utf8_lossy(&armed.body).contains("slow-download?armed=1"));
+        let next = route_request_with_state(&editor, &mut state);
+        assert!(!String::from_utf8_lossy(&next.body).contains("slow-download?armed=1"));
+    }
+
+    #[test]
+    fn versioning_cross_origin_links_use_validated_loopback_port() {
+        let mut req = request("GET", "/versioning/frames", &[]);
+        req.headers.insert("host".into(), "127.0.0.1:18443".into());
+        let response = route_request(&req);
+        let body = String::from_utf8(response.body).expect("UTF-8 fixture");
+        assert!(body.contains("http://localhost:18443/versioning/frame-child"));
+        req.headers
+            .insert("host".into(), "evil.invalid:bad-port".into());
+        let response = route_request(&req);
+        let body = String::from_utf8(response.body).expect("UTF-8 fixture");
+        assert!(!body.contains("evil.invalid"));
+        assert!(body.contains("http://localhost:80/versioning/frame-child"));
+    }
+
+    #[test]
+    fn versioning_session_requires_cookies_csrf_and_server_state() {
+        let mut state = versioning_fixtures::SessionState::default();
+        let member = request("GET", "/versioning/session/member", &[]);
+        assert_eq!(route_request_with_state(&member, &mut state).status, 404);
+        let login = request("POST", "/versioning/session/login", b"account=synthetic");
+        let response = route_request_with_state(&login, &mut state);
+        assert_eq!(response.status, 303);
+        assert_eq!(response.set_cookies.len(), 2);
+
+        let mut member = member;
+        member.headers.insert(
+            "cookie".into(),
+            "vb_session=synthetic; vb_csrf=synthetic-csrf".into(),
+        );
+        assert_eq!(route_request_with_state(&member, &mut state).status, 200);
+        let mut change = request("POST", "/versioning/session/change", b"synthetic-change");
+        change.headers = member.headers.clone();
+        assert_eq!(route_request_with_state(&change, &mut state).status, 404);
+        change
+            .headers
+            .insert("x-vb-csrf".into(), "synthetic-csrf".into());
+        assert_eq!(route_request_with_state(&change, &mut state).status, 200);
+        let mut logout = request("POST", "/versioning/session/logout", &[]);
+        logout.headers = member.headers.clone();
+        let response = route_request_with_state(&logout, &mut state);
+        assert_eq!(response.status, 200);
+        assert!(
+            response
+                .set_cookies
+                .iter()
+                .all(|cookie| cookie.contains("Max-Age=0"))
+        );
+        assert_eq!(route_request_with_state(&member, &mut state).status, 404);
+    }
+
+    #[test]
+    fn secure_cookie_route_requires_real_tls_transport_marker() {
+        let request = request("GET", "/versioning/cookies/secure", &[]);
+        let rejected = route_request(&request);
+        assert_eq!(rejected.status, 426);
+        assert!(rejected.set_cookies.is_empty());
+        let mut secure_request = request;
+        secure_request.secure_transport = true;
+        let accepted = route_request(&secure_request);
+        assert_eq!(accepted.status, 200);
+        assert!(
+            accepted
+                .set_cookies
+                .iter()
+                .all(|cookie| cookie.contains("Secure"))
+        );
+        assert!(
+            accepted
+                .set_cookies
+                .iter()
+                .any(|cookie| cookie.contains("Partitioned"))
+        );
+    }
+
+    #[test]
+    fn cookie_variant_routes_require_tls_and_scoped_host() {
+        let mut req = request("GET", "/versioning/cookies/variants", &[]);
+        assert_eq!(route_request(&req).status, 426);
+        req.secure_transport = true;
+        let variants = route_request(&req);
+        assert_eq!(variants.status, 200);
+        assert_eq!(variants.set_cookies.len(), 4);
+        assert_eq!(
+            variants
+                .set_cookies
+                .iter()
+                .filter(|cookie| cookie.starts_with("vb_same="))
+                .count(),
+            2
+        );
+        assert!(
+            variants
+                .set_cookies
+                .iter()
+                .any(|cookie| cookie.contains("Max-Age=3600"))
+        );
+
+        req.target = "/versioning/cookies/domain".into();
+        req.headers.insert("host".into(), "127.0.0.1:4443".into());
+        assert_eq!(route_request(&req).status, 426);
+        req.headers.insert("host".into(), "localhost:4443".into());
+        let domain = route_request(&req);
+        assert_eq!(domain.status, 200);
+        assert_eq!(domain.set_cookies.len(), 1);
+        assert!(domain.set_cookies[0].contains("Domain=localhost"));
+    }
+
+    #[test]
+    fn disposable_http_server_serves_versioning_page_then_exits() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("loopback listener");
+        let address = listener.local_addr().expect("listener address");
+        let server =
+            thread::spawn(move || run_http_listener(listener, true, "http", false, false, None));
+        let mut stream = TcpStream::connect(address).expect("connect fixture");
+        stream
+            .write_all(b"GET /versioning/document HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+            .expect("send request");
+        let mut response = String::new();
+        stream.read_to_string(&mut response).expect("read response");
+        assert!(response.starts_with("HTTP/1.1 200 OK\r\n"));
+        assert!(response.contains("Versioning long document"));
+        server.join().expect("server thread").expect("server exit");
     }
 }

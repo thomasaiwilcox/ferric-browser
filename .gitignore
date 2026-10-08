@@ -1,2 +1,5 @@
 /target/
 /fuzz/target/
+/aqtinstall.log
+__pycache__/
+*.py[cod]

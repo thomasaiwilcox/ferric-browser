@@ -99,7 +99,7 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
                         }
                         index += 1;
                     }
-                    option => return Err(format!("unknown hint option: {option}")),
+                    _ => return Err("hint contains an unknown option".into()),
                 }
                 index += 1;
             }

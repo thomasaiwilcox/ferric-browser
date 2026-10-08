@@ -12,13 +12,13 @@ const MAX_DECISIONS: usize = 100;
 const MAX_FIELD_BYTES: usize = 1024;
 const MAX_LIVE_COUNT: f64 = 1_000_000_000.0;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 pub(super) struct BlockingEvidence {
     explanation: Option<BlockingDecision>,
     decisions: Vec<BlockingDecision>,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 struct BlockingDecision {
     resource_host: String,
     first_party_host: String,

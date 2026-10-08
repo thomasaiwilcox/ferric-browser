@@ -1,0 +1,24 @@
+<!doctype html><meta charset="utf-8"><title>Versioning long document</title>
+<style>
+body { font: 16px sans-serif; min-height: 220vh; }
+.scrollbox { overflow: auto; width: 320px; height: 120px; border: 1px solid; }
+.row { height: 28px; }
+</style>
+<h1>Long synthetic document</h1>
+<details id="expandable"><summary>Expandable controls</summary><p>Expanded text</p></details>
+<div class="scrollbox" id="outer">
+  <div class="scrollbox" id="inner"></div>
+  <div style="height: 240px">outer scroll tail</div>
+</div>
+<main id="rows"></main>
+<script>
+const inner = document.querySelector('#inner');
+const rows = document.querySelector('#rows');
+for (let i = 0; i < 256; i++) {
+  const entry = document.createElement('p');
+  entry.className = 'row';
+  entry.textContent = 'synthetic row ' + i;
+  rows.append(entry);
+  if (i < 32) inner.append(entry.cloneNode(true));
+}
+</script>

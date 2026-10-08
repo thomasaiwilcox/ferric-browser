@@ -1,4 +1,9 @@
-use std::fmt;
+use std::{
+    fmt,
+    sync::atomic::{AtomicU64, Ordering},
+};
+
+static PROCESS_RUNTIME_ID: AtomicU64 = AtomicU64::new(1);
 
 macro_rules! opaque_id {
     ($name:ident) => {
@@ -63,11 +68,15 @@ opaque_id!(WindowId);
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct IdSource {
     next: u64,
+    process_shared: bool,
 }
 
 impl Default for IdSource {
     fn default() -> Self {
-        Self { next: 1 }
+        Self {
+            next: 1,
+            process_shared: false,
+        }
     }
 }
 
@@ -75,6 +84,32 @@ impl IdSource {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Allocates opaque runtime IDs across every participating owner in this
+    /// process. Browser windows use this source so independently bootstrapped
+    /// runtimes cannot issue the same window or tab identity.
+    #[must_use]
+    pub fn process_shared() -> Self {
+        Self {
+            next: 1,
+            process_shared: true,
+        }
+    }
+
+    /// Forks an allocator for read-only reducer projections. A process-shared
+    /// preview must not consume the global counter merely to predict IDs.
+    /// Callers still have to reject a stale prediction if another owner
+    /// allocates before the planned events execute.
+    pub(crate) fn preview_fork(&self) -> Self {
+        Self {
+            next: if self.process_shared {
+                PROCESS_RUNTIME_ID.load(Ordering::Relaxed)
+            } else {
+                self.next
+            },
+            process_shared: false,
+        }
     }
 
     pub(crate) fn document(&mut self) -> DocumentId {
@@ -136,6 +171,11 @@ impl IdSource {
     }
 
     fn allocate(&mut self) -> u64 {
+        if self.process_shared {
+            return PROCESS_RUNTIME_ID
+                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+                .expect("process runtime ID space exhausted");
+        }
         let id = self.next;
         self.next = self
             .next
@@ -173,6 +213,31 @@ mod tests {
         assert_eq!(journey_node.to_string(), "journeynodeid-8");
         assert_eq!(tab.to_string(), "tabid-9");
         assert_eq!(window.to_string(), "windowid-10");
+    }
+
+    #[test]
+    fn process_shared_sources_do_not_reuse_window_or_tab_ids() {
+        let mut first = IdSource::process_shared();
+        let mut second = IdSource::process_shared();
+        let first_window = first.window();
+        let second_window = second.window();
+        let first_tab = first.tab();
+        let second_tab = second.tab();
+        assert_ne!(first_window, second_window);
+        assert_ne!(first_tab, second_tab);
+        assert_ne!(first_window.0, second_tab.0);
+    }
+
+    #[test]
+    fn process_shared_preview_uses_a_local_counter() {
+        let source = IdSource::process_shared();
+        let mut preview = source.preview_fork();
+        let first = preview.window();
+        let second = preview.tab();
+        assert!(!preview.process_shared);
+        assert_eq!(second.0, first.0 + 1);
+        assert!(source.process_shared);
+        assert_eq!(source.next, 1);
     }
 
     #[test]

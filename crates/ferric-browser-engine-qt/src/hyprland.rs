@@ -26,7 +26,7 @@ const MAX_WORKSPACE_BYTES: usize = 128;
 const MAX_CLIENT_FIELD_BYTES: usize = 256;
 const MAX_VERSION_FIELD_BYTES: usize = 128;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub enum HyprlandError {
     Disabled,
     Unavailable(String),
@@ -35,19 +35,32 @@ pub enum HyprlandError {
     Io(String),
 }
 
+impl fmt::Debug for HyprlandError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let variant = match self {
+            Self::Disabled => "Disabled",
+            Self::Unavailable(_) => "Unavailable",
+            Self::InvalidWorkspace => "InvalidWorkspace",
+            Self::Protocol(_) => "Protocol",
+            Self::Io(_) => "Io",
+        };
+        write!(formatter, "HyprlandError::{variant}([redacted])")
+    }
+}
+
 impl fmt::Display for HyprlandError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Disabled => formatter.write_str("workspace routing is disabled"),
-            Self::Unavailable(message) | Self::Protocol(message) | Self::Io(message) => {
-                formatter.write_str(message)
-            }
+            Self::Unavailable(_) => formatter.write_str("workspace compositor is unavailable"),
             Self::InvalidWorkspace => formatter.write_str("workspace selector is invalid"),
+            Self::Protocol(_) => formatter.write_str("workspace compositor response is invalid"),
+            Self::Io(_) => formatter.write_str("workspace compositor I/O failed"),
         }
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct HyprlandAdapter {
     enabled: TriState,
     workspace_routing: bool,
@@ -55,13 +68,26 @@ pub struct HyprlandAdapter {
     event_socket: Option<PathBuf>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BrowserClient {
     pub address: String,
     pub class: String,
     pub initial_class: String,
     pub pid: Option<u32>,
     pub workspace: Option<String>,
+}
+
+impl fmt::Debug for BrowserClient {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("BrowserClient")
+            .field("address", &"[REDACTED]")
+            .field("class", &"[REDACTED]")
+            .field("initial_class", &"[REDACTED]")
+            .field("has_pid", &self.pid.is_some())
+            .field("has_workspace", &self.workspace.is_some())
+            .finish()
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -81,7 +107,7 @@ impl HyprlandVersion {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct RawClient {
     #[serde(default)]
     address: String,
@@ -95,12 +121,12 @@ struct RawClient {
     mapped: Option<bool>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct RawWorkspace {
     name: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct RawVersion {
     branch: Option<String>,
     tag: Option<String>,
@@ -453,6 +479,38 @@ mod tests {
         assert!(!valid_workspace_selector("3; dispatch exec sh"));
         assert!(!valid_workspace_selector("two words"));
         assert!(!valid_workspace_selector(""));
+    }
+
+    #[test]
+    fn compositor_error_diagnostics_redact_socket_and_response_text() {
+        let sentinel = "private-compositor-socket-sentinel";
+        let errors = [
+            HyprlandError::Unavailable(format!("socket {sentinel}")),
+            HyprlandError::Protocol(format!("client payload {sentinel}")),
+            HyprlandError::Io(format!("connect failed at {sentinel}")),
+        ];
+
+        for error in errors {
+            assert!(!format!("{error:?}").contains(sentinel));
+            assert!(!error.to_string().contains(sentinel));
+        }
+    }
+
+    #[test]
+    fn browser_client_debug_redacts_runtime_window_identity() {
+        let client = BrowserClient {
+            address: "private-window-address-sentinel".into(),
+            class: "private-window-class-sentinel".into(),
+            initial_class: "private-initial-class-sentinel".into(),
+            pid: Some(42),
+            workspace: Some("private-workspace-sentinel".into()),
+        };
+        let debug = format!("{client:?}");
+        assert!(debug.contains("has_pid"));
+        assert!(!debug.contains("private-window-address-sentinel"));
+        assert!(!debug.contains("private-window-class-sentinel"));
+        assert!(!debug.contains("private-initial-class-sentinel"));
+        assert!(!debug.contains("private-workspace-sentinel"));
     }
 
     #[test]

@@ -22,7 +22,7 @@ pub(super) fn typed_ipc_route(envelope: &CommandEnvelope) -> Result<IpcRoute, St
         .as_deref()
         .map(|value| {
             CommandSource::parse(value)
-                .ok_or_else(|| format!("command context source is unsupported: {value}"))
+                .ok_or_else(|| "command context source is unsupported".to_owned())
         })
         .transpose()?
         .unwrap_or(CommandSource::Ipc);

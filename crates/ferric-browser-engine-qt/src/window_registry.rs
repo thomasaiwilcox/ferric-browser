@@ -6,7 +6,7 @@
 
 use super::{CxxQtType, Pin, QStringList, is_bounded_untrusted_text, qobject};
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub(super) struct LiveWindowRegistryEntry {
     pub(super) id: String,
     pub(super) owner_token: String,

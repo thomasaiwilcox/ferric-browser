@@ -2,7 +2,7 @@
 
 // Browser-owned page scripts are versioned resources. The build manifest hashes
 // this file with the QML module, so script changes are explicit and auditable.
-var VERSION = "10"
+var VERSION = "11"
 
 // Page userscripts are trusted local content, but their failure boundary is
 // browser policy. Keeping the wrappers here prevents QML from assembling page
@@ -253,13 +253,22 @@ function siteDataClearResult() {
 }
 
 function shutdownPageProbe() {
+    // The probe runs only in the top document. Embedded documents and shadow
+    // trees must not be reported clean when their editable state is unobserved.
     return "(function() {"
         + "if (typeof window.onbeforeunload === 'function') return 'unknown';"
-        + "var elements = document.querySelectorAll('input,textarea,select,[contenteditable=\"true\"]');"
+        + "if (document.querySelector('iframe,frame,object,embed')) return 'unknown';"
+        + "var walker = document.createTreeWalker(document.documentElement,NodeFilter.SHOW_ELEMENT);"
+        + "var visited = 0, node;"
+        + "while ((node = walker.nextNode())) {"
+        + "if (++visited > 4096 || node.shadowRoot || node.localName.indexOf('-') >= 0)"
+        + " return 'unknown';"
+        + "}"
+        + "var elements = document.querySelectorAll('input,textarea,select,[contenteditable]');"
         + "if (elements.length > 128) return 'unknown';"
         + "for (var i = 0; i < elements.length; ++i) {"
         + "var e = elements[i];"
-        + "if (e.isContentEditable) return 'unknown';"
+        + "if (e.isContentEditable || e.hasAttribute('contenteditable')) return 'unknown';"
         + "if (e.tagName === 'INPUT' && (e.type === 'checkbox' || e.type === 'radio')"
         + " && e.checked !== e.defaultChecked) return 'dirty';"
         + "if (e.tagName === 'SELECT') {"

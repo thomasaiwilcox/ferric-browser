@@ -43,20 +43,19 @@ impl qobject::BrowserUi {
             None => ("link", None),
         };
         let selection_requested = required_subject == "selection";
-        let targets = configured_action_targets(&self.as_ref().rust().config)?;
+        let targets = configured_action_targets(&self.as_ref().rust().config)
+            .map_err(|_| "configured action target catalog is unavailable; details suppressed")?;
         let target = targets
             .into_iter()
             .find(|(name, _)| name == target_name)
             .map(|(_, target)| target)
-            .ok_or_else(|| format!("configured action target not found: {target_name}"))?;
+            .ok_or_else(|| "configured action target is unavailable".to_owned())?;
         if !target
             .subject_types
             .iter()
             .any(|subject| subject == required_subject)
         {
-            return Err(format!(
-                "action target {target_name} does not accept {required_subject} subjects"
-            ));
+            return Err("action target does not accept this subject".into());
         }
         let current = current_target(
             self.as_ref().rust().state.as_ref(),
@@ -88,7 +87,6 @@ impl qobject::BrowserUi {
             this.pending_action_target = Some(PendingActionTarget {
                 token: token.clone(),
                 target: current,
-                target_name: target_name.clone(),
                 target_config: target,
                 operation_id: operation_id.clone(),
                 created_at: Instant::now(),
@@ -149,9 +147,8 @@ impl qobject::BrowserUi {
         let operation_id = self
             .as_mut()
             .start_action_target_process(&argv, target.detach)?;
-        self.as_mut().set_status_text(QString::from(format!(
-            "Sent to {target_name}: {operation_id}"
-        )));
+        self.as_mut()
+            .set_status_text(QString::from("Sent to configured action target"));
         Ok(serde_json::json!({
             "status": "accepted",
             "target": target_name,
@@ -418,8 +415,11 @@ impl qobject::BrowserUi {
             .userscript_roots
             .clone()
             .ok_or_else(|| "userscripts are unavailable without configured storage".to_owned())?;
-        let loaded = userscript::load(&roots.config, name)?;
-        userscript::validate_executable(&loaded.executable)?;
+        let loaded = userscript::load(&roots.config, name)
+            .map_err(|_| "userscript is unavailable or invalid; details suppressed".to_owned())?;
+        userscript::validate_executable(&loaded.executable).map_err(|_| {
+            "userscript executable is unavailable or invalid; details suppressed".to_owned()
+        })?;
         if loaded.manifest.argv.iter().any(|argument| {
             argument.len() > userscript::MAX_ARGV_VALUE_BYTES
                 || argument.is_empty()
@@ -517,8 +517,10 @@ impl qobject::BrowserUi {
             .userscript_roots
             .clone()
             .ok_or_else(|| "userscripts are unavailable without configured storage".to_owned())?;
-        let loaded = userscript::load(&roots.config, name)?;
-        userscript::validate_executable(&loaded.executable)?;
+        let loaded = userscript::load(&roots.config, name)
+            .map_err(|_| "userscript is unavailable or invalid; details suppressed")?;
+        userscript::validate_executable(&loaded.executable)
+            .map_err(|_| "userscript executable is unavailable or invalid; details suppressed")?;
         if loaded.manifest.argv.iter().any(|argument| {
             argument.len() > userscript::MAX_ARGV_VALUE_BYTES
                 || argument.is_empty()
@@ -627,7 +629,7 @@ impl qobject::BrowserUi {
         let operation_id = operation_id.unwrap_or_else(|| format!("op-{}", Uuid::new_v4()));
         let context = Value::Object(context);
         let input = serde_json::to_vec(&userscript::protocol_input(&operation_id, &context))
-            .map_err(|error| format!("could not encode userscript context: {error}"))?;
+            .map_err(|_| "userscript context encoding failed; details suppressed".to_owned())?;
         let mut command = Command::new(&loaded.executable);
         command
             .args(&loaded.manifest.argv)
@@ -659,7 +661,7 @@ impl qobject::BrowserUi {
         command.process_group(0);
         let mut child = command
             .spawn()
-            .map_err(|error| format!("could not start userscript: {error}"))?;
+            .map_err(|_| "userscript process could not start; details suppressed".to_owned())?;
         // A userscript may read its context slowly (or not at all). Keep the
         // bounded protocol write off the Qt thread so a full pipe cannot make
         // launching a script block the browser UI.
@@ -670,7 +672,7 @@ impl qobject::BrowserUi {
             };
             stdin
                 .write_all(&input)
-                .map_err(|error| format!("could not write userscript context: {error}"))
+                .map_err(|_| "userscript context delivery failed; details suppressed".to_owned())
         });
         let stdout = child
             .stdout
@@ -726,16 +728,20 @@ impl qobject::BrowserUi {
                                             };
                                             (status, output.action)
                                         }
-                                        Err(error) => (format!("failed ({error})"), None),
+                                        Err(_) => {
+                                            ("failed (userscript result was invalid)".into(), None)
+                                        }
                                     }
                                 }
-                                Ok(Err(error)) => (format!("failed ({error})"), None),
+                                Ok(Err(_)) => {
+                                    ("failed (userscript output was unavailable)".into(), None)
+                                }
                                 Err(_) => {
                                     ("failed (userscript output reader stopped)".into(), None)
                                 }
                             }
                         } else {
-                            (format!("failed ({status})"), None)
+                            ("failed (userscript exited unsuccessfully)".into(), None)
                         };
                     }
                     Ok(None) if started.elapsed() >= timeout => {
@@ -743,7 +749,7 @@ impl qobject::BrowserUi {
                         break ("failed (userscript timed out)".into(), None);
                     }
                     Ok(None) => thread::sleep(Duration::from_millis(10)),
-                    Err(error) => break (format!("failed ({error})"), None),
+                    Err(_) => break ("failed (process status unavailable)".into(), None),
                 }
             };
             let input_result = input_writer
@@ -751,8 +757,8 @@ impl qobject::BrowserUi {
                 .ok()
                 .unwrap_or_else(|| Err("userscript context writer stopped".into()));
             if status == "completed" || status.starts_with("completed: ") {
-                if let Err(error) = input_result {
-                    status = format!("failed ({error})");
+                if input_result.is_err() {
+                    status = "failed (userscript context delivery failed)".into();
                     action = None;
                 }
             }
@@ -835,18 +841,18 @@ impl qobject::BrowserUi {
                 self.set_status_text(QString::from("Spawn selection could not be resolved"));
                 return false;
             }
-            Err(error) => {
-                self.set_status_text(QString::from(error));
+            Err(_) => {
+                self.set_status_text(QString::from("Spawn selection could not be resolved"));
                 return false;
             }
         };
         match self.as_mut().start_spawn_process(&argv) {
-            Ok(operation_id) => {
-                self.set_status_text(QString::from(format!("Spawn started: {operation_id}")));
+            Ok(_) => {
+                self.set_status_text(QString::from("Spawn started"));
                 true
             }
-            Err(error) => {
-                self.set_status_text(QString::from(format!("Spawn failed: {error}")));
+            Err(_) => {
+                self.set_status_text(QString::from("Spawn could not start"));
                 false
             }
         }

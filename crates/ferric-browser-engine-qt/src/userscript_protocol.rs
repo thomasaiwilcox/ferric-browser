@@ -4,17 +4,42 @@ use serde_json::{Value, json};
 
 use crate::userscript::{MAX_PROTOCOL_BYTES, MAX_PROTOCOL_LINE_BYTES, Manifest};
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub enum UserscriptAction {
     Open { url: String },
     Yank { url: String, clean: bool },
     Command { name: String, arguments: Value },
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+impl std::fmt::Debug for UserscriptAction {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let variant = match self {
+            Self::Open { .. } => "Open",
+            Self::Yank { .. } => "Yank",
+            Self::Command { .. } => "Command",
+        };
+        formatter
+            .debug_struct("UserscriptAction")
+            .field("variant", &variant)
+            .field("payload", &"[REDACTED]")
+            .finish()
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
 pub struct ParsedOutput {
     pub message: String,
     pub action: Option<UserscriptAction>,
+}
+
+impl std::fmt::Debug for ParsedOutput {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ParsedOutput")
+            .field("message_bytes", &self.message.len())
+            .field("has_action", &self.action.is_some())
+            .finish()
+    }
 }
 
 #[must_use]
@@ -49,7 +74,7 @@ pub fn parse_output(bytes: &[u8], manifest: &Manifest) -> Result<ParsedOutput, S
             return Err("userscript result line exceeds 64 KiB".into());
         }
         let value: Value = serde_json::from_slice(line)
-            .map_err(|error| format!("invalid userscript JSON result: {error}"))?;
+            .map_err(|_| "invalid userscript JSON result".to_owned())?;
         let result_type = value
             .get("type")
             .and_then(Value::as_str)
@@ -59,9 +84,7 @@ pub fn parse_output(bytes: &[u8], manifest: &Manifest) -> Result<ParsedOutput, S
             .iter()
             .any(|allowed| allowed == result_type)
         {
-            return Err(format!(
-                "userscript result type is not allowed: {result_type}"
-            ));
+            return Err("userscript result type is not allowed".into());
         }
         match result_type {
             "message" => {
@@ -101,7 +124,7 @@ pub fn parse_output(bytes: &[u8], manifest: &Manifest) -> Result<ParsedOutput, S
                     .iter()
                     .any(|allowed| allowed == &name)
                 {
-                    return Err(format!("userscript command is not allowed: {name}"));
+                    return Err("userscript command is not allowed".into());
                 }
                 let arguments = value
                     .get("arguments")
@@ -113,9 +136,7 @@ pub fn parse_output(bytes: &[u8], manifest: &Manifest) -> Result<ParsedOutput, S
                 action = Some(UserscriptAction::Command { name, arguments });
             }
             _ => {
-                return Err(format!(
-                    "userscript result type is not implemented: {result_type}"
-                ));
+                return Err("userscript result type is unsupported".into());
             }
         }
     }

@@ -3,7 +3,12 @@ use super::{
     StorageRoots, SubmitError, Value, WorkerPoll, fs, hyprland, network_policy,
     terminate_child_process, thread, userscript,
 };
-use std::io::Write;
+use ferric_browser_storage::{MediaFingerprintKey, MediaFingerprintKeyError};
+use std::{
+    io::Write,
+    sync::mpsc::{self, Receiver, SyncSender, TryRecvError, TrySendError},
+};
+use uuid::Uuid;
 
 pub(super) struct PrintWorker {
     inner: SingleFlightWorker<PathBuf, Result<PathBuf, String>>,
@@ -112,7 +117,6 @@ pub(super) enum UserscriptManagerRequest {
     },
 }
 
-#[derive(Debug)]
 pub(super) enum UserscriptManagerResult {
     Inventory(Result<Vec<userscript::InstalledScript>, String>),
     Installed(Result<Vec<userscript::InstalledScript>, String>),
@@ -125,6 +129,81 @@ pub(super) enum UserscriptManagerResult {
 
 pub(super) struct UserscriptManagerWorker {
     inner: SingleFlightWorker<UserscriptManagerRequest, UserscriptManagerResult>,
+}
+
+pub(super) struct MediaFingerprintKeyWorker {
+    sender: SyncSender<(StorageRoots, Uuid, bool)>,
+    receiver: Receiver<(Uuid, Result<MediaFingerprintKey, MediaFingerprintKeyError>)>,
+    pending: bool,
+}
+
+impl MediaFingerprintKeyWorker {
+    pub(super) fn spawn() -> Result<Self, String> {
+        let (sender, requests) = mpsc::sync_channel(1);
+        let (responses, receiver) = mpsc::sync_channel(1);
+        let detached_worker = std::thread::Builder::new()
+            .name("ferric-browser-media-fingerprint-key".into())
+            .spawn(move || {
+                while let Ok((roots, profile_id, create_missing)) = requests.recv() {
+                    let result = if create_missing {
+                        MediaFingerprintKey::open_blocking(&roots, profile_id)
+                    } else {
+                        MediaFingerprintKey::load_blocking(&roots, profile_id)
+                    };
+                    if responses.send((profile_id, result)).is_err() {
+                        break;
+                    }
+                }
+            })
+            .map_err(|error| error.to_string())?;
+        // Detach deliberately: Secret Service may block during shutdown. The
+        // worker owns no Qt object and drops a late key if its receiver closes.
+        drop(detached_worker);
+        Ok(Self {
+            sender,
+            receiver,
+            pending: false,
+        })
+    }
+
+    pub(super) fn request(
+        &mut self,
+        roots: StorageRoots,
+        profile_id: Uuid,
+        create_missing: bool,
+    ) -> Result<(), SubmitError> {
+        if self.pending {
+            return Err(SubmitError::Busy);
+        }
+        match self.sender.try_send((roots, profile_id, create_missing)) {
+            Ok(()) => {
+                self.pending = true;
+                Ok(())
+            }
+            Err(TrySendError::Full(_)) => Err(SubmitError::QueueFull),
+            Err(TrySendError::Disconnected(_)) => Err(SubmitError::Stopped),
+        }
+    }
+
+    pub(super) fn poll(
+        &mut self,
+    ) -> Option<(Uuid, Result<MediaFingerprintKey, MediaFingerprintKeyError>)> {
+        match self.receiver.try_recv() {
+            Ok(result) => {
+                self.pending = false;
+                Some(result)
+            }
+            Err(TryRecvError::Empty) => None,
+            Err(TryRecvError::Disconnected) => {
+                self.pending = false;
+                None
+            }
+        }
+    }
+
+    pub(super) fn is_pending(&self) -> bool {
+        self.pending
+    }
 }
 
 impl UserscriptManagerWorker {

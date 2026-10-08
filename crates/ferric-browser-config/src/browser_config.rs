@@ -2,9 +2,9 @@
 
 use super::{
     CollisionPolicy, Deserialize, EntryMode, ExternalLinks, HintAutoFollow, HintUnmatchedPolicy,
-    LastClose, LogLevel, PermissionDecision, PortalMode, Serialize, SessionRestore,
-    default_builtin, default_checkpoint, default_command_limit, default_count_limit,
-    default_hint_chars, default_hint_marker_scale, default_hint_min_chars,
+    LastClose, LogLevel, PermissionDecision, PortalMode, SensitiveCapturePolicy, Serialize,
+    SessionRestore, default_builtin, default_checkpoint, default_command_limit,
+    default_count_limit, default_hint_chars, default_hint_marker_scale, default_hint_min_chars,
     default_keychain_timeout, default_languages, default_lists, default_log_size, default_new_tab,
     default_overlay_delay, default_related_position, default_retained_files, default_retention,
     default_search_engine, default_start_pages, default_true, default_undo_limit,
@@ -275,6 +275,19 @@ pub struct PrivacyConfig {
     pub private_history_suggestions: bool,
 }
 
+/// Global/profile policy for explicit, potentially secret-bearing page captures.
+/// `Ask` never authorizes capture by itself; every page capture must also get
+/// an informed, one-use native confirmation. Private/ephemeral persistence
+/// and automatic page checkpoints are not configurable here and stay denied.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VersioningConfig {
+    #[serde(default)]
+    pub page_capture: SensitiveCapturePolicy,
+    #[serde(default)]
+    pub editable_capture: SensitiveCapturePolicy,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PermissionsConfig {
@@ -454,7 +467,7 @@ impl Default for IpcConfig {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ActionTargetConfig {
     #[serde(default)]
@@ -466,6 +479,19 @@ pub struct ActionTargetConfig {
     pub detach: bool,
     #[serde(default)]
     pub allow_private: bool,
+}
+
+impl std::fmt::Debug for ActionTargetConfig {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ActionTargetConfig")
+            .field("subject_type_count", &self.subject_types.len())
+            .field("executable", &"[redacted]")
+            .field("argument_count", &self.argv.len())
+            .field("detach", &self.detach)
+            .field("allow_private", &self.allow_private)
+            .finish()
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]

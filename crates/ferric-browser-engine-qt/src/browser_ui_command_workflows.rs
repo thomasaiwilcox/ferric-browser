@@ -3,6 +3,7 @@ use super::{
     interactive_open_command, is_context_command, is_profile_command, is_session_command,
     parse_action_invocation, qobject,
 };
+use ferric_browser_core::{VersioningCommand, VersioningScope};
 
 pub(super) enum CommandDispatchControl {
     Unhandled,
@@ -74,6 +75,32 @@ impl qobject::BrowserUi {
                 .as_mut()
                 .get_mut()
                 .macro_expanded_commands = expanded + 1;
+        }
+        if command.name == "commit" {
+            let mode = self.as_ref().rust().core_mode;
+            if let Err(error) = registry.validate(command, mode) {
+                self.set_status_text(QString::from(error.to_string()));
+                return CommandDispatchControl::Failed;
+            }
+            match VersioningCommand::from_parsed(command, 1) {
+                Ok(VersioningCommand::Commit {
+                    message,
+                    scope: VersioningScope::Context,
+                    pages: false,
+                    editable: false,
+                }) => {
+                    let mut rust = self.as_mut().rust_mut();
+                    let this = rust.as_mut().get_mut();
+                    this.pending_context_commit_message = Some(message);
+                    this.pending_engine_action = Some("context-commit-request".into());
+                    return CommandDispatchControl::Continue;
+                }
+                Ok(_) => {}
+                Err(error) => {
+                    self.set_status_text(QString::from(error.to_string()));
+                    return CommandDispatchControl::Failed;
+                }
+            }
         }
         if matches!(command.name.as_str(), "quit" | "window-close") {
             let mode = self.as_ref().rust().core_mode;
@@ -224,24 +251,25 @@ impl qobject::BrowserUi {
                 return CommandDispatchControl::Failed;
             }
             match parse_action_invocation(command) {
-                Ok((mapped, action_id)) => {
+                Ok((mapped, _action_id)) => {
                     *command = mapped;
                     self.as_mut()
-                        .set_status_text(QString::from(format!("Executing {action_id}")));
+                        .set_status_text(QString::from("Action started"));
                 }
                 Err(error) => match self.as_mut().execute_userscript_action_command(command) {
-                    Ok(Some((_, action_id))) => {
-                        self.as_mut().set_status_text(QString::from(format!(
-                            "Executing userscript action {action_id}"
-                        )));
+                    Ok(Some((_, _action_id))) => {
+                        self.as_mut()
+                            .set_status_text(QString::from("Userscript action started"));
                         return CommandDispatchControl::Continue;
                     }
                     Ok(None) => {
                         self.set_status_text(QString::from(error));
                         return CommandDispatchControl::Failed;
                     }
-                    Err(userscript_error) => {
-                        self.set_status_text(QString::from(userscript_error));
+                    Err(_userscript_error) => {
+                        self.set_status_text(QString::from(
+                            "Userscript action failed; details suppressed",
+                        ));
                         return CommandDispatchControl::Failed;
                     }
                 },

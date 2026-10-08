@@ -1,0 +1,13 @@
+<!doctype html><meta charset="utf-8"><title>Versioning editor</title>
+<h1>Unsaved editor fixture</h1>
+<div id="draft" contenteditable="true" role="textbox">synthetic unsaved text</div>
+<a id="slow-download" href="/versioning/slow-download">Synthetic slow download</a>
+<output id="save-status">not saved</output>
+<script>
+const draft = document.querySelector('#draft');
+draft.addEventListener('blur', async () => {
+  document.querySelector('#save-status').value = 'saving';
+  const reply = await fetch('/versioning/editor/autosave', {method: 'POST', body: draft.textContent});
+  document.querySelector('#save-status').value = reply.ok ? 'saved' : 'failed';
+});
+</script>

@@ -89,7 +89,7 @@ impl qobject::BrowserUi {
         child.process_group(0);
         let mut child = child
             .spawn()
-            .map_err(|error| format!("could not start executable: {error}"))?;
+            .map_err(|_| "could not start executable".to_owned())?;
         let completions = Arc::clone(&self.as_ref().rust().spawn_completions);
         let cancellations = Arc::clone(&self.as_ref().rust().spawn_cancellations);
         let cancellation = Arc::new(AtomicBool::new(false));
@@ -113,7 +113,7 @@ impl qobject::BrowserUi {
                     Ok(Some(status)) if status.success() => break "completed".to_owned(),
                     Ok(Some(status)) => break format!("failed ({status})"),
                     Ok(None) => thread::sleep(Duration::from_millis(20)),
-                    Err(error) => break format!("failed ({error})"),
+                    Err(_) => break "failed (process status unavailable)".to_owned(),
                 }
             };
             if let Ok(mut values) = cancellations.lock() {
@@ -164,7 +164,7 @@ impl qobject::BrowserUi {
             command.process_group(0);
             command
                 .spawn()
-                .map_err(|error| format!("could not start action target: {error}"))?;
+                .map_err(|_| "could not start action target".to_owned())?;
             let operation_id = format!("op-{}", Uuid::new_v4());
             self.as_mut()
                 .rust_mut()

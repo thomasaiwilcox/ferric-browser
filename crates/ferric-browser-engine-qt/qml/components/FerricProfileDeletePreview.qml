@@ -27,18 +27,24 @@ FerricCommandDialog {
         }
     }
 
-    ScrollView {
+    Loader {
         anchors.fill: parent
-        clip: true
+        active: preview.visible
+        sourceComponent: Component {
+            ScrollView {
+                anchors.fill: parent
+                clip: true
 
-        TextArea {
-            width: parent.width
-            text: preview.browserWindow.profileDeletePreviewText
-            readOnly: true
-            wrapMode: TextEdit.Wrap
-            color: preview.browserWindow.primaryTextColor
-            background: Rectangle { color: preview.browserWindow.surfaceColor }
-            Accessible.name: "Profile deletion paths"
+                TextArea {
+                    width: parent.width
+                    text: preview.browserWindow.profileDeletePreviewText
+                    readOnly: true
+                    wrapMode: TextEdit.Wrap
+                    color: preview.browserWindow.primaryTextColor
+                    background: Rectangle { color: preview.browserWindow.surfaceColor }
+                    Accessible.name: "Profile deletion paths"
+                }
+            }
         }
     }
 }

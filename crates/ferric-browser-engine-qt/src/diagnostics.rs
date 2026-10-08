@@ -10,6 +10,7 @@ use std::{
 pub(crate) const SCHEMA_VERSION: u32 = 1;
 const PROBE_TIMEOUT: Duration = Duration::from_millis(750);
 const PROBE_OUTPUT_LIMIT: u64 = 64 * 1024;
+pub(crate) const MAX_REVIEWED_DIAGNOSTICS_BYTES: usize = crate::MAX_DIAGNOSTICS_EXPORT_BYTES;
 pub(crate) use crate::diagnostics_overview::hyprland_version_fact;
 pub use crate::diagnostics_overview::{action_error_summary, storage_health};
 
@@ -23,6 +24,12 @@ pub(crate) fn fact(status: &str, value: Option<&str>, reason: &str, provenance: 
         result["value"] = Value::String(value.to_owned());
     }
     result
+}
+
+pub(crate) fn reviewed_diagnostics_match(snapshot: Option<&str>, reviewed: &str) -> bool {
+    !reviewed.is_empty()
+        && reviewed.len() <= MAX_REVIEWED_DIAGNOSTICS_BYTES
+        && snapshot == Some(reviewed)
 }
 
 /// Describes the live blocker state without exposing rule bodies, list URLs, or
@@ -964,12 +971,27 @@ mod tests {
     use serde_json::{Value, json};
 
     use super::{
-        action_error_summary, dictionary_names, engine_update_policy, font_scale_value,
-        media_manifest_is_conservative, network_blocking_fact, package_version_from_output,
-        pipewire_version_from_output, portal_interface_fact, portal_interface_version,
-        reduced_motion_value, renderer_helper_fact_from_status, renderer_helper_name,
+        MAX_REVIEWED_DIAGNOSTICS_BYTES, action_error_summary, dictionary_names,
+        engine_update_policy, font_scale_value, media_manifest_is_conservative,
+        network_blocking_fact, package_version_from_output, pipewire_version_from_output,
+        portal_interface_fact, portal_interface_version, reduced_motion_value,
+        renderer_helper_fact_from_status, renderer_helper_name, reviewed_diagnostics_match,
         sandbox_fact_from_status, snapshot, snapshot_with_primary_selection, valid_driver_name,
     };
+
+    #[test]
+    fn diagnostics_export_requires_the_exact_bounded_visible_snapshot() {
+        let visible = "{\"runtime\":{\"status\":\"available\"}}";
+        assert!(reviewed_diagnostics_match(Some(visible), visible));
+        assert!(!reviewed_diagnostics_match(
+            Some(visible),
+            "{\"runtime\":{}}"
+        ));
+        assert!(!reviewed_diagnostics_match(Some(visible), ""));
+        assert!(!reviewed_diagnostics_match(None, visible));
+        let oversized = "x".repeat(MAX_REVIEWED_DIAGNOSTICS_BYTES + 1);
+        assert!(!reviewed_diagnostics_match(Some(&oversized), &oversized));
+    }
 
     #[test]
     fn action_errors_are_summarized_without_audit_identifiers() {

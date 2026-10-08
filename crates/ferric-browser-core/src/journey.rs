@@ -1,4 +1,7 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt,
+};
 
 use crate::{IdSource, JourneyNodeId, ProfileId, TabId, ValidatedUrl};
 
@@ -35,7 +38,7 @@ impl JourneyEdgeKind {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct JourneyNode {
     pub id: JourneyNodeId,
     pub profile: ProfileId,
@@ -46,6 +49,21 @@ pub struct JourneyNode {
     pub source: Option<String>,
 }
 
+impl fmt::Debug for JourneyNode {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("JourneyNode")
+            .field("id", &"[redacted]")
+            .field("profile", &"[redacted]")
+            .field("url", &"[redacted]")
+            .field("title", &"[redacted]")
+            .field("committed_at", &self.committed_at)
+            .field("transition", &self.transition)
+            .field("source", &self.source.as_ref().map(|_| "[redacted]"))
+            .finish()
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct JourneyEdge {
     pub source: JourneyNodeId,
@@ -54,13 +72,25 @@ pub struct JourneyEdge {
     pub created_at: u64,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Default, Eq, PartialEq)]
 pub struct JourneyGraph {
     nodes: BTreeMap<JourneyNodeId, JourneyNode>,
     edges: Vec<JourneyEdge>,
     current_by_tab: BTreeMap<TabId, JourneyNodeId>,
     paths_by_tab: BTreeMap<TabId, JourneyPath>,
     pending_traversals: BTreeMap<TabId, i32>,
+}
+
+impl fmt::Debug for JourneyGraph {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("JourneyGraph")
+            .field("node_count", &self.nodes.len())
+            .field("edge_count", &self.edges.len())
+            .field("tab_count", &self.current_by_tab.len())
+            .field("pending_traversal_count", &self.pending_traversals.len())
+            .finish()
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -687,5 +717,27 @@ mod tests {
         assert_eq!(graph.clear_matching(|node| node.id == current), 1);
         assert_eq!(graph.current_node(tab), None);
         assert_eq!(graph.node_count(), 0);
+    }
+
+    #[test]
+    fn journey_debug_redacts_private_page_metadata() {
+        let sentinel = "private-journey-sentinel-5b49";
+        let mut graph = JourneyGraph::new();
+        let mut ids = IdSource::new();
+        let profile = ids.profile();
+        let tab = ids.tab();
+        let id = graph.record_navigation(
+            &mut ids,
+            profile,
+            tab,
+            &url(&format!("https://example.test/?q={sentinel}")),
+            sentinel,
+            1,
+            JourneyEdgeKind::Navigate,
+            Some(sentinel),
+        );
+
+        assert!(!format!("{:?}", graph.node(id).expect("node")).contains(sentinel));
+        assert!(!format!("{graph:?}").contains(sentinel));
     }
 }

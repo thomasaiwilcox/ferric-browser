@@ -1,4 +1,5 @@
 use std::{
+    fmt,
     fs::{self, File, OpenOptions},
     io::{self, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
@@ -27,10 +28,16 @@ static HELD_PROFILE_LOCKS: OnceLock<
     Mutex<std::collections::HashMap<PathBuf, Weak<ProfileLockState>>>,
 > = OnceLock::new();
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ProfileLock {
     #[allow(dead_code)]
     inner: Arc<ProfileLockState>,
+}
+
+impl fmt::Debug for ProfileLock {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("ProfileLock([redacted])")
+    }
 }
 
 #[derive(Debug)]
@@ -130,7 +137,6 @@ fn lock_owner_is_current_process(owner: &str) -> bool {
     owner.trim_end() == format!("pid={}", std::process::id())
 }
 
-#[derive(Debug)]
 pub enum ProfileLockError {
     Io {
         path: PathBuf,
@@ -142,69 +148,99 @@ pub enum ProfileLockError {
     },
 }
 
-impl std::fmt::Display for ProfileLockError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for ProfileLockError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Io { path, message } => write!(formatter, "{}: {message}", path.display()),
-            Self::Busy { path, owner } => write!(
-                formatter,
-                "profile is already in use ({}; owner {})",
-                path.display(),
-                owner.as_deref().unwrap_or("unknown")
-            ),
+            Self::Io { .. } => formatter.write_str("ProfileLockError::Io([redacted])"),
+            Self::Busy { .. } => formatter.write_str("ProfileLockError::Busy([redacted])"),
+        }
+    }
+}
+
+impl fmt::Display for ProfileLockError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Io { .. } => formatter.write_str("profile lock I/O failed"),
+            Self::Busy { .. } => formatter.write_str("profile is already in use"),
         }
     }
 }
 
 impl std::error::Error for ProfileLockError {}
 
-#[derive(Debug)]
 pub enum ProfileDataError {
     Io { path: PathBuf, message: String },
     UnsafePath(PathBuf),
 }
 
-impl std::fmt::Display for ProfileDataError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for ProfileDataError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Io { path, message } => write!(formatter, "{}: {message}", path.display()),
-            Self::UnsafePath(path) => write!(
-                formatter,
-                "refusing to delete unsafe path: {}",
-                path.display()
-            ),
+            Self::Io { .. } => formatter.write_str("ProfileDataError::Io([redacted])"),
+            Self::UnsafePath(_) => formatter.write_str("ProfileDataError::UnsafePath([redacted])"),
+        }
+    }
+}
+
+impl fmt::Display for ProfileDataError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Io { .. } => formatter.write_str("profile data operation failed"),
+            Self::UnsafePath(_) => {
+                formatter.write_str("refusing to use an unsafe profile data path")
+            }
         }
     }
 }
 
 impl std::error::Error for ProfileDataError {}
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct ProfileDeletionOutcome {
     pub profile_name: String,
     pub cleanup_pending: bool,
 }
 
-#[derive(Debug)]
+impl fmt::Debug for ProfileDeletionOutcome {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ProfileDeletionOutcome")
+            .field("profile_name", &"[redacted]")
+            .field("cleanup_pending", &self.cleanup_pending)
+            .finish()
+    }
+}
+
 pub enum ProfileDeletionError {
     Lock(ProfileLockError),
     Registry(RegistryError),
     Data(ProfileDataError),
 }
 
-impl std::fmt::Display for ProfileDeletionError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for ProfileDeletionError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let variant = match self {
+            Self::Lock(_) => "Lock",
+            Self::Registry(_) => "Registry",
+            Self::Data(_) => "Data",
+        };
+        write!(formatter, "ProfileDeletionError::{variant}([redacted])")
+    }
+}
+
+impl fmt::Display for ProfileDeletionError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Lock(error) => write!(formatter, "profile deletion refused: {error}"),
-            Self::Registry(error) => write!(formatter, "profile registry update failed: {error}"),
-            Self::Data(error) => write!(formatter, "profile data deletion failed: {error}"),
+            Self::Lock(_) => formatter.write_str("profile deletion refused by the profile lock"),
+            Self::Registry(_) => formatter.write_str("profile registry update failed"),
+            Self::Data(_) => formatter.write_str("profile data deletion failed"),
         }
     }
 }
 
 impl std::error::Error for ProfileDeletionError {}
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct DeletionManifest {
     version: u32,
@@ -212,6 +248,19 @@ struct DeletionManifest {
     profile_name: String,
     transaction_id: Uuid,
     committed: bool,
+}
+
+impl fmt::Debug for DeletionManifest {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("DeletionManifest")
+            .field("version", &self.version)
+            .field("profile_id", &"[redacted]")
+            .field("profile_name", &"[redacted]")
+            .field("transaction_id", &"[redacted]")
+            .field("committed", &self.committed)
+            .finish()
+    }
 }
 
 /// Atomically removes a profile registry entry while staging its
@@ -279,10 +328,14 @@ pub fn delete_profile_transaction(
 
     manifest.committed = true;
     let mut cleanup_pending = save_deletion_manifest(&manifest_path, &manifest).is_err();
-    if delete_profile_tombstones(roots, &manifest)
-        .and_then(|()| remove_manifest(&manifest_path))
-        .is_err()
-    {
+    #[cfg(target_os = "linux")]
+    if crate::versioning::MediaFingerprintKey::delete_blocking(roots, profile.id).is_err() {
+        cleanup_pending = true;
+    }
+    if delete_profile_tombstones(roots, &manifest).is_err() {
+        cleanup_pending = true;
+    }
+    if !cleanup_pending && remove_manifest(&manifest_path).is_err() {
         cleanup_pending = true;
     }
 
@@ -451,6 +504,14 @@ fn recover_deletion_manifests(
             restore_profile_tombstones(roots, &manifest)?;
         } else {
             delete_profile_tombstones(roots, &manifest)?;
+            #[cfg(target_os = "linux")]
+            if crate::versioning::MediaFingerprintKey::delete_blocking(roots, manifest.profile_id)
+                .is_err()
+            {
+                // Preserve the exact deletion manifest for a later key-store
+                // retry without blocking unrelated profile registry reads.
+                continue;
+            }
         }
         remove_manifest(&path)?;
     }
@@ -495,7 +556,7 @@ pub enum ProfilePrivacy {
     Normal,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ProfileRecord {
     pub id: Uuid,
     pub name: String,
@@ -503,7 +564,18 @@ pub struct ProfileRecord {
     pub privacy: ProfilePrivacy,
 }
 
-#[derive(Debug)]
+impl fmt::Debug for ProfileRecord {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ProfileRecord")
+            .field("id", &"[redacted]")
+            .field("name", &"[redacted]")
+            .field("label", &"[redacted]")
+            .field("privacy", &self.privacy)
+            .finish()
+    }
+}
+
 pub enum RegistryError {
     Io { path: PathBuf, message: String },
     Json { path: PathBuf, message: String },
@@ -514,12 +586,26 @@ pub enum RegistryError {
     PrivateProfile,
 }
 
-impl std::fmt::Display for RegistryError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for RegistryError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let variant = match self {
+            Self::Io { .. } => "Io",
+            Self::Json { .. } => "Json",
+            Self::InvalidName => "InvalidName",
+            Self::InvalidLabel => "InvalidLabel",
+            Self::DuplicateName => "DuplicateName",
+            Self::NotFound => "NotFound",
+            Self::PrivateProfile => "PrivateProfile",
+        };
+        write!(formatter, "RegistryError::{variant}([redacted])")
+    }
+}
+
+impl fmt::Display for RegistryError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Io { path, message } | Self::Json { path, message } => {
-                write!(formatter, "{}: {message}", path.display())
-            }
+            Self::Io { .. } => formatter.write_str("profile registry I/O failed"),
+            Self::Json { .. } => formatter.write_str("profile registry data is invalid"),
             Self::InvalidName => {
                 formatter.write_str("profile name must be a 1–32 character lowercase slug")
             }
@@ -537,11 +623,21 @@ impl std::fmt::Display for RegistryError {
 
 impl std::error::Error for RegistryError {}
 
-#[derive(Debug)]
 pub struct ProfileRegistry {
     roots: StorageRoots,
     path: PathBuf,
     profiles: Vec<ProfileRecord>,
+}
+
+impl fmt::Debug for ProfileRegistry {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ProfileRegistry")
+            .field("roots", &"[redacted]")
+            .field("path", &"[redacted]")
+            .field("profile_count", &self.profiles.len())
+            .finish()
+    }
 }
 
 impl ProfileRegistry {
@@ -832,6 +928,37 @@ mod tests {
     use super::*;
     use crate::{RootSpec, StorageRoots};
     use std::{process::Command, thread, time::Duration};
+
+    #[test]
+    fn profile_diagnostics_redact_names_paths_and_lock_owner() {
+        let name_sentinel = "private-profile-name-sentinel";
+        let path_sentinel = "/home/person/private-profile/browser.sqlite";
+        let record = ProfileRecord {
+            id: Uuid::new_v4(),
+            name: name_sentinel.into(),
+            label: "private profile label".into(),
+            privacy: ProfilePrivacy::Normal,
+        };
+        let lock_error = ProfileLockError::Busy {
+            path: PathBuf::from(path_sentinel),
+            owner: Some("private process owner".into()),
+        };
+        let registry_error = RegistryError::Json {
+            path: PathBuf::from(path_sentinel),
+            message: "private registry parser message".into(),
+        };
+        for output in [
+            format!("{record:?}"),
+            format!("{lock_error:?} {lock_error}"),
+            format!("{registry_error:?} {registry_error}"),
+        ] {
+            assert!(!output.contains(name_sentinel));
+            assert!(!output.contains("private profile label"));
+            assert!(!output.contains(path_sentinel));
+            assert!(!output.contains("private process owner"));
+            assert!(!output.contains("private registry parser message"));
+        }
+    }
 
     #[test]
     fn profile_lock_crash_test_child() {

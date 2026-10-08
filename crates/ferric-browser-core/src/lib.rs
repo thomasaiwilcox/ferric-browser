@@ -18,6 +18,24 @@ mod navigation;
 mod spatial_navigation;
 mod switcher;
 mod url;
+pub mod versioning;
+
+pub use versioning::{
+    ApplicationOwnerId, BranchError, BranchId, BranchLifecycle, BranchName, BranchRecord,
+    CapabilityFact, CapabilityKey, CapabilityRequirement, CaptureField, CaptureUnavailable,
+    CapturedOwner, CapturedScope, CommitId, CookieMergeDecision, CookieMergeError, CookieMergePlan,
+    CookieMergeUnavailable, DiffKind, Fidelity, FieldAvailability, InheritanceReport,
+    InheritanceRequest, LogicalPageId, LogicalWindowId, NativeProfileOwner, OperationId,
+    PageCaptureInput, ProfileInstanceId, ResolutionChoice, RestoreInto, RestoreMode,
+    RetainedLifecycle, RetainedViewId, RetentionRecord, SafePageUrl, ScopeError, ScopeSelector,
+    ScrollPoint, StashId, StructuralCaptureError, StructuralChange, StructuralDiffError,
+    StructuralDiffEvent, StructuralDiffPage, StructuralPage, StructuralSnapshot, StructuralWindow,
+    VersioningCommand, VersioningCommandError, VersioningEngineEffect, VersioningEvent,
+    VersioningFailure, VersioningIdError, VersioningLimitError, VersioningLimits, VersioningReason,
+    VersioningRef, VersioningRequest, VersioningScope, VersioningState, ViewMembership,
+    diff_structural, diff_structural_kind, plan_cookie_merge, project_structural_scope,
+    resolve_scope,
+};
 
 pub use action::{
     ActionConfirmation, ActionDefinition, ActionRegistry, ActionSource, ActionSubject,

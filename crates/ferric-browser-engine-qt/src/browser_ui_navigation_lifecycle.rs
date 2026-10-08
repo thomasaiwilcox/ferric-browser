@@ -19,10 +19,12 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn navigation_started(mut self: Pin<&mut Self>, url: QString) {
+        let active_index = self.as_ref().rust().active_tab_index;
+        self.as_mut().forget_safe_get_navigation_for(active_index);
         let url = match canonical_engine_url(url) {
             Ok(url) => QString::from(url),
-            Err(error) => {
-                self.set_status_text(QString::from(format!("Navigation URL rejected: {error}")));
+            Err(_) => {
+                self.set_status_text(QString::from("Navigation URL rejected; details suppressed"));
                 return;
             }
         };
@@ -69,13 +71,14 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn navigation_started_for(mut self: Pin<&mut Self>, index: i32, url: QString) {
+        self.as_mut().forget_safe_get_navigation_for(index);
         let url = match canonical_engine_url(url) {
             Ok(url) => QString::from(url),
-            Err(error) => {
+            Err(_) => {
                 if index == self.as_ref().rust().active_tab_index {
-                    self.set_status_text(QString::from(format!(
-                        "Navigation URL rejected: {error}"
-                    )));
+                    self.set_status_text(QString::from(
+                        "Navigation URL rejected; details suppressed",
+                    ));
                 }
                 return;
             }
@@ -125,10 +128,12 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn navigation_url_changed(mut self: Pin<&mut Self>, url: QString) {
+        let active_index = self.as_ref().rust().active_tab_index;
+        self.as_mut().forget_safe_get_navigation_for(active_index);
         let url = match canonical_engine_url(url) {
             Ok(url) => QString::from(url),
-            Err(error) => {
-                self.set_status_text(QString::from(format!("Engine URL rejected: {error}")));
+            Err(_) => {
+                self.set_status_text(QString::from("Engine URL rejected; details suppressed"));
                 return;
             }
         };
@@ -169,11 +174,12 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn navigation_url_changed_for(mut self: Pin<&mut Self>, index: i32, url: QString) {
+        self.as_mut().forget_safe_get_navigation_for(index);
         let url = match canonical_engine_url(url) {
             Ok(url) => QString::from(url),
-            Err(error) => {
+            Err(_) => {
                 if index == self.as_ref().rust().active_tab_index {
-                    self.set_status_text(QString::from(format!("Engine URL rejected: {error}")));
+                    self.set_status_text(QString::from("Engine URL rejected; details suppressed"));
                 }
                 return;
             }
@@ -248,10 +254,12 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn navigation_committed(mut self: Pin<&mut Self>, url: QString, title: QString) {
+        let active_index = self.as_ref().rust().active_tab_index;
+        self.as_mut().forget_safe_get_navigation_for(active_index);
         let canonical_url = match canonical_engine_url(url) {
             Ok(url) => url,
-            Err(error) => {
-                self.set_status_text(QString::from(format!("Engine URL rejected: {error}")));
+            Err(_) => {
+                self.set_status_text(QString::from("Engine URL rejected; details suppressed"));
                 return;
             }
         };
@@ -313,11 +321,12 @@ impl qobject::BrowserUi {
         url: QString,
         title: QString,
     ) {
+        self.as_mut().forget_safe_get_navigation_for(index);
         let canonical_url = match canonical_engine_url(url) {
             Ok(url) => url,
-            Err(error) => {
+            Err(_) => {
                 if index == self.as_ref().rust().active_tab_index {
-                    self.set_status_text(QString::from(format!("Engine URL rejected: {error}")));
+                    self.set_status_text(QString::from("Engine URL rejected; details suppressed"));
                 }
                 return;
             }
@@ -489,6 +498,23 @@ impl qobject::BrowserUi {
                 let _ = fs::remove_dir_all(path);
             }
             this.profile_id = None;
+            this.session_core_profile_id = None;
+            this.session_names.clear();
+            this.session_names_dirty.set(true);
+            this.session_names_pending = false;
+            this.session_names_ticket = None;
+            this.session_restore_preview_pending = false;
+            this.session_restore_load_append = None;
+            this.session_restore_recovery_pending = false;
+            this.session_restore_ticket = None;
+            this.session_save_pending = false;
+            this.session_save_ticket = None;
+            this.session_save_checkpoint = false;
+            this.session_delete_ticket = None;
+            this.session_checkpoint_clear_pending = false;
+            this.session_checkpoint_clear_ticket = None;
+            this.session_restore_values = QString::default();
+            this.session_preview = QString::default();
             this.session_path = None;
             this.session_state_root = None;
             this.state = None;
@@ -607,13 +633,14 @@ impl qobject::BrowserUi {
                 })
             })
         };
-        if let Err(error) = self
+        if self
             .as_mut()
             .reduce_event(Event::ViewClosed { tab, generation })
+            .is_err()
         {
-            self.set_status_text(QString::from(format!(
-                "Tab close acknowledgement rejected: {error}"
-            )));
+            self.set_status_text(QString::from(
+                "Tab close acknowledgement rejected; details suppressed",
+            ));
             return false;
         }
         if let Some(closed) = closed {

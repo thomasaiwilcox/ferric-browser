@@ -9,15 +9,15 @@ QtObject {
     required property var browserWindow
 
     function permissionTypeName(permissionType) {
-        if (permissionType === WebEnginePermission.MediaAudioCapture) return "microphone"
-        if (permissionType === WebEnginePermission.MediaVideoCapture) return "camera"
-        if (permissionType === WebEnginePermission.MediaAudioVideoCapture) return "camera-and-microphone"
-        if (permissionType === WebEnginePermission.DesktopVideoCapture
-                || permissionType === WebEnginePermission.DesktopAudioVideoCapture) return "screen-capture"
-        if (permissionType === WebEnginePermission.Notifications) return "notifications"
-        if (permissionType === WebEnginePermission.Geolocation) return "geolocation"
-        if (permissionType === WebEnginePermission.ClipboardReadWrite) return "clipboard"
-        if (permissionType === WebEnginePermission.LocalFontsAccess) return "local-fonts"
+        if (permissionType === WebEnginePermission.PermissionType.MediaAudioCapture) return "microphone"
+        if (permissionType === WebEnginePermission.PermissionType.MediaVideoCapture) return "camera"
+        if (permissionType === WebEnginePermission.PermissionType.MediaAudioVideoCapture) return "camera-and-microphone"
+        if (permissionType === WebEnginePermission.PermissionType.DesktopVideoCapture
+                || permissionType === WebEnginePermission.PermissionType.DesktopAudioVideoCapture) return "screen-capture"
+        if (permissionType === WebEnginePermission.PermissionType.Notifications) return "notifications"
+        if (permissionType === WebEnginePermission.PermissionType.Geolocation) return "geolocation"
+        if (permissionType === WebEnginePermission.PermissionType.ClipboardReadWrite) return "clipboard"
+        if (permissionType === WebEnginePermission.PermissionType.LocalFontsAccess) return "local-fonts"
         return ""
     }
 

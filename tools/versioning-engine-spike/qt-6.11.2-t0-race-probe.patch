@@ -1,0 +1,98 @@
+--- a/src/core/net/cookie_monster_delegate_qt.cpp
++++ b/src/core/net/cookie_monster_delegate_qt.cpp
+@@ -223,6 +223,22 @@
+ 
++    void seedSnapshot()
++    {
++        m_destination->m_mojoCookieManager->FerricProbeSeedIfEmpty(
++                m_snapshot,
++                base::BindOnce([](QPointer<FerricCookieProbeOperation> self, bool accepted) {
++                    if (!self || !self->valid())
++                        return;
++                    if (!accepted) {
++                        self->m_destinationCount = -1;
++                        self->finish(Status::MutationRejected);
++                        return;
++                    }
++                    self->readback();
++                }, QPointer(this)));
++    }
++
+     void capture()
+     {
+         m_source->m_mojoCookieManager->GetAllCookies(base::BindOnce(
+                 [](QPointer<FerricCookieProbeOperation> self, const net::CookieList &cookies) {
+                     if (!self || !self->valid())
+@@ -239,21 +255,59 @@
+                         self->finish(Status::Unavailable);
+                         return;
+                     }
+                     if (self->m_seedIfEmptyFixture) {
+-                        self->m_destination->m_mojoCookieManager->FerricProbeSeedIfEmpty(
+-                                self->m_snapshot,
+-                                base::BindOnce([](QPointer<FerricCookieProbeOperation> self,
+-                                                  bool accepted) {
+-                                    if (!self || !self->valid())
+-                                        return;
+-                                    if (!accepted) {
+-                                        self->m_destinationCount = -1;
+-                                        self->finish(Status::MutationRejected);
+-                                        return;
+-                                    }
+-                                    self->readback();
+-                                }, self));
++                        const bool t0Fixture = std::any_of(self->m_snapshot.begin(),
++                                self->m_snapshot.end(), [](const auto &cookie) {
++                                    return cookie.Name() == "ferric_t0_fixture";
++                                });
++                        if (t0Fixture) {
++                            // Research-only, synthetic post-snapshot writer. It
++                            // completes before seed so the two states differ.
++                            const GURL origin("https://fixture.test/");
++                            net::CookieInclusionStatus inclusion;
++                            auto added = net::CanonicalCookie::Create(
++                                    origin, "ferric_after_t0_fixture=synthetic; Secure; SameSite=Lax",
++                                    base::Time::Now(), std::nullopt, std::nullopt,
++                                    net::CookieSourceType::kHTTP, &inclusion);
++                            if (!added || !inclusion.IsInclude()) {
++                                self->finish(Status::Unavailable);
++                                return;
++                            }
++                            net::CookieOptions options;
++                            options.set_include_httponly();
++                            options.set_same_site_cookie_context(
++                                    net::CookieOptions::SameSiteCookieContext::MakeInclusiveForSet());
++                            self->m_source->m_mojoCookieManager->SetCanonicalCookie(
++                                    *added, origin, options,
++                                    base::BindOnce([](QPointer<FerricCookieProbeOperation> self,
++                                                      net::CookieAccessResult result) {
++                                        if (!self || !self->valid())
++                                            return;
++                                        if (!result.status.IsInclude()) {
++                                            self->finish(Status::MutationRejected);
++                                            return;
++                                        }
++                                        self->m_source->m_mojoCookieManager->GetAllCookies(
++                                                base::BindOnce([](QPointer<FerricCookieProbeOperation> self,
++                                                                  const net::CookieList &sourceNow) {
++                                            if (!self || !self->valid())
++                                                return;
++                                            const bool newCookiePresent = std::count_if(
++                                                    sourceNow.begin(), sourceNow.end(), [](const auto &cookie) {
++                                                return cookie.Name() == "ferric_after_t0_fixture";
++                                            }) == 1;
++                                            if (!newCookiePresent
++                                                    || sourceNow.size() != self->m_snapshot.size() + 1) {
++                                                self->finish(Status::ReadbackMismatch);
++                                                return;
++                                            }
++                                            self->seedSnapshot();
++                                        }, self));
++                                    }, self));
++                            return;
++                        }
++                        self->seedSnapshot();
+                         return;
+                     }
+                     for (const auto &cookie : self->m_snapshot) {
+                         if ((cookie.PartitionKey() && (!cookie.PartitionKey()->IsSerializeable()

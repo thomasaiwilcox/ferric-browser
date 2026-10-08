@@ -6,13 +6,26 @@
 use crate::input_validation::is_bounded_untrusted_text;
 use ferric_browser_core::{ParsedCommand, validate_open_target};
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
 pub(super) struct InteractiveOpen {
     pub(super) input: String,
     pub(super) target: Option<String>,
     pub(super) profile: Option<String>,
     pub(super) context: Option<String>,
     pub(super) clean_link: bool,
+}
+
+impl std::fmt::Debug for InteractiveOpen {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("InteractiveOpen")
+            .field("input", &"[REDACTED]")
+            .field("has_target", &self.target.is_some())
+            .field("has_profile", &self.profile.is_some())
+            .field("has_context", &self.context.is_some())
+            .field("clean_link", &self.clean_link)
+            .finish()
+    }
 }
 
 pub(super) fn clean_input(command: &ParsedCommand) -> Result<Option<String>, String> {
@@ -91,7 +104,7 @@ pub(super) fn parse_interactive(
                     );
                 }
                 value if value.starts_with('-') => {
-                    return Err(format!("unknown open option: {value}"));
+                    return Err("open has an unsupported option".into());
                 }
                 value => {
                     options_ended = true;
@@ -168,5 +181,36 @@ mod tests {
             }),
             Ok(Some("https://example.test".into()))
         );
+    }
+
+    #[test]
+    fn interactive_open_debug_redacts_input_and_route_labels() {
+        let parsed = InteractiveOpen {
+            input: "https://private.example/path?q=private".into(),
+            target: Some("tab".into()),
+            profile: Some("private-profile-sentinel".into()),
+            context: Some("private-context-sentinel".into()),
+            clean_link: false,
+        };
+        let debug = format!("{parsed:?}");
+        assert!(debug.contains("REDACTED"));
+        assert!(!debug.contains("private.example"));
+        assert!(!debug.contains("private-profile-sentinel"));
+        assert!(!debug.contains("private-context-sentinel"));
+    }
+
+    #[test]
+    fn interactive_open_unknown_option_diagnostic_redacts_supplied_value() {
+        let private_value = "--token=https://private.example/path?credential=sentinel";
+        let error = parse_interactive(&ParsedCommand {
+            name: "open".into(),
+            arguments: vec!["--target".into(), "tab".into(), private_value.into()],
+        })
+        .expect_err("unknown open option should be rejected")
+        .to_string();
+
+        assert_eq!(error, "open has an unsupported option");
+        assert!(!error.contains("private.example"));
+        assert!(!error.contains("sentinel"));
     }
 }

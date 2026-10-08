@@ -1,0 +1,265 @@
+--- a/src/webenginequick/api/qquickwebengineview_p.h
++++ b/src/webenginequick/api/qquickwebengineview_p.h
+@@ -23,6 +23,7 @@
+ #include <QtWebEngineCore/qwebenginepermission.h>
+ #include <QtWebEngineQuick/private/qtwebenginequickglobal_p.h>
+ #include <QtWebEngineQuick/private/qquickwebengineframe_p.h>
++#include <QtCore/qthread.h>
+ #include <QtGui/qcolor.h>
+ #include <QtQml/qqmlregistration.h>
+ #include <QtQuick/qquickitem.h>
+@@ -474,6 +475,13 @@
+ 
+     LifecycleState recommendedState() const;
+ 
++    // Isolated Ferric experiment only; never a shipping capability API.
++    Q_INVOKABLE bool ferricAcquireRtcEmptyLeaseForProbe();
++    Q_INVOKABLE bool ferricRtcEmptyLeaseValidForProbe();
++    Q_INVOKABLE void ferricReleaseRtcEmptyLeaseForProbe();
++    Q_INVOKABLE bool ferricHasNoMediaCaptureActivityForProbe() const;
++    Q_INVOKABLE bool ferricHasFrameCaptureActivityForProbe() const;
++
+     QQmlComponent *touchHandleDelegate() const;
+     void setTouchHandleDelegate(QQmlComponent *delegagte);
+ 
+@@ -565,6 +571,9 @@
+     Q_REVISION(1,10) void tooltipRequested(QQuickWebEngineTooltipRequest *request);
+     Q_REVISION(1, 10) void lifecycleStateChanged(QQuickWebEngineView::LifecycleState state);
+     Q_REVISION(1, 10) void recommendedStateChanged(QQuickWebEngineView::LifecycleState state);
++    void ferricRtcEmptyLeaseProbeCompleted(bool known, bool registered, int frames, int processes);
++    void ferricRtcEmptyLeaseInvalidated();
++
+     Q_REVISION(1,10) void findTextFinished(const QWebEngineFindTextResult &result);
+     Q_REVISION(1,11) void renderProcessPidChanged(qint64 pid);
+     Q_REVISION(1,11) void canGoBackChanged();
+--- a/src/webenginequick/api/qquickwebengineview_p_p.h
++++ b/src/webenginequick/api/qquickwebengineview_p_p.h
+@@ -144,6 +144,7 @@
+     bool adoptWebContents(QtWebEngineCore::WebContentsAdapter *webContents);
+     void setProfile(QQuickWebEngineProfile *profile);
+     void updateAdapter();
++    bool releaseFerricRtcProbeLease();
+     void ensureContentsAdapter();
+     void setFullScreenMode(bool);
+ 
+@@ -153,6 +154,11 @@
+ 
+     QQuickWebEngineProfile *m_profile;
+     QSharedPointer<QtWebEngineCore::WebContentsAdapter> adapter;
++    std::function<bool()> m_ferricRtcLeaseValid;
++    std::function<void()> m_ferricRtcLeaseRelease;
++    bool m_ferricRtcLeaseAcquisitionPending{false};
++    quint64 m_ferricRtcLeaseGeneration{0};
++
+     QScopedPointer<QWebEngineHistory> m_history;
+     QScopedPointer<QQuickWebEngineSettings> m_settings;
+     QQmlComponent *contextMenuExtraItems;
+--- a/src/webenginequick/api/qquickwebengineview.cpp
++++ b/src/webenginequick/api/qquickwebengineview.cpp
+@@ -54,4 +54,5 @@
+ #include <QtCore/qloggingcategory.h>
++#include <QtCore/qcoreapplication.h>
+ #include <QtCore/qmimedata.h>
+ #include <QtCore/qurl.h>
+ #include <QtCore/qtimer.h>
+@@ -365,9 +365,23 @@
+     // garbage collected, delete WebContents first and
+     // let the QQuickWebEngineView be collected later by gc.
+     bindViewAndDelegateItem(this, nullptr);
++    releaseFerricRtcProbeLease();
+     q_ptr->d_ptr.reset();
+ }
+ 
++bool QQuickWebEngineViewPrivate::releaseFerricRtcProbeLease()
++{
++    ++m_ferricRtcLeaseGeneration;
++    const bool hadProbeState = bool(m_ferricRtcLeaseValid)
++            || bool(m_ferricRtcLeaseRelease) || m_ferricRtcLeaseAcquisitionPending;
++    m_ferricRtcLeaseAcquisitionPending = false;
++    auto release = std::move(m_ferricRtcLeaseRelease);
++    m_ferricRtcLeaseValid = {};
++    if (release)
++        release();
++    return hadProbeState;
++}
++
+ UIDelegatesManager *QQuickWebEngineViewPrivate::ui()
+ {
+     Q_Q(QQuickWebEngineView);
+@@ -920,6 +934,11 @@
+ void QQuickWebEngineViewPrivate::lifecycleStateChanged(LifecycleState state)
+ {
+     Q_Q(QQuickWebEngineView);
++    if (state != WebContentsAdapterClient::LifecycleState::Frozen
++            && (m_ferricRtcLeaseValid || m_ferricRtcLeaseRelease)
++            && releaseFerricRtcProbeLease()) {
++        Q_EMIT q->ferricRtcEmptyLeaseInvalidated();
++    }
+     Q_EMIT q->lifecycleStateChanged(static_cast<QQuickWebEngineView::LifecycleState>(state));
+ }
+ 
+@@ -985,6 +1005,9 @@
+ 
+ QQuickWebEngineView::~QQuickWebEngineView()
+ {
++    if (auto *d = d_func())
++        d->releaseFerricRtcProbeLease();
++
+     if (hasFocus())
+         setFocus(false);
+ }
+@@ -1323,9 +1346,13 @@
+ void QQuickWebEngineViewPrivate::updateAdapter()
+ {
+     // When the profile changes we need to create a new WebContentAdapter and reload the active URL.
++    const bool hadProbeState = releaseFerricRtcProbeLease();
++
+     bool wasInitialized = adapter->isInitialized();
+     adapter = QSharedPointer<WebContentsAdapter>::create();
+     adapter->setClient(this);
++    if (hadProbeState)
++        Q_EMIT q_ptr->ferricRtcEmptyLeaseInvalidated();
+     if (wasInitialized) {
+         if (!m_html.isEmpty())
+             adapter->setContent(m_html.toUtf8(), defaultMimeType, m_url);
+@@ -1398,8 +1412,10 @@
+ void QQuickWebEngineViewPrivate::renderProcessTerminated(
+         RenderProcessTerminationStatus terminationStatus, int exitCode)
+ {
+     Q_Q(QQuickWebEngineView);
++    if (releaseFerricRtcProbeLease())
++        Q_EMIT q->ferricRtcEmptyLeaseInvalidated();
+     Q_EMIT q->renderProcessTerminated(static_cast<QQuickWebEngineView::RenderProcessTerminationStatus>(
+                                       renderProcessExitStatus(terminationStatus)), exitCode);
+ }
+
+@@ -2426,6 +2452,129 @@
+     return static_cast<LifecycleState>(d->adapter->recommendedState());
+ }
+ 
++bool QQuickWebEngineView::ferricAcquireRtcEmptyLeaseForProbe()
++{
++    if (QThread::currentThread() != thread()) {
++        return false;
++    }
++    auto *d = d_func();
++    if (!d)
++        return false;
++    d->initializeProfile();
++    if (!d->m_profile
++            || !d->m_profile->isOffTheRecord() || !d->adapter
++            || !d->adapter->isInitialized() || d->m_ferricRtcLeaseRelease
++            || d->m_ferricRtcLeaseAcquisitionPending || isVisible()) {
++        return false;
++    }
++    // The native admission operation starts from hidden Active, then requests
++    // Frozen itself before it can retain an empty-registry lease. A previous
++    // probe completion leaves the Quick owner Frozen, so explicitly thaw it
++    // here; never thaw a visible owner or admit from another lifecycle state.
++    if (d->adapter->lifecycleState() == WebContentsAdapter::LifecycleState::Frozen)
++        d->adapter->setLifecycleState(WebContentsAdapter::LifecycleState::Active);
++    else if (d->adapter->lifecycleState() != WebContentsAdapter::LifecycleState::Active)
++        return false;
++    // Keep one outstanding owner request. A second async completion must not
++    // overwrite the first release closure and leak its renderer-side lease.
++    d->m_ferricRtcLeaseAcquisitionPending = true;
++    const quint64 leaseGeneration = ++d->m_ferricRtcLeaseGeneration;
++
++    QPointer<QQuickWebEngineView> owner(this);
++    const QWeakPointer<WebContentsAdapter> expectedAdapter = d->adapter.toWeakRef();
++    d->adapter->ferricRtcAcquireFrozenRegistryLeaseProbe(this,
++            [owner, expectedAdapter, leaseGeneration](bool known, bool registered, int frames, int processes,
++                                     std::function<bool()> valid, std::function<void()> release) mutable {
++        auto complete = [owner, expectedAdapter, leaseGeneration, known, registered, frames, processes,
++                         valid = std::move(valid), release = std::move(release)]() mutable {
++            if (!owner) {
++                if (release)
++                    release();
++                return;
++            }
++            auto *viewPrivate = owner->d_func();
++            if (!viewPrivate || viewPrivate->m_ferricRtcLeaseGeneration != leaseGeneration) {
++                if (release)
++                    release();
++                return;
++            }
++            viewPrivate->m_ferricRtcLeaseAcquisitionPending = false;
++            const auto adapter = expectedAdapter.toStrongRef();
++            const bool exactOwner = adapter && viewPrivate->adapter == adapter;
++            const bool frozenOwner = exactOwner
++                    && owner->lifecycleState() == QQuickWebEngineView::LifecycleState::Frozen
++                    && !owner->isVisible();
++            const bool held = frozenOwner && known && !registered && valid && release && valid();
++            if (held) {
++                viewPrivate->m_ferricRtcLeaseValid = std::move(valid);
++                viewPrivate->m_ferricRtcLeaseRelease = std::move(release);
++            } else if (release) {
++                release();
++            }
++            Q_EMIT owner->ferricRtcEmptyLeaseProbeCompleted(
++                    held || (exactOwner && known && registered), registered && exactOwner,
++                    exactOwner ? frames : 0, exactOwner ? processes : 0);
++        };
++        if (auto *application = QCoreApplication::instance()) {
++            QMetaObject::invokeMethod(application, std::move(complete), Qt::QueuedConnection);
++        } else {
++            complete();
++        }
++    }, [owner, leaseGeneration] {
++        auto invalidate = [owner, leaseGeneration] {
++            if (!owner)
++                return;
++            auto *viewPrivate = owner->d_func();
++            if (!viewPrivate || viewPrivate->m_ferricRtcLeaseGeneration != leaseGeneration)
++                return;
++            const bool hadLease = viewPrivate->releaseFerricRtcProbeLease();
++            if (hadLease)
++                Q_EMIT owner->ferricRtcEmptyLeaseInvalidated();
++        };
++        if (auto *application = QCoreApplication::instance())
++            QMetaObject::invokeMethod(application, std::move(invalidate), Qt::QueuedConnection);
++    });
++    return true;
++}
++
++bool QQuickWebEngineView::ferricRtcEmptyLeaseValidForProbe()
++{
++    if (QThread::currentThread() != thread())
++        return false;
++    auto *d = d_func();
++    if (!d)
++        return false;
++    const auto valid = d->m_ferricRtcLeaseValid;
++    return valid && lifecycleState() == LifecycleState::Frozen
++            && !isVisible() && valid();
++}
++
++bool QQuickWebEngineView::ferricHasNoMediaCaptureActivityForProbe() const
++{
++    if (QThread::currentThread() != thread())
++        return false;
++    auto *d = d_func();
++    return d && d->adapter && d->adapter->ferricHasNoMediaCaptureActivityForProbe();
++}
++
++bool QQuickWebEngineView::ferricHasFrameCaptureActivityForProbe() const
++{
++    if (QThread::currentThread() != thread())
++        return false;
++    auto *d = d_func();
++    return d && d->adapter && d->adapter->ferricHasFrameCaptureActivityForProbe();
++}
++
++void QQuickWebEngineView::ferricReleaseRtcEmptyLeaseForProbe()
++{
++    if (QThread::currentThread() != thread())
++        return;
++    auto *d = d_func();
++    if (!d)
++        return;
++    d->releaseFerricRtcProbeLease();
++}
++
+ QQuickContextMenuBuilder::QQuickContextMenuBuilder(QWebEngineContextMenuRequest *request,
+                                                    QQuickWebEngineView *view, QObject *menu)
+     : QtWebEngineCore::RenderViewContextMenuQt(request), m_view(view), m_menu(menu)

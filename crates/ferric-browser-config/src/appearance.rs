@@ -1,5 +1,7 @@
 //! Chrome and theme configuration, palette loading, and contrast projection.
 
+use std::fmt;
+
 use super::{
     Deserialize, Path, PathBuf, ReducedMotion, Serialize, ThemeSource, default_font_family,
     default_font_size, default_statusbar, default_tab_position, default_tabs, fs,
@@ -35,7 +37,7 @@ impl Default for UiConfig {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ThemeConfig {
     #[serde(default)]
@@ -44,9 +46,20 @@ pub struct ThemeConfig {
     pub path: String,
 }
 
+impl fmt::Debug for ThemeConfig {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ThemeConfig")
+            .field("source", &self.source)
+            .field("has_custom_path", &!self.path.is_empty())
+            .field("path", &"[redacted]")
+            .finish()
+    }
+}
+
 const MAX_THEME_PALETTE_BYTES: u64 = 256 * 1024;
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ThemePalette {
     pub source: String,
     pub path: String,
@@ -74,6 +87,21 @@ pub struct ThemePalette {
     pub red: String,
     pub yellow: String,
     pub green: String,
+}
+
+impl fmt::Debug for ThemePalette {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ThemePalette")
+            .field("source", &self.source)
+            .field("path", &"[redacted]")
+            .field("provider_layout", &self.provider_layout)
+            .field("provider_version", &self.provider_version)
+            .field("provider_commit", &self.provider_commit)
+            .field("mode", &self.mode)
+            .field("color_values", &"[redacted]")
+            .finish()
+    }
 }
 
 impl Default for ThemePalette {
@@ -108,7 +136,7 @@ impl Default for ThemePalette {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub enum ThemePaletteError {
     InvalidPath(String),
     NotFound(String),
@@ -117,14 +145,56 @@ pub enum ThemePaletteError {
     InvalidColor(String),
 }
 
-impl std::fmt::Display for ThemePaletteError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for ThemePaletteError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::InvalidPath(_) => "ThemePaletteError::InvalidPath([redacted])",
+            Self::NotFound(_) => "ThemePaletteError::NotFound([redacted])",
+            Self::Io(_) => "ThemePaletteError::Io([redacted])",
+            Self::Parse(_) => "ThemePaletteError::Parse([redacted])",
+            Self::InvalidColor(_) => "ThemePaletteError::InvalidColor([redacted])",
+        })
+    }
+}
+
+impl fmt::Display for ThemePaletteError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidPath(message)
-            | Self::NotFound(message)
-            | Self::Io(message)
-            | Self::Parse(message)
-            | Self::InvalidColor(message) => formatter.write_str(message),
+            Self::InvalidPath(_) => formatter.write_str("theme palette path is invalid"),
+            Self::NotFound(_) => formatter.write_str("theme palette is unavailable"),
+            Self::Io(_) => formatter.write_str("theme palette could not be read"),
+            Self::Parse(_) => formatter.write_str("theme palette could not be parsed"),
+            Self::InvalidColor(_) => formatter.write_str("theme palette contains an invalid color"),
+        }
+    }
+}
+
+#[cfg(test)]
+mod debug_tests {
+    use super::*;
+
+    #[test]
+    fn theme_path_palette_and_error_debug_redact_local_values() {
+        let sentinel = "private-theme-path-sentinel-03a9";
+        let theme = ThemeConfig {
+            source: ThemeSource::File,
+            path: format!("/private/{sentinel}/colors.toml"),
+        };
+        let palette = ThemePalette {
+            path: theme.path.clone(),
+            background: sentinel.into(),
+            ..ThemePalette::default()
+        };
+        let error = ThemePaletteError::Parse(format!("invalid value {sentinel}"));
+
+        for projection in [
+            format!("{theme:?}"),
+            format!("{palette:?}"),
+            format!("{error:?}"),
+            format!("{error}"),
+        ] {
+            assert!(!projection.contains(sentinel), "{projection}");
+            assert!(!projection.contains("/private/"), "{projection}");
         }
     }
 }

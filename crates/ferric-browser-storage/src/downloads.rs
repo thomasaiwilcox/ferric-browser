@@ -14,29 +14,32 @@ pub enum CollisionPolicy {
     AutoRename,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub enum DownloadPathError {
     InvalidDirectory(PathBuf),
     Collision(PathBuf),
     Io { path: PathBuf, message: String },
 }
 
+impl std::fmt::Debug for DownloadPathError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let variant = match self {
+            Self::InvalidDirectory(_) => "InvalidDirectory",
+            Self::Collision(_) => "Collision",
+            Self::Io { .. } => "Io",
+        };
+        write!(formatter, "DownloadPathError::{variant}([redacted])")
+    }
+}
+
 impl std::fmt::Display for DownloadPathError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::InvalidDirectory(path) => {
-                write!(
-                    formatter,
-                    "download directory is not a real directory: {}",
-                    path.display()
-                )
+            Self::InvalidDirectory(_) => {
+                formatter.write_str("download directory is not a usable directory")
             }
-            Self::Collision(path) => write!(
-                formatter,
-                "download destination already exists: {}",
-                path.display()
-            ),
-            Self::Io { path, message } => write!(formatter, "{}: {message}", path.display()),
+            Self::Collision(_) => formatter.write_str("download destination is unavailable"),
+            Self::Io { .. } => formatter.write_str("download destination I/O failed"),
         }
     }
 }
@@ -274,5 +277,23 @@ mod tests {
             Err(DownloadPathError::Io { .. })
         ));
         let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn diagnostics_redact_download_paths_and_io_messages() {
+        let sentinel = "private-download-path-sentinel";
+        let errors = [
+            DownloadPathError::InvalidDirectory(PathBuf::from(sentinel)),
+            DownloadPathError::Collision(PathBuf::from(sentinel)),
+            DownloadPathError::Io {
+                path: PathBuf::from(sentinel),
+                message: format!("permission denied at {sentinel}"),
+            },
+        ];
+
+        for error in errors {
+            assert!(!format!("{error:?}").contains(sentinel));
+            assert!(!error.to_string().contains(sentinel));
+        }
     }
 }

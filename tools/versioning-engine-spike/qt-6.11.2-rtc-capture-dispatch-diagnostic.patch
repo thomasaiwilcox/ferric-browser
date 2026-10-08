@@ -1,0 +1,12 @@
+--- a/src/3rdparty/chromium/content/browser/renderer_host/media/media_stream_dispatcher_host.cc
++++ b/src/3rdparty/chromium/content/browser/renderer_host/media/media_stream_dispatcher_host.cc
+@@ -505,5 +505,9 @@
+     GenerateStreamsCallback callback) {
+   DCHECK_CURRENTLY_ON(BrowserThread::IO);
++  LOG(ERROR) << "Ferric RTC capture dispatch diagnostic: frame="
++             << render_frame_host_id_.child_id << ":"
++             << render_frame_host_id_.frame_routing_id
++             << " request=" << page_request_id;
+ 
+   const std::optional<bad_message::BadMessageReason> bad_message =
+       ValidateControlsForGenerateStreams(controls);

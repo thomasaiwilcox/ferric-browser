@@ -19,11 +19,14 @@ mod store_commands;
 mod store_downloads;
 mod store_journeys;
 mod store_library;
+pub mod versioning;
 mod worker;
 
 use std::{
+    collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
+    sync::{Arc, Mutex, OnceLock, Weak},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -53,18 +56,58 @@ pub use sessions::{
     clear_current_session_checkpoints, current_session_paths, delete_named_session,
     list_named_sessions, load_session, named_session_path, save_session_atomic,
 };
+#[cfg(target_os = "linux")]
+pub use versioning::{MediaFingerprintKey, MediaFingerprintKeyError};
 pub use worker::JourneyQuerySnapshot;
 pub use worker::{
     ProfileLibrarySnapshot, ProfileStoreWorker, SessionRestoreSnapshot, StorageCommand,
-    StorageCompletion, StorageOperation, StorageOperationError, StorageWorkerError,
+    StorageCompletion, StorageFailureKind, StorageOperation, StorageOperationError,
+    StorageWorkerError, VersioningObjectPublishReceipt,
 };
 
-const SCHEMA_VERSION: i64 = 3;
-const SCHEMA_MIGRATION_CHECKSUM: &str = "builtin-schema-3";
+const SCHEMA_VERSION: i64 = versioning::schema::VERSION;
+const BASE_SCHEMA_VERSION: i64 = 3;
+const BASE_SCHEMA_CHECKSUM: &str = "builtin-schema-3";
 const DEFAULT_HISTORY_RETENTION_SECONDS: i64 = 90 * 24 * 60 * 60;
 const MAX_COMMAND_HISTORY_ROWS: i64 = 1_000;
 const MAX_STORED_TITLE_BYTES: usize = 4 * 1024;
 const MAX_STORED_IDENTIFIER_BYTES: usize = 256;
+const PROFILE_WAL_AUTOCHECKPOINT_PAGES: i64 = 1_000;
+const PROFILE_WAL_RETAINED_BYTES: i64 = 16 * 1024 * 1024;
+
+type ProfileOpenLocks = BTreeMap<PathBuf, Weak<Mutex<()>>>;
+static PROFILE_OPEN_LOCKS: OnceLock<Mutex<ProfileOpenLocks>> = OnceLock::new();
+
+fn profile_open_lock(path: &Path) -> Result<Arc<Mutex<()>>, StoreError> {
+    let identity = fs::canonicalize(path)
+        .or_else(|_| {
+            let parent = path.parent().ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "profile path has no parent",
+                )
+            })?;
+            let name = path.file_name().ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "profile path has no filename",
+                )
+            })?;
+            fs::canonicalize(parent).map(|parent| parent.join(name))
+        })
+        .map_err(|_| StoreError::InvalidInput("profile database identity is unavailable"))?;
+    let locks = PROFILE_OPEN_LOCKS.get_or_init(|| Mutex::new(BTreeMap::new()));
+    let mut locks = locks
+        .lock()
+        .map_err(|_| StoreError::InvalidInput("profile open registry is unavailable"))?;
+    locks.retain(|_, lock| lock.strong_count() != 0);
+    if let Some(lock) = locks.get(&identity).and_then(Weak::upgrade) {
+        return Ok(lock);
+    }
+    let lock = Arc::new(Mutex::new(()));
+    locks.insert(identity, Arc::downgrade(&lock));
+    Ok(lock)
+}
 
 fn valid_stored_text(value: &str, limit: usize) -> bool {
     !value.is_empty() && value.len() <= limit && !value.chars().any(char::is_control)
@@ -110,7 +153,6 @@ pub enum StoreMode {
     Private,
 }
 
-#[derive(Debug)]
 pub enum StoreError {
     PrivateNoDurableState,
     Corrupt(String),
@@ -123,15 +165,42 @@ pub enum StoreError {
     UnsafeHistoryUrl,
 }
 
+impl std::fmt::Debug for StoreError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::PrivateNoDurableState => formatter.write_str("PrivateNoDurableState"),
+            Self::Corrupt(_) => formatter
+                .debug_tuple("Corrupt")
+                .field(&"[redacted]")
+                .finish(),
+            Self::LegacySchema(version) => formatter
+                .debug_tuple("LegacySchema")
+                .field(version)
+                .finish(),
+            Self::UnsupportedSchema(version) => formatter
+                .debug_tuple("UnsupportedSchema")
+                .field(version)
+                .finish(),
+            Self::DiskFull => formatter.write_str("DiskFull"),
+            Self::CheckpointBusy => formatter.write_str("CheckpointBusy"),
+            Self::Sql(_) => formatter.write_str("Sql([redacted])"),
+            Self::InvalidInput(message) => formatter
+                .debug_tuple("InvalidInput")
+                .field(message)
+                .finish(),
+            Self::UnsafeHistoryUrl => formatter.write_str("UnsafeHistoryUrl"),
+        }
+    }
+}
+
 impl std::fmt::Display for StoreError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::PrivateNoDurableState => {
                 formatter.write_str("private sessions cannot open durable metadata")
             }
-            Self::Corrupt(reason) => write!(
-                formatter,
-                "profile database integrity check failed; original data was preserved; use read-only inspection or create a new named profile ({reason})"
+            Self::Corrupt(_) => formatter.write_str(
+                "profile database integrity check failed; original data was preserved; use read-only inspection or create a new named profile",
             ),
             Self::LegacySchema(version) => write!(
                 formatter,
@@ -147,7 +216,7 @@ impl std::fmt::Display for StoreError {
             Self::CheckpointBusy => formatter.write_str(
                 "profile storage could not be checkpointed because another connection is active",
             ),
-            Self::Sql(error) => write!(formatter, "SQLite error: {error}"),
+            Self::Sql(_) => formatter.write_str("profile metadata operation failed"),
             Self::InvalidInput(message) => formatter.write_str(message),
             Self::UnsafeHistoryUrl => {
                 formatter.write_str("history URL contains credentials or an obvious secret")
@@ -366,18 +435,25 @@ pub enum JourneyWrite {
 }
 
 impl ProfileStore {
-    /// Opens or creates a normal profile database for the current clean-break schema.
+    /// Opens or creates a normal profile database, upgrading schema 3 atomically.
     ///
     /// # Errors
     ///
     /// Returns an error if the mode is private, SQLite cannot be configured,
-    /// or existing data belongs to a different schema. Existing databases are
-    /// never migrated or rewritten by this release.
+    /// or existing data belongs to an unsupported schema. Schemas before 3
+    /// remain behind the earlier clean-break boundary.
     pub fn open(path: impl AsRef<Path>, mode: StoreMode) -> Result<Self, StoreError> {
         if mode == StoreMode::Private {
             return Err(StoreError::PrivateNoDurableState);
         }
         let path = path.as_ref().to_owned();
+        // Multiple same-process owners may start against one new profile.
+        // Serialize their read-only preflight, journal-mode setup, and schema
+        // migration so an opening peer cannot observe a transient lock.
+        let open_lock = profile_open_lock(&path)?;
+        let _open_guard = open_lock
+            .lock()
+            .map_err(|_| StoreError::InvalidInput("profile open lock is unavailable"))?;
         let existing_version =
             if fs::metadata(&path).is_ok_and(|metadata| metadata.is_file() && metadata.len() > 0) {
                 inspect_existing_database(&path)?
@@ -385,7 +461,7 @@ impl ProfileStore {
                 None
             };
         if let Some(version) = existing_version {
-            if version < SCHEMA_VERSION {
+            if version < BASE_SCHEMA_VERSION {
                 return Err(StoreError::LegacySchema(version));
             }
             if version > SCHEMA_VERSION {
@@ -397,7 +473,11 @@ impl ProfileStore {
         connection.execute_batch(
             "PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL;",
         )?;
-        migrate(&connection)?;
+        connection.execute_batch(&format!(
+            "PRAGMA wal_autocheckpoint={PROFILE_WAL_AUTOCHECKPOINT_PAGES};\
+             PRAGMA journal_size_limit={PROFILE_WAL_RETAINED_BYTES};"
+        ))?;
+        migrate(&connection, existing_version)?;
         Ok(Self { path, connection })
     }
 
@@ -406,7 +486,7 @@ impl ProfileStore {
         &self.path
     }
 
-    /// Flushes committed metadata from SQLite's WAL into the profile database.
+    /// Flushes committed metadata from SQLite's WAL and truncates the idle log.
     ///
     /// This is used at an orderly application shutdown boundary after the
     /// final metadata transaction has committed. A busy checkpoint is treated
@@ -418,7 +498,7 @@ impl ProfileStore {
     /// Returns an error if SQLite cannot run the checkpoint or reports that
     /// another connection still has the WAL busy.
     pub fn flush(&self) -> Result<(), StoreError> {
-        let mut statement = self.connection.prepare("PRAGMA wal_checkpoint(FULL)")?;
+        let mut statement = self.connection.prepare("PRAGMA wal_checkpoint(TRUNCATE)")?;
         let mut rows = statement.query([])?;
         let Some(row) = rows.next()? else {
             return Err(StoreError::InvalidInput(
@@ -620,11 +700,11 @@ pub fn inspect_store(path: impl AsRef<Path>) -> StoreInspection {
             reason: "read-only SQLite integrity check passed".into(),
             recovery: "normal profile storage is available".into(),
         },
-        Err(StoreError::Corrupt(reason)) => StoreInspection {
+        Err(StoreError::Corrupt(_)) => StoreInspection {
             status: "corrupt".into(),
             schema_version: None,
             integrity: "failed".into(),
-            reason,
+            reason: "profile database integrity check failed; original data was preserved".into(),
             recovery: "preserve the original; inspect read-only or create a new named profile"
                 .into(),
         },
@@ -635,7 +715,7 @@ pub fn inspect_store(path: impl AsRef<Path>) -> StoreInspection {
             reason: "the database schema is newer than this application".into(),
             recovery: "use a newer Ferric Browser or create a new named profile".into(),
         },
-        Err(error) => unavailable_inspection(&format!("read-only inspection failed: {error}")),
+        Err(_) => unavailable_inspection("read-only profile inspection failed"),
     }
 }
 
@@ -697,9 +777,18 @@ fn inspect_existing_database(path: &Path) -> Result<Option<i64>, StoreError> {
     let rows = migrations.query_map([], |row| {
         Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
     })?;
+    let mut found_base = false;
+    let mut found_current = false;
     for migration in rows {
         let (version, checksum) = migration?;
-        if version == SCHEMA_VERSION && checksum != SCHEMA_MIGRATION_CHECKSUM {
+        found_base |= version == BASE_SCHEMA_VERSION;
+        found_current |= version == SCHEMA_VERSION;
+        let expected = match version {
+            BASE_SCHEMA_VERSION => Some(BASE_SCHEMA_CHECKSUM),
+            SCHEMA_VERSION => Some(versioning::schema::CHECKSUM),
+            _ => None,
+        };
+        if expected.is_some_and(|expected| checksum != expected) {
             return Err(StoreError::Corrupt(format!(
                 "migration checksum mismatch for version {version}"
             )));
@@ -712,6 +801,16 @@ fn inspect_existing_database(path: &Path) -> Result<Option<i64>, StoreError> {
     if version.is_some_and(|version| version > SCHEMA_VERSION) {
         return Err(StoreError::UnsupportedSchema(
             version.expect("checked above"),
+        ));
+    }
+    if found_current && !found_base {
+        return Err(StoreError::Corrupt(
+            "schema migration chain is incomplete".into(),
+        ));
+    }
+    if found_current && !versioning::schema::is_present(&connection)? {
+        return Err(StoreError::Corrupt(
+            "versioning index tables are missing".into(),
         ));
     }
     Ok(version)
@@ -893,10 +992,72 @@ fn sensitive_history_query_key(key: &str) -> bool {
     )
 }
 
-fn migrate(connection: &Connection) -> Result<(), rusqlite::Error> {
+fn migrate(connection: &Connection, existing_version: Option<i64>) -> Result<(), rusqlite::Error> {
+    if existing_version == Some(SCHEMA_VERSION) {
+        return Ok(());
+    }
+    connection.execute_batch("BEGIN IMMEDIATE")?;
+    let result = (|| {
+        // The read-only preflight can predate another owner's completed
+        // migration. Read the authoritative version only after taking the
+        // write lock, then adopt a valid schema instead of replaying CREATE.
+        let has_migrations: bool = connection
+            .query_row(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_migrations'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()?
+            .is_some();
+        let current_version: Option<i64> = if has_migrations {
+            connection.query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
+                row.get(0)
+            })?
+        } else {
+            None
+        };
+        match current_version {
+            Some(SCHEMA_VERSION | BASE_SCHEMA_VERSION) => {
+                let checksum: String = connection.query_row(
+                    "SELECT checksum FROM schema_migrations WHERE version = ?1",
+                    [BASE_SCHEMA_VERSION],
+                    |row| row.get(0),
+                )?;
+                if checksum != BASE_SCHEMA_CHECKSUM {
+                    return Err(rusqlite::Error::InvalidQuery);
+                }
+            }
+            None if existing_version.is_none() => install_base_schema(connection)?,
+            _ => return Err(rusqlite::Error::InvalidQuery),
+        }
+        if current_version == Some(SCHEMA_VERSION) {
+            let checksum: String = connection.query_row(
+                "SELECT checksum FROM schema_migrations WHERE version = ?1",
+                [SCHEMA_VERSION],
+                |row| row.get(0),
+            )?;
+            if checksum != versioning::schema::CHECKSUM
+                || !versioning::schema::is_present(connection)?
+            {
+                return Err(rusqlite::Error::InvalidQuery);
+            }
+        } else {
+            versioning::schema::install(connection)?;
+        }
+        Ok(())
+    })();
+    match result {
+        Ok(()) => connection.execute_batch("COMMIT"),
+        Err(error) => {
+            let _ = connection.execute_batch("ROLLBACK");
+            Err(error)
+        }
+    }
+}
+
+fn install_base_schema(connection: &Connection) -> Result<(), rusqlite::Error> {
     connection.execute_batch(
-        "BEGIN IMMEDIATE;
-         CREATE TABLE IF NOT EXISTS schema_migrations (
+        "CREATE TABLE IF NOT EXISTS schema_migrations (
              version INTEGER PRIMARY KEY, checksum TEXT NOT NULL, applied_at INTEGER NOT NULL
          );
          CREATE TABLE IF NOT EXISTS pages (
@@ -948,8 +1109,7 @@ fn migrate(connection: &Connection) -> Result<(), rusqlite::Error> {
              node_id TEXT NOT NULL REFERENCES journey_nodes(id) ON DELETE CASCADE
          );
          INSERT OR IGNORE INTO schema_migrations(version, checksum, applied_at)
-             VALUES (3, 'builtin-schema-3', strftime('%s','now'));
-         COMMIT;",
+             VALUES (3, 'builtin-schema-3', strftime('%s','now'));",
     )
 }
 

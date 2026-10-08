@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, fmt};
 
 use crate::{
     CommandError, CommandRegistry, CountPolicy, Mode, ParseInput, ParsedCommand, parse_chain,
@@ -7,18 +7,45 @@ use crate::{
 pub const DEFAULT_CHORD_TIMEOUT_MS: u64 = 1_000;
 const MAX_COUNT: u32 = 9_999;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct BindingDefinition {
     pub mode: Mode,
     pub keys: Vec<String>,
     pub command: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+impl fmt::Debug for BindingDefinition {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("BindingDefinition")
+            .field("mode", &self.mode)
+            .field("key_count", &self.keys.len())
+            .field("command", &"[redacted]")
+            .finish()
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
 pub enum BindingError {
     EmptySequence,
     Duplicate(Vec<String>),
     UnknownCommand(CommandError),
+}
+
+impl fmt::Debug for BindingError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::EmptySequence => formatter.write_str("BindingError::EmptySequence"),
+            Self::Duplicate(keys) => formatter
+                .debug_struct("BindingError::Duplicate")
+                .field("key_count", &keys.len())
+                .finish(),
+            Self::UnknownCommand(error) => formatter
+                .debug_tuple("BindingError::UnknownCommand")
+                .field(error)
+                .finish(),
+        }
+    }
 }
 
 fn parse_binding_command(command: &str) -> Result<ParsedCommand, BindingError> {
@@ -34,7 +61,7 @@ impl std::fmt::Display for BindingError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::EmptySequence => formatter.write_str("binding sequence is empty"),
-            Self::Duplicate(keys) => write!(formatter, "duplicate binding: {keys:?}"),
+            Self::Duplicate(_) => formatter.write_str("duplicate binding sequence"),
             Self::UnknownCommand(error) => write!(formatter, "binding command is invalid: {error}"),
         }
     }
@@ -42,7 +69,7 @@ impl std::fmt::Display for BindingError {
 
 impl std::error::Error for BindingError {}
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub enum BindingOutcome {
     Execute {
         command: String,
@@ -60,16 +87,47 @@ pub enum BindingOutcome {
     },
 }
 
+impl fmt::Debug for BindingOutcome {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Execute { count, .. } => formatter
+                .debug_struct("BindingOutcome::Execute")
+                .field("count", count)
+                .finish(),
+            Self::Pending {
+                prefix,
+                continuations,
+                count,
+                deadline_ms,
+            } => formatter
+                .debug_struct("BindingOutcome::Pending")
+                .field("prefix_length", &prefix.len())
+                .field("continuation_count", &continuations.len())
+                .field("count", count)
+                .field("deadline_ms", deadline_ms)
+                .finish(),
+            Self::Consumed => formatter.write_str("BindingOutcome::Consumed"),
+            Self::Rejected { .. } => formatter.write_str("BindingOutcome::Rejected([redacted])"),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 struct TrieNode {
     command: Option<String>,
     children: BTreeMap<String, TrieNode>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct BindingTrie {
     roots: BTreeMap<Mode, TrieNode>,
     registry: CommandRegistry,
+}
+
+impl fmt::Debug for BindingTrie {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("BindingTrie([redacted])")
+    }
 }
 
 /// The authoritative catalog of keyboard bindings.
@@ -77,9 +135,18 @@ pub struct BindingTrie {
 /// A [`BindingTrie`] is the optimized runtime representation; this wrapper
 /// keeps the declarative catalog as the public boundary consumed by generated
 /// documentation and presentation code.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct BindingRegistry {
     trie: BindingTrie,
+}
+
+impl fmt::Debug for BindingRegistry {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("BindingRegistry")
+            .field("definition_count", &self.trie.definitions().len())
+            .finish()
+    }
 }
 
 impl BindingRegistry {
@@ -322,13 +389,25 @@ impl BindingTrie {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct BindingResolver {
     trie: BindingTrie,
     mode: Mode,
     prefix: Vec<String>,
     count_digits: String,
     deadline_ms: Option<u64>,
+}
+
+impl fmt::Debug for BindingResolver {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("BindingResolver")
+            .field("mode", &self.mode)
+            .field("prefix_length", &self.prefix.len())
+            .field("has_count", &!self.count_digits.is_empty())
+            .field("has_deadline", &self.deadline_ms.is_some())
+            .finish()
+    }
 }
 
 impl BindingResolver {
@@ -466,7 +545,7 @@ impl BindingResolver {
         {
             Some(CountPolicy::NotSupported) if !self.count_digits.is_empty() => {
                 BindingOutcome::Rejected {
-                    reason: format!("command {command} does not accept a count"),
+                    reason: "binding command does not accept a count".into(),
                 }
             }
             Some(CountPolicy::Supported { maximum }) => BindingOutcome::Execute {
@@ -494,6 +573,37 @@ fn binding(mode: Mode, keys: &[&str], command: &str) -> BindingDefinition {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn binding_debug_redacts_commands_and_key_sequences() {
+        let sentinel = "private-binding-sentinel-0194";
+        let command = format!("open https://example.test/?q={sentinel}");
+        let definition = BindingDefinition {
+            mode: Mode::Normal,
+            keys: vec![sentinel.into()],
+            command: command.clone(),
+        };
+        let registry = CommandRegistry::default_v1();
+        let trie = BindingTrie::new(registry, [definition.clone()]).expect("binding");
+        let catalog = BindingRegistry { trie: trie.clone() };
+        let mut resolver = BindingResolver::new(trie, Mode::Normal);
+        let outcome = resolver.feed(sentinel, 0);
+        let duplicate = BindingError::Duplicate(vec![sentinel.into()]);
+
+        for projection in [
+            format!("{definition:?}"),
+            format!("{:?}", catalog.definitions()),
+            format!("{catalog:?}"),
+            format!("{resolver:?}"),
+            format!("{outcome:?}"),
+            format!("{duplicate:?}"),
+            format!("{duplicate}"),
+        ] {
+            assert!(!projection.contains(sentinel), "{projection}");
+            assert!(!projection.contains("https://example.test"), "{projection}");
+        }
+        assert!(!format!("{outcome:?}").contains(command.as_str()));
+    }
 
     #[test]
     fn binding_registry_exposes_default_definitions_and_resolvers() {
@@ -694,9 +804,32 @@ mod tests {
         assert_eq!(
             resolver.feed("s", 8),
             BindingOutcome::Rejected {
-                reason: "command scroll-target select does not accept a count".into(),
+                reason: "binding command does not accept a count".into(),
             }
         );
+    }
+
+    #[test]
+    fn count_rejection_does_not_echo_configured_binding_command() {
+        let sentinel = "private-binding-url-sentinel";
+        let command = format!("open https://example.test/?q={sentinel}");
+        let trie = BindingTrie::new(
+            CommandRegistry::default_v1(),
+            [binding(Mode::Normal, &["x"], &command)],
+        )
+        .expect("configured open command is valid");
+        let mut resolver = BindingResolver::new(trie, Mode::Normal);
+
+        assert!(matches!(
+            resolver.feed("2", 0),
+            BindingOutcome::Pending { .. }
+        ));
+        let BindingOutcome::Rejected { reason } = resolver.feed("x", 1) else {
+            panic!("counted URL binding should be rejected");
+        };
+        assert_eq!(reason, "binding command does not accept a count");
+        assert!(!reason.contains(sentinel));
+        assert!(!reason.contains("https://example.test"));
     }
 
     #[test]

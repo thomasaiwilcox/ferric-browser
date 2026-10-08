@@ -1,90 +1,18 @@
+use super::browser_ui_sessions::SESSION_ACCESS_REVOKED_PREVIEW;
+use super::browser_ui_sessions::{session_list_request_should_start, session_ticket_value_matches};
 use super::{
-    Arc, AtomicBool, BrowserApplication, CxxQtType, Event, JourneyReopenRecord, Ordering, Pin,
-    QString, StorageCompletion, StorageRequest, SwitcherLibraryIndexResult, SwitcherQueryCache,
-    build_switcher_library_index, elapsed_ms, qobject, safe_ipc_url, switcher_max_results, thread,
+    Arc, AtomicBool, CxxQtType, Event, JourneyReopenRecord, Ordering, Pin, QString,
+    StorageCompletion, StorageRequest, StorageTicket, SwitcherLibraryIndexResult,
+    build_switcher_library_index, elapsed_ms, qobject, safe_ipc_url, thread,
 };
 
 impl qobject::BrowserUi {
-    #[allow(clippy::too_many_lines)]
-    pub(super) fn switcher_query(
-        mut self: Pin<&mut Self>,
-        query: &QString,
-        scope: &QString,
-    ) -> bool {
-        if self.as_ref().rust().storage_library.is_none()
-            || self.as_ref().rust().storage_library_dirty.get()
-        {
-            self.as_mut().request_storage_library();
-        }
-        self.as_mut().request_session_names();
-        let scope = scope.to_string();
-        let max_results = switcher_max_results(&self.as_ref().rust().config);
-        let params = serde_json::json!({
-            "query": query.to_string(),
-            "scope": if scope.is_empty() { "all" } else { &scope },
-            "limit": max_results,
-            "include_private": self.as_ref().active_profile_is_transient(),
-            "private_scope": self
-                .as_ref()
-                .active_profile_is_transient()
-                .then(|| {
-                    self.as_ref().rust().state.as_ref().and_then(|state| {
-                        state
-                            .active_tab()
-                            .and_then(|tab| state.profiles().get(&tab.profile))
-                            .map(|profile| profile.label.clone())
-                    })
-                })
-                .flatten()
-        });
-        if let Some(result) = self
-            .as_ref()
-            .rust()
-            .switcher_cache
-            .as_ref()
-            .filter(|cache| cache.matches(self.as_ref().rust(), &params))
-            .map(|cache| cache.result.clone())
-        {
-            return match self.as_mut().publish_switcher_rows(&result) {
-                Ok(()) => true,
-                Err(error) => {
-                    self.set_status_text(QString::from(format!(
-                        "Switcher presentation failed: {error}"
-                    )));
-                    false
-                }
-            };
-        }
-        match self.as_ref().get_ref().ipc_switcher_query(&params) {
-            Ok(result) => {
-                if let Err(error) = self.as_mut().publish_switcher_rows(&result) {
-                    self.set_status_text(QString::from(format!(
-                        "Switcher presentation failed: {error}"
-                    )));
-                    return false;
-                }
-                let mut rust = self.as_mut().rust_mut();
-                let this = rust.as_mut().get_mut();
-                this.switcher_cache = Some(SwitcherQueryCache {
-                    params,
-                    state_revision: this.state.as_ref().map_or(0, BrowserApplication::revision),
-                    storage_library_revision: this.storage_library_revision,
-                    session_names: this.session_names.clone(),
-                    contexts_json: this.contexts_json.to_string(),
-                    config_fingerprint: serde_json::to_string(&this.config).unwrap_or_default(),
-                    profile_name: this.profile_name.clone(),
-                    result,
-                });
-                true
-            }
-            Err(error) => {
-                self.set_status_text(QString::from(format!("Switcher query rejected: {error}")));
-                false
-            }
-        }
-    }
-
     pub(super) fn request_storage_library(mut self: Pin<&mut Self>) {
+        // Private and ephemeral profiles have no durable metadata catalog.
+        // Do not try to resurrect a worker for them after a profile switch.
+        if self.as_ref().active_profile_is_transient() {
+            return;
+        }
         self.as_mut().ensure_storage_worker();
         let should_request = {
             let mut rust = self.as_mut().rust_mut();
@@ -101,9 +29,9 @@ impl qobject::BrowserUi {
         if let Some(Err(error)) = result
             && !matches!(error, ferric_browser_storage::StorageWorkerError::Busy)
         {
-            self.set_status_text(QString::from(format!(
-                "Profile metadata query unavailable: {error}"
-            )));
+            self.set_status_text(QString::from(
+                "Profile metadata query unavailable; details suppressed",
+            ));
         }
     }
 
@@ -214,6 +142,9 @@ impl qobject::BrowserUi {
         if self.as_ref().storage_is_open() {
             return true;
         }
+        if self.as_ref().active_profile_is_transient() {
+            return false;
+        }
         let restart = {
             let mut rust = self.as_mut().rust_mut();
             rust.as_mut()
@@ -232,35 +163,29 @@ impl qobject::BrowserUi {
                 self.set_status_text(QString::from("Profile metadata worker restarted"));
                 true
             }
-            Err(error) => {
-                self.set_status_text(QString::from(format!(
-                    "Profile metadata worker restart unavailable: {error}"
-                )));
+            Err(_error) => {
+                self.set_status_text(QString::from(
+                    "Profile metadata worker restart unavailable; details suppressed",
+                ));
                 false
             }
         }
     }
 
     pub(super) fn request_session_names(mut self: Pin<&mut Self>) {
+        let session_access_allowed = self.as_ref().session_profile_access_allowed();
         let request = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            if !this.session_names_dirty.get() {
+            if !session_access_allowed {
+                this.session_names.clear();
+                this.session_names_dirty.set(true);
                 return;
             }
-            // Private and ephemeral sessions have no durable session catalog.
-            // Keep this explicit so a future in-memory session implementation
-            // cannot accidentally route transient metadata to disk.
-            let transient_profile = this.state.as_ref().and_then(|state| {
-                let tab = state.active_tab()?;
-                state
-                    .profiles()
-                    .get(&tab.profile)
-                    .map(|profile| profile.privacy.is_transient())
-            }) == Some(true);
-            if transient_profile {
-                this.session_names.clear();
-                this.session_names_dirty.set(false);
+            if !session_list_request_should_start(
+                this.session_names_dirty.get(),
+                this.session_names_pending || this.session_names_ticket.is_some(),
+            ) {
                 return;
             }
             let Some(root) = this.session_state_root.clone() else {
@@ -274,19 +199,30 @@ impl qobject::BrowserUi {
             drop(rust);
             Some(
                 self.as_mut()
-                    .submit_storage(StorageRequest::SessionList { root, profile_id }),
+                    .submit_storage_with_ticket(StorageRequest::SessionList { root, profile_id }),
             )
         };
-        if let Some(Err(error)) = request
-            && !matches!(
-                error,
-                ferric_browser_storage::StorageWorkerError::Busy
-                    | ferric_browser_storage::StorageWorkerError::QueueFull
-            )
-        {
-            self.set_status_text(QString::from(format!(
-                "Session catalog unavailable: {error}"
-            )));
+        if let Some(result) = request {
+            match result {
+                Ok(ticket) => {
+                    let mut rust = self.as_mut().rust_mut();
+                    let this = rust.as_mut().get_mut();
+                    this.session_names_pending = true;
+                    this.session_names_ticket = Some(ticket);
+                }
+                Err(error)
+                    if !matches!(
+                        error,
+                        ferric_browser_storage::StorageWorkerError::Busy
+                            | ferric_browser_storage::StorageWorkerError::QueueFull
+                    ) =>
+                {
+                    self.set_status_text(QString::from(
+                        "Session catalog unavailable; details suppressed",
+                    ));
+                }
+                Err(_) => {}
+            }
         }
     }
 
@@ -316,24 +252,30 @@ impl qobject::BrowserUi {
         let mut history_clear_result = None;
         let mut flush_result = None;
         for effect in effects {
+            let Some(effect) = self.as_mut().route_versioning_storage_completion(effect) else {
+                consumed = true;
+                continue;
+            };
+            let ticket = effect.ticket;
             match effect.completion {
                 StorageCompletion::Library(result) => {
                     library_result = Some(result.map_err(|error| error.message));
                 }
                 StorageCompletion::SessionList(result) => {
-                    session_result = Some(result.map_err(|error| error.message));
+                    session_result = Some((ticket, result.map_err(|error| error.message)));
                 }
                 StorageCompletion::SessionRestore(result) => {
-                    session_restore_result = Some(result.map_err(|error| error.message));
+                    session_restore_result = Some((ticket, result.map_err(|error| error.message)));
                 }
                 StorageCompletion::SessionSave(result) => {
-                    session_save_result = Some(result.map_err(|error| error.message));
+                    session_save_result = Some((ticket, result.map_err(|error| error.message)));
                 }
                 StorageCompletion::SessionDelete(result) => {
-                    session_delete_result = Some(result.map_err(|error| error.message));
+                    session_delete_result = Some((ticket, result.map_err(|error| error.message)));
                 }
                 StorageCompletion::SessionCheckpointClear(result) => {
-                    session_checkpoint_clear_result = Some(result.map_err(|error| error.message));
+                    session_checkpoint_clear_result =
+                        Some((ticket, result.map_err(|error| error.message)));
                 }
                 StorageCompletion::HistoryBatch(result) => {
                     history_result = Some(result.map_err(|error| error.message));
@@ -378,8 +320,27 @@ impl qobject::BrowserUi {
                 StorageCompletion::Flush(result) => {
                     flush_result = Some(result.map_err(|error| error.message));
                 }
+                StorageCompletion::VersioningBegin(_)
+                | StorageCompletion::VersioningAbort(_)
+                | StorageCompletion::VersioningStructuralPublish(_)
+                | StorageCompletion::VersioningRecover(_)
+                | StorageCompletion::VersioningList(_)
+                | StorageCompletion::VersioningInfo(_)
+                | StorageCompletion::VersioningDeletePreview(_)
+                | StorageCompletion::VersioningDelete(_)
+                | StorageCompletion::VersioningCollect(_)
+                | StorageCompletion::VersioningManifest(_)
+                | StorageCompletion::VersioningSidecarRead(_)
+                | StorageCompletion::VersioningCaptureStage(_)
+                | StorageCompletion::VersioningObjectInstall(_)
+                | StorageCompletion::VersioningObjectPublish(_)
+                | StorageCompletion::VersioningArchiveView(_)
+                | StorageCompletion::VersioningArchiveViewCleanup(_) => {
+                    unreachable!("versioning completions are routed before this match")
+                }
             }
         }
+        consumed |= self.as_mut().poll_versioning_events();
         if let Some(result) = flush_result {
             consumed = true;
             let mut rust = self.as_mut().rust_mut();
@@ -387,187 +348,288 @@ impl qobject::BrowserUi {
             this.storage_flush_pending = false;
             this.storage_flush_error = result.err();
         }
-        if let Some(result) = session_checkpoint_clear_result {
+        if let Some((ticket, result)) = session_checkpoint_clear_result {
             consumed = true;
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.session_checkpoint_clear_pending = false;
-            drop(rust);
-            if let Err(error) = result {
-                self.as_mut().set_status_text(QString::from(format!(
-                    "Stale session checkpoint cleanup failed; recovery data was retained: {error}"
-                )));
-            }
-        }
-        if let Some(result) = session_delete_result {
-            consumed = true;
-            match result {
-                Ok(()) => {
-                    self.as_ref().rust().session_names_dirty.set(true);
-                    self.as_mut().request_session_names();
-                    self.as_mut()
-                        .set_status_text(QString::from("Session deleted"));
-                }
-                Err(error) => {
-                    self.as_mut().set_status_text(QString::from(format!(
-                        "Session deletion failed: {error}"
-                    )));
-                }
-            }
-        }
-        if let Some(result) = session_save_result {
-            consumed = true;
-            let checkpoint_save = {
+            let owns_result = {
                 let mut rust = self.as_mut().rust_mut();
                 let this = rust.as_mut().get_mut();
-                this.session_save_pending = false;
-                this.session_save_checkpoint
+                if !session_ticket_value_matches(
+                    this.session_checkpoint_clear_ticket
+                        .map(StorageTicket::value),
+                    ticket.value(),
+                ) {
+                    false
+                } else {
+                    this.session_checkpoint_clear_ticket = None;
+                    this.session_checkpoint_clear_pending = false;
+                    true
+                }
             };
-            match result {
-                Ok(()) => {
-                    let mut rust = self.as_mut().rust_mut();
-                    let this = rust.as_mut().get_mut();
-                    this.session_names_dirty.set(true);
-                    if checkpoint_save {
-                        this.checkpoint.dirty = false;
-                        this.checkpoint.dirty_since_ms = None;
-                        this.checkpoint.restore_pending = None;
-                        this.checkpoint.last_saved_ms = elapsed_ms(this.binding_clock);
+            if owns_result {
+                if result.is_err() {
+                    self.as_mut().set_status_text(QString::from(
+                        "Stale session checkpoint cleanup failed; recovery data was retained; details suppressed",
+                    ));
+                }
+            }
+        }
+        if let Some((ticket, result)) = session_delete_result {
+            consumed = true;
+            let owns_result = {
+                let mut rust = self.as_mut().rust_mut();
+                let this = rust.as_mut().get_mut();
+                if !session_ticket_value_matches(
+                    this.session_delete_ticket.map(StorageTicket::value),
+                    ticket.value(),
+                ) {
+                    false
+                } else {
+                    this.session_delete_ticket = None;
+                    true
+                }
+            };
+            if owns_result {
+                match result {
+                    Ok(()) => {
+                        self.as_ref().rust().session_names_dirty.set(true);
+                        self.as_mut().request_session_names();
+                        self.as_mut()
+                            .set_status_text(QString::from("Session deleted"));
                     }
-                    drop(rust);
-                    self.as_mut()
-                        .set_status_text(QString::from(if checkpoint_save {
-                            "Session checkpoint saved"
-                        } else {
-                            "Session saved"
-                        }));
-                }
-                Err(error) => {
-                    self.as_mut().set_status_text(QString::from(format!(
-                        "Session snapshot failed; changes retained: {error}"
-                    )));
+                    Err(_error) => {
+                        self.as_mut().set_status_text(QString::from(
+                            "Session deletion failed; details suppressed",
+                        ));
+                    }
                 }
             }
         }
-        if let Some(result) = session_restore_result {
+        if let Some((ticket, result)) = session_save_result {
             consumed = true;
-            let recovery_pending = {
-                let mut rust = self.as_mut().rust_mut();
-                rust.as_mut().get_mut().session_restore_recovery_pending
-            };
-            let restore_load_append = {
-                let mut rust = self.as_mut().rust_mut();
-                rust.as_mut().get_mut().session_restore_load_append.take()
-            };
-            {
+            let result_owner = {
                 let mut rust = self.as_mut().rust_mut();
                 let this = rust.as_mut().get_mut();
+                if !session_ticket_value_matches(
+                    this.session_save_ticket.map(StorageTicket::value),
+                    ticket.value(),
+                ) {
+                    None
+                } else {
+                    this.session_save_ticket = None;
+                    this.session_save_pending = false;
+                    Some(this.session_save_checkpoint)
+                }
+            };
+            if let Some(checkpoint_save) = result_owner {
+                match result {
+                    Ok(()) => {
+                        let mut rust = self.as_mut().rust_mut();
+                        let this = rust.as_mut().get_mut();
+                        this.session_names_dirty.set(true);
+                        if checkpoint_save {
+                            this.checkpoint.dirty = false;
+                            this.checkpoint.dirty_since_ms = None;
+                            this.checkpoint.restore_pending = None;
+                            this.checkpoint.last_saved_ms = elapsed_ms(this.binding_clock);
+                        }
+                        drop(rust);
+                        self.as_mut()
+                            .set_status_text(QString::from(if checkpoint_save {
+                                "Session checkpoint saved"
+                            } else {
+                                "Session saved"
+                            }));
+                    }
+                    Err(_error) => {
+                        self.as_mut().set_status_text(QString::from(
+                            "Session snapshot failed; changes retained; details suppressed",
+                        ));
+                    }
+                }
+            }
+        }
+        if let Some((ticket, result)) = session_restore_result {
+            consumed = true;
+            let owns_result = {
+                let mut rust = self.as_mut().rust_mut();
+                let this = rust.as_mut().get_mut();
+                if !session_ticket_value_matches(
+                    this.session_restore_ticket.map(StorageTicket::value),
+                    ticket.value(),
+                ) {
+                    false
+                } else {
+                    this.session_restore_ticket = None;
+                    true
+                }
+            };
+            if !owns_result {
+                // A prior-profile or otherwise superseded operation has no
+                // authority to mutate the current session presentation.
+            } else if !self.as_ref().session_profile_access_allowed() {
+                let mut rust = self.as_mut().rust_mut();
+                let this = rust.as_mut().get_mut();
+                let pending = this.session_restore_preview_pending
+                    || this.session_restore_recovery_pending
+                    || this.session_restore_load_append.is_some();
                 this.session_restore_preview_pending = false;
                 this.session_restore_recovery_pending = false;
-            }
-            if recovery_pending {
-                match result {
-                    Ok(snapshot)
-                        if !snapshot.entries.is_empty() || !snapshot.closed_tabs.is_empty() =>
-                    {
-                        self.as_mut()
-                            .restore_closed_tabs_from_snapshot(snapshot.closed_tabs);
-                        let restored = self
-                            .as_mut()
-                            .restore_session_from_entries(snapshot.entries, false);
-                        if restored.is_empty() {
-                            self.as_mut()
-                                .set_status_text(QString::from("Recovery could not be applied"));
-                        } else {
-                            self.as_mut()
-                                .set_session_restore_values(QString::from(format!(
-                                    "replace\n{restored}"
-                                )));
-                        }
-                    }
-                    Ok(_) => self
-                        .as_mut()
-                        .set_status_text(QString::from("Recovery session is empty")),
-                    Err(error) => self
-                        .as_mut()
-                        .set_status_text(QString::from(format!("Recovery rejected: {error}"))),
-                }
-            } else if let Some(append) = restore_load_append {
-                match result {
-                    Ok(snapshot) if !snapshot.entries.is_empty() => {
-                        let restored = self
-                            .as_mut()
-                            .restore_session_from_entries(snapshot.entries, append);
-                        if restored.is_empty() {
-                            self.as_mut().set_session_preview(QString::from(
-                                "ERROR\tSession restore could not be applied",
-                            ));
-                        } else {
-                            self.as_mut()
-                                .set_session_restore_values(QString::from(format!(
-                                    "{}\n{restored}",
-                                    if append { "append" } else { "replace" }
-                                )));
-                            self.as_mut()
-                                .set_status_text(QString::from("Session loaded"));
-                        }
-                    }
-                    Ok(_) => {
-                        self.as_mut()
-                            .set_session_preview(QString::from("ERROR\tSaved session is empty"));
-                    }
-                    Err(error) => {
-                        self.as_mut().set_session_preview(QString::from(format!(
-                            "ERROR\tSession restore rejected: {error}"
-                        )));
-                    }
-                }
+                this.session_restore_load_append = None;
+                this.session_preview = if pending {
+                    QString::from(SESSION_ACCESS_REVOKED_PREVIEW)
+                } else {
+                    QString::default()
+                };
+                this.session_restore_values = QString::default();
+                drop(rust);
+                self.as_mut().set_status_text(QString::from(
+                    "Session result discarded because the profile changed",
+                ));
             } else {
-                match result {
-                    Ok(snapshot) if !snapshot.entries.is_empty() => {
-                        let contents = snapshot
-                            .entries
-                            .iter()
-                            .map(|entry| {
-                                entry
-                                    .url
-                                    .as_deref()
-                                    .unwrap_or("[placeholder: navigation will not be replayed]")
-                            })
-                            .collect::<Vec<_>>()
-                            .join("\n");
-                        self.as_mut().set_session_preview(QString::from(format!(
-                            "{} tab(s)\n{contents}",
-                            snapshot.entries.len()
-                        )));
-                        self.as_mut()
-                            .set_status_text(QString::from("Session preview ready"));
+                let recovery_pending = {
+                    let mut rust = self.as_mut().rust_mut();
+                    rust.as_mut().get_mut().session_restore_recovery_pending
+                };
+                let restore_load_append = {
+                    let mut rust = self.as_mut().rust_mut();
+                    rust.as_mut().get_mut().session_restore_load_append.take()
+                };
+                {
+                    let mut rust = self.as_mut().rust_mut();
+                    let this = rust.as_mut().get_mut();
+                    this.session_restore_preview_pending = false;
+                    this.session_restore_recovery_pending = false;
+                }
+                if recovery_pending {
+                    match result {
+                        Ok(snapshot)
+                            if !snapshot.entries.is_empty() || !snapshot.closed_tabs.is_empty() =>
+                        {
+                            self.as_mut()
+                                .restore_closed_tabs_from_snapshot(snapshot.closed_tabs);
+                            let restored = self
+                                .as_mut()
+                                .restore_session_from_entries(snapshot.entries, false);
+                            if restored.is_empty() {
+                                self.as_mut().set_status_text(QString::from(
+                                    "Recovery could not be applied",
+                                ));
+                            } else {
+                                self.as_mut()
+                                    .set_session_restore_values(QString::from(format!(
+                                        "replace\n{restored}"
+                                    )));
+                            }
+                        }
+                        Ok(_) => self
+                            .as_mut()
+                            .set_status_text(QString::from("Recovery session is empty")),
+                        Err(_error) => self.as_mut().set_status_text(QString::from(
+                            "Recovery rejected; details suppressed",
+                        )),
                     }
-                    Ok(_) => {
-                        self.as_mut()
-                            .set_status_text(QString::from("Saved session is empty"));
+                } else if let Some(append) = restore_load_append {
+                    match result {
+                        Ok(snapshot) if !snapshot.entries.is_empty() => {
+                            let restored = self
+                                .as_mut()
+                                .restore_session_from_entries(snapshot.entries, append);
+                            if restored.is_empty() {
+                                self.as_mut().set_session_preview(QString::from(
+                                    "ERROR\tSession restore could not be applied",
+                                ));
+                            } else {
+                                self.as_mut()
+                                    .set_session_restore_values(QString::from(format!(
+                                        "{}\n{restored}",
+                                        if append { "append" } else { "replace" }
+                                    )));
+                                self.as_mut()
+                                    .set_status_text(QString::from("Session loaded"));
+                            }
+                        }
+                        Ok(_) => {
+                            self.as_mut().set_session_preview(QString::from(
+                                "ERROR\tSaved session is empty",
+                            ));
+                        }
+                        Err(_error) => {
+                            self.as_mut().set_session_preview(QString::from(
+                                "ERROR\tSession restore rejected; details suppressed",
+                            ));
+                        }
                     }
-                    Err(error) => {
-                        self.as_mut().set_status_text(QString::from(format!(
-                            "Session preview rejected: {error}"
-                        )));
+                } else {
+                    match result {
+                        Ok(snapshot) if !snapshot.entries.is_empty() => {
+                            let contents = snapshot
+                                .entries
+                                .iter()
+                                .map(|entry| {
+                                    entry
+                                        .url
+                                        .as_deref()
+                                        .unwrap_or("[placeholder: navigation will not be replayed]")
+                                })
+                                .collect::<Vec<_>>()
+                                .join("\n");
+                            self.as_mut().set_session_preview(QString::from(format!(
+                                "{} tab(s)\n{contents}",
+                                snapshot.entries.len()
+                            )));
+                            self.as_mut()
+                                .set_status_text(QString::from("Session preview ready"));
+                        }
+                        Ok(_) => {
+                            self.as_mut()
+                                .set_status_text(QString::from("Saved session is empty"));
+                        }
+                        Err(_error) => {
+                            self.as_mut().set_status_text(QString::from(
+                                "Session preview rejected; details suppressed",
+                            ));
+                        }
                     }
                 }
             }
         }
-        if let Some(result) = session_result {
+        if let Some((ticket, result)) = session_result {
             consumed = true;
-            match result {
-                Ok(names) => {
-                    let mut rust = self.as_mut().rust_mut();
-                    let this = rust.as_mut().get_mut();
-                    this.session_names = names;
-                    this.session_names_dirty.set(false);
+            let owns_result = {
+                let mut rust = self.as_mut().rust_mut();
+                let this = rust.as_mut().get_mut();
+                if !session_ticket_value_matches(
+                    this.session_names_ticket.map(StorageTicket::value),
+                    ticket.value(),
+                ) {
+                    false
+                } else {
+                    this.session_names_ticket = None;
+                    this.session_names_pending = false;
+                    true
                 }
-                Err(error) => {
-                    self.as_mut().set_status_text(QString::from(format!(
-                        "Session catalog query failed: {error}"
-                    )));
+            };
+            if !owns_result {
+                // Ignore completions that do not match the active request.
+            } else if !self.as_ref().session_profile_access_allowed() {
+                let mut rust = self.as_mut().rust_mut();
+                let this = rust.as_mut().get_mut();
+                this.session_names.clear();
+                this.session_names_dirty.set(true);
+            } else {
+                match result {
+                    Ok(names) => {
+                        let mut rust = self.as_mut().rust_mut();
+                        let this = rust.as_mut().get_mut();
+                        this.session_names = names;
+                        this.session_names_dirty.set(false);
+                    }
+                    Err(_error) => {
+                        self.as_ref().rust().session_names_dirty.set(true);
+                        self.as_mut().set_status_text(QString::from(
+                            "Session catalog query failed; details suppressed",
+                        ));
+                    }
                 }
             }
         }
@@ -594,7 +656,7 @@ impl qobject::BrowserUi {
                     this.storage_library_revision = this.storage_library_revision.saturating_add(1);
                     this.storage_library_dirty.set(false);
                 }
-                Err(error) => {
+                Err(_error) => {
                     {
                         let mut rust = self.as_mut().rust_mut();
                         let this = rust.as_mut().get_mut();
@@ -602,9 +664,9 @@ impl qobject::BrowserUi {
                         this.storage_library_dirty.set(false);
                     }
                     self.as_mut().close_storage();
-                    self.as_mut().set_status_text(QString::from(format!(
-                        "Profile metadata query failed: {error}"
-                    )));
+                    self.as_mut().set_status_text(QString::from(
+                        "Profile metadata query failed; details suppressed",
+                    ));
                 }
             }
         }
@@ -615,15 +677,16 @@ impl qobject::BrowserUi {
                 .as_mut()
                 .get_mut()
                 .command_history_write_pending = false;
-            if let Err(error) = result {
+            if let Err(_error) = result {
                 self.as_mut()
                     .rust_mut()
                     .as_mut()
                     .get_mut()
-                    .command_history_write_error = Some(error.clone());
-                self.as_mut().set_status_text(QString::from(format!(
-                    "Command history write failed: {error}"
-                )));
+                    .command_history_write_error =
+                    Some("command history write failed; details suppressed".into());
+                self.as_mut().set_status_text(QString::from(
+                    "Command history write failed; details suppressed",
+                ));
             }
         }
         self.as_mut().flush_command_history_writes();
@@ -658,16 +721,18 @@ impl qobject::BrowserUi {
                             Ok(_) => self
                                 .as_mut()
                                 .set_status_text(QString::from("Journey reopened")),
-                            Err(error) => self.as_mut().set_status_text(QString::from(error)),
+                            Err(_error) => self.as_mut().set_status_text(QString::from(
+                                "Journey reopen failed; details suppressed",
+                            )),
                         }
                     }
                 }
                 (Some(_), Ok(None)) => self
                     .as_mut()
                     .set_status_text(QString::from("Journey node is stale or unavailable")),
-                (Some(_), Err(error)) => self.as_mut().set_status_text(QString::from(format!(
-                    "Journey node lookup failed: {error}"
-                ))),
+                (Some(_), Err(_error)) => self.as_mut().set_status_text(QString::from(
+                    "Journey node lookup failed; details suppressed",
+                )),
                 (None, _) => self
                     .as_mut()
                     .set_status_text(QString::from("Journey reopen request expired")),
@@ -681,9 +746,9 @@ impl qobject::BrowserUi {
                     self.as_mut()
                         .set_status_text(QString::from("Journey query ready"));
                 }
-                Err(error) => self
+                Err(_error) => self
                     .as_mut()
-                    .set_status_text(QString::from(format!("Journey query failed: {error}"))),
+                    .set_status_text(QString::from("Journey query failed; details suppressed")),
             }
         }
         if let Some(result) = journey_export_result {
@@ -726,9 +791,9 @@ impl qobject::BrowserUi {
                     self.as_mut()
                         .set_status_text(QString::from("Journey export preview ready"));
                 }
-                Err(error) => self.as_mut().set_status_text(QString::from(format!(
-                    "Journey export unavailable: {error}"
-                ))),
+                Err(_error) => self.as_mut().set_status_text(QString::from(
+                    "Journey export unavailable; details suppressed",
+                )),
             }
         }
         if let Some(result) = history_result {
@@ -766,9 +831,9 @@ impl qobject::BrowserUi {
                 Ok(false) => self
                     .as_mut()
                     .set_status_text(QString::from("Permission rule was not found")),
-                Err(error) => self.as_mut().set_status_text(QString::from(format!(
-                    "Permission reset failed; retry is available: {error}"
-                ))),
+                Err(_error) => self.as_mut().set_status_text(QString::from(
+                    "Permission reset failed; retry is available; details suppressed",
+                )),
             }
         }
         if let Some(result) = download_result {
@@ -783,10 +848,10 @@ impl qobject::BrowserUi {
                     self.as_mut()
                         .set_status_text(QString::from("Bookmark/quickmark write committed"));
                 }
-                Err(error) => {
-                    self.as_mut().set_status_text(QString::from(format!(
-                        "Bookmark/quickmark worker write failed: {error}"
-                    )));
+                Err(_error) => {
+                    self.as_mut().set_status_text(QString::from(
+                        "Bookmark/quickmark write failed; details suppressed",
+                    ));
                 }
             }
         }
@@ -830,9 +895,9 @@ impl qobject::BrowserUi {
                         "History cleared ({deleted} entries deleted)"
                     )));
                 }
-                Err(error) => {
+                Err(_error) => {
                     self.as_mut()
-                        .set_status_text(QString::from(format!("History clear failed: {error}")));
+                        .set_status_text(QString::from("History clear failed; details suppressed"));
                 }
             }
         }
@@ -847,10 +912,10 @@ impl qobject::BrowserUi {
                 Ok(()) => {
                     self.as_ref().rust().storage_library_dirty.set(true);
                 }
-                Err(error) => {
-                    self.as_mut().set_status_text(QString::from(format!(
-                        "Download destination update failed: {error}"
-                    )));
+                Err(_error) => {
+                    self.as_mut().set_status_text(QString::from(
+                        "Download destination update failed; details suppressed",
+                    ));
                 }
             }
         }
@@ -865,10 +930,10 @@ impl qobject::BrowserUi {
                 Ok(()) => {
                     self.as_ref().rust().storage_library_dirty.set(true);
                 }
-                Err(error) => {
-                    self.as_mut().set_status_text(QString::from(format!(
-                        "Download index creation failed: {error}"
-                    )));
+                Err(_error) => {
+                    self.as_mut().set_status_text(QString::from(
+                        "Download index creation failed; details suppressed",
+                    ));
                 }
             }
         }
@@ -902,10 +967,10 @@ impl qobject::BrowserUi {
                         "Journey worker did not find the requested current node",
                     ));
                 }
-                Err(error) => {
-                    self.as_mut().set_status_text(QString::from(format!(
-                        "Journey worker write failed: {error}"
-                    )));
+                Err(_error) => {
+                    self.as_mut().set_status_text(QString::from(
+                        "Journey worker write failed; details suppressed",
+                    ));
                 }
             }
         }

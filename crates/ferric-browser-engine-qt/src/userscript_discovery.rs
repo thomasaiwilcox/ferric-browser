@@ -12,7 +12,7 @@ use crate::userscript::{
     load, validate_name,
 };
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct RegisteredAction {
     pub script: String,
     pub id: String,
@@ -23,7 +23,18 @@ pub struct RegisteredAction {
     pub allow_private: bool,
 }
 
-#[derive(Clone, Debug, Serialize)]
+impl std::fmt::Debug for RegisteredAction {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("RegisteredAction")
+            .field("identity_and_presentation", &"[REDACTED]")
+            .field("required_field_count", &self.required_fields.len())
+            .field("allow_private", &self.allow_private)
+            .finish()
+    }
+}
+
+#[derive(Clone, Serialize)]
 pub struct InstalledScript {
     pub name: String,
     pub enabled: bool,
@@ -34,12 +45,39 @@ pub struct InstalledScript {
     pub actions: usize,
 }
 
-#[derive(Clone, Debug, Serialize)]
+impl std::fmt::Debug for InstalledScript {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("InstalledScript")
+            .field("name", &"[REDACTED]")
+            .field("enabled", &self.enabled)
+            .field("page_world", &self.page_world)
+            .field("run_at", &self.run_at)
+            .field("allow_private", &self.allow_private)
+            .field("match_count", &self.matches.len())
+            .field("action_count", &self.actions)
+            .finish()
+    }
+}
+
+#[derive(Clone, Serialize)]
 pub struct PageScript {
     pub name: String,
     pub source: String,
     pub run_at: &'static str,
     pub runs_on_sub_frames: bool,
+}
+
+impl std::fmt::Debug for PageScript {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("PageScript")
+            .field("name", &"[REDACTED]")
+            .field("source_bytes", &self.source.len())
+            .field("run_at", &self.run_at)
+            .field("runs_on_sub_frames", &self.runs_on_sub_frames)
+            .finish()
+    }
 }
 
 /// Discovers the stable, bounded action list from installed manifests.

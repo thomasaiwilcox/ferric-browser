@@ -4,17 +4,17 @@ use super::{
     RuntimeOverrides, Value, chrome_preferences, config_get_command_parameters,
     configured_bindings, desktop_portals, feature_preferences, hyprland, is_bounded_untrusted_text,
     load_theme_palette, matching_site_rules, publish_ipc_event, qobject, safe_ipc_url,
-    sanitize_process_stderr, save_runtime_overrides_atomic, setting_metadata,
-    settings_presentation, theme_presentation, try_wait_editor_process,
+    save_runtime_overrides_atomic, setting_metadata, settings_presentation, theme_presentation,
+    try_wait_editor_process,
 };
 
 impl qobject::BrowserUi {
     pub(super) fn select_site_rule_settings(mut self: Pin<&mut Self>, url: &QString) -> bool {
         let config = match serde_json::from_value::<Config>(self.as_ref().rust().config.clone()) {
             Ok(config) => config,
-            Err(error) => {
+            Err(_) => {
                 self.as_mut()
-                    .set_status_text(QString::from(format!("Site rules unavailable: {error}")));
+                    .set_status_text(QString::from("Site rules unavailable; details suppressed"));
                 return false;
             }
         };
@@ -686,10 +686,8 @@ impl qobject::BrowserUi {
         self.as_mut()
             .queue_config_write(path.clone(), bytes.into_bytes())
             .map_err(|error| format!("could not queue config export: {error}"))?;
-        self.as_mut().set_status_text(QString::from(format!(
-            "Configuration export queued for {}",
-            path.display()
-        )));
+        self.as_mut()
+            .set_status_text(QString::from("Configuration export queued"));
         Ok(serde_json::json!({
             "status": "queued",
             "path": path,
@@ -730,7 +728,7 @@ impl qobject::BrowserUi {
             .set_status_text(QString::from("Configuration check queued"));
         Ok(serde_json::json!({
             "status": "queued",
-            "source": path,
+            "source": "configured-file",
             "operation": "check"
         }))
     }
@@ -757,11 +755,11 @@ impl qobject::BrowserUi {
         self.as_mut().poll_config();
         let status = self.as_ref().rust().status_text.to_string();
         if status.starts_with("Configuration reload rejected") {
-            return Err(status);
+            return Err("Configuration reload rejected; details suppressed".into());
         }
         Ok(serde_json::json!({
             "status": "queued",
-            "source": path
+            "source": "configured-file"
         }))
     }
 
@@ -782,10 +780,8 @@ impl qobject::BrowserUi {
         self.as_mut()
             .queue_config_write(path.clone(), bytes.into_bytes())
             .map_err(|error| format!("could not queue default configuration: {error}"))?;
-        self.as_mut().set_status_text(QString::from(format!(
-            "Default configuration write queued for {}",
-            path.display()
-        )));
+        self.as_mut()
+            .set_status_text(QString::from("Default configuration write queued"));
         Ok(serde_json::json!({
             "status": "queued",
             "path": path,
@@ -815,16 +811,20 @@ impl qobject::BrowserUi {
         self.as_mut()
             .set_status_text(QString::from("Theme palette reloaded"));
         let palette = self.as_ref().rust().theme_palette.clone();
+        let mut palette_value = serde_json::to_value(&palette).unwrap_or(Value::Null);
+        if let Some(fields) = palette_value.as_object_mut() {
+            fields.insert("path".to_owned(), Value::String("[redacted]".to_owned()));
+        }
         let provider_status = serde_json::json!({
             "source": palette.source,
-            "path": palette.path,
+            "path": "[redacted]",
             "layout": palette.provider_layout,
             "version": palette.provider_version,
             "commit": palette.provider_commit,
         });
         Ok(serde_json::json!({
             "status": "reloaded",
-            "palette": serde_json::to_value(&palette).unwrap_or(Value::Null),
+            "palette": palette_value,
             "provider_status": provider_status
         }))
     }
@@ -852,7 +852,7 @@ impl qobject::BrowserUi {
                     Some(status)
                 }
                 Ok(None) => None,
-                Err(error) => {
+                Err(_) => {
                     let removed = {
                         let mut rust = self.as_mut().rust_mut();
                         let this = rust.as_mut().get_mut();
@@ -867,9 +867,9 @@ impl qobject::BrowserUi {
                         }
                     };
                     if removed.is_some() {
-                        self.as_mut().set_status_text(QString::from(format!(
-                            "Configuration editor status unavailable: {error}"
-                        )));
+                        self.as_mut().set_status_text(QString::from(
+                            "Configuration editor status unavailable; details suppressed",
+                        ));
                     }
                     return;
                 }
@@ -877,22 +877,6 @@ impl qobject::BrowserUi {
         };
         let Some(status) = status else {
             return;
-        };
-        let stderr = {
-            let result = match pending.stderr.lock() {
-                Ok(mut result) => result.take(),
-                Err(_) => Some(Err("configuration editor stderr was unavailable".into())),
-            };
-            let Some(result) = result else {
-                return;
-            };
-            match result {
-                Ok(bytes) => {
-                    let text = sanitize_process_stderr(&bytes);
-                    (!text.is_empty()).then_some(text)
-                }
-                Err(error) => Some(error),
-            }
         };
         {
             let removed = {
@@ -909,9 +893,6 @@ impl qobject::BrowserUi {
                 }
             };
             if removed.is_some() {
-                let stderr_detail = stderr
-                    .as_deref()
-                    .map_or_else(String::new, |text| format!(" (stderr: {text})"));
                 if status.success() {
                     let mut rust = self.as_mut().rust_mut();
                     rust.as_mut().get_mut().config_watch.mark_pending(
@@ -919,15 +900,13 @@ impl qobject::BrowserUi {
                             .checked_sub(Duration::from_millis(200))
                             .unwrap_or_else(Instant::now),
                     );
-                    self.as_mut().set_status_text(QString::from(format!(
-                        "Configuration editor finished; reloading {}{}",
-                        pending.path.display(),
-                        stderr_detail
-                    )));
+                    self.as_mut().set_status_text(QString::from(
+                        "Configuration editor finished; reloading configuration",
+                    ));
                 } else {
-                    self.as_mut().set_status_text(QString::from(format!(
-                        "Configuration editor exited with status {status}{stderr_detail}"
-                    )));
+                    self.as_mut().set_status_text(QString::from(
+                        "Configuration editor exited unsuccessfully",
+                    ));
                 }
             }
         }

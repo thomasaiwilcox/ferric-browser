@@ -38,6 +38,87 @@ impl qobject::BrowserUi {
             }
         };
         let effects = self.as_mut().dispatch_runtime(dispatch)?;
+        if let Some(response) = effects.iter().find_map(|effect| match effect {
+            Effect::Engine(EngineEffect::Versioning(
+                super::VersioningEngineEffect::CommitQueued { operation, commit },
+            )) => Some(serde_json::json!({
+                "status": "pending",
+                "operation_id": operation.to_string(),
+                "commit_id": commit.to_string(),
+                "durable": false,
+            })),
+            Effect::Engine(EngineEffect::Versioning(
+                super::VersioningEngineEffect::BranchQueued {
+                    branch,
+                    operation,
+                    commit,
+                },
+            )) => Some(serde_json::json!({
+                "status": "pending",
+                "branch_id": branch.to_string(),
+                "operation_id": operation.to_string(),
+                "commit_id": commit.to_string(),
+                "durable": false,
+            })),
+            Effect::Engine(EngineEffect::Versioning(
+                super::VersioningEngineEffect::SwitchResolved { branch, .. },
+            )) => Some(serde_json::json!({
+                "status": "activation-requested",
+                "branch_id": branch.to_string(),
+            })),
+            Effect::Engine(EngineEffect::Versioning(
+                super::VersioningEngineEffect::CommitListQueued { request_id },
+            )) => Some(
+                serde_json::json!({ "status": "pending", "request_id": request_id.to_string() }),
+            ),
+            Effect::Engine(EngineEffect::Versioning(
+                super::VersioningEngineEffect::CommitInfoQueued { request_id },
+            )) => Some(
+                serde_json::json!({ "status": "pending", "request_id": request_id.to_string() }),
+            ),
+            Effect::Engine(EngineEffect::Versioning(
+                super::VersioningEngineEffect::CommitDeletePreviewQueued { request_id },
+            )) => Some(
+                serde_json::json!({ "status": "pending", "request_id": request_id.to_string() }),
+            ),
+            Effect::Engine(EngineEffect::Versioning(
+                super::VersioningEngineEffect::PolicyRestorePreviewQueued { request_id },
+            )) => Some(
+                serde_json::json!({ "status": "pending", "request_id": request_id.to_string() }),
+            ),
+            Effect::Engine(EngineEffect::Versioning(
+                super::VersioningEngineEffect::DiffQueued { request_id },
+            )) => Some(
+                serde_json::json!({ "status": "pending", "request_id": request_id.to_string() }),
+            ),
+            Effect::Engine(EngineEffect::Versioning(
+                super::VersioningEngineEffect::RestoreQueued { request_id },
+            )) => Some(
+                serde_json::json!({ "status": "pending", "request_id": request_id.to_string() }),
+            ),
+            _ => None,
+        }) {
+            return Ok(response);
+        }
+        if let Some((production_enabled, active_operations)) = effects.iter().find_map(|effect| {
+            if let Effect::Engine(EngineEffect::Versioning(
+                super::VersioningEngineEffect::Status {
+                    production_enabled,
+                    active_operations,
+                },
+            )) = effect
+            {
+                Some((*production_enabled, *active_operations))
+            } else {
+                None
+            }
+        }) {
+            return Ok(serde_json::json!({
+                "status": "ok",
+                "production_enabled": production_enabled,
+                "active_operations": active_operations,
+            }));
+        }
         let target = effects.iter().find_map(|effect| match effect {
             Effect::Engine(EngineEffect::Navigate { target, .. }) => Some(*target),
             _ => None,

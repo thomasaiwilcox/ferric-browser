@@ -27,7 +27,7 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
                             let value = command
                                 .arguments
                                 .get(index)
-                                .ok_or_else(|| format!("open {argument} requires a value"))?;
+                                .ok_or_else(|| "open option requires a value".to_owned())?;
                             validate_command_text(value, "open option")?;
                             match argument.as_str() {
                                 "--target" if target.replace(value.clone()).is_some() => {
@@ -53,7 +53,7 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
                             );
                         }
                         value if value.starts_with('-') => {
-                            return Err(format!("unknown open option: {value}"));
+                            return Err("open contains an unknown option".into());
                         }
                         value => {
                             options_ended = true;
@@ -111,7 +111,7 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
                             options_ended = true;
                         }
                         value if value.starts_with("--") => {
-                            return Err(format!("unknown tab-open option: {value}"));
+                            return Err("tab-open contains an unknown option".into());
                         }
                         _ => input.push(argument.clone()),
                     }
@@ -195,7 +195,7 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
                         break;
                     }
                     value if value.starts_with("--") => {
-                        return Err(format!("unknown search option: {value}"));
+                        return Err("search contains an unknown option".into());
                     }
                     value => query.push(value.to_owned()),
                 }
@@ -249,7 +249,7 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
                         );
                         index += 1;
                     }
-                    option => return Err(format!("unknown search-next option: {option}")),
+                    _ => return Err("search-next contains an unknown option".into()),
                 }
                 index += 1;
             }
@@ -305,7 +305,7 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
                         );
                         index += 1;
                     }
-                    option => return Err(format!("unknown scroll-page option: {option}")),
+                    _ => return Err("scroll-page contains an unknown option".into()),
                 }
                 index += 1;
             }

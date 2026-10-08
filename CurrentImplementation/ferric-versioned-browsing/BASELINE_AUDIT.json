@@ -1,0 +1,381 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-27",
+  "repository": "thomasaiwilcox/ferric-browser",
+  "main_sha": "deea458d92bcf6d8fbea7b04af17823b5882cc1b",
+  "tree_sha": "f56fd674cd0eefbae389355db4068afc915b6ac1",
+  "commit_message": "docs: replace implementation proposals with ADR",
+  "commit_time": "2026-09-27T09:19:53Z",
+  "main_rechecked_before_packaging": true,
+  "repository_mutations_performed": false,
+  "ferric_builds_or_runtime_tests_performed": false,
+  "public_api_documentation_verified": true,
+  "inspection_method": "Connected GitHub read/search plus primary Qt/Chromium protocol documentation; selected architectural files and relevant code sections, not an exhaustive repository audit.",
+  "sources": [
+    {
+      "id": "R1",
+      "topic": "Workspace and ownership boundaries",
+      "files": [
+        {
+          "path": "Cargo.toml",
+          "blob_sha": "dfc02c7c90327c39cc12fa7c1a74ea0226349aaf",
+          "inspection": "full",
+          "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/deea458d92bcf6d8fbea7b04af17823b5882cc1b/Cargo.toml"
+        },
+        {
+          "path": "crates/ferric-browser-application/src/lib.rs",
+          "blob_sha": "3a30828a083dda615284694eecbe4bf20e5e02d1",
+          "inspection": "lines 1–230",
+          "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/deea458d92bcf6d8fbea7b04af17823b5882cc1b/crates/ferric-browser-application/src/lib.rs"
+        },
+        {
+          "path": "crates/ferric-browser-runtime/src/lib.rs",
+          "blob_sha": "3b59a0651a640002ad52bd2ff2788714f222aff2",
+          "inspection": "lines 1–235",
+          "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/deea458d92bcf6d8fbea7b04af17823b5882cc1b/crates/ferric-browser-runtime/src/lib.rs"
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "topic": "Contribution rules and verification commands",
+      "files": [
+        {
+          "path": "CONTRIBUTING.md",
+          "blob_sha": null,
+          "inspection": "full",
+          "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/deea458d92bcf6d8fbea7b04af17823b5882cc1b/CONTRIBUTING.md"
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "topic": "Development specification",
+      "files": [
+        {
+          "path": "docs/DEVELOPMENT_SPEC.md",
+          "blob_sha": null,
+          "inspection": "opening architecture sections and targeted searches; not entire file",
+          "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/deea458d92bcf6d8fbea7b04af17823b5882cc1b/docs/DEVELOPMENT_SPEC.md"
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "topic": "Current core model and exports",
+      "files": [
+        {
+          "path": "crates/ferric-browser-core/src/model.rs",
+          "blob_sha": "519f53c7a5e5684708b0202e8fb9f1ba30e8b838",
+          "inspection": "full",
+          "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/deea458d92bcf6d8fbea7b04af17823b5882cc1b/crates/ferric-browser-core/src/model.rs"
+        },
+        {
+          "path": "crates/ferric-browser-core/src/lib.rs",
+          "blob_sha": "2b4ea9f4fc3151650c299b53d6229eb62b7fa227",
+          "inspection": "full",
+          "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/deea458d92bcf6d8fbea7b04af17823b5882cc1b/crates/ferric-browser-core/src/lib.rs"
+        }
+      ]
+    },
+    {
+      "id": "R5",
+      "topic": "Recovery and private durability boundary",
+      "files": [
+        {
+          "path": "docs/architecture/ADR-0006-profile-and-session-durability.md",
+          "blob_sha": "cd9704022c03b8459bc97434d7c9ed8f761abe21",
+          "inspection": "full",
+          "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/deea458d92bcf6d8fbea7b04af17823b5882cc1b/docs/architecture/ADR-0006-profile-and-session-durability.md"
+        }
+      ]
+    },
+    {
+      "id": "R6",
+      "topic": "Contexts, profiles and action subjects",
+      "files": [
+        {
+          "path": "docs/architecture/ADR-0011-context-profile-window-actions.md",
+          "blob_sha": "a521ecfc3a85cf117ae3b08587b799ec90696dda",
+          "inspection": "full",
+          "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/deea458d92bcf6d8fbea7b04af17823b5882cc1b/docs/architecture/ADR-0011-context-profile-window-actions.md"
+        }
+      ]
+    },
+    {
+      "id": "R7",
+      "topic": "Journey retention and ephemeral teardown",
+      "files": [
+        {
+          "path": "docs/architecture/ADR-0012-journey-and-ephemeral-state.md",
+          "blob_sha": "7196572772bb1abd32690c1f2bd38f8739f9cabe",
+          "inspection": "full",
+          "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/deea458d92bcf6d8fbea7b04af17823b5882cc1b/docs/architecture/ADR-0012-journey-and-ephemeral-state.md"
+        },
+        {
+          "path": "crates/ferric-browser-engine-qt/qml/components/FerricWindowRegistryController.qml",
+          "blob_sha": "a8c389b985e8f19d23f50edc2b3521629cd7d45d",
+          "inspection": "full",
+          "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/deea458d92bcf6d8fbea7b04af17823b5882cc1b/crates/ferric-browser-engine-qt/qml/components/FerricWindowRegistryController.qml"
+        }
+      ]
+    },
+    {
+      "id": "R8",
+      "topic": "Application/storage coordination",
+      "files": [
+        {
+          "path": "crates/ferric-browser-application/src/storage.rs",
+          "blob_sha": "25230439c4bd7e7b6e6cb97875807ad1d3f86209",
+          "inspection": "full",
+          "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/deea458d92bcf6d8fbea7b04af17823b5882cc1b/crates/ferric-browser-application/src/storage.rs"
+        },
+        {
+          "path": "crates/ferric-browser-storage/src/worker.rs",
+          "blob_sha": "e139819e581884f05512aa3579996c90f99b5ce9",
+          "inspection": "lines 1–200",
+          "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/deea458d92bcf6d8fbea7b04af17823b5882cc1b/crates/ferric-browser-storage/src/worker.rs"
+        }
+      ]
+    },
+    {
+      "id": "R9",
+      "topic": "Existing suspension eligibility",
+      "files": [
+        {
+          "path": "docs/testing/m0-96-tab-suspension.md",
+          "blob_sha": "3d9d3f891af63d403d80a6bafbaff83e4a2c3824",
+          "inspection": "full; its native status is not assumed verified",
+          "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/deea458d92bcf6d8fbea7b04af17823b5882cc1b/docs/testing/m0-96-tab-suspension.md"
+        }
+      ]
+    },
+    {
+      "id": "R10",
+      "topic": "Current session schema and restore adapter",
+      "files": [
+        {
+          "path": "crates/ferric-browser-storage/src/sessions.rs",
+          "blob_sha": "67b222d2239611889adf10b458b99e04026ee6dc",
+          "inspection": "lines 1–125",
+          "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/deea458d92bcf6d8fbea7b04af17823b5882cc1b/crates/ferric-browser-storage/src/sessions.rs"
+        },
+        {
+          "path": "crates/ferric-browser-engine-qt/src/browser_ui_sessions.rs",
+          "blob_sha": "8401321e657d91c1a8647364176461d6181cf1af",
+          "inspection": "lines 1–200",
+          "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/deea458d92bcf6d8fbea7b04af17823b5882cc1b/crates/ferric-browser-engine-qt/src/browser_ui_sessions.rs"
+        }
+      ]
+    },
+    {
+      "id": "R11",
+      "topic": "Document-local scroll ownership",
+      "files": [
+        {
+          "path": "docs/architecture/ADR-0014-explicit-scroll-target.md",
+          "blob_sha": "05afa42a57bbbf2bcc7583950d47c54cb948d3fb",
+          "inspection": "full",
+          "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/deea458d92bcf6d8fbea7b04af17823b5882cc1b/docs/architecture/ADR-0014-explicit-scroll-target.md"
+        }
+      ]
+    },
+    {
+      "id": "R12",
+      "topic": "Command and action metadata",
+      "files": [
+        {
+          "path": "crates/ferric-browser-core/src/command.rs",
+          "blob_sha": "52fcca90ff57734506193d8079133a963f1c8bef",
+          "inspection": "lines 1–190 and 230–385",
+          "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/deea458d92bcf6d8fbea7b04af17823b5882cc1b/crates/ferric-browser-core/src/command.rs"
+        },
+        {
+          "path": "crates/ferric-browser-core/src/action.rs",
+          "blob_sha": "b993c32d51660b144d9b6345ec738440ae8d4c19",
+          "inspection": "lines 1–190",
+          "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/deea458d92bcf6d8fbea7b04af17823b5882cc1b/crates/ferric-browser-core/src/action.rs"
+        }
+      ]
+    },
+    {
+      "id": "R13",
+      "topic": "View ownership and same-profile transfer",
+      "files": [
+        {
+          "path": "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeSurface.qml",
+          "blob_sha": null,
+          "inspection": "targeted current-main code search; verify full surrounding path before editing",
+          "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/deea458d92bcf6d8fbea7b04af17823b5882cc1b/crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeSurface.qml"
+        },
+        {
+          "path": "docs/testing/m0-157-tab-transfer-contract.md",
+          "blob_sha": null,
+          "inspection": "targeted current-main search",
+          "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/deea458d92bcf6d8fbea7b04af17823b5882cc1b/docs/testing/m0-157-tab-transfer-contract.md"
+        },
+        {
+          "path": "docs/testing/m0-160-secondary-tab-transfer.md",
+          "blob_sha": null,
+          "inspection": "targeted current-main search",
+          "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/deea458d92bcf6d8fbea7b04af17823b5882cc1b/docs/testing/m0-160-secondary-tab-transfer.md"
+        },
+        {
+          "path": "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+          "blob_sha": null,
+          "inspection": "targeted current-main search",
+          "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/deea458d92bcf6d8fbea7b04af17823b5882cc1b/crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs"
+        }
+      ]
+    },
+    {
+      "id": "R14",
+      "topic": "Qt composition, resources and native interceptor",
+      "files": [
+        {
+          "path": "crates/ferric-browser-engine-qt/qml/Main.qml",
+          "blob_sha": "022852f986d2acd474e4cb436414460edb633215",
+          "inspection": "full",
+          "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/deea458d92bcf6d8fbea7b04af17823b5882cc1b/crates/ferric-browser-engine-qt/qml/Main.qml"
+        },
+        {
+          "path": "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeBase.qml",
+          "blob_sha": "50b8dd1df58a324091a7ff08bc12b6732f2cb931",
+          "inspection": "lines 1–180",
+          "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/deea458d92bcf6d8fbea7b04af17823b5882cc1b/crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeBase.qml"
+        },
+        {
+          "path": "crates/ferric-browser-engine-qt/build.rs",
+          "blob_sha": "56f390193416a469c3d8241865826fac263b0656",
+          "inspection": "lines 1–150",
+          "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/deea458d92bcf6d8fbea7b04af17823b5882cc1b/crates/ferric-browser-engine-qt/build.rs"
+        },
+        {
+          "path": "crates/ferric-browser-engine-qt/src/request_interceptor.h",
+          "blob_sha": "8e6038dd33d069d952dbe8da429a41ed68c22b20",
+          "inspection": "full public class declaration",
+          "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/deea458d92bcf6d8fbea7b04af17823b5882cc1b/crates/ferric-browser-engine-qt/src/request_interceptor.h"
+        }
+      ]
+    },
+    {
+      "id": "R15",
+      "topic": "System Qt distribution baseline",
+      "files": [
+        {
+          "path": "docs/architecture/ADR-0003-system-qt-distribution.md",
+          "blob_sha": "ce9259b506d0243e7ec1c73f221a10d7e47858c4",
+          "inspection": "full",
+          "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/deea458d92bcf6d8fbea7b04af17823b5882cc1b/docs/architecture/ADR-0003-system-qt-distribution.md"
+        }
+      ]
+    },
+    {
+      "id": "R16",
+      "topic": "Configuration source layout",
+      "files": [
+        {
+          "path": "crates/ferric-browser-config/src/browser_config.rs",
+          "blob_sha": "e502e3ed7a7459ce376a971adb3c934bc0eeb7b3",
+          "inspection": "directory metadata; implementation not read",
+          "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/deea458d92bcf6d8fbea7b04af17823b5882cc1b/crates/ferric-browser-config/src/browser_config.rs"
+        },
+        {
+          "path": "crates/ferric-browser-config/src/settings.rs",
+          "blob_sha": "8f0cf83e16dc15de8be40d0ff91990778efcefcd",
+          "inspection": "directory metadata; implementation not read",
+          "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/deea458d92bcf6d8fbea7b04af17823b5882cc1b/crates/ferric-browser-config/src/settings.rs"
+        },
+        {
+          "path": "crates/ferric-browser-config/src/validation.rs",
+          "blob_sha": "ff5c3e7b207e95c2465675274d51fed7b302c474",
+          "inspection": "directory metadata; implementation not read",
+          "url": "https://github.com/thomasaiwilcox/ferric-browser/blob/deea458d92bcf6d8fbea7b04af17823b5882cc1b/crates/ferric-browser-config/src/validation.rs"
+        }
+      ]
+    }
+  ],
+  "api_sources": [
+    {
+      "id": "Q1",
+      "title": "Qt Quick WebEngineView",
+      "url": "https://doc.qt.io/qt-6/qml-qtwebengine-webengineview.html",
+      "notes": "Lifecycle, save, script evaluation, mainFrame, renderer signals. Match signatures to the installed header/QML surface."
+    },
+    {
+      "id": "Q2",
+      "title": "Qt WebEngine features",
+      "url": "https://doc.qt.io/qt-6/qtwebengine-features.html",
+      "notes": "Lifecycle freeze/resume and documented DevTools/remote-debugging behaviour."
+    },
+    {
+      "id": "Q3",
+      "title": "QWebEngineScript",
+      "url": "https://doc.qt.io/qt-6/qwebenginescript.html",
+      "notes": "Injection points, ApplicationWorld and subframe policy."
+    },
+    {
+      "id": "Q4",
+      "title": "webEngineFrame QML value type",
+      "url": "https://doc.qt.io/qt-6/qml-webengineframe.html",
+      "notes": "Frame lifetime, public evaluation, Qt 6.8 type and 6.10 child enumeration."
+    },
+    {
+      "id": "Q5",
+      "title": "QWebEngineDownloadRequest",
+      "url": "https://doc.qt.io/qt-6/qwebenginedownloadrequest.html",
+      "notes": "Page-save formats, auto-start caveat, state and interruption handling. Quick integration must use the actual public QML surface."
+    },
+    {
+      "id": "Q6",
+      "title": "QWebEngineCookieStore",
+      "url": "https://doc.qt.io/qt-6/qwebenginecookiestore.html",
+      "notes": "Public asynchronous cookie operations and observations; host-only origin rule. No enumeration-complete/batch transaction signature is documented."
+    },
+    {
+      "id": "Q7",
+      "title": "QNetworkCookie",
+      "url": "https://doc.qt.io/qt-6/qnetworkcookie.html",
+      "notes": "Exposed identity and attributes; no exposed Chromium partition key in the documented type."
+    },
+    {
+      "id": "Q8",
+      "title": "Qt WebEngine overview",
+      "url": "https://doc.qt.io/qt-6/qtwebengine-overview.html",
+      "notes": "Quick/Widgets architecture, process ownership and installed Chromium version reporting."
+    },
+    {
+      "id": "Q9",
+      "title": "QQuickWebEngineProfile",
+      "url": "https://doc.qt.io/qt-6/qquickwebengineprofile.html",
+      "notes": "Public Quick profile cookie store and profile ownership/configuration surface."
+    },
+    {
+      "id": "Q10",
+      "title": "Chrome DevTools Protocol Storage domain",
+      "url": "https://chromedevtools.github.io/devtools-protocol/tot/Storage/",
+      "notes": "Research-only alternate interface. Tip-of-tree protocol is not a stable production contract for the installed Qt Chromium build."
+    },
+    {
+      "id": "Q11",
+      "title": "Chrome DevTools Protocol Network domain",
+      "url": "https://chromedevtools.github.io/devtools-protocol/tot/Network/",
+      "notes": "Cookie/partition-related protocol types. Richer metadata does not imply snapshot or batch atomicity."
+    },
+    {
+      "id": "Q12",
+      "title": "WebEngineProfilePrototype",
+      "url": "https://doc.qt.io/qt-6/qml-qtwebengine-webengineprofileprototype.html",
+      "notes": "Quick profile construction since Qt 6.9; empty storage name, memory-only behaviour."
+    }
+  ],
+  "key_realignments": [
+    "Application orchestration belongs in ferric-browser-application, not a new BrowserUi-owned policy system.",
+    "Main.qml is composition only; ephemeral token handling now has FerricWindowRegistryController.qml.",
+    "Session schema 2 stays safe-recovery-only; explicit captures use a new schema.",
+    "Dirty-state suspension is refused today; explicit live preservation needs separate intent and native qualification.",
+    "Window/profile affinity remains intact; initial isolated child appears in its own native window.",
+    "ADR-0014 explicit scroll-target identity remains document-local and is not persisted.",
+    "Cookie source completeness, partition identity and atomic apply are not fabricated from observer revisions."
+  ]
+}

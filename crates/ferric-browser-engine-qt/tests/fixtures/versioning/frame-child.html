@@ -1,0 +1,7 @@
+<!doctype html><meta charset="utf-8"><title>Versioning frame child</title>
+<h1 id="frame-heading">Synthetic child frame</h1>
+<div id="open-host"></div><div id="closed-host"></div>
+<script>
+document.querySelector('#open-host').attachShadow({mode: 'open'}).innerHTML = '<span>open shadow</span>';
+document.querySelector('#closed-host').attachShadow({mode: 'closed'}).innerHTML = '<span>closed shadow</span>';
+</script>

@@ -236,11 +236,11 @@ fn handshake_response(request: Request, instance_id: &str) -> (bool, Response) {
                     details: None,
                 },
             ),
-            Err(error) => Response::failure(
+            Err(_) => Response::failure(
                 request.id,
                 ProtocolError {
                     code: "E_INVALID_PARAMS".into(),
-                    message: error.to_string(),
+                    message: "invalid IPC handshake parameters".into(),
                     details: None,
                 },
             ),
@@ -373,5 +373,28 @@ mod tests {
                 .iter()
                 .any(|value| value.as_str() == Some("blocklist.update"))
         );
+    }
+
+    #[test]
+    fn malformed_hello_values_are_not_reflected_in_the_error_response() {
+        let sentinel = "private-hello-value-sentinel";
+        let request = Request {
+            id: "hello-invalid".into(),
+            method: "hello".into(),
+            params: serde_json::json!({
+                "protocol_major": sentinel,
+                "protocol_minor": ferric_browser_ipc::PROTOCOL_MINOR,
+                "client": "test"
+            }),
+        };
+        let (is_hello, response) = handshake_response(request, "instance-test");
+        assert!(is_hello);
+        let error = response.error.expect("invalid hello response");
+        assert_eq!(
+            error.message.split(". Preserved:").next(),
+            Some("invalid IPC handshake parameters")
+        );
+        assert!(!error.message.contains(sentinel));
+        assert!(!error.details.unwrap().to_string().contains(sentinel));
     }
 }

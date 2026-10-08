@@ -5,6 +5,7 @@ use serde_json::{Map, Value};
 /// Returns the accepted JSON argument fields for a command.
 #[must_use]
 #[allow(clippy::match_same_arms)]
+#[allow(clippy::too_many_lines)]
 pub fn command_argument_names(command: &str) -> &'static [&'static str] {
     match command {
         "open" => &["input", "target", "clean_link", "external"],
@@ -96,6 +97,19 @@ pub fn command_argument_names(command: &str) -> &'static [&'static str] {
             "behavior",
             "entry_points",
         ],
+        "commit" => &["message", "scope", "pages", "editable"],
+        "commit-list" => &["limit", "offset"],
+        "diff" => &["left", "right", "kind", "offset"],
+        "commit-info" | "commit-delete" | "branch-info" | "branch-delete" | "switch" => &["ref"],
+        "restore" => &["ref", "mode", "into", "policies"],
+        "stash" => &["name", "scope"],
+        "stash-info" | "stash-resume" | "stash-drop" => &["id"],
+        "branch" => &["name", "scope", "clean"],
+        "merge" => &["branch", "cookies", "site"],
+        "merge-resolve" => &["plan", "item", "choice"],
+        "merge-apply" => &["plan"],
+        "versioning-cancel" => &["operation"],
+        "stash-list" | "branch-list" | "versioning-status" => &[],
         _ => &[],
     }
 }

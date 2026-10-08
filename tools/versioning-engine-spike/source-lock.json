@@ -1,0 +1,1136 @@
+{
+  "schema_version": 1,
+  "purpose": "disposable-native-capability-probes-not-production",
+  "qt_webengine": "6.11.2",
+  "qt_git_commit": "a33fa2a897e5ee58e385b3f88dc247d99fca56db",
+  "chromium_gitlink": "5170777d28bee1ce92cc693a0dbf2ad01492e5cf",
+  "archive_url": "https://download.qt.io/official_releases/qt/6.11/6.11.2/submodules/qtwebengine-everywhere-src-6.11.2.tar.xz",
+  "archive_sha256": "6101c1aa00ff933d1b65ee5d167f76e8d71b9ac5b378b0111277723ebda7c163",
+  "archive_bytes": 580351104,
+  "archive_chromium_version_document": "140.0.7339.264",
+  "chromium_chrome_version_file": "140.0.7339.225",
+  "security_patch_document": "151.0.7922.71",
+  "runtime_fingerprint": {
+    "observed_on": "2026-10-01",
+    "qt": "6.11.2",
+    "webengine": "6.11.2",
+    "chromium": "140.0.7339.225",
+    "security_patch": "151.0.7922.71",
+    "platform": "offscreen",
+    "os": "Linux 7.2.3-arch1-3 x86_64",
+    "profile_mode": "off-the-record"
+  },
+  "python_packages": {
+    "html5lib": "1.1",
+    "six": "1.17.0",
+    "webencodings": "0.5.1"
+  },
+  "local_gperf_package": {
+    "url": "https://stable-mirror.omarchy.org/extra/os/x86_64/gperf-3.3-2-x86_64.pkg.tar.zst",
+    "sha256": "87c8fb6323a2609b77767d2820f26b4c0d3337367a753d0b84180a983a6a1aa3",
+    "signature_verified_on": "2026-09-30",
+    "signing_fingerprint": "EB3D764FF5D87E0818A3E0E5F05E8C12131AEB5E"
+  },
+  "patch": "qt-6.11.2-capability-probes.patch",
+  "patch_sha256": "dc7df82d2ca32b0721d383c7b5ba367abd754d5ceb087f976fc756247c49fa8b",
+  "experimental_seed_if_empty_overlay": {
+    "patch": "qt-6.11.2-seed-if-empty-probe.patch",
+    "patch_sha256": "2a37f9cdb98892a95829f9178ca94a922be57faac3a2bf497e2f0349bb98af28",
+    "applies_after_patch_sha256": "dc7df82d2ca32b0721d383c7b5ba367abd754d5ceb087f976fc756247c49fa8b",
+    "qualification": "three fresh disposable legacy/older-expiry seed runs passed 40 checks each, with normal-close restart and nonempty-child refusal; no production writer lease, crash-durability proof, or capability flag"
+  },
+  "native_seed_if_empty_experiment": {
+    "scope": "research-only complete-canonical seed of two disk-loaded synthetic edge sources into separate fresh persistent children, with in-process exact readback, normal-close restart, and a nonempty-child refusal; not a production backend",
+    "engine_overlay_patch_sha256": "2a37f9cdb98892a95829f9178ca94a922be57faac3a2bf497e2f0349bb98af28",
+    "engine_library_sha256": "672a211cb0911b55b4a091443aced39dbf477638c2bda43a1d08c4233a485ded",
+    "engine_process_sha256": "15d90f1882662b94b80f712483c28196b433adabc6794c7b9ecc76781a90d2cf",
+    "fixture_sha256": "1fc42a3eab4321f9549fafae9a1ce97d428aaf5b664e6a0478bdafc27dfaf54f",
+    "runner_sha256": "9c1b437009e6a68ac2f14a6ec519678577d2706f061d62d5019cfbd009670e67",
+    "cmake_sha256": "0c4e367bba7db688ae396531e5c0eab009e35a40b8d6aeb4db7793b38213cdf9",
+    "probe_executable_sha256": "823d69c04974f747e84dabe95dd3054640d2c79cafa69a9e8359d26fb7834e44",
+    "command": "bash tools/versioning-engine-spike/run.sh probe-seed",
+    "successful_fresh_process_runs": 3,
+    "checks_passed_per_run": 40,
+    "checks_failed_per_run": 0,
+    "exit_code_per_run": 0,
+    "source_and_seeded_child_count_per_case": 2,
+    "nonempty_child_marker_count_after_refusal": 1,
+    "fresh_process_native_reopen_count_per_case": 2,
+    "qt_cookie_added_name_signal_observed_on_reopen": false,
+    "disposable_profile_directories": [
+      "target/versioning-engine-spike/probe-runtime.J8kY8r",
+      "target/versioning-engine-spike/probe-runtime.6hLd9a",
+      "target/versioning-engine-spike/probe-runtime.mtRkC7"
+    ],
+    "regression_runs": [
+      {"configuration": "cookie-baseline", "checks_passed": 53, "checks_failed": 0, "exit_code": 0, "disposable_profile_directory": "target/versioning-engine-spike/probe-runtime.tQFCaR"},
+      {"configuration": "https-cookie", "checks_passed": 33, "checks_failed": 0, "exit_code": 0, "disposable_profile_directory": "target/versioning-engine-spike/probe-runtime.DggF52"},
+      {"configuration": "rtc-default", "checks_passed": 59, "checks_failed": 0, "exit_code": 0, "disposable_profile_directory": "target/versioning-engine-spike/probe-runtime.nMOso9"},
+      {"configuration": "rtc-strict-site-isolation", "checks_passed": 59, "checks_failed": 0, "exit_code": 0, "disposable_profile_directory": "target/versioning-engine-spike/probe-runtime.Zzsros"}
+    ],
+    "remaining": "Native restart proves two canonical records remain engine-readable after normal close, not cross-process member-by-member equality or crash durability. Qt cookieAdded names were not observed on reopen. No exclusive writer lease, fault-atomic cleanup, source-T0, merge, WebRTC absence certificate, or production integration."
+  },
+  "experimental_t0_race_overlay": {
+    "patch": "qt-6.11.2-t0-race-probe.patch",
+    "patch_sha256": "260aa2cebe403ba662dc65d49ef4ec209447dfdf91fd3673356aed9170362443",
+    "applies_after_patch_sha256": "2a37f9cdb98892a95829f9178ca94a922be57faac3a2bf497e2f0349bb98af28",
+    "scope": "synthetic write after the source's native complete-list callback but before seed; does not qualify a production source-owner lease"
+  },
+  "native_t0_race_experiment": {
+    "scope": "research-only source cookie jar starts with two synthetic persistent records; after the complete-list callback captures those two, an ordinary native setter adds a third source record before seed, then the destination exact-readback and independent source/child copies prove source three versus child two",
+    "t0_overlay_patch_sha256": "260aa2cebe403ba662dc65d49ef4ec209447dfdf91fd3673356aed9170362443",
+    "engine_library_sha256": "c9018da7b95c97cbbcb6543273be3d953e1f9f3d8440b6ca2e0bee9e4982ce97",
+    "fixture_sha256": "9096a2380f911e34cca958b4624012145c9b21958c38c42d64a47eb23eb60ecc",
+    "runner_sha256": "612a58b132973edd632cffcc4007520b133128ef6c03e9b96d92a597707c95c7",
+    "probe_executable_sha256": "0b3efeba59b333840fc861e9fe6320d3b135cda903ca5f6fea4c4bbb5f228985",
+    "command": "bash tools/versioning-engine-spike/run-t0.sh probe",
+    "successful_fresh_process_runs": 3,
+    "checks_passed_per_run": 7,
+    "checks_failed_per_run": 0,
+    "exit_code_per_run": 0,
+    "captured_source_and_child_count": 2,
+    "source_count_after_forced_post_snapshot_write": 3,
+    "disposable_profile_directories": [
+      "target/versioning-engine-spike/probe-runtime.HIj4vA",
+      "target/versioning-engine-spike/probe-runtime.b2S7DZ",
+      "target/versioning-engine-spike/probe-runtime.n4Thbe"
+    ],
+    "regression_runs": [
+      {"configuration": "disk-loaded-seed", "checks_passed": 40, "checks_failed": 0, "exit_code": 0, "disposable_profile_directory": "target/versioning-engine-spike/probe-runtime.pPX4yb"},
+      {"configuration": "cookie-baseline", "checks_passed": 53, "checks_failed": 0, "exit_code": 0, "disposable_profile_directory": "target/versioning-engine-spike/probe-runtime.6QkwoS"},
+      {"configuration": "https-cookie", "checks_passed": 33, "checks_failed": 0, "exit_code": 0, "disposable_profile_directory": "target/versioning-engine-spike/probe-runtime.2RfIUG"},
+      {"configuration": "rtc-default", "checks_passed": 59, "checks_failed": 0, "exit_code": 0, "disposable_profile_directory": "target/versioning-engine-spike/probe-runtime.zAPkrb"},
+      {"configuration": "rtc-strict-site-isolation", "checks_passed": 59, "checks_failed": 0, "exit_code": 0, "disposable_profile_directory": "target/versioning-engine-spike/probe-runtime.KLoPtw"}
+    ],
+    "remaining": "The forced ordering qualifies only a synthetic single-source post-callback write versus captured child snapshot. It does not bind a Ferric profile-owner generation, exclude competing source or child writers, prove concurrent response/script/service-worker ordering, or certify durable seed publication."
+  },
+  "native_t0_copy_operation_writer_followup": {
+    "date": "2026-10-07",
+    "scope": "research-only synthetic source copy-orchestration ordering: dispatch the multi-step public copy-existing probe and a synthetic public cookie setter before pumping Qt's event loop; the setter may complete during source/destination preflight before the actual GetAllCookies request, which must capture an exact complete four- or five-record cut; no user profile or real cookie values",
+    "patch_sha256": "260aa2cebe403ba662dc65d49ef4ec209447dfdf91fd3673356aed9170362443",
+    "fixture_sha256": "69dcea30774c6c59c57fdb6905b3912fc3a7f003366b87f33fa7788d4f326509",
+    "runner_sha256": "612a58b132973edd632cffcc4007520b133128ef6c03e9b96d92a597707c95c7",
+    "cookie_research_patch_stack_sha256": {
+      "capability_probes": "dc7df82d2ca32b0721d383c7b5ba367abd754d5ceb087f976fc756247c49fa8b",
+      "seed_if_empty_overlay": "2a37f9cdb98892a95829f9178ca94a922be57faac3a2bf497e2f0349bb98af28",
+      "t0_race_overlay": "260aa2cebe403ba662dc65d49ef4ec209447dfdf91fd3673356aed9170362443"
+    },
+    "source_path_audit_scope": "These digests are for the experimental source tree after the named cookie probe overlays were applied to the source-locked Qt 6.11.2 archive; they are not pristine upstream-file checksums.",
+    "source_path_audit_sha256": {
+      "qt_qwebenginecookiestore_cpp": "2fe50afb0fa4b1a8c635ab787a2b3280a54835b74c0ad4daddbc8a0ee14ea15d",
+      "qt_cookie_monster_delegate_cpp": "3c7596b491f783cd0289137db4ba3200514850f9eb4bc192cd0db8dc9dbd5d0c",
+      "chromium_cookie_manager_cc": "bc217f124f0a8faacef972cd716dde6643016ca69f9517b63732c5607c8bb73f",
+      "chromium_cookie_monster_cc": "8731578b1f7a7f40d42f3d3080d0f955df8215849a460e0c1a075bfe081011e9",
+      "chromium_cookie_monster_h": "0c90ee29434c10dcb9652d0a55b2cfcaaf814ba127fe610921a6d52c5f49e75b"
+    },
+    "probe_build_command": "cmake --build target/versioning-engine-spike/probe-build --target ferric-engine-legacy-cookie-probe --parallel 2",
+    "engine_runtime": {
+      "QtWebEngineCore_sha256": "cc40e5ad4e199d1ed8376ca1b4da961f40daa79799c0f490aa5865921e7cef5b",
+      "QtWebEngineProcess_sha256": "15d90f1882662b94b80f712483c28196b433adabc6794c7b9ecc76781a90d2cf",
+      "probe_executable_sha256": "41d492216c259878d6f20795fd4b3efe1d4c8b19271e71d80187c130840a184f"
+    },
+    "command": "bash tools/versioning-engine-spike/run-t0.sh probe",
+    "fresh_disposable_runs": 3,
+    "checks_passed_per_run": 11,
+    "checks_failed_per_run": 0,
+    "exit_code_per_run": 0,
+    "observed": {
+      "copy_probe_and_writer_dispatched_before_event_loop_pump": true,
+      "writer_present_at_actual_capture_each_run": true,
+      "allowed_complete_snapshot_counts": [4, 5],
+      "observed_snapshot_count_each_run": 5,
+      "exact_destination_readback_matches_reported_count": true,
+      "independent_source_count_after_writer_ack": 5,
+      "raw_cookie_values_written_to_logs": false,
+      "production_capability_enabled": false
+    },
+    "runs": [
+      {"path": "target/versioning-engine-spike/native-t0-copy-operation-writer-final-1.log", "sha256": "55a2093cd4a0cd4dbc778ab8b72a489aba49e39bf29e371ed144cb0e0057d1c0"},
+      {"path": "target/versioning-engine-spike/native-t0-copy-operation-writer-final-2.log", "sha256": "66a52560940f6ca65bd75c329e0e668ba70bb49e12347cd06dbd51937c337da3"},
+      {"path": "target/versioning-engine-spike/native-t0-copy-operation-writer-final-3.log", "sha256": "a2c53058ac41dcf01929157bbc52964207c748d438e74fa66367c8740aa8ca02"}
+    ],
+    "disposable_roots": [
+      "target/versioning-engine-spike/probe-runtime.8q3bsJ",
+      "target/versioning-engine-spike/probe-runtime.we4CSN",
+      "target/versioning-engine-spike/probe-runtime.3nGEe4"
+    ],
+    "remaining": "The public copy-existing probe performs multiple source/destination preflight reads, so this fixture demonstrates a writer dispatched during copy orchestration and included before the actual complete-list cut; it does not directly race a setter against the GetAllCookies request or mutate during CookieMonster's single-sequence map copy. It does not bind the copied cut to a Ferric profile-owner generation, exercise every network/script/service-worker/internal writer, exclude child writers, prove durable publication/crash recovery, or qualify production cookie capabilities."
+  },
+  "native_t0_pre_and_post_cut_followup": {
+    "date": "2026-10-07",
+    "scope": "research-only synthetic source snapshot boundary fixture: one acknowledged source write occurs before the GetAllCookies request, then the pinned engine overlay inserts a second source write after the complete-list callback but before seeding; no user profile or real cookie values",
+    "patch_sha256": "260aa2cebe403ba662dc65d49ef4ec209447dfdf91fd3673356aed9170362443",
+    "fixture_sha256": "4f8354556c747ae371369ff7819c9234d4f1b806d6a62be8879c720e7278848b",
+    "runner_sha256": "612a58b132973edd632cffcc4007520b133128ef6c03e9b96d92a597707c95c7",
+    "probe_build_command": "cmake --build target/versioning-engine-spike/probe-build --target ferric-engine-legacy-cookie-probe --parallel 2",
+    "engine_runtime": {
+      "QtWebEngineCore_sha256": "cc40e5ad4e199d1ed8376ca1b4da961f40daa79799c0f490aa5865921e7cef5b",
+      "QtWebEngineProcess_sha256": "15d90f1882662b94b80f712483c28196b433adabc6794c7b9ecc76781a90d2cf",
+      "probe_executable_sha256": "b63eb75f890482f4075ff238f61f6511439b56d161406e154a2ed24895d541a5"
+    },
+    "command": "bash tools/versioning-engine-spike/run-t0.sh probe",
+    "fresh_disposable_runs": 3,
+    "checks_per_run": 8,
+    "checks_failed_per_run": 0,
+    "exit_code_per_run": 0,
+    "observed": {
+      "two_original_records_present_before_probe": true,
+      "pre_snapshot_write_acknowledged_before_snapshot_request": true,
+      "snapshot_and_seed_include_pre_snapshot_write": true,
+      "engine_post_snapshot_write_occurs_before_seed": true,
+      "source_copy_count_after_post_snapshot_write": 4,
+      "exact_child_snapshot_count": 3,
+      "independent_child_copy_count": 3,
+      "raw_cookie_values_written_to_logs": false,
+      "production_capability_enabled": false
+    },
+    "runs": [
+      {"path": "target/versioning-engine-spike/native-t0-boundary-before-after-1.log", "sha256": "6134b06b9c3ebe527a86df66355ff1dfe5518209f226d24e946975fff7e1566a"},
+      {"path": "target/versioning-engine-spike/native-t0-boundary-before-after-2.log", "sha256": "6cb99d97a5491d69bf6372a3bbc5113104203e9f010d04bb68de0202f7f7b6b6"},
+      {"path": "target/versioning-engine-spike/native-t0-boundary-before-after-3.log", "sha256": "c5df15a499c579da36b3e297e6ce79b758d25cd027c1dff19f66a22f8730a6fc"}
+    ],
+    "disposable_roots": [
+      "target/versioning-engine-spike/probe-runtime.eyAplU",
+      "target/versioning-engine-spike/probe-runtime.dq3zKC",
+      "target/versioning-engine-spike/probe-runtime.rBVUHy"
+    ],
+    "remaining": "This covers a controlled serial write before and after the copied-list boundary. It does not test simultaneous competing HTTP/script/service-worker mutations, bind the snapshot to a Ferric source-owner generation, exclude child writers, prove durable publication/crash recovery, or qualify production cookie capabilities."
+  },
+  "experimental_unpublished_child_overlay": {
+    "patch": "qt-6.11.2-unpublished-child-probe.patch",
+    "patch_sha256": "3847063bfec2ab68d0aaf2adceb7117c814d595c10732908f06d83ff71c987b1",
+    "applies_after_patch_sha256": "260aa2cebe403ba662dc65d49ef4ec209447dfdf91fd3673356aed9170362443",
+    "scope": "research-only explicit default storage-partition/cookie-manager initialization without a child QWebEnginePage; no production writer lease or capability flag"
+  },
+  "native_unpublished_child_experiment": {
+    "scope": "two disk-loaded synthetic edge sources seed exactly into separate fresh persistent children before any child page exists; each child is then published to an about:blank page, rechecked natively, and reopened after normal close",
+    "overlay_patch_sha256": "3847063bfec2ab68d0aaf2adceb7117c814d595c10732908f06d83ff71c987b1",
+    "runner_sha256": "ba76b5c410df9cea97543d35cc83120f3e417bd4ad47be58a0c45f32f570ce8e",
+    "base_runner_sha256": "f4132ad89fb1d592404f5b840b8c447487360f50d66565fcf72de3426a47a3ad",
+    "fixture_sha256": "679d8009309e85a019bace4346293e70f22a5dd573c9083c0201904bec7d6b37",
+    "engine_library_sha256": "59b59bc23d83771c36ff635d10e115664962508205889ab984da688952db4173",
+    "probe_executable_sha256": "c8a3af4968f4c772f70b930167c9572bd6daa2c11c41603184ae6125a4b61def",
+    "command": "bash tools/versioning-engine-spike/run-unpublished.sh probe",
+    "successful_fresh_process_runs": 3,
+    "checks_passed_per_run": 46,
+    "checks_failed_per_run": 0,
+    "exit_code_per_run": 0,
+    "source_and_prepublication_child_count_per_case": 2,
+    "postpublication_native_source_count_per_case": 2,
+    "fresh_process_native_reopen_count_per_case": 2,
+    "disposable_profile_directories": [
+      "target/versioning-engine-spike/probe-runtime.laJH7k",
+      "target/versioning-engine-spike/probe-runtime.pxZbUr",
+      "target/versioning-engine-spike/probe-runtime.ZD6Vji"
+    ],
+    "regression_runs": [
+      {"configuration": "disk-loaded-seed", "checks_passed": 40, "checks_failed": 0, "exit_code": 0, "disposable_profile_directory": "target/versioning-engine-spike/probe-runtime.uzCDXh"},
+      {"configuration": "cookie-baseline", "checks_passed": 53, "checks_failed": 0, "exit_code": 0, "disposable_profile_directory": "target/versioning-engine-spike/probe-runtime.lktk0w"},
+      {"configuration": "https-cookie", "checks_passed": 33, "checks_failed": 0, "exit_code": 0, "disposable_profile_directory": "target/versioning-engine-spike/probe-runtime.MhERS4"},
+      {"configuration": "rtc-default", "checks_passed": 59, "checks_failed": 0, "exit_code": 0, "disposable_profile_directory": "target/versioning-engine-spike/probe-runtime.3pCTc5"},
+      {"configuration": "rtc-strict-site-isolation", "checks_passed": 59, "checks_failed": 0, "exit_code": 0, "disposable_profile_directory": "target/versioning-engine-spike/probe-runtime.EFdkMe"}
+    ],
+    "remaining": "Without the explicit page-free initialization hook, cookieStore alone returned Unavailable with zero records. The passing hook does not prove no browser-process writer, no competing application/native writer, an exclusive CookieMonster mutation lease, profile-owner generation, crash durability, exact cross-process member equality, or failure cleanup. Production remains disabled."
+  },
+  "native_cookie_owner_loss_experiment": {
+    "scope": "research-only cookie-copy callback ownership when the exact persistent source or destination QObject/profile is destroyed before the native reply is routed; legacy and older-expiry fixtures use only synthetic disposable data",
+    "qt_git_commit": "a33fa2a897e5ee58e385b3f88dc247d99fca56db",
+    "chromium_gitlink": "5170777d28bee1ce92cc693a0dbf2ad01492e5cf",
+    "base_engine_patch_sha256": "dc7df82d2ca32b0721d383c7b5ba367abd754d5ceb087f976fc756247c49fa8b",
+    "seed_overlay_patch_sha256": "2a37f9cdb98892a95829f9178ca94a922be57faac3a2bf497e2f0349bb98af28",
+    "t0_overlay_patch_sha256": "260aa2cebe403ba662dc65d49ef4ec209447dfdf91fd3673356aed9170362443",
+    "unpublished_child_overlay_patch_sha256": "3847063bfec2ab68d0aaf2adceb7117c814d595c10732908f06d83ff71c987b1",
+    "fixture_sha256": "1a04f496b723fab7a45037ce9aca955e35e89f4a5975a50ab1a671823014cd83",
+    "runner_sha256": "405b8ef5d53273447b5b1064bb69ea7797cd64c79e15f983d91ca6a99f8e2593",
+    "entrypoint_sha256": "c54c11af0ba47504d56e413fe6a66882806b9900d3463eae268a3a4844823756",
+    "engine_library_sha256": "f94ab59887eca83747382ce9c5f3e6baeb8f73e9c025cb6af1e29c4431fd1b87",
+    "engine_process_sha256": "15d90f1882662b94b80f712483c28196b433adabc6794c7b9ecc76781a90d2cf",
+    "probe_executable_sha256": "c89fc28bc5202d6c648e83dc216df1c686a15d6105bf41fbd676ecf2a08eba25",
+    "command": "bash tools/versioning-engine-spike/run-unpublished.sh owner-loss",
+    "fresh_campaign_runs": 3,
+    "checks_passed_per_campaign": 32,
+    "checks_failed_per_campaign": 0,
+    "exit_code_per_campaign": 0,
+    "owner_loss_cases_per_campaign": 4,
+    "destination_owner_loss_returns_owner_lost_once": true,
+    "source_owner_loss_returns_owner_lost_once": true,
+    "source_remains_exactly_copyable_after_destination_owner_loss": true,
+    "legacy_and_older_expiry_control_sources": true,
+    "production_capability_enabled": false,
+    "disposable_campaign_roots": [
+      "target/versioning-engine-spike/probe-runtime.GoUrkX",
+      "target/versioning-engine-spike/probe-runtime.wfi3nj",
+      "target/versioning-engine-spike/probe-runtime.Yqw34p"
+    ],
+    "remaining": "A destination that may have been mutated when its owner is destroyed is disposable and is never reused. This proves only callback retirement for QObject/profile owner destruction on these synthetic paths. It does not simulate a bound-but-disconnected Mojo service, prove source generation or concurrent-writer exclusion, establish crash-durable seed publication, or enable a production cookie capability."
+  },
+  "native_cookie_service_loss_experiment": {
+    "experiment_date": "2026-10-06",
+    "scope": "research-only loss of an in-flight CookieManager.GetAllCookies Mojo reply by disconnecting the bound cookie-manager receiver while the backing-store operation is pending; this simulates a disconnected pipe, not network-service process death, crash, or restart",
+    "qt_git_commit": "a33fa2a897e5ee58e385b3f88dc247d99fca56db",
+    "chromium_gitlink": "5170777d28bee1ce92cc693a0dbf2ad01492e5cf",
+    "qt_webengine": "6.11.2",
+    "chromium_version": "140.0.7339.225",
+    "security_patch": "151.0.7922.71",
+    "overlay_patch": "qt-6.11.2-cookie-service-loss-probe.patch",
+    "overlay_patch_sha256": "e954240eebf34aab4f40fc34a1c6a2f3758dd798ecf33d15cfee67437fcb84bd",
+    "patch_application_check": "The campaign used the source-pinned disposable Qt source tree, where the cumulative overlay was already applied. A reverse dry-run against that later cumulative tree failed on overlapping hunks; clean sequential application of this single patch from its intended intermediate overlay state was not independently re-run, so this entry does not claim standalone clean-tree reproducibility.",
+    "modified_engine_source_sha256": {
+      "src/3rdparty/chromium/services/network/public/mojom/cookie_manager.mojom": "65be9c38f43c37b29c0545e1932c18517fc8f07eafa44f8b9dd754ff14c6de78",
+      "src/3rdparty/chromium/services/network/cookie_manager.h": "10dfa3f2c65afd6aa8112853c14dacd510b27afd3d29a2625a9fa0f5bc73a451",
+      "src/3rdparty/chromium/services/network/cookie_manager.cc": "bc217f124f0a8faacef972cd716dde6643016ca69f9517b63732c5607c8bb73f",
+      "src/core/api/qwebenginecookiestore.h": "85b95aef774fcf3e888d55287e48d72bbf1e9e30f83b96e1f9b5049a7a464e9c",
+      "src/core/api/qwebenginecookiestore.cpp": "2fe50afb0fa4b1a8c635ab787a2b3280a54835b74c0ad4daddbc8a0ee14ea15d",
+      "src/core/net/cookie_monster_delegate_qt.h": "5e0c05d8dc0233ec9cf3e06490307ba0ac7bc0b500bcb4745692bfec7a7b4de2",
+      "src/core/net/cookie_monster_delegate_qt.cpp": "3c7596b491f783cd0289137db4ba3200514850f9eb4bc192cd0db8dc9dbd5d0c"
+    },
+    "fixture": "legacy_cookie_probe.cpp",
+    "fixture_sha256": "db9f429271f72ea0f62fa41a40fa68bcc1b9c7c3d03410bb291311b0f1a875ad",
+    "runner": "run.sh",
+    "runner_sha256": "10e2404e8e9f369d63f88bc7f31f62f3ad1cfd937965246973b6af30a2ee3d81",
+    "experiment_entrypoint": "run-network-disconnect.sh",
+    "experiment_entrypoint_sha256": "d30472715eed336e9a9d45fce8987eb3705ee4d0ec3266e26c64872b368ec74b",
+    "build": {
+      "jobs": 2,
+      "exit_code": 0,
+      "install_probe_exit_code": 0,
+      "products": {
+        "QtWebEngineCore_sha256": "6cd46fe17e5c3c73ba6c42a2fd9b7c07d2db24de7049e00112ee5012c5ba6f41",
+        "QtWebEngineProcess_sha256": "15d90f1882662b94b80f712483c28196b433adabc6794c7b9ecc76781a90d2cf",
+        "legacy_cookie_probe_sha256": "04a5303ff8a86720fa4a2e6d449b5d92544aca2c8ec062f7e6568a8c911334e4"
+      },
+      "note": "An earlier three-job compile was killed by memory pressure (exit 137); the build was reconfigured at two jobs and then completed, including QtWebEngineCore, Widgets, Quick, and install-probe."
+    },
+    "command": "bash tools/versioning-engine-spike/run.sh probe-service-loss",
+    "successful_fresh_process_cases": 6,
+    "checks_passed_total": 54,
+    "checks_failed_total": 0,
+    "checks_per_stage": 27,
+    "exit_code": 0,
+    "source_loss_result": {
+      "fresh_process_cases": 3,
+      "checks_per_case": 9,
+      "status": "TimedOut",
+      "status_code": 6,
+      "source_count": 0,
+      "destination_count": 0,
+      "completion_count": 1
+    },
+    "destination_loss_result": {
+      "fresh_process_cases": 3,
+      "checks_per_case": 9,
+      "status": "TimedOut",
+      "status_code": 6,
+      "source_count": 2,
+      "destination_count": -1,
+      "completion_count": 1,
+      "possibly_mutated_child_discarded": true
+    },
+    "production_capability_enabled": false,
+    "campaign_roots": [
+      "target/versioning-engine-spike/probe-runtime.jQN65T",
+      "target/versioning-engine-spike/probe-runtime.TGWa1T",
+      "target/versioning-engine-spike/probe-runtime.fmmI1N",
+      "target/versioning-engine-spike/probe-runtime.CfGwxB",
+      "target/versioning-engine-spike/probe-runtime.rjQqfw",
+      "target/versioning-engine-spike/probe-runtime.kcK5nA"
+    ],
+    "run_log": {
+      "path": "target/versioning-engine-spike/native-probe-cookie-service-loss-1.log",
+      "sha256": "fa825bd0c28873247fa3116941cc400802eaaa86a52e11f94db2454b0b8d2ca0"
+    },
+    "regression_runs": [
+      {"configuration": "cookie-baseline", "checks_passed": 53, "checks_failed": 0, "exit_code": 0, "log": "target/versioning-engine-spike/native-probe-cookie-service-loss-baseline-1.log", "log_sha256": "da468a1dd4eb3475fa3352acabd6510be2ad347379d34bd2622c23f645ecf315", "disposable_profile_directory": "target/versioning-engine-spike/probe-runtime.iU6GE4"},
+      {"configuration": "legacy-and-older-expiry", "checks_passed": 16, "checks_failed": 0, "exit_code": 0, "log": "target/versioning-engine-spike/native-probe-cookie-service-loss-legacy-1.log", "log_sha256": "5031c9b22b7951e7097773124d8291213b6b2b464e987518d1ba51efb5ee15af", "disposable_profile_directory": "target/versioning-engine-spike/probe-runtime.nR7msP"},
+      {"configuration": "https-cookie", "checks_passed": 33, "checks_failed": 0, "exit_code": 0, "log": "target/versioning-engine-spike/native-probe-cookie-service-loss-https-1.log", "log_sha256": "d017b997b396a7c0253936e65f539f0190872a5cf5c9bfae8d91570befaeab11", "disposable_profile_directory": "target/versioning-engine-spike/probe-runtime.w8GZJz"},
+      {"configuration": "rtc-default", "checks_passed": 107, "checks_failed": 0, "exit_code": 0, "log": "target/versioning-engine-spike/native-probe-cookie-service-loss-rtc-default-1.log", "log_sha256": "0583b3fbeadbe4691cd00e15a79b1b11e089625265ceb595c5174525630e9140", "disposable_profile_directory": "target/versioning-engine-spike/probe-runtime.p4NfjO"},
+      {"configuration": "rtc-strict-site-isolation", "checks_passed": 107, "checks_failed": 0, "exit_code": 0, "log": "target/versioning-engine-spike/native-probe-cookie-service-loss-rtc-oop-1.log", "log_sha256": "e0f01122818f534886691bb87274e19fa649d301c963e4d08e23c5be8b559a0d", "disposable_profile_directory": "target/versioning-engine-spike/probe-runtime.nlP8Gc"}
+    ],
+    "remaining": "This demonstrates conservative exactly-once timeout completion for the tested disconnected-pipe paths only. It does not simulate network-service process failure, service recreation, profile generation, concurrent writer exclusion, crash durability, atomic cleanup, exact unknown destination readback, general network failure, or complete WebRTC absence. Production cookie and WebRTC capabilities remain disabled."
+  },
+  "experimental_rtc_admission_overlay": {
+    "patch": "qt-6.11.2-rtc-admission-probe.patch",
+    "patch_sha256": "215095e53a6ca7b28f58ef4a413fea2dcb956ec8ab40bf568406ffcce35094b9",
+    "applies_after_patch_sha256": "2a37f9cdb98892a95829f9178ca94a922be57faac3a2bf497e2f0349bb98af28",
+    "fixture": "rtc_registry_probe.cpp",
+    "fixture_sha256": "d443f8bbc1de76d8315afc186c54629c478d5c601338c2b233660bd9a3fe1662",
+    "last_exercised_fixture_sha256": "d443f8bbc1de76d8315afc186c54629c478d5c601338c2b233660bd9a3fe1662",
+    "runner": "run.sh",
+    "runner_sha256": "b90c7abf24f8ea019a09142e34acc61d7b54a408d599bdde39148a0c19833512",
+    "status": "current_fixture_passed_three_fresh_runs_per_configuration",
+    "patch_application_check": "Capability, seed-if-empty, RTC admission, fake-desktop and Qt Quick overlays were extracted from the pinned Qt 6.11.2 archive and applied in order with --fuzz=0 in a disposable temporary source tree.",
+    "scope": "candidate per-WebContents pending-to-active media request handoff, lease invalidation on request admission, fake-audio, fake-camera, combined fake audio/video and permission-denial routes with pending/active refusal, synthetic-frame delivery and stop cleanup, Linux pidfd-guarded renderer-loss lease invalidation, pending-count saturation and active-counter overflow/underflow poisoning, simulated fake-screen UI handoff, and real page-side screen:-3:0 capture with synthetic-frame delivery; not complete RTC absence or production support",
+    "runtime_results": {
+      "default": {"fixture_sha256": "d443f8bbc1de76d8315afc186c54629c478d5c601338c2b233660bd9a3fe1662", "fresh_process_runs": 3, "exit_code": 0, "focused_fixture_passed": true, "synthetic_track_frame_delivered": true, "renderer_pidfd_termination_and_exactly_once_invalidation": true, "production_capability_enabled": false},
+      "strict_site_isolation": {"fixture_sha256": "d443f8bbc1de76d8315afc186c54629c478d5c601338c2b233660bd9a3fe1662", "fresh_process_runs": 3, "exit_code": 0, "focused_fixture_passed": true, "synthetic_track_frame_delivered": true, "cross_origin_renderer_processes_observed": 2, "renderer_pidfd_termination_and_exactly_once_invalidation": true, "production_capability_enabled": false}
+    },
+    "runtime_artifacts": {
+      "QtWebEngineCore_sha256": "f94ab59887eca83747382ce9c5f3e6baeb8f73e9c025cb6af1e29c4431fd1b87",
+      "QtWebEngineProcess_sha256": "15d90f1882662b94b80f712483c28196b433adabc6794c7b9ecc76781a90d2cf",
+      "rtc_registry_probe_fixture_sha256": "d443f8bbc1de76d8315afc186c54629c478d5c601338c2b233660bd9a3fe1662",
+      "rtc_registry_probe_executable_sha256": "273defadd695e6f7df502a23983fc2094871f5209522b9c27f3ad6022ecaeb96"
+    },
+    "frame_assertion_note": "The first offscreen presentation-callback assertion did not fire; the fixture now reads the actual track through MediaStreamTrackProcessor and requires nonzero frame dimensions, which passed in both configurations.",
+    "renderer_loss_guard": "Uses only QWebEnginePage::renderProcessPid() for the target; validates the exact isolated QtWebEngineProcess executable and a bounded ancestry of at most two intermediate QtWebEngineProcess helpers rooted at the fixture, captures every process start identity, opens a pidfd, repeats the ancestry/identity check, and only then signals the same pidfd. Chromium argv is not treated as stable evidence.",
+    "run_logs": [
+      {"path": "target/versioning-engine-spike/native-probe-rtc-current-default-final-1.log", "sha256": "f3dfade47f67c926cb77fef39b6d5f1a67f6cfbc272bbb9437ec211c05d3c6d3"},
+      {"path": "target/versioning-engine-spike/native-probe-rtc-current-default-final-2.log", "sha256": "c12e76350cb52d1f01dae63c7748ba11364efffa7c9d316bcc5b8607965e1515"},
+      {"path": "target/versioning-engine-spike/native-probe-rtc-current-default-final-3.log", "sha256": "f88c5c998cce08df292fb7842185531e203ea2d852a9d4e2494e4382fa6d2991"},
+      {"path": "target/versioning-engine-spike/native-probe-rtc-current-oop-final-1.log", "sha256": "6a7686605933a819549c73c7efb5ddf19565c33715f2da40ee9c082c53ec29e8"},
+      {"path": "target/versioning-engine-spike/native-probe-rtc-current-oop-final-2.log", "sha256": "36ce69be58542a05e4d8a93ca90741cbee2cdd78a19ca4aa270a70f4486177bd"},
+      {"path": "target/versioning-engine-spike/native-probe-rtc-current-oop-final-3.log", "sha256": "5f642def3f2e05daf8cc7b52270dbbc4b45021eaf83ce3df29e46ec3fbc3b2a9"}
+    ],
+    "remaining": "The 2026-10-05 current fixture passed three fresh default and three strict-site-isolation runs on the pinned off-the-record Qt build. Results qualify only the exercised synthetic fake-device routes, bounded Qt counter handoffs, registry cases and exact renderer-loss cleanup. Physical camera/microphone devices, untested renderer/activity creation paths and capture categories, callback loss, full patch-chain reconstruction, production Rust ownership and shipping release qualification remain open. Synthetic capture uses Chromium's fixed fake devices only and never selects an OS capture source. These runs do not prove complete WebRTC absence; production remains disabled."
+  },
+  "experimental_rtc_fake_desktop_overlay": {
+    "patch": "qt-6.11.2-rtc-fake-desktop-probe.patch",
+    "patch_sha256": "2529235421b35ebf0aaeb084b49531811fb1f72bf9e24cdaadb7b5e671ff8e83",
+    "applies_after_rtc_admission_patch_sha256": "215095e53a6ca7b28f58ef4a413fea2dcb956ec8ab40bf568406ffcce35094b9",
+    "scope": "disposable fake-ID-only DesktopCaptureDevice subclass with bounded 640x480 synthetic frame generation for a native screen:-3:0 media-route experiment; never selects an OS capturer",
+    "status": "built_and_exercised_in_both_rtc_configurations",
+    "patch_application_check": "The synthetic fake-source implementation was built into the isolated Qt engine used by the focused native and strict-site-isolation probes.",
+    "runtime_result": "Both focused configurations observed a nonzero synthetic video frame on the captured track, refused an empty lease while the track was live, and observed stop cleanup; no OS capture source was selected."
+  },
+  "experimental_rtc_quick_bridge_overlay": {
+    "patch": "qt-6.11.2-rtc-quick-bridge-probe.patch",
+    "patch_sha256": "bf00802e3063584aa1beb67993efe572e65976a67282af165d21ef555a854a0e",
+    "last_exercised_patch_sha256": "bf00802e3063584aa1beb67993efe572e65976a67282af165d21ef555a854a0e",
+    "applies_after_patch_sha256": "2529235421b35ebf0aaeb084b49531811fb1f72bf9e24cdaadb7b5e671ff8e83",
+    "runner": "run.sh",
+    "runner_sha256": "96e767803d1e886728b3cac701d3f19c2aab368fa2b47da39985c66b899a18a9",
+    "cmake": "CMakeLists.txt",
+    "cmake_sha256": "5d3c22395d26be81bcebcc07bc84eb2ced41ff9ff41c57b97f8ec14f40963ed0",
+    "fixtures": [
+      {"path": "rtc_quick_bridge_probe.cpp", "sha256": "4d502c1f69c168ace133023448e1392bd96e33ed46979a30dede214adb93a81e"},
+      {"path": "rtc_quick_bridge_probe.qml", "sha256": "3dc489ddf4176c5cd254e067cca28901eb1870d9bff14ea0668f22c6c3b710ab"}
+    ],
+    "last_exercised_fixtures": [
+      {"path": "rtc_quick_bridge_probe.cpp", "sha256": "4d502c1f69c168ace133023448e1392bd96e33ed46979a30dede214adb93a81e"},
+      {"path": "rtc_quick_bridge_probe.qml", "sha256": "3dc489ddf4176c5cd254e067cca28901eb1870d9bff14ea0668f22c6c3b710ab"}
+    ],
+    "command": "bash tools/versioning-engine-spike/run.sh probe-rtc-quick",
+    "status": "current_patch_and_fixture_passed_three_fresh_runs",
+    "patch_application_check": "The current patch passed a zero-fuzz reverse dry run against the pinned Qt Quick source, rebuilt the isolated QtWebEngineQuick library, and loaded it through the research install prefix.",
+    "engine_libraries": {
+      "QtWebEngineCore_sha256": "f94ab59887eca83747382ce9c5f3e6baeb8f73e9c025cb6af1e29c4431fd1b87",
+      "QtWebEngineQuick_sha256": "186b31f5a716230bcb6093e3fd0dcae219618eb56b1900c953cf0b9917ffa630",
+      "QtWebEngineProcess_sha256": "15d90f1882662b94b80f712483c28196b433adabc6794c7b9ecc76781a90d2cf",
+      "probe_executable_sha256": "329aadb272b5bad5be1a8cf2a109a29f9c6065e2432820b6c16042d87bb466a8"
+    },
+    "runtime_result": {
+      "fixture_cpp_sha256": "22b0f885b845b7e38d4aff1a1ea7f45eca16f94f1c183ed5a871d7bdcf2a266c",
+      "fixture_qml_sha256": "cf96e6b94be0efba0aa6899522af1a1b8ac132d23b3f4bc4de416a17eb49e750",
+      "fresh_process_runs": 3,
+      "exit_code": 0,
+      "exact_view_empty_lease": true,
+      "overlapping_acquire_refused": true,
+      "foreign_thread_guards_preserved_lease": true,
+      "lifecycle_exit_and_pending_acquire_race": true,
+      "profile_adapter_replacement": true,
+      "synthetic_camera_permission_frame_refusal_and_cleanup": true,
+      "synthetic_microphone_permission_refusal_and_cleanup": true,
+      "synthetic_combined_capture_permission_frame_refusal_and_cleanup": true,
+      "closed_live_peer_remained_registered": true,
+      "same_view_context_destruction_cleared_registration": true,
+      "renderer_pidfd_signal": true,
+      "renderer_termination_observed": true,
+      "exactly_one_owner_invalidation": true,
+      "application_world_data_peer_observed_and_invalidated": true,
+      "application_world_synthetic_microphone_pending_active_cleanup": true,
+      "production_capability_enabled": false
+    },
+    "scope": "three fresh off-the-record Qt Quick exact-view owner runs for retained empty-registry leases, synthetic fake camera and combined capture routes, synthetic microphone admission in ApplicationWorld, lifecycle/foreign-thread guards, profile replacement, data-only peer registration and close semantics in ApplicationWorld, same-view document destruction, and renderer-loss invalidation; diagnostic capability research only",
+    "run_logs": [
+      {"path": "target/versioning-engine-spike/native-probe-rtc-quick-current-1.log", "sha256": "5cf55c350be550d9a68fd697eb807ae344e774048854c11efb43e69bbfa7abe7"},
+      {"path": "target/versioning-engine-spike/native-probe-rtc-quick-current-2.log", "sha256": "d7024677bad8f00bfb904dd5d06511c81b58fa7e1b8134f9dce3d428c13d39e4"},
+      {"path": "target/versioning-engine-spike/native-probe-rtc-quick-current-3.log", "sha256": "3f01f09992071b0257f6d7ad53778de68d757bf6df98c09f21c842269883f1fb"}
+    ],
+    "application_world_peer_probe": {
+      "date": "2026-10-06",
+      "fixture_qml_sha256": "d9b971d6a8aa0f02b952c7ce76afb73ee91718ec0ded0139bdd9897e57a596a0",
+      "command": "bash tools/versioning-engine-spike/run.sh probe-rtc-quick",
+      "fresh_process_runs": 3,
+      "exit_code_per_run": 0,
+      "application_world_data_peer_observed_and_invalidated": true,
+      "disposable_runtime_directories": [
+        "target/versioning-engine-spike/probe-runtime.i0HKM6",
+        "target/versioning-engine-spike/probe-runtime.THWNFe",
+        "target/versioning-engine-spike/probe-runtime.Q4ze2O"
+      ],
+      "scope": "Exact Qt Quick view creates and closes synthetic data-only RTCPeerConnections through ApplicationWorld; the pinned native peer registry observes them, and each dispatch revokes the held lease before script execution.",
+      "pinned_blink_exposure_audit": {
+        "rtcp_peer_connection_idl": "src/3rdparty/chromium/third_party/blink/renderer/modules/peerconnection/rtc_peer_connection.idl",
+        "rtcp_peer_connection_idl_sha256": "6202cd62b1c6e7114b3814ef6d42b7c55f26fac7bc0ccf36e5351c25c6ff8e66",
+        "media_devices_idl": "src/3rdparty/chromium/third_party/blink/renderer/modules/mediastream/media_devices.idl",
+        "media_devices_idl_sha256": "76467df0081c360101ba8807b00cd2c28ea622f26e222e0f2262c70b1b0518d0",
+        "result": "The pinned Blink IDL declares RTCPeerConnection and MediaDevices Exposed=Window; this excludes direct dedicated-worker API exposure on this revision, not all renderer/media activity."
+      },
+      "production_capability_enabled": false
+    },
+    "application_world_capture_probe": {
+      "date": "2026-10-07",
+      "fixture_qml_sha256": "cf96e6b94be0efba0aa6899522af1a1b8ac132d23b3f4bc4de416a17eb49e750",
+      "command": "bash tools/versioning-engine-spike/run.sh probe-rtc-quick",
+      "fresh_process_runs": 3,
+      "exit_code_per_run": 0,
+      "synthetic_microphone_pending_permission_refused": true,
+      "synthetic_microphone_active_stream_refused": true,
+      "synthetic_microphone_track_stop_released_interlock": true,
+      "disposable_runtime_directories": [
+        "target/versioning-engine-spike/probe-runtime.eJiQmy",
+        "target/versioning-engine-spike/probe-runtime.2w5Sbq",
+        "target/versioning-engine-spike/probe-runtime.3CXI63"
+      ],
+      "scope": "Exact Qt Quick view requests a synthetic fake-microphone stream from ApplicationWorld; the pending permission and active stream both block the diagnostic empty-registry lease, and track stop allows a fresh empty lease.",
+      "production_capability_enabled": false
+    },
+    "application_world_oopif_probe": {
+      "date": "2026-10-07",
+      "fixture_cpp_sha256": "4d502c1f69c168ace133023448e1392bd96e33ed46979a30dede214adb93a81e",
+      "fixture_qml_sha256": "3dc489ddf4176c5cd254e067cca28901eb1870d9bff14ea0668f22c6c3b710ab",
+      "owned_https_fixture_sha256": "76d455ac2fbd8e619a40df164616e982028f28e345e5d4cab5c39dbcb59c3d0f",
+      "runner_sha256": "b90c7abf24f8ea019a09142e34acc61d7b54a408d599bdde39148a0c19833512",
+      "probe_executable_sha256": "329aadb272b5bad5be1a8cf2a109a29f9c6065e2432820b6c16042d87bb466a8",
+      "strict_command": "bash tools/versioning-engine-spike/run.sh probe-rtc-quick-oop",
+      "strict_fresh_process_runs": 3,
+      "strict_exit_code_per_run": 0,
+      "default_command": "bash tools/versioning-engine-spike/run.sh probe-rtc-quick",
+      "default_fresh_process_runs": 1,
+      "default_exit_code": 0,
+      "cross_origin_child_peer_created_in_application_world": true,
+      "exact_view_registry_observed_peer": true,
+      "strict_site_isolation_frames_at_least": 2,
+      "strict_site_isolation_renderer_processes_at_least": 2,
+      "same_view_reload_cleared_child_peer_registration": true,
+      "scope": "The exact Qt Quick view enumerates its WebEngineFrame child and dispatches RTCPeerConnection creation directly to that cross-origin frame in ApplicationWorld. Strict --site-per-process runs observe the child through the exact-view native registry with at least two frames and renderer processes, then reload and confirm a fresh empty registry. This validates one bounded child-frame path only.",
+      "disposable_runtime_directories": [
+        "target/versioning-engine-spike/probe-runtime.CxbnQu",
+        "target/versioning-engine-spike/probe-runtime.eHjXT9",
+        "target/versioning-engine-spike/probe-runtime.vNwFmv",
+        "target/versioning-engine-spike/probe-runtime.MdeF9E"
+      ],
+      "production_capability_enabled": false
+    },
+    "chromium_capture_state_source_inspection": {
+      "date": "2026-10-07",
+      "chromium_gitlink": "5170777d28bee1ce92cc693a0dbf2ad01492e5cf",
+      "source_files": {
+        "content/public/browser/web_contents_observer.h": "3bc7ffccccf43b62c8256983a39824e9dac418c34424028f1b0a8e34517211b6",
+        "content/public/browser/web_contents.h": "c24ba0ffa58c6abb6b92f9d471752f9f31815f32c803a19996048a1f34a64459",
+        "content/browser/renderer_host/render_frame_host_impl.h": "cae129e8ec78f1dc9980c4aa9cf6d98025594e8643749bea8964f6f1b2343ac4",
+        "content/browser/renderer_host/render_frame_host_impl.cc": "4ebb8f153037f70b3e0553a6d534e4997a210d0ddeb1aaee188ff3344e632d41",
+        "content/browser/web_contents/web_contents_impl.cc": "d1de8af312ae496c9b596c78a9241eb87c06f0b77c057c9cfb002369548750d6"
+      },
+      "findings": {
+        "per_frame_capture_start_stop_observer": true,
+        "web_contents_frame_traversal_includes_bfcache_and_prerender": true,
+        "internal_per_frame_capture_snapshot_query": true,
+        "snapshot_query_is_public_render_frame_host_api": false,
+        "adapter_bridge_built_after_inspection": true,
+        "followup_runtime_probe_qualified": false
+      },
+      "scope": "This entry records static source inspection only. The separate test-only adapter bridge and its failed strict OOPIF run are recorded in child_frame_capture_adapter_followup below; neither qualifies a production absence certificate.",
+      "production_capability_enabled": false
+    },
+    "child_frame_capture_adapter_followup": {
+      "date": "2026-10-07",
+      "patch": "qt-6.11.2-rtc-child-frame-capture-probe.patch",
+      "patch_sha256": "e22b49005ca533eec3f667d481c4e0dca44b847dcf6574dfd22e83b24f4f6f8c",
+      "applies_after_patch_sha256": "bf00802e3063584aa1beb67993efe572e65976a67282af165d21ef555a854a0e",
+      "runner": "run.sh",
+      "runner_sha256": "b84d6c2a8e775ee03f943d0b895fe98829994734776e3345d0d3a73757d383f9",
+      "fixtures": [
+        {
+          "path": "rtc_quick_bridge_probe.cpp",
+          "sha256": "d0813cb16dd46cf8f71b443c259bdd15cde58ae987ab0be57d5b1fcb04d58e4b"
+        },
+        {
+          "path": "rtc_quick_bridge_probe.qml",
+          "sha256": "2b07a297c3d915bcfcb2bbf516568412d8478826b1eddf1ce55af82d63b5baad"
+        },
+        {
+          "path": "owned_https_fixture.h",
+          "sha256": "b49b3eaa9755e51e17b477bb7158e9471b2ad9eddbb6caa73cc9fc48cf5ff9b3"
+        }
+      ],
+      "command": "bash tools/versioning-engine-spike/run.sh probe-rtc-quick-capture-oop",
+      "strict_fresh_process_runs": 1,
+      "exit_code": 1,
+      "runtime_result": {
+        "cross_origin_child_page_present": true,
+        "exact_view_empty_lease_before_synthetic_injection": true,
+        "synthetic_child_rfh_capture_injection_attempted": true,
+        "frame_capture_query_after_injection": false,
+        "no_capture_query_after_injection": true,
+        "capture_observer_invalidation_observed": false,
+        "production_capability_enabled": false
+      },
+      "strict_control": {
+        "command": "bash tools/versioning-engine-spike/run.sh probe-rtc-quick-oop",
+        "fresh_process_runs": 1,
+        "exit_code": 0,
+        "exact_view_renderer_loss_invalidation": true,
+        "disposable_runtime_directory": "target/versioning-engine-spike/probe-runtime.EY6gIQ"
+      },
+      "engine_libraries": {
+        "QtWebEngineCore_sha256": "2eaa1a888c7a65d66b9eb03eaf74813aaa504010fba313312a3ed03f4254eb88",
+        "QtWebEngineQuick_sha256": "06ddaae232e661945be5b2160f284cd1f9a8972a0f0b83751ce1a4c1d13418bf",
+        "QtWebEngineProcess_sha256": "15d90f1882662b94b80f712483c28196b433adabc6794c7b9ecc76781a90d2cf",
+        "probe_executable_sha256": "429ac12b544f7575c83c6aada6bd7953539cf7f805a276f14ba74cad2813e16e"
+      },
+      "run_logs": [
+        {
+          "path": "target/versioning-engine-spike/native-probe-rtc-child-capture-oop-1.log",
+          "sha256": "32f4d124fc1fe56e75cce299239d81b0caa035635ca92a43d99b6caae262e8d3",
+          "disposable_runtime_directory": "target/versioning-engine-spike/probe-runtime.85b0KT"
+        }
+      ],
+      "scope": "Test-only patched Qt/Chromium experiment. The strict OOPIF page and exact-view empty lease were reached, but invoking the synthetic child RenderFrameHost media counter did not make the complete-frame query report capture and did not emit the held-lease invalidation. An earlier native cross-origin getUserMedia attempt returned AbortError: Invalid state. This neither proves nor disproves real OOPIF capture; the private-API bridge is not qualified and is not used by Ferric production.",
+      "production_capability_enabled": false
+    },
+    "child_frame_real_media_permission_followup": {
+      "date": "2026-10-07",
+      "inputs": {
+        "runner_sha256": "ea6776ae0518d27e261543235bf172fc973438aefda34d27cf261479ad4e380a",
+        "rtc_quick_bridge_probe_cpp_sha256": "d0813cb16dd46cf8f71b443c259bdd15cde58ae987ab0be57d5b1fcb04d58e4b",
+        "rtc_quick_bridge_probe_qml_sha256": "2e57bf102761a6a687057b4986219790440f15a1be6c76c75fe2bbdc722c73ac",
+        "owned_https_fixture_sha256": "704ac0b64cf4a3fb882d63d7b2757563de9dd4b1cd36b53fabcf2eda367aa241",
+        "frame_activation_probe_patch_sha256": "dfb3b43590a3dedd8558a188d7a71891901aa8e5c315f74d373f8d04d51f27d2",
+        "capture_rejection_diagnostic_patch_sha256": "0b61cd6c2ab8538a8a25029075e1c53bc6b1029e230a0be766fffc4a0c094f41",
+        "capture_dispatch_diagnostic_patch_sha256": "fb2759f89432064fb8a4a4977ca69b2b5b23bf49c6c4d582e5d4575ddc5398c8"
+      },
+      "strict_site_isolation_runs": [
+        {"path": "target/versioning-engine-spike/native-probe-rtc-child-capture-oop-4.log", "sha256": "e80728e5e5e1352777f612e33d4cbd7a85b76564b22c8513cfbd69eb1d69d5c5"},
+        {"path": "target/versioning-engine-spike/native-probe-rtc-child-capture-oop-5.log", "sha256": "c196171bfea90db4e79c9a6d4481b6c55c2aa8f2fd0a84db65fa45870f0a19f9"},
+        {"path": "target/versioning-engine-spike/native-probe-rtc-child-capture-oop-6.log", "sha256": "72c3eccb6c0f583ad399209bd402b47ddd7d4de0c453121a527ed251304af121"},
+        {"path": "target/versioning-engine-spike/native-probe-rtc-child-capture-oop-7.log", "sha256": "32183c1c29c969b981ff8f9b88b465ee4a9b8725b2faf1b61718312088ddc286"},
+        {"path": "target/versioning-engine-spike/native-probe-rtc-child-capture-oop-8.log", "sha256": "26ffd0d864edac79b6e9c31fa3c1b520ee611c1bf068d0b8237d3e5da2359eb5"}
+      ],
+      "control_runs": [
+        {"mode": "without-strict-site-isolation", "path": "target/versioning-engine-spike/native-probe-rtc-child-capture-control-1.log", "sha256": "cb0c63622284f112b0258517cc661521aad19a83230840b80844fbdcf5a49c8e"},
+        {"mode": "strict-site-isolation-with-camera-policy-allowance", "path": "target/versioning-engine-spike/native-probe-rtc-child-capture-policy-oop-1.log", "sha256": "eb7515810b9981c034aeda4dad478b863e771bc379f663867373780349ccbec1"}
+      ],
+      "same_origin_child_control": {
+        "command": "bash tools/versioning-engine-spike/run.sh probe-rtc-quick-capture-same-oop",
+        "fresh_process_runs": 1,
+        "exit_code": 1,
+        "inputs": {
+          "runner_sha256": "e5b35fed6619297e3b4b2f497fd223f532820b2b5de8279b0c5730e97bc10e1e",
+          "rtc_quick_bridge_probe_cpp_sha256": "78950303ecb430620bd82efa7ef30ad7bdf1468beac59c06e9986840e2c1b35a",
+          "rtc_quick_bridge_probe_qml_sha256": "0d3a4306c91844faa8035db9e971c7f8e7ae6e2101ebe1c038777d4d3990ca35",
+          "owned_https_fixture_sha256": "5947e58891750ad327628eb1f146ba4ba7b052682a27df6ed5caba2af5938576"
+        },
+        "log": {"path": "target/versioning-engine-spike/native-probe-rtc-child-capture-same-oop-1.log", "sha256": "66ae7090c2d08a2acfe5444b08e661c4ab13d4f4072d23ab74860f407ef17fcc"},
+        "runtime": {
+          "QtWebEngineCore_sha256": "b0af440da3fcbb108ca1365217096fd942fe1ada4c9423fa160d83331a972998",
+          "QtWebEngineQuick_sha256": "d7e8f4b14e3d52ec325524a205a61e69f253121f95e47d27c395bf68a2a2be46",
+          "QtWebEngineProcess_sha256": "15d90f1882662b94b80f712483c28196b433adabc6794c7b9ecc76781a90d2cf",
+          "probe_executable_sha256": "16868012603e3d5415b2990dc85dffaabccbced602ef3f1b7c9bb3e0f6c5601e"
+        },
+        "result": "A same-origin child frame under strict site isolation also returned AbortError: Invalid state; the document was complete, visible and secure, camera policy was allowed, both RFHs were active, and the permission callback was not observed."
+      },
+      "controlled_cross_origin_capture_probe": {
+        "date": "2026-10-07",
+        "scope": "Disposable Qt 6.11.2 / Chromium strict-site-isolation probe with an off-the-record profile and Chromium's synthetic fake camera only. No physical camera, normal profile, or production code path was used.",
+        "grant_mode": {
+          "command": "bash tools/versioning-engine-spike/run.sh probe-rtc-quick-capture-grant-oop",
+          "fresh_process_runs": 3,
+          "exit_code_per_run": 0,
+          "inputs": {
+            "runner_sha256": "04c126206104ffe926ab40bfbe0282457daba4020d63f029ca77c26a8b21b70e",
+            "rtc_quick_bridge_probe_cpp_sha256": "6ec165680c8a5fb8820dc2b5eddd835c1085f25a99a26b9d6e619437ec6a9def",
+            "rtc_quick_bridge_probe_qml_sha256": "adfb0f650b7767f17ae5b66f641b49ec53980d8c865d1bc88541a3d8aabc5595",
+            "owned_https_fixture_sha256": "5947e58891750ad327628eb1f146ba4ba7b052682a27df6ed5caba2af5938576",
+            "qt_permission_source_sha256_at_run_time": "6d12ef3b08044899bb5bbcc5d733fcb8c7e149ed25b590a16fe28035f846f77b"
+          },
+          "runs": [
+            {"path": "target/versioning-engine-spike/native-probe-rtc-child-capture-grant-oop-4.log", "sha256": "cfcac7ab686f3c95560728bfd63aa6a5bf9256d4e4c0d7920be07b5add7b7909"},
+            {"path": "target/versioning-engine-spike/native-probe-rtc-child-capture-grant-oop-5.log", "sha256": "25f3880cb2ade50716de64b80f7983c3672ff718e896fb0bfa11ccf806c25a9e"},
+            {"path": "target/versioning-engine-spike/native-probe-rtc-child-capture-grant-oop-6.log", "sha256": "85b0085b4185d292fd5a2c21c1d955a6f905028103d7fc99f845d9e53dd427f2"},
+            {"path": "target/versioning-engine-spike/native-probe-rtc-child-capture-grant-oop-permission-trace.log", "sha256": "f0fec43a3d33e86c74cd6385e59f77258fd4986a4349c3e7646b53806aea53bc"},
+            {"path": "target/versioning-engine-spike/native-probe-rtc-child-capture-grant-oop-stderr-trace.log", "sha256": "986cd4b96639d40c90dc556241e6821c6c624a9b8f41e3c4342752999d6ac061"}
+          ],
+          "runtime": {
+            "QtWebEngineCore_sha256": "e93b673030607e1c520147115490da6c83f947b2051ea9d97b7546bbcbb7cb2f",
+            "QtWebEngineQuick_sha256": "d7e8f4b14e3d52ec325524a205a61e69f253121f95e47d27c395bf68a2a2be46",
+            "QtWebEngineProcess_sha256": "15d90f1882662b94b80f712483c28196b433adabc6794c7b9ecc76781a90d2cf",
+            "probe_executable_sha256": "6ec49913fbde107e749af9553835ea13199028e5cedf8a27989a9a2b8a9d34ff"
+          },
+          "observed": {
+            "child_fake_camera_track_reached_live": true,
+            "exact_view_capture_activity_query_returned_active": true,
+            "exact_view_no_media_capture_query_refused_while_active": true,
+            "track_stop_reached_ended": true,
+            "capture_activity_cleared_after_track_stop": true,
+            "fresh_post_capture_empty_lease_admitted": true,
+            "qml_permission_callback_observed": false,
+            "qt_qwarning_marker_observed": false,
+            "direct_stderr_permission_trace_observed": true,
+            "test_only_exact_child_grant_branch_executed": true
+          },
+          "result": "Three fresh runs reached a live fake-camera track in the strict-site-isolated cross-origin child. The exact-view capture query saw activity and the inverse no-capture query refused; after track.stop(), the track ended, capture state cleared, and a fresh empty lease was admitted. The later direct-stderr trace confirmed the exact-origin MediaVideoCapture grant branch ran for https://top-a.localhost; the QML callback was bypassed in this deliberately forced-grant mode."
+        },
+        "normal_mode_control": {
+          "command": "bash tools/versioning-engine-spike/run.sh probe-rtc-quick-capture-oop",
+          "path": "target/versioning-engine-spike/native-probe-rtc-child-capture-oop-qml-enum-trace.log",
+          "sha256": "f5d836ff7ff83334af63e4509f010bc32f84d97028fbb5d9cfbdb418ea08aebc",
+          "exit_code": 1,
+          "result": "Historical pre-fix run. With grant/deny override flags absent, Qt resolved the child request as ASK and emitted the Quick permission signal. The QML handler received phase=42 and type=2, but the flattened WebEnginePermission.MediaVideoCapture expression evaluated undefined, so its comparison failed and the request returned AbortError: Invalid state. The later scoped-enum fix and passing normal-mode runs are recorded in permission_enum_fix."
+        },
+        "deny_mode_negative_control": {
+          "command": "bash tools/versioning-engine-spike/run.sh probe-rtc-quick-capture-deny-oop",
+          "path": "target/versioning-engine-spike/native-probe-rtc-child-capture-deny-oop-1.log",
+          "sha256": "a8cd284092f88a5fad5632699f892964ffc538df6c9dcad13584ad30da37b011",
+          "exit_code": 1,
+          "runtime_qt_permission_source_sha256": "0985111c1d203b916ce7d7cf096d14e68c3fe9dc076d01bfae5f3b1957bb23f6",
+          "runtime_qtwebenginecore_sha256": "ed354bd1dbb2b2a26edcb19c38f8976e562f8d547197856e36aa264acdafd794",
+          "direct_trace_path": "target/versioning-engine-spike/native-probe-rtc-child-capture-deny-oop-stderr-trace.log",
+          "direct_trace_sha256": "64e7c95e1f6d6b856824f38148c6a2adbf847f12c70c350818c408a12f3937c0",
+          "result": "The direct trace confirmed the exact-origin DENIED branch executed for MediaVideoCapture. Chromium maps the denied/empty device result to the same browser-facing AbortError: Invalid state, so the error alone did not distinguish permission rejection from the earlier default path."
+        },
+        "permission_enum_fix": {
+          "cause": "Qt 6.11.2's generated QML type metadata marks WebEnginePermission.PermissionType as a scoped enum. WebEnginePermission.MediaVideoCapture was undefined at runtime, so the QML handler received the child permission signal but its flattened enum comparisons never matched.",
+          "implementation": "Production FerricRequestPresentationController.qml now compares every supported request with WebEnginePermission.PermissionType.<name>. The disposable Qt Quick fixture uses the same scoped enum in its permission handler.",
+          "qml_controller_sha256": "2dabd337bbfd52e7ffc318e3856f2bca897477c775e4c2079d5e551685f9273b",
+          "qml_unit_test_path": "crates/ferric-browser-engine-qt/tests/qml/tst_request_presentation_controller.qml",
+          "qml_unit_test_sha256": "52da39892e588a5d308d9da8695f0f558baada3e312edaf92467f6b9128a4562",
+          "qml_unit_test_command": "/usr/lib/qt6/bin/qmltestrunner -input crates/ferric-browser-engine-qt/tests/qml/tst_request_presentation_controller.qml",
+          "qml_unit_test_result": "3 passed, 0 failed, 0 skipped",
+          "normal_mode_command": "bash tools/versioning-engine-spike/run.sh probe-rtc-quick-capture-oop",
+          "fresh_process_runs": [
+            {"path": "target/versioning-engine-spike/native-probe-rtc-child-capture-normal-oop-1.log", "sha256": "49f5e334d27c2975554dbcb6a2e56aaf02ebccb043fbb448d4e329a3e00513ae"},
+            {"path": "target/versioning-engine-spike/native-probe-rtc-child-capture-normal-oop-2.log", "sha256": "53de1e862b9f72ab4595c84db3017fd39c29d7ce045eeb34551f097b77c40934"},
+            {"path": "target/versioning-engine-spike/native-probe-rtc-child-capture-normal-oop-3.log", "sha256": "893c28794ab5f714cd8adf30a88ac76632c3e0f0297f4e25e2e5eedc6e424dd9"}
+          ],
+          "inputs": {
+            "runner_sha256": "f55134ff02139ce6fcf8ee1092f0124a9d21ca28bd0100e10c0322fa1ae86736",
+            "rtc_quick_bridge_probe_cpp_sha256": "6ec165680c8a5fb8820dc2b5eddd835c1085f25a99a26b9d6e619437ec6a9def",
+            "rtc_quick_bridge_probe_qml_sha256": "d4eaacf18533b7edf5fa4a538ea601bdb412be7f369a9052a74de76ed7ed5b8f",
+            "owned_https_fixture_sha256": "5947e58891750ad327628eb1f146ba4ba7b052682a27df6ed5caba2af5938576",
+            "qt_permission_patch_sha256": "f6f48bfbcb82e997b5f17482f7cb8e0bbf74a9e1d7c01706f52559ace7706759"
+          },
+          "runtime": {
+            "QtWebEngineCore_sha256": "cc40e5ad4e199d1ed8376ca1b4da961f40daa79799c0f490aa5865921e7cef5b",
+            "QtWebEngineQuick_sha256": "5fc5aaef1b257f104bf6a97551c9d9136bb63eb886cbd9df2b101cc97f3f2126",
+            "QtWebEngineProcess_sha256": "15d90f1882662b94b80f712483c28196b433adabc6794c7b9ecc76781a90d2cf",
+            "probe_executable_sha256": "6ec49913fbde107e749af9553835ea13199028e5cedf8a27989a9a2b8a9d34ff"
+          },
+          "observed": {
+            "test_only_grant_and_deny_flags_absent": true,
+            "default_status_ask": true,
+            "qquick_permission_signal_emitted": true,
+            "qml_handler_received_phase_42_type_2": true,
+            "scoped_enum_comparison_matched": true,
+            "qml_permission_callback_granted": true,
+            "child_fake_camera_track_reached_live": true,
+            "exact_view_capture_activity_query_returned_active": true,
+            "exact_view_no_media_capture_query_refused_while_active": true,
+            "track_stop_reached_ended": true,
+            "capture_activity_cleared_after_track_stop": true,
+            "fresh_post_capture_empty_lease_admitted": true
+          },
+          "result": "Three fresh strict-site-isolation runs passed in normal permission mode. The child QML permission callback matched the scoped enum and granted the fake camera, then the exact-view capture query observed the live track; stop/clear cleanup and a fresh empty lease followed. The final fixture marker records childCaptureTrack=true childPermissionCallback=true."
+        }
+      },
+      "current_scope_update": "The earlier scope/findings record normal-mode failures before the QML enum fix. Qt 6.11.2's WebEnginePermission.PermissionType is scoped, so flattened WebEnginePermission.MediaVideoCapture was undefined and did not match the child permission signal. Ferric's production presentation controller and the disposable fixture now use WebEnginePermission.PermissionType.<name>. Three strict-site-isolation runs with grant/deny override flags absent passed: the ordinary QML callback matched and granted the child video permission, a real fake-camera track became live, exact-view capture state was observed/refused as expected, and track-stop cleanup restored a fresh empty lease. This resolves the child permission handoff and demonstrates this scoped capture/observer route, but the observer still uses private Chromium state in a disposable Qt overlay and does not establish complete RTC absence, production Rust lifecycle ownership, or a Clear certificate. Keep production live retention disabled.",
+      "latest_policy_run_runtime": {
+        "QtWebEngineCore_sha256": "cc40e5ad4e199d1ed8376ca1b4da961f40daa79799c0f490aa5865921e7cef5b",
+        "QtWebEngineQuick_sha256": "5fc5aaef1b257f104bf6a97551c9d9136bb63eb886cbd9df2b101cc97f3f2126",
+        "QtWebEngineProcess_sha256": "15d90f1882662b94b80f712483c28196b433adabc6794c7b9ecc76781a90d2cf",
+        "probe_executable_sha256": "6ec49913fbde107e749af9553835ea13199028e5cedf8a27989a9a2b8a9d34ff"
+      },
+      "findings": {
+        "child_document_complete_visible_and_secure": true,
+        "effective_camera_permissions_policy_true_in_latest_run": true,
+        "main_and_child_primary_page_render_frame_hosts_active": true,
+        "chromium_media_dispatcher_generate_streams_entry_observed": true,
+        "permission_request_callback_observed": true,
+        "get_user_media_track_started": true,
+        "reported_error": null,
+        "same_process_control_reproduced_failure": true,
+        "same_origin_child_frame_control_reproduced_failure": true,
+        "public_query_permission_can_pregrant_nonpersistent_video_capture": false,
+        "root_cause_branch_identified": true,
+        "root_cause": "QML compared the scoped Qt 6.11.2 WebEnginePermission.PermissionType against an undefined flattened enum property.",
+        "normal_mode_strict_site_isolation_repeated_runs_passed": 3,
+        "normal_mode_test_only_grant_and_deny_flags_absent": true,
+        "production_capability_enabled": false
+      },
+      "scope": "The earlier strict-site-isolation, same-process and same-origin child failures are retained as historical evidence and were caused by a production QML permission-handler enum comparison bug, not an identified Chromium media-device rejection. Qt 6.11.2 generated QML metadata marks WebEnginePermission.PermissionType as scoped; the flattened member was undefined. After switching production and probe handlers to WebEnginePermission.PermissionType.<name>, three fresh strict-site-isolation runs with test-only grant/deny flags absent passed: the QML callback granted the child fake camera, exact-view capture query observed activity and refused empty admission, and track stop cleared capture before fresh empty admission. This resolves the tested child permission handoff. The activity observer still relies on private Chromium state in a disposable Qt overlay and does not prove exhaustive RTC/media absence, production Rust lifecycle ownership, callback-loss handling, or a Clear certificate. Keep production live retention disabled.",
+      "production_capability_enabled": false
+    },
+    "remaining": "In the pinned Chromium source, RTCPeerConnection.close() closes the transport but does not unregister the peer handler while its object remains in the live document; the fixture confirmed registration remained and same-view reload/context destruction allowed a fresh empty lease. The tested synthetic camera and combined routes, synthetic microphone admission from ApplicationWorld, and a frame-targeted cross-origin ApplicationWorld peer under strict site isolation passed the diagnostic Qt Quick bridge; three strict two-process runs observed the peer and clean child-context teardown. These do not qualify physical devices or complete RTC absence. The Qt Quick renderProcessTerminated bridge releases held/pending state with generation checks so a racing native invalidation is emitted once. Other renderer/media/capture categories, callback loss, production Rust ownership, and shipping/release qualification remain open; no production capability flag is enabled."
+  },
+  "current_patch_qualification": "v8 base retains its scoped mid-copy rejection evidence. Separate disposable seed-if-empty, post-snapshot-write and page-free-child overlays passed their pinned native fixtures and 40/53/33/59/59 regressions; they do not qualify source/child writer ownership, crash durability, merge or production RTC admission. On 2026-10-05 the current native RTC fixture passed three fresh default and three strict-site-isolation runs, including synthetic camera/combined media and bounded pidfd renderer-loss invalidation; the current Qt Quick exact-owner patch passed zero-fuzz applicability, isolated build/install and three fresh runs including synthetic camera, microphone and combined permission routes. On 2026-10-06 the same Qt Quick bridge/fixture passed three additional fresh runs with its data-only peer created and closed through ApplicationWorld. On 2026-10-07 it passed another three runs with synthetic microphone pending/active/stop handling through ApplicationWorld, followed by three strict-site-isolation cross-origin child-frame peer runs using QML WebEngineFrame.runJavaScript in ApplicationWorld; the exact owner observed at least two frames/processes and same-view reload cleared the peer. A separate default-configuration run also passed. These scoped results add feasibility evidence only, not a complete RTC-absence certificate or production capability. Production disabled.",
+  "native_disposable_legacy_store_probe": {
+    "scope": "research-only persistent Qt source load and whole-list refusal for one safe sibling plus one stored unknown-source or older-expiry record; no production capability",
+    "engine_patch_sha256": "dc7df82d2ca32b0721d383c7b5ba367abd754d5ceb087f976fc756247c49fa8b",
+    "engine_library_sha256": "407bfa9999e869cf986594a740f403acdf59056cf0a9a5617704aaf20d21e694",
+    "engine_process_sha256": "15d90f1882662b94b80f712483c28196b433adabc6794c7b9ecc76781a90d2cf",
+    "fixture_sha256": "9f6e6db2ab9e597b2e44c5a6e9d04366ce790541ca1962e82e40ea45c928a37d",
+    "cmake_sha256": "0c4e367bba7db688ae396531e5c0eab009e35a40b8d6aeb4db7793b38213cdf9",
+    "runner_sha256": "e1c4f95536a8106d60bb02557d58a392e089974d934c317b9f2ac8588639c55e",
+    "probe_executable_sha256": "76260158dc1bdf91abdef77fe4563a920f22a9e5234f5a921913b0f474c2a884",
+    "command": "bash tools/versioning-engine-spike/run.sh probe-legacy",
+    "successful_fresh_process_runs": 3,
+    "checks_passed_per_run": 16,
+    "checks_failed_per_run": 0,
+    "exit_code_per_run": 0,
+    "source_cookie_count_per_case": 2,
+    "pre_mutation_copy_count_per_case": 2,
+    "post_mutation_child_count_per_case": 0,
+    "chromium_sqlite_row_contents_returned_to_harness": false,
+    "disposable_profile_directories": [
+      "target/versioning-engine-spike/probe-runtime.sl8yOF",
+      "target/versioning-engine-spike/probe-runtime.uSApBJ",
+      "target/versioning-engine-spike/probe-runtime.T2gY0e"
+    ],
+    "remaining": "Does not qualify legacy import, normalized copy, network-service fault handling, source-T0, child ownership, or production Ferric integration."
+  },
+  "native_baseline": {
+    "engine_patch_sha256": "c6c67b0fe8301938504d1ad0c5b27586f467a0b7d1e722982c7393f4705ccf7c",
+    "source_and_binary_archive": {
+      "path": "target/versioning-engine-spike/baseline-2026-10-01-v1.tar",
+      "sha256": "ac65403a72f7a120039a49fb3755538f0954f0a59ae6122a89712122a0791943"
+    },
+    "scope": "synthetic-canonical-copy-and-positive-page-attributed-rtc-observation-only",
+    "successful_fresh_process_runs": 3,
+    "checks_passed_per_run": 40,
+    "checks_failed_per_run": 0,
+    "exit_code_per_run": 0,
+    "fixture_sha256": "50c68ed94bbc42b4de4292008f704d62575e7ff866276da80356af926e1bc0ad",
+    "cmake_sha256": "a85bee2cdf41ac775524542e97fd01082ebc180b0a2259af762580e8ac592f18",
+    "runner_sha256": "58240af2b3764ca15e10070a24a1fa60f670f397b4b704c27a6bb5b56cd76c96",
+    "engine_library_sha256": "236a3afc193c554e053e3a59b50958043338a6a6cd6d2e4017c55ae848016ce1",
+    "engine_process_sha256": "15d90f1882662b94b80f712483c28196b433adabc6794c7b9ecc76781a90d2cf",
+    "probe_executable_sha256": "b342f8daa1b00c4396f3107c7cb9b1fe7f80f886272f5d6973d5a980c1ade18e",
+    "logs": [
+      {
+        "path": "target/versioning-engine-spike/native-probe-baseline-2.log",
+        "sha256": "cc9ab91b3e820be9ce63ced1708a81ee66cd1a59a8ce34bd6040208c67e40469"
+      },
+      {
+        "path": "target/versioning-engine-spike/native-probe-baseline-3.log",
+        "sha256": "4efb1350cd983bb9b1e5ca99c8cdfbf058fa389e636b54f9f6b3f0f3a9489f1f"
+      },
+      {
+        "path": "target/versioning-engine-spike/native-probe-baseline-4.log",
+        "sha256": "a4e2b4a89c120a23662a2abad55d0ae28f8ef8b8e260a85a00fb1884d3ff4fb8"
+      }
+    ]
+  },
+  "native_https_baseline": {
+    "engine_patch_sha256": "670c3f284fb0998437641bac0c3e524e24e45d72d67f0fb4f332a9e8a8e8d391",
+    "source_and_binary_archive": {
+      "path": "target/versioning-engine-spike/baseline-2026-10-01-v2.tar",
+      "sha256": "2643113c86d9c178339b2d2cf1a8431d49749f67c114c5ad4ac71c27db6d344b"
+    },
+    "scope": "19 canonical records from owned HTTPS responses and script; source/child request behavior including same-top-site ancestor-bit collision",
+    "successful_fresh_process_runs": 3,
+    "checks_passed_per_run": 26,
+    "checks_failed_per_run": 0,
+    "exit_code_per_run": 0,
+    "fixture_sha256": "5a2242a99afa4c6d4b40f558ab6050207673a81f0828f91d6b835a07aff64c1e",
+    "cmake_sha256": "7a7d30430d18aedd26fe0f326d7dfae7ee98cba8d8abcf33dbd8a8be526d5d28",
+    "runner_sha256": "d85014aaf7ecf68ae23aa8d1c9c85bbf12f026fd0f6045804f4f470fbc812098",
+    "engine_library_sha256": "487f0e0dca9e5fd6f8b232444b7dd155391444d63eb49464bb692e3000c1aa53",
+    "engine_process_sha256": "15d90f1882662b94b80f712483c28196b433adabc6794c7b9ecc76781a90d2cf",
+    "probe_executable_sha256": "8ac5d205b99d98459cbb67738a283f590aac3ee75e7908057a2214fb15af477f",
+    "logs": [
+      {
+        "path": "target/versioning-engine-spike/native-probe-https-ancestor-1.log",
+        "sha256": "d0a954ff1badfd08c3514565bc577bfb4e2ad777684e612a359296a121320d9a"
+      },
+      {
+        "path": "target/versioning-engine-spike/native-probe-https-ancestor-2.log",
+        "sha256": "cea3e7db63383f3d806ddfd1c2965d112d66cb3c823ddeede1b309c6841b7415"
+      },
+      {
+        "path": "target/versioning-engine-spike/native-probe-https-ancestor-3.log",
+        "sha256": "25d923700e31ec7d4ef1aef76041303319114b3790f87197fa2f6b9ed9dc4305"
+      }
+    ],
+    "original_baseline_regression": {
+      "successful_fresh_process_runs": 3,
+      "checks_passed_per_run": 40,
+      "checks_failed_per_run": 0,
+      "exit_code_per_run": 0,
+      "fixture_sha256": "50c68ed94bbc42b4de4292008f704d62575e7ff866276da80356af926e1bc0ad",
+      "probe_executable_sha256": "b342f8daa1b00c4396f3107c7cb9b1fe7f80f886272f5d6973d5a980c1ade18e",
+      "logs": [
+        {
+          "path": "target/versioning-engine-spike/native-probe-baseline-v2-1.log",
+          "sha256": "803309d3405d5bf5a1ecd8d78cef411a5e7390cd04b1281fce3bf24f26e4e103"
+        },
+        {
+          "path": "target/versioning-engine-spike/native-probe-baseline-v2-2.log",
+          "sha256": "eccce3ebf2daf07687e0a67eba744ba541bece74ec65473f656b7a0e582795c4"
+        },
+        {
+          "path": "target/versioning-engine-spike/native-probe-baseline-v2-3.log",
+          "sha256": "b230575bcd8a44af46866a5d62caa61197c9c7e2be0cd81c4f889f8355aa6986"
+        }
+      ]
+    }
+  },
+  "native_synthetic_preflight_experiment": {
+    "engine_patch_sha256": "1d53d22c3ffadead67b860936953f56556b36ab3d6d0ea8457c55d04deee2479",
+    "source_and_binary_archive": {"path": "target/versioning-engine-spike/baseline-2026-10-01-v6.tar", "sha256": "565490c4cfdb872453c031585cd728a1c718523fe2bb6bffb7c11f0c204e53e7"},
+    "scope": "after a safe synthetic source snapshot, substitute one in-memory kUnknown-source or overlong-expiry candidate at the end; prove whole-list refusal leaves child empty and a separate fresh child still copies the real safe source; not a real legacy source/import certificate",
+    "cookie_fixture_sha256": "17a7642c148a76667cf39b5ff464b205a84963697e06b0af29a83e8284c13083",
+    "engine_library_sha256": "d6d1f8f96dd091c900224bb2141758a617eb1289cdca6d998349766aab2322ca",
+    "cookie_probe_executable_sha256": "473574edae44fe4ead7f7dde1ee99cf5de7070a2b1e17cb5548fc91bb73c7eef",
+    "https_probe_executable_sha256": "b9d0a1989fbacb1101696260ce8fbf2ce1b4e592ca0bda3d13dd0779aedf0477",
+    "rtc_probe_executable_sha256": "8c7d9688846628d0b04623e2df18f50d81be1da970c435757a7c119b824b31d9",
+    "build_log": {"path": "target/versioning-engine-spike/build-cookie-synthetic-preflight-1.log", "sha256": "1d4cdd647738f95b842fafeaa69d9d9fc058d2a1a3364905be6dfa8aebcf3f09"},
+    "install_log": {"path": "target/versioning-engine-spike/install-probe-cookie-synthetic-preflight-1.log", "sha256": "228cbe7a4756ff9e8fb9aecd6e64c160feda0e0c506b8eab2091396c1c79d0ed"},
+    "successful_runs": [
+      {"configuration": "synthetic-cookie-preflight", "checks_passed": 46, "checks_failed": 0, "exit_code": 0, "log": {"path": "target/versioning-engine-spike/native-probe-cookie-synthetic-preflight-1.log", "sha256": "e65b8d1df91adadc43ca59e452c13f74eba0a3f92b3732f7d6874f120e59b2f0"}},
+      {"configuration": "https-cookie-regression", "checks_passed": 33, "checks_failed": 0, "exit_code": 0, "log": {"path": "target/versioning-engine-spike/native-probe-https-cookie-synthetic-preflight-1.log", "sha256": "93244f6d24d209c91a7af5dab800691dc87c82f2d333f8fe37e6f4e407fc8fbe"}},
+      {"configuration": "rtc-default-regression", "checks_passed": 59, "checks_failed": 0, "exit_code": 0, "log": {"path": "target/versioning-engine-spike/native-probe-rtc-cookie-synthetic-preflight-1.log", "sha256": "3673a1ab23b2f74d7c0805c56e2110e6fa98d510d8b6ef5171b36e80f6db0a80"}},
+      {"configuration": "rtc-strict-isolation-regression", "checks_passed": 59, "checks_failed": 0, "exit_code": 0, "log": {"path": "target/versioning-engine-spike/native-probe-rtc-cookie-synthetic-preflight-oop-1.log", "sha256": "0d2941b6d0e58f7a3eb24ee2149f4e7f671db3b57f6f40fd01b36ecfa15decf9"}}
+    ]
+  },
+  "native_opaque_partition_experiment": {
+    "engine_patch_sha256": "0b06def6d73a1c76137ccf4cfb687c7ca02c6a9322023be92ccc1973216268cf",
+    "source_and_binary_archive": {"path": "target/versioning-engine-spike/baseline-2026-10-01-v7.tar", "sha256": "167598a0cb488f472495995c69989591b8f0179807b9ae40f913494e112bedcc"},
+    "scope": "real non-serializable opaque partition key added through the pinned engine setter to a disposable 15-record off-the-record source; whole-list preflight refuses before child writes, and a separate fresh child also refuses the existing source; not a general browser-created opaque-cookie or production ownership certificate",
+    "cookie_fixture_sha256": "52c8370086f7c6da5309e1ba3a41f0d3ef3cd2c14a3b20a5fc9ce5d7743e37c2",
+    "engine_library_sha256": "2ec3f669c30f7356434d5e4d44a26edff745524df060f5201a3b0a6f6b0f2e39",
+    "cookie_probe_executable_sha256": "ebc750c1ce063513b7bf0dcb39ed408eb67f1907d368a385c39e227ed4f1033f",
+    "https_probe_executable_sha256": "b9d0a1989fbacb1101696260ce8fbf2ce1b4e592ca0bda3d13dd0779aedf0477",
+    "rtc_probe_executable_sha256": "8c7d9688846628d0b04623e2df18f50d81be1da970c435757a7c119b824b31d9",
+    "build_log": {"path": "target/versioning-engine-spike/build-cookie-opaque-1.log", "sha256": "62c29948f7391a56ede48288394bfe84251e03d670e903ac420b2ab3cfbafb71"},
+    "install_log": {"path": "target/versioning-engine-spike/install-probe-cookie-opaque-1.log", "sha256": "ead0bc5a71e440987e6eeaced93f943b06a72f86f225b680612d0b83884317f2"},
+    "successful_runs": [
+      {"configuration": "opaque-partition-cookie-baseline", "checks_passed": 49, "checks_failed": 0, "exit_code": 0, "log": {"path": "target/versioning-engine-spike/native-probe-cookie-opaque-1.log", "sha256": "007910992f6f7ea9177a55c1a1b12c3b0625debd4662955686d2f78da9183f64"}},
+      {"configuration": "https-cookie-regression", "checks_passed": 33, "checks_failed": 0, "exit_code": 0, "log": {"path": "target/versioning-engine-spike/native-probe-cookie-opaque-https-1.log", "sha256": "fbd08559681e1c409f5aa2b65513c2a280d877c0b887804d03c82b15f74c2e7a"}},
+      {"configuration": "rtc-default-regression", "checks_passed": 59, "checks_failed": 0, "exit_code": 0, "log": {"path": "target/versioning-engine-spike/native-probe-cookie-opaque-rtc-1.log", "sha256": "8c17abfea0d7449e9b4f12ba46b59968bdf164c822415c16a92e2ba4f840087b"}},
+      {"configuration": "rtc-strict-isolation-regression", "checks_passed": 59, "checks_failed": 0, "exit_code": 0, "log": {"path": "target/versioning-engine-spike/native-probe-cookie-opaque-rtc-oop-1.log", "sha256": "22ae76de02adfb55029cbe89e568f8c3fbd9949ba0470be687938f0eab657c2c"}}
+    ]
+  },
+  "native_midcopy_rejection_experiment": {
+    "engine_patch_sha256": "dc7df82d2ca32b0721d383c7b5ba367abd754d5ceb087f976fc756247c49fa8b",
+    "source_and_binary_archive": {"path": "target/versioning-engine-spike/baseline-2026-10-01-v8.tar", "sha256": "247a266876ffcbc3d8933541b4c459a0f9bc84fe60276d2310c53206a98ae115"},
+    "scope": "research-only second destination setter rejected by a deliberately insecure source URL after the first accepted Secure cookie; callback reports MutationRejected and unknown child count, diagnostic existing-source copy proves one partial child record and unchanged 14-record source; not network-service loss, timeout, atomic rollback, or production child ownership",
+    "cookie_fixture_sha256": "11d533d2a64cb4d195220565a69c76aaa2b3f66c522b91860507718388bfbcf1",
+    "engine_library_sha256": "407bfa9999e869cf986594a740f403acdf59056cf0a9a5617704aaf20d21e694",
+    "cookie_probe_executable_sha256": "2f7ed9d219f487118322aa01bc3bd80a17ce0387926eff087fcf6c85377acd59",
+    "https_probe_executable_sha256": "b9d0a1989fbacb1101696260ce8fbf2ce1b4e592ca0bda3d13dd0779aedf0477",
+    "rtc_probe_executable_sha256": "8c7d9688846628d0b04623e2df18f50d81be1da970c435757a7c119b824b31d9",
+    "build_log": {"path": "target/versioning-engine-spike/build-cookie-midcopy-reject-1.log", "sha256": "aa254bea2f9a9c3c9b8b3fb0210396666e1fc374b289766ff2b1b63e8f1c5637"},
+    "install_log": {"path": "target/versioning-engine-spike/install-probe-cookie-midcopy-reject-1.log", "sha256": "ead0bc5a71e440987e6eeaced93f943b06a72f86f225b680612d0b83884317f2"},
+    "successful_runs": [
+      {"configuration": "midcopy-rejection-cookie-baseline", "checks_passed": 53, "checks_failed": 0, "exit_code": 0, "log": {"path": "target/versioning-engine-spike/native-probe-cookie-midcopy-reject-1.log", "sha256": "1762a16fba798c6f1c8b765822cc0302f792d9610ca95146b960f63005b98cf7"}},
+      {"configuration": "https-cookie-regression", "checks_passed": 33, "checks_failed": 0, "exit_code": 0, "log": {"path": "target/versioning-engine-spike/native-probe-cookie-midcopy-reject-https-1.log", "sha256": "007881c90923e811d612c657d08afe9638ee35247a075132228a33f996cbdf25"}},
+      {"configuration": "rtc-default-regression", "checks_passed": 59, "checks_failed": 0, "exit_code": 0, "log": {"path": "target/versioning-engine-spike/native-probe-cookie-midcopy-reject-rtc-1.log", "sha256": "83f123b8c30f97a56b1236d56f36e6aeefd4b52268d8743d8c5e0dad05f65197"}},
+      {"configuration": "rtc-strict-isolation-regression", "checks_passed": 59, "checks_failed": 0, "exit_code": 0, "log": {"path": "target/versioning-engine-spike/native-probe-cookie-midcopy-reject-rtc-oop-1.log", "sha256": "1b0ab4345daf78a13cf6ce8a3bec5451f1023bb7537521cc68ed053597fbb0ba"}}
+    ]
+  },
+  "native_cookie_edge_experiment": {
+    "engine_patch_sha256": "0c1d8897cb8714e6e70870867d309c6a2f75946fa67f0d6f9e2b71c46830a0d0",
+    "source_and_binary_archive": {"path": "target/versioning-engine-spike/baseline-2026-10-01-v5-edge.tar", "sha256": "a6bceb8bc79c482f588b8e744182241c8cb81fbaf41d219d78351654c5e0181c"},
+    "scope": "owned HTTPS response fixture tests far-future expiry source clamping, expired/invalid setter refusal, and exact canonical copy of two accepted records; not legacy/opaque/fault coverage or a production cookie backend",
+    "fixture_sha256": "bb4150636fc6e70b25c3f5c587821fec9d814d5dc9664f04fb1b044c14251c7d",
+    "probe_source_sha256": "17b4672df1fbc7e2b657019442bee010d1f3754d55b8fb6e569e8915af63920e",
+    "engine_library_sha256": "0df7beaffd4332191d86369232035063a6e042deac9fdfd9a12268cebc3330d8",
+    "cookie_probe_executable_sha256": "b9d0a1989fbacb1101696260ce8fbf2ce1b4e592ca0bda3d13dd0779aedf0477",
+    "rtc_probe_executable_sha256": "8c7d9688846628d0b04623e2df18f50d81be1da970c435757a7c119b824b31d9",
+    "install_log": {"path": "target/versioning-engine-spike/install-probe-cookie-edge-1.log", "sha256": "eef67601a4b6fbbb96fae563ca89ddedd8fb0e214616d9ce1947f225c6f46f2d"},
+    "successful_runs": [
+      {"configuration": "https-cookie-edge", "checks_passed": 33, "checks_failed": 0, "exit_code": 0, "log": {"path": "target/versioning-engine-spike/native-probe-cookie-edge-1.log", "sha256": "c42b64192db949097c9a3d417bf5886e096a94e5c7e58a5ecb6343e7b4a2d176"}},
+      {"configuration": "rtc-default-regression", "checks_passed": 59, "checks_failed": 0, "exit_code": 0, "log": {"path": "target/versioning-engine-spike/native-probe-rtc-cookie-edge-1.log", "sha256": "529314adb5bc964fb55161657d08f6b05e7b1da8a3e6a6b08d0f58f69b3e3eec"}},
+      {"configuration": "rtc-strict-isolation-regression", "checks_passed": 59, "checks_failed": 0, "exit_code": 0, "log": {"path": "target/versioning-engine-spike/native-probe-rtc-cookie-edge-oop-1.log", "sha256": "6bca8b8af43822402ac24741bfb096f78b6e3dcf796255724270376f35361b5c"}},
+      {"configuration": "baseline-regression", "checks_passed": 40, "checks_failed": 0, "exit_code": 0, "log": {"path": "target/versioning-engine-spike/native-probe-baseline-cookie-edge-1.log", "sha256": "6a10569b7566060457893ce8b33a8be75605061181f09582f7ece41b08d07943"}}
+    ]
+  },
+  "native_pending_script_experiment": {
+    "engine_patch_sha256": "0c1d8897cb8714e6e70870867d309c6a2f75946fa67f0d6f9e2b71c46830a0d0",
+    "source_and_binary_archive": {"path": "target/versioning-engine-spike/baseline-2026-10-01-v5.tar", "sha256": "fa12bdea1765549286e712dc387addbd597e96d0620c26c43eb42a85c3262e86"},
+    "scope": "conservative pending application-script refusal for callback and fire-and-forget main/child scripts, plus script-during-admission invalidation; not general renderer/media/capture admission",
+    "rtc_fixture_sha256": "1968f5030929ebbec194d76fd523ac2a719d348ea9da418db6f340913f619394",
+    "engine_library_sha256": "0df7beaffd4332191d86369232035063a6e042deac9fdfd9a12268cebc3330d8",
+    "engine_process_sha256": "15d90f1882662b94b80f712483c28196b433adabc6794c7b9ecc76781a90d2cf",
+    "rtc_probe_executable_sha256": "e02efa59a7fcf75f981c32e18783af0ed48ac75f3cf4523da3d0ad17e2e1143d",
+    "build_log": {"path": "target/versioning-engine-spike/build-rtc-pending-script-1.log", "sha256": "45e90c4385fd5afb9021da3fe221eb017890900d6f946ce4671507a40f8ca4f5"},
+    "install_log": {"path": "target/versioning-engine-spike/install-probe-rtc-pending-script-1.log", "sha256": "98ee822d1681c655dc0cc5840fc48281aae1e710dc4dae3b43decc2edf26cd2"},
+    "successful_runs": [
+      {"configuration": "qt-default", "checks_passed": 59, "checks_failed": 0, "exit_code": 0, "cross_origin_frame_process_count": 1, "log": {"path": "target/versioning-engine-spike/native-probe-rtc-pending-script-1.log", "sha256": "82703b55886c42b1ff5a1a8570cd4f1f2ab2494715b6ac167ce8177cfa45e273"}},
+      {"configuration": "strict-site-isolation", "flags": ["--site-per-process"], "checks_passed": 59, "checks_failed": 0, "exit_code": 0, "cross_origin_frame_process_count": 2, "log": {"path": "target/versioning-engine-spike/native-probe-rtc-pending-script-oop-1.log", "sha256": "b3ae2a5572bb8dc3a286f76dcc4d22e398f2536f1caf4ea9d18e836110483d2f"}},
+      {"configuration": "baseline-regression", "checks_passed": 40, "checks_failed": 0, "exit_code": 0, "log": {"path": "target/versioning-engine-spike/native-probe-baseline-pending-script-1.log", "sha256": "73ee3242b514567cd482be1869794c073b6b634467c5aa93157df1271dd6f325"}},
+      {"configuration": "https-regression", "checks_passed": 26, "checks_failed": 0, "exit_code": 0, "log": {"path": "target/versioning-engine-spike/native-probe-https-pending-script-1.log", "sha256": "2a52c3b15c4351f3d99d77de5752e82f9704a0ac5ac99507399ee7615f312680"}}
+    ]
+  },
+  "native_retained_lease_experiment": {
+    "engine_patch_sha256": "cd213025ca0cff1413cc8d79041993737bb51f290a370f578f8c32018d396677",
+    "source_and_binary_archive": {"path": "target/versioning-engine-spike/baseline-2026-10-01-v4.tar", "sha256": "ac3c3a08d91372eedcfdb076f483fb448f324c7e1751acd49b563b4410ff21ff"},
+    "scope": "off-the-record exact-frame frozen empty-registry lease with bounded owner/visibility/navigation/frame invalidation and app script invalidation before dispatch; not production media/capture admission",
+    "rtc_fixture_sha256": "94d4359c609d5d23667a708cfa34572c5d6358be27e2649755072bb6368ae551",
+    "shared_https_fixture_sha256": "fc6e195857b3d7bd8cf846de41d1d7d368e4234be4e09aed71baca4f6e5025cc",
+    "cmake_sha256": "1b7b1567cd2dd49383eff856e217e04921db00865a19513e7da61677621be7af",
+    "runner_sha256": "3fe5fe611c016d4de466c46f3dc9382cb17abfc3f1700c704355432779930892",
+    "engine_library_sha256": "a70e92434fe9f8b9a66936b759bbbce859faae16c16e049653dfe4ac6d493020",
+    "engine_process_sha256": "15d90f1882662b94b80f712483c28196b433adabc6794c7b9ecc76781a90d2cf",
+    "rtc_probe_executable_sha256": "b8e6ad1a5aeed0c9906a0fe0bc7d67ffe4dd7c2de643cb2cee60a1357b014956",
+    "build_log": {"path": "target/versioning-engine-spike/build-rtc-lease-2.log", "sha256": "76614534f074fedf4cea3ed91dcd462d30ea6f25522c405e1ad5f2cb81497cc7"},
+    "install_log": {"path": "target/versioning-engine-spike/install-probe-rtc-lease-2.log", "sha256": "21d4cc9780bef566907f7b05e586d7553c67cbac3792d114d4e9e5165aa330ec"},
+    "initial_failed_attempt": {
+      "checks_passed": 44,
+      "checks_failed": 1,
+      "exit_code": 1,
+      "reason": "Qt application script injection executed while page was reported Frozen and the empty-registry lease remained held; central adapter now invalidates and thaws before dispatch.",
+      "log": {"path": "target/versioning-engine-spike/native-probe-rtc-lease-1.log", "sha256": "c8ddbf471bd96f38e0391b7a53cc262fbac4753228b0aa1a7165352b2e582e1c"}
+    },
+    "successful_runs": [
+      {"configuration": "qt-default", "checks_passed": 50, "checks_failed": 0, "exit_code": 0, "cross_origin_frame_process_count": 1, "log": {"path": "target/versioning-engine-spike/native-probe-rtc-lease-2.log", "sha256": "4d0f6bc736581897d59d9bc96bf56b020b0ad7498e98d49c582224791818738a"}},
+      {"configuration": "strict-site-isolation", "flags": ["--site-per-process"], "checks_passed": 50, "checks_failed": 0, "exit_code": 0, "cross_origin_frame_process_count": 2, "log": {"path": "target/versioning-engine-spike/native-probe-rtc-lease-oop-2.log", "sha256": "b721fc413662a3082a9cd93a23b1baef52247beac0ee740bbec29455aa783a14"}},
+      {"configuration": "baseline-regression", "checks_passed": 40, "checks_failed": 0, "exit_code": 0, "log": {"path": "target/versioning-engine-spike/native-probe-baseline-lease-2.log", "sha256": "d81459a3707d4f4f9dccb81a727e7b1143d0812cd29723061e3d365e7ba96a8f"}},
+      {"configuration": "https-regression", "checks_passed": 26, "checks_failed": 0, "exit_code": 0, "log": {"path": "target/versioning-engine-spike/native-probe-https-lease-2.log", "sha256": "32382e95462c731f6642fd7b999ffe16725b635195f72a229e2e50ad1bbb54a5"}}
+    ]
+  },
+  "production_enabled": false,
+  "native_frozen_registry": {
+    "engine_patch_sha256": "2018b2480cf5ed33659e00c41df127b4eeeb4473335783f0ac6883ff08cab1d7",
+    "source_and_binary_archive": {
+      "path": "target/versioning-engine-spike/baseline-2026-10-01-v3.tar",
+      "sha256": "dc8795b6f8ee1740e14943b52f30c6cf0ef487cb94a655229a066e6932b70ce7"
+    },
+    "scope": "per-document native registry witness after native frozen-state reports from exact captured frame set; freeze released before completion, never a retained admission lease",
+    "fixture_sha256": "5cef79d59698e12847eb3134a93392e90ad6b2f7469acda6b810a3f1815a8c56",
+    "shared_https_fixture_sha256": "fc6e195857b3d7bd8cf846de41d1d7d368e4234be4e09aed71baca4f6e5025cc",
+    "cmake_sha256": "1b7b1567cd2dd49383eff856e217e04921db00865a19513e7da61677621be7af",
+    "runner_sha256": "3fe5fe611c016d4de466c46f3dc9382cb17abfc3f1700c704355432779930892",
+    "engine_library_sha256": "360afc4e0677d18cdb82fb9ab521c78e93b7b04c9d285ae65e1f2452f5d67a84",
+    "engine_process_sha256": "15d90f1882662b94b80f712483c28196b433adabc6794c7b9ecc76781a90d2cf",
+    "probe_executable_sha256": "93e2769774bb8596a5cced6e0e5b8b578116cee8e53bfbf059bf21b811c55446",
+    "build_logs": [
+      {
+        "path": "target/versioning-engine-spike/build-rtc-registry-1.log",
+        "sha256": "99c7b42dfc9a2d55ce226a396d7b93e7a40094aaed6e92c944bdb13645a3d889"
+      },
+      {
+        "path": "target/versioning-engine-spike/build-rtc-registry-2.log",
+        "sha256": "e1cf9f53ac96c73eb5ca5ab86fc6527f4a038c1d80fab3077d1ab4875641afc7"
+      },
+      {
+        "path": "target/versioning-engine-spike/install-probe-rtc-registry-2.log",
+        "sha256": "98ee822d1681c655dc0cc5840fc48281aae1e710dc4dae3b43decc2edf26cd2c"
+      },
+      {
+        "path": "target/versioning-engine-spike/build-rtc-fixtures-3.log",
+        "sha256": "50903876cf3b435f44584b20b9ca3635467a35878b47c45538fb24155a659ffc"
+      }
+    ],
+    "initial_failed_attempt": {
+      "engine_patch_sha256": "6f40e2a54927284d9f77f1d9211c7e204a5a4c0e4584c3a610a0324e1f65bb66",
+      "checks_passed": 26,
+      "checks_failed": 4,
+      "exit_code": 1,
+      "reason": "Qt page interface existed only on main frames; child receiver disconnects safely returned Unknown. Replaced by independent every-frame observer.",
+      "log": {
+        "path": "target/versioning-engine-spike/native-probe-rtc-registry-1.log",
+        "sha256": "ff5840de48460ce42046821b0032ac0e970176d0815013e94d28cb4d989fc0d5"
+      }
+    },
+    "configurations": [
+      {
+        "configuration": "qt-default",
+        "chromium_flags": [],
+        "cross_origin_frame_process_count": 1,
+        "successful_fresh_process_runs": 3,
+        "checks_passed_per_run": 35,
+        "checks_failed_per_run": 0,
+        "exit_code_per_run": 0,
+        "cross_origin_frame_count": 2,
+        "logs": [
+          {
+            "path": "target/versioning-engine-spike/native-probe-rtc-expanded-1.log",
+            "sha256": "a81af8ff58f1b841462d3f953b5ae831fc2c9571c823920911c36505df353107"
+          },
+          {
+            "path": "target/versioning-engine-spike/native-probe-rtc-expanded-2.log",
+            "sha256": "696958ae274bd2ba3a8d46cb059b14d9ea0396fa80ffe3e61386e093f8eb9a5b"
+          },
+          {
+            "path": "target/versioning-engine-spike/native-probe-rtc-expanded-3.log",
+            "sha256": "98f0e3bbc1d52d6b5ab04dd69cf5f602e5c91b9b3ae1f547d351377285b11a0f"
+          }
+        ]
+      },
+      {
+        "configuration": "strict-site-isolation",
+        "chromium_flags": [
+          "--site-per-process"
+        ],
+        "cross_origin_frame_process_count": 2,
+        "successful_fresh_process_runs": 3,
+        "checks_passed_per_run": 35,
+        "checks_failed_per_run": 0,
+        "exit_code_per_run": 0,
+        "cross_origin_frame_count": 2,
+        "logs": [
+          {
+            "path": "target/versioning-engine-spike/native-probe-rtc-expanded-oop-1.log",
+            "sha256": "0e4eb2f7dd3ba3153d6943ca4fc90edc02fd6143ac790491029bc04afac84239"
+          },
+          {
+            "path": "target/versioning-engine-spike/native-probe-rtc-expanded-oop-2.log",
+            "sha256": "5be96dba0580992c3e9d2148d62f2d996c767b87cac1a542980d41dd0c49304e"
+          },
+          {
+            "path": "target/versioning-engine-spike/native-probe-rtc-expanded-oop-3.log",
+            "sha256": "c0b138b32b5b7fc88feb0957ea8b302f3f2c61eff6e8e99fecac2fa051ffd13d"
+          }
+        ]
+      }
+    ],
+    "regressions": [
+      {
+        "name": "original-baseline",
+        "fixture_sha256": "50c68ed94bbc42b4de4292008f704d62575e7ff866276da80356af926e1bc0ad",
+        "probe_executable_sha256": "b342f8daa1b00c4396f3107c7cb9b1fe7f80f886272f5d6973d5a980c1ade18e",
+        "successful_fresh_process_runs": 3,
+        "checks_passed_per_run": 40,
+        "checks_failed_per_run": 0,
+        "exit_code_per_run": 0,
+        "logs": [
+          {
+            "path": "target/versioning-engine-spike/native-probe-baseline-v3-1.log",
+            "sha256": "4a74c7c369a3e50c1408b3f7eec3f3e3b01df1959af4a1617b4639e2d768b029"
+          },
+          {
+            "path": "target/versioning-engine-spike/native-probe-baseline-v3-2.log",
+            "sha256": "afb026daa6c39625440e1fdf1f11f6cb2a4291a0ced03176b4d5da6ca32fe22a"
+          },
+          {
+            "path": "target/versioning-engine-spike/native-probe-baseline-v3-3.log",
+            "sha256": "2b93da1f7711763700d0f8b24b955e142a69dbe39f69d75ffe5472a09ee84961"
+          }
+        ]
+      },
+      {
+        "name": "https-request-copy",
+        "fixture_sha256": "3c0bf183cf6d4e5772cbb0df705d131789b53fa3d782b4a73ae5af8b5b8b9d54",
+        "probe_executable_sha256": "3122e7cfb286c05e605b22de738ad3924f2979dd599cf3e855c9883667a3ee02",
+        "successful_fresh_process_runs": 3,
+        "checks_passed_per_run": 26,
+        "checks_failed_per_run": 0,
+        "exit_code_per_run": 0,
+        "logs": [
+          {
+            "path": "target/versioning-engine-spike/native-probe-https-v3-1.log",
+            "sha256": "c9dbdd28b48f0cbc9427dcc24ed6abf8108fbb6f96eaba605f1a4521fe539228"
+          },
+          {
+            "path": "target/versioning-engine-spike/native-probe-https-v3-2.log",
+            "sha256": "9396965ae064d32cc29049f421668bce363aa7b268c8bef33eaebe2311ce94a6"
+          },
+          {
+            "path": "target/versioning-engine-spike/native-probe-https-v3-3.log",
+            "sha256": "e48036e63297f7f4ae84c9997f33c37310aebdf08e77ccf4c9f93f9d28abaa68"
+          }
+        ]
+      }
+    ]
+  }
+}

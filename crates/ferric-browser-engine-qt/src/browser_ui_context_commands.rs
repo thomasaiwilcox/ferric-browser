@@ -106,7 +106,7 @@ impl qobject::BrowserUi {
                     index += 1;
                 }
                 "--private" if !private => private = true,
-                option => return Err(format!("unknown window-new option: {option}")),
+                _ => return Err("window-new has an unsupported option".into()),
             }
             index += 1;
         }
@@ -206,10 +206,10 @@ impl qobject::BrowserUi {
                     .unwrap_or_else(|| self.as_ref().rust().initial_url.to_string());
                 let url = match resolve_input(&requested, &self.as_ref().navigation_context()) {
                     Ok(result) => result.url,
-                    Err(error) => {
-                        self.set_status_text(QString::from(format!(
-                            "Profile window navigation rejected: {error}"
-                        )));
+                    Err(_) => {
+                        self.set_status_text(QString::from(
+                            "Profile window navigation rejected; details suppressed",
+                        ));
                         return false;
                     }
                 };
@@ -302,7 +302,7 @@ impl qobject::BrowserUi {
                         .get(index + 1)
                         .filter(|value| !value.is_empty() && !value.chars().any(char::is_control))
                         .cloned()
-                        .ok_or_else(|| format!("{option} requires a value"))?;
+                        .ok_or_else(|| "context-create option requires a value".to_owned())?;
                     match option {
                         "--label" => label = value,
                         "--profile" => {
@@ -310,7 +310,7 @@ impl qobject::BrowserUi {
                             profile_set = true;
                         }
                         "--workspace" => workspace = Some(value),
-                        _ => return Err(format!("unknown context-create option: {option}")),
+                        _ => return Err("context-create has an unsupported option".into()),
                     }
                     index += 2;
                 }
@@ -380,22 +380,24 @@ impl qobject::BrowserUi {
 
     pub(super) fn current_contexts_config(&self) -> Result<ContextsConfig, String> {
         serde_json::from_str::<ContextsConfig>(&self.rust().contexts_json.to_string())
-            .map_err(|error| format!("contexts configuration is unavailable: {error}"))
+            .map_err(|_| "contexts configuration is unavailable; details suppressed".to_owned())
     }
 
     pub(super) fn set_contexts_configuration(mut self: Pin<&mut Self>, input: &QString) -> bool {
         match serde_json::from_str::<ContextsConfig>(&input.to_string()) {
             Ok(config) => match self.as_mut().publish_contexts_config(&config) {
                 Ok(()) => true,
-                Err(error) => {
-                    self.set_status_text(QString::from(error));
+                Err(_) => {
+                    self.set_status_text(QString::from(
+                        "contexts configuration could not be published; details suppressed",
+                    ));
                     false
                 }
             },
-            Err(error) => {
-                self.set_status_text(QString::from(format!(
-                    "contexts configuration is invalid: {error}"
-                )));
+            Err(_) => {
+                self.set_status_text(QString::from(
+                    "contexts configuration is invalid; details suppressed",
+                ));
                 false
             }
         }
@@ -456,7 +458,7 @@ impl qobject::BrowserUi {
         config: &ContextsConfig,
     ) -> Result<(), String> {
         let json = serde_json::to_string(config)
-            .map_err(|error| format!("could not serialize contexts configuration: {error}"))?;
+            .map_err(|_| "could not serialize contexts configuration; details suppressed")?;
         self.as_mut().set_contexts_json(QString::from(json));
         self.as_mut().set_context_choice_names(
             config
@@ -557,7 +559,7 @@ impl qobject::BrowserUi {
                     let value = command
                         .arguments
                         .get(index + 1)
-                        .ok_or_else(|| format!("{option} requires a value"))?;
+                        .ok_or_else(|| "context-route option requires a value".to_owned())?;
                     match option {
                         "--priority" => {
                             if seen_priority {
@@ -590,14 +592,10 @@ impl qobject::BrowserUi {
                                 value.as_str(),
                                 "external-open" | "explicit-open" | "typed-initial-url"
                             ) {
-                                return Err(format!(
-                                    "unsupported context route entry point: {value}"
-                                ));
+                                return Err("context-route entry point is unsupported".into());
                             }
                             if points.iter().any(|point: &String| point == value) {
-                                return Err(format!(
-                                    "context route entry point specified more than once: {value}"
-                                ));
+                                return Err("context-route entry point is duplicated".into());
                             }
                             if points.len() >= 3 {
                                 return Err(
@@ -606,7 +604,7 @@ impl qobject::BrowserUi {
                             }
                             points.push(value.clone());
                         }
-                        _ => return Err(format!("unknown context-route option: {option}")),
+                        _ => return Err("context-route has an unsupported option".into()),
                     }
                     index += 2;
                 }
@@ -622,7 +620,7 @@ impl qobject::BrowserUi {
                                 .any(|context| context.name == *context_name)
                         });
                 if !context_exists {
-                    return Err(format!("context not found: {context_name}"));
+                    return Err("context does not exist".into());
                 }
                 if config
                     .routes
@@ -631,7 +629,7 @@ impl qobject::BrowserUi {
                 {
                     return Err("an identical context route already exists".into());
                 }
-                if let Some(conflict) = config.routes.iter().find(|route| {
+                if config.routes.iter().any(|route| {
                     route.pattern == *pattern
                         && route.context != *context_name
                         && route.priority == priority
@@ -649,10 +647,10 @@ impl qobject::BrowserUi {
                             })
                         }
                 }) {
-                    return Err(format!(
-                        "route conflicts with {} at priority {}; choose a unique priority before adding another target",
-                        conflict.id, priority
-                    ));
+                    return Err(
+                        "context route conflicts with an existing route; choose a unique priority"
+                            .into(),
+                    );
                 }
                 let id = loop {
                     let candidate = format!("route-{}", Uuid::new_v4().simple());
@@ -690,11 +688,12 @@ impl qobject::BrowserUi {
                     .collect::<Vec<_>>();
                 config.routes.push(route.clone());
                 let path = self.as_ref().context_routes_path()?;
-                save_contexts_atomic(&path, &config).map_err(|error| error.to_string())?;
+                save_contexts_atomic(&path, &config)
+                    .map_err(|_| "context route write failed; details suppressed")?;
                 self.as_mut().publish_contexts_config(&config)?;
-                self.as_mut().set_status_text(QString::from(format!(
-                    "Context route {id} added; prompt applies before navigation only"
-                )));
+                self.as_mut().set_status_text(QString::from(
+                    "Context route added; prompt applies before navigation only",
+                ));
                 Ok(serde_json::json!({
                     "status": "queued",
                     "route": route,
@@ -715,16 +714,17 @@ impl qobject::BrowserUi {
                     .find(|route| route.id == *route_id)
                     .cloned();
                 if removed.is_none() {
-                    return Err(format!("context route not found: {route_id}"));
+                    return Err("context route not found".into());
                 }
                 config.routes.retain(|route| route.id != *route_id);
                 debug_assert_eq!(config.routes.len() + 1, original_len);
                 let path = self.as_ref().context_routes_path()?;
-                save_contexts_atomic(&path, &config).map_err(|error| error.to_string())?;
+                save_contexts_atomic(&path, &config)
+                    .map_err(|_| "context route write failed; details suppressed")?;
                 self.as_mut().publish_contexts_config(&config)?;
-                self.as_mut().set_status_text(QString::from(format!(
-                    "Context route {route_id} removed; existing navigation chains were not changed"
-                )));
+                self.as_mut().set_status_text(QString::from(
+                    "Context route removed; existing navigation chains were not changed",
+                ));
                 Ok(serde_json::json!({
                     "status": "removed",
                     "route": removed,

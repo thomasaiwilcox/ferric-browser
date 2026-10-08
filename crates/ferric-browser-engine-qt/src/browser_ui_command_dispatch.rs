@@ -88,12 +88,9 @@ impl qobject::BrowserUi {
                         return false;
                     }
                 } else {
-                    let plan = self
-                        .as_mut()
-                        .site_data_clear_plan(&QString::from(origin))
-                        .to_string();
-                    self.as_mut()
-                        .set_status_text(QString::from(format!("Site-data scope preview: {plan}")));
+                    self.as_mut().set_status_text(QString::from(
+                        "Site-data scope preview ready; repeat with --confirm to clear supported categories",
+                    ));
                 }
                 continue;
             }

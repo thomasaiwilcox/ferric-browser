@@ -27,7 +27,7 @@ pub enum RestoreSafety {
     Unsafe,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SessionTab {
     pub id: Uuid,
@@ -40,7 +40,23 @@ pub struct SessionTab {
     pub scroll_position: Option<(f64, f64)>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+impl std::fmt::Debug for SessionTab {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("SessionTab")
+            .field("id", &self.id)
+            .field("has_safe_restore_url", &self.safe_restore_url.is_some())
+            .field("restore_method", &self.restore_method)
+            .field("has_placeholder_reason", &self.placeholder_reason.is_some())
+            .field("pinned", &self.pinned)
+            .field("muted", &self.muted)
+            .field("zoom", &self.zoom)
+            .field("has_scroll_position", &self.scroll_position.is_some())
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SessionWindow {
     pub selected_tab: Option<Uuid>,
@@ -48,12 +64,23 @@ pub struct SessionWindow {
     pub tabs: Vec<SessionTab>,
 }
 
+impl std::fmt::Debug for SessionWindow {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("SessionWindow")
+            .field("selected_tab", &self.selected_tab)
+            .field("has_workspace", &self.workspace.is_some())
+            .field("tab_count", &self.tabs.len())
+            .finish()
+    }
+}
+
 /// A safe, profile-local descriptor retained for bounded closed-tab undo.
 ///
 /// This intentionally contains no engine state, credentials, fragments, or
 /// private-profile data. It is persisted only as part of a normal-profile
 /// session checkpoint and is revalidated before reopening.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ClosedTabSnapshot {
     pub id: Uuid,
@@ -62,7 +89,19 @@ pub struct ClosedTabSnapshot {
     pub closed_at: i64,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+impl std::fmt::Debug for ClosedTabSnapshot {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ClosedTabSnapshot")
+            .field("id", &self.id)
+            .field("url", &"[redacted]")
+            .field("title", &"[redacted]")
+            .field("closed_at", &self.closed_at)
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SessionSnapshot {
     pub schema_version: u32,
@@ -76,7 +115,23 @@ pub struct SessionSnapshot {
     pub closed_tabs: Vec<ClosedTabSnapshot>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+impl std::fmt::Debug for SessionSnapshot {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("SessionSnapshot")
+            .field("schema_version", &self.schema_version)
+            .field("session_id", &self.session_id)
+            .field("name", &"[redacted]")
+            .field("profile_id", &self.profile_id)
+            .field("revision", &self.revision)
+            .field("saved_at", &self.saved_at)
+            .field("window_count", &self.windows.len())
+            .field("closed_tab_count", &self.closed_tabs.len())
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq)]
 pub struct SnapshotTabInput {
     pub id: Uuid,
     pub url: String,
@@ -88,14 +143,41 @@ pub struct SnapshotTabInput {
     pub scroll_position: Option<(f64, f64)>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+impl std::fmt::Debug for SnapshotTabInput {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("SnapshotTabInput")
+            .field("id", &self.id)
+            .field("url", &"[redacted]")
+            .field("safety", &self.safety)
+            .field("private", &self.private)
+            .field("pinned", &self.pinned)
+            .field("muted", &self.muted)
+            .field("zoom", &self.zoom)
+            .field("has_scroll_position", &self.scroll_position.is_some())
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq)]
 pub struct SnapshotWindowInput {
     pub selected_tab: Option<Uuid>,
     pub workspace: Option<String>,
     pub tabs: Vec<SnapshotTabInput>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+impl std::fmt::Debug for SnapshotWindowInput {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("SnapshotWindowInput")
+            .field("selected_tab", &self.selected_tab)
+            .field("has_workspace", &self.workspace.is_some())
+            .field("tab_count", &self.tabs.len())
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq)]
 pub struct RestorePlanEntry {
     pub tab_id: Uuid,
     pub selected: bool,
@@ -106,6 +188,23 @@ pub struct RestorePlanEntry {
     pub muted: bool,
     pub zoom: f64,
     pub scroll_position: Option<(f64, f64)>,
+}
+
+impl std::fmt::Debug for RestorePlanEntry {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("RestorePlanEntry")
+            .field("tab_id", &self.tab_id)
+            .field("selected", &self.selected)
+            .field("has_url", &self.url.is_some())
+            .field("method", &self.method)
+            .field("has_placeholder_reason", &self.placeholder_reason.is_some())
+            .field("pinned", &self.pinned)
+            .field("muted", &self.muted)
+            .field("zoom", &self.zoom)
+            .field("has_scroll_position", &self.scroll_position.is_some())
+            .finish()
+    }
 }
 
 /// Returns the profile-scoped path for a named session without accepting path
@@ -260,7 +359,6 @@ fn validate_session_name(name: &str) -> Result<(), SessionError> {
     Ok(())
 }
 
-#[derive(Debug)]
 pub enum SessionError {
     Io { path: PathBuf, message: String },
     Json { path: PathBuf, message: String },
@@ -270,13 +368,42 @@ pub enum SessionError {
     SizeLimit,
 }
 
+impl std::fmt::Debug for SessionError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Io { .. } => formatter
+                .debug_struct("SessionError::Io")
+                .field("path", &"[redacted]")
+                .field("message", &"[redacted]")
+                .finish(),
+            Self::Json { .. } => formatter
+                .debug_struct("SessionError::Json")
+                .field("path", &"[redacted]")
+                .field("message", &"[redacted]")
+                .finish(),
+            Self::Invalid(_) => formatter
+                .debug_tuple("SessionError::Invalid")
+                .field(&"[redacted]")
+                .finish(),
+            Self::LegacySchema(version) => formatter
+                .debug_tuple("SessionError::LegacySchema")
+                .field(version)
+                .finish(),
+            Self::NewerSchema(version) => formatter
+                .debug_tuple("SessionError::NewerSchema")
+                .field(version)
+                .finish(),
+            Self::SizeLimit => formatter.write_str("SessionError::SizeLimit"),
+        }
+    }
+}
+
 impl std::fmt::Display for SessionError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Io { path, message } | Self::Json { path, message } => {
-                write!(formatter, "{}: {message}", path.display())
-            }
-            Self::Invalid(message) => formatter.write_str(message),
+            Self::Io { .. } => formatter.write_str("session storage I/O failed"),
+            Self::Json { .. } => formatter.write_str("session file could not be decoded"),
+            Self::Invalid(_) => formatter.write_str("session data is invalid"),
             Self::LegacySchema(version) => write!(
                 formatter,
                 "session schema {version} belongs to an earlier clean-break release; preserve it and create a new session"
@@ -663,6 +790,15 @@ fn io_error(path: &Path, error: &io::Error) -> SessionError {
 mod tests {
     use super::*;
 
+    #[test]
+    fn invalid_session_error_display_redacts_dynamic_message() {
+        let sentinel = "private-session-error-sentinel";
+        let error = SessionError::Invalid(format!("bad field contains {sentinel}"));
+
+        assert!(!format!("{error:?}").contains(sentinel));
+        assert!(!error.to_string().contains(sentinel));
+    }
+
     fn tab(url: &str, safe_get: bool, private: bool) -> SnapshotTabInput {
         SnapshotTabInput {
             id: Uuid::new_v4(),
@@ -714,6 +850,78 @@ mod tests {
         let json = serde_json::to_string(&snapshot).expect("json");
         assert!(!json.contains("data:text/html"));
         assert!(!json.contains("secret"));
+    }
+
+    #[test]
+    fn session_debug_output_redacts_page_content_and_error_details() {
+        let url = "https://example.test/path?token=session-url-secret";
+        let name = "session-name-secret";
+        let workspace = "session-workspace-secret";
+        let title = "session-title-secret";
+        let input_tab = tab(url, true, false);
+        let input_window = SnapshotWindowInput {
+            selected_tab: Some(input_tab.id),
+            workspace: Some(workspace.into()),
+            tabs: vec![input_tab.clone()],
+        };
+        let mut snapshot = SessionSnapshot::new(
+            Uuid::new_v4(),
+            name,
+            Uuid::new_v4(),
+            1,
+            "now",
+            vec![input_window.clone()],
+        )
+        .expect("snapshot");
+        snapshot.closed_tabs.push(ClosedTabSnapshot {
+            id: Uuid::new_v4(),
+            url: url.into(),
+            title: title.into(),
+            closed_at: 7,
+        });
+        let restored = snapshot.restore_plan().expect("restore plan");
+        let session_error = SessionError::Io {
+            path: PathBuf::from("/tmp/session-error-path-secret"),
+            message: "session-error-detail-secret".into(),
+        };
+        let session_json_error = SessionError::Json {
+            path: PathBuf::from("/tmp/session-json-error-path-secret"),
+            message: "session-json-error-detail-secret".into(),
+        };
+
+        let debug = [
+            format!("{input_tab:?}"),
+            format!("{input_window:?}"),
+            format!("{snapshot:?}"),
+            format!("{:?}", snapshot.windows[0]),
+            format!("{:?}", snapshot.windows[0].tabs[0]),
+            format!("{:?}", snapshot.closed_tabs[0]),
+            format!("{:?}", restored[0]),
+            format!("{session_error:?}"),
+            format!("{session_json_error:?}"),
+        ]
+        .join("\n");
+        let display = [format!("{session_error}"), format!("{session_json_error}")].join("\n");
+
+        for sentinel in [
+            "session-url-secret",
+            "session-name-secret",
+            "session-workspace-secret",
+            "session-title-secret",
+            "session-error-path-secret",
+            "session-error-detail-secret",
+            "session-json-error-path-secret",
+            "session-json-error-detail-secret",
+        ] {
+            assert!(
+                !debug.contains(sentinel),
+                "debug output exposed a session sentinel: {sentinel}"
+            );
+            assert!(
+                !display.contains(sentinel),
+                "display output exposed a session sentinel: {sentinel}"
+            );
+        }
     }
 
     #[test]

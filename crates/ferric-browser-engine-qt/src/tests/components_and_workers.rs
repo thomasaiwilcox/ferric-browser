@@ -20,10 +20,10 @@ fn configured_editor_argv_replaces_only_the_complete_file_argument() {
     assert!(configured_editor_argv(&invalid, Path::new("/tmp/config")).is_err());
 }
 #[test]
-fn config_editor_captures_bounded_stderr() {
+fn userscript_output_is_bounded_and_editor_process_is_tracked() {
     let io_source = include_str!("../userscript_io.rs");
     let process_source = include_str!("../editor_process.rs");
-    assert!(io_source.contains("userscript pipe read failed"));
+    assert!(io_source.contains("external process output read failed"));
     assert!(io_source.contains("userscript output exceeds"));
     assert!(process_source.contains("exit_status: Option<ExitStatus>"));
 }
@@ -45,7 +45,7 @@ fn external_editor_rejects_rich_contenteditable_controls() {
 fn primary_web_engine_profile_uses_selected_profile_namespace() {
     let qml = QML_SOURCE;
     assert!(qml.contains(
-        "storageName: window.temporaryProfile ? \"\" : \"ferric-browser-\" + window.profileName"
+        "? \"\" : \"ferric-browser-\" + profileHost.browserWindow.profileName"
     ));
     assert!(
         !qml.contains("storageName: window.temporaryProfile ? \"\" : \"ferric-browser-default\"")
@@ -53,7 +53,7 @@ fn primary_web_engine_profile_uses_selected_profile_namespace() {
     assert!(qml.contains(
             "storageName: secondaryWindow.windowTransientProfile ? \"\" : \"ferric-browser-\" + secondaryWindow.windowProfileName"
         ));
-    assert!(qml.contains("window.storageBasePath + \"/webengine/\" + window.profileName"));
+    assert!(qml.contains("+ \"/webengine/\" + profileHost.browserWindow.profileName"));
     assert!(qml.contains("secondaryWindow.windowStorageBasePath + \"/webengine/\""));
     assert!(qml.contains("property string windowStorageBasePath: rootWindow.storageBasePath"));
 }
@@ -142,8 +142,8 @@ fn permission_session_key_is_scoped_to_profile_uuid_and_lifetime() {
     let same = permission_session_key(first_profile, "https://example.test", "camera");
     let other_profile = permission_session_key(second_profile, "https://example.test", "camera");
 
-    assert_eq!(first, same);
-    assert_ne!(first, other_profile);
+    assert!(first == same);
+    assert!(first != other_profile);
     assert_eq!(first.lifetime, PermissionLifetimeKey::ProfileSession);
 }
 
@@ -1084,7 +1084,7 @@ matches = ["https://example.test/*"]
             assert_eq!(scripts.len(), 1);
             assert!(scripts[0].enabled);
         }
-        other => panic!("unexpected inventory result: {other:?}"),
+        _ => panic!("unexpected inventory result variant"),
     }
 
     worker
@@ -1106,7 +1106,7 @@ matches = ["https://example.test/*"]
             enabled: false,
             result: Ok(scripts),
         } => assert!(!scripts[0].enabled),
-        other => panic!("unexpected toggle result: {other:?}"),
+        _ => panic!("unexpected toggle result variant"),
     }
 
     let source = root.join("installed.toml");
@@ -1136,7 +1136,7 @@ executable = "/bin/true"
         UserscriptManagerResult::Installed(Ok(scripts)) => {
             assert_eq!(scripts.len(), 2);
         }
-        other => panic!("unexpected install result: {other:?}"),
+        _ => panic!("unexpected install result variant"),
     }
 
     worker
@@ -1154,7 +1154,7 @@ executable = "/bin/true"
     });
     match removed.expect("remove response") {
         UserscriptManagerResult::Removed(Ok(scripts)) => assert_eq!(scripts.len(), 1),
-        other => panic!("unexpected remove result: {other:?}"),
+        _ => panic!("unexpected remove result variant"),
     }
     assert!(!root.join("userscripts/installed.toml").exists());
 

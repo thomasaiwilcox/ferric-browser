@@ -8,6 +8,8 @@ use serde_json::Value;
 #[must_use]
 pub fn ipc_event_type(event: &Event) -> &'static str {
     match event {
+        Event::Versioning(_) => "versioning.changed",
+        Event::VersioningRequest(_) => "versioning.requested",
         Event::CreateProfile { .. } => "profile.changed",
         Event::CreateWindow { .. } | Event::FocusWindow { .. } | Event::SetActiveWindow { .. } => {
             "window.changed"
@@ -52,6 +54,8 @@ pub fn ipc_event_type(event: &Event) -> &'static str {
 #[must_use]
 pub fn ipc_event_payload(event: &Event, state: &ApplicationState) -> Value {
     match event {
+        Event::Versioning(action) => serde_json::json!({ "kind": action.kind() }),
+        Event::VersioningRequest(_) => serde_json::json!({ "kind": "request" }),
         Event::CreateProfile { privacy, .. } => serde_json::json!({ "privacy": privacy.name() }),
         Event::CreateWindow { profile } => serde_json::json!({
             "profile_id": profile.to_string(), "window_count": state.windows().len()
@@ -206,7 +210,28 @@ const fn mode_name(mode: Mode) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ferric_browser_core::{PrivacyKind, ValidatedUrl, reduce};
+    use ferric_browser_core::{
+        ApplicationOwnerId, BranchId, BranchName, InheritanceRequest, PrivacyKind, ValidatedUrl,
+        VersioningEvent, reduce,
+    };
+
+    #[test]
+    fn versioning_events_project_only_a_fixed_kind_without_branch_labels() {
+        let event = Event::Versioning(VersioningEvent::PrepareBranch {
+            id: BranchId::fresh(),
+            name: BranchName::new("secret=example").unwrap(),
+            application: ApplicationOwnerId::fresh(),
+            profile: ferric_browser_core::ProfileId::from_display("profileid-1").unwrap(),
+            parent: None,
+            fork: None,
+            inheritance: InheritanceRequest::None,
+        });
+        let payload = ipc_event_payload(&event, &ApplicationState::new());
+        assert_eq!(ipc_event_type(&event), "versioning.changed");
+        assert_eq!(payload["kind"], "branch.prepare");
+        assert!(!payload.to_string().contains("secret"));
+        assert!(!format!("{event:?}").contains("secret"));
+    }
 
     #[test]
     fn payloads_identify_targets_without_navigation_secrets() {

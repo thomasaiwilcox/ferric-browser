@@ -135,6 +135,12 @@ data category. Prefer upstream public APIs and a small number of maintained
 dependencies. No private Qt APIs, custom compositor, browser-engine fork,
 cloud synchronization service, or native plugin ABI in V1.
 
+Research exception (2026-09-30): the project owner authorized the disposable,
+workspace-local Versioned Browsing engine-capability prototype in
+[ADR-0016](architecture/ADR-0016-versioning-engine-capability-backend.md). This
+does not change V1's shipping dependency policy or authorize replacing system
+Qt; production adoption requires its own qualification and maintenance decision.
+
 **PROD-005 — qutebrowser relationship.** Reproduce its useful interaction
 concepts: modal input, hints, commands, quickmarks, completion, per-site
 configuration, sessions, and Unix integration. Maintain an explicit parity
@@ -3732,6 +3738,71 @@ by maintaining hand-written menus or cheat sheets that can drift from runtime.
 | V1 user-facing | Contexts, universal switcher, Site Ledger/Doctor, typed built-in/userscript actions, clean-link operations, binding map/prefix guidance |
 | V1.1 | Navigation journey graph and ephemeral isolated profiles |
 | POST candidates | Packaged web-app windows, richer explicitly authorized routing, typed multi-action pipelines, reconsidered split view only for proven unmet needs |
+
+### 32.8 Versioned Browsing (post-V1.1 feature track)
+
+These requirements are additive to, not replacements for, V1/V1.1 acceptance.
+The detailed design, invariant IDs and dependency-ordered slices are in the
+Versioned Browsing implementation pack. `docs/requirements.csv` remains the
+repository's single requirement tracker; the pack ledger tracks slice progress
+and capability certificates separately. Unsupported conditional extensions
+must not delay the independently useful core or be advertised as enabled.
+
+**VERSION-001 — Structural continuity.** Explicit immutable commits preserve
+validated normal-profile window/tab structure in a separate durable namespace;
+safe restore, semantic diff, bounded journal and deletion must not alter
+ordinary descriptor-only crash recovery. Publication is atomic and recoverable.
+
+**VERSION-002 — Live continuity.** Explicit stashes retain the same eligible
+WebEngine page under its original profile and owner, with bounded leases,
+resume, cancellation, resource visibility and renderer-loss reporting. The
+only live copy is never silently evicted or reported restored after loss.
+
+**VERSION-003 — Historical page continuity.** Consented document capture,
+bounded semantic sidecars, conservative reconstruction and restricted archive
+viewing preserve useful page state without replaying forms, scripts or remote
+actions. Coverage, consistency and retention are reported independently.
+
+**VERSION-004 — Clean isolated exploration.** Branches have ancestry and a
+fresh engine profile/window, support exact switching and disposal, and never
+borrow the parent's live view or silently inherit its storage. Explicit,
+previewed export from a linked transient branch is the only durable exception.
+
+**VERSION-005 — Cookie observations and fidelity.** Public cookie observations
+are redacted and classified by exact exposed identity, scope and completeness.
+A partial or identity-lossy mirror is never described as a complete snapshot;
+diagnostic diff may remain useful with explicit unknowns.
+
+**VERSION-006 — Conditional identity inheritance.** A snapshot-seeded branch
+is available only for a versioned backend and declared scope with qualified
+source identity/completeness, destination seed and read-back. Unsupported
+requests fail explicitly and never become clean or shared-profile branches.
+
+**VERSION-007 — Pure reconciliation planning.** A bounded three-way cookie
+planner and immutable conflict preview may be developed independently of
+engine write support. It exposes no secret values through routine UI, logs or
+IPC and never implies that applying a plan is safe.
+
+**VERSION-008 — Conditional write-back.** Applying selected cookie mutations
+requires a qualified backend, current consent, target/revision revalidation,
+per-key outcomes and recoverable partial/unknown states. No whole-jar rollback
+or remote action reversal is promised; unsupported writes remain disabled.
+
+**VERSION-009 — Ownership and privacy.** Reducer/application/Qt/storage owners
+retain captured operation identity and generations through every callback.
+Private/ephemeral data is memory-only by default; page/sidecar data is untrusted
+and cookie values or editable contents never enter ordinary logs, IPC or diff.
+
+**VERSION-010 — Qualification and release.** Each advertised capability has
+an exact Qt/Chromium/platform certificate, a native fixture-based test owner,
+fault/privacy/resource evidence and a release review. Primitive probes and
+green mocks alone cannot enable production behavior. Conditional unsupported
+extensions remain explicitly reported, not silently marked complete.
+
+**VERSION-011 — Structural versioning browser UI.** Keyboard-accessible,
+profile-scoped list, detail, restore and structural-diff views expose bounded,
+redacted metadata only. Saved page content remains outside default query and
+IPC projections; unsupported categories are identified explicitly.
 
 ## 33. Sources and verification notes
 

@@ -80,7 +80,7 @@ pub(super) fn parse_hint_candidate(value: &Value) -> Result<HintCandidate, Strin
 
 pub(super) fn parse_hint_payload(raw: &str) -> Result<Vec<HintCandidate>, String> {
     let values = serde_json::from_str::<Value>(raw)
-        .map_err(|error| format!("hint candidate JSON is invalid: {error}"))?;
+        .map_err(|_| "hint candidate JSON is invalid".to_owned())?;
     let values = if let Some(values) = values.as_array() {
         values
     } else {
@@ -93,10 +93,7 @@ pub(super) fn parse_hint_payload(raw: &str) -> Result<Vec<HintCandidate>, String
             .ok_or_else(|| "hint payload candidates must be an array".to_owned())?
     };
     if values.len() > MAX_HINT_CANDIDATES {
-        return Err(format!(
-            "hint candidate count {} exceeds {MAX_HINT_CANDIDATES}",
-            values.len()
-        ));
+        return Err("hint candidate count exceeds the limit".to_owned());
     }
     let candidates = values
         .iter()
@@ -175,7 +172,7 @@ fn parse_hint_kind(value: &str) -> Result<HintKind, String> {
         "media" => Ok(HintKind::Media),
         "scrollable" => Ok(HintKind::Scrollable),
         "aria" => Ok(HintKind::Aria),
-        _ => Err(format!("unknown hint kind: {value}")),
+        _ => Err("hint candidate kind is unsupported".into()),
     }
 }
 
@@ -205,6 +202,16 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn unknown_page_hint_kind_is_not_reflected_in_parser_error() {
+        let sentinel = "page-private-hint-kind-sentinel";
+        let candidate = serde_json::json!({"kind": sentinel});
+        let error =
+            parse_hint_candidate(&candidate).expect_err("unknown hint kind must be rejected");
+        assert_eq!(error, "hint candidate kind is unsupported");
+        assert!(!error.contains(sentinel));
     }
 
     #[test]

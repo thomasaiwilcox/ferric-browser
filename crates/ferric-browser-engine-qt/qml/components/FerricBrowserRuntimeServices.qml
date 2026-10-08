@@ -5,6 +5,7 @@ import QtQuick.Dialogs
 import QtWebEngine
 import io.github.ferricbrowser 1.0
 import "../scripts/BrowserScripts.js" as BrowserScripts
+import "../scripts/VersionedPageState.js" as VersionedPageState
 import "../scripts/SpellcheckPresentation.js" as SpellcheckPresentation
 
 FerricBrowserRuntimeBase {
@@ -26,7 +27,6 @@ FerricBrowserRuntimeBase {
     readonly property var notificationPresenter: window.notificationPresenterObject
     readonly property var siteDataClearPollTimer: window.siteDataClearPollTimerObject
 
-    readonly property alias clipboardBridgeObject: clipboardBridge
     readonly property alias activationOutcomeTimerObject: activationOutcomeTimer
     readonly property alias fileDialogSurfacesObject: fileDialogSurfaces
     readonly property alias certificatePromptsObject: certificatePrompts
@@ -55,6 +55,14 @@ FerricBrowserRuntimeBase {
         } else {
             view.runJavaScript(script, executionWorld)
         }
+        return true
+    }
+
+    function collectVersionedFrameTree(view, request, callback) {
+        if (!view || typeof callback !== "function") {
+            return false
+        }
+        VersionedPageState.collectFrameTree(view, request, callback)
         return true
     }
 
@@ -422,14 +430,14 @@ FerricBrowserRuntimeBase {
             if (script.runs_on_sub_frames) {
                 continue
             }
-            (function(pageUi, scriptName, scriptSource) {
+            (function(pageUi, scriptSource) {
                 var source = BrowserScripts.pageUserscriptRun(scriptSource)
                 window.runBrowserScript(view, source, function(ok) {
                     if (ok === false) {
-                        pageUi.status_text = "Page userscript failed: " + scriptName
+                        pageUi.status_text = "Page userscript failed; details suppressed"
                     }
                 }, WebEngineScript.MainWorld)
-            })(ui, script.name, script.source)
+            })(ui, script.source)
         }
     }
 
@@ -493,17 +501,6 @@ FerricBrowserRuntimeBase {
                 view.reload()
             }
         })
-    }
-
-    TextField {
-        id: clipboardBridge
-        x: -1000
-        y: -1000
-        width: 1
-        height: 1
-        opacity: 0
-        readOnly: true
-        visible: true
     }
 
     Timer {
@@ -898,6 +895,90 @@ FerricBrowserRuntimeBase {
 
     property var tabViews: []
     property var preparedTransferFallback: null
+    property var nativeStashDisclosure: []
+    property var nativePageCaptureDisclosure: []
+    property var nativePageCaptureSave: null
+    property var nativePageCaptureRetiredDownloads: ({})
+    property var nativePageCaptureRetiredDownloadOrder: []
+    property var nativePageCaptureRetiredPaths: ({})
+    property var nativePageCaptureRetiredPathOrder: []
+    property var nativePageCapturePoisonedTabIds: []
+    property var pendingNativePageCaptureClose: null
+    property bool nativePageCaptureRetirementExhausted: false
+    // A 128-page window can retire a path and up to two request IDs per page.
+    // Quarantine is process-lifetime and fails closed when this bound fills.
+    readonly property int nativePageCaptureRetiredDownloadLimit: 512
+    property bool nativeStashReservationPending: false
+    property bool nativeVersioningOperationPending: false
+    readonly property alias versioningViewHostObject: versioningViewHost
+
+    FerricVersioningViewHost {
+        id: versioningViewHost
+        ownerProfile: window.browserProfile
+        originalHost: window
+        onRestorationStarted: function(view) {
+            // The lifecycle signal can have fired while the view was still
+            // reparenting, or not fire at all if it was already Active.
+            Qt.callLater(function() { window.reconcileNativeStashLifecycle(view) })
+        }
+    }
+
+    Timer {
+        interval: 1000
+        repeat: true
+        running: versioningViewHost.preparedCount > 0
+                 || versioningViewHost.heldCount > 0
+                 || versioningViewHost.restoringCount > 0
+                 || versioningViewHost.retainedCount > 0
+                 || window.nativeStashReservationPending
+                 || window.nativeVersioningOperationPending
+        onTriggered: {
+            var cleanupId = browserUi.poll_native_stash_cleanup()
+            if (cleanupId.length > 0) {
+                if (!versioningViewHost.restoreUncommittedStash(cleanupId)) {
+                    browserUi.status_text = "Live stash cleanup remains pending"
+                } else {
+                    var restoringView = versioningViewHost.restoringView(cleanupId)
+                    if (restoringView) {
+                        window.reconcileNativeStashLifecycle(restoringView)
+                    }
+                }
+            }
+            window.nativeStashReservationPending = window.browserUi.has_native_stash_preparation()
+            window.nativeVersioningOperationPending = window.browserUi.has_active_versioning_operations()
+        }
+    }
+
+    function reconcileNativeStashLifecycle(view) {
+        if (!view || view.versioningOwnerHost !== versioningViewHost) {
+            return
+        }
+        if (view.lifecycleState === WebEngineView.LifecycleState.Frozen) {
+            var frozenId = versioningViewHost.preparedIdForView(view)
+            if (frozenId.length > 0) {
+                versioningViewHost.completeFrozenStash(frozenId, view, function() {
+                    var result = browserUi.confirm_native_frozen_stash(frozenId)
+                    if (result === 1) {
+                        return true
+                    }
+                    if (result === 0) {
+                        return false
+                    }
+                    return undefined
+                })
+            }
+        } else if (view.lifecycleState === WebEngineView.LifecycleState.Active) {
+            var restoringId = versioningViewHost.restoringIdForView(view)
+            if (restoringId.length > 0) {
+                if (versioningViewHost.acknowledgeRestoredStash(
+                        restoringId, view, function() {
+                            return browserUi.acknowledge_native_stash_restoration(restoringId)
+                        })) {
+                    window.syncTabModel()
+                }
+            }
+        }
+    }
 
     function tabViewAt(index) {
         return index >= 0 && index < tabViews.length ? tabViews[index] : null
@@ -906,6 +987,11 @@ FerricBrowserRuntimeBase {
     function removeTabViewAt(index, transferParent) {
         var view = tabViewAt(index)
         if (!view) {
+            return null
+        }
+        if (versioningViewHost.ownsRetainedView(view)
+                || versioningViewHost.isPreparedView(view)) {
+            browserUi.status_text = "Retained or preparing view cannot be removed as an ordinary tab"
             return null
         }
         tabViews.splice(index, 1)
@@ -932,6 +1018,11 @@ FerricBrowserRuntimeBase {
         if (!view) {
             return null
         }
+        if (versioningViewHost.ownsRetainedView(view)
+                || versioningViewHost.isPreparedView(view)) {
+            browserUi.status_text = "Retained or preparing view cannot transfer as an ordinary tab"
+            return null
+        }
         tabViews.splice(index, 1)
         view.parent = null
         view.visible = false
@@ -945,7 +1036,7 @@ FerricBrowserRuntimeBase {
         if (window.preparedTransferFallback) {
             return true
         }
-        var fallback = webViewComponent.createObject(webViews, {
+        var fallback = versioningViewHost.createOwnedView(webViewComponent, webViews, {
             tabIndex: -1,
             viewUi: browserUi,
             viewTabs: tabs,

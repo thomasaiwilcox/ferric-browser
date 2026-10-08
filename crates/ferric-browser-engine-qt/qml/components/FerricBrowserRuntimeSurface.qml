@@ -4,9 +4,9 @@ import QtQuick.Layouts
 import QtQuick.Dialogs
 import QtWebEngine
 import io.github.ferricbrowser 1.0
-import "../scripts/BrowserScripts.js" as BrowserScripts
 import "../scripts/KeyboardPresentation.js" as KeyboardPresentation
 import "../scripts/SpellcheckPresentation.js" as SpellcheckPresentation
+import "../scripts/NativePageCaptureCallbacks.js" as NativePageCaptureCallbacks
 
 FerricBrowserRuntimeChrome {
     id: window
@@ -19,6 +19,14 @@ FerricBrowserRuntimeChrome {
     readonly property var commandSurface: window.commandSurfaceObject
     readonly property var searchSurface: window.searchSurfaceObject
     readonly property var attachedDevToolsLoader: window.attachedDevToolsLoaderObject
+    readonly property alias versioningRestoreCoordinatorObject: versioningRestoreCoordinator
+    property bool profileBootstrapComplete: false
+
+    FerricVersioningRestoreHost {
+        id: versioningRestoreCoordinator
+        hostWindow: window
+        browserUi: window.primaryBrowserUi
+    }
 
     function configuredBlocklistIds() {
         return browserUi.feature_blocking_list_ids || []
@@ -113,6 +121,39 @@ FerricBrowserRuntimeChrome {
         if (index < 0 || !view) {
             return false
         }
+        if (window.windowCleanBranch && window.windowCleanBranchPublished
+                && view === window.windowBranchInitialView) {
+            browserUi.status_text = "The first clean-branch tab anchors its profile; close the branch window"
+            return false
+        }
+        var capture = window.nativePageCaptureSave
+        if (capture && capture.view === view) {
+            // Qt's profile-level downloadRequested event contains a pointer to
+            // the originating WebEngine page. Keep that page alive until Qt
+            // has delivered the event and QML has retained the exact request;
+            // otherwise destroying the tab can leave Qt with a stale page
+            // pointer while it dispatches the queued signal.
+            if (String(capture.downloadId || "").length === 0) {
+                var pendingClose = window.pendingNativePageCaptureClose
+                if (pendingClose && pendingClose.view !== view) {
+                    browserUi.status_text = "Another tab close is waiting for native archive request registration"
+                    return false
+                }
+                window.pendingNativePageCaptureClose = {
+                    tabId: String(capture.tabId),
+                    path: String(capture.path || ""),
+                    view: view,
+                    requestRegistered: false
+                }
+                browserUi.status_text = "Tab close is waiting for native archive request registration"
+                window.scheduleRuntimeWork(0)
+                return true
+            }
+            if (!window.retireNativePageCaptureForClosingView(view)) {
+                browserUi.status_text = "Tab close is waiting for native archive callback cleanup"
+                return false
+            }
+        }
         window.clearPageDialogForView(view)
         window.clearClientCertificateForView(view)
         window.clearCertificateErrorForView(view)
@@ -125,6 +166,10 @@ FerricBrowserRuntimeChrome {
         }
         window.removeTabViewAt(index, null)
         tabs.remove(index)
+        if (window.pendingNativePageCaptureClose
+                && window.pendingNativePageCaptureClose.view === view) {
+            window.pendingNativePageCaptureClose = null
+        }
         if (browserUi.tab_count > tabs.count) {
             tabs.append({ url: browserUi.initial_url, title: "New tab",
                           pinned: false, muted: false, zoom: 1.0,
@@ -161,6 +206,14 @@ FerricBrowserRuntimeChrome {
 
     function executePendingEngineAction() {
         var action = browserUi.take_engine_action()
+        if (action === "context-save-request") {
+            window.saveContextMembership(browserUi)
+            return
+        }
+        if (action === "context-commit-request") {
+            window.commitSavedContext(browserUi)
+            return
+        }
         if (action.indexOf("command-prefill\t") === 0) {
             commandSurface.commandText = action.slice("command-prefill\t".length)
             commandSurface.cursorPosition = commandSurface.commandText.length
@@ -180,6 +233,11 @@ FerricBrowserRuntimeChrome {
             var focusTarget = focusParts.length >= 2 ? focusParts[1] : ""
             var focusOperationId = focusParts.length >= 3 ? focusParts[2] : ""
             var focusEntry = window.browserWindowEntryForTarget(focusTarget)
+            var restoreFocus = false
+            if (!focusEntry) {
+                focusEntry = window.versioningWindowOwner.entryForOwnerToken(focusTarget)
+                restoreFocus = !!focusEntry
+            }
             if (!focusEntry || !focusEntry.host || !focusEntry.ui) {
                 browserUi.status_text = "Window focus target is stale"
                 if (focusOperationId.length > 0) {
@@ -188,7 +246,8 @@ FerricBrowserRuntimeChrome {
                 return
             }
             if (!window.activateBrowserWindow(
-                        focusEntry.host, focusEntry.ui, focusOperationId)) {
+                        focusEntry.host, restoreFocus ? browserUi : focusEntry.ui,
+                        focusOperationId)) {
                 focusEntry.ui.status_text = "Window activation outcome unknown"
             } else {
                 focusEntry.ui.status_text = "Window focused"
@@ -464,6 +523,26 @@ FerricBrowserRuntimeChrome {
         }
         if (action.indexOf("reopen-window\t") === 0) {
             window.openReopenedWindow(browserUi, window, action)
+            return
+        }
+        if (action.indexOf("versioning-restore-window\t") === 0) {
+            window.openVersionedRestoreWindow(browserUi, window, action)
+            return
+        }
+        if (action.indexOf("versioning-clean-branch-ready\t") === 0) {
+            window.openVersionedCleanBranch(browserUi, window, action)
+            return
+        }
+        if (action.indexOf("versioning-branch-switch\t") === 0) {
+            if (!window.activateVersionedBranchTarget(
+                        browserUi, action.slice("versioning-branch-switch\t".length)))
+                browserUi.status_text = "Clean branch switch refused: target is stale or unavailable"
+            return
+        }
+        if (action.indexOf("versioning-sidecar-ready\t") === 0) {
+            var allowEditable = window.versioningRestoreEditableReviewEnabled
+            window.versioningRestoreEditableReviewEnabled = false
+            versioningRestoreCoordinator.handleSidecarReady(action, allowEditable)
             return
         }
         if (action.indexOf("reopen-window-confirm\t") === 0) {
@@ -784,6 +863,41 @@ FerricBrowserRuntimeChrome {
         return tabViewAt(browserUi.active_tab_index)
     }
 
+    function nativePageCaptureViewForTab(tabId) {
+        var expected = String(tabId || "")
+        if (expected.length === 0)
+            return null
+        for (var index = 0; index < browserUi.tab_count; ++index) {
+            if (String(browserUi.tab_id_for_index(index)) !== expected)
+                continue
+            var view = tabViewAt(index)
+            try {
+                return view && String(view.stableTabId) === expected ? view : null
+            } catch (error) {
+                return null
+            }
+        }
+        return null
+    }
+
+    function nativePageCaptureTabIdForView(candidateView) {
+        if (!candidateView)
+            return ""
+        for (var index = 0; index < browserUi.tab_count; ++index) {
+            var view = tabViewAt(index)
+            if (view !== candidateView)
+                continue
+            var expected = String(browserUi.tab_id_for_index(index) || "")
+            try {
+                return expected.length > 0 && String(view.stableTabId) === expected
+                        ? expected : ""
+            } catch (error) {
+                return ""
+            }
+        }
+        return ""
+    }
+
     function updateActiveTabUrl() {
         var active = browserUi.active_tab_index
         if (active >= 0 && active < tabs.count) {
@@ -823,6 +937,7 @@ FerricBrowserRuntimeChrome {
     }
 
     function syncTabModel() {
+        Qt.callLater(window.tabStripObject.refreshModelPresentation)
         var pending = browserUi.take_session_restore_values()
         if (pending.length > 0) {
             window.applyRestorePayload(pending, true)
@@ -830,6 +945,26 @@ FerricBrowserRuntimeChrome {
         var coreIds = []
         for (var coreIndex = 0; coreIndex < browserUi.tab_count; ++coreIndex) {
             coreIds.push(browserUi.tab_id_for_index(coreIndex))
+        }
+        for (var retainedIndex = 0; retainedIndex < coreIds.length; ++retainedIndex) {
+            if (window.versioningViewHostObject.hasRetainedTab(coreIds[retainedIndex])) {
+                // The core must remove retained membership from the visible
+                // tab projection before reconciliation may create a view.
+                // Never substitute a fresh page for a retained handle.
+                browserUi.status_text = "Retained tab is still in the visible projection"
+                return
+            }
+        }
+        // Logical cleanup may close a blank fallback before the native host
+        // has acknowledged restoration. Do not let generic reconciliation
+        // destroy that protected QObject while it still owns the hold.
+        for (var protectedIndex = 0; protectedIndex < tabViews.length; ++protectedIndex) {
+            var protectedView = tabViews[protectedIndex]
+            if (coreIds.indexOf(protectedView.stableTabId) < 0
+                    && window.versioningViewHostObject.isPreparedView(protectedView)) {
+                browserUi.status_text = "Live stash view cleanup remains pending"
+                return
+            }
         }
         var aligned = pending.length === 0
                 && tabs.count === coreIds.length
@@ -849,6 +984,7 @@ FerricBrowserRuntimeChrome {
             aligned = false
         }
         if (aligned) {
+            window.syncLazyRestoreLabels()
             return
         }
         var identitySignature = coreIds.join("\n")
@@ -894,7 +1030,7 @@ FerricBrowserRuntimeChrome {
         if (active >= 0 && active < tabs.count && !tabs.get(active).loaded) {
             tabs.setProperty(active, "loaded", true)
         }
-        var remainingViews = tabViews.slice(0)
+        var remainingViews = window.versioningViewHostObject.visibleViewsOnly(tabViews)
         var orderedViews = []
         for (var index = 0; index < tabs.count; ++index) {
             var tabId = coreIds[index]
@@ -910,17 +1046,18 @@ FerricBrowserRuntimeChrome {
                 view = remainingViews.shift()
             }
             if (!view) {
-                view = window.webViewFactory.createObject(window.webViewsObject, {
-                tabIndex: index,
-                stableTabId: tabId,
-                viewUi: browserUi,
-                viewTabs: tabs,
-                viewModel: tabs.get(index),
-                viewProfile: browserProfile,
-                viewInterceptor: requestInterceptor,
-                viewTransientProfile: window.temporaryProfile,
-                viewTransferred: false
-                })
+                view = window.versioningViewHostObject.createOwnedView(
+                            window.webViewFactory, window.webViewsObject, {
+                                tabIndex: index,
+                                stableTabId: tabId,
+                                viewUi: browserUi,
+                                viewTabs: tabs,
+                                viewModel: tabs.get(index),
+                                viewProfile: browserProfile,
+                                viewInterceptor: requestInterceptor,
+                                viewTransientProfile: window.temporaryProfile,
+                                viewTransferred: false
+                            })
             }
             if (!view) {
                 browserUi.status_text = "Could not create tab view"
@@ -951,6 +1088,87 @@ FerricBrowserRuntimeChrome {
                 return
             }
         }
+        if (window.windowCleanBranch && window.windowCleanBranchPublished) {
+            if (tabViews.indexOf(window.windowBranchInitialView) < 0) {
+                window.windowBranchGroupViews = []
+                browserUi.status_text = "Clean branch first-view lease is no longer current"
+                return
+            }
+            window.windowBranchGroupViews = tabViews.filter(function(view) {
+                return view !== window.windowBranchInitialView
+            })
+        }
+        window.syncLazyRestoreLabels()
+    }
+
+    function syncLazyRestoreLabels() {
+        for (var index = 0; index < tabs.count; ++index) {
+            if (browserUi.has_lazy_restore_page(index)
+                    && tabs.get(index).title !== "Restored page — select to load") {
+                tabs.setProperty(index, "title", "Restored page — select to load")
+            }
+        }
+    }
+
+    function reconciledStashProjection() {
+        window.syncTabModel()
+        var projectedIds = []
+        for (var i = 0; i < browserUi.tab_count; ++i) {
+            projectedIds.push(browserUi.tab_id_for_index(i))
+        }
+        var activeIndex = browserUi.active_tab_index
+        if (activeIndex < 0 || activeIndex >= projectedIds.length
+                || tabViews.length !== projectedIds.length
+                || tabs.count !== projectedIds.length) {
+            return null
+        }
+        return { ids: projectedIds, activeId: projectedIds[activeIndex] }
+    }
+
+    // Materialization acknowledges only native identity, profile and blank
+    // fallback presentation; it does not hide or freeze the source.
+    function materializeReservedNativeFallback(sourceTabId, fallbackTabId) {
+        var projection = window.reconciledStashProjection()
+        return projection !== null
+                && window.versioningViewHostObject.hasMaterializedReservedFallback(
+                    sourceTabId, fallbackTabId,
+                    projection.ids, tabViews, projection.activeId)
+    }
+
+    // The admitted ID selects the source. Current focus is never substituted
+    // for it, and the host check does not hide or freeze the view.
+    function acknowledgeAdmittedNativeStashStart(operationId, sourceTabId) {
+        var projection = window.reconciledStashProjection()
+        if (projection === null
+                || !window.versioningViewHostObject.hasAdmittedVisibleSource(
+                    sourceTabId, projection.ids, tabViews)) {
+            return browserUi.refuse_native_stash_start(operationId)
+        }
+        if (browserUi.acknowledge_native_stash_start(operationId, sourceTabId)) {
+            return true
+        }
+        return browserUi.refuse_native_stash_start(operationId)
+    }
+
+    // Capture the exact QObject while the logical fallback is still merely
+    // materialized. A later Rust ticket may only hide this held source.
+    function holdReservedNativeStash(viewId, sourceTabId, fallbackTabId) {
+        var projection = window.reconciledStashProjection()
+        return projection !== null
+                && window.versioningViewHostObject.holdReservedStash(
+                    viewId, sourceTabId, fallbackTabId,
+                    projection.ids, tabViews, projection.activeId)
+    }
+
+    // Invoked only after an application-owned stage ticket is installed.
+    function prepareReservedNativeStash(viewId, sourceTabId, fallbackTabId) {
+        var projection = window.reconciledStashProjection()
+        if (projection === null) {
+            return false
+        }
+        return window.versioningViewHostObject.prepareHeldStash(
+                    viewId, sourceTabId, fallbackTabId,
+                    projection.ids, tabViews, projection.activeId)
     }
 
     function scheduleRuntimeWork(delay) {
@@ -961,9 +1179,133 @@ FerricBrowserRuntimeChrome {
         }
     }
 
+    function processPendingNativePageCaptureClose() {
+        var pending = window.pendingNativePageCaptureClose
+        if (!pending || !pending.view)
+            return false
+        var index = browserUi.tab_index_for_id(pending.tabId)
+        if (index < 0 || tabViewAt(index) !== pending.view) {
+            window.pendingNativePageCaptureClose = null
+            return false
+        }
+        var capture = window.nativePageCaptureSave
+        if (capture && capture.view === pending.view
+                && String(capture.downloadId || "").length > 0) {
+            pending.requestRegistered = true
+        }
+        if (pending.requestRegistered !== true)
+            return false
+        if (capture && capture.view === pending.view
+                && capture.downloadFinished === true) {
+            return false
+        }
+        window.pendingNativePageCaptureClose = null
+        if (!window.closeTabAtIndex(index)) {
+            if (!window.pendingNativePageCaptureClose)
+                window.pendingNativePageCaptureClose = pending
+            return false
+        }
+        if (window.shutdownWaitingForDownloadFinishes
+                && !window.hasActiveDownloads()) {
+            window.shutdownWaitingForDownloadFinishes = false
+            window.shutdownPromptVisible = false
+            window.continueQuitRequest()
+        }
+        return true
+    }
+
     function processRuntimeWork() {
-            browserUi.poll_ipc()
+            if (window.instanceRequestOwner) {
+                window.dispatchRoutedIpc(browserUi.poll_ipc())
+            }
             window.syncTabModel()
+            window.processPendingNativePageCaptureClose()
+            var admittedStashStart = browserUi.pending_native_stash_start()
+            if (admittedStashStart.length === 2) {
+                if (window.acknowledgeAdmittedNativeStashStart(
+                        admittedStashStart[0], admittedStashStart[1])) {
+                    window.scheduleRuntimeWork(0)
+                }
+            }
+            window.nativeStashDisclosure = browserUi.pending_native_stash_disclosure()
+            window.nativePageCaptureDisclosure =
+                    browserUi.pending_native_page_capture_disclosure()
+            var closeAwaitingProfileRequest = window.pendingNativePageCaptureClose
+                    && window.pendingNativePageCaptureClose.requestRegistered !== true
+            if (!closeAwaitingProfileRequest) {
+                var pageCaptureSave = browserUi.pending_native_page_capture_save()
+                if (pageCaptureSave.length === 2 && window.nativePageCaptureSave
+                        && String(pageCaptureSave[0])
+                        === String(window.nativePageCaptureSave.operationId)
+                        && String(pageCaptureSave[1])
+                        !== String(window.nativePageCaptureSave.tabId)
+                        && window.nativePageCaptureSave.downloadFinished === true) {
+                    var completedPage = window.nativePageCaptureSave
+                    if (NativePageCaptureCallbacks.retireCaptureIdentities(
+                                window, completedPage, [])) {
+                        pageCaptureMediaKeyTimer.stop()
+                        window.nativePageCaptureSave = null
+                        window.discardNativePageCaptureMutationProbe(completedPage)
+                    } else {
+                        NativePageCaptureCallbacks.failClosedRetirement(
+                                    window, browserUi, completedPage, [],
+                                    "Native page-save callback capacity is exhausted; window capture was stopped",
+                                    false)
+                    }
+                }
+                if (pageCaptureSave.length === 2 && window.nativePageCaptureSave
+                        && String(pageCaptureSave[0])
+                        !== String(window.nativePageCaptureSave.operationId)) {
+                    if (window.retireSupersededNativePageCapture(
+                            window.nativePageCaptureSave, String(pageCaptureSave[0]))) {
+                        pageCaptureCollectionTimer.stop()
+                        pageCaptureMediaKeyTimer.stop()
+                    }
+                }
+                if (pageCaptureSave.length === 2 && !window.nativePageCaptureSave) {
+                    window.startNativePageCaptureSave(pageCaptureSave[0], pageCaptureSave[1])
+                }
+                if (window.nativePageCaptureSave
+                        && !browserUi.has_native_page_capture_request()) {
+                    pageCaptureCollectionTimer.stop()
+                    pageCaptureMediaKeyTimer.stop()
+                    var retiredCapture = window.nativePageCaptureSave
+                    if (retiredCapture.downloadFinished !== true
+                            && !NativePageCaptureCallbacks.retireCaptureIdentities(
+                                window, retiredCapture, [])) {
+                        NativePageCaptureCallbacks.failClosedRetirement(
+                                    window, browserUi, retiredCapture,
+                                    retiredCapture.download ? [retiredCapture.download] : [],
+                                    "Native page-save callback capacity is exhausted; window capture was stopped")
+                    } else {
+                        window.nativePageCaptureSave = null
+                        window.discardNativePageCaptureMutationProbe(retiredCapture)
+                        if (retiredCapture.downloadFinished !== true
+                                && retiredCapture.download) {
+                            try { retiredCapture.download.cancel() } catch (error) {}
+                        }
+                    }
+                }
+            }
+            var pendingStash = browserUi.pending_native_stash_preparation()
+            if (pendingStash.length === 3) {
+                if (!window.materializeReservedNativeFallback(
+                            pendingStash[1], pendingStash[2])
+                        || !browserUi.acknowledge_native_fallback_materialized(
+                            pendingStash[0])
+                        || !window.holdReservedNativeStash(
+                            pendingStash[0], pendingStash[1], pendingStash[2])) {
+                    browserUi.abort_native_stash_preparation(pendingStash[0])
+                } else if (!browserUi.acknowledge_native_stash_hold_installed(
+                               pendingStash[0])
+                           && !browserUi.abort_native_stash_held_preparation(
+                               pendingStash[0])) {
+                    browserUi.status_text = "Live stash hold cleanup remains pending"
+                }
+                window.syncTabModel()
+            }
+            window.nativeStashReservationPending = browserUi.has_native_stash_preparation()
+            window.nativeVersioningOperationPending = browserUi.has_active_versioning_operations()
             window.executePendingEngineAction()
             browserUi.poll_config()
             window.maybeOpenPendingEngineFileDialog()
@@ -1004,13 +1346,9 @@ FerricBrowserRuntimeChrome {
                 var editorOriginal = browserUi.editor_completion_original
                 var editorUpdated = browserUi.editor_completion_updated
                 var editorError = browserUi.editor_completion_error
-                var editorStderr = browserUi.editor_completion_stderr
                 var applyView = window.activeWebView()
                 if (editorError.length > 0) {
-                    if (editorStderr.length > 0) {
-                        editorError += " (stderr: " + editorStderr + ")"
-                    }
-                    browserUi.deliver_editor_apply(editorToken, JSON.stringify({error: editorError}))
+                    browserUi.deliver_editor_apply(editorToken, JSON.stringify({error: "external-editor-failed"}))
                 } else if (applyView) {
                     window.runBrowserScript(applyView, window.editorApplyScript(editorOriginal, editorUpdated), function(value) {
                         browserUi.deliver_editor_apply(editorToken, JSON.stringify(value || {error: "editor apply returned no result"}))
@@ -1049,10 +1387,270 @@ FerricBrowserRuntimeChrome {
             }
             window.syncTabModel()
             window.executePendingEngineAction()
+            if (window.shutdownWaitingForDownloadFinishes) {
+                if (!window.hasActiveDownloads()
+                        && !browserUi.has_pending_versioning_object_work()) {
+                    window.shutdownWaitingForDownloadFinishes = false
+                    window.shutdownPromptVisible = false
+                    window.continueQuitRequest()
+                } else if (!window.hasActiveDownloads()) {
+                    window.scheduleRuntimeWork(50)
+                }
+            }
             var nextDelay = browserUi.maintenance_delay_ms()
             if (nextDelay >= 0) {
                 window.scheduleRuntimeWork(nextDelay)
             }
+    }
+
+    function startNativePageCaptureSave(operationId, tabId) {
+        var expectedTab = String(tabId || "")
+        var view = window.nativePageCaptureViewForTab(expectedTab)
+        var maxArchiveBytes = Number(browserUi.native_page_capture_archive_limit_bytes())
+        if (NativePageCaptureCallbacks.captureTabIsPoisoned(window, expectedTab)) {
+            browserUi.cancel_native_page_capture_request(String(operationId || ""))
+            browserUi.status_text = "Page archiving is unavailable for this tab after an interrupted native save"
+            return false
+        }
+        if (!window.nativePageCaptureRetirementCapacityAvailable()) {
+            browserUi.cancel_native_page_capture_request(String(operationId || ""))
+            browserUi.status_text = window.nativePageCaptureRetirementExhausted
+                    ? "Page saves are blocked in this window because callback capacity was exhausted"
+                    : "Page archive capture is unavailable until pending native save callbacks retire"
+            return false
+        }
+        if (!Number.isSafeInteger(maxArchiveBytes) || maxArchiveBytes <= 0) {
+            browserUi.cancel_native_page_capture_request(String(operationId || ""))
+            browserUi.status_text = "Page archive capture is unavailable because its size limit could not be read"
+            return false
+        }
+        if (expectedTab.length === 0 || !view
+                || window.temporaryProfile) {
+            var pageFailed = expectedTab.length > 0 && !window.temporaryProfile
+                    && browserUi.fail_native_window_capture_page(
+                           String(operationId || ""), expectedTab,
+                           "native-view-lost", "", "")
+            if (!pageFailed) {
+                browserUi.cancel_native_page_capture_request(String(operationId || ""))
+            }
+            window.scheduleRuntimeWork(0)
+            return false
+        }
+        var capturedUrl = ""
+        try { capturedUrl = String(view.url || "") } catch (error) {}
+        if (capturedUrl.length === 0) {
+            var missingUrlFailed = browserUi.fail_native_window_capture_page(
+                        String(operationId || ""), expectedTab,
+                        "native-view-lost", "", "")
+            if (!missingUrlFailed)
+                browserUi.cancel_native_page_capture_request(String(operationId || ""))
+            window.scheduleRuntimeWork(0)
+            return false
+        }
+        if (!window.versioningWindowOwner
+                || !window.versioningWindowOwner.profilePageCaptureAvailable(
+                       window.browserProfile, window)) {
+            browserUi.cancel_native_page_capture_request(String(operationId || ""))
+            browserUi.status_text = "Another page archive save is active for this profile"
+            window.scheduleRuntimeWork(0)
+            return false
+        }
+        var capture = {
+            operationId: String(operationId),
+            tabId: expectedTab,
+            maxArchiveBytes: maxArchiveBytes,
+            profile: window.browserProfile,
+            path: "",
+            view: view,
+            capturedUrl: capturedUrl,
+            downloadId: "",
+            collectionFinished: false,
+            collectionTimedOut: false,
+            sidecarAccepted: false,
+            mediaKeyStatus: "not-requested",
+            mediaKeyWaitAttempts: 0,
+            collectorStarted: false,
+            collectorStartFailed: false,
+            collectorEntryPointAvailable: false,
+            collectorStartErrorName: "none",
+            collectorStartErrorLine: -1,
+            collectorReferenceErrorSymbol: "none",
+            collectorStartDurationMs: 0,
+            collectorCallbackReceived: false,
+            collectorResultType: "not-received",
+            collectorResultLength: 0,
+            mutationProbe: null,
+            mutationEvidenceSubmitted: false
+        }
+        window.nativePageCaptureSave = capture
+        window.collectNativePageCaptureSidecar(capture)
+        return true
+    }
+
+    function collectNativePageCaptureSidecar(capture) {
+        if (!capture || capture !== window.nativePageCaptureSave
+                || capture.collectionFinished) {
+            return false
+        }
+        var view = capture.view
+        var currentView = window.nativePageCaptureViewForTab(capture.tabId)
+        if (!view || currentView !== view) {
+            window.finishNativePageCaptureCollection(capture, "")
+            return false
+        }
+        var challenge = browserUi.native_page_capture_sidecar_request(
+                    capture.operationId, capture.tabId)
+        if (challenge && challenge.length === 1
+                && String(challenge[0]) === "pending-media-key") {
+            capture.mediaKeyWaitAttempts = 0
+            capture.mediaKeyStatus = "pending"
+            pageCaptureMediaKeyTimer.restart()
+            return true
+        }
+        if (!challenge || challenge.length !== 8) {
+            try {
+                capture.mediaKeyStatus = String(
+                            browserUi.native_page_capture_media_key_status())
+            } catch (error) {}
+            window.finishNativePageCaptureCollection(capture, "")
+            return false
+        }
+        capture.mediaRequested = String(challenge[7]) === "true"
+        capture.mediaKeyStatus = capture.mediaRequested ? "ready" : "not-requested"
+        var request = {
+            expected_origin: String(challenge[0]),
+            expected_route: String(challenge[1]),
+            route_fingerprint: String(challenge[2]),
+            capture_fingerprint: String(challenge[3]),
+            nonce: String(challenge[4]),
+            max_ms: 50,
+            include_controls: true,
+            include_editable: String(challenge[5]) === "true",
+            include_selection: String(challenge[6]) === "true",
+            include_media: String(challenge[7]) === "true"
+        }
+        pageCaptureCollectionTimer.restart()
+        var collectorStart = Date.now()
+        var collectorStarted = false
+        capture.collectorEntryPointAvailable =
+                typeof window.collectVersionedFrameTree === "function"
+        try {
+            collectorStarted = window.collectVersionedFrameTree(view, request, function(rawResult, mutationProbe) {
+                capture.collectorCallbackReceived = true
+                capture.collectorResultType = typeof rawResult
+                capture.collectorResultLength = typeof rawResult === "string"
+                        ? Math.min(rawResult.length, 262145) : 0
+                if (window.nativePageCaptureSave !== capture
+                        || capture.collectionFinished === true
+                        || capture.mutationEvidenceSubmitted === true) {
+                    if (typeof mutationProbe === "function")
+                        mutationProbe(function() {})
+                    return
+                }
+                capture.mutationProbe = typeof mutationProbe === "function"
+                        ? mutationProbe : null
+                window.finishNativePageCaptureCollection(capture, String(rawResult || ""))
+            })
+        } catch (error) {
+            capture.collectorStartFailed = true
+            var errorName = error && typeof error.name === "string" ? error.name : ""
+            capture.collectorStartErrorName = ["Error", "TypeError", "ReferenceError",
+                                               "RangeError", "SyntaxError"].indexOf(errorName) >= 0
+                    ? errorName : "other"
+            var errorLine = Number(error && error.lineNumber)
+            capture.collectorStartErrorLine = Number.isInteger(errorLine)
+                    && errorLine >= 0 && errorLine <= 100000 ? errorLine : -1
+            if (errorName === "ReferenceError") {
+                var undefinedSymbol = /^([A-Za-z_$][A-Za-z0-9_$]{0,63}) is not defined$/.exec(
+                            String(error.message || ""))
+                if (undefinedSymbol)
+                    capture.collectorReferenceErrorSymbol = undefinedSymbol[1]
+            }
+        }
+        capture.collectorStartDurationMs = Math.min(60000, Date.now() - collectorStart)
+        capture.collectorStarted = collectorStarted
+        if (!collectorStarted) {
+            window.finishNativePageCaptureCollection(capture, "")
+        }
+        return true
+    }
+
+    function finishNativePageCaptureCollection(capture, sidecarJson) {
+        if (!capture || capture !== window.nativePageCaptureSave
+                || capture.collectionFinished) {
+            return false
+        }
+        capture.collectionFinished = true
+        pageCaptureCollectionTimer.stop()
+        pageCaptureMediaKeyTimer.stop()
+        var currentView = null
+        try { currentView = window.nativePageCaptureViewForTab(capture.tabId) } catch (error) {}
+        var captureStatus = NativePageCaptureCallbacks.preSaveCaptureStatus(
+                    capture, currentView)
+        if (captureStatus !== "current") {
+            window.discardNativePageCaptureMutationProbe(capture)
+            window.nativePageCaptureSave = null
+            var continued = browserUi.fail_native_window_capture_page(
+                        capture.operationId, capture.tabId, captureStatus, "", "")
+            if (!continued)
+                browserUi.cancel_native_page_capture_request(capture.operationId)
+            browserUi.status_text = captureStatus === "document-changed"
+                    ? "Page changed while its archive was being prepared; the stale capture was discarded"
+                    : "The page view was lost while its archive was being prepared"
+            window.scheduleRuntimeWork(0)
+            return false
+        }
+        var boundedSidecar = String(sidecarJson || "")
+        if (boundedSidecar.length > 0 && boundedSidecar.length <= 256 * 1024) {
+            capture.sidecarAccepted = browserUi.complete_native_page_capture_sidecar(
+                        capture.operationId, boundedSidecar)
+        }
+        var path = String(browserUi.claim_native_page_capture_save(
+                              capture.operationId, capture.tabId,
+                              capture.capturedUrl) || "")
+        if (path.length === 0) {
+            window.discardNativePageCaptureMutationProbe(capture)
+            window.nativePageCaptureSave = null
+            browserUi.cancel_native_page_capture_request(capture.operationId)
+            window.scheduleRuntimeWork(0)
+            return false
+        }
+        capture.path = path
+        try {
+            capture.view.save(path, WebEngineDownloadRequest.MimeHtmlSaveFormat)
+        } catch (error) {
+            var saveFailureView = null
+            try {
+                saveFailureView = window.nativePageCaptureViewForTab(capture.tabId)
+            } catch (viewError) {}
+            var saveFailureStatus = NativePageCaptureCallbacks.preSaveCaptureStatus(
+                        capture, saveFailureView)
+            var saveFailureReason = saveFailureStatus === "current"
+                    ? "invalid-archive" : saveFailureStatus
+            if (!NativePageCaptureCallbacks.retireCaptureIdentities(
+                        window, capture, [])) {
+                NativePageCaptureCallbacks.failClosedRetirement(
+                            window, browserUi, capture, [],
+                            "Native page-save callback capacity is exhausted; window capture was stopped",
+                            false)
+                return false
+            }
+            window.discardNativePageCaptureMutationProbe(capture)
+            window.nativePageCaptureSave = null
+            if (!browserUi.fail_native_window_capture_page(
+                           capture.operationId, capture.tabId,
+                           saveFailureReason, path, "")) {
+                browserUi.cancel_native_page_capture_request(capture.operationId)
+            }
+            browserUi.status_text = saveFailureReason === "document-changed"
+                    ? "Page changed before its archive save could start; the stale capture was discarded"
+                    : saveFailureReason === "native-view-lost"
+                        ? "The page view was lost before its archive save could start"
+                        : "Page archive save could not be started"
+            window.scheduleRuntimeWork(0)
+            return false
+        }
+        return true
     }
 
     Timer {
@@ -1061,6 +1659,49 @@ FerricBrowserRuntimeChrome {
         repeat: false
         running: false
         onTriggered: window.processRuntimeWork()
+    }
+
+    Timer {
+        id: pageCaptureCollectionTimer
+        interval: 2000
+        repeat: false
+        onTriggered: {
+            var capture = window.nativePageCaptureSave
+            if (capture)
+                capture.collectionTimedOut = true
+            window.finishNativePageCaptureCollection(capture, "")
+        }
+    }
+
+    Timer {
+        id: pageCaptureMediaKeyTimer
+        interval: 50
+        repeat: false
+        onTriggered: {
+            var capture = window.nativePageCaptureSave
+            if (!capture || capture.collectionFinished)
+                return
+            var keyStatus = "unavailable"
+            try {
+                keyStatus = String(browserUi.native_page_capture_media_key_status())
+            } catch (error) {}
+            capture.mediaKeyStatus = keyStatus
+            if (keyStatus === "ready") {
+                window.collectNativePageCaptureSidecar(capture)
+                return
+            }
+            if (keyStatus === "pending") {
+                capture.mediaKeyWaitAttempts =
+                        Math.max(0, Number(capture.mediaKeyWaitAttempts) || 0) + 1
+                if (capture.mediaKeyWaitAttempts < 100) {
+                    restart()
+                    return
+                }
+            }
+            // Missing or unavailable profile keys omit only the optional
+            // media sidecar. Never collect an unkeyed media URL.
+            window.finishNativePageCaptureCollection(capture, "")
+        }
     }
 
     property int focusProbeRetries: 0
@@ -1418,6 +2059,8 @@ FerricBrowserRuntimeChrome {
         onKeepRequested: {
             window.shutdownConfirmationVisible = false
             browserUi.status_text = "Shutdown cancelled"
+            if (window.versioningRestoreParentOwner)
+                window.versioningRestoreParentOwner.cancelRootShutdown()
         }
         onProceedRequested: {
             window.shutdownConfirmationVisible = false
@@ -1429,14 +2072,20 @@ FerricBrowserRuntimeChrome {
         hostWindow: window
         promptVisible: window.shutdownPromptVisible
         commandText: window.shutdownConfirmationCommand
-        title: "Active downloads are still running"
-        message: "Cancel active browser work before quitting, or keep the browser open."
+        title: window.shutdownWaitingForDownloadFinishes
+               ? "Waiting for active work to finish" : "Active browser work is still running"
+        message: window.shutdownWaitingForDownloadFinishes
+                 ? "Waiting for canceled downloads and archive storage work to retire. Keep the browser open to stop shutdown."
+                 : "Cancel active browser work before quitting, or keep the browser open."
         keepLabel: "Keep browser open"
         proceedLabel: "Cancel active work and quit"
-        dialogHeight: 190 * window.chromeScale
+        dialogHeight: 220 * window.chromeScale
         onKeepRequested: {
             window.shutdownPromptVisible = false
+            window.shutdownWaitingForDownloadFinishes = false
             browserUi.status_text = "Shutdown cancelled"
+            if (window.versioningRestoreParentOwner)
+                window.versioningRestoreParentOwner.cancelRootShutdown()
         }
         onProceedRequested: {
             window.shutdownPromptVisible = false
@@ -1457,11 +2106,13 @@ FerricBrowserRuntimeChrome {
         onKeepRequested: {
             window.shutdownPageProbeGeneration += 1
             window.shutdownPagePromptVisible = false
+            window.shutdownPagePromptSnapshot = null
             browserUi.status_text = "Shutdown cancelled"
+            if (window.versioningRestoreParentOwner)
+                window.versioningRestoreParentOwner.cancelRootShutdown()
         }
         onProceedRequested: {
-            window.shutdownPagePromptVisible = false
-            window.finalizeQuit()
+            window.confirmShutdownPagePrompt()
         }
     }
 
@@ -1503,6 +2154,7 @@ FerricBrowserRuntimeChrome {
 
         FerricCaptureIndicator {
             browserWindow: window
+            hostWindow: window
             onDismissRequested: function(sessionId) {
                 window.dismissCaptureSession(sessionId)
             }
@@ -1546,9 +2198,71 @@ FerricBrowserRuntimeChrome {
         }
     }
 
+    Loader {
+        id: desktopMediaSurfaceLoader
+        anchors.fill: parent
+        active: window.desktopMediaPromptVisible
+                && window.pendingDesktopMediaHost === window
+        sourceComponent: desktopMediaSurfaceComponent
+        onLoaded: window.desktopMediaSurface = item
+        onActiveChanged: if (!active) window.desktopMediaSurface = null
+    }
+
+    Loader {
+        id: captureIndicatorSurfaceLoader
+        anchors.fill: parent
+        active: (window.captureSessions || []).some(function(session) {
+            return session && session.host === window
+        })
+        sourceComponent: captureIndicatorComponent
+        onLoaded: window.captureIndicatorSurface = item
+        onActiveChanged: if (!active) window.captureIndicatorSurface = null
+    }
+
+    Loader {
+        id: rendererFailureSurfaceLoader
+        anchors.fill: parent
+        active: window.rendererFailureVisible
+                && window.rendererFailureHost === window
+        sourceComponent: rendererFailureSurfaceComponent
+        onLoaded: window.rendererFailureSurface = item
+        onActiveChanged: if (!active) window.rendererFailureSurface = null
+    }
+
     function completeProfileBootstrap() {
+        var nativeBound = window.versioningViewHostObject.ownerProfile === browserProfile
+                && browserUi.bind_native_versioning_profile()
+        if (!nativeBound) {
+            browserUi.status_text = "Versioning native profile binding unavailable"
+        }
+        if (window.windowCleanBranch) {
+            window.syncTabModel()
+            window.windowBranchFirstView = window.tabViewAt(0)
+            var root = window.windowBranchRootWindow
+            var firstView = window.windowBranchInitialView
+            var isolated = nativeBound && root && firstView
+                    && window.windowBranchParentUi
+                    && window.versioningRestoreParentOwner
+                    && window.versioningRestoreSharedProfile === null
+                    && window.temporaryProfile && window.ephemeralProfile
+                    && window.startupUrl === "about:blank"
+                    && (!window.startupAdditionalUrls
+                        || window.startupAdditionalUrls.length === 0)
+                    && requestInterceptor.attach(browserProfile)
+                    && root.retainCleanBranchOwner(
+                        window.windowBoundBranchToken, window, browserProfile, firstView)
+            if (!isolated) {
+                browserUi.status_text = "Clean branch profile isolation unavailable"
+                window.shutdownApproved = true
+                window.finishOwnedWindowClose()
+                return
+            }
+            window.windowCleanBranchNativeBound = true
+            return
+        }
         engineUpdateNoticeTimer.start()
-        if (!window.temporaryProfile && !window.recoveryAvailable) {
+        if (window.instanceRequestOwner
+                && !window.temporaryProfile && !window.recoveryAvailable) {
             browserUi.clear_current_session_checkpoints()
         }
         if (window.ephemeralProfile && window.ephemeralInvocationToken.length === 0) {
@@ -1558,13 +2272,23 @@ FerricBrowserRuntimeChrome {
                     window, browserUi, window.activeWebView(), browserProfile,
                     window.profileName,
                     window.ephemeralInvocationToken, window.ephemeralProfile)
+        window.refreshChromeAppearance()
         if (window.startupContext.length > 0) {
             browserUi.set_context_entry_reuse(true)
             browserUi.execute_command("context-enter " + window.startupContext)
             window.routeContextWorkspace(browserUi)
         }
-        if (!requestInterceptor.attach(browserProfile)) {
+        if (!window.versioningRestoreSharedInterceptor
+                && !requestInterceptor.attach(browserProfile)) {
             browserUi.status_text = "Request interceptor unavailable"
+        }
+        if (window.versioningRestoreStartupCommitId.length > 0) {
+            // The startup about:blank load can finish after profile bootstrap.
+            // Requesting the plan before that callback settles lets its late
+            // completion invalidate the selected page's one-use sidecar intent.
+            versioningStartupRestoreTimer.attempts = 0
+            versioningStartupRestoreTimer.start()
+            return
         }
         if (window.startupBackground) {
             browserUi.status_text = "Opening startup URL in a background tab"
@@ -1582,6 +2306,7 @@ FerricBrowserRuntimeChrome {
                         window.startupTrustedLocalInput)
         }
         window.updateActiveTabUrl()
+        window.profileBootstrapComplete = true
         Qt.callLater(window.openAdditionalStartupUrls)
     }
 
@@ -1616,47 +2341,110 @@ FerricBrowserRuntimeChrome {
         }
     }
 
+    Timer {
+        id: versioningStartupRestoreTimer
+        interval: 50
+        repeat: true
+        property int attempts: 0
+        onTriggered: {
+            attempts += 1
+            var view = window.activeWebView()
+            if (attempts > 100 || browserUi.tab_count !== 1
+                    || browserUi.active_tab_index !== 0
+                    || browserUi.current_url !== "about:blank"
+                    || (view && view.url.toString() !== "about:blank")) {
+                stop()
+                window.versioningRestoreStartupCommitId = ""
+                window.versioningRestoreStartupMediaPositions = false
+                window.versioningRestoreStartupEditableDrafts = false
+                browserUi.status_text = "Versioned restore destination did not remain blank"
+                return
+            }
+            if (!view || view.loading || browserUi.load_state !== "complete") {
+                return
+            }
+            stop()
+            var restoreCommitId = window.versioningRestoreStartupCommitId
+            var restoreMediaPositions = window.versioningRestoreStartupMediaPositions
+            var restoreEditableDrafts = window.versioningRestoreStartupEditableDrafts
+            window.versioningRestoreStartupCommitId = ""
+            window.versioningRestoreStartupMediaPositions = false
+            window.versioningRestoreStartupEditableDrafts = false
+            window.versioningRestoreEditableReviewEnabled = restoreEditableDrafts
+            if (!browserUi.request_versioned_pristine_tab_restore(
+                        restoreCommitId, restoreMediaPositions, restoreEditableDrafts)) {
+                window.versioningRestoreEditableReviewEnabled = false
+                browserUi.status_text = "Versioned restore could not start; this new window remains blank"
+            }
+            window.scheduleRuntimeWork(0)
+        }
+    }
+
     Component.onCompleted: {
-        window.browserProfile = window.browserProfilePrototypeObject.instance()
-        if (!window.browserProfile) {
-            console.error("WebEngine profile instance was unavailable")
-            Qt.quit()
+        window.windowBoundBranchToken = window.windowBranchToken
+        window.windowBranchTokenLocked = true
+        if (window.windowCleanBranch
+                && (!window.windowBranchRootWindow || !window.windowBranchParentUi
+                    || window.instanceRequestOwner || !window.temporaryProfile
+                    || !window.ephemeralProfile
+                    || window.versioningRestoreSharedProfile
+                    || window.versioningRestoreStartupCommitId.length > 0)) {
+            window.shutdownApproved = true
+            Qt.callLater(function() { window.destroy() })
             return
         }
-        browserUi.activate_runtime_wake()
-        window.scheduleRuntimeWork(0)
-        window.desktopMediaSurface = desktopMediaSurfaceComponent.createObject(
-                    window.contentItem, { hostWindow: window })
-        window.captureIndicatorSurface = captureIndicatorComponent.createObject(
-                    window.contentItem, { hostWindow: window })
-        window.rendererFailureSurface = rendererFailureSurfaceComponent.createObject(
-                    window.contentItem, { hostWindow: window })
-        if (!browserUi.set_startup_configuration(
-                    window.startupConfigJson, window.startupConfigBaseJson,
-                    window.startupCliOverridesJson, window.startupProfileOverridesJson,
-                    window.startupConfigPath, window.startupConfigSource)) {
-            Qt.quit()
-            return
+        // Install the IPC wake-up before entering the event loop. The rest of
+        // profile and QML setup is deferred until the object tree is fully
+        // finalized, avoiding reentrant property updates during creation.
+        if (window.instanceRequestOwner) {
+            browserUi.activate_runtime_wake()
         }
-        browserUi.set_contexts_configuration(window.startupContextsJson)
-        window.refreshSpellcheckInventory(browserUi)
-        browserProfile.spellCheckEnabled = window.spellcheckEnabled(browserUi)
-        browserProfile.isPushServiceEnabled = window.pushServiceEnabled(
-                    browserUi, window.temporaryProfile)
-        browserUi.probe_desktop_portals()
-        window.refreshChromeAppearance()
-        window.configureBlocklistUpdateTimer()
-        window.configureLinkCleaningUpdateTimer()
-        browserUi.configure_profile(window.temporaryProfile && !window.ephemeralProfile,
-                                    window.ephemeralProfile,
-                                    window.profileLabel,
-                                    window.profileName,
-                                    window.storageBasePath)
-        browserProfile.spellCheckLanguages = window.spellcheckLanguages(browserUi)
-        profileBootstrapTimer.start()
-        window.scheduleFocusProbe(3)
+        Qt.callLater(function() {
+            window.browserProfile = window.browserProfilePrototypeObject.instance()
+            if (!window.browserProfile) {
+                console.error("WebEngine profile instance was unavailable")
+                if (window.versioningRestoreSourceUi) {
+                    window.versioningRestoreSourceUi.status_text =
+                            "Restore window profile could not initialize; current work is intact"
+                }
+                window.shutdownApproved = true
+                window.finishOwnedWindowClose()
+                return
+            }
+            window.scheduleRuntimeWork(0)
+            if (!browserUi.set_startup_configuration(
+                        window.startupConfigJson, window.startupConfigBaseJson,
+                        window.startupCliOverridesJson, window.startupProfileOverridesJson,
+                        window.startupConfigPath, window.startupConfigSource)) {
+                if (window.versioningRestoreSourceUi) {
+                    window.versioningRestoreSourceUi.status_text =
+                            "Restore window configuration was rejected; current work is intact"
+                }
+                window.shutdownApproved = true
+                window.finishOwnedWindowClose()
+                return
+            }
+            browserUi.set_contexts_configuration(window.startupContextsJson)
+            window.refreshSpellcheckInventory(browserUi)
+            browserProfile.spellCheckEnabled = window.spellcheckEnabled(browserUi)
+            browserProfile.isPushServiceEnabled = window.pushServiceEnabled(
+                        browserUi, window.temporaryProfile)
+            browserUi.probe_desktop_portals()
+            window.configureBlocklistUpdateTimer()
+            window.configureLinkCleaningUpdateTimer()
+            browserUi.configure_profile(window.temporaryProfile && !window.ephemeralProfile,
+                                        window.ephemeralProfile,
+                                        window.profileLabel,
+                                        window.profileName,
+                                        window.storageBasePath)
+            browserProfile.spellCheckLanguages = window.spellcheckLanguages(browserUi)
+            profileBootstrapTimer.start()
+            window.scheduleFocusProbe(3)
+        })
     }
     Component.onDestruction: {
+        if (window.versioningRestoreParentOwner)
+            window.versioningRestoreParentOwner.forgetDestroyed(window)
         notificationPresenter.closeAll()
         window.closeWebNotifications()
         window.cancelPendingExternalUris("External action cancelled with the window")
@@ -1669,19 +2457,21 @@ FerricBrowserRuntimeChrome {
         window.clearDesktopMediaRequest(true)
         window.clearEngineFileDialog(true, "File selection cancelled with the window")
         window.captureSessions = []
-        if (window.desktopMediaSurface) {
-            window.desktopMediaSurface.destroy()
-            window.desktopMediaSurface = null
-        }
-        if (window.captureIndicatorSurface) {
-            window.captureIndicatorSurface.destroy()
-            window.captureIndicatorSurface = null
-        }
-        if (window.rendererFailureSurface) {
-            window.rendererFailureSurface.destroy()
-            window.rendererFailureSurface = null
-        }
         browserUi.view_closed()
+        if (window.windowCleanBranch) {
+            if (window.windowBranchParentUi) {
+                if (window.windowCleanBranchLineagePublished)
+                    window.windowBranchParentUi.close_versioned_clean_branch(
+                                browserUi, window.windowBoundBranchToken)
+                else
+                    window.windowBranchParentUi.abort_versioned_clean_branch(
+                                window.windowBoundBranchToken)
+            }
+            if (window.windowBranchRootWindow)
+                window.windowBranchRootWindow.releaseCleanBranchOwner(
+                            window.windowBoundBranchToken, window,
+                            browserProfile, window.windowBranchInitialView)
+        }
         browserUi.release_transient_resources()
     }
 }

@@ -10,30 +10,46 @@ use serde_json::Value;
 ///
 /// Query implementations select this category at the boundary. The dispatcher
 /// then turns it into the wire error without parsing presentation text.
-#[derive(Debug)]
 pub(super) enum IpcQueryError {
-    Invalid(String),
-    NotFound(String),
-    Busy(String),
-    Unavailable(String),
+    Invalid,
+    NotFound,
+    Busy,
+    Unavailable,
+}
+
+impl std::fmt::Debug for IpcQueryError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let category = match self {
+            Self::Invalid => "Invalid",
+            Self::NotFound => "NotFound",
+            Self::Busy => "Busy",
+            Self::Unavailable => "Unavailable",
+        };
+        formatter
+            .debug_tuple("IpcQueryError")
+            .field(&category)
+            .finish()
+    }
 }
 
 impl IpcQueryError {
-    pub(super) fn message(&self) -> &str {
+    /// Projects only the closed failure category to status and clients.
+    pub(super) fn message(&self) -> &'static str {
         match self {
-            Self::Invalid(message)
-            | Self::NotFound(message)
-            | Self::Busy(message)
-            | Self::Unavailable(message) => message,
+            Self::Invalid => "query parameters are invalid",
+            Self::NotFound => "query target was not found",
+            Self::Busy => "query is temporarily busy",
+            Self::Unavailable => "query data is unavailable",
         }
     }
 
-    pub(super) fn into_public_parts(self) -> (&'static str, String) {
+    /// Returns the stable protocol code and the same category-only message.
+    pub(super) fn into_public_parts(self) -> (&'static str, &'static str) {
         match self {
-            Self::Invalid(message) => ("E_INVALID_PARAMS", message),
-            Self::NotFound(message) => ("E_NOT_FOUND", message),
-            Self::Busy(message) => ("E_BUSY", message),
-            Self::Unavailable(message) => ("E_ENGINE", message),
+            Self::Invalid => ("E_INVALID_PARAMS", "query parameters are invalid"),
+            Self::NotFound => ("E_NOT_FOUND", "query target was not found"),
+            Self::Busy => ("E_BUSY", "query is temporarily busy"),
+            Self::Unavailable => ("E_ENGINE", "query data is unavailable"),
         }
     }
 }
@@ -138,14 +154,26 @@ mod tests {
     #[test]
     fn query_failures_map_each_outcome_to_a_stable_public_code() {
         for (error, expected_code) in [
-            (IpcQueryError::Invalid("input".into()), "E_INVALID_PARAMS"),
-            (IpcQueryError::NotFound("missing".into()), "E_NOT_FOUND"),
-            (IpcQueryError::Busy("loading".into()), "E_BUSY"),
-            (IpcQueryError::Unavailable("offline".into()), "E_ENGINE"),
+            (IpcQueryError::Invalid, "E_INVALID_PARAMS"),
+            (IpcQueryError::NotFound, "E_NOT_FOUND"),
+            (IpcQueryError::Busy, "E_BUSY"),
+            (IpcQueryError::Unavailable, "E_ENGINE"),
         ] {
             let (code, _) = error.into_public_parts();
             assert_eq!(code, expected_code);
         }
+    }
+
+    #[test]
+    fn query_errors_expose_only_fixed_category_text() {
+        let error = IpcQueryError::Invalid;
+        let debug = format!("{error:?}");
+        assert!(debug.contains("Invalid"));
+        assert!(!debug.contains("REDACTED"));
+        assert_eq!(error.message(), "query parameters are invalid");
+
+        let (_, public_message) = error.into_public_parts();
+        assert_eq!(public_message, "query parameters are invalid");
     }
 
     #[test]

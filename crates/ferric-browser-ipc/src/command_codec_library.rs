@@ -122,7 +122,11 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
                             return Err(format!("journey accepts {key} at most once"));
                         }
                         let argument = command.arguments.get(index + 1).ok_or_else(|| {
-                            format!("journey {} requires a value", command.arguments[index])
+                            if key == "search" {
+                                "journey --search requires a value".to_owned()
+                            } else {
+                                "journey --expand requires a value".to_owned()
+                            }
                         })?;
                         if key == "search"
                             && (argument.is_empty()
@@ -228,9 +232,9 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
                         index += 1;
                     }
                     value if value.starts_with("--") => {
-                        return Err(format!("unknown history-clear option: {value}"));
+                        return Err("history-clear contains an unknown option".into());
                     }
-                    value => return Err(format!("unexpected history-clear argument: {value}")),
+                    _ => return Err("history-clear contains an unexpected argument".into()),
                 }
                 index += 1;
             }

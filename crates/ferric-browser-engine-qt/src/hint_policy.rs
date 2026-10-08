@@ -7,7 +7,7 @@ use crate::input_validation::is_bounded_untrusted_text;
 use ferric_browser_core::{HintKind, ParsedCommand};
 
 /// Fully validated options for a hint command.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub(super) struct HintOptions {
     pub(super) family: String,
     pub(super) rapid: bool,
@@ -196,16 +196,16 @@ mod tests {
             ],
         })
         .expect("valid userscript hint command");
-        assert_eq!(
-            options,
-            HintOptions {
-                family: "links".into(),
-                rapid: false,
-                target: "userscript".into(),
-                script: Some("reader".into()),
-                first: false,
-                index: 1,
-            }
+        assert!(
+            options
+                == HintOptions {
+                    family: "links".into(),
+                    rapid: false,
+                    target: "userscript".into(),
+                    script: Some("reader".into()),
+                    first: false,
+                    index: 1,
+                }
         );
         assert!(
             parse_hint_options(&ParsedCommand {

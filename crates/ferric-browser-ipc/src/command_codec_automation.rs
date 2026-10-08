@@ -260,10 +260,8 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
             let arguments = match command.arguments.get(1) {
                 None => serde_json::json!({}),
                 Some(encoded) => {
-                    let value: serde_json::Value =
-                        serde_json::from_str(encoded).map_err(|error| {
-                            format!("command arguments are not valid JSON: {error}")
-                        })?;
+                    let value: serde_json::Value = serde_json::from_str(encoded)
+                        .map_err(|_| "command arguments are not valid JSON".to_owned())?;
                     if !value.is_object() {
                         return Err("command arguments must be a JSON object".into());
                     }

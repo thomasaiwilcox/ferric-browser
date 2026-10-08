@@ -79,17 +79,17 @@ impl qobject::BrowserUi {
                     Ok(()) => self
                         .as_mut()
                         .set_status_text(QString::from("Hyprland workspace routing completed")),
-                    Err(error) => self.as_mut().set_status_text(QString::from(format!(
-                        "Hyprland workspace routing failed: {error}"
-                    ))),
+                    Err(_) => self.as_mut().set_status_text(QString::from(
+                        "Hyprland workspace routing failed; details suppressed",
+                    )),
                 },
                 HyprlandResponse::MoveActiveWindow(result) => match result {
                     Ok(()) => self
                         .as_mut()
                         .set_status_text(QString::from("Hyprland workspace move completed")),
-                    Err(error) => self.as_mut().set_status_text(QString::from(format!(
-                        "Hyprland workspace move failed: {error}"
-                    ))),
+                    Err(_) => self.as_mut().set_status_text(QString::from(
+                        "Hyprland workspace move failed; details suppressed",
+                    )),
                 },
                 HyprlandResponse::BrowserClients(result) => match result {
                     Ok(clients) => {
@@ -101,9 +101,9 @@ impl qobject::BrowserUi {
                             "Hyprland browser-client query completed",
                         ));
                     }
-                    Err(error) => self.as_mut().set_status_text(QString::from(format!(
-                        "Hyprland browser-client query failed: {error}"
-                    ))),
+                    Err(_) => self.as_mut().set_status_text(QString::from(
+                        "Hyprland browser-client query failed; details suppressed",
+                    )),
                 },
             }
         }
@@ -151,13 +151,20 @@ impl qobject::BrowserUi {
                 .as_mut()
                 .get_mut()
                 .network_policy_reload_pending = false;
-            match result {
-                Ok(policy) => self.as_mut().apply_network_policy_snapshot(policy),
-                Err(error) => self.as_mut().set_status_text(QString::from(format!(
-                    "Network policy unavailable: {error}"
-                ))),
-            }
-            if reload_requested {
+            let reload_succeeded = match result {
+                Ok(policy) => {
+                    let succeeded = policy.compile_failures.is_empty();
+                    self.as_mut().apply_network_policy_snapshot(policy);
+                    succeeded
+                }
+                Err(_) => {
+                    self.as_mut().set_status_text(QString::from(
+                        "Network policy unavailable; details suppressed",
+                    ));
+                    false
+                }
+            };
+            if reload_requested && reload_succeeded {
                 self.as_mut()
                     .set_status_text(QString::from("Blocklist policy reloaded"));
             }
@@ -177,11 +184,11 @@ impl qobject::BrowserUi {
                     Ok(scripts) => {
                         self.as_mut().set_userscript_inventory_rows(&scripts);
                     }
-                    Err(error) => {
+                    Err(_error) => {
                         self.as_mut().clear_userscript_inventory_rows();
-                        self.as_mut().set_status_text(QString::from(format!(
-                            "Userscript inventory unavailable: {error}"
-                        )));
+                        self.as_mut().set_status_text(QString::from(
+                            "Userscript inventory unavailable; details suppressed",
+                        ));
                     }
                 },
                 UserscriptManagerResult::Installed(result) => match result {
@@ -192,12 +199,13 @@ impl qobject::BrowserUi {
                         self.as_mut()
                             .set_userscript_install_state(QString::from("installed"));
                     }
-                    Err(error) => {
-                        self.as_mut().set_status_text(QString::from(format!(
-                            "Userscript installation failed: {error}"
-                        )));
-                        self.as_mut()
-                            .set_userscript_install_state(QString::from(format!("error:{error}")));
+                    Err(_error) => {
+                        self.as_mut().set_status_text(QString::from(
+                            "Userscript installation failed; details suppressed",
+                        ));
+                        self.as_mut().set_userscript_install_state(QString::from(
+                            "error:userscript installation failed; details suppressed",
+                        ));
                     }
                 },
                 UserscriptManagerResult::Removed(result) => match result {
@@ -208,12 +216,13 @@ impl qobject::BrowserUi {
                         self.as_mut()
                             .set_userscript_install_state(QString::from("removed"));
                     }
-                    Err(error) => {
-                        self.as_mut().set_status_text(QString::from(format!(
-                            "Userscript removal failed: {error}"
-                        )));
-                        self.as_mut()
-                            .set_userscript_install_state(QString::from(format!("error:{error}")));
+                    Err(_error) => {
+                        self.as_mut().set_status_text(QString::from(
+                            "Userscript removal failed; details suppressed",
+                        ));
+                        self.as_mut().set_userscript_install_state(QString::from(
+                            "error:userscript removal failed; details suppressed",
+                        ));
                     }
                 },
                 UserscriptManagerResult::SetEnabled { enabled, result } => match result {
@@ -225,9 +234,9 @@ impl qobject::BrowserUi {
                             "Userscript disabled; it applies on the next navigation"
                         }));
                     }
-                    Err(error) => self.as_mut().set_status_text(QString::from(format!(
-                        "Userscript change rejected: {error}"
-                    ))),
+                    Err(_error) => self.as_mut().set_status_text(QString::from(
+                        "Userscript change rejected; details suppressed",
+                    )),
                 },
             }
         }
@@ -286,13 +295,11 @@ impl qobject::BrowserUi {
                                 profile_label,
                                 safe_ipc_url(url.as_str())
                             ));
-                            self.as_mut().set_status_text(QString::from(format!(
-                                "Opening profile window: {profile_label}"
-                            )));
+                            self.as_mut()
+                                .set_status_text(QString::from("Opening profile window"));
                         } else {
-                            self.as_mut().set_status_text(QString::from(format!(
-                                "Profile not found: {name}"
-                            )));
+                            self.as_mut()
+                                .set_status_text(QString::from("Profile not found"));
                         }
                     }
                     if let Some((name, private)) = pending_window_new_profile {
@@ -312,9 +319,8 @@ impl qobject::BrowserUi {
                                 "New window requested"
                             }));
                         } else {
-                            self.as_mut().set_status_text(QString::from(format!(
-                                "Profile not found: {name}"
-                            )));
+                            self.as_mut()
+                                .set_status_text(QString::from("Profile not found"));
                         }
                     }
                     if let Some((name, label, profile, workspace)) = pending_context_create {
@@ -325,33 +331,31 @@ impl qobject::BrowserUi {
                                 &profile,
                                 workspace.as_deref(),
                             ) {
-                                Ok(_) => self.as_mut().set_status_text(QString::from(format!(
-                                    "Context created: {name}"
-                                ))),
-                                Err(error) => self.as_mut().set_status_text(QString::from(
-                                    format!("Context creation failed: {error}"),
+                                Ok(_) => self
+                                    .as_mut()
+                                    .set_status_text(QString::from("Context created")),
+                                Err(_) => self.as_mut().set_status_text(QString::from(
+                                    "Context creation failed; details suppressed",
                                 )),
                             }
                         } else {
-                            self.as_mut().set_status_text(QString::from(format!(
-                                "Profile not found: {profile}"
-                            )));
+                            self.as_mut()
+                                .set_status_text(QString::from("Profile not found"));
                         }
                     }
                     if command_request {
                         self.as_mut()
                             .set_status_text(QString::from(if status_values.is_empty() {
-                                "No durable profiles".to_owned()
+                                "No durable profiles"
                             } else {
-                                format!("Profiles: {status_values}")
+                                "Profiles available"
                             }));
                     }
                 }
-                Err(error) => {
+                Err(_) => {
                     self.as_mut().set_profile_values(QString::default());
-                    self.as_mut().set_status_text(QString::from(format!(
-                        "Profile list unavailable: {error}"
-                    )));
+                    self.as_mut()
+                        .set_status_text(QString::from("Profile list is unavailable"));
                 }
             }
         }
@@ -369,11 +373,10 @@ impl qobject::BrowserUi {
                 Ok(preview) => self
                     .as_mut()
                     .set_profile_preview_text(QString::from(preview)),
-                Err(error) => {
+                Err(_) => {
                     self.as_mut().set_profile_preview_text(QString::default());
-                    self.as_mut().set_status_text(QString::from(format!(
-                        "Profile preview unavailable: {error}"
-                    )));
+                    self.as_mut()
+                        .set_status_text(QString::from("Profile preview is unavailable"));
                 }
             }
         }
@@ -388,15 +391,12 @@ impl qobject::BrowserUi {
         if let Some(result) = profile_delete_result {
             match result {
                 Ok(ProfileMutationResult::Deleted(outcome)) => {
-                    let suffix = if outcome.cleanup_pending {
-                        " (data cleanup pending; it will resume on next startup)"
+                    let status = if outcome.cleanup_pending {
+                        "Profile deleted; data cleanup is pending and will resume on next startup. QtWebEngine storage was not deleted."
                     } else {
-                        ""
+                        "Profile deleted. QtWebEngine storage was not deleted."
                     };
-                    self.as_mut().set_status_text(QString::from(format!(
-                        "Profile deleted: {}{suffix}. QtWebEngine storage was not deleted.",
-                        outcome.profile_name
-                    )));
+                    self.as_mut().set_status_text(QString::from(status));
                 }
                 Ok(ProfileMutationResult::Created) => self
                     .as_mut()
@@ -404,9 +404,10 @@ impl qobject::BrowserUi {
                 Ok(ProfileMutationResult::Renamed) => self
                     .as_mut()
                     .set_status_text(QString::from("Profile label renamed")),
-                Err(error) => self
-                    .as_mut()
-                    .set_status_text(QString::from(format!("Profile operation failed: {error}"))),
+                Err(_) => {
+                    self.as_mut()
+                        .set_status_text(QString::from("Profile operation failed"));
+                }
             }
         }
         self.as_mut().poll_config_edit();
@@ -422,13 +423,12 @@ impl qobject::BrowserUi {
         if let Some(result) = write_result {
             match result {
                 Ok(result) => self.as_mut().set_status_text(QString::from(format!(
-                    "Configuration written to {} ({} bytes)",
-                    result.path.display(),
+                    "Configuration written ({} bytes)",
                     result.bytes
                 ))),
-                Err(error) => self.as_mut().set_status_text(QString::from(format!(
-                    "Configuration write failed: {error}"
-                ))),
+                Err(_) => self.as_mut().set_status_text(QString::from(
+                    "Configuration write failed; details suppressed",
+                )),
             }
         }
         let print_result = {
@@ -459,12 +459,12 @@ impl qobject::BrowserUi {
                     self.as_mut()
                         .set_status_text(QString::from("Print result became stale"));
                 }
-                Err(error) => {
+                Err(_) => {
                     if let Some(path) = pending {
                         cleanup_print_artifact(&path, private_temporary);
                     }
                     self.as_mut()
-                        .set_status_text(QString::from(format!("Print failed: {error}")));
+                        .set_status_text(QString::from("Print failed; details suppressed"));
                 }
             }
         }
@@ -524,10 +524,10 @@ impl qobject::BrowserUi {
                 Ok(result) => {
                     let new_base = match serde_json::to_value(&result.loaded.config) {
                         Ok(value) => value,
-                        Err(error) => {
-                            self.set_status_text(QString::from(format!(
-                                "Configuration reload rejected: {error}"
-                            )));
+                        Err(_) => {
+                            self.set_status_text(QString::from(
+                                "Configuration reload rejected; details suppressed",
+                            ));
                             return;
                         }
                     };
@@ -539,19 +539,19 @@ impl qobject::BrowserUi {
                         &self.as_ref().rust().temporary_overrides,
                     ) {
                         Ok(candidate) => candidate,
-                        Err(error) => {
-                            self.set_status_text(QString::from(format!(
-                                "Configuration reload rejected: {error}"
-                            )));
+                        Err(_) => {
+                            self.set_status_text(QString::from(
+                                "Configuration reload rejected; details suppressed",
+                            ));
                             return;
                         }
                     };
                     let base_json = match serde_json::to_string(&new_base) {
                         Ok(value) => value,
-                        Err(error) => {
-                            self.set_status_text(QString::from(format!(
-                                "Configuration reload rejected: {error}"
-                            )));
+                        Err(_) => {
+                            self.set_status_text(QString::from(
+                                "Configuration reload rejected; details suppressed",
+                            ));
                             return;
                         }
                     };
@@ -562,14 +562,14 @@ impl qobject::BrowserUi {
                         command_line: self.as_ref().rust().cli_overrides.clone(),
                         temporary: self.as_ref().rust().temporary_overrides.clone(),
                     };
-                    if let Err(error) = self.as_mut().commit_runtime_config(
-                        candidate,
-                        layers,
-                        "Configuration reloaded",
-                    ) {
-                        self.set_status_text(QString::from(format!(
-                            "Configuration reload rejected: {error}"
-                        )));
+                    if self
+                        .as_mut()
+                        .commit_runtime_config(candidate, layers, "Configuration reloaded")
+                        .is_err()
+                    {
+                        self.set_status_text(QString::from(
+                            "Configuration reload rejected; details suppressed",
+                        ));
                         return;
                     }
                     {
@@ -588,9 +588,9 @@ impl qobject::BrowserUi {
                         serde_json::to_string(&profile_overrides).unwrap_or_else(|_| "{}".into()),
                     ));
                 }
-                Err(error) => self.as_mut().set_status_text(QString::from(format!(
-                    "Configuration reload rejected: {error}"
-                ))),
+                Err(_) => self.as_mut().set_status_text(QString::from(
+                    "Configuration reload rejected; details suppressed",
+                )),
             }
         }
         if should_reload {
@@ -607,10 +607,10 @@ impl qobject::BrowserUi {
                 self.as_mut()
                     .set_status_text(QString::from("Configuration reload queued"));
             }
-            if let Some(Err(error)) = request {
-                self.set_status_text(QString::from(format!(
-                    "Configuration reload unavailable: {error}"
-                )));
+            if request.is_some_and(|result| result.is_err()) {
+                self.set_status_text(QString::from(
+                    "Configuration reload unavailable; details suppressed",
+                ));
             }
         }
     }
@@ -635,10 +635,10 @@ impl qobject::BrowserUi {
                 self.as_mut().set_runtime_setting_error(QString::default());
                 true
             }
-            Err(error) => {
-                self.as_mut().set_status_text(QString::from(error.clone()));
-                self.as_mut()
-                    .set_runtime_setting_error(QString::from(error));
+            Err(_) => {
+                let message = QString::from("Runtime setting update failed; details suppressed");
+                self.as_mut().set_status_text(message.clone());
+                self.as_mut().set_runtime_setting_error(message);
                 false
             }
         }
@@ -663,10 +663,10 @@ impl qobject::BrowserUi {
                 self.as_mut().set_runtime_setting_error(QString::default());
                 true
             }
-            Err(error) => {
-                self.as_mut().set_status_text(QString::from(error.clone()));
-                self.as_mut()
-                    .set_runtime_setting_error(QString::from(error));
+            Err(_) => {
+                let message = QString::from("Runtime setting update failed; details suppressed");
+                self.as_mut().set_status_text(message.clone());
+                self.as_mut().set_runtime_setting_error(message);
                 false
             }
         }

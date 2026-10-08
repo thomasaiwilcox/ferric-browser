@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "engine_fingerprint": {
+    "qt": "6.11.2",
+    "qt_webengine": "6.11.2",
+    "chromium_base": "140.0.7339.225",
+    "chromium_security_patch": "151.0.7922.71",
+    "qt_webengine_package": "6.11.2-1"
+  },
+  "fingerprint_source": "VB-000 disposable diagnostics and installed package query",
+  "release_qualification": {},
+  "capabilities": {
+    "versioning.structural": {
+      "primitive_gate": "unqualified",
+      "production_enabled": false,
+      "backend": "qt-public-default",
+      "scope": null,
+      "evidence_ids": [],
+      "reason_code": "not-implemented",
+      "reason": "Structural capture is implemented in source but remains unqualified pending the final acceptance campaign."
+    },
+    "versioning.live_retention": {
+      "primitive_gate": "supported",
+      "production_enabled": false,
+      "backend": "qt-public-default",
+      "scope": "retention-owned-same-profile-wayland",
+      "evidence_ids": ["VB-003"],
+      "reason_code": "primitive-retention-probed",
+      "reason": "Same-profile retained view survived source host close and resumed on Wayland; production loss handling remains unqualified."
+    },
+    "versioning.archive_capture": {
+      "primitive_gate": "supported",
+      "production_enabled": false,
+      "backend": "qt-public-default",
+      "scope": "single-view-exact-path-mhtml-wayland",
+      "evidence_ids": ["VB-004"],
+      "reason_code": "public-save-primitive-probed",
+      "reason": "MHTML save exposed a per-view exact-path request and completed on Wayland; production permits, deadlines and publication remain unqualified."
+    },
+    "versioning.archive_offline": {
+      "primitive_gate": "unqualified",
+      "production_enabled": false,
+      "backend": "qt-public-default",
+      "scope": null,
+      "evidence_ids": ["VB-004"],
+      "reason_code": "archive-interaction-unqualified",
+      "reason": "Separate guarded profile blocked observed traffic, but form activation and production archive-surface isolation remain unqualified."
+    },
+    "versioning.semantic_restore": {
+      "primitive_gate": "unqualified",
+      "production_enabled": false,
+      "backend": "qt-public-default",
+      "scope": null,
+      "evidence_ids": [],
+      "reason_code": "reconstruction-unqualified",
+      "reason": "Conservative geometry, editable-draft, and paused-media reconstruction paths are implemented but lack final native qualification."
+    },
+    "versioning.clean_branch": {
+      "primitive_gate": "unqualified",
+      "production_enabled": false,
+      "backend": "qt-public-default",
+      "scope": null,
+      "evidence_ids": [],
+      "reason_code": "branch-host-unqualified",
+      "reason": "Independent child profile and window ownership need native qualification."
+    },
+    "versioning.cookie_identity": {
+      "primitive_gate": "unsupported",
+      "production_enabled": false,
+      "backend": "qt-public-default",
+      "scope": null,
+      "evidence_ids": ["Q6", "Q7", "VB-005"],
+      "reason_code": "partition-identity-unavailable",
+      "reason": "Public QNetworkCookie lacks general Chromium partition identity."
+    },
+    "versioning.cookie_snapshot": {
+      "primitive_gate": "unsupported",
+      "production_enabled": false,
+      "backend": "qt-public-default",
+      "scope": null,
+      "evidence_ids": ["Q6", "VB-005", "VB-074"],
+      "reason_code": "complete-boundary-unavailable",
+      "reason": "The public cookie API has no complete consistent enumeration boundary; a persisted fixture cookie was present in browser request truth without an initial callback in the observed window."
+    },
+    "versioning.cookie_seed_verify": {
+      "primitive_gate": "unsupported",
+      "production_enabled": false,
+      "backend": "qt-public-default",
+      "scope": null,
+      "evidence_ids": ["VB-005"],
+      "reason_code": "samesite-round-trip-loss",
+      "reason": "Synthetic SameSite Strict input returned as Default through the public native cookie-added callback; general exact seed/read-back is unsupported."
+    },
+    "versioning.cookie_merge_apply": {
+      "primitive_gate": "unsupported",
+      "production_enabled": false,
+      "backend": "qt-public-default",
+      "scope": null,
+      "evidence_ids": ["Q6", "VB-005"],
+      "reason_code": "concurrent-write-control-unavailable",
+      "reason": "Public asynchronous cookie mutation has no qualified transaction or compare-and-swap boundary."
+    }
+  }
+}

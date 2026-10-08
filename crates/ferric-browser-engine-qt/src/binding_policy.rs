@@ -19,7 +19,7 @@ pub(super) fn parse_ipc_mode(mode: &str) -> Result<Mode, String> {
         "grid" => Ok(Mode::Grid),
         "caret" => Ok(Mode::Caret),
         "pass-through" => Ok(Mode::PassThrough),
-        _ => Err(format!("unknown binding mode: {mode}")),
+        _ => Err("unknown binding mode".into()),
     }
 }
 
@@ -111,7 +111,7 @@ pub(super) fn config_get_command_parameters(command: &ParsedCommand) -> Result<V
                 }
                 key = Some(value.to_owned());
             }
-            value => return Err(format!("unknown get option or extra argument: {value}")),
+            _ => return Err("get has an unsupported option or extra argument".into()),
         }
         index += 1;
     }
@@ -153,6 +153,33 @@ pub(super) fn modal_command_prefill(command: &ParsedCommand, current_url: &str) 
         ("quickmark-open", []) => Some("quickmark-open ".to_owned()),
         ("bookmark-open", []) => Some("bookmark-open ".to_owned()),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{config_get_command_parameters, parse_ipc_mode};
+    use ferric_browser_core::{Mode, ParsedCommand};
+
+    #[test]
+    fn binding_mode_and_config_get_errors_redact_supplied_values() {
+        let sentinel = "https://private.example/?credential=sentinel";
+        let mode_error = parse_ipc_mode(sentinel).expect_err("unknown mode must be rejected");
+        assert_eq!(mode_error, "unknown binding mode");
+        assert!(!mode_error.contains(sentinel));
+
+        assert_eq!(parse_ipc_mode("normal"), Ok(Mode::Normal));
+        let command_error = config_get_command_parameters(&ParsedCommand {
+            name: "get".into(),
+            arguments: vec![format!("--private={sentinel}")],
+        })
+        .expect_err("unsupported get argument must be rejected");
+        assert_eq!(
+            command_error,
+            "get has an unsupported option or extra argument"
+        );
+        assert!(!command_error.contains("private.example"));
+        assert!(!command_error.contains("sentinel"));
     }
 }
 

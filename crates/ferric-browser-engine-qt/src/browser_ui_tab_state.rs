@@ -22,9 +22,7 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn tab_for_index(&self, index: i32) -> Option<TabId> {
-        usize::try_from(index)
-            .ok()
-            .and_then(|index| self.rust().tab_ids.get(index).copied())
+        self.rust().tab_for_index(index)
     }
 
     pub(super) fn tab_index_for_id(self: Pin<&mut Self>, id: &QString) -> i32 {
@@ -117,10 +115,10 @@ impl qobject::BrowserUi {
             None | Some(Value::Null) => None,
             Some(Value::String(url)) => match ValidatedUrl::parse(url) {
                 Ok(url) => Some(url.to_string()),
-                Err(error) => {
-                    self.as_mut().set_status_text(QString::from(format!(
-                        "Tab transfer URL rejected: {error}"
-                    )));
+                Err(_) => {
+                    self.as_mut().set_status_text(QString::from(
+                        "Tab transfer URL rejected; details suppressed",
+                    ));
                     return false;
                 }
             },

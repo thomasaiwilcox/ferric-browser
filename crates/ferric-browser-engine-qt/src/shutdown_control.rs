@@ -15,6 +15,10 @@ use ferric_browser_core::Event;
 use crate::{mark_forced_shutdown, qobject};
 
 impl qobject::BrowserUi {
+    pub(super) fn versioned_archive_shutdown_ready(self: Pin<&mut Self>) -> bool {
+        self.rust().archive_view_ready_for_shutdown()
+    }
+
     pub(super) fn request_shutdown(mut self: Pin<&mut Self>) -> bool {
         match self.as_mut().reduce_event(Event::RequestShutdown) {
             Ok(_) => {
@@ -97,5 +101,41 @@ impl qobject::BrowserUi {
                 }
             })
             .is_ok()
+    }
+}
+
+impl crate::BrowserUiRust {
+    fn archive_view_ready_for_shutdown(&self) -> bool {
+        self.pending_archive_view_request.is_none()
+            && self.pending_archive_view_cleanup.is_none()
+            && self.versioning_archive_view_url.to_string().is_empty()
+    }
+}
+
+#[cfg(test)]
+mod archive_shutdown_tests {
+    use crate::{BrowserUiRust, QString};
+    use ferric_browser_core::OperationId;
+
+    #[test]
+    fn shutdown_waits_for_archive_preparation_presentation_and_cleanup() {
+        let mut ui = BrowserUiRust::default();
+        assert!(ui.archive_view_ready_for_shutdown());
+
+        ui.pending_archive_view_request = Some(1);
+        assert!(!ui.archive_view_ready_for_shutdown());
+        ui.pending_archive_view_request = None;
+
+        ui.versioning_archive_view_url = QString::from("file:///private/views/capture.mhtml");
+        assert!(!ui.archive_view_ready_for_shutdown());
+        ui.versioning_archive_view_url = QString::default();
+
+        ui.pending_archive_view_cleanup = Some(2);
+        assert!(!ui.archive_view_ready_for_shutdown());
+        ui.pending_archive_view_cleanup = None;
+        // A failed exact cleanup can leave private bytes for restart
+        // quarantine after the viewer has been blanked and its URL cleared.
+        ui.active_archive_view_operation = Some(OperationId::fresh());
+        assert!(ui.archive_view_ready_for_shutdown());
     }
 }

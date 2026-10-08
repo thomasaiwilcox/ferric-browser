@@ -2,7 +2,8 @@ use std::fmt;
 
 use crate::{
     ApplicationState, CommandError, CommandRegistry, Event, Mode, NavigationContext,
-    NavigationError, ParsedCommand, ReduceError, TabId, Target, WindowId,
+    NavigationError, ParsedCommand, ReduceError, TabId, Target, VersioningCommand,
+    VersioningCommandError, VersioningRequest, WindowId,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -45,7 +46,7 @@ impl CommandSource {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct CommandContext {
     pub source: CommandSource,
     pub count: u32,
@@ -54,6 +55,21 @@ pub struct CommandContext {
     pub profile: Option<crate::ProfileId>,
     pub context: Option<String>,
     pub operation_id: Option<String>,
+}
+
+impl fmt::Debug for CommandContext {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("CommandContext")
+            .field("source", &self.source)
+            .field("count", &self.count)
+            .field("has_window", &self.window.is_some())
+            .field("has_tab", &self.tab.is_some())
+            .field("has_profile", &self.profile.is_some())
+            .field("has_context", &self.context.is_some())
+            .field("has_operation_id", &self.operation_id.is_some())
+            .finish()
+    }
 }
 
 impl Default for CommandContext {
@@ -98,11 +114,22 @@ impl CommandContext {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct CommandInvocation {
     pub command: ParsedCommand,
     pub count: u32,
     pub context: CommandContext,
+}
+
+impl fmt::Debug for CommandInvocation {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("CommandInvocation")
+            .field("command", &self.command)
+            .field("count", &self.count)
+            .field("context", &self.context)
+            .finish()
+    }
 }
 
 /// Selects the browser object against which a command is evaluated.
@@ -147,9 +174,10 @@ impl CommandInvocation {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub enum DispatchError {
     Command(CommandError),
+    Versioning(VersioningCommandError),
     Navigation(NavigationError),
     Reduce(ReduceError),
     NoActiveTab,
@@ -160,28 +188,41 @@ pub enum DispatchError {
     UnsupportedCommand(String),
 }
 
+impl fmt::Debug for DispatchError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let variant = match self {
+            Self::Command(_) => "Command",
+            Self::Versioning(_) => "Versioning",
+            Self::Navigation(_) => "Navigation",
+            Self::Reduce(_) => "Reduce",
+            Self::NoActiveTab => "NoActiveTab",
+            Self::MissingArgument { .. } => "MissingArgument",
+            Self::UnexpectedArguments { .. } => "UnexpectedArguments",
+            Self::CountNotSupported { .. } => "CountNotSupported",
+            Self::CountTooLarge { .. } => "CountTooLarge",
+            Self::UnsupportedCommand(_) => "UnsupportedCommand",
+        };
+        write!(formatter, "DispatchError::{variant}([redacted])")
+    }
+}
+
 impl fmt::Display for DispatchError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Command(error) => write!(formatter, "command parse/registry error: {error}"),
-            Self::Navigation(error) => write!(formatter, "navigation error: {error}"),
-            Self::Reduce(error) => write!(formatter, "state transition error: {error}"),
+            Self::Command(_) => formatter.write_str("command parse or registry check failed"),
+            Self::Versioning(_) => formatter.write_str("versioning command failed"),
+            Self::Navigation(_) => formatter.write_str("navigation request failed"),
+            Self::Reduce(_) => formatter.write_str("browser state transition failed"),
             Self::NoActiveTab => formatter.write_str("no active tab"),
-            Self::MissingArgument { command, argument } => {
-                write!(formatter, "{command} requires argument {argument}")
+            Self::MissingArgument { .. } => {
+                formatter.write_str("command is missing a required argument")
             }
-            Self::UnexpectedArguments { command } => {
-                write!(formatter, "{command} does not accept arguments")
+            Self::UnexpectedArguments { .. } => formatter.write_str("command has extra arguments"),
+            Self::CountNotSupported { .. } => {
+                formatter.write_str("command does not support a count")
             }
-            Self::CountNotSupported { command } => {
-                write!(formatter, "{command} does not accept a count")
-            }
-            Self::CountTooLarge { command, maximum } => {
-                write!(formatter, "count for {command} exceeds {maximum}")
-            }
-            Self::UnsupportedCommand(command) => {
-                write!(formatter, "unsupported command: {command}")
-            }
+            Self::CountTooLarge { .. } => formatter.write_str("command count exceeds its limit"),
+            Self::UnsupportedCommand(_) => formatter.write_str("unsupported command"),
         }
     }
 }
@@ -448,7 +489,18 @@ pub fn dispatch_command_for(
             ensure_no_arguments(&parsed, command)?;
             Ok(vec![Event::RequestShutdown])
         }
-        other => Err(DispatchError::UnsupportedCommand(other.into())),
+        other => match VersioningCommand::from_parsed(&parsed, count) {
+            Ok(command) => Ok(vec![Event::VersioningRequest(VersioningRequest::new(
+                command,
+                window,
+                target,
+                invocation_context.source,
+            ))]),
+            Err(VersioningCommandError::UnknownCommand) => {
+                Err(DispatchError::UnsupportedCommand(other.into()))
+            }
+            Err(error) => Err(DispatchError::Versioning(error)),
+        },
     }
 }
 
@@ -782,6 +834,46 @@ mod tests {
     use super::*;
     use crate::{Event, ParseInput, PrivacyKind, reduce};
 
+    #[test]
+    fn command_invocation_debug_redacts_arguments_and_routing_context() {
+        let sentinel = "private-dispatch-context-sentinel";
+        let invocation = CommandInvocation {
+            command: ParsedCommand {
+                name: "open".into(),
+                arguments: vec![sentinel.into()],
+            },
+            count: 1,
+            context: CommandContext {
+                context: Some(sentinel.into()),
+                operation_id: Some(sentinel.into()),
+                ..CommandContext::default()
+            },
+        };
+        let debug = format!("{invocation:?}");
+        assert!(!debug.contains(sentinel));
+    }
+
+    #[test]
+    fn dispatch_error_diagnostics_redact_commands_arguments_and_external_targets() {
+        let sentinel = "private-dispatch-error-sentinel";
+        let errors = [
+            DispatchError::MissingArgument {
+                command: sentinel.into(),
+                argument: sentinel.into(),
+            },
+            DispatchError::UnsupportedCommand(sentinel.into()),
+            DispatchError::Navigation(NavigationError::ExternalSchemeRequiresConfirmation {
+                scheme: "mailto".into(),
+                url: format!("mailto:{sentinel}@example.test?subject=private"),
+            }),
+        ];
+
+        for error in errors {
+            assert!(!format!("{error:?}").contains(sentinel));
+            assert!(!error.to_string().contains(sentinel));
+        }
+    }
+
     fn state() -> ApplicationState {
         let mut state = ApplicationState::new();
         reduce(
@@ -813,6 +905,40 @@ mod tests {
             CommandInvocation::new(command),
             &NavigationContext::default(),
         )
+    }
+
+    #[test]
+    fn registered_versioning_commands_emit_only_a_typed_request_without_mutation() {
+        let registry = CommandRegistry::default_v1();
+        for input in [
+            "commit note",
+            "stash",
+            "branch trial --clean",
+            "merge trial --cookies",
+        ] {
+            let mut state = state();
+            let parsed = crate::parse_chain(input, ParseInput::Cli)
+                .unwrap()
+                .remove(0);
+            assert!(registry.resolve(&parsed.name).is_ok());
+            let events = dispatch_command(
+                &state,
+                &registry,
+                CommandInvocation::new(parsed.clone()),
+                &NavigationContext::default(),
+            )
+            .unwrap();
+            assert!(matches!(events.as_slice(), [Event::VersioningRequest(_)]));
+            let revision = state.revision();
+            let effects = reduce(&mut state, events.into_iter().next().unwrap()).unwrap();
+            assert!(matches!(
+                effects.as_slice(),
+                [crate::Effect::Engine(crate::EngineEffect::Versioning(
+                    crate::VersioningEngineEffect::Request(_)
+                ))]
+            ));
+            assert_eq!(state.revision(), revision);
+        }
     }
 
     #[test]

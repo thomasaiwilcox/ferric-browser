@@ -11,9 +11,11 @@ impl qobject::BrowserUi {
         mut self: Pin<&mut Self>,
         subject: Option<&str>,
     ) -> Result<Value, String> {
-        let mut actions = action_list_value(subject)?;
+        let mut actions = action_list_value(subject)
+            .map_err(|_| "action catalog request is invalid; details suppressed")?;
         if subject.is_none() || matches!(subject, Some("url" | "link" | "selection" | "tab")) {
-            let targets = configured_action_targets(&self.as_ref().rust().config)?;
+            let targets = configured_action_targets(&self.as_ref().rust().config)
+                .map_err(|_| "configured action catalog is unavailable; details suppressed")?;
             if let Some(values) = actions.as_array_mut() {
                 values.extend(
                     targets
@@ -42,18 +44,20 @@ impl qobject::BrowserUi {
                 );
             }
         }
+        let script_actions = userscript_action_values(
+            self.as_ref()
+                .rust()
+                .userscript_roots
+                .as_ref()
+                .map(|roots| roots.config.as_path()),
+            subject,
+            self.as_ref().rust().state.is_some(),
+            self.as_ref().rust().profile_persistence.is_durable(),
+            self.as_ref().active_profile_is_transient(),
+        )
+        .map_err(|_| "userscript action catalog is unavailable; details suppressed")?;
         if let Some(values) = actions.as_array_mut() {
-            values.extend(userscript_action_values(
-                self.as_ref()
-                    .rust()
-                    .userscript_roots
-                    .as_ref()
-                    .map(|roots| roots.config.as_path()),
-                subject,
-                self.as_ref().rust().state.is_some(),
-                self.as_ref().rust().profile_persistence.is_durable(),
-                self.as_ref().active_profile_is_transient(),
-            )?);
+            values.extend(script_actions);
         }
         if let Some(values) = actions.as_array_mut() {
             let registry = ActionRegistry::default_v1();

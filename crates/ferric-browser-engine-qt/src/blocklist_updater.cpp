@@ -168,7 +168,7 @@ void FerricBrowserBlocklistUpdater::finishOne(QNetworkReply *reply)
     } else if (statusCode != 304 && body.isEmpty()) {
         failed_.append(cacheId);
     } else if (statusCode == 304) {
-        setStatus(QStringLiteral("Blocklist unchanged: %1").arg(cacheId));
+        setStatus(QStringLiteral("Blocklist unchanged"));
     } else {
         const auto etag = QString::fromUtf8(reply->rawHeader("ETag"));
         const auto lastModified = QString::fromUtf8(reply->rawHeader("Last-Modified"));

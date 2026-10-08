@@ -1,0 +1,161 @@
+diff --git a/src/3rdparty/chromium/services/network/public/mojom/cookie_manager.mojom b/src/3rdparty/chromium/services/network/public/mojom/cookie_manager.mojom
+--- a/src/3rdparty/chromium/services/network/public/mojom/cookie_manager.mojom
++++ b/src/3rdparty/chromium/services/network/public/mojom/cookie_manager.mojom
+@@ -406,4 +406,8 @@ interface CookieManager {
+   // shipping network service: it bypasses ordinary cookie setter policy.
+   FerricProbeSeedIfEmpty(array<CanonicalCookie> cookies) => (bool accepted);
+ 
++  // Disposable Ferric fault injection only. Drops the next GetAllCookies
++  // response and closes the CookieManager receiver set.
++  FerricProbeDisconnectAfterNextGetAllCookies();
++
+   // Get all the cookies known to the service.
+diff --git a/src/3rdparty/chromium/services/network/cookie_manager.h b/src/3rdparty/chromium/services/network/cookie_manager.h
+--- a/src/3rdparty/chromium/services/network/cookie_manager.h
++++ b/src/3rdparty/chromium/services/network/cookie_manager.h
+@@ -78,3 +78,4 @@ class CookieManager : public mojom::CookieManager {
+       const net::CookieList& cookies,
+       FerricProbeSeedIfEmptyCallback callback) override;
++  void FerricProbeDisconnectAfterNextGetAllCookies() override;
+   void GetAllCookiesWithAccessSemantics(
+@@ -168,4 +169,5 @@ class CookieManager : public mojom::CookieManager {
+   const raw_ptr<net::CookieStore> cookie_store_;
+   scoped_refptr<SessionCleanupCookieStore> session_cleanup_cookie_store_;
+   bool ferric_probe_seed_busy_ = false;
++  bool ferric_probe_drop_next_get_all_reply_ = false;
+   mojo::ReceiverSet<mojom::CookieManager> receivers_;
+diff --git a/src/3rdparty/chromium/services/network/cookie_manager.cc b/src/3rdparty/chromium/services/network/cookie_manager.cc
+--- a/src/3rdparty/chromium/services/network/cookie_manager.cc
++++ b/src/3rdparty/chromium/services/network/cookie_manager.cc
+@@ -110,2 +123,19 @@ void CookieManager::GetAllCookies(GetAllCookiesCallback callback) {
++  if (ferric_probe_drop_next_get_all_reply_) {
++    ferric_probe_drop_next_get_all_reply_ = false;
++    // Complete the backing-store operation, but destroy the response callback
++    // and disconnect the Mojo peer before that completion arrives. This is a
++    // disposable in-flight pipe-loss seam, not a network-service crash test.
++    cookie_store_->GetAllCookiesAsync(base::BindOnce(
++        [](GetAllCookiesCallback response, const net::CookieList&) {
++          static_cast<void>(response);
++        },
++        std::move(callback)));
++    receivers_.Clear();
++    return;
++  }
+   cookie_store_->GetAllCookiesAsync(std::move(callback));
+ }
++
++void CookieManager::FerricProbeDisconnectAfterNextGetAllCookies() {
++  ferric_probe_drop_next_get_all_reply_ = true;
++}
+diff --git a/src/core/api/qwebenginecookiestore.h b/src/core/api/qwebenginecookiestore.h
+--- a/src/core/api/qwebenginecookiestore.h
++++ b/src/core/api/qwebenginecookiestore.h
+@@ -54,2 +54,3 @@ public:
+     };
+     enum class FerricSyntheticPreflightCase { None, LegacyUnknownSource, OlderOverlongExpiry };
++    enum class FerricServiceLossProbeStage { None, SourceSnapshot, DestinationReadback };
+@@ -83,0 +84,6 @@ public:
++    // Disposable service-pipe loss probe. A destination touched before a
++    // timeout is indeterminate and must be discarded; this does not model a
++    // network-service process crash or provide a production liveness contract.
++    void ferricCookieServiceLossProbe(QWebEngineCookieStore *destination,
++                                     FerricServiceLossProbeStage stage,
++                                     std::function<void(FerricProbeResult)> completion);
+diff --git a/src/core/api/qwebenginecookiestore.cpp b/src/core/api/qwebenginecookiestore.cpp
+--- a/src/core/api/qwebenginecookiestore.cpp
++++ b/src/core/api/qwebenginecookiestore.cpp
+@@ -137,4 +137,24 @@ void QWebEngineCookieStore::ferricCookieSyntheticPreflightProbe(
+     d->delegate->ferricCookieCloneProbe(destination->d_func()->delegate, false,
+                                        std::move(completion), false, fixture);
+ }
++
++void QWebEngineCookieStore::ferricCookieServiceLossProbe(
++        QWebEngineCookieStore *destination, FerricServiceLossProbeStage stage,
++        std::function<void(FerricProbeResult)> completion)
++{
++    if (!completion)
++        return;
++    Q_D(QWebEngineCookieStore);
++    if (!destination || destination == this || QThread::currentThread() != thread()
++            || destination->thread() != thread() || !d->delegate
++            || !destination->d_func()->delegate || d->filterCallback
++            || destination->d_func()->filterCallback) {
++        completion({FerricProbeStatus::Unavailable, 0, 0});
++        return;
++    }
++    d->delegate->ferricCookieCloneProbe(destination->d_func()->delegate, false,
++                                       std::move(completion), true,
++                                       FerricSyntheticPreflightCase::None,
++                                       false, false, false, stage);
++}
+ 
+ QWebEngineCookieStorePrivate::QWebEngineCookieStorePrivate(QWebEngineCookieStore *q)
+diff --git a/src/core/net/cookie_monster_delegate_qt.h b/src/core/net/cookie_monster_delegate_qt.h
+--- a/src/core/net/cookie_monster_delegate_qt.h
++++ b/src/core/net/cookie_monster_delegate_qt.h
+@@ -75,4 +75,6 @@ public:
+                                bool opaqueFixture = false,
+                                bool destinationRejectFixture = false,
+-                               bool seedIfEmptyFixture = false);
++                               bool seedIfEmptyFixture = false,
++                               QWebEngineCookieStore::FerricServiceLossProbeStage serviceLossStage =
++                                       QWebEngineCookieStore::FerricServiceLossProbeStage::None);
+     void deleteSessionCookies();
+diff --git a/src/core/net/cookie_monster_delegate_qt.cpp b/src/core/net/cookie_monster_delegate_qt.cpp
+--- a/src/core/net/cookie_monster_delegate_qt.cpp
++++ b/src/core/net/cookie_monster_delegate_qt.cpp
+@@ -28,2 +28,3 @@ class FerricCookieProbeOperation final : public QObject
+     using Result = QWebEngineCookieStore::FerricProbeResult;
+     using SyntheticCase = QWebEngineCookieStore::FerricSyntheticPreflightCase;
++    using ServiceLossStage = QWebEngineCookieStore::FerricServiceLossProbeStage;
+@@ -45,2 +46,3 @@ class FerricCookieProbeOperation final : public QObject
+     bool m_destinationRejectFixture;
+     bool m_seedIfEmptyFixture;
++    ServiceLossStage m_serviceLossStage;
+@@ -240,3 +242,5 @@ class FerricCookieProbeOperation final : public QObject
+     void capture()
+     {
++        if (m_serviceLossStage == ServiceLossStage::SourceSnapshot)
++            m_source->m_mojoCookieManager->FerricProbeDisconnectAfterNextGetAllCookies();
+         m_source->m_mojoCookieManager->GetAllCookies(base::BindOnce(
+@@ -328,3 +334,7 @@ class FerricCookieProbeOperation final : public QObject
+     void readback()
+     {
++        if (m_serviceLossStage == ServiceLossStage::DestinationReadback) {
++            m_destinationCount = -1;
++            m_destination->m_mojoCookieManager->FerricProbeDisconnectAfterNextGetAllCookies();
++        }
+         m_destination->m_mojoCookieManager->GetAllCookies(base::BindOnce(
+@@ -357,2 +365,3 @@ public:
+                               SyntheticCase syntheticCase, bool opaqueFixture,
+-                              bool destinationRejectFixture, bool seedIfEmptyFixture)
++                              bool destinationRejectFixture, bool seedIfEmptyFixture,
++                              ServiceLossStage serviceLossStage)
+@@ -363,3 +372,3 @@ public:
+           m_existingSource(existingSource), m_syntheticCase(syntheticCase),
+           m_opaqueFixture(opaqueFixture), m_destinationRejectFixture(destinationRejectFixture),
+-          m_seedIfEmptyFixture(seedIfEmptyFixture)
++          m_seedIfEmptyFixture(seedIfEmptyFixture), m_serviceLossStage(serviceLossStage)
+@@ -370,3 +379,3 @@ public:
+         connect(&m_timeout, &QTimer::timeout, this, [this] { finish(Status::TimedOut); });
+         m_timeout.setSingleShot(true);
+-        m_timeout.start(20000);
++        m_timeout.start(m_serviceLossStage == ServiceLossStage::None ? 20000 : 500);
+@@ -412,6 +421,10 @@ void CookieMonsterDelegateQt::ferricCookieCloneProbe(
+         bool existingSource, QWebEngineCookieStore::FerricSyntheticPreflightCase syntheticCase,
+-        bool opaqueFixture, bool destinationRejectFixture, bool seedIfEmptyFixture)
++        bool opaqueFixture, bool destinationRejectFixture, bool seedIfEmptyFixture,
++        QWebEngineCookieStore::FerricServiceLossProbeStage serviceLossStage)
+ {
+-    if ((seedIfEmptyFixture && (!existingSource || nonceFixture || opaqueFixture
++    if ((serviceLossStage != QWebEngineCookieStore::FerricServiceLossProbeStage::None
++                && (!existingSource || nonceFixture || opaqueFixture || destinationRejectFixture
++                    || seedIfEmptyFixture || syntheticCase != QWebEngineCookieStore::FerricSyntheticPreflightCase::None))
++            || (seedIfEmptyFixture && (!existingSource || nonceFixture || opaqueFixture
+                                   || destinationRejectFixture || syntheticCase != QWebEngineCookieStore::FerricSyntheticPreflightCase::None))
+             || (nonceFixture && opaqueFixture) || (destinationRejectFixture && (nonceFixture || opaqueFixture
+@@ -427,2 +440,3 @@ void CookieMonsterDelegateQt::ferricCookieCloneProbe(
+                                    std::move(completion), existingSource, syntheticCase,
+-                                   opaqueFixture, destinationRejectFixture, seedIfEmptyFixture))->start();
++                                   opaqueFixture, destinationRejectFixture, seedIfEmptyFixture,
++                                   serviceLossStage))->start();

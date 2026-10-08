@@ -8,7 +8,7 @@ use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QStringList, Q
 use ferric_browser_config::setting_metadata_all;
 use serde_json::Value;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub(super) struct SettingsRow {
     pub key: &'static str,
     pub label: &'static str,
@@ -17,6 +17,21 @@ pub(super) struct SettingsRow {
     pub apply_time: &'static str,
     pub value: String,
     pub options: &'static [&'static str],
+}
+
+impl std::fmt::Debug for SettingsRow {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("SettingsRow")
+            .field("key", &self.key)
+            .field("label", &self.label)
+            .field("editor_type", &self.editor_type)
+            .field("scope", &self.scope)
+            .field("apply_time", &self.apply_time)
+            .field("value", &"[REDACTED]")
+            .field("options", &self.options)
+            .finish()
+    }
 }
 
 #[must_use]
@@ -297,5 +312,22 @@ mod tests {
         let config = serde_json::to_value(Config::default()).expect("default config serializes");
         let rows = project_variant(&config);
         assert_eq!(rows.type_id(), cxx_qt_lib::QMetaTypeType::QVariantList);
+    }
+
+    #[test]
+    fn settings_row_debug_redacts_configured_value() {
+        let row = SettingsRow {
+            key: "browser.private_setting",
+            label: "Private setting",
+            editor_type: "text",
+            scope: "profile".into(),
+            apply_time: "live",
+            value: "private-config-value-sentinel".into(),
+            options: &[],
+        };
+        let debug = format!("{row:?}");
+        assert!(debug.contains("browser.private_setting"));
+        assert!(debug.contains("REDACTED"));
+        assert!(!debug.contains("private-config-value-sentinel"));
     }
 }

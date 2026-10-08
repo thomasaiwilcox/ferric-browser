@@ -1,0 +1,25 @@
+--- a/src/3rdparty/chromium/content/browser/renderer_host/media/media_stream_dispatcher_host.cc
++++ b/src/3rdparty/chromium/content/browser/renderer_host/media/media_stream_dispatcher_host.cc
+@@ -10,6 +10,7 @@
+ #include "base/feature_list.h"
+ #include "base/functional/bind.h"
+ #include "base/functional/callback_helpers.h"
++#include "base/logging.h"
+ #include "base/numerics/safe_conversions.h"
+ #include "base/task/bind_post_task.h"
+ #include "build/build_config.h"
+@@ -388,7 +389,14 @@
+   RenderFrameHostImpl* const render_frame_host =
+       RenderFrameHostImpl::FromID(render_frame_host_id);
+   if (!render_frame_host || !render_frame_host->IsActive()) {
++    LOG(ERROR) << "Ferric RTC capture rejection diagnostic: frame="
++               << render_frame_host_id.child_id << ":"
++               << render_frame_host_id.frame_routing_id
++               << " found=" << (render_frame_host != nullptr)
++               << " active=" << (render_frame_host && render_frame_host->IsActive())
++               << " url=" << (render_frame_host
++                       ? render_frame_host->GetLastCommittedURL().spec() : "<missing>");
+     std::move(result_callback)
+         .Run(base::unexpected(MediaStreamRequestResult::INVALID_STATE));
+     return;
+   }

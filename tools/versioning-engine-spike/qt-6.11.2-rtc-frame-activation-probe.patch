@@ -1,0 +1,65 @@
+--- a/src/core/web_contents_adapter.h
++++ b/src/core/web_contents_adapter.h
+@@ -108,6 +108,7 @@
+     bool ferricHasObservedPeerConnectionForProbe() const;
+     bool ferricHasNoMediaCaptureActivityForProbe() const;
+     bool ferricHasFrameCaptureActivityForProbe() const;
++    QString ferricFrameActivationSnapshotForProbe() const;
+     bool ferricBeginChildFrameCaptureProbe();
+     bool ferricEndChildFrameCaptureProbe();
+     void ferricMediaCaptureStartingForProbe();
+--- a/src/core/web_contents_adapter.cpp
++++ b/src/core/web_contents_adapter.cpp
+@@ -188,6 +188,27 @@
+     return capturing;
+ }
+ 
++QString WebContentsAdapter::ferricFrameActivationSnapshotForProbe() const
++{
++    if (!isInitialized())
++        return QStringLiteral("uninitialized");
++    auto *main = m_webContents->GetPrimaryMainFrame();
++    if (!main)
++        return QStringLiteral("no-primary-main-frame");
++    const auto *primaryPage = &main->GetPage();
++    QString snapshot;
++    m_webContents->ForEachRenderFrameHost([&](content::RenderFrameHost *frame) {
++        if (&frame->GetPage() != primaryPage)
++            return;
++        if (!snapshot.isEmpty())
++            snapshot += QLatin1Char(';');
++        snapshot += QStringLiteral("url=%1 active=%2")
++                .arg(QString::fromStdString(frame->GetLastCommittedURL().spec()))
++                .arg(frame->IsActive() ? 1 : 0);
++    });
++    return snapshot;
++}
++
+ bool WebContentsAdapter::ferricBeginChildFrameCaptureProbe()
+ {
+     if (!isInitialized() || m_ferricChildCaptureProbeProcessId >= 0) {
+--- a/src/webenginequick/api/qquickwebengineview_p.h
++++ b/src/webenginequick/api/qquickwebengineview_p.h
+@@ -482,4 +482,5 @@
+     Q_INVOKABLE bool ferricHasNoMediaCaptureActivityForProbe() const;
+     Q_INVOKABLE bool ferricHasFrameCaptureActivityForProbe() const;
++    Q_INVOKABLE QString ferricFrameActivationSnapshotForProbe() const;
+     Q_INVOKABLE bool ferricBeginChildFrameCaptureProbe();
+     Q_INVOKABLE bool ferricEndChildFrameCaptureProbe();
+--- a/src/webenginequick/api/qquickwebengineview.cpp
++++ b/src/webenginequick/api/qquickwebengineview.cpp
+@@ -2565,6 +2565,14 @@
+     return d && d->adapter && d->adapter->ferricHasFrameCaptureActivityForProbe();
+ }
+ 
++QString QQuickWebEngineView::ferricFrameActivationSnapshotForProbe() const
++{
++    if (QThread::currentThread() != thread())
++        return QString();
++    auto *d = d_func();
++    return d && d->adapter ? d->adapter->ferricFrameActivationSnapshotForProbe() : QString();
++}
++
+ bool QQuickWebEngineView::ferricBeginChildFrameCaptureProbe()
+ {
+     if (QThread::currentThread() != thread())

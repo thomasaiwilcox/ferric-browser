@@ -1,8 +1,8 @@
 //! `WebEngine` navigation facts translated into reducer inputs and presentation.
 
 use super::{
-    CxxQtType, Event, Pin, QString, ValidatedUrl, bounded_navigation_failure_detail,
-    current_target, normalized_navigation_failure_kind, qobject, safe_ipc_url,
+    CxxQtType, Event, Pin, QString, ValidatedUrl, current_target,
+    normalized_navigation_failure_kind, qobject, safe_ipc_url,
 };
 
 impl qobject::BrowserUi {
@@ -43,6 +43,8 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn navigation_failed(mut self: Pin<&mut Self>) {
+        let active_index = self.as_ref().rust().active_tab_index;
+        self.as_mut().forget_safe_get_navigation_for(active_index);
         let target = current_target(
             self.as_ref().rust().state.as_ref(),
             self.as_ref().rust().tab,
@@ -58,6 +60,7 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn navigation_failed_for(mut self: Pin<&mut Self>, index: i32) {
+        self.as_mut().forget_safe_get_navigation_for(index);
         if let Some(target) = self.as_ref().get_ref().target_for_index(index) {
             let _ = self.as_mut().take_journey_redirect(target);
             let _ = self.as_mut().take_journey_transition(target);
@@ -84,7 +87,7 @@ impl qobject::BrowserUi {
         index: i32,
         url: &QString,
         kind: &QString,
-        detail: &QString,
+        _detail: &QString,
     ) {
         self.as_mut().navigation_failed_for(index);
         if index != self.as_ref().rust().active_tab_index {
@@ -93,19 +96,17 @@ impl qobject::BrowserUi {
         let safe_url = ValidatedUrl::parse(url.to_string())
             .map_or_else(|_| "[unavailable]".into(), |url| safe_ipc_url(url.as_str()));
         let kind = normalized_navigation_failure_kind(&kind.to_string());
-        let detail = bounded_navigation_failure_detail(&detail.to_string());
         self.as_mut()
             .set_navigation_failure_kind(QString::from(kind));
         self.as_mut()
             .set_navigation_failure_url(QString::from(safe_url));
-        self.as_mut()
-            .set_navigation_failure_detail(QString::from(&detail));
+        self.as_mut().set_navigation_failure_detail(QString::from(
+            "Additional navigation details are suppressed.",
+        ));
         self.as_mut().set_navigation_failure_visible(true);
-        let status = if detail.is_empty() {
-            format!("{} failure", kind.to_ascii_uppercase())
-        } else {
-            format!("{} failure: {detail}", kind.to_ascii_uppercase())
-        };
-        self.set_status_text(QString::from(status));
+        self.set_status_text(QString::from(format!(
+            "{} failure",
+            kind.to_ascii_uppercase()
+        )));
     }
 }

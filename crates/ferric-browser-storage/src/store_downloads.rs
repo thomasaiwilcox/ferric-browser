@@ -37,7 +37,8 @@ impl ProfileStore {
         Ok(())
     }
 
-    /// Updates a download's lifecycle and byte progress.
+    /// Updates a download's lifecycle and byte progress. Byte progress is a
+    /// high-water mark because Qt may report zero after cancellation.
     ///
     /// # Errors
     ///
@@ -55,7 +56,7 @@ impl ProfileStore {
             ));
         }
         let changed = self.connection.execute(
-            "UPDATE downloads SET state = ?2, bytes_received = ?3, completed_at = ?4 WHERE id = ?1",
+            "UPDATE downloads SET state = ?2, bytes_received = MAX(bytes_received, ?3), completed_at = ?4 WHERE id = ?1",
             params![id, state.as_str(), bytes_received, completed_at],
         )?;
         if changed == 0 {
@@ -89,7 +90,7 @@ impl ProfileStore {
         let transaction = self.connection.unchecked_transaction()?;
         for update in updates {
             let changed = transaction.execute(
-                "UPDATE downloads SET state = ?2, bytes_received = ?3, completed_at = ?4 WHERE id = ?1",
+                "UPDATE downloads SET state = ?2, bytes_received = MAX(bytes_received, ?3), completed_at = ?4 WHERE id = ?1",
                 params![
                     update.id,
                     update.state.as_str(),

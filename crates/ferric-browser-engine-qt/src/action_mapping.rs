@@ -462,8 +462,9 @@ pub(super) fn parse_action_invocation(
     let registry = ActionRegistry::default_v1();
     let definition = registry
         .resolve_subject_verb(subject, verb)
-        .ok_or_else(|| format!("unknown action subject/verb: {subject} {verb}"))?;
-    let command_arguments = map_basic(definition.command.as_str(), subject, verb, arguments)?
+        .ok_or_else(|| "action subject or verb is unknown".to_owned())?;
+    let command_arguments = map_basic(definition.command.as_str(), subject, verb, arguments)
+        .map_err(|_| "action arguments are invalid; details suppressed")?
         .ok_or_else(|| "action executor is not implemented".to_owned())?;
     Ok((
         ParsedCommand {
@@ -476,7 +477,33 @@ pub(super) fn parse_action_invocation(
 
 #[cfg(test)]
 mod tests {
-    use super::map_basic;
+    use super::{map_basic, parse_action_invocation};
+    use ferric_browser_core::ParsedCommand;
+
+    #[test]
+    fn action_invocation_errors_do_not_echo_untrusted_subject_or_arguments() {
+        let sentinel = "action-error-private-sentinel";
+        let error = parse_action_invocation(&ParsedCommand {
+            name: "action".into(),
+            arguments: vec![sentinel.into(), "unknown".into(), sentinel.into()],
+        })
+        .expect_err("unknown subject is rejected");
+        assert_eq!(error, "action subject or verb is unknown");
+        assert!(!error.contains(sentinel));
+
+        let error = parse_action_invocation(&ParsedCommand {
+            name: "action".into(),
+            arguments: vec![
+                "history-entry".into(),
+                "clear".into(),
+                "--unsupported".into(),
+                sentinel.into(),
+            ],
+        })
+        .expect_err("unsupported argument is rejected");
+        assert_eq!(error, "action arguments are invalid; details suppressed");
+        assert!(!error.contains(sentinel));
+    }
 
     #[test]
     fn maps_basic_actions_without_opening_the_qt_boundary() {

@@ -3,8 +3,8 @@ use super::{
     PAGE_SCRIPT_DEADLINE, ParsedCommand, Path, PathBuf, PendingCaret, PendingConfigEdit,
     PendingEditor, PendingLinkNavigation, PendingSelection, PendingSpawn, Pin, QString, Stdio,
     Uuid, ValidatedUrl, Value, clean_link, clean_open_input, configured_search_url, current_target,
-    fs, link_cleaning_policy, link_result_value, qobject, read_bounded, resolve_input,
-    safe_ipc_url, sanitize_untrusted_title, thread, validate_jseval_script,
+    fs, link_cleaning_policy, link_result_value, qobject, resolve_input, safe_ipc_url,
+    sanitize_untrusted_title, validate_jseval_script,
 };
 
 impl qobject::BrowserUi {
@@ -105,9 +105,7 @@ impl qobject::BrowserUi {
             self.as_mut().set_mode(QString::from("normal"));
             self.as_mut().set_caret_selecting(false);
         }
-        self.set_status_text(QString::from(format!(
-            "Selection search requested with {engine}"
-        )));
+        self.set_status_text(QString::from("Selection search requested"));
         Ok(serde_json::json!({
             "status": "accepted",
             "source": "selection",
@@ -166,8 +164,10 @@ impl qobject::BrowserUi {
             Ok(value) => value,
             Err(_) => return fail(self, "Selection search extraction failed".into()),
         };
-        if let Some(error) = value.get("error").and_then(Value::as_str) {
-            return fail(self, format!("Selection search unavailable: {error}"));
+        // INVARIANT: this value originated in the renderer's script result;
+        // never reflect its error text into status or operation projections.
+        if value.get("error").is_some() {
+            return fail(self, "Selection search is unavailable".into());
         }
         let Some(text) = value.get("text").and_then(Value::as_str) else {
             return fail(self, "Selection search returned invalid text".into());
@@ -212,7 +212,7 @@ impl qobject::BrowserUi {
                 .operation_states
                 .insert(operation_id, "accepted".into());
         }
-        self.set_status_text(QString::from(format!("Searching selection with {engine}")));
+        self.set_status_text(QString::from("Searching selection"));
         true
     }
 
@@ -430,7 +430,7 @@ impl qobject::BrowserUi {
                 | "line-start"
                 | "line-end"
         ) {
-            return Err(format!("unknown caret direction: {direction}"));
+            return Err("caret-move direction is unsupported".into());
         }
         let count = match command.arguments.as_slice() {
             [_] => 1,
@@ -503,9 +503,8 @@ impl qobject::BrowserUi {
         if path_text.is_empty() {
             return Err("no file-backed configuration is active".into());
         }
-        let path = fs::canonicalize(&path_text).map_err(|error| {
-            format!("configured file-backed configuration is unavailable: {error}")
-        })?;
+        let path = fs::canonicalize(&path_text)
+            .map_err(|_| "configured file-backed configuration is unavailable".to_owned())?;
         if !path.is_file() {
             return Err("configured file-backed configuration is not a regular file".into());
         }
@@ -517,31 +516,12 @@ impl qobject::BrowserUi {
             .current_dir(parent)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::piped());
+            .stderr(Stdio::null());
         #[cfg(unix)]
         editor_command.process_group(0);
-        let mut child = editor_command
+        let child = editor_command
             .spawn()
-            .map_err(|error| format!("configuration editor could not start: {error}"))?;
-        let stderr = child
-            .stderr
-            .take()
-            .map(|stderr| {
-                let result = Arc::new(Mutex::new(None));
-                let destination = Arc::clone(&result);
-                thread::spawn(move || {
-                    let value = read_bounded(stderr, 64 * 1024);
-                    if let Ok(mut destination) = destination.lock() {
-                        *destination = Some(value);
-                    }
-                });
-                result
-            })
-            .unwrap_or_else(|| {
-                Arc::new(Mutex::new(Some(Err(
-                    "configuration editor stderr was not captured".into(),
-                ))))
-            });
+            .map_err(|_| "configuration editor could not start".to_owned())?;
         let token = format!("config-edit-{}", Uuid::new_v4());
         let process = Arc::new(Mutex::new(Some(child)));
         self.as_mut()
@@ -550,15 +530,12 @@ impl qobject::BrowserUi {
             .get_mut()
             .pending_config_edit = Some(PendingConfigEdit {
             token: token.clone(),
-            path: path.clone(),
             process,
             exit_status: None,
-            stderr,
         });
         self.set_status_text(QString::from("Configuration editor started"));
         Ok(serde_json::json!({
             "status": "accepted",
-            "path": path,
             "token": token
         }))
     }
@@ -611,7 +588,7 @@ impl qobject::BrowserUi {
             return Ok(serde_json::json!({"status": "accepted", "pending": true}));
         }
         let operation_id = self.as_mut().start_spawn_process(&resolved)?;
-        self.set_status_text(QString::from(format!("Spawn started: {operation_id}")));
+        self.set_status_text(QString::from("Spawn started"));
         Ok(serde_json::json!({
             "status": "accepted",
             "operation_id": operation_id
@@ -700,7 +677,7 @@ impl qobject::BrowserUi {
                 self.as_mut().set_core_mode(Mode::PassThrough);
                 self.as_mut().set_mode(QString::from("pass-through"));
             }
-            _ => return Err(format!("unknown mode: {mode}")),
+            _ => return Err("mode-enter value is unsupported".into()),
         }
         Ok(())
     }

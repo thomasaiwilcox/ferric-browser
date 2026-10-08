@@ -1,5 +1,5 @@
 use std::{
-    env, fs,
+    env, fmt, fs,
     io::{self, Write},
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
@@ -9,14 +9,24 @@ use std::{
 pub const CURRENT_ROOT_SCHEMA_VERSION: u32 = 3;
 const ROOT_SCHEMA_FILE: &str = ".ferric-root-schema";
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub enum RootSpec {
     Xdg,
     Base(PathBuf),
     Temporary,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+impl fmt::Debug for RootSpec {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Xdg => formatter.write_str("RootSpec::Xdg"),
+            Self::Base(_) => formatter.write_str("RootSpec::Base([redacted])"),
+            Self::Temporary => formatter.write_str("RootSpec::Temporary"),
+        }
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
 pub struct StorageRoots {
     pub config: PathBuf,
     pub data: PathBuf,
@@ -24,6 +34,20 @@ pub struct StorageRoots {
     pub cache: PathBuf,
     pub runtime: PathBuf,
     pub(crate) temporary_root: Option<PathBuf>,
+}
+
+impl fmt::Debug for StorageRoots {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("StorageRoots")
+            .field("config", &"[redacted]")
+            .field("data", &"[redacted]")
+            .field("state", &"[redacted]")
+            .field("cache", &"[redacted]")
+            .field("runtime", &"[redacted]")
+            .field("is_temporary", &self.temporary_root.is_some())
+            .finish()
+    }
 }
 
 /// Summary of an explicit destructive reset of Ferric-owned storage roots.
@@ -36,7 +60,6 @@ pub struct ResetReport {
     pub entries_removed: u64,
 }
 
-#[derive(Debug)]
 pub enum StorageRootsError {
     Io { path: PathBuf, message: String },
     UnsafeBase(PathBuf),
@@ -45,25 +68,30 @@ pub enum StorageRootsError {
     NotTemporary,
 }
 
-impl std::fmt::Display for StorageRootsError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for StorageRootsError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let variant = match self {
+            Self::Io { .. } => "Io",
+            Self::UnsafeBase(_) => "UnsafeBase",
+            Self::UnsafeRoot(_) => "UnsafeRoot",
+            Self::UnsafeEntry(_) => "UnsafeEntry",
+            Self::NotTemporary => "NotTemporary",
+        };
+        write!(formatter, "StorageRootsError::{variant}([redacted])")
+    }
+}
+
+impl fmt::Display for StorageRootsError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Io { path, message } => write!(formatter, "{}: {message}", path.display()),
-            Self::UnsafeBase(path) => write!(
-                formatter,
-                "storage base is not an absolute directory: {}",
-                path.display()
-            ),
-            Self::UnsafeRoot(path) => write!(
-                formatter,
-                "storage root is not a real directory: {}",
-                path.display()
-            ),
-            Self::UnsafeEntry(path) => write!(
-                formatter,
-                "storage reset found an unsupported filesystem entry: {}",
-                path.display()
-            ),
+            Self::Io { .. } => formatter.write_str("storage-root operation failed"),
+            Self::UnsafeBase(_) => {
+                formatter.write_str("storage base is not a valid absolute directory")
+            }
+            Self::UnsafeRoot(_) => formatter.write_str("storage root is not a real directory"),
+            Self::UnsafeEntry(_) => {
+                formatter.write_str("storage reset found an unsupported filesystem entry")
+            }
             Self::NotTemporary => formatter.write_str("only temporary roots can be cleaned up"),
         }
     }
@@ -240,9 +268,42 @@ impl StorageRoots {
     ///
     /// # Errors
     ///
-    /// Returns an error when a root is unsafe, an entry cannot be removed, or
-    /// a special filesystem entry is encountered.
+    /// Returns an error when a root is unsafe, an entry cannot be removed, a
+    /// special filesystem entry is encountered, or a marked profile key cannot
+    /// be removed from the OS credential store.
     pub fn reset_owned_contents(&self) -> Result<ResetReport, StorageRootsError> {
+        self.reset_owned_contents_with_key_cleanup(|| {
+            #[cfg(target_os = "linux")]
+            crate::versioning::delete_marked_media_fingerprint_keys(self).map_err(|_| {
+                StorageRootsError::Io {
+                    path: self.state.clone(),
+                    message: "profile media key cleanup is unavailable".into(),
+                }
+            })?;
+            Ok(())
+        })
+    }
+
+    fn reset_owned_contents_with_key_cleanup(
+        &self,
+        key_cleanup: impl FnOnce() -> Result<(), StorageRootsError>,
+    ) -> Result<ResetReport, StorageRootsError> {
+        // Validate every owned root before deleting any external credential.
+        // Otherwise a bad later root could make reset fail after the OS key
+        // store had already been changed.
+        for root in self.roots() {
+            let metadata = match fs::symlink_metadata(root) {
+                Ok(metadata) => metadata,
+                Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(io_error(root, &error)),
+            };
+            if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                return Err(StorageRootsError::UnsafeRoot(root.to_owned()));
+            }
+        }
+
+        key_cleanup()?;
+
         let mut report = ResetReport::default();
         for root in self.roots() {
             let metadata = match fs::symlink_metadata(root) {
@@ -341,6 +402,26 @@ fn io_error(path: &Path, error: &io::Error) -> StorageRootsError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn storage_root_debug_and_errors_redact_local_paths() {
+        let path_sentinel = "/home/person/private-browser-profile";
+        let roots = StorageRoots::resolve(RootSpec::Base(PathBuf::from(path_sentinel)))
+            .expect("absolute root");
+        let error = StorageRootsError::Io {
+            path: PathBuf::from(path_sentinel),
+            message: "private filesystem detail".into(),
+        };
+        for debug in [
+            format!("{roots:?}"),
+            format!("{:?}", RootSpec::Base(PathBuf::from(path_sentinel))),
+            format!("{error:?}"),
+            error.to_string(),
+        ] {
+            assert!(!debug.contains(path_sentinel));
+            assert!(!debug.contains("private filesystem detail"));
+        }
+    }
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
 
@@ -402,6 +483,38 @@ mod tests {
     }
 
     #[test]
+    fn reset_preserves_owned_files_when_profile_key_cleanup_fails() {
+        let base = env::temp_dir().join(format!(
+            "ferric-browser-reset-key-failure-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system clock")
+                .as_nanos()
+        ));
+        let roots = StorageRoots::resolve(RootSpec::Base(base.clone())).expect("roots");
+        roots.ensure().expect("ensure");
+        let retained = roots.data.join("preserve-until-key-cleanup");
+        fs::write(&retained, "still-owned").expect("data fixture");
+
+        let error = roots
+            .reset_owned_contents_with_key_cleanup(|| {
+                Err(StorageRootsError::Io {
+                    path: roots.state.clone(),
+                    message: "test credential store failure".into(),
+                })
+            })
+            .expect_err("key cleanup failure refuses reset");
+
+        assert!(matches!(error, StorageRootsError::Io { .. }));
+        assert_eq!(
+            fs::read_to_string(&retained).expect("retained data"),
+            "still-owned"
+        );
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
     fn schema_marker_distinguishes_a_fresh_root_from_prior_data() {
         let base = env::temp_dir().join(format!(
             "ferric-browser-schema-{}-{}",
@@ -444,6 +557,15 @@ mod tests {
         fs::create_dir_all(&target).expect("outside");
         fs::write(target.join("retained"), "value").expect("outside value");
         fs::create_dir_all(roots.config.parent().expect("config parent")).expect("parent");
+        fs::create_dir_all(&roots.state).expect("state root");
+        fs::write(
+            roots.state.join(format!(
+                "media-fingerprint-{}.key-marker",
+                uuid::Uuid::new_v4()
+            )),
+            "malformed marker",
+        )
+        .expect("malformed key marker");
         symlink(&target, &roots.config).expect("root symlink");
 
         let error = roots.reset_owned_contents().expect_err("unsafe root");

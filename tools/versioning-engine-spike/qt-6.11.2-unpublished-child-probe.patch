@@ -1,0 +1,56 @@
+diff --git a/src/core/api/qwebengineprofile.h b/src/core/api/qwebengineprofile.h
+--- a/src/core/api/qwebengineprofile.h
++++ b/src/core/api/qwebengineprofile.h
+@@ -89,6 +89,9 @@
+     void setHttpCacheMaximumSize(int maxSize);
+ 
+     QWebEngineCookieStore *cookieStore();
++    // Ferric isolated engine research only. Creates the profile's cookie
++    // manager without publishing a page or renderer to the child profile.
++    void ferricInitializeCookieManagerProbe();
+     void setUrlRequestInterceptor(QWebEngineUrlRequestInterceptor *interceptor);
+ 
+     void clearAllVisitedLinks();
+diff --git a/src/core/api/qwebengineprofile.cpp b/src/core/api/qwebengineprofile.cpp
+--- a/src/core/api/qwebengineprofile.cpp
++++ b/src/core/api/qwebengineprofile.cpp
+@@ -31,6 +31,10 @@
+ 
+ using QtWebEngineCore::ProfileAdapter;
+ 
++namespace QtWebEngineCore {
++void ferricInitializeCookieManagerProbe(ProfileAdapter *adapter);
++}
++
+ /*!
+     \class QWebEngineProfile
+     \brief The QWebEngineProfile class provides a web engine profile shared by multiple pages.
+@@ -661,6 +665,12 @@
+     return d->profileAdapter()->cookieStore();
+ }
+ 
++void QWebEngineProfile::ferricInitializeCookieManagerProbe()
++{
++    Q_D(QWebEngineProfile);
++    QtWebEngineCore::ferricInitializeCookieManagerProbe(d->profileAdapter());
++}
++
+ /*!
+     Registers a request interceptor singleton \a interceptor to intercept URL requests.
+ 
+diff --git a/src/core/profile_adapter.cpp b/src/core/profile_adapter.cpp
+--- a/src/core/profile_adapter.cpp
++++ b/src/core/profile_adapter.cpp
+@@ -245,6 +245,12 @@
+     return m_cookieStore.data();
+ }
+ 
++void ferricInitializeCookieManagerProbe(ProfileAdapter *adapter)
++{
++    // Research-only: start the default network/cookie context without a page.
++    adapter->profile()->GetDefaultStoragePartition()->GetCookieManagerForBrowserProcess();
++}
++
+ QWebEngineUrlRequestInterceptor *ProfileAdapter::requestInterceptor()
+ {
+     return m_requestInterceptor.data();

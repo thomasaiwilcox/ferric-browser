@@ -55,7 +55,7 @@ impl qobject::BrowserUi {
                 self.as_mut().set_profile_values_pending(true);
                 true
             }
-            Err(error) => {
+            Err(_) => {
                 self.as_mut()
                     .rust_mut()
                     .as_mut()
@@ -63,7 +63,7 @@ impl qobject::BrowserUi {
                     .profile_list_command_pending = false;
                 self.as_mut().set_profile_values_pending(false);
                 self.as_mut()
-                    .set_status_text(QString::from(format!("Profile list failed: {error}")));
+                    .set_status_text(QString::from("Profile list is unavailable"));
                 false
             }
         }
@@ -98,8 +98,8 @@ impl qobject::BrowserUi {
                 self.set_status_text(QString::from("Profile creation queued"));
                 true
             }
-            Err(error) => {
-                self.set_status_text(QString::from(format!("Profile creation failed: {error}")));
+            Err(_) => {
+                self.set_status_text(QString::from("Profile creation is unavailable"));
                 false
             }
         }
@@ -130,8 +130,8 @@ impl qobject::BrowserUi {
                 self.set_status_text(QString::from("Profile rename queued"));
                 true
             }
-            Err(error) => {
-                self.set_status_text(QString::from(format!("Profile rename failed: {error}")));
+            Err(_) => {
+                self.set_status_text(QString::from("Profile rename is unavailable"));
                 false
             }
         }
@@ -163,11 +163,11 @@ impl qobject::BrowserUi {
                 self.as_mut().set_profile_preview_pending(true);
                 true
             }
-            Err(error) => {
+            Err(_) => {
                 self.as_mut().set_profile_preview_pending(false);
                 self.as_mut().set_profile_preview_text(QString::default());
                 self.as_mut()
-                    .set_status_text(QString::from(format!("Profile preview failed: {error}")));
+                    .set_status_text(QString::from("Profile preview is unavailable"));
                 false
             }
         }
@@ -206,8 +206,8 @@ impl qobject::BrowserUi {
                 self.set_status_text(QString::from("Profile deletion queued"));
                 true
             }
-            Err(error) => {
-                self.set_status_text(QString::from(format!("Profile deletion failed: {error}")));
+            Err(_) => {
+                self.set_status_text(QString::from("Profile deletion is unavailable"));
                 false
             }
         }

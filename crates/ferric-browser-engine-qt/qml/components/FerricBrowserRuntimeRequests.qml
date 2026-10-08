@@ -4,8 +4,9 @@ import QtQuick.Layouts
 import QtQuick.Dialogs
 import QtWebEngine
 import io.github.ferricbrowser 1.0
-import "../scripts/BrowserScripts.js" as BrowserScripts
 import "../scripts/SpellcheckPresentation.js" as SpellcheckPresentation
+import "../scripts/NativePageCaptureCallbacks.js" as NativePageCaptureCallbacks
+import "../scripts/ProfileDownloadRouting.js" as ProfileDownloadRouting
 
 FerricBrowserRuntimePresentation {
     id: window
@@ -25,6 +26,7 @@ FerricBrowserRuntimePresentation {
         }
         function onTab_countChanged() {
             window.noteTabActivity()
+            window.publishBrowserWindowRegistry()
         }
         function onUserscript_install_stateChanged() {
             var state = browserUi.userscript_install_state || "idle"
@@ -1785,6 +1787,23 @@ FerricBrowserRuntimePresentation {
     }
 
     function attachDownloadStateUpdates(download, id) {
+        var lastProgressBytes = 0
+        var lastProgressAt = 0
+        download.receivedBytesChanged.connect(function() {
+            if (window.activeDownloads[id] !== download || download.isFinished)
+                return
+            var bytes = Number(download.receivedBytes)
+            if (!isFinite(bytes) || bytes <= lastProgressBytes)
+                return
+            var now = Date.now()
+            if (lastProgressAt !== 0 && now - lastProgressAt < 1000)
+                return
+            lastProgressBytes = bytes
+            lastProgressAt = now
+            browserUi.update_download(id, window.downloadStateName(download), bytes, false)
+            if (window.downloadManagerVisible)
+                window.refreshDownloads()
+        })
         download.stateChanged.connect(function() {
             browserUi.update_download(id, window.downloadStateName(download), download.receivedBytes, false)
             if (window.downloadManagerVisible) {
@@ -1808,6 +1827,7 @@ FerricBrowserRuntimePresentation {
         var finalName = browserUi.accept_download(id, directory, suggestedName)
         if (finalName.length === 0) {
             window.resolveQtRequest(browserUi, download, "download", "cancel", [])
+            browserUi.update_download(id, "cancelled", download.receivedBytes, true)
             delete window.activeDownloads[id]
             return false
         }
@@ -1815,13 +1835,15 @@ FerricBrowserRuntimePresentation {
         if (stagingDirectory.length === 0) {
             window.resolveQtRequest(browserUi, download, "download", "cancel", [])
             browserUi.update_download(id, "cancelled", download.receivedBytes, true)
+            delete window.activeDownloads[id]
             return false
         }
         download.downloadDirectory = stagingDirectory
         download.downloadFileName = finalName
+        delete window.pendingDownloadRequests[id]
         window.attachDownloadStateUpdates(download, id)
-        window.resolveQtRequest(browserUi, download, "download", "accept", [])
         browserUi.update_download(id, "in-progress", 0, false)
+        window.resolveQtRequest(browserUi, download, "download", "accept", [])
         if (window.downloadManagerVisible) {
             window.refreshDownloads()
         }
@@ -1857,9 +1879,10 @@ FerricBrowserRuntimePresentation {
             download.downloadDirectory = stagingDirectory
             download.downloadFileName = finalName
             window.activeDownloads[id] = download
+            delete window.pendingDownloadRequests[id]
             window.attachDownloadStateUpdates(download, id)
-            window.resolveQtRequest(browserUi, download, "download", "accept", [])
             browserUi.update_download(id, "in-progress", 0, false)
+            window.resolveQtRequest(browserUi, download, "download", "accept", [])
         }
         delete window.pendingDownloadRequests[id]
         window.pendingDownloadId = ""
@@ -1886,8 +1909,158 @@ FerricBrowserRuntimePresentation {
         window.restoreOverlayFocus()
     }
 
+    function profileDownloadOwner(download, inspectView) {
+        // A non-page transfer needs a profile download manager, not a tab
+        // identity. Qt's QML view getter can dereference a missing adapter
+        // client, so route new ordinary requests to the exact profile signal
+        // owner instead of probing Qt Quick's view getter. Once accepted, completion
+        // is routed by the retained request object and ID as usual.
+        if (download && download.isSavePageDownload !== true) {
+            var ordinaryPopupEntries = window.popupEntriesForDownloadRouting()
+            if (ordinaryPopupEntries === null)
+                return undefined
+            var ordinaryRestoreHost = window.versioningWindowOwner.hostForDownload(
+                        download, null, window)
+            var ordinaryOwner = ProfileDownloadRouting.resolve(
+                download, null, window, ordinaryRestoreHost,
+                window.browserWindowRegistry, ordinaryPopupEntries, browserProfile)
+            if (ordinaryOwner !== null)
+                return ordinaryOwner
+            if (inspectView === false)
+                return null
+            return ProfileDownloadRouting.boundProfileOwner(
+                        download, window, browserProfile)
+        }
+        // Qt 6.11.2 may dereference a destroyed view in the QML getter.
+        // Completion has retained exact request identity; it does not need
+        // to inspect the view again after the tab may have closed.
+        if (inspectView !== false && download
+                && download.isSavePageDownload === true
+                && window.versioningWindowOwner
+                && typeof window.versioningWindowOwner.hostForDownload === "function") {
+            // For Ferric's active archive save, the exact unpredictable stage
+            // path is the one-use public correlation token. Resolve it before
+            // considering Qt Quick's unsafe view getter.
+            var pathOwner = window.versioningWindowOwner.hostForDownload(
+                        download, null, window)
+            if (pathOwner === undefined)
+                return undefined
+            var permitOwner = pathOwner
+            if (!permitOwner
+                    && typeof window.versioningWindowOwner.activePageCaptureHost === "function") {
+                permitOwner = window.versioningWindowOwner.activePageCaptureHost(
+                            browserProfile)
+            }
+            if (permitOwner === undefined)
+                return undefined
+            if (permitOwner) {
+                var permitPopupEntries = window.popupEntriesForDownloadRouting()
+                if (permitPopupEntries === null)
+                    return undefined
+                return ProfileDownloadRouting.resolve(
+                    download, null, window, permitOwner,
+                    window.browserWindowRegistry, permitPopupEntries, browserProfile)
+            }
+        }
+        if (inspectView !== false && download
+                && download.isSavePageDownload === true) {
+            // With no active exact archive permit, Save Page is ordinary only
+            // when the bounded same-profile owner tree proves no tab is
+            // quarantined. Otherwise refuse rather than guessing an origin.
+            var ownerController = window.versioningWindowOwner
+            if (!ownerController
+                    || typeof ownerController.profileHasPoisonedPageCaptureTab
+                        !== "function"
+                    || ownerController.profileHasPoisonedPageCaptureTab(
+                        browserProfile) !== false)
+                return undefined
+            var unpermittedRestoreHost =
+                    window.versioningWindowOwner.hostForDownload(
+                        download, null, window)
+            var unpermittedPopupEntries = window.popupEntriesForDownloadRouting()
+            if (unpermittedPopupEntries === null)
+                return undefined
+            var unpermittedOwner = ProfileDownloadRouting.resolve(
+                download, null, window, unpermittedRestoreHost,
+                window.browserWindowRegistry, unpermittedPopupEntries, browserProfile)
+            if (unpermittedOwner !== null)
+                return unpermittedOwner
+            return ProfileDownloadRouting.boundProfileOwner(
+                        download, window, browserProfile, true)
+        }
+        var observedView = null
+        var restoreHost = window.versioningWindowOwner.hostForDownload(
+            download, observedView, window)
+        var popupEntries = window.popupEntriesForDownloadRouting()
+        if (popupEntries === null)
+            return undefined
+        return ProfileDownloadRouting.resolve(
+            download, observedView, window, restoreHost,
+            window.browserWindowRegistry, popupEntries, browserProfile)
+    }
+
+    function popupEntriesForDownloadRouting() {
+        return window.rootPopupEntriesSnapshot()
+    }
+
     function handleDownloadRequested(download) {
+        var owner = window.profileDownloadOwner(download)
+        if (!owner) {
+            var unownedCapture = window.nativePageCaptureSave
+            if (unownedCapture && download.isSavePageDownload === true) {
+                var unownedPath = NativePageCaptureCallbacks.publicSavePagePath(download)
+                if (unownedPath === unownedCapture.path) {
+                    window.rejectNativePageCaptureRequest(
+                                unownedCapture, download, String(download.id))
+                    return
+                }
+            }
+            var refusalStatus = owner === undefined
+                    ? "Download refused: window owner was ambiguous"
+                    : "Download refused: window owner was unavailable"
+            if (download.isSavePageDownload === true) {
+                var unownedId = String(download.id)
+                if (!window.retireNativePageCaptureDownload(unownedId))
+                    window.nativePageCaptureRetirementExhausted = true
+                var ownerController = window.versioningWindowOwner
+                var poisonState = undefined
+                if (ownerController
+                        && typeof ownerController.profileHasPoisonedPageCaptureTab
+                            === "function") {
+                    poisonState = ownerController.profileHasPoisonedPageCaptureTab(
+                                browserProfile)
+                }
+                refusalStatus = poisonState === true
+                        ? "Page saves are unavailable for this profile after an interrupted native save"
+                        : "Page save refused because profile ownership could not be confirmed"
+            }
+            download.cancel()
+            browserUi.status_text = refusalStatus
+            return
+        }
+        if (owner !== window) {
+            owner.handleDownloadRequested(download)
+            return
+        }
         var id = String(download.id)
+        var pendingNativeCaptureClose = window.pendingNativePageCaptureClose
+        if (NativePageCaptureCallbacks.routeSaveRequest(
+                    window, browserUi, download,
+                    WebEngineDownloadRequest.MimeHtmlSaveFormat, true)) {
+            if (pendingNativeCaptureClose
+                    && NativePageCaptureCallbacks.publicSavePagePath(download)
+                        === pendingNativeCaptureClose.path) {
+                pendingNativeCaptureClose.requestRegistered = true
+                window.scheduleRuntimeWork(0)
+            }
+            return
+        }
+        if (ProfileDownloadRouting.retainAndCancelIfShutdownApproved(
+                    window, download, function(request) {
+                        return window.resolveQtRequest(
+                                   browserUi, request, "download", "cancel", [])
+                    }))
+            return
         var safeName = browserUi.offer_download(id, download.url.toString(), download.suggestedFileName)
         var requestedPath = download.savePageFormat === WebEngineDownloadRequest.MimeHtmlSaveFormat
                 ? browserUi.take_save_page_path() : ""
@@ -1902,17 +2075,19 @@ FerricBrowserRuntimePresentation {
             var requestedDirectory = requestedSeparator > 0
                     ? requestedPath.slice(0, requestedSeparator) : "/"
             window.activeDownloads[id] = download
+            delete window.pendingDownloadRequests[id]
             var stagingDirectory = window.downloadStagingDirectory(browserUi, id)
             if (stagingDirectory.length === 0) {
                 window.resolveQtRequest(browserUi, download, "download", "cancel", [])
                 browserUi.update_download(id, "cancelled", download.receivedBytes, true)
+                delete window.activeDownloads[id]
                 return
             }
             download.downloadDirectory = stagingDirectory
             download.downloadFileName = requestedName
             window.attachDownloadStateUpdates(download, id)
-            window.resolveQtRequest(browserUi, download, "download", "accept", [])
             browserUi.update_download(id, "in-progress", 0, false)
+            window.resolveQtRequest(browserUi, download, "download", "accept", [])
             return
         }
         var directory = browserUi.default_download_directory()
@@ -1935,9 +2110,227 @@ FerricBrowserRuntimePresentation {
         fileDialogSurfaces.openDownload()
     }
 
+    function retireNativePageCaptureDownload(downloadId) {
+        return NativePageCaptureCallbacks.retireDownload(
+                    window, downloadId,
+                    window.nativePageCaptureRetiredDownloadLimit)
+    }
+
+    function nativePageCaptureRetirementCapacityAvailable() {
+        return NativePageCaptureCallbacks.retirementCapacityAvailable(
+                    window, window.nativePageCaptureRetiredDownloadLimit)
+    }
+
+    function retireNativePageCapturePath(path) {
+        return NativePageCaptureCallbacks.retirePath(
+                    window, path,
+                    window.nativePageCaptureRetiredDownloadLimit)
+    }
+
+    function isRetiredNativePageCapturePath(path) {
+        return NativePageCaptureCallbacks.isRetiredPath(window, path)
+    }
+
+    function consumeRetiredNativePageCaptureDownload(downloadId) {
+        return NativePageCaptureCallbacks.consumeDownload(window, downloadId)
+    }
+
+    function discardNativePageCaptureMutationProbe(capture) {
+        if (!capture) return
+        pageCaptureMutationProbeTimer.stop()
+        capture.mutationProbePending = false
+        capture.pendingMutationFacts = null
+        var probe = capture.mutationProbe
+        capture.mutationProbe = null
+        if (typeof probe === "function") {
+            try { probe(function() {}) } catch (error) {}
+        }
+    }
+
+    function retireNativePageCaptureWithoutFinish(capture, download, state) {
+        NativePageCaptureCallbacks.retireTerminalCapture(
+                    window, browserUi, capture, download, state)
+    }
+
+    function cancelNativePageCaptureForShutdown() {
+        return NativePageCaptureCallbacks.cancelPendingCaptureForShutdown(
+                    window, browserUi)
+    }
+
+    function retireSupersededNativePageCapture(capture, replacementOperation) {
+        return NativePageCaptureCallbacks.retireSupersededCapture(
+                    window, browserUi, capture, replacementOperation)
+    }
+
+    function retireNativePageCaptureForClosingView(view) {
+        return NativePageCaptureCallbacks.retireClosingView(
+                    window, browserUi, view)
+    }
+
+    function rejectNativePageCaptureRequest(capture, download, id) {
+        NativePageCaptureCallbacks.rejectCaptureRequest(
+                    window, browserUi, capture, download, id)
+    }
+
+    function completeNativePageCaptureMutationProbe(capture, facts, evidence) {
+        if (!capture || window.nativePageCaptureSave !== capture
+                || capture.mutationEvidenceSubmitted) {
+            return false
+        }
+        capture.mutationEvidenceSubmitted = true
+        capture.mutationProbePending = false
+        capture.pendingMutationFacts = null
+        capture.mutationProbe = null
+        pageCaptureMutationProbeTimer.stop()
+        var mutationActiveView = null
+        try {
+            mutationActiveView = window.nativePageCaptureViewForTab(capture.tabId)
+        } catch (error) {}
+        facts.mutation_evidence = NativePageCaptureCallbacks.mutationEvidenceForCurrentView(
+                    capture, facts, evidence,
+                    mutationActiveView)
+        var state = String(facts.terminal_state || "")
+        var receivedBytes = Number(facts.received_bytes || 0)
+        if (state !== "completed"
+                && !NativePageCaptureCallbacks.poisonCaptureTab(
+                    window, capture, true)) {
+            return NativePageCaptureCallbacks.failClosedRetirement(
+                        window, browserUi, capture, [],
+                        "Native page-save callback capacity is exhausted; window capture was stopped",
+                        false)
+        }
+        if (receivedBytes > Number(capture.maxArchiveBytes)
+                && capture.download
+                && NativePageCaptureCallbacks.retireOversizedCapture(
+                       window, browserUi, capture, capture.download)) {
+            capture.download = null
+            return true
+        }
+        var pageFailure = NativePageCaptureCallbacks.completedArchiveFailure(
+                    facts, capture.maxArchiveBytes,
+                    capture.completionRequestMatches === true)
+        var captureAccepted = pageFailure.length > 0
+                ? browserUi.fail_native_window_capture_page(
+                      capture.operationId, capture.tabId, pageFailure,
+                      capture.path, capture.downloadId)
+                : browserUi.finish_native_page_capture_download(
+                      capture.operationId, JSON.stringify(facts))
+        if (state === "cancelled") {
+            browserUi.status_text = captureAccepted
+                    ? "One page archive save failed; continuing window capture"
+                    : "Page archive save was cancelled and discarded"
+        } else if (state === "interrupted") {
+            browserUi.status_text = captureAccepted
+                    ? "One page archive save failed; continuing window capture"
+                    : "Page archive save was interrupted and discarded"
+        } else if (state !== "completed") {
+            browserUi.status_text = "Page archive save did not complete and was discarded"
+        } else if (receivedBytes <= 0) {
+            browserUi.status_text = "Page archive save was empty and discarded"
+        } else if (pageFailure === "invalid-archive") {
+            browserUi.status_text = captureAccepted
+                    ? "A page archive failed validation and was discarded; continuing window capture"
+                    : "Page archive failed validation and was discarded"
+        } else if (pageFailure === "native-view-lost") {
+            browserUi.status_text = captureAccepted
+                    ? "The page view was lost; continuing the partial capture"
+                    : "The page view was lost and its archive was discarded"
+        } else if (pageFailure === "document-changed") {
+            browserUi.status_text = captureAccepted
+                    ? "The page changed during archive capture; continuing the partial capture"
+                    : "The page changed during archive capture and its archive was discarded"
+        } else if (!captureAccepted) {
+            browserUi.status_text = "Page archive save did not match the captured page and was discarded"
+        }
+        capture.download = null
+        delete capture.completionRequestMatches
+        window.scheduleRuntimeWork(0)
+        return true
+    }
+
     function handleDownloadFinished(download) {
+        var owner = window.profileDownloadOwner(download, false)
+        if (owner && owner !== window) {
+            owner.handleDownloadFinished(download)
+            return
+        }
+        if (NativePageCaptureCallbacks.shouldIgnoreSavePageCompletion(
+                    window, download))
+            return
         var id = String(download.id)
+        if (!owner) {
+            if (download.isSavePageDownload === true) {
+                var unownedPath = String(download.downloadDirectory || "") + "/"
+                        + String(download.downloadFileName || "")
+                if (window.isRetiredNativePageCapturePath(unownedPath)) {
+                    window.consumeRetiredNativePageCaptureDownload(id)
+                    return
+                }
+            }
+            if (window.consumeRetiredNativePageCaptureDownload(id)) {
+                return
+            }
+            browserUi.status_text = owner === undefined
+                    ? "Download completion owner was ambiguous"
+                    : "Download completion owner was unavailable"
+            return
+        }
+        if (download.isSavePageDownload === true) {
+            var finishedCapturePath = String(download.downloadDirectory || "") + "/"
+                    + String(download.downloadFileName || "")
+            if (window.isRetiredNativePageCapturePath(finishedCapturePath)) {
+                window.consumeRetiredNativePageCaptureDownload(id)
+                return
+            }
+        }
+        if (window.consumeRetiredNativePageCaptureDownload(id)) {
+            return
+        }
         var state = window.downloadStateName(download)
+        var capture = window.nativePageCaptureSave
+        if (capture && capture.downloadId === id && capture.downloadFinished !== true) {
+            var capturePath = String(download.downloadDirectory || "") + "/"
+                    + String(download.downloadFileName || "")
+            var receivedBytes = Number(download.receivedBytes || 0)
+            var completionActiveView = null
+            try {
+                completionActiveView = window.nativePageCaptureViewForTab(capture.tabId)
+            } catch (error) {}
+            var viewFacts = NativePageCaptureCallbacks.completionViewFacts(
+                        capture, download, completionActiveView)
+            capture.completionRequestMatches = viewFacts.request_matches === true
+            var captureFacts = {
+                download_id: id,
+                observed_path: capturePath,
+                is_save_page: download.isSavePageDownload === true,
+                is_mhtml: download.savePageFormat
+                    === WebEngineDownloadRequest.MimeHtmlSaveFormat,
+                view_matches: viewFacts.view_matches,
+                observed_url: viewFacts.observed_url,
+                terminal_state: state,
+                received_bytes: receivedBytes
+            }
+            capture.downloadFinished = true
+            if (state === "completed" && typeof capture.mutationProbe === "function") {
+                capture.mutationProbePending = true
+                capture.pendingMutationFacts = captureFacts
+                pageCaptureMutationProbeTimer.restart()
+                try {
+                    capture.mutationProbe(function(evidence) {
+                        window.completeNativePageCaptureMutationProbe(
+                                    capture, captureFacts, String(evidence || ""))
+                    })
+                } catch (error) {
+                    window.completeNativePageCaptureMutationProbe(
+                                capture, captureFacts, "not-observed")
+                }
+            } else {
+                window.discardNativePageCaptureMutationProbe(capture)
+                window.completeNativePageCaptureMutationProbe(
+                            capture, captureFacts, "not-observed")
+            }
+            return
+        }
         if (state === "completed" && !browserUi.finalize_download(id)) {
             state = "interrupted"
         } else if (state !== "completed") {
@@ -1946,6 +2339,7 @@ FerricBrowserRuntimePresentation {
         browserUi.update_download(id, state, download.receivedBytes, true)
         delete window.activeDownloads[id]
         delete window.pendingDownloadRequests[id]
+        delete window.downloadCompletionRequests[id]
         if (window.pendingDownloadId === id) {
             window.pendingDownloadId = ""
             window.pendingDownloadSuggestedName = ""
@@ -1953,6 +2347,40 @@ FerricBrowserRuntimePresentation {
         if (window.downloadManagerVisible) {
             window.refreshDownloads()
         }
+        if (window.shutdownWaitingForDownloadFinishes
+                && !window.hasActiveDownloads()) {
+            window.shutdownWaitingForDownloadFinishes = false
+            window.shutdownPromptVisible = false
+            window.continueQuitRequest()
+        }
+    }
+
+    Timer {
+        id: pageCaptureMutationProbeTimer
+        interval: 2000
+        repeat: false
+        onTriggered: {
+            var capture = window.nativePageCaptureSave
+            if (capture && capture.mutationProbePending === true
+                    && capture.pendingMutationFacts) {
+                window.completeNativePageCaptureMutationProbe(
+                            capture, capture.pendingMutationFacts, "not-observed")
+            }
+        }
+    }
+
+    function expireNativePageCaptureSave() {
+        return NativePageCaptureCallbacks.retireTimedOutCapture(
+                    window, browserUi, window.nativePageCaptureSave)
+    }
+
+    Timer {
+        id: nativePageCaptureDeadline
+        interval: 90000
+        repeat: false
+        running: window.nativePageCaptureSave !== null
+                 && window.nativePageCaptureSave.downloadFinished !== true
+        onTriggered: window.expireNativePageCaptureSave()
     }
 
 }

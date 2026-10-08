@@ -34,10 +34,10 @@ impl qobject::BrowserUi {
                 DownloadState::Offered,
                 unix_timestamp(),
             );
-            if let Err(error) = result {
-                self.set_status_text(QString::from(format!(
-                    "Download index unavailable: {error}"
-                )));
+            if result.is_err() {
+                self.set_status_text(QString::from(
+                    "Download index unavailable; details suppressed",
+                ));
             }
         }
         QString::from(safe_name)
@@ -50,10 +50,10 @@ impl qobject::BrowserUi {
         suggested_name: &QString,
     ) -> QString {
         let directory = PathBuf::from(directory.to_string());
-        if let Err(error) = fs::create_dir_all(&directory) {
-            self.set_status_text(QString::from(format!(
-                "Download directory unavailable: {error}"
-            )));
+        if fs::create_dir_all(&directory).is_err() {
+            self.set_status_text(QString::from(
+                "Download directory unavailable; details suppressed",
+            ));
             return QString::default();
         }
         let path = match choose_download_path(
@@ -62,10 +62,10 @@ impl qobject::BrowserUi {
             CollisionPolicy::AutoRename,
         ) {
             Ok(path) => path,
-            Err(error) => {
-                self.set_status_text(QString::from(format!(
-                    "Download destination rejected: {error}"
-                )));
+            Err(_) => {
+                self.set_status_text(QString::from(
+                    "Download destination rejected; details suppressed",
+                ));
                 return QString::default();
             }
         };
@@ -75,22 +75,26 @@ impl qobject::BrowserUi {
             &path,
         ) {
             Ok(staged) => staged,
-            Err(error) => {
-                self.set_status_text(QString::from(format!(
-                    "Download staging unavailable: {error}"
-                )));
+            Err(_) => {
+                self.set_status_text(QString::from(
+                    "Download staging unavailable; details suppressed",
+                ));
                 return QString::default();
             }
         };
         if self.as_ref().rust().profile_persistence.is_durable() {
-            if let Err(error) = self.as_mut().set_download_destination_via_worker(
-                id.to_string(),
-                path.to_string_lossy().into_owned(),
-            ) {
+            if self
+                .as_mut()
+                .set_download_destination_via_worker(
+                    id.to_string(),
+                    path.to_string_lossy().into_owned(),
+                )
+                .is_err()
+            {
                 cleanup_staged_download(&staged);
-                self.set_status_text(QString::from(format!(
-                    "Download index update failed: {error}"
-                )));
+                self.set_status_text(QString::from(
+                    "Download index update failed; details suppressed",
+                ));
                 return QString::default();
             }
             if !self.as_mut().queue_download_update(DownloadUpdate {
@@ -100,6 +104,9 @@ impl qobject::BrowserUi {
                 completed_at: None,
             }) {
                 cleanup_staged_download(&staged);
+                self.set_status_text(QString::from(
+                    "Download update could not be scheduled; details suppressed",
+                ));
                 return QString::default();
             }
         }
@@ -133,7 +140,7 @@ impl qobject::BrowserUi {
                 .parent()
                 .ok_or_else(|| "selected download path has no containing directory".to_owned())?;
             let chosen = choose_download_path(directory, name, CollisionPolicy::Ask)
-                .map_err(|error| error.to_string())?;
+                .map_err(|_| "selected download destination is unavailable".to_owned())?;
             if chosen != path {
                 return Err(
                     "selected download path is not a safe non-colliding destination".into(),
@@ -145,12 +152,16 @@ impl qobject::BrowserUi {
                 &path,
             )?;
             if self.as_ref().rust().profile_persistence.is_durable() {
-                if let Err(error) = self.as_mut().set_download_destination_via_worker(
-                    id.to_string(),
-                    path.to_string_lossy().into_owned(),
-                ) {
+                if self
+                    .as_mut()
+                    .set_download_destination_via_worker(
+                        id.to_string(),
+                        path.to_string_lossy().into_owned(),
+                    )
+                    .is_err()
+                {
                     cleanup_staged_download(&staged);
-                    return Err(error);
+                    return Err("download index update failed; details suppressed".into());
                 }
                 if !self.as_mut().queue_download_update(DownloadUpdate {
                     id: id.to_string(),
@@ -173,10 +184,10 @@ impl qobject::BrowserUi {
         })();
         match result {
             Ok(name) => QString::from(name),
-            Err(error) => {
-                self.set_status_text(QString::from(format!(
-                    "Download destination rejected: {error}"
-                )));
+            Err(_) => {
+                self.set_status_text(QString::from(
+                    "Download destination rejected; details suppressed",
+                ));
                 QString::default()
             }
         }
@@ -214,7 +225,7 @@ impl qobject::BrowserUi {
                     .remove(&id_string);
                 true
             }
-            Err(error) => {
+            Err(_) => {
                 cleanup_staged_download(&staged);
                 self.as_mut()
                     .rust_mut()
@@ -222,9 +233,9 @@ impl qobject::BrowserUi {
                     .get_mut()
                     .staged_downloads
                     .remove(&id_string);
-                self.set_status_text(QString::from(format!(
-                    "Download finalization failed: {error}"
-                )));
+                self.set_status_text(QString::from(
+                    "Download finalization failed; details suppressed",
+                ));
                 false
             }
         }
@@ -345,7 +356,7 @@ impl qobject::BrowserUi {
             }
             let destination = PathBuf::from(record.destination);
             let metadata = fs::symlink_metadata(&destination)
-                .map_err(|error| format!("download file is unavailable: {error}"))?;
+                .map_err(|_| "download file is unavailable; details suppressed".to_owned())?;
             if metadata.file_type().is_symlink() || !metadata.is_file() {
                 return Err("completed download is not a regular file".to_owned());
             }
@@ -359,12 +370,16 @@ impl qobject::BrowserUi {
             };
             if reveal
                 && !fs::symlink_metadata(&target)
-                    .map_err(|error| format!("download directory is unavailable: {error}"))?
+                    .map_err(|_| {
+                        "download directory is unavailable; details suppressed".to_owned()
+                    })?
                     .is_dir()
             {
                 return Err("download containing path is not a directory".to_owned());
             }
-            path_to_file_url(&target)
+            path_to_file_url(&target).map_err(|_| {
+                "download location could not be resolved; details suppressed".to_owned()
+            })
         })()
     }
 
@@ -431,7 +446,7 @@ impl qobject::BrowserUi {
                     .map_or_else(QString::default, QString::from);
                 let payload = self.as_mut().list_permissions(&origin).to_string();
                 if payload.is_empty() {
-                    return Err(self.as_ref().rust().status_text.to_string());
+                    return Err("Permission listing is unavailable; details suppressed".into());
                 }
                 Ok(serde_json::from_str(&payload).map_err(|error| error.to_string())?)
             }
@@ -443,7 +458,7 @@ impl qobject::BrowserUi {
                     &QString::from(command.arguments[0].as_str()),
                     &QString::from(command.arguments[1].as_str()),
                 ) {
-                    return Err(self.as_ref().rust().status_text.to_string());
+                    return Err("Permission reset failed; details suppressed".into());
                 }
                 Ok(serde_json::json!({"status": "reset"}))
             }
@@ -541,8 +556,10 @@ impl qobject::BrowserUi {
             .queue_download_action(&id.to_string(), &action.to_string())
         {
             Ok(()) => true,
-            Err(error) => {
-                self.set_status_text(QString::from(error));
+            Err(_) => {
+                self.set_status_text(QString::from(
+                    "Download action could not be queued; details suppressed",
+                ));
                 false
             }
         }
@@ -678,10 +695,10 @@ impl qobject::BrowserUi {
             let normalized_origin =
                 match ferric_browser_storage::normalize_permission_origin(&origin) {
                     Ok(origin) => origin,
-                    Err(error) => {
-                        self.set_status_text(QString::from(format!(
-                            "Permission session decision rejected: {error}"
-                        )));
+                    Err(_) => {
+                        self.set_status_text(QString::from(
+                            "Permission session decision rejected; details suppressed",
+                        ));
                         return false;
                     }
                 };
@@ -789,8 +806,10 @@ impl qobject::BrowserUi {
                 }));
                 true
             }
-            Err(error) => {
-                self.set_status_text(QString::from(format!("Permission rule rejected: {error}")));
+            Err(_) => {
+                self.set_status_text(QString::from(
+                    "Permission rule rejected; details suppressed",
+                ));
                 false
             }
         }
@@ -825,8 +844,8 @@ impl qobject::BrowserUi {
             .transpose()
         {
             Ok(origin) => origin,
-            Err(error) => {
-                self.set_status_text(QString::from(format!("Permissions unavailable: {error}")));
+            Err(_) => {
+                self.set_status_text(QString::from("Permissions unavailable; details suppressed"));
                 return QString::default();
             }
         };
@@ -862,132 +881,5 @@ impl qobject::BrowserUi {
             })
             .to_string(),
         )
-    }
-
-    pub(super) fn reset_permission(
-        mut self: Pin<&mut Self>,
-        origin: &QString,
-        permission: &QString,
-    ) -> bool {
-        let origin = origin.to_string();
-        let permission = permission.to_string();
-        let session_removed = ferric_browser_storage::normalize_permission_origin(&origin)
-            .is_ok_and(|origin| {
-                let mut rust = self.as_mut().rust_mut();
-                let this = rust.as_mut().get_mut();
-                let permission_scope_id = this.profile_id.unwrap_or(this.session_id);
-                if permission == "camera-and-microphone" {
-                    this.session_permissions
-                        .remove(&permission_session_key(
-                            permission_scope_id,
-                            &origin,
-                            "camera",
-                        ))
-                        .is_some()
-                        || this
-                            .session_permissions
-                            .remove(&permission_session_key(
-                                permission_scope_id,
-                                &origin,
-                                "microphone",
-                            ))
-                            .is_some()
-                } else {
-                    this.session_permissions
-                        .remove(&permission_session_key(
-                            permission_scope_id,
-                            &origin,
-                            &permission,
-                        ))
-                        .is_some()
-                }
-            });
-        let normalized = match ferric_browser_storage::normalize_permission_origin(&origin) {
-            Ok(origin) => origin,
-            Err(error) => {
-                self.as_mut()
-                    .set_status_text(QString::from(format!("Permission reset rejected: {error}")));
-                return false;
-            }
-        };
-        if permission == "screen-capture" {
-            self.as_mut()
-                .rust_mut()
-                .as_mut()
-                .get_mut()
-                .pending_engine_action = Some(format!("permission-reset\t{origin}\t{permission}"));
-            self.as_mut().set_status_text(QString::from(
-                "Screen-capture consent reset; active captures will be stopped",
-            ));
-            return true;
-        }
-        let permissions = if permission == "camera-and-microphone" {
-            vec!["camera".to_owned(), "microphone".to_owned()]
-        } else if matches!(
-            permission.as_str(),
-            "camera" | "microphone" | "notifications" | "geolocation" | "clipboard" | "local-fonts"
-        ) {
-            vec![permission.clone()]
-        } else {
-            self.as_mut().set_status_text(QString::from(
-                "Permission reset rejected: unsupported permission type",
-            ));
-            return false;
-        };
-        if self
-            .as_ref()
-            .rust()
-            .profile_persistence
-            .lacks_durable_storage()
-        {
-            self.as_mut()
-                .set_status_text(QString::from(if session_removed {
-                    "Permission decision reset"
-                } else {
-                    "Permission rule was not found"
-                }));
-            if session_removed {
-                self.as_mut()
-                    .rust_mut()
-                    .as_mut()
-                    .get_mut()
-                    .pending_engine_action =
-                    Some(format!("permission-reset\t{origin}\t{permission}"));
-            }
-            return session_removed;
-        }
-        let request_result = Some(
-            self.as_mut()
-                .submit_storage(StorageRequest::PermissionReset {
-                    origin: normalized,
-                    permissions,
-                }),
-        );
-        match request_result {
-            Some(Ok(())) => {
-                let mut rust = self.as_mut().rust_mut();
-                let this = rust.as_mut().get_mut();
-                this.pending_permission_reset_session = Some(session_removed);
-                this.storage_library_dirty.set(true);
-                this.pending_engine_action =
-                    Some(format!("permission-reset\t{origin}\t{permission}"));
-                drop(rust);
-                self.as_mut()
-                    .set_status_text(QString::from("Permission reset queued"));
-                true
-            }
-            Some(Err(error)) => {
-                self.as_mut().set_status_text(QString::from(format!(
-                    "Permission reset unavailable; retry the command: {error}"
-                )));
-                false
-            }
-            None => {
-                self.as_mut().set_status_text(QString::from(
-                    "Permission reset unavailable; retry the command",
-                ));
-                false
-            }
-        }
     }
 }

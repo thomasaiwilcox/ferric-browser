@@ -1,0 +1,15 @@
+<!doctype html><meta charset="utf-8"><title>Versioning lifecycle</title>
+<h1>Freeze/resume fixture</h1>
+<output id="events">active</output>
+<script>
+window.fixtureState = {freezes: 0, resumes: 0, ticks: 0};
+document.addEventListener('freeze', () => {
+  window.fixtureState.freezes++;
+  document.querySelector('#events').value = 'frozen';
+});
+document.addEventListener('resume', () => {
+  window.fixtureState.resumes++;
+  document.querySelector('#events').value = 'resumed';
+});
+setInterval(() => { window.fixtureState.ticks++; }, 50);
+</script>

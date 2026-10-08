@@ -1,10 +1,12 @@
+use std::fmt;
+
 use super::{
     BTreeMap, CURRENT_SCHEMA_VERSION, Config, Deserialize, PermissionDecision, Serialize, SiteRule,
     default_context_behavior, default_context_target,
 };
 
 /// A user-maintained declarative profile definition.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProfileDefinition {
     pub name: String,
@@ -15,13 +17,35 @@ pub struct ProfileDefinition {
     pub overrides: BTreeMap<String, toml::Value>,
 }
 
+impl fmt::Debug for ProfileDefinition {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ProfileDefinition")
+            .field("name", &"[redacted]")
+            .field("label", &"[redacted]")
+            .field("default", &self.default)
+            .field("override_count", &self.overrides.len())
+            .finish()
+    }
+}
+
 /// The separate user-maintained `profiles.toml` document.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProfilesConfig {
     pub schema_version: u64,
     #[serde(default)]
     pub profiles: Vec<ProfileDefinition>,
+}
+
+impl fmt::Debug for ProfilesConfig {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ProfilesConfig")
+            .field("schema_version", &self.schema_version)
+            .field("profile_count", &self.profiles.len())
+            .finish()
+    }
 }
 
 impl Default for ProfilesConfig {
@@ -41,7 +65,7 @@ impl ProfilesConfig {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PermissionRuleConfig {
     pub id: String,
@@ -49,6 +73,19 @@ pub struct PermissionRuleConfig {
     pub origin: String,
     pub permission: String,
     pub decision: PermissionDecision,
+}
+
+impl fmt::Debug for PermissionRuleConfig {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("PermissionRuleConfig")
+            .field("id", &"[redacted]")
+            .field("profile", &"[redacted]")
+            .field("origin", &"[redacted]")
+            .field("permission", &"[redacted]")
+            .field("decision", &self.decision)
+            .finish()
+    }
 }
 
 /// Returns the user-defined site rules that match an HTTP(S) URL.
@@ -301,7 +338,7 @@ fn glob_matches(pattern: &str, value: &str) -> bool {
 }
 
 /// A user-maintained durable browsing context definition.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ContextDefinition {
     pub name: String,
@@ -317,8 +354,23 @@ pub struct ContextDefinition {
     pub default_target: String,
 }
 
+impl fmt::Debug for ContextDefinition {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ContextDefinition")
+            .field("name", &"[redacted]")
+            .field("label", &"[redacted]")
+            .field("profile", &"[redacted]")
+            .field("session_count", &self.sessions.len())
+            .field("has_workspace", &self.workspace.is_some())
+            .field("has_accent", &self.accent.is_some())
+            .field("default_target", &"[redacted]")
+            .finish()
+    }
+}
+
 /// A context route from an explicit browser-controlled entry point.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ContextRoute {
     pub id: String,
@@ -332,8 +384,22 @@ pub struct ContextRoute {
     pub entry_points: Vec<String>,
 }
 
+impl fmt::Debug for ContextRoute {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ContextRoute")
+            .field("id", &"[redacted]")
+            .field("pattern", &"[redacted]")
+            .field("context", &"[redacted]")
+            .field("priority", &self.priority)
+            .field("behavior", &"[redacted]")
+            .field("entry_point_count", &self.entry_points.len())
+            .finish()
+    }
+}
+
 /// The separate user-maintained `contexts.toml` document.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ContextsConfig {
     pub schema_version: u64,
@@ -341,6 +407,17 @@ pub struct ContextsConfig {
     pub contexts: Vec<ContextDefinition>,
     #[serde(default)]
     pub routes: Vec<ContextRoute>,
+}
+
+impl fmt::Debug for ContextsConfig {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ContextsConfig")
+            .field("schema_version", &self.schema_version)
+            .field("context_count", &self.contexts.len())
+            .field("route_count", &self.routes.len())
+            .finish()
+    }
 }
 
 /// Returns context routes that match one browser-controlled entry point.
@@ -567,6 +644,68 @@ impl Default for ContextsConfig {
             schema_version: CURRENT_SCHEMA_VERSION,
             contexts: Vec::new(),
             routes: Vec::new(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod debug_tests {
+    use super::*;
+
+    #[test]
+    fn profile_and_context_debug_redact_user_values() {
+        let sentinel = "private-routing-config-sentinel-7e12";
+        let profile = ProfileDefinition {
+            name: sentinel.into(),
+            label: sentinel.into(),
+            default: true,
+            overrides: [(sentinel.into(), toml::Value::String(sentinel.into()))]
+                .into_iter()
+                .collect(),
+        };
+        let profiles = ProfilesConfig {
+            schema_version: 1,
+            profiles: vec![profile.clone()],
+        };
+        let permission = PermissionRuleConfig {
+            id: sentinel.into(),
+            profile: sentinel.into(),
+            origin: format!("https://{sentinel}.example.test"),
+            permission: sentinel.into(),
+            decision: PermissionDecision::Deny,
+        };
+        let context = ContextDefinition {
+            name: sentinel.into(),
+            label: sentinel.into(),
+            profile: sentinel.into(),
+            sessions: vec![sentinel.into()],
+            workspace: Some(sentinel.into()),
+            accent: Some(sentinel.into()),
+            default_target: sentinel.into(),
+        };
+        let route = ContextRoute {
+            id: sentinel.into(),
+            pattern: format!("https://{sentinel}.example.test/private/*"),
+            context: sentinel.into(),
+            priority: 1,
+            behavior: sentinel.into(),
+            entry_points: vec![sentinel.into()],
+        };
+        let contexts = ContextsConfig {
+            schema_version: 1,
+            contexts: vec![context.clone()],
+            routes: vec![route.clone()],
+        };
+
+        for projection in [
+            format!("{profile:?}"),
+            format!("{profiles:?}"),
+            format!("{permission:?}"),
+            format!("{context:?}"),
+            format!("{route:?}"),
+            format!("{contexts:?}"),
+        ] {
+            assert!(!projection.contains(sentinel), "{projection}");
         }
     }
 }

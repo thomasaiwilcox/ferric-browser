@@ -1,4 +1,5 @@
 use std::{
+    fmt,
     fs::{self, File, OpenOptions},
     io::{self, Write},
     path::{Path, PathBuf},
@@ -21,7 +22,7 @@ enum ContextSaveStep {
     DirectorySynced,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ContextMember {
     pub window_id: String,
@@ -34,9 +35,22 @@ pub struct ContextMember {
     pub selected_index: Option<usize>,
 }
 
+impl fmt::Debug for ContextMember {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ContextMember")
+            .field("window_id", &"[redacted]")
+            .field("tab_count", &self.tabs.len())
+            .field("has_selected_tab", &self.selected_tab.is_some())
+            .field("descriptor_count", &self.tab_descriptors.len())
+            .field("has_selected_index", &self.selected_index.is_some())
+            .finish()
+    }
+}
+
 /// A safe, profile-local descriptor used to lazily reconstruct one context
 /// tab after the original runtime identity no longer exists.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ContextTabDescriptor {
     pub tab_id: String,
@@ -51,7 +65,24 @@ pub struct ContextTabDescriptor {
     pub zoom: f64,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+impl fmt::Debug for ContextTabDescriptor {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ContextTabDescriptor")
+            .field("tab_id", &"[redacted]")
+            .field(
+                "safe_restore_url",
+                &self.safe_restore_url.as_ref().map(|_| "[redacted]"),
+            )
+            .field("title", &"[redacted]")
+            .field("pinned", &self.pinned)
+            .field("muted", &self.muted)
+            .field("zoom", &self.zoom)
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ContextRecord {
     pub id: Uuid,
@@ -69,7 +100,25 @@ pub struct ContextRecord {
     pub members: Vec<ContextMember>,
 }
 
-#[derive(Debug)]
+impl fmt::Debug for ContextRecord {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ContextRecord")
+            .field("id", &"[redacted]")
+            .field("name", &"[redacted]")
+            .field("label", &"[redacted]")
+            .field("profile", &"[redacted]")
+            .field("session_count", &self.sessions.len())
+            .field("workspace", &self.workspace.as_ref().map(|_| "[redacted]"))
+            .field("accent", &self.accent.as_ref().map(|_| "[redacted]"))
+            .field("default_target", &self.default_target)
+            .field("created_at", &"[redacted]")
+            .field("updated_at", &"[redacted]")
+            .field("member_count", &self.members.len())
+            .finish()
+    }
+}
+
 pub enum ContextRegistryError {
     Io { path: PathBuf, message: String },
     Json { path: PathBuf, message: String },
@@ -85,12 +134,31 @@ pub enum ContextRegistryError {
     NotFound,
 }
 
+impl fmt::Debug for ContextRegistryError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let variant = match self {
+            Self::Io { .. } => "Io",
+            Self::Json { .. } => "Json",
+            Self::InvalidName => "InvalidName",
+            Self::InvalidLabel => "InvalidLabel",
+            Self::InvalidProfile => "InvalidProfile",
+            Self::InvalidTarget => "InvalidTarget",
+            Self::InvalidWorkspace => "InvalidWorkspace",
+            Self::InvalidAccent => "InvalidAccent",
+            Self::ProfileChangeRequiresMigration => "ProfileChangeRequiresMigration",
+            Self::DuplicateName => "DuplicateName",
+            Self::DuplicateId => "DuplicateId",
+            Self::NotFound => "NotFound",
+        };
+        write!(formatter, "ContextRegistryError::{variant}([redacted])")
+    }
+}
+
 impl std::fmt::Display for ContextRegistryError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Io { path, message } | Self::Json { path, message } => {
-                write!(formatter, "{}: {message}", path.display())
-            }
+            Self::Io { .. } => formatter.write_str("context registry I/O failed"),
+            Self::Json { .. } => formatter.write_str("context registry data is invalid"),
             Self::InvalidName => {
                 formatter.write_str("context name must be a 1–32 character lowercase slug")
             }
@@ -120,10 +188,19 @@ impl std::fmt::Display for ContextRegistryError {
 
 impl std::error::Error for ContextRegistryError {}
 
-#[derive(Debug)]
 pub struct ContextRegistry {
     path: PathBuf,
     contexts: Vec<ContextRecord>,
+}
+
+impl fmt::Debug for ContextRegistry {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ContextRegistry")
+            .field("path", &"[redacted]")
+            .field("context_count", &self.contexts.len())
+            .finish()
+    }
 }
 
 impl ContextRegistry {
@@ -596,6 +673,65 @@ mod tests {
     use crate::{RootSpec, StorageRoots};
 
     #[test]
+    fn context_debug_and_errors_redact_user_values_and_paths() {
+        let roots = StorageRoots::resolve(RootSpec::Temporary).expect("roots");
+        let registry = ContextRegistry::open(&roots).expect("open");
+        let descriptor = ContextTabDescriptor {
+            tab_id: "private-tab-id-sentinel".into(),
+            safe_restore_url: Some("https://private.example/path?token=secret".into()),
+            title: "private-title-sentinel".into(),
+            pinned: false,
+            muted: false,
+            zoom: 1.0,
+        };
+        let member = ContextMember {
+            window_id: "private-window-id-sentinel".into(),
+            tabs: vec!["private-tab-id-sentinel".into()],
+            selected_tab: Some("private-tab-id-sentinel".into()),
+            tab_descriptors: vec![descriptor.clone()],
+            selected_index: Some(0),
+        };
+        let record = ContextRecord {
+            id: Uuid::parse_str("73518acf-c3f4-470a-8e1e-77821ad8fb42")
+                .expect("context identity sentinel"),
+            name: "private-context-name".into(),
+            label: "private-context-label".into(),
+            profile: "private-profile-name".into(),
+            sessions: vec!["private-session-name".into()],
+            workspace: Some("private-workspace-name".into()),
+            accent: Some("#abcdef".into()),
+            default_target: "reuse".into(),
+            created_at: 1,
+            updated_at: 2,
+            members: vec![member],
+        };
+        let path_sentinel = "/home/person/private/contexts.json";
+        let error = ContextRegistryError::Json {
+            path: PathBuf::from(path_sentinel),
+            message: "private parser detail".into(),
+        };
+        let debug = format!("{descriptor:?} {record:?} {error:?} {error}");
+        for secret in [
+            "private-tab-id-sentinel",
+            "private-window-id-sentinel",
+            "private-title-sentinel",
+            "https://private.example/path?token=secret",
+            "private-context-name",
+            "private-context-label",
+            "73518acf-c3f4-470a-8e1e-77821ad8fb42",
+            "private-profile-name",
+            "private-session-name",
+            "private-workspace-name",
+            path_sentinel,
+            "private parser detail",
+        ] {
+            assert!(!debug.contains(secret));
+        }
+        assert!(!format!("{registry:?}").contains(roots.state.to_string_lossy().as_ref()));
+        roots.cleanup().expect("cleanup");
+    }
+
+    #[test]
     fn context_registry_round_trips_and_preserves_profile_boundary() {
         let roots = StorageRoots::resolve(RootSpec::Temporary).expect("roots");
         let mut registry = ContextRegistry::open(&roots).expect("open");
@@ -724,7 +860,7 @@ mod tests {
                         })
                 })
                 .expect_err("injected interruption");
-            assert!(error.to_string().contains("injected interruption"));
+            assert_eq!(error.to_string(), "context registry data is invalid");
             assert_eq!(registry.contexts()[0].members, old_members);
             assert_eq!(registry.contexts()[0].updated_at, old_updated_at);
 

@@ -1,6 +1,7 @@
 #include "request_interceptor.h"
 
 #include <QtCore/QReadLocker>
+#include <QtCore/QCryptographicHash>
 #include <QtCore/QtGlobal>
 #include <QtCore/QWriteLocker>
 #include <QtCore/QUrl>
@@ -178,6 +179,31 @@ QStringList FerricBrowserRequestInterceptor::blockedHosts() const
 {
     QReadLocker locker(&policyLock_);
     return policy_->blockedHosts;
+}
+
+qulonglong FerricBrowserRequestInterceptor::mainFrameMethodSequence() const
+{
+    QReadLocker locker(&methodLock_);
+    return methodSequence_;
+}
+
+bool FerricBrowserRequestInterceptor::uniqueMainFrameGetSince(const qulonglong sequence,
+                                                               const QString &url) const
+{
+    const auto urlHash = QCryptographicHash::hash(
+        QUrl(url).toEncoded(QUrl::FullyEncoded), QCryptographicHash::Sha256);
+    QReadLocker locker(&methodLock_);
+    if (mainFrameMethods_.isEmpty() || sequence >= methodSequence_
+        || sequence + 1 < mainFrameMethods_.constFirst().sequence) {
+        return false;
+    }
+    const MainFrameMethodObservation *only = nullptr;
+    for (const auto &observation : mainFrameMethods_) {
+        if (observation.sequence <= sequence) continue;
+        if (only) return false;
+        only = &observation;
+    }
+    return only && only->get && only->urlHash == urlHash;
 }
 
 void FerricBrowserRequestInterceptor::setBlockedHosts(const QStringList &hosts)
@@ -499,6 +525,17 @@ bool FerricBrowserRequestInterceptor::detach(QObject *profile)
 
 void FerricBrowserRequestInterceptor::interceptRequest(QWebEngineUrlRequestInfo &info)
 {
+    if (info.resourceType() == QWebEngineUrlRequestInfo::ResourceTypeMainFrame) {
+        MainFrameMethodObservation observation{
+            0,
+            QCryptographicHash::hash(info.requestUrl().toEncoded(QUrl::FullyEncoded),
+                                     QCryptographicHash::Sha256),
+            info.requestMethod() == QByteArrayLiteral("GET")};
+        QWriteLocker locker(&methodLock_);
+        observation.sequence = ++methodSequence_;
+        mainFrameMethods_.append(std::move(observation));
+        if (mainFrameMethods_.size() > 128) mainFrameMethods_.removeFirst();
+    }
     std::shared_ptr<const PolicySnapshot> policy;
     bool enabled = false;
     {

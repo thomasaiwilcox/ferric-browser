@@ -35,8 +35,8 @@ impl qobject::BrowserUi {
                 self.as_mut().set_binding_overlay(QString::default());
                 let mut parsed_commands = match parse_chain(&command, ParseInput::Interactive) {
                     Ok(commands) => commands,
-                    Err(error) => {
-                        self.set_status_text(QString::from(format!("Binding rejected: {error}")));
+                    Err(_) => {
+                        self.set_status_text(QString::from("Binding rejected; details suppressed"));
                         return;
                     }
                 };
@@ -88,8 +88,8 @@ impl qobject::BrowserUi {
                 }
                 let expanded = match registry.expand_command(parsed) {
                     Ok(commands) => commands,
-                    Err(error) => {
-                        self.set_status_text(QString::from(format!("Binding rejected: {error}")));
+                    Err(_) => {
+                        self.set_status_text(QString::from("Binding rejected; details suppressed"));
                         return;
                     }
                 };
@@ -121,6 +121,7 @@ impl qobject::BrowserUi {
                     let _ = self.as_mut().execute_parsed_commands(vec![parsed]);
                     return;
                 }
+                let registered_command_name = parsed.name.clone();
                 self.as_mut().note_repeatable_command(&parsed);
                 let effects = {
                     if self.as_ref().rust().state.is_none() {
@@ -148,7 +149,7 @@ impl qobject::BrowserUi {
                 self.as_mut().sync_core_tabs();
                 let learning_mode = self.as_ref().rust().learning_mode;
                 self.set_status_text(QString::from(if learning_mode {
-                    format!("Binding executed: {command}")
+                    format!("Binding executed: {registered_command_name}")
                 } else {
                     "Binding executed".into()
                 }));

@@ -18,7 +18,7 @@ GridLayout {
     columnSpacing: 1
     Accessible.role: Accessible.PageTabList
     Accessible.name: "Browser tabs"
-    Accessible.description: tabList.count + " browser tabs"
+    Accessible.description: tabsModel.count + " browser tabs"
 
     function ensureActiveTabVisible() {
         if (visible && activeTabIndex >= 0 && activeTabIndex < tabList.count) {
@@ -26,9 +26,26 @@ GridLayout {
         }
     }
 
+    function refreshModelPresentation() {
+        // ListView batches model changes until a frame. Restored windows can
+        // reconcile several tabs before a frame is rendered, so make the
+        // delegate layout current before positioning the selected tab.
+        tabList.forceLayout()
+        ensureActiveTabVisible()
+    }
+
     onActiveTabIndexChanged: Qt.callLater(ensureActiveTabVisible)
     onVerticalChanged: Qt.callLater(ensureActiveTabVisible)
-    onVisibleChanged: Qt.callLater(ensureActiveTabVisible)
+    onVisibleChanged: Qt.callLater(refreshModelPresentation)
+    onTabsModelChanged: Qt.callLater(refreshModelPresentation)
+    Component.onCompleted: Qt.callLater(refreshModelPresentation)
+
+    Connections {
+        target: tabStrip.tabsModel
+        function onCountChanged() {
+            Qt.callLater(tabStrip.refreshModelPresentation)
+        }
+    }
 
     ListView {
         id: tabList
@@ -49,7 +66,7 @@ GridLayout {
 
         WheelHandler {
             target: null
-            enabled: tabList.count > 1
+            enabled: tabStrip.tabsModel.count > 1
             onWheel: function(event) {
                 var delta = event.angleDelta.y !== 0
                             ? event.angleDelta.y : -event.angleDelta.x
@@ -58,7 +75,8 @@ GridLayout {
                 }
                 var step = delta < 0 ? 1 : -1
                 tabStrip.selectRequested(
-                    (tabStrip.activeTabIndex + step + tabList.count) % tabList.count)
+                    (tabStrip.activeTabIndex + step + tabStrip.tabsModel.count)
+                    % tabStrip.tabsModel.count)
                 event.accepted = true
             }
         }
@@ -74,7 +92,7 @@ GridLayout {
                    : Math.min(tabList.width,
                               Math.min(400,
                                        Math.max(220, tabList.width
-                                                / Math.max(1, tabList.count))))
+                                                / Math.max(1, tabStrip.tabsModel.count))))
             height: tabStrip.browserWindow.tabBarHeight
             color: tabIndex === tabStrip.activeTabIndex
                    ? tabStrip.browserWindow.surfaceColor
@@ -84,6 +102,10 @@ GridLayout {
             Accessible.name: "Tab " + (tabIndex + 1) + ": "
                              + (tabRow.title || "New tab")
             Accessible.selected: tabIndex === tabStrip.activeTabIndex
+            Accessible.onPressAction: tabStrip.selectRequested(tabIndex)
+            activeFocusOnTab: true
+            Keys.onReturnPressed: tabStrip.selectRequested(tabIndex)
+            Keys.onSpacePressed: tabStrip.selectRequested(tabIndex)
             ToolTip.visible: tabHover.hovered && tabTitle.implicitWidth > tabTitle.width
             ToolTip.delay: 600
             ToolTip.text: tabRow.title || "New tab"

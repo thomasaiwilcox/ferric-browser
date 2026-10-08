@@ -4,6 +4,81 @@
 use super::*;
 
 impl qobject::BrowserUi {
+    #[allow(clippy::too_many_lines)]
+    pub(super) fn switcher_query(
+        mut self: Pin<&mut Self>,
+        query: &QString,
+        scope: &QString,
+    ) -> bool {
+        if self.as_ref().rust().storage_library.is_none()
+            || self.as_ref().rust().storage_library_dirty.get()
+        {
+            self.as_mut().request_storage_library();
+        }
+        self.as_mut().request_session_names();
+        let scope = scope.to_string();
+        let max_results = switcher_max_results(&self.as_ref().rust().config);
+        let params = serde_json::json!({
+            "query": query.to_string(),
+            "scope": if scope.is_empty() { "all" } else { &scope },
+            "limit": max_results,
+            "include_private": self.as_ref().active_profile_is_transient(),
+            "private_scope": self
+                .as_ref()
+                .active_profile_is_transient()
+                .then(|| {
+                    self.as_ref().rust().state.as_ref().and_then(|state| {
+                        state
+                            .active_tab()
+                            .and_then(|tab| state.profiles().get(&tab.profile))
+                            .map(|profile| profile.label.clone())
+                    })
+                })
+                .flatten()
+        });
+        if let Some(result) = self
+            .as_ref()
+            .rust()
+            .switcher_cache
+            .as_ref()
+            .filter(|cache| cache.matches(self.as_ref().rust(), &params))
+            .map(|cache| cache.result.clone())
+        {
+            return match self.as_mut().publish_switcher_rows(&result) {
+                Ok(()) => true,
+                Err(_error) => {
+                    self.set_status_text(QString::from("Switcher presentation unavailable"));
+                    false
+                }
+            };
+        }
+        match self.as_ref().get_ref().ipc_switcher_query(&params) {
+            Ok(result) => {
+                if self.as_mut().publish_switcher_rows(&result).is_err() {
+                    self.set_status_text(QString::from("Switcher presentation unavailable"));
+                    return false;
+                }
+                let mut rust = self.as_mut().rust_mut();
+                let this = rust.as_mut().get_mut();
+                this.switcher_cache = Some(SwitcherQueryCache {
+                    params,
+                    state_revision: this.state.as_ref().map_or(0, BrowserApplication::revision),
+                    storage_library_revision: this.storage_library_revision,
+                    session_names: this.session_names.clone(),
+                    contexts_json: this.contexts_json.to_string(),
+                    config_fingerprint: serde_json::to_string(&this.config).unwrap_or_default(),
+                    profile_name: this.profile_name.clone(),
+                    result,
+                });
+                true
+            }
+            Err(_error) => {
+                self.set_status_text(QString::from("Switcher query rejected; details suppressed"));
+                false
+            }
+        }
+    }
+
     pub(super) fn ipc_switcher_query(&self, params: &Value) -> Result<Value, String> {
         let object = query_object(
             params,
@@ -37,7 +112,7 @@ impl qobject::BrowserUi {
             "actions",
         ];
         if !scopes.contains(&scope) {
-            return Err(format!("unknown switcher scope: {scope}"));
+            return Err("switcher.query scope is unsupported".into());
         }
         let limit = query_limit(object, "switcher.query", 50)?;
         let offset = query_offset(object, "switcher.query")?;
@@ -480,6 +555,7 @@ impl qobject::BrowserUi {
             }
         }
         if (scope == "all" || scope == "sessions")
+            && self.session_profile_access_allowed()
             && let Some(profile_id) = self.rust().profile_id
         {
             let profile = self.rust().profile_name.clone();

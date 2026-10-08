@@ -12,7 +12,6 @@ pub(crate) enum SubmitError {
     Stopped,
 }
 
-#[derive(Debug)]
 pub(crate) enum Poll<T> {
     Pending,
     Ready(T),

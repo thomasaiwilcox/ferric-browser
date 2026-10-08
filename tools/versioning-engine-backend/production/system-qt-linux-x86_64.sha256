@@ -1,0 +1,17 @@
+# Exact 2026-10-08 local Qt 6.11.2 base/QML runtime used by the development tuple.
+# Not a portable or signed distribution manifest.
+6c78628047a343d332108b882d2b4396ea19aae66e8226f7239edaf8415b388e  /usr/lib/libQt6Core.so.6.11.2
+addae4a33f3e692ba2297989e0c5cec04afb92ca34ffc2420f9afbefe123d801  /usr/lib/libQt6DBus.so.6.11.2
+76c10f18c6c5ba9492b12c9e2be85a7369ca2570fdcd1e9a2ed1fd3aa6a83e16  /usr/lib/libQt6Gui.so.6.11.2
+5c7ab0bd364e14590a953d4d6c38e59d4077dca8b13590b62448d2092a14ee1f  /usr/lib/libQt6Network.so.6.11.2
+edbf4d5906ee16d6fe321ec71535227aad28289cb447ac5d877244d0e125903e  /usr/lib/libQt6OpenGL.so.6.11.2
+33fa1409c3829568a1a64a84c7e3ba99404aa9ce709903ad1d7ffe01dafc541d  /usr/lib/libQt6Positioning.so.6.11.2
+662587b7b849d1af10e87e52a19f4a3e5dec3fe8ba8a22330e674667d6bed1bd  /usr/lib/libQt6Qml.so.6.11.2
+0151932445503efa3192ff164fd2fe0746bb23f9516e870ac81484144a80190b  /usr/lib/libQt6QmlMeta.so.6.11.2
+eeb70627aeb3d68721ce4f9a038ca70081a13f846276d6d1c893e55dd2f25b02  /usr/lib/libQt6QmlModels.so.6.11.2
+851805df2694fd0c9eb80ab72eda3e4d19a0d5e7d4bfb6eb08323174ccc36d7b  /usr/lib/libQt6QmlWorkerScript.so.6.11.2
+c3706391cb6aea5d3936cb19e022df0debd683a382a0a5cd9ef4cd040c63c298  /usr/lib/libQt6Quick.so.6.11.2
+a96f979c9d978d6353a8dca189d9ac5d05b33334e368acc7dcf8f2fe725b160f  /usr/lib/libQt6QuickWidgets.so.6.11.2
+c2f25a9c63f74d46e087a4fff4859bc645d41ea6be8a5e580109fe0f7049029f  /usr/lib/libQt6WebChannel.so.6.11.2
+dc14581893a328f4edd137adc75d616bb97f76690adb769c15adc2a4590c9e4e  /usr/lib/libQt6WebChannelQuick.so.6.11.2
+fe40d11c9b7a4daaa0f4c9c4ba5973b9bacb61ff534bbe6405e9466288a591c9  /usr/lib/libQt6Widgets.so.6.11.2

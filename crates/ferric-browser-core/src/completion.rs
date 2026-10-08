@@ -1,4 +1,5 @@
 use crate::{CommandRegistry, CompletionProvider};
+use std::fmt;
 
 pub const DEFAULT_COMPLETION_LIMIT: usize = 100;
 
@@ -11,6 +12,7 @@ pub enum CompletionCategory {
     Setting,
     Bookmark,
     History,
+    VersioningRef,
 }
 
 impl CompletionCategory {
@@ -24,11 +26,12 @@ impl CompletionCategory {
             Self::Setting => "setting",
             Self::Bookmark => "bookmark",
             Self::History => "history",
+            Self::VersioningRef => "versioning-ref",
         }
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct CompletionCandidate {
     pub insert_text: String,
     pub label: String,
@@ -38,11 +41,34 @@ pub struct CompletionCandidate {
     pub frequency: u32,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+impl fmt::Debug for CompletionCandidate {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("CompletionCandidate")
+            .field("insert_text", &"[redacted]")
+            .field("label", &"[redacted]")
+            .field("detail", &"[redacted]")
+            .field("category", &self.category)
+            .field("recency", &self.recency)
+            .field("frequency", &self.frequency)
+            .finish()
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
 pub struct CompletionResult {
     pub replacement_start: usize,
     pub replacement_end: usize,
     pub candidates: Vec<CompletionCandidate>,
+}
+
+impl fmt::Debug for CompletionResult {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("CompletionResult")
+            .field("candidate_count", &self.candidates.len())
+            .finish()
+    }
 }
 
 /// Computes deterministic candidates for a command-line edit.
@@ -259,6 +285,9 @@ fn argument_candidates(
             ),
             CompletionProvider::Tabs => candidate.category == CompletionCategory::Tab,
             CompletionProvider::Settings => candidate.category == CompletionCategory::Setting,
+            CompletionProvider::VersioningRefs => {
+                candidate.category == CompletionCategory::VersioningRef
+            }
         };
         if category_matches
             && (candidate.insert_text.starts_with(prefix)
@@ -356,6 +385,38 @@ mod tests {
     use crate::{ParseInput, parse_chain};
 
     #[test]
+    fn versioning_discovery_comes_from_command_registry() {
+        let registry = CommandRegistry::default_v1();
+        let candidates = complete("commit-", 7, &registry, &[], 100).candidates;
+        let mut registered = registry
+            .definitions()
+            .iter()
+            .filter(|definition| definition.name.starts_with("commit-"))
+            .map(|definition| definition.name.as_str())
+            .collect::<Vec<_>>();
+        registered.sort_unstable();
+        assert_eq!(
+            candidates
+                .iter()
+                .map(|candidate| candidate.insert_text.as_str())
+                .collect::<Vec<_>>(),
+            registered
+        );
+
+        let catalog = [CompletionCandidate {
+            insert_text: "commit:12345678".into(),
+            label: "Before trial".into(),
+            detail: "captured commit".into(),
+            category: CompletionCategory::VersioningRef,
+            recency: 1,
+            frequency: 1,
+        }];
+        let result = complete("commit-info commit:", 19, &registry, &catalog, 10);
+        assert_eq!(result.candidates.len(), 1);
+        assert_eq!(result.candidates[0].insert_text, "commit:12345678");
+    }
+
+    #[test]
     fn ranks_command_prefixes_deterministically() {
         let registry = CommandRegistry::default_v1();
         let result = complete("re", 2, &registry, &[], 100);
@@ -367,7 +428,7 @@ mod tests {
                 .iter()
                 .map(|candidate| candidate.insert_text.as_str())
                 .collect::<Vec<_>>(),
-            vec!["reload", "reopen-in-window", "repeat"]
+            vec!["reload", "reopen-in-window", "repeat", "restore"]
         );
     }
 
@@ -426,6 +487,27 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["Example new"]
         );
+    }
+
+    #[test]
+    fn completion_debug_redacts_page_and_search_values() {
+        let sentinel = "private-completion-sentinel-b177";
+        let candidate = CompletionCandidate {
+            insert_text: format!("https://example.test/?q={sentinel}"),
+            label: sentinel.into(),
+            detail: sentinel.into(),
+            category: CompletionCategory::History,
+            recency: 1,
+            frequency: 1,
+        };
+        let result = CompletionResult {
+            replacement_start: 1,
+            replacement_end: 2,
+            candidates: vec![candidate.clone()],
+        };
+
+        assert!(!format!("{candidate:?}").contains(sentinel));
+        assert!(!format!("{result:?}").contains(sentinel));
     }
 
     #[test]

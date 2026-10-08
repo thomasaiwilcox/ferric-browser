@@ -5,4 +5,11 @@ import io.github.ferricbrowser 1.0
 // lifecycle, QtWebEngine coordination, and visual chrome live with the
 // primary window component rather than accumulating in the module root.
 FerricPrimaryBrowserWindow {
+    id: primaryWindow
+    tabCapableWindowFactory: tabCapableWindowFactoryComponent
+
+    Component {
+        id: tabCapableWindowFactoryComponent
+        FerricVersionedRestoreWindow { }
+    }
 }

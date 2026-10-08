@@ -31,7 +31,7 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
                     .arguments
                     .get(index + 1)
                     .cloned()
-                    .ok_or_else(|| format!("{option} requires a value"))?;
+                    .ok_or_else(|| "context-create option requires a value".to_owned())?;
                 match option {
                     "--label" | "--profile" | "--workspace" => {
                         validate_command_text(&value, &format!("context-create {option}"))?;
@@ -46,7 +46,7 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
                             profile_set = true;
                         }
                     }
-                    _ => return Err(format!("unknown context-create option: {option}")),
+                    _ => return Err("context-create contains an unknown option".into()),
                 }
                 index += 2;
             }
@@ -123,7 +123,7 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
                         let value = command
                             .arguments
                             .get(index + 1)
-                            .ok_or_else(|| format!("{option} requires a value"))?;
+                            .ok_or_else(|| "context-route option requires a value".to_owned())?;
                         match option {
                             "--priority" => {
                                 if object.contains_key("priority") {
@@ -159,14 +159,13 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
                                     value.as_str(),
                                     "external-open" | "explicit-open" | "typed-initial-url"
                                 ) {
-                                    return Err(format!(
-                                        "unsupported context route entry point: {value}"
-                                    ));
+                                    return Err("context-route entry point is unsupported".into());
                                 }
                                 if entry_points.iter().any(|point| point == value) {
-                                    return Err(format!(
-                                        "context route entry point specified more than once: {value}"
-                                    ));
+                                    return Err(
+                                        "context-route entry point was specified more than once"
+                                            .into(),
+                                    );
                                 }
                                 if entry_points.len() >= 3 {
                                     return Err(
@@ -175,7 +174,7 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
                                 }
                                 entry_points.push(value.clone());
                             }
-                            _ => return Err(format!("unknown context-route option: {option}")),
+                            _ => return Err("context-route contains an unknown option".into()),
                         }
                         index += 2;
                     }

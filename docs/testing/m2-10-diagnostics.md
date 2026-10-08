@@ -84,3 +84,9 @@ not retained or uploaded by the browser.
 Profile database health is now read-only inspected when a concrete profile
 database is available; repair/export and full disk-failure qualification remain
 future work.
+
+The in-app export now binds to the exact bounded report text shown in the
+read-only preview. Background diagnostic reads do not authorize export;
+oversized reports are reported with a fixed message and cannot be saved. The
+native authorization/export regression is authored but has not been run in
+the current end-of-goal verification deferral.

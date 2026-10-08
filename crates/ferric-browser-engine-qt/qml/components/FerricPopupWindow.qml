@@ -4,13 +4,16 @@ import QtQuick.Layouts
 import QtQuick.Dialogs
 import QtWebEngine
 import io.github.ferricbrowser 1.0
+import "../scripts/ShutdownPageProbeState.js" as ShutdownPageProbeState
+import "../scripts/ProfileDownloadRouting.js" as ProfileDownloadRouting
+import "../scripts/CleanBranchPopupOwnership.js" as CleanBranchPopupOwnership
 
 ApplicationWindow {
     id: popupWindow
     required property var rootWindow
     width: 1024
     height: 720
-    visible: true
+    visible: popupWindow.popupBranchToken.length === 0
     title: popupWindow.popupContextName.length > 0
            ? "Ferric Browser popup · context "
              + (popupWindow.popupContextLabel.length > 0
@@ -21,11 +24,13 @@ ApplicationWindow {
     palette: rootWindow.palette
     property var popupRequest
     property var popupProfile
+    property var popupOpenerHost: null
     property var popupRequestInterceptor
     property var popupPermissionUi
     property string popupJourneyToken: ""
     property bool popupPrivateProfile: false
     property bool popupEphemeralProfile: false
+    property string popupBranchToken: ""
     property string popupProfileName: "unknown"
     property string popupContextName: ""
     property string popupContextLabel: ""
@@ -38,20 +43,36 @@ ApplicationWindow {
     property bool pendingFileDialogWaitingForPortal: false
     property double pendingFileDialogPortalDeadlineMs: 0
     property bool windowShutdownApproved: false
+    property bool windowDestroyQueued: false
+    Timer {
+        id: popupApprovedReleaseTimer
+        interval: 50
+        repeat: false
+        onTriggered: popupWindow.requestApprovedWindowRelease()
+    }
     property bool windowCloseConfirmationVisible: false
     property bool windowShutdownPromptVisible: false
+    property bool windowShutdownWaitingForDownloadFinishes: false
     property bool windowShutdownPagePromptVisible: false
     property bool windowShutdownStoragePromptVisible: false
     property string windowShutdownPagePromptReason: ""
+    property var windowShutdownPagePromptSnapshot: null
     property int windowShutdownPageProbeGeneration: 0
     property var activeDownloads: ({})
     property var pendingDownloadRequests: ({})
+    property var downloadCompletionRequests: ({})
     property string pendingDownloadId: ""
     property string pendingDownloadSuggestedName: ""
     readonly property var statusUi:
         popupPermissionUi || rootWindow.primaryBrowserUi
     readonly property bool statusBarVisible:
         rootWindow.statusBarVisibleForMode(statusUi.mode)
+
+    function branchPopupCurrent() {
+        return popupWindow.popupBranchToken.length === 0
+                || CleanBranchPopupOwnership.popupReady(
+                    rootWindow, popupWindow, popupView)
+    }
 
     FerricWebEngineSurfaceRecovery {
         hostWindow: popupWindow
@@ -65,8 +86,7 @@ ApplicationWindow {
         repeat: false
         onTriggered: {
             popupWindow.windowShutdownPageProbeGeneration += 1
-            popupWindow.windowShutdownPagePromptReason = "Page state check timed out."
-            popupWindow.windowShutdownPagePromptVisible = true
+            popupWindow.showShutdownPagePrompt("Page state check timed out.")
             if (popupWindow.popupPermissionUi) {
                 popupWindow.popupPermissionUi.status_text =
                         "Page state check timed out; choose Close anyway"
@@ -82,28 +102,78 @@ ApplicationWindow {
         popupWindow.beginQuitRequest()
     }
 
+    onVisibleChanged: {
+        if (!visible && windowShutdownApproved)
+            requestApprovedWindowRelease()
+    }
+
+    function requestApprovedWindowRelease() {
+        if (popupWindow.visible || !popupWindow.windowShutdownApproved
+                || popupWindow.windowDestroyQueued)
+            return false
+        popupWindow.windowDestroyQueued = true
+        Qt.callLater(function() {
+            if (popupWindow.visible || !popupWindow.windowShutdownApproved
+                    || popupWindow.hasActiveDownloads()
+                    || rootWindow.hasActiveShutdownRequestsFor(
+                        popupWindow.popupPermissionUi
+                        || rootWindow.primaryBrowserUi, popupWindow)) {
+                popupWindow.windowDestroyQueued = false
+                if (!popupWindow.visible && popupWindow.windowShutdownApproved)
+                    popupApprovedReleaseTimer.restart()
+                return
+            }
+            popupWindow.destroy()
+        })
+        return true
+    }
+
     function hasActiveDownloads() {
         if (popupWindow.pendingDownloadId.length > 0) {
             return true
         }
-        for (var pendingKey in popupWindow.pendingDownloadRequests) {
-            if (popupWindow.pendingDownloadRequests[pendingKey]) {
-                return true
-            }
+        return ProfileDownloadRouting.hasOutstandingDownloadRequests(
+                    popupWindow.pendingDownloadRequests)
+                || ProfileDownloadRouting.hasOutstandingDownloadRequests(
+                    popupWindow.activeDownloads)
+                || ProfileDownloadRouting.hasOutstandingDownloadRequests(
+                    popupWindow.downloadCompletionRequests)
+    }
+
+    function showShutdownPagePrompt(reason) {
+        popupShutdownPageProbeTimer.stop()
+        popupWindow.windowShutdownPagePromptSnapshot =
+                ShutdownPageProbeState.snapshotActive(
+                    [popupView], WebEngineView.LifecycleState.Active, true)
+        popupWindow.windowShutdownPagePromptReason = reason
+        popupWindow.windowShutdownPagePromptVisible = true
+    }
+
+    function confirmShutdownPagePrompt() {
+        popupWindow.windowShutdownPagePromptVisible = false
+        if (!ShutdownPageProbeState.stillCurrent(
+                popupWindow.windowShutdownPagePromptSnapshot,
+                [popupView], WebEngineView.LifecycleState.Active, true)) {
+            popupWindow.windowShutdownPagePromptSnapshot = null
+            popupWindow.checkPageStateBeforeQuit()
+            return
         }
-        for (var key in popupWindow.activeDownloads) {
-            var download = popupWindow.activeDownloads[key]
-            if (download && !download.isFinished) {
-                return true
-            }
-        }
-        return false
+        popupWindow.windowShutdownPagePromptSnapshot = null
+        popupWindow.finalizeQuit()
     }
 
     function checkPageStateBeforeQuit() {
         var generation = ++popupWindow.windowShutdownPageProbeGeneration
+        popupWindow.windowShutdownPagePromptSnapshot = null
         if (!popupView || popupView.lifecycleState !== WebEngineView.LifecycleState.Active) {
             popupWindow.finalizeQuit()
+            return
+        }
+        var snapshot = ShutdownPageProbeState.snapshotActive(
+            [popupView], WebEngineView.LifecycleState.Active)
+        if (!snapshot) {
+            popupWindow.showShutdownPagePrompt(
+                "A page or browser activity changed during the close check.")
             return
         }
         popupShutdownPageProbeTimer.restart()
@@ -111,15 +181,20 @@ ApplicationWindow {
             if (generation !== popupWindow.windowShutdownPageProbeGeneration) {
                 return
             }
+            if (!ShutdownPageProbeState.stillCurrent(
+                    snapshot, [popupView], WebEngineView.LifecycleState.Active)) {
+                popupWindow.showShutdownPagePrompt(
+                    "A page or browser activity changed during the close check.")
+                return
+            }
             popupShutdownPageProbeTimer.stop()
             if (result === "clean") {
                 popupWindow.finalizeQuit()
                 return
             }
-            popupWindow.windowShutdownPagePromptReason = result === "dirty"
+            popupWindow.showShutdownPagePrompt(result === "dirty"
                     ? "This page has unsaved form or editor state."
-                    : "Ferric Browser could not verify this page before closing."
-            popupWindow.windowShutdownPagePromptVisible = true
+                    : "Ferric Browser could not verify this page before closing.")
         })
     }
 
@@ -127,6 +202,7 @@ ApplicationWindow {
         popupWindow.windowShutdownPageProbeGeneration += 1
         popupShutdownPageProbeTimer.stop()
         popupWindow.windowShutdownPagePromptVisible = false
+        popupWindow.windowShutdownPagePromptSnapshot = null
     }
 
     function beginQuitRequest() {
@@ -151,6 +227,13 @@ ApplicationWindow {
     }
 
     function finalizeQuit() {
+        if (popupWindow.hasActiveDownloads()
+                || rootWindow.hasActiveShutdownRequestsFor(
+                    popupWindow.popupPermissionUi
+                    || rootWindow.primaryBrowserUi, popupWindow)) {
+            popupWindow.windowShutdownPromptVisible = true
+            return
+        }
         if (popupWindow.popupPermissionUi
                 && popupWindow.popupJourneyToken.length > 0
                 && !popupWindow.popupPermissionUi.close_popup_tab(
@@ -164,6 +247,7 @@ ApplicationWindow {
     }
 
     function cancelDownloadsAndQuit() {
+        popupWindow.windowShutdownWaitingForDownloadFinishes = true
         if (popupWindow.pendingDownloadId.length > 0) {
             popupWindow.cancelPendingDownload()
         }
@@ -176,17 +260,20 @@ ApplicationWindow {
                     String(pendingKey), "cancelled", pendingDownload.receivedBytes, true)
             }
         }
-        popupWindow.pendingDownloadRequests = ({})
         for (var key in popupWindow.activeDownloads) {
             var download = popupWindow.activeDownloads[key]
             if (download && !download.isFinished) {
                 rootWindow.resolveQtRequest(ui, download, "download", "cancel", [])
             }
         }
-        popupWindow.activeDownloads = ({})
         rootWindow.cancelShutdownRequestsFor(
                     popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi, popupWindow)
-        popupWindow.continueQuitRequest()
+        if (popupWindow.hasActiveDownloads()) {
+            popupWindow.windowShutdownPromptVisible = true
+        } else {
+            popupWindow.windowShutdownWaitingForDownloadFinishes = false
+            popupWindow.continueQuitRequest()
+        }
     }
 
     FerricShutdownDecisionDialog {
@@ -213,14 +300,18 @@ ApplicationWindow {
         hostWindow: popupWindow
         promptVisible: popupWindow.windowShutdownPromptVisible
         commandText: ":window-close"
-        title: "Popup browser work is still running"
-        message: "Cancel active popup work before closing, or keep this window open."
+        title: popupWindow.windowShutdownWaitingForDownloadFinishes
+               ? "Waiting for downloads to finish" : "Popup browser work is still running"
+        message: popupWindow.windowShutdownWaitingForDownloadFinishes
+                 ? "Waiting for Qt to finish canceling downloads. Keep the window open to stop closing."
+                 : "Cancel active popup work before closing, or keep this window open."
         keepLabel: "Keep window open"
         proceedLabel: "Cancel active work and close"
         proceedAccessibleName: "Cancel active work and close popup window"
         dialogHeight: 220 * rootWindow.chromeScale
         onKeepRequested: {
             popupWindow.windowShutdownPromptVisible = false
+            popupWindow.windowShutdownWaitingForDownloadFinishes = false
             rootWindow.abortApplicationShutdown()
             popupWindow.statusUi.status_text = "Popup shutdown cancelled"
         }
@@ -247,8 +338,7 @@ ApplicationWindow {
             popupWindow.statusUi.status_text = "Popup shutdown cancelled"
         }
         onProceedRequested: {
-            popupWindow.windowShutdownPagePromptVisible = false
-            popupWindow.finalizeQuit()
+            popupWindow.confirmShutdownPagePrompt()
         }
     }
 
@@ -320,6 +410,7 @@ ApplicationWindow {
             download.downloadDirectory = stagingDirectory
             download.downloadFileName = finalName
             popupWindow.activeDownloads[id] = download
+            delete popupWindow.pendingDownloadRequests[id]
             popupWindow.attachPopupDownloadStateUpdates(download, id)
             rootWindow.resolveQtRequest(ui, download, "download", "accept", [])
             ui.update_download(id, "in-progress", 0, false)
@@ -345,8 +436,14 @@ ApplicationWindow {
     }
 
     function handleDownloadRequested(download) {
-        var id = String(download.id)
         var ui = popupWindow.popupDownloadUi()
+        if (ProfileDownloadRouting.retainAndCancelIfShutdownApproved(
+                    popupWindow, download, function(request) {
+                        return rootWindow.resolveQtRequest(
+                                   ui, request, "download", "cancel", [])
+                    }))
+            return
+        var id = String(download.id)
         var safeName = ui.offer_download(
                     id, download.url.toString(), download.suggestedFileName)
         var requestedPath = download.savePageFormat === WebEngineDownloadRequest.MimeHtmlSaveFormat
@@ -370,6 +467,7 @@ ApplicationWindow {
             download.downloadDirectory = stagingDirectory
             download.downloadFileName = requestedName
             popupWindow.activeDownloads[id] = download
+            delete popupWindow.pendingDownloadRequests[id]
             popupWindow.attachPopupDownloadStateUpdates(download, id)
             rootWindow.resolveQtRequest(ui, download, "download", "accept", [])
             ui.update_download(id, "in-progress", 0, false)
@@ -395,6 +493,7 @@ ApplicationWindow {
             download.downloadDirectory = stagingDirectory
             download.downloadFileName = finalName
             popupWindow.attachPopupDownloadStateUpdates(download, id)
+            delete popupWindow.pendingDownloadRequests[id]
             rootWindow.resolveQtRequest(ui, download, "download", "accept", [])
             ui.update_download(id, "in-progress", 0, false)
             return
@@ -425,9 +524,16 @@ ApplicationWindow {
         ui.update_download(id, state, download.receivedBytes, true)
         delete popupWindow.activeDownloads[id]
         delete popupWindow.pendingDownloadRequests[id]
+        delete popupWindow.downloadCompletionRequests[id]
         if (popupWindow.pendingDownloadId === id) {
             popupWindow.pendingDownloadId = ""
             popupWindow.pendingDownloadSuggestedName = ""
+        }
+        if (popupWindow.windowShutdownWaitingForDownloadFinishes
+                && !popupWindow.hasActiveDownloads()) {
+            popupWindow.windowShutdownWaitingForDownloadFinishes = false
+            popupWindow.windowShutdownPromptVisible = false
+            popupWindow.continueQuitRequest()
         }
     }
 
@@ -653,6 +759,7 @@ ApplicationWindow {
 
     WebEngineView {
         id: popupView
+        property int versioningNavigationEpoch: 0
         property var pageUserScriptNames: []
         property string pageUserScriptReloadUrl: ""
         property string pageDialogDocumentKey: ""
@@ -702,6 +809,7 @@ ApplicationWindow {
         }
         onLoadingChanged: function(loadRequest) {
             if (loadRequest.status === WebEngineView.LoadStartedStatus) {
+                popupView.versioningNavigationEpoch += 1
                 rootWindow.clearPageDialogForView(popupView)
                 rootWindow.clearClientCertificateForView(popupView)
                 rootWindow.clearCertificateErrorForView(popupView)
@@ -753,7 +861,11 @@ ApplicationWindow {
         }
 
         onPermissionRequested: function(permissionRequest) {
-            if (popupWindow.popupPermissionUi) {
+            if (!popupWindow.branchPopupCurrent()) {
+                rootWindow.resolveQtRequest(
+                    popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi,
+                    permissionRequest, "permission", "deny", [])
+            } else if (popupWindow.popupPermissionUi) {
                 rootWindow.handleImmediatePermissionRequested(
                     popupWindow.popupPermissionUi,
                     permissionRequest,
@@ -766,26 +878,56 @@ ApplicationWindow {
             }
         }
         onJavaScriptDialogRequested: function(request) {
+            if (!popupWindow.branchPopupCurrent()) {
+                rootWindow.resolveQtRequest(
+                    popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi,
+                    request, "page-dialog", "dialogReject", [])
+                return
+            }
             rootWindow.handleJavaScriptDialogRequested(
                 popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi,
                 popupView, request, popupWindow.popupPrivateProfile)
         }
         onAuthenticationDialogRequested: function(request) {
+            if (!popupWindow.branchPopupCurrent()) {
+                rootWindow.resolveQtRequest(
+                    popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi,
+                    request, "authentication", "dialogReject", [])
+                return
+            }
             rootWindow.handleAuthenticationDialogRequested(
                 popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi,
                 popupView, request, popupWindow.popupPrivateProfile)
         }
         onSelectClientCertificate: function(selection) {
+            if (!popupWindow.branchPopupCurrent()) {
+                rootWindow.resolveQtRequest(
+                    popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi,
+                    selection, "client-certificate", "selectNone", [])
+                return
+            }
             rootWindow.handleClientCertificateRequested(
                 popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi,
                 popupView, selection, popupWindow.popupPrivateProfile, popupWindow)
         }
         onCertificateError: function(error) {
+            if (!popupWindow.branchPopupCurrent()) {
+                rootWindow.resolveQtRequest(
+                    popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi,
+                    error, "client-certificate", "rejectCertificate", [])
+                return
+            }
             rootWindow.handleCertificateError(
                 popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi,
                 popupView, error, popupWindow)
         }
         onWebAuthUxRequested: function(request) {
+            if (!popupWindow.branchPopupCurrent()) {
+                rootWindow.resolveQtRequest(
+                    popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi,
+                    request, "webauth", "cancel", [])
+                return
+            }
             rootWindow.handleWebAuthRequested(
                 popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi,
                 popupView, request, popupWindow)
@@ -796,9 +938,21 @@ ApplicationWindow {
                 popupView, request, popupWindow)
         }
         onFileDialogRequested: function(request) {
+            if (!popupWindow.branchPopupCurrent()) {
+                rootWindow.resolveQtRequest(
+                    popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi,
+                    request, "file-dialog", "dialogReject", [])
+                return
+            }
             popupWindow.handleFileDialogRequested(request)
         }
         onDesktopMediaRequested: function(request) {
+            if (!popupWindow.branchPopupCurrent()) {
+                rootWindow.resolveQtRequest(
+                    popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi,
+                    request, "desktop-media", "cancel", [])
+                return
+            }
             rootWindow.handleDesktopMediaRequested(
                 popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi,
                 popupView, request, popupWindow)
@@ -808,11 +962,51 @@ ApplicationWindow {
                 popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi,
                 popupView, popupWindow, -1, terminationStatus, exitCode)
         }
+        onNewWindowRequested: function(request) {
+            // A popup spawned by a clean-branch popup remains with the same
+            // branch owner/profile. No normal-profile fallback is permitted.
+            if (!popupWindow.popupBranchToken
+                    || !CleanBranchPopupOwnership.popupReady(
+                            rootWindow, popupWindow, popupView)
+                    || !popupWindow.popupPermissionUi.popup_allowed(
+                            request.requestedUrl.toString(), request.userInitiated)
+                    || !rootWindow.canRegisterPopupWindow())
+                return
+            var nested = rootWindow.popupWindowFactory.createObject(null, {
+                popupRequest: request,
+                popupOpenerHost: popupWindow.popupOpenerHost,
+                popupJourneyToken: popupWindow.popupPermissionUi.take_popup_journey_token(
+                    request.requestedUrl.toString()),
+                popupProfile: popupWindow.popupProfile,
+                popupRequestInterceptor: popupWindow.popupRequestInterceptor,
+                popupPermissionUi: popupWindow.popupPermissionUi,
+                popupContextName: popupWindow.popupContextName,
+                popupContextLabel: popupWindow.popupContextLabel,
+                popupPrivateProfile: true,
+                popupEphemeralProfile: true,
+                popupBranchToken: popupWindow.popupBranchToken,
+                popupProfileName: popupWindow.popupProfileName
+            })
+            if (!nested)
+                popupWindow.popupPermissionUi.navigation_failed()
+        }
 
         Component.onCompleted: {
+            if (popupWindow.popupBranchToken.length > 0) {
+                if (!CleanBranchPopupOwnership.popupReady(
+                            rootWindow, popupWindow, popupView)) {
+                    popupWindow.visible = false
+                    Qt.callLater(function() { popupWindow.destroy() })
+                    return
+                }
+            }
             refreshEffectiveSiteSettings()
-            rootWindow.registerPopupWindow(
-                        popupWindow, popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi, popupView)
+            if (!rootWindow.registerPopupWindow(
+                        popupWindow, popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi, popupView)) {
+                popupWindow.visible = false
+                Qt.callLater(function() { popupWindow.destroy() })
+                return
+            }
             if (!popupWindow.popupPermissionPromptSurface) {
                 popupWindow.popupPermissionPromptSurface =
                         rootWindow.permissionPromptFactory.createObject(
@@ -837,6 +1031,8 @@ ApplicationWindow {
             if (popupWindow.popupRequest) {
                 popupWindow.popupRequest.openIn(popupView)
             }
+            if (popupWindow.popupBranchToken.length > 0)
+                popupWindow.visible = true
         }
         Component.onDestruction: {
             rootWindow.clearPageDialogForView(popupView)
@@ -884,6 +1080,11 @@ ApplicationWindow {
 
     Component.onDestruction: {
         rootWindow.unregisterPopupWindow(popupWindow)
+        var openerHost = popupWindow.popupOpenerHost
+        if (openerHost && openerHost !== rootWindow
+                && typeof openerHost.requestApprovedWindowRelease === "function") {
+            openerHost.requestApprovedWindowRelease()
+        }
         if (!popupWindow.windowShutdownApproved
                 && popupWindow.popupPermissionUi
                 && popupWindow.popupJourneyToken.length > 0) {

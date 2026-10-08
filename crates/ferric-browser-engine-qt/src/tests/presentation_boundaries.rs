@@ -26,6 +26,1179 @@ fn ipc_url_output_removes_credentials_auth_secrets_and_fragments() {
 }
 
 #[test]
+fn engine_url_rejection_diagnostics_are_closed_categories() {
+    let source = include_str!("../url_presentation.rs");
+    assert!(source.contains("pub(super) enum EngineUrlError"));
+    assert!(source.contains("Err(EngineUrlError::OriginMismatch)"));
+    assert!(source.contains("Self::OriginMismatch => \"URL normalization mismatch\""));
+    let conversion = source
+        .split_once("pub(super) fn canonical_engine_url")
+        .expect("engine URL conversion exists")
+        .1
+        .split_once("\nfn ensure_canonical_origins_match")
+        .expect("canonical-origin check follows conversion")
+        .0;
+    assert!(conversion.contains("ensure_canonical_origins_match(&rust_raw_url, &rust_qt_url)?"));
+    assert!(!conversion.contains("format!("));
+    assert!(!conversion.contains("rust_raw_url}"));
+    assert!(!conversion.contains("rust_qt_url}"));
+    assert!(!source.contains("Rust origin={}"));
+    assert!(!source.contains("Qt origin={}"));
+}
+
+#[test]
+fn spawn_and_editor_failures_do_not_render_paths_or_os_diagnostics() {
+    let runtime = include_str!("../lib.rs");
+    assert!(
+        runtime.contains("map_err(|_| \"could not create process working directory\".to_owned())?")
+    );
+    assert!(
+        runtime.contains("map_err(|_| \"could not secure process working directory\".to_owned())?")
+    );
+    assert!(!runtime.contains("could not create process working directory: {error}"));
+    assert!(!runtime.contains("could not secure process working directory: {error}"));
+
+    let editor = include_str!("../editor_process.rs");
+    assert!(editor.contains("map_err(|_| \"editor process status is unavailable\".to_owned())?"));
+    assert!(!editor.contains("editor wait failed: {error}"));
+}
+
+#[test]
+fn unsupported_ipc_method_errors_do_not_echo_client_input() {
+    let source = include_str!("../browser_ui_ipc_dispatch.rs");
+    let fallback = source
+        .split_once("_ => ipc_failure(")
+        .expect("unsupported IPC method fallback exists")
+        .1;
+    assert!(fallback.contains("\"unsupported IPC method\""));
+    assert!(!fallback.contains("request.method"));
+    assert!(!source.contains("unsupported IPC method: {}"));
+}
+
+#[test]
+fn ipc_route_source_errors_do_not_echo_client_input() {
+    let source = include_str!("../ipc_route.rs");
+    assert!(source.contains("\"command context source is unsupported\""));
+    assert!(!source.contains("command context source is unsupported: {value}"));
+}
+
+#[test]
+fn ipc_command_failures_do_not_forward_dynamic_status_or_parser_text() {
+    let source = include_str!("../browser_ui_ipc.rs");
+    for safe_message in [
+        "input workflow command was not accepted",
+        "Site Doctor experiment could not be started",
+        "Site Doctor result is invalid",
+        "Site Doctor experiment could not be undone",
+        "clipboard navigation was not accepted",
+    ] {
+        assert!(source.contains(safe_message));
+    }
+    assert!(!source.contains("status_text.to_string()"));
+    assert!(!source.contains("serde_json::from_str(&payload).map_err(|error| error.to_string())"));
+}
+
+#[test]
+fn blocking_status_does_not_project_the_global_status_bar_text() {
+    let source = include_str!("../browser_ui_query_site.rs");
+    assert!(source.contains("\"status\": if self.rust().blocking_enabled"));
+    assert!(!source.contains("\"status\": self.rust().status_text.to_string()"));
+}
+
+#[test]
+fn ipc_operation_errors_do_not_forward_global_status_or_parser_details() {
+    let permissions = include_str!("../browser_ui_downloads_permissions.rs");
+    let site = include_str!("../browser_ui_site.rs");
+    let tabs = include_str!("../browser_ui_tabs.rs");
+    let configuration = include_str!("../browser_ui_configuration.rs");
+
+    for source in [permissions, site, tabs] {
+        assert!(!source.contains("status_text.to_string()"));
+    }
+    for (source, safe_message) in [
+        (permissions, "Permission listing is unavailable; details suppressed"),
+        (permissions, "Permission reset failed; details suppressed"),
+        (site, "Site-data clearing could not be started; details suppressed"),
+        (tabs, "Command action could not be executed; details suppressed"),
+        (tabs, "captured command arguments are invalid JSON"),
+        (configuration, "Configuration reload rejected; details suppressed"),
+    ] {
+        assert!(source.contains(safe_message));
+    }
+    assert!(!tabs.contains("captured command arguments are invalid JSON: {error}"));
+    assert!(!configuration.contains("return Err(status)"));
+}
+
+#[test]
+fn runtime_setting_failures_use_fixed_status_and_property_copy() {
+    let source = include_str!("../browser_ui_runtime_config.rs");
+    let setter = source
+        .split_once("pub(super) fn set_runtime_setting")
+        .expect("runtime setting setter exists")
+        .1
+        .split_once("pub(super) fn unset_runtime_setting")
+        .expect("runtime setting unsetter follows setter")
+        .0;
+    let unsetter = source
+        .split_once("pub(super) fn unset_runtime_setting")
+        .expect("runtime setting unsetter exists")
+        .1
+        .split_once("pub(super) fn clear_site_experiment_presentation")
+        .expect("site experiment projection follows unsetter")
+        .0;
+
+    for body in [setter, unsetter] {
+        assert!(body.contains("Runtime setting update failed; details suppressed"));
+        assert!(body.contains("set_status_text(message.clone())"));
+        assert!(body.contains("set_runtime_setting_error(message)"));
+        assert!(!body.contains("QString::from(error"));
+    }
+}
+
+#[test]
+fn network_policy_status_suppresses_diagnostics_and_reports_only_success() {
+    let source = include_str!("../browser_ui_runtime_config.rs");
+    let network_policy = source
+        .split_once("if let Some(result) = network_policy_result")
+        .expect("network policy result handler exists")
+        .1
+        .split_once("let userscript_manager_result")
+        .expect("network policy result handler ends before userscripts")
+        .0;
+
+    assert!(network_policy.contains("Network policy unavailable; details suppressed"));
+    assert!(network_policy.contains("Err(_) => {"));
+    assert!(network_policy.contains("self.as_mut().set_status_text(QString::from("));
+    assert!(!network_policy.contains("Err(error)"));
+    assert!(!network_policy.contains("{error}"));
+    assert!(network_policy.contains("let reload_succeeded = match result"));
+    assert!(network_policy.contains("let succeeded = policy.compile_failures.is_empty()"));
+    assert!(network_policy.contains("self.as_mut().apply_network_policy_snapshot(policy)"));
+    assert!(network_policy.contains("if reload_requested && reload_succeeded"));
+    assert!(!network_policy.contains("if reload_requested {"));
+}
+
+#[test]
+fn blocklist_update_status_does_not_echo_configured_cache_identity() {
+    let updater = include_str!("../blocklist_updater.cpp");
+    let runtime = include_str!("../../qml/components/FerricBrowserRuntimeSurface.qml");
+    let completion = updater
+        .split_once("void FerricBrowserBlocklistUpdater::finishOne(QNetworkReply *reply)")
+        .expect("blocklist reply completion handler")
+        .1
+        .split_once("void FerricBrowserBlocklistUpdater::setStatus(")
+        .expect("blocklist reply completion boundary")
+        .0;
+
+    assert!(completion.contains("setStatus(QStringLiteral(\"Blocklist unchanged\"))"));
+    assert!(!completion.contains("Blocklist unchanged: %1"));
+    assert!(!completion.contains(".arg(cacheId)"));
+    assert!(completion.contains("failed_.append(cacheId)"));
+    assert!(runtime.contains("browserUi.status_text = blocklistUpdater.status"));
+}
+
+#[test]
+fn sensitive_qt_transient_records_do_not_regain_derived_debug() {
+    let switcher = include_str!("../switcher_index.rs");
+    assert!(!switcher.contains("Debug"));
+
+    let state = include_str!("../browser_ui_state.rs");
+    for declaration in [
+        "#[derive(Clone, Debug)]\npub(super) struct PendingContextRoute",
+        "#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]\npub(super) struct PermissionDecisionKey",
+        "#[derive(Clone, Debug, Default)]\npub(super) struct ContextSnapshot",
+        "#[derive(Clone, Debug)]\npub(super) struct SwitcherQueryCache",
+        "#[derive(Debug, Default)]\npub(super) struct SessionCheckpoint",
+    ] {
+        assert!(
+            !state.contains(declaration),
+            "derived Debug returned: {declaration}"
+        );
+    }
+
+    let editor = include_str!("../editor_process.rs");
+    assert!(!editor.contains("#[derive(Clone, Debug)]"));
+    let workers = include_str!("../background_workers.rs");
+    assert!(!workers.contains("#[derive(Debug)]\npub(super) enum UserscriptManagerResult"));
+
+    let browser = include_str!("../lib.rs");
+    for declaration in [
+        "#[derive(Clone, Debug)]\nstruct SiteExperiment",
+        "#[derive(Clone, Debug)]\nstruct ClosedTabDescriptor",
+        "#[derive(Clone, Debug)]\nstruct PendingExternalNavigation",
+        "#[derive(Clone, Debug)]\nstruct PendingUserscript",
+        "#[derive(Clone, Debug)]\nstruct UserscriptCompletion",
+    ] {
+        assert!(
+            !browser.contains(declaration),
+            "derived Debug returned: {declaration}"
+        );
+    }
+
+    let evidence = include_str!("../blocking_evidence.rs");
+    assert!(!evidence.contains("#[derive(Clone, Debug, Default)]"));
+    let windows = include_str!("../window_registry.rs");
+    assert!(!windows.contains("#[derive(Clone, Debug)]"));
+}
+
+#[test]
+fn qml_runtime_warning_projection_does_not_render_warning_text() {
+    let diagnostics = include_str!("../qml_diagnostics.cpp");
+    let raw_warning_suppression = diagnostics
+        .split("void ferric_browser_suppress_qml_warning_stderr")
+        .nth(1)
+        .expect("raw QML warning suppression function exists")
+        .split("void ferric_browser_enable_qml_diagnostics")
+        .next()
+        .expect("raw warning suppression is separate from opt-in reporting");
+    assert!(raw_warning_suppression.contains("setOutputWarningsToStandardError(false)"));
+
+    let warning_hook = diagnostics
+        .split("void ferric_browser_dump_qml_component_errors")
+        .next()
+        .expect("warning hook precedes opt-in component diagnostics");
+    assert!(warning_hook.contains("warning details suppressed"));
+    assert!(warning_hook.contains("warnings.size()"));
+    assert!(!warning_hook.contains("warning.toString()"));
+
+    let component_dump = diagnostics
+        .split("void ferric_browser_dump_qml_component_errors")
+        .nth(1)
+        .expect("explicit startup diagnostics function exists");
+    assert!(component_dump.contains("component diagnostic details suppressed"));
+    assert!(component_dump.contains("errors.size()"));
+    assert!(!component_dump.contains("error.toString()"));
+    assert!(!component_dump.contains("rendered.constData()"));
+
+    let executable = include_str!("../../../ferric-browser/src/main.rs");
+    let failure_callback = executable
+        .split("on_object_creation_failed")
+        .nth(1)
+        .expect("QML object-creation failure callback exists")
+        .split("let initial_url")
+        .next()
+        .expect("failure callback ends before initial URL setup");
+    let stderr_message = failure_callback
+        .split("eprintln!(")
+        .nth(1)
+        .expect("failure callback emits a user-safe fixed diagnostic")
+        .split(");")
+        .next()
+        .expect("stderr statement is terminated");
+    assert_eq!(
+        stderr_message,
+        "\"Ferric QML component failed to load; source details suppressed\""
+    );
+    assert!(failure_callback.contains("if !qml_failed_signal.swap(true, Ordering::Relaxed)"));
+
+    let warning_setup = executable
+        .split("let qml_diagnostics_enabled")
+        .nth(1)
+        .expect("QML diagnostic policy is configured before loading the root")
+        .split("let qml_failed")
+        .next()
+        .expect("warning policy is configured before failure handling");
+    assert!(warning_setup.contains(
+        "suppress_qml_warning_stderr(engine.as_mut());\n        if qml_diagnostics_enabled"
+    ));
+    assert!(warning_setup.contains("enable_qml_diagnostics(engine.as_mut());"));
+}
+
+#[test]
+fn page_supplied_hint_diagnostics_use_fixed_categories() {
+    let navigation = include_str!("../browser_ui_navigation.rs");
+    for forbidden in [
+        "format!(\"Hints rejected: {error}\")",
+        "json!({\"error\": error})",
+        "error.to_string()}).to_string()",
+        "format!(\"Hint selection rejected: {error}\")",
+        "format!(\"Hint link rejected: {error}\")",
+        "format!(\"Clean hint link rejected: {error}\")",
+        "format!(\"Hint navigation rejected: {error}\")",
+        "format!(\"Hint external target rejected: {error}\")",
+        "available\":labeled.len()",
+        "only {} candidate(s)",
+    ] {
+        assert!(
+            !navigation.contains(forbidden),
+            "page-derived hint diagnostics must not escape: {forbidden}"
+        );
+    }
+    assert!(!navigation.contains("{error}"));
+    assert!(navigation.contains("page candidates were invalid"));
+    assert!(navigation.contains("invalid-candidates"));
+    assert!(navigation.contains("Hint index is unavailable for this page"));
+
+    let payload = include_str!("../hint_payload.rs");
+    assert!(payload.contains("map_err(|_| \"hint candidate JSON is invalid\".to_owned())?"));
+    assert!(payload.contains("hint candidate kind is unsupported"));
+    assert!(!payload.contains("unknown hint kind: {value}"));
+    assert!(!payload.contains("format!(\"hint candidate JSON is invalid: {error}\")"));
+    assert!(!payload.contains("format!(\"hint candidate count {} exceeds"));
+
+    let selection = include_str!("../browser_ui_edit_commands.rs");
+    assert!(selection.contains("return fail(self, \"Selection search is unavailable\".into());"));
+    assert!(!selection.contains("Selection search unavailable: {error}"));
+}
+
+#[test]
+fn profile_management_failures_do_not_surface_worker_diagnostics() {
+    let management = include_str!("../profile_management.rs");
+    let workers = include_str!("../profile_workers.rs");
+    let runtime = include_str!("../browser_ui_runtime_config.rs");
+
+    for safe_message in [
+        "Profile list is unavailable",
+        "Profile creation is unavailable",
+        "Profile rename is unavailable",
+        "Profile preview is unavailable",
+        "Profile deletion is unavailable",
+    ] {
+        assert!(management.contains(safe_message));
+    }
+    assert!(runtime.contains("Profile list is unavailable"));
+    assert!(runtime.contains("Profile preview is unavailable"));
+    assert!(runtime.contains("Profile operation failed"));
+
+    for dynamic_format in [
+        "Profile list failed: {error}",
+        "Profile creation failed: {error}",
+        "Profile rename failed: {error}",
+        "Profile preview failed: {error}",
+        "Profile deletion failed: {error}",
+        "Profile list unavailable: {error}",
+        "Profile preview unavailable: {error}",
+        "Profile operation failed: {error}",
+        "profile registry unavailable: {error}",
+    ] {
+        assert!(!management.contains(dynamic_format));
+        assert!(!runtime.contains(dynamic_format));
+        assert!(!workers.contains(dynamic_format));
+    }
+    assert!(!workers.contains("delete_profile_transaction(&roots, &profile.name)\n                            .map_err(|error| error.to_string())"));
+}
+
+#[test]
+fn asynchronous_profile_and_context_statuses_do_not_echo_user_labels() {
+    let runtime = include_str!("../browser_ui_runtime_config.rs");
+    let completion = runtime
+        .split_once("let profile_list_result = {")
+        .expect("profile-list completion handler exists")
+        .1
+        .split_once("let profile_delete_result = {")
+        .expect("profile-list completion handler ends before deletion completion")
+        .0;
+
+    for fixed_message in [
+        "Opening profile window",
+        "Profile not found",
+        "Context created",
+        "Context creation failed; details suppressed",
+        "Profiles available",
+        "No durable profiles",
+    ] {
+        assert!(completion.contains(fixed_message));
+    }
+    assert!(completion.contains("set_profile_values(QString::from(values))"));
+    for dynamic_message in [
+        "Opening profile window: {profile_label}",
+        "Profile not found: {name}",
+        "Profile not found: {profile}",
+        "Context created: {name}",
+        "Context creation failed: {error}",
+        "format!(\"Profiles: {status_values}\")",
+    ] {
+        assert!(!completion.contains(dynamic_message));
+    }
+}
+
+#[test]
+fn compositor_worker_statuses_do_not_echo_os_or_socket_diagnostics() {
+    let runtime = include_str!("../browser_ui_runtime.rs");
+    let config_runtime = include_str!("../browser_ui_runtime_config.rs");
+    for fixed_message in [
+        "Hyprland workspace routing failed; details suppressed",
+        "Hyprland workspace move failed; details suppressed",
+        "Hyprland browser-client query failed; details suppressed",
+    ] {
+        assert!(runtime.contains(fixed_message));
+        assert!(config_runtime.contains(fixed_message));
+    }
+    for dynamic_message in [
+        "Hyprland workspace routing failed: {error}",
+        "Hyprland workspace move failed: {error}",
+        "Hyprland browser-client query failed: {error}",
+        "Hyprland routing unavailable: {status}",
+        "Hyprland routing request unavailable: {error:?}",
+        "Window movement unavailable: {status}",
+        "Window movement request unavailable: {error:?}",
+        "Hyprland client query unavailable: {status}",
+        "Hyprland client query unavailable: {error:?}",
+    ] {
+        assert!(!runtime.contains(dynamic_message));
+        assert!(!config_runtime.contains(dynamic_message));
+    }
+}
+
+#[test]
+fn profile_bootstrap_status_does_not_surface_paths_or_parser_diagnostics() {
+    let source = include_str!("../browser_ui_profile_setup.rs");
+    assert!(source.contains("Profile bootstrap failed; diagnostic details suppressed"));
+    assert!(source.contains("durable storage unavailable; details suppressed"));
+    assert!(source.contains("metadata worker unavailable; details suppressed"));
+    assert!(source.contains("configuration issue; details suppressed"));
+    assert!(source.contains("context configuration issue; details suppressed"));
+    assert!(source.contains("Blocklist could not be installed"));
+    assert!(source.contains("Blocklist installed; cache metadata is unavailable"));
+    assert!(source.contains("Clean-link update rejected; last accepted rules retained"));
+    assert!(!source.contains("Profile bootstrap failed: {error}"));
+    assert!(!source.contains("durable storage unavailable: {error}"));
+    assert!(!source.contains("metadata worker unavailable: {error}"));
+    assert!(!source.contains("configuration issue: {error}"));
+    assert!(!source.contains("context configuration issue: {error}"));
+    assert!(!source.contains("Blocklist ID rejected: {id}"));
+    assert!(!source.contains("Blocklist {id} could not be installed: {error}"));
+    assert!(!source.contains("Clean-link update rejected; last accepted rules retained: {error}"));
+    assert!(!source.contains("Clean-link rules accepted: {revision}"));
+    assert!(!source.contains("map_err(|error| error.to_string())"));
+}
+
+#[test]
+fn userscript_install_failures_do_not_surface_paths_or_parser_diagnostics() {
+    let source = include_str!("../browser_ui_ui_actions.rs");
+    let completion = include_str!("../browser_ui_runtime_config.rs");
+    let qml = include_str!("../../qml/components/FerricBrowserRuntimeRequests.qml");
+    assert!(source.contains("error:userscript installation could not be queued"));
+    assert!(source.contains("Userscript installation could not be queued; details suppressed"));
+    assert!(completion.contains("Userscript inventory unavailable; details suppressed"));
+    assert!(completion.contains("Userscript installation failed; details suppressed"));
+    assert!(completion.contains("Userscript removal failed; details suppressed"));
+    assert!(completion.contains("Userscript change rejected; details suppressed"));
+    assert!(qml.contains("window.settingsNotice = \"Userscript operation failed: \""));
+    assert!(!source.contains("QString::from(format!(\"error:{error}\"))"));
+    assert!(!source.contains("Userscript installation failed: {error}"));
+    for dynamic_message in [
+        "Userscript inventory unavailable: {error}",
+        "Userscript installation failed: {error}",
+        "Userscript removal failed: {error}",
+        "Userscript change rejected: {error}",
+        "QString::from(format!(\"error:{error}\"))",
+    ] {
+        assert!(!completion.contains(dynamic_message));
+    }
+}
+
+#[test]
+fn action_catalog_statuses_do_not_surface_manifest_or_configuration_diagnostics() {
+    let userscripts = include_str!("../userscript_presentation.rs");
+    let external_actions = include_str!("../browser_ui_ui_actions.rs");
+    let ipc_query = include_str!("../browser_ui_queries.rs");
+    let action_list = include_str!("../browser_ui_repeat_macros.rs");
+
+    assert!(userscripts.contains("Userscript actions unavailable; details suppressed"));
+    assert!(!userscripts.contains("Userscript actions unavailable: {error}"));
+
+    assert!(external_actions.contains("External actions unavailable; details suppressed"));
+    assert!(!external_actions.contains("External actions unavailable: {error}"));
+
+    assert!(ipc_query.contains(
+        "let targets = configured_action_targets(&self.rust().config)\n            .map_err(|_| \"configured action catalog is unavailable; details suppressed\")?;"
+    ));
+    assert!(ipc_query.contains(
+        ".map_err(|_| \"userscript action catalog is unavailable; details suppressed\")?;"
+    ));
+
+    assert!(action_list.contains("action catalog request is invalid; details suppressed"));
+    assert!(action_list.contains("configured action catalog is unavailable; details suppressed"));
+    assert!(action_list.contains("userscript action catalog is unavailable; details suppressed"));
+    assert!(!action_list.contains("action_list_value(subject)?"));
+    assert!(!action_list.contains("configured_action_targets(&self.as_ref().rust().config)?"));
+}
+
+#[test]
+fn runtime_status_projection_uses_safe_user_message_not_diagnostic_context() {
+    let source = include_str!("../runtime_bridge.rs");
+
+    assert!(source.contains("error.user_message().to_owned()"));
+    assert!(!source.contains("error.diagnostic_context()"));
+}
+
+#[test]
+fn hint_userscript_failures_do_not_surface_manifest_or_worker_diagnostics() {
+    let source = include_str!("../browser_ui_navigation.rs");
+
+    assert!(source.contains("Hint userscript action rejected; details suppressed"));
+    assert!(source.contains("Hint userscript rejected; details suppressed"));
+    assert!(!source.contains("Hint userscript action rejected: {error}"));
+    assert!(!source.contains("Hint userscript rejected: {error}"));
+}
+
+#[test]
+fn userscript_execution_admission_suppresses_manifest_and_executable_diagnostics() {
+    let source = include_str!("../browser_ui_web_actions.rs");
+    let actions = include_str!("../browser_ui_ui_actions.rs");
+    let ipc_actions = include_str!("../browser_ui_ipc_userscripts.rs");
+    for fixed_message in [
+        "userscript is unavailable or invalid; details suppressed",
+        "userscript executable is unavailable or invalid; details suppressed",
+        "userscript context encoding failed; details suppressed",
+        "userscript process could not start; details suppressed",
+        "userscript context delivery failed; details suppressed",
+    ] {
+        assert!(source.contains(fixed_message));
+    }
+    for dynamic_message in [
+        "userscript::load(&roots.config, name)?",
+        "userscript::validate_executable(&loaded.executable)?",
+        "could not encode userscript context: {error}",
+        "could not start userscript: {error}",
+    ] {
+        assert!(!source.contains(dynamic_message));
+    }
+    for fixed_message in [
+        "userscript action catalog is unavailable; details suppressed",
+        "userscript action manifest is unavailable or invalid; details suppressed",
+    ] {
+        assert!(actions.contains(fixed_message));
+    }
+    for dynamic_message in [
+        "userscript::registered_actions(&root)?",
+        "userscript::registered_actions(&roots.config)?",
+        "userscript::load(&roots.config, &action.script)?",
+    ] {
+        assert!(!actions.contains(dynamic_message));
+    }
+    assert!(
+        ipc_actions.contains("userscript action catalog is unavailable; details suppressed")
+    );
+    let catalog_failure = ipc_actions
+        .split_once("Some(Err(_))")
+        .expect("userscript catalog failure arm exists")
+        .1
+        .split_once("Some(Ok(actions))")
+        .expect("catalog success arm follows failure arm")
+        .0;
+    assert!(catalog_failure.contains(
+        "userscript action catalog is unavailable; details suppressed"
+    ));
+    assert!(!catalog_failure.contains("error"));
+}
+
+#[test]
+fn action_command_and_page_userscript_statuses_do_not_echo_dynamic_names() {
+    let commands = include_str!("../browser_ui_command_workflows.rs");
+    let target_routing = include_str!("../browser_ui_web_actions.rs");
+    let browser = include_str!("../lib.rs");
+    let external_actions = include_str!("../browser_ui_external_actions.rs");
+    let switcher = include_str!("../browser_ui_runtime.rs");
+    let services = include_str!("../../qml/components/FerricBrowserRuntimeServices.qml");
+    let mapping = include_str!("../action_mapping.rs");
+
+    for fixed_message in [
+        "Action started",
+        "Userscript action started",
+        "Userscript action failed; details suppressed",
+        "Selection sent to configured action target",
+        "Switcher action executed",
+    ] {
+        assert!(commands.contains(fixed_message)
+            || external_actions.contains(fixed_message)
+            || switcher.contains(fixed_message));
+    }
+    for dynamic_message in [
+        "format!(\"Executing {action_id}\")",
+        "Executing userscript action {action_id}",
+        "QString::from(userscript_error)",
+    ] {
+        assert!(!commands.contains(dynamic_message));
+    }
+    assert!(services.contains("Page userscript failed; details suppressed"));
+    assert!(!services.contains("Page userscript failed: \" + scriptName"));
+    assert!(!services.contains("})(ui, script.name, script.source)"));
+    assert!(mapping.contains("action arguments are invalid; details suppressed"));
+    assert!(!mapping.contains("format!(\"unknown action subject/verb: {subject} {verb}\")"));
+    for fixed_message in [
+        "configured action target catalog is unavailable; details suppressed",
+        "configured action target is unavailable",
+        "action target does not accept this subject",
+        "Sent to configured action target",
+    ] {
+        assert!(target_routing.contains(fixed_message));
+    }
+    for dynamic_message in [
+        "configured_action_targets(&self.as_ref().rust().config)?",
+        "format!(\"unknown action target: {target_name}\")",
+        "format!(\"action target does not accept {required_subject}\")",
+        "Sent to {target_name}: {operation_id}",
+    ] {
+        assert!(!target_routing.contains(dynamic_message));
+    }
+    let pending_action = browser
+        .split_once("struct PendingActionTarget {")
+        .expect("pending action target declaration exists")
+        .1
+        .split_once("\n}")
+        .expect("pending action target declaration ends")
+        .0;
+    assert!(!pending_action.contains("target_name"));
+    assert!(!target_routing.contains("target_name: target_name.clone()"));
+    assert!(target_routing.contains("\"target\": target_name"));
+    assert!(target_routing.contains("\"operation_id\": operation_id"));
+    assert!(!switcher.contains("Switcher action executed: {}"));
+    assert!(!switcher.contains("definition.label"));
+    assert!(!external_actions.contains("Sent selection to {}: {operation_id}"));
+}
+
+#[test]
+fn spawn_status_does_not_expose_operation_ids() {
+    let command = include_str!("../browser_ui_edit_commands.rs");
+    let callback = include_str!("../browser_ui_web_actions.rs");
+
+    for source in [command, callback] {
+        assert!(source.contains("QString::from(\"Spawn started\")"));
+        assert!(!source.contains("Spawn started: {operation_id}"));
+    }
+    assert!(command.contains("\"operation_id\": operation_id"));
+}
+
+#[test]
+fn userscript_completion_suppresses_process_and_protocol_diagnostics() {
+    let source = include_str!("../browser_ui_web_actions.rs");
+    let protocol = include_str!("../userscript_protocol.rs");
+    for fixed_message in [
+        "failed (userscript result was invalid)",
+        "failed (userscript output was unavailable)",
+        "failed (userscript exited unsuccessfully)",
+        "failed (process status unavailable)",
+        "failed (userscript context delivery failed)",
+    ] {
+        assert!(source.contains(fixed_message));
+    }
+    for dynamic_message in [
+        "format!(\"failed ({error})\")",
+        "format!(\"failed ({status})\")",
+        "format!(\"failed ({})\", error)",
+    ] {
+        assert!(!source.contains(dynamic_message));
+    }
+    assert!(source.contains("sanitize_process_stderr(&output)"));
+    assert!(source.contains("format!(\"completed: {}\", output.message)"));
+    for fixed_message in [
+        "invalid userscript JSON result",
+        "userscript result type is not allowed",
+        "userscript command is not allowed",
+        "userscript result type is unsupported",
+    ] {
+        assert!(protocol.contains(fixed_message));
+    }
+    for dynamic_message in [
+        "invalid userscript JSON result: {error}",
+        "userscript result type is not allowed: {result_type}",
+        "userscript command is not allowed: {name}",
+        "userscript result type is not implemented: {result_type}",
+    ] {
+        assert!(!protocol.contains(dynamic_message));
+    }
+}
+
+#[test]
+fn search_configuration_diagnostics_do_not_echo_caller_or_parser_values() {
+    let source = include_str!("../navigation_policy.rs");
+    assert!(source.contains("search configuration is invalid; details suppressed"));
+    assert!(source.contains("configured search engine was not found"));
+    assert!(source.contains("search URL could not be resolved; details suppressed"));
+    assert!(!source.contains("search configuration is invalid: {error}"));
+    assert!(!source.contains("configured search engine not found: {engine}"));
+}
+
+#[test]
+fn blocklist_compilation_errors_do_not_surface_downloaded_or_parser_details() {
+    let source = include_str!("../blocking_presentation.rs");
+    let policy = include_str!("../network_policy.rs");
+    assert!(
+        source.contains("Blocklist compilation failed; current rules retained; details suppressed")
+    );
+    assert!(!source.contains("policy.compile_failures.join"));
+    assert!(policy.contains("adblock-engine compilation failed; details suppressed"));
+    assert!(!policy.contains("compile_failures.push(format!(\"adblock-engine: {error}\"))"));
+}
+
+#[test]
+fn site_blocker_toggle_status_does_not_echo_the_current_host() {
+    let source = include_str!("../blocking_presentation.rs");
+    assert!(source.contains("Site blocker bypass disabled\""));
+    assert!(source.contains("Site blocker bypass enabled\""));
+    assert!(!source.contains("Site blocker bypass disabled for {host}"));
+    assert!(!source.contains("Site blocker bypass enabled for {host}"));
+    assert!(source.contains("sites.push(host.clone())"));
+}
+
+#[test]
+fn interactive_site_data_preview_does_not_put_the_origin_in_status() {
+    let dispatch = include_str!("../browser_ui_command_dispatch.rs");
+    let site = include_str!("../browser_ui_site.rs");
+    let typed_command = site
+        .split_once("pub(super) fn execute_site_data_clear_command")
+        .expect("typed site-data command exists")
+        .1;
+    assert!(dispatch.contains(
+        "Site-data scope preview ready; repeat with --confirm to clear supported categories"
+    ));
+    assert!(!dispatch.contains("Site-data scope preview: {plan}"));
+    assert!(!dispatch.contains("site_data_clear_plan(&QString::from(origin))"));
+    assert!(typed_command.contains("return Ok(value);"));
+}
+
+#[test]
+fn external_uri_status_does_not_echo_the_caller_scheme() {
+    let sessions = include_str!("../browser_ui_sessions.rs");
+    assert!(sessions.contains("External URI confirmed; opening with the system handler"));
+    assert!(!sessions.contains("{} URI confirmed; opening with the system handler"));
+    assert!(sessions.contains("Some(format!(\"external-open\\t{}\", pending.url))"));
+}
+
+#[test]
+fn userscript_print_and_journey_export_errors_suppress_local_diagnostics() {
+    let content_tools = include_str!("../browser_ui_content_tools.rs");
+    let popups = include_str!("../browser_ui_popups.rs");
+    for fixed_message in [
+        "Page userscripts unavailable; details suppressed",
+        "Userscript inventory request unavailable; details suppressed",
+        "Userscript change rejected; details suppressed",
+        "Userscript removal rejected; details suppressed",
+        "Print PDF path rejected; details suppressed",
+        "Save Page path rejected; details suppressed",
+        "Print staging directory is unavailable; details suppressed",
+        "Print staging directory permissions could not be secured; details suppressed",
+        "PDF output unavailable or invalid; details suppressed",
+        "Print failed; details suppressed",
+    ] {
+        assert!(content_tools.contains(fixed_message));
+    }
+    for fixed_message in [
+        "Journey export serialization failed; details suppressed",
+        "Journey export is already loading or unavailable; details suppressed",
+        "Journey export unavailable; details suppressed",
+        "Journey export failed; details suppressed",
+    ] {
+        assert!(popups.contains(fixed_message));
+    }
+    for dynamic_message in [
+        "Page userscripts unavailable: {error}",
+        "Userscript inventory unavailable: {error}",
+        "Userscript inventory request unavailable: {error}",
+        "Userscript change rejected: {error}",
+        "Userscript removal rejected: {error}",
+        "Print PDF path rejected: {error}",
+        "Save Page path rejected: {error}",
+        "generated PDF is unavailable: {error}",
+        "Print staging directory is unavailable: {error}",
+        "Print staging directory permissions could not be secured: {error}",
+        "Print failed: {error}",
+        "Journey export is already loading or unavailable: {error}",
+        "Journey export unavailable: {error}",
+        "Journey export failed: {error}",
+        "map_err(|error| error.to_string())",
+        "QString::from(error)",
+    ] {
+        assert!(!content_tools.contains(dynamic_message));
+        assert!(!popups.contains(dynamic_message));
+    }
+}
+
+#[test]
+fn configuration_query_failures_do_not_echo_keys_or_parser_diagnostics() {
+    let source = include_str!("../browser_ui_query_configuration.rs");
+    for category in ["IpcQueryError::Invalid", "IpcQueryError::NotFound"] {
+        assert!(source.contains(category));
+    }
+    for dynamic_message in [
+        "configuration key not found: {key}",
+        "configuration key {key} does not support site scope",
+        "configuration key is not in the setting registry: {key}",
+        "validated configuration could not be decoded: {error}",
+    ] {
+        assert!(!source.contains(dynamic_message));
+    }
+}
+
+#[test]
+fn permission_query_origin_validation_uses_fixed_error_copy() {
+    let source = include_str!("../browser_ui_query_permissions.rs");
+    assert!(source.contains(".map_err(|_| IpcQueryError::Invalid)?"));
+    assert!(!source.contains("map_err(IpcQueryError::Invalid)"));
+}
+
+#[test]
+fn ipc_event_subscription_failures_suppress_worker_diagnostics() {
+    let source = include_str!("../browser_ui_maintenance.rs");
+    assert!(source.contains("IPC event subscription is unavailable; details suppressed"));
+    assert!(source.contains("subscribe_event_stream(stream, event_types).is_err()"));
+    assert!(!source.contains("ipc_failure(&pending.request().id, \"E_IO\", error)"));
+}
+
+#[test]
+fn shutdown_storage_failures_do_not_surface_worker_diagnostics() {
+    let source = include_str!("../browser_ui_runtime.rs");
+    assert!(source.contains("Durable metadata flush failed; details suppressed"));
+    assert!(source.contains("Durable metadata flush unavailable; details suppressed"));
+    assert!(source.contains(
+        "Stale session checkpoint cleanup unavailable; recovery data was retained; details suppressed"
+    ));
+    assert!(!source.contains("Durable metadata flush failed: {error}"));
+    assert!(!source.contains("Durable metadata flush unavailable: {error}"));
+    assert!(!source.contains("recovery data was retained: {error}"));
+}
+
+#[test]
+fn browser_status_error_projections_suppress_diagnostic_values() {
+    let input = include_str!("../browser_ui_input.rs");
+    let permissions = include_str!("../browser_ui_downloads_permissions.rs");
+    let permission_reset = include_str!("../browser_ui_permission_reset.rs");
+    let sessions = include_str!("../browser_ui_sessions.rs");
+    let navigation = include_str!("../browser_ui_context_navigation.rs");
+    let navigation_lifecycle = include_str!("../browser_ui_navigation_lifecycle.rs");
+    let tab_state = include_str!("../browser_ui_tab_state.rs");
+    let tabs = include_str!("../browser_ui_tabs.rs");
+
+    for (source, fixed_message) in [
+        (input, "Binding rejected; details suppressed"),
+        (permissions, "Permission session decision rejected; details suppressed"),
+        (permissions, "Permission rule rejected; details suppressed"),
+        (permissions, "Permissions unavailable; details suppressed"),
+        (permission_reset, "Permission reset rejected; details suppressed"),
+        (permission_reset, "Permission reset unavailable; details suppressed"),
+        (sessions, "Recovery unavailable; details suppressed"),
+        (sessions, "Session restore unavailable; details suppressed"),
+        (sessions, "Session preview unavailable; details suppressed"),
+        (sessions, "Session deletion unavailable; details suppressed"),
+        (sessions, "Clean-link navigation rejected; details suppressed"),
+        (navigation, "Navigation rejected; details suppressed"),
+        (navigation, "Clipboard navigation rejected; details suppressed"),
+        (navigation_lifecycle, "Navigation URL rejected; details suppressed"),
+        (navigation_lifecycle, "Engine URL rejected; details suppressed"),
+        (
+            navigation_lifecycle,
+            "Tab close acknowledgement rejected; details suppressed",
+        ),
+        (tab_state, "Tab transfer URL rejected; details suppressed"),
+        (tabs, "Tab pinning rejected; details suppressed"),
+        (tabs, "Tab mute rejected; details suppressed"),
+        (tabs, "Tab close rejected; details suppressed"),
+    ] {
+        assert!(source.contains(fixed_message), "missing {fixed_message}");
+    }
+
+    for dynamic_message in [
+        "Binding rejected: {error}",
+        "Permission session decision rejected: {error}",
+        "Permission rule rejected: {error}",
+        "Permissions unavailable: {error}",
+        "Permission reset rejected: {error}",
+        "Permission reset unavailable; retry the command: {error}",
+        "Recovery unavailable: {error}",
+        "Session restore unavailable: {error}",
+        "Session preview unavailable: {error}",
+        "Session deletion unavailable: {error}",
+        "Clean-link navigation rejected: {error}",
+        "Navigation rejected: {error}",
+        "Navigation URL rejected: {error}",
+        "Engine URL rejected: {error}",
+        "Tab transfer URL rejected: {error}",
+        "Tab pinning rejected: {error}",
+        "Tab mute rejected: {error}",
+        "Tab close rejected: {error}",
+        "Tab close acknowledgement rejected: {error}",
+    ] {
+        assert!(
+            ![
+                input,
+                permissions,
+                permission_reset,
+                sessions,
+                navigation,
+                navigation_lifecycle,
+                tab_state,
+                tabs,
+            ]
+            .iter()
+            .any(|source| source.contains(dynamic_message)),
+            "dynamic status projection remains: {dynamic_message}"
+        );
+    }
+}
+
+#[test]
+fn reduced_chrome_command_status_does_not_echo_command_text() {
+    let source = include_str!("../browser_ui_command_history.rs");
+    let dispatch = source
+        .split_once("fn execute_interactive_command_for_surface")
+        .expect("surface-specific interactive command dispatcher exists")
+        .1
+        .split_once("let eligible =")
+        .expect("reduced-chrome rejection precedes command eligibility")
+        .0;
+
+    assert!(dispatch.contains(
+        "This command is unavailable in this window; use a full browser window"
+    ));
+    assert!(!dispatch.contains("command.name"));
+    assert!(!dispatch.contains("format!("));
+}
+
+#[test]
+fn durable_library_statuses_do_not_surface_storage_or_page_diagnostics() {
+    let source = include_str!("../browser_ui_library.rs");
+    for fixed_message in [
+        "Session catalog query failed; details suppressed",
+        "Session snapshot failed; changes retained; details suppressed",
+        "Recovery rejected; details suppressed",
+        "Profile metadata query failed; details suppressed",
+        "Command history write failed; details suppressed",
+        "Journey query failed; details suppressed",
+        "Journey export unavailable; details suppressed",
+        "Download destination update failed; details suppressed",
+    ] {
+        assert!(source.contains(fixed_message));
+    }
+    for dynamic_message in [
+        "Session catalog query failed: {error}",
+        "Session snapshot failed; changes retained: {error}",
+        "Recovery rejected: {error}",
+        "Profile metadata query failed: {error}",
+        "Command history write failed: {error}",
+        "Journey query failed: {error}",
+        "Journey export unavailable: {error}",
+        "Download destination update failed: {error}",
+        "set_status_text(QString::from(error))",
+    ] {
+        assert!(!source.contains(dynamic_message));
+    }
+    assert!(source.contains("Some(\"command history write failed; details suppressed\".into())"));
+    assert!(!source.contains("command_history_write_error = Some(error.clone())"));
+}
+
+#[test]
+fn storage_batch_statuses_do_not_surface_worker_diagnostics() {
+    let source = include_str!("../browser_ui_storage_writes.rs");
+    let scheduling = include_str!("../browser_ui_persistence.rs");
+    for fixed_message in [
+        "History worker write failed; details suppressed",
+        "Permission worker write failed; details suppressed",
+        "Download worker write failed; details suppressed",
+        "Download update could not be scheduled; details suppressed",
+        "Permission write could not be scheduled; details suppressed",
+        "History write could not be scheduled; details suppressed",
+        "Journey write could not be scheduled; history retained; details suppressed",
+    ] {
+        assert!(source.contains(fixed_message) || scheduling.contains(fixed_message));
+    }
+    for dynamic_message in [
+        "History worker write failed: {error}",
+        "Permission worker write failed: {error}",
+        "Download worker write failed: {error}",
+        "Download update could not be scheduled: {error}",
+        "Permission write could not be scheduled: {error}",
+        "History write could not be scheduled: {error}",
+        "Journey write could not be scheduled; history retained: {error}",
+    ] {
+        assert!(!source.contains(dynamic_message));
+        assert!(!scheduling.contains(dynamic_message));
+    }
+}
+
+#[test]
+fn configuration_worker_statuses_do_not_surface_paths_or_parser_diagnostics() {
+    let source = include_str!("../browser_ui_runtime_config.rs");
+    let configuration = include_str!("../browser_ui_configuration.rs");
+    assert!(source.contains("Configuration write failed; details suppressed"));
+    assert!(source.contains("Configuration reload rejected; details suppressed"));
+    assert!(source.contains("Configuration reload unavailable; details suppressed"));
+    assert!(source.contains("Print failed; details suppressed"));
+    assert!(configuration.contains("Site rules unavailable; details suppressed"));
+    assert!(configuration.contains("Configuration editor status unavailable; details suppressed"));
+    for dynamic_message in [
+        "Configuration write failed: {error}",
+        "Configuration reload rejected: {error}",
+        "Configuration reload unavailable: {error}",
+        "Print failed: {error}",
+        "Site rules unavailable: {error}",
+        "Configuration editor status unavailable: {error}",
+    ] {
+        assert!(!source.contains(dynamic_message));
+        assert!(!configuration.contains(dynamic_message));
+    }
+}
+
+#[test]
+fn external_process_failures_do_not_surface_os_diagnostics() {
+    let source = include_str!("../browser_ui_process_actions.rs");
+    assert!(source.contains("could not start executable"));
+    assert!(source.contains("failed (process status unavailable)"));
+    assert!(source.contains("could not start action target"));
+    for dynamic_message in [
+        "could not start executable: {error}",
+        "failed ({error})",
+        "could not start action target: {error}",
+    ] {
+        assert!(!source.contains(dynamic_message));
+    }
+}
+
+#[test]
+fn context_configuration_failures_do_not_echo_parser_paths_or_user_ids() {
+    let source = include_str!("../browser_ui_context_commands.rs");
+    for fixed_message in [
+        "Profile window navigation rejected; details suppressed",
+        "contexts configuration is unavailable; details suppressed",
+        "contexts configuration could not be published; details suppressed",
+        "contexts configuration is invalid; details suppressed",
+        "could not serialize contexts configuration; details suppressed",
+        "context route write failed; details suppressed",
+        "context route not found",
+    ] {
+        assert!(source.contains(fixed_message));
+    }
+    for dynamic_message in [
+        "Profile window navigation rejected: {error}",
+        "contexts configuration is invalid: {error}",
+        "could not serialize contexts configuration: {error}",
+        "save_contexts_atomic(&path, &config).map_err(|error| error.to_string())",
+        "context route not found: {route_id}",
+    ] {
+        assert!(!source.contains(dynamic_message));
+    }
+}
+
+#[test]
+fn switcher_action_failures_do_not_surface_dynamic_details() {
+    let source = include_str!("../browser_ui_runtime.rs");
+    assert!(source.contains("Switcher action unavailable; details suppressed"));
+    assert!(source.contains("Switcher action failed; details suppressed"));
+    assert!(!source.contains("Switcher action unavailable: {error}"));
+    assert!(!source.contains("Switcher action failed: {error}"));
+}
+
+#[test]
+fn download_open_failures_do_not_surface_paths_or_os_diagnostics() {
+    let source = include_str!("../browser_ui_downloads_permissions.rs");
+    for fixed_message in [
+        "download file is unavailable; details suppressed",
+        "download directory is unavailable; details suppressed",
+        "download location could not be resolved; details suppressed",
+        "Download index unavailable; details suppressed",
+        "Download directory unavailable; details suppressed",
+        "Download destination rejected; details suppressed",
+        "Download staging unavailable; details suppressed",
+        "Download index update failed; details suppressed",
+        "Download update could not be scheduled; details suppressed",
+        "Download finalization failed; details suppressed",
+        "Download action could not be queued; details suppressed",
+    ] {
+        assert!(source.contains(fixed_message));
+    }
+    for dynamic_message in [
+        "download file is unavailable: {error}",
+        "download directory is unavailable: {error}",
+        "Download index unavailable: {error}",
+        "Download directory unavailable: {error}",
+        "Download destination rejected: {error}",
+        "Download staging unavailable: {error}",
+        "Download index update failed: {error}",
+        "Download finalization failed: {error}",
+        "Download action could not be queued: {error}",
+        "if let Err(error) = fs::create_dir_all(&directory)",
+    ] {
+        assert!(!source.contains(dynamic_message));
+    }
+    assert!(!source.contains(
+        "path_to_file_url(&target)\n                .map_err(|error| error.to_string())"
+    ));
+}
+
+#[test]
+fn site_doctor_and_diagnostics_failures_do_not_surface_dynamic_details() {
+    let source = include_str!("../browser_ui_site.rs");
+    for fixed_message in [
+        "Site Doctor proposal could not read effective config; details suppressed",
+        "Site Doctor durable fix was not applied; details suppressed",
+        "Site status unavailable; details suppressed",
+        "Diagnostics unavailable; details suppressed",
+    ] {
+        assert!(source.contains(fixed_message));
+    }
+    for dynamic_message in [
+        "Site Doctor proposal could not read effective config: {error}",
+        "Site Doctor durable fix was not applied: {error}",
+        "json!({\"error\": error})",
+        "QString::from(error)",
+    ] {
+        assert!(!source.contains(dynamic_message));
+    }
+}
+
+#[test]
+fn renderer_callback_errors_do_not_echo_page_supplied_text() {
+    let source = include_str!("../browser_ui_external_actions.rs");
+    let maintenance = include_str!("../browser_ui_maintenance.rs");
+    for fixed_message in [
+        "Action target selection unavailable",
+        "Action target failed",
+        "Selection could not be copied",
+        "Userscript selection unavailable",
+        "Userscript selection failed",
+        "Caret operation was rejected",
+        "External editor could not start",
+        "External editor could not complete the request",
+        "External changes could not be applied",
+        "editor file could not be written",
+        "configured editor command is unavailable",
+        "could not read edited text",
+        "editor exited unsuccessfully",
+        "editor process could not be monitored",
+    ] {
+        assert!(source.contains(fixed_message));
+    }
+    for dynamic_message in [
+        "Action target selection unavailable: {error}",
+        "action target failed: {error}",
+        "Selection not copied: {error}",
+        "Userscript selection unavailable: {error}",
+        "Userscript selection failed: {error}",
+        "Caret operation rejected: {error}",
+        "could not queue editor file: {error}",
+        "could not write editor file: {error}",
+        "could not read edited text: {error}",
+        "Editor could not start: {error}",
+        "Editor not applied: {error}",
+        "editor exited with status {status}",
+    ] {
+        assert!(!source.contains(dynamic_message));
+    }
+    assert!(maintenance.contains("failed (userscript action failed)"));
+    assert!(!maintenance.contains("userscript action: {error}"));
+}
+
+#[test]
+fn selection_spawn_failures_do_not_surface_command_or_os_details() {
+    let source = include_str!("../browser_ui_web_actions.rs");
+    assert!(source.contains("Spawn selection could not be resolved"));
+    assert!(source.contains("Spawn could not start"));
+    assert!(!source.contains("QString::from(error)"));
+    assert!(!source.contains("Spawn failed: {error}"));
+}
+
+#[test]
+fn subprocess_output_errors_are_fixed_or_discarded() {
+    let userscript_io = include_str!("../userscript_io.rs");
+    let editor_launch = include_str!("../browser_ui_edit_commands.rs");
+    assert!(userscript_io.contains("external process output read failed"));
+    assert!(editor_launch.contains(".stderr(Stdio::null())"));
+    assert!(!userscript_io.contains("userscript pipe read failed: {error}"));
+    assert!(!editor_launch.contains(".stderr(Stdio::piped())"));
+}
+
+#[test]
 fn display_url_redacts_credentials_secrets_and_directional_controls() {
     assert_eq!(
         display_url("https://user:password@example.test/path?keep=1&token=secret#private"),
@@ -40,12 +1213,16 @@ fn display_url_redacts_credentials_secrets_and_directional_controls() {
         "https://xn--ypal-43d9g.example\u{2068}/path\u{2069}"
     );
     let qml = QML_SOURCE;
+    let runtime_chrome = include_str!("../../qml/components/FerricBrowserRuntimeChrome.qml");
+    let status_bar = include_str!("../../qml/components/FerricStatusBar.qml");
+    let secondary_window = include_str!("../../qml/components/FerricBrowserWindow.qml");
     assert!(qml.contains("function addressPresentation(value, maxCharacters)"));
     assert!(qml.contains("var origin = safe.slice(0, authorityEnd)"));
     assert!(qml.contains("var separator = tail.charAt(0) === \"/\" ? \"/…\" : \"…\""));
-    assert!(qml.contains("Accessible.description: browserUi.display_url"));
-    assert!(qml.contains("Accessible.description: secondaryUi.display_url"));
-    assert!(qml.contains("addressEditing = activeFocus"));
+    assert!(runtime_chrome.contains("displayUrl: browserUi.display_url"));
+    assert!(status_bar.contains("Accessible.name: statusVisible"));
+    assert!(secondary_window.contains("Accessible.description: secondaryUi.display_url"));
+    assert!(secondary_window.contains("addressEditing = activeFocus"));
     assert!(display_url("https://example.test/path").contains('\u{2068}'));
     assert!(display_url("https://example.test/path").contains('\u{2069}'));
 }
@@ -129,11 +1306,16 @@ fn navigation_failure_surface_keeps_safe_context_without_retry_action() {
         include_str!("../../qml/components/FerricNavigationFailure.qml"),
     ]
     .concat();
+    let lifecycle = include_str!("../navigation_lifecycle.rs");
     assert!(qml.contains("navigation_failure_requested_url"));
     assert!(qml.contains("navigation_failure_url"));
     assert!(qml.contains("navigation_failure_kind"));
     assert!(qml.contains("navigation_failed_with_details"));
     assert!(qml.contains("Retry is intentionally not offered"));
+    assert!(lifecycle.contains("Additional navigation details are suppressed."));
+    assert!(!lifecycle.contains("bounded_navigation_failure_detail"));
+    assert!(!lifecycle.contains("format!(\"{} failure: {detail}\""));
+    assert!(!lifecycle.contains("detail.to_string()"));
 }
 
 #[test]
@@ -203,8 +1385,7 @@ fn scalar_feature_preferences_cross_the_qml_boundary_without_config_parsing() {
 #[test]
 fn normal_input_uses_logical_unmodified_text_and_preserves_unicode_fields() {
     let qml = QML_SOURCE;
-    let keyboard_presentation =
-        include_str!("../../qml/scripts/KeyboardPresentation.js");
+    let keyboard_presentation = include_str!("../../qml/scripts/KeyboardPresentation.js");
     assert!(qml.contains("function logicalNormalKeyText(event)"));
     assert!(qml.contains("event.key === Qt.Key_D"));
     assert!(qml.contains("event.key === Qt.Key_U"));
@@ -273,12 +1454,8 @@ fn spatial_grid_owns_complete_input_gestures_and_stale_surface_callbacks() {
     assert!(adapter_source.contains("QObject::disconnect(targetItem_.data()"));
     assert!(adapter_source.contains("const QPointer<QQuickItem> dispatchTarget = targetItem_"));
     assert!(adapter_source.contains("const QPointer<QWindow> dispatchWindow = targetWindow_"));
-    assert!(adapter_source.contains(
-        "QCoreApplication::sendEvent(dispatchWindow.data(), &press)"
-    ));
-    assert!(!adapter_source.contains(
-        "QCoreApplication::sendEvent(dispatchTarget.data(), &press)"
-    ));
+    assert!(adapter_source.contains("QCoreApplication::sendEvent(dispatchWindow.data(), &press)"));
+    assert!(!adapter_source.contains("QCoreApplication::sendEvent(dispatchTarget.data(), &press)"));
     assert!(adapter_source.contains("event->type() == QEvent::MouseButtonRelease"));
     assert!(adapter_source.contains("consumedButtons_.remove"));
     assert!(adapter_source.contains("QEvent::TabletRelease"));
@@ -379,6 +1556,441 @@ fn qml_qt_request_resolution_is_centralized_and_bounded() {
 }
 
 #[test]
+fn ordinary_profile_downloads_do_not_probe_the_unsafe_view_getter() {
+    let requests = include_str!("../../qml/components/FerricBrowserRuntimeRequests.qml");
+    let secondary = include_str!("../../qml/components/FerricBrowserWindow.qml");
+    let routing = include_str!("../../qml/scripts/ProfileDownloadRouting.js");
+    let owner = include_str!("../../qml/components/FerricVersioningWindowOwner.qml");
+
+    assert!(requests.contains("if (download && download.isSavePageDownload !== true)"));
+    assert!(requests.contains("ProfileDownloadRouting.boundProfileOwner("));
+    assert!(requests.contains("profileHasPoisonedPageCaptureTab("));
+    assert!(requests.contains("download, window, browserProfile, true"));
+    assert!(requests.contains("if (inspectView === false)\n                return null"));
+    assert!(requests.contains("var observedView = null"));
+    assert!(requests.contains("window.retireNativePageCaptureDownload(unownedId)"));
+    assert!(requests.contains("profile ownership could not be confirmed"));
+    assert!(secondary.contains("ProfileDownloadRouting.boundProfileOwner("));
+    assert!(secondary.contains("ProfileDownloadRouting.requestOwnerForExactDownload("));
+    assert!(!secondary.contains("download.view"));
+    assert!(secondary.contains("download.isSavePageDownload === true"));
+    assert!(routing.contains("host.browserProfile === profile"));
+    assert!(routing.contains("host.windowWebEngineProfile === profile"));
+    assert!(owner.contains("function profileHasPoisonedPageCaptureTab(profile)"));
+    assert!(owner.contains("poisoned.length > 0"));
+    let poison_scan = owner
+        .split("function profileHasPoisonedPageCaptureTab(profile)")
+        .nth(1)
+        .expect("profile-wide save-page poison scan");
+    assert!(poison_scan
+        .contains("popups === undefined && host !== root.hostWindow"));
+    assert_eq!(poison_scan.matches("host.popupWindowRegistry").count(), 1);
+    assert!(poison_scan.contains(
+        "PopupWindowOwnership.snapshotPopupEntriesFromRegistry(popups)"
+    ));
+    assert!(poison_scan.contains("popupCount + popupEntries.length > 64"));
+    assert!(poison_scan.contains("seenPopupHosts.indexOf(popupHost) >= 0"));
+    assert!(!poison_scan.contains("popupHost = entry ? entry.host : null"));
+    let popup_ownership = include_str!("../../qml/scripts/PopupWindowOwnership.js");
+    assert!(popup_ownership.contains("function snapshotPopupEntriesFromRegistry(popups)"));
+    assert!(popup_ownership.contains("popupCount > MAX_POPUP_WINDOWS"));
+    let capture_callbacks = include_str!("../../qml/scripts/NativePageCaptureCallbacks.js");
+    assert!(capture_callbacks.contains("allowUnpermittedSavePage === true"));
+    assert!(!capture_callbacks.contains("nativePageCaptureTabIdForView(download.view)"));
+    assert!(!owner.contains("download.view"));
+    assert!(!secondary.contains("download.view"));
+
+    let exact_save_start = requests
+        .find("// For Ferric's active archive save")
+        .expect("exact archive-save route exists");
+    let unpermitted_save_start = requests[exact_save_start..]
+        .find("\n        if (inspectView !== false && download\n                && download.isSavePageDownload === true)")
+        .expect("unpermitted Save Page route follows exact archive-save route")
+        + exact_save_start;
+    let exact_save_route = &requests[exact_save_start..unpermitted_save_start];
+    assert!(exact_save_route.contains("hostForDownload(\n                        download, null, window)"));
+    assert!(exact_save_route.contains("activePageCaptureHost("));
+    assert!(!exact_save_route.contains("download.view"));
+}
+
+#[test]
+fn page_capture_revalidates_view_and_document_before_accepting_collected_sidecar() {
+    let surface = include_str!("../../qml/components/FerricBrowserRuntimeSurface.qml");
+    let callbacks = include_str!("../../qml/scripts/NativePageCaptureCallbacks.js");
+    let requests = include_str!("../../qml/components/FerricBrowserRuntimeRequests.qml");
+    let collection = surface
+        .split("function finishNativePageCaptureCollection(capture, sidecarJson)")
+        .nth(1)
+        .expect("native page-capture collection completion")
+        .split("\n    Timer {")
+        .next()
+        .expect("native page-capture completion boundary");
+
+    assert!(callbacks.contains("function preSaveCaptureStatus(capture, activeView)"));
+    assert!(callbacks.contains("return \"native-view-lost\""));
+    assert!(callbacks.contains(
+        "return liveUrl === capture.capturedUrl ? \"current\" : \"document-changed\""
+    ));
+    let revalidation = collection
+        .find("preSaveCaptureStatus(")
+        .expect("view and document revalidation");
+    let sidecar_acceptance = collection
+        .find("complete_native_page_capture_sidecar(")
+        .expect("sidecar acceptance follows revalidation");
+    let save_path_claim = collection
+        .find("claim_native_page_capture_save(")
+        .expect("native save request follows revalidation");
+    assert!(revalidation < sidecar_acceptance);
+    assert!(revalidation < save_path_claim);
+    assert!(collection.contains("fail_native_window_capture_page("));
+    assert!(collection.contains("captureStatus, \"\", \"\""));
+    assert!(collection.contains("capture.capturedUrl) || \"\")"));
+    assert!(collection.contains("var saveFailureReason = saveFailureStatus === \"current\""));
+    assert!(collection.contains("? \"invalid-archive\" : saveFailureStatus"));
+    assert!(collection.contains("saveFailureReason, path, \"\""));
+
+    let completion = requests
+        .split("function completeNativePageCaptureMutationProbe(capture, facts, evidence)")
+        .nth(1)
+        .expect("native archive completion validation")
+        .split("function cancelNativePageCaptureForShutdown()")
+        .next()
+        .expect("native archive completion validation boundary");
+    assert!(callbacks.contains(
+        "function completedArchiveFailure(facts, maximumBytes, requestMatches)"
+    ));
+    assert!(callbacks.contains("if (requestMatches !== true)\n        return \"invalid-archive\""));
+    assert!(callbacks.contains("if (facts.view_matches !== true)\n        return \"native-view-lost\""));
+    assert!(completion.contains("completedArchiveFailure("));
+    assert!(completion.contains(
+        "capture.completionRequestMatches === true"
+    ));
+    assert!(!requests.contains("request_matches: viewFacts.request_matches"));
+    assert!(completion.contains("pageFailure === \"native-view-lost\""));
+    assert!(completion.contains("pageFailure === \"document-changed\""));
+}
+
+#[test]
+fn approved_restore_window_retains_download_and_popup_owners_until_release() {
+    let secondary = include_str!("../../qml/components/FerricBrowserWindow.qml");
+    let chrome = include_str!("../../qml/components/FerricBrowserRuntimeChrome.qml");
+    let popup = include_str!("../../qml/components/FerricPopupWindow.qml");
+    let presentation = include_str!("../../qml/components/FerricBrowserRuntimePresentation.qml");
+    let runtime_base = include_str!("../../qml/components/FerricBrowserRuntimeBase.qml");
+    let requests = include_str!("../../qml/components/FerricBrowserRuntimeRequests.qml");
+    let owner = include_str!("../../qml/components/FerricVersioningWindowOwner.qml");
+    let routing = include_str!("../../qml/scripts/ProfileDownloadRouting.js");
+    let popup_ownership = include_str!("../../qml/scripts/PopupWindowOwnership.js");
+    let restore_presentation = include_str!("../../qml/scripts/VersionedRestorePresentation.js");
+
+    assert!(secondary.contains("function requestApprovedWindowRelease()"));
+    assert!(secondary.contains("if (secondaryWindow.hasActiveDownloads()) {"));
+    assert!(secondary.contains(
+        "hasOutstandingDownloadRequests(\n                    secondaryWindow.pendingDownloadRequests)"
+    ));
+    assert!(popup.contains(
+        "hasOutstandingDownloadRequests(\n                    popupWindow.pendingDownloadRequests)"
+    ));
+    assert!(presentation.contains(
+        "hasOutstandingDownloadRequests(\n                    window.pendingDownloadRequests)"
+    ));
+    assert!(secondary.contains("function hasOwnedPopupWindows()"));
+    assert!(secondary.contains("secondaryWindow.hasOwnedPopupWindows()"));
+    assert!(secondary.contains("PopupWindowOwnership.hasOwnedPopupWindows("));
+    let popup_download_request = popup
+        .split("function handleDownloadRequested(download)")
+        .nth(1)
+        .expect("popup profile download request handler")
+        .split("\n    function handleDownloadFinished(download)")
+        .next()
+        .expect("popup profile download request handler boundary");
+    let popup_guard = popup_download_request
+        .find("ProfileDownloadRouting.retainAndCancelIfShutdownApproved(")
+        .expect("popup request is retained before UI admission");
+    assert!(popup_download_request[popup_guard..].contains("return rootWindow.resolveQtRequest("));
+    let popup_chooser = popup_download_request[popup_guard..]
+        .find("ui.offer_download(")
+        .map(|offset| popup_guard + offset)
+        .expect("popup chooser follows owner retention");
+    assert!(popup_guard < popup_chooser);
+    let secondary_download_owner = secondary
+        .split("function downloadOwnerFor(download, inspectView)")
+        .nth(1)
+        .expect("restore-window download owner")
+        .split("\n    // A shared-profile secondary receives its profile-wide signals")
+        .next()
+        .expect("restore-window download owner boundary");
+    assert!(secondary_download_owner.contains(
+        "PopupWindowOwnership.snapshotPopupHosts(rootWindow)"
+    ));
+    assert!(secondary_download_owner.contains("popupHosts === null"));
+    assert!(secondary_download_owner.contains(
+        "ProfileDownloadRouting.requestOwnerForExactDownload("
+    ));
+    assert!(secondary_download_owner.contains("if (exactOwner === undefined)"));
+    assert!(!secondary_download_owner.contains("activeDownloads || ({})"));
+    assert!(!secondary_download_owner.contains("pendingDownloadRequests || ({})"));
+    assert!(!secondary_download_owner.contains("downloadCompletionRequests || ({})"));
+    assert!(secondary_download_owner.contains("catch (error)"));
+    assert!(secondary_download_owner.contains("return undefined"));
+    assert!(!secondary_download_owner.contains("rootWindow.popupWindowRegistry || []"));
+    assert!(routing.contains(
+        "function requestOwnerForExactDownload(download, sourceHost, popupHosts, profile)"
+    ));
+    let outstanding_completion = routing
+        .split("function hasOutstandingDownloadRequests(downloads)")
+        .nth(1)
+        .expect("download shutdown ledger predicate")
+        .split("\nfunction isRecord(")
+        .next()
+        .expect("download shutdown ledger predicate boundary");
+    assert!(outstanding_completion.contains("if (!isRecord(downloads))\n            return true"));
+    assert!(outstanding_completion.contains("Object.prototype.hasOwnProperty.call(downloads, id)"));
+    assert!(outstanding_completion.contains("catch (error) {\n        return true"));
+    assert!(routing.contains("var popupProfile = popupHost.popupProfile"));
+    assert!(routing.contains("indexedDownload !== download"));
+    assert!(popup_ownership.contains("var MAX_POPUP_WINDOWS = 64"));
+    assert!(popup_ownership.contains("function snapshotPopupHosts(rootWindow)"));
+    assert!(popup_ownership.contains("function snapshotPopupEntries(rootWindow)"));
+    assert!(popup_ownership.contains("if (!host || hosts.indexOf(host) >= 0)"));
+    assert!(restore_presentation.contains("owner.canCreate() === true"));
+    assert!(restore_presentation.contains("owner.retain(child) === true"));
+    assert!(restore_presentation.contains("if (child && typeof child.destroy === \"function\")"));
+    assert!(restore_presentation.contains("catch (error) {\n        retained = false"));
+    assert!(popup_ownership.contains("popups.length >= MAX_POPUP_WINDOWS"));
+    assert!(popup_ownership.contains("popups.length > MAX_POPUP_WINDOWS"));
+    assert!(popup_ownership.contains("function canRegisterPopupWindow(rootWindow)"));
+    let popup_registration_helper = popup_ownership
+        .split("function registerPopupWindow(rootWindow, hostWindow, openerUi, view)")
+        .nth(1)
+        .expect("popup registration revalidates ownership at publication");
+    assert!(popup_registration_helper.contains("popups.length > MAX_POPUP_WINDOWS"));
+    assert!(popup_registration_helper.contains("retained.length >= MAX_POPUP_WINDOWS"));
+    assert!(popup_registration_helper.contains("applicationShutdownInProgress === true"));
+    assert!(popup_registration_helper.contains("shutdownApproved === true"));
+    assert!(popup_registration_helper.contains("catch (error)"));
+    assert!(popup_ownership.contains("applicationShutdownInProgress === true"));
+    assert!(popup_ownership.contains("shutdownApproved === true"));
+    assert!(runtime_base.contains("function canRegisterPopupWindow()"));
+    assert!(runtime_base
+        .contains("return PopupWindowOwnership.canRegisterPopupWindow(window)"));
+    assert!(runtime_base.contains("PopupWindowOwnership.registerPopupWindow("));
+    let unregister_helper = runtime_base
+        .split("function unregisterPopupWindow(hostWindow)")
+        .nth(1)
+        .expect("popup unregistration helper");
+    assert!(unregister_helper.contains(
+        "return PopupWindowOwnership.unregisterPopupWindow(window, hostWindow)"
+    ));
+    let popup_unregistration_helper = popup_ownership
+        .split("function unregisterPopupWindow(rootWindow, hostWindow)")
+        .nth(1)
+        .expect("popup unregistration revalidates the bounded owner registry");
+    assert!(popup_unregistration_helper.contains("popups.length > MAX_POPUP_WINDOWS"));
+    assert!(popup_unregistration_helper.contains("catch (error)"));
+    assert!(popup_ownership.contains("return true"));
+    assert!(secondary.contains("ProfileDownloadRouting.retainAndCancelIfShutdownApproved("));
+    assert!(requests.contains("ProfileDownloadRouting.retainAndCancelIfShutdownApproved("));
+    assert!(secondary.contains("secondaryWindow.requestApprovedWindowRelease()"));
+    assert!(owner.contains("function releaseWhenApproved(child)"));
+    assert!(owner.contains("child.requestApprovedWindowRelease()"));
+    assert!(owner.contains("typeof child.hasActiveDownloads !== \"function\""));
+    assert!(owner.contains("|| child.hasActiveDownloads()"));
+    assert!(owner.contains("child.hasOwnedPopupWindows() !== false"));
+    assert!(chrome.contains("popupOpenerHost: window"));
+    assert!(secondary.contains("popupOpenerHost: secondaryWindow"));
+    let primary_popup_admission = chrome
+        .find("if (!window.canRegisterPopupWindow())")
+        .expect("primary popup admission checks the shared bound");
+    let primary_popup_creation = chrome
+        .find("popupWindowComponent.createObject(null, {")
+        .expect("primary popup creation boundary");
+    assert!(primary_popup_admission < primary_popup_creation);
+    let restore_popup_admission = secondary
+        .find("if (!rootWindow.canRegisterPopupWindow())")
+        .expect("restore popup admission checks the shared bound");
+    let restore_popup_creation = secondary
+        .find("rootWindow.popupWindowFactory.createObject(null, {")
+        .expect("restore popup creation boundary");
+    assert!(restore_popup_admission < restore_popup_creation);
+    let popup_registration = popup
+        .find("if (!rootWindow.registerPopupWindow(")
+        .expect("popup registration rechecks its admission");
+    let popup_open = popup
+        .find("popupWindow.popupRequest.openIn(popupView)")
+        .expect("only a registered popup is opened");
+    assert!(popup_registration < popup_open);
+    assert!(popup.contains("property var popupOpenerHost: null"));
+    let popup_destruction = popup
+        .rfind("Component.onDestruction: {")
+        .map(|start| &popup[start..])
+        .expect("popup destruction releases its opener owner");
+    let unregister_popup = popup_destruction
+        .find("rootWindow.unregisterPopupWindow(popupWindow)")
+        .expect("popup unregisters before owner release");
+    let opener_release = popup_destruction
+        .find("openerHost.requestApprovedWindowRelease()")
+        .expect("approved opener release is retried after popup teardown");
+    assert!(unregister_popup < opener_release);
+    assert!(owner.contains("function retain(child)"));
+    assert!(owner.contains("var published = false"));
+    assert!(owner.contains("child.versioningDiscoveryChanged.disconnect(discoveryHandler)"));
+    assert!(owner.contains("child.visibleChanged.disconnect(visibleHandler)"));
+    let restore_owner_download = owner
+        .split("function hostForDownload(download, observedView, sourceHost)")
+        .nth(1)
+        .expect("restore owner download routing")
+        .split("\n    function requestCloseAll()")
+        .next()
+        .expect("restore owner download routing boundary");
+    assert!(restore_owner_download.contains("PopupWindowOwnership.snapshotPopupEntries(child)"));
+    assert!(restore_owner_download.contains(
+        "PopupWindowOwnership.snapshotPopupEntriesFromRegistry(\n                                childPopupRegistry)"
+    ));
+    assert!(restore_owner_download.contains("popupEntries === null"));
+    assert!(restore_owner_download.contains("seenPopupHosts.indexOf(popupHost) >= 0"));
+    assert!(!restore_owner_download.contains("child.popupWindowRegistry || []"));
+    assert!(restore_owner_download.contains(
+        "function requestIdentityMatches(host, requestId, request)"
+    ));
+    assert!(restore_owner_download.contains("function indexedValue(index, key)"));
+    assert!(restore_owner_download.contains("var views = child.tabViews"));
+    assert!(!restore_owner_download.contains("child.activeDownloads || ({})"));
+    assert!(!restore_owner_download.contains("child.pendingDownloadRequests || ({})"));
+    assert!(!restore_owner_download.contains("child.downloadCompletionRequests || ({})"));
+    assert!(!restore_owner_download.contains("popupHost.activeDownloads || ({})"));
+    assert!(!restore_owner_download.contains(
+        "popupHost.pendingDownloadRequests || ({})"
+    ));
+    assert!(!restore_owner_download.contains(
+        "popupHost.downloadCompletionRequests || ({})"
+    ));
+    assert!(!restore_owner_download.contains("var views = child.tabViews || []"));
+    assert!(!restore_owner_download
+        .contains("host.nativePageCaptureRetiredDownloads || ({})"));
+    assert!(restore_owner_download.contains(
+        "function retiredSaveIdentityMatches(host, allowAbsentIndexes)"
+    ));
+    assert!(restore_owner_download.contains("} catch (error) {\n            return undefined\n        }"));
+
+    let shutdown_count = runtime_base
+        .split("function shutdownParticipantCount()")
+        .nth(1)
+        .expect("shutdown participant counter")
+        .split("\n    function abortApplicationShutdown()")
+        .next()
+        .expect("shutdown count boundary");
+    assert!(shutdown_count.contains("PopupWindowOwnership.snapshotPopupHosts(window)"));
+    assert!(shutdown_count.contains("popupHosts === null ? count + 1"));
+    assert!(shutdown_count.contains("count + popupHosts.length"));
+
+    let shutdown_begin = runtime_base
+        .split("function beginApplicationShutdown()")
+        .nth(1)
+        .expect("shutdown begin handler")
+        .split("\n    function forceApplicationShutdown()")
+        .next()
+        .expect("shutdown begin boundary");
+    let popup_preflight = shutdown_begin
+        .find("PopupWindowOwnership.snapshotPopupHosts(window)")
+        .expect("shutdown preflights popup owner snapshot");
+    let admission_close = shutdown_begin
+        .find("window.applicationShutdownInProgress = true")
+        .expect("shutdown closes popup admission");
+    let gate_call = shutdown_begin
+        .find("browserUi.begin_shutdown_gate()")
+        .expect("shutdown starts browser UI gate");
+    assert!(popup_preflight < admission_close && admission_close < gate_call);
+    assert!(shutdown_begin.contains("var popup = popupHosts[j]"));
+    assert!(shutdown_begin.contains("window.applicationShutdownInProgress = false"));
+
+    let shutdown_abort = runtime_base
+        .split("function abortApplicationShutdown()")
+        .nth(1)
+        .expect("shutdown cancellation handler")
+        .split("\n    function finishApplicationShutdown()")
+        .next()
+        .expect("shutdown cancellation boundary");
+    assert!(shutdown_abort.contains("PopupWindowOwnership.snapshotPopupHosts(window)"));
+    assert!(shutdown_abort.contains("if (popupHosts !== null)"));
+    assert!(shutdown_abort.contains("popup ownership is unavailable"));
+
+    let shutdown_guard = routing
+        .split("function retainAndCancelIfShutdownApproved(")
+        .nth(1)
+        .expect("shared shutdown download guard")
+        .split("\nfunction resolve(")
+        .next()
+        .expect("shutdown guard boundary");
+    let owner_recorded = shutdown_guard
+        .find("completionRequests[id] = download")
+        .expect("exact request owner is retained");
+    let approved_close = shutdown_guard[owner_recorded..]
+        .find("shutdownApproved = host.shutdownApproved === true")
+        .map(|offset| owner_recorded + offset)
+        .expect("root and restore shutdown states are checked");
+    assert!(shutdown_guard.contains("host.windowShutdownApproved === true"));
+    let cancelled = shutdown_guard[approved_close..]
+        .find("cancelSafely()")
+        .map(|offset| approved_close + offset)
+        .expect("request is canceled after retaining ownership");
+    assert!(owner_recorded < approved_close && approved_close < cancelled);
+    assert!(shutdown_guard.contains("/^\\d{1,20}$/"));
+    assert!(shutdown_guard.contains("!isRecord(completionRequests)"));
+    assert!(shutdown_guard.contains(
+        "Object.prototype.hasOwnProperty.call(completionRequests, id)"
+    ));
+    assert!(shutdown_guard.contains("completionRequests[id] !== download"));
+    assert!(shutdown_guard.contains("catch (error) {\n        cancelSafely()"));
+    assert!(shutdown_guard.contains("cancellationResolved = cancelRequest(download) === true"));
+    assert!(shutdown_guard.contains("if (!cancellationResolved)"));
+    assert!(shutdown_guard.contains("download.cancel()"));
+
+    let request = secondary
+        .split("function handleForwardedDownloadRequested(download)")
+        .nth(1)
+        .expect("profile download request handler");
+    let guard_call = request
+        .find("ProfileDownloadRouting.retainAndCancelIfShutdownApproved(")
+        .expect("secondary request uses shared shutdown guard");
+    assert!(request[guard_call..].contains("return rootWindow.resolveQtRequest("));
+    let chooser = request[guard_call..]
+        .find("secondaryUi.offer_download")
+        .map(|offset| guard_call + offset)
+        .expect("ordinary chooser follows shutdown guard");
+    assert!(guard_call < chooser);
+
+    let primary_request = requests
+        .split("function handleDownloadRequested(download)")
+        .nth(1)
+        .expect("primary profile download request handler");
+    let primary_guard = primary_request
+        .find("ProfileDownloadRouting.retainAndCancelIfShutdownApproved(")
+        .expect("primary request uses shared shutdown guard");
+    assert!(primary_request[primary_guard..].contains("return window.resolveQtRequest("));
+    let primary_chooser = primary_request[primary_guard..]
+        .find("browserUi.offer_download")
+        .map(|offset| primary_guard + offset)
+        .expect("primary chooser follows shutdown guard");
+    assert!(primary_guard < primary_chooser);
+
+    let finish = secondary
+        .split("function handleForwardedDownloadFinished(download)")
+        .nth(1)
+        .expect("profile download terminal handler")
+        .split("onDownloadFinished:")
+        .next()
+        .expect("profile download terminal handler boundary");
+    let released = finish
+        .find("delete secondaryWindow.downloadCompletionRequests[id]")
+        .expect("terminal callback removes its exact completion owner");
+    let retried = finish
+        .find("secondaryWindow.requestApprovedWindowRelease()")
+        .expect("terminal callback retries approved owner release");
+    assert!(released < retried);
+}
+
+#[test]
 fn extracted_prompt_components_render_state_and_emit_intents_without_engine_policy() {
     let main = QML_SOURCE;
     let certificate = include_str!("../../qml/components/FerricCertificatePrompts.qml");
@@ -413,7 +2025,8 @@ fn account_flows_keep_tabs_and_popups_on_the_opener_profile() {
     assert!(qml.contains("viewProfile: secondaryWindow.windowWebEngineProfile"));
     assert!(qml.contains("popupPrivateProfile: viewTransientProfile"));
     assert!(qml.contains("viewTransientProfile: secondaryWindow.windowTransientProfile"));
-    assert!(qml.contains("storageName: window.temporaryProfile ? \"\""));
+    assert!(qml.contains("storageName: profileHost.browserWindow.temporaryProfile"));
+    assert!(qml.contains("? \"\" : \"ferric-browser-\" + profileHost.browserWindow.profileName"));
     assert!(qml.contains("storageName: secondaryWindow.windowTransientProfile ? \"\""));
     assert!(!qml.contains("new WebEngineProfile"));
 }
@@ -436,9 +2049,11 @@ fn context_routes_validate_before_assigning_window_membership() {
 
 #[test]
 fn context_routes_are_pre_navigation_and_browser_confirmed() {
+    let context_navigation = include_str!("../browser_ui_context_navigation.rs");
+    let context_switching = include_str!("../browser_ui_contexts.rs");
     let source = [
         ADAPTER_SOURCE,
-        include_str!("../browser_ui_context_navigation.rs"),
+        context_navigation,
         include_str!("../tab_presentation.rs"),
     ]
     .concat();
@@ -455,6 +2070,16 @@ fn context_routes_are_pre_navigation_and_browser_confirmed() {
     assert!(source.contains("NavigationSource::ExplicitUrl"));
     assert!(source.contains("fn accept_context_route"));
     assert!(source.contains("fn dismiss_context_route"));
+    assert!(context_navigation.contains("\"Context route accepted\""));
+    assert!(context_navigation.contains(
+        "\"Context route accepted; opening the selected profile\""
+    ));
+    assert!(!context_navigation.contains("Context route accepted: {}"));
+    assert!(!context_navigation.contains("Context route accepted; opening {} in profile {}"));
+    assert!(context_switching.contains("\"Context requires a separate profile window\""));
+    assert!(context_switching.contains("\"Context is already open in another window\""));
+    assert!(!context_switching.contains("Context {} requires a separate {} window"));
+    assert!(!context_switching.contains("Context {} is already open in another window"));
     assert!(source.contains("fn sync_context_metadata"));
     assert!(source.contains("context_workspace"));
     assert!(qml.contains("context_route_id"));
@@ -550,8 +2175,8 @@ fn qml_json_contract_allowlist_is_explicit() {
 
     assert!(allowlist.contains("Opaque page-script request/result contracts"));
     assert!(allowlist.contains("Prohibited presentation payloads"));
-    assert_eq!(qml.matches("JSON.parse(").count(), 12);
-    assert_eq!(qml.matches("JSON.stringify(").count(), 29);
+    assert_eq!(qml.matches("JSON.parse(").count(), 17);
+    assert_eq!(qml.matches("JSON.stringify(").count(), 30);
 }
 
 #[test]
@@ -626,11 +2251,105 @@ fn editor_completion_records_cross_the_qml_boundary_as_typed_fields() {
     let qml = QML_SOURCE;
 
     assert!(source.contains("#[qproperty(QString, editor_completion_token)]"));
-    assert!(source.contains("#[qproperty(QString, editor_completion_stderr)]"));
+    assert!(!source.contains("editor_completion_stderr"));
     assert!(source.contains("fn take_editor_completion(self: Pin<&mut BrowserUi>) -> bool;"));
     assert!(qml.contains("var editorToken = browserUi.editor_completion_token"));
     assert!(qml.contains("window.editorApplyScript(editorOriginal, editorUpdated)"));
     assert!(!qml.contains("JSON.parse(editorCompletion)"));
+    assert!(!qml.contains("editorStderr"));
+    assert!(!qml.contains("editorError += \" (stderr: \""));
+    assert!(qml.contains("external-editor-failed"));
+}
+
+#[test]
+fn external_editor_output_and_config_paths_do_not_reach_status_projections() {
+    let editor = include_str!("../browser_ui_external_actions.rs");
+    assert!(editor.contains(".stderr(Stdio::null())"));
+    assert!(!editor.contains("read_bounded(stderr"));
+    assert!(!editor.contains("join_editor_stderr"));
+
+    let config_edit = include_str!("../browser_ui_edit_commands.rs");
+    assert!(config_edit.contains(
+        "configured file-backed configuration is unavailable\".to_owned()"
+    ));
+    assert!(config_edit.contains("configuration editor could not start\".to_owned()"));
+    assert!(config_edit.contains(".stderr(Stdio::null())"));
+    assert!(!config_edit.contains("configured file-backed configuration is unavailable: {error}"));
+    assert!(!config_edit.contains("configuration editor could not start: {error}"));
+    assert!(!config_edit.contains("\"path\": path"));
+
+    let config_status = include_str!("../browser_ui_configuration.rs");
+    assert!(config_status.contains("Configuration editor finished; reloading configuration"));
+    assert!(config_status.contains("Configuration editor exited unsuccessfully"));
+    assert!(!config_status.contains("pending.path.display()"));
+    assert!(!config_status.contains("stderr_detail"));
+
+    let export = config_status
+        .split_once("fn execute_config_export_command")
+        .expect("config export command exists")
+        .1
+        .split_once("fn execute_config_check_command")
+        .expect("config check follows export")
+        .0;
+    assert!(export.contains("Configuration export queued"));
+    assert!(!export.contains("path.display()"));
+
+    let defaults = config_status
+        .split_once("fn execute_config_write_defaults_command")
+        .expect("default config writer exists")
+        .1
+        .split_once("fn execute_theme_reload_command")
+        .expect("theme reload follows default config writer")
+        .0;
+    assert!(defaults.contains("Default configuration write queued"));
+    assert!(!defaults.contains("path.display()"));
+
+    let config_check = config_status
+        .split_once("fn execute_config_check_command")
+        .expect("config check command exists")
+        .1
+        .split_once("fn execute_config_reload_command")
+        .expect("config reload follows check")
+        .0;
+    assert!(config_check.contains("\"source\": \"configured-file\""));
+    assert!(!config_check.contains("\"source\": path"));
+
+    let config_reload = config_status
+        .split_once("fn execute_config_reload_command")
+        .expect("config reload command exists")
+        .1
+        .split_once("fn execute_config_write_defaults_command")
+        .expect("default config writer follows reload")
+        .0;
+    assert!(config_reload.contains("\"source\": \"configured-file\""));
+    assert!(!config_reload.contains("\"source\": path"));
+
+    let theme_reload = config_status
+        .split_once("fn execute_theme_reload_command")
+        .expect("theme reload command exists")
+        .1
+        .split_once("fn poll_config_edit")
+        .expect("configuration editor polling follows theme reload")
+        .0;
+    assert!(theme_reload.contains("\"path\": \"[redacted]\""));
+    assert!(theme_reload.contains("\"palette\": palette_value"));
+    assert!(!theme_reload.contains("\"palette\": serde_json::to_value(&palette)"));
+
+    let config_completion = include_str!("../browser_ui_runtime_config.rs");
+    assert!(config_completion.contains("Configuration written ({} bytes)"));
+    assert!(!config_completion.contains("Configuration written to {}"));
+    assert!(!config_completion.contains("result.path.display()"));
+
+    let profile_delete_completion = config_completion
+        .split_once("let profile_delete_result")
+        .expect("profile delete completion poll exists")
+        .1
+        .split_once("self.as_mut().poll_config_edit()")
+        .expect("configuration editor poll follows profile deletion")
+        .0;
+    assert!(profile_delete_completion.contains("Profile deleted. QtWebEngine storage was not deleted."));
+    assert!(profile_delete_completion.contains("Profile deleted; data cleanup is pending"));
+    assert!(!profile_delete_completion.contains("outcome.profile_name"));
 }
 
 #[test]
@@ -952,11 +2671,12 @@ fn presentation_helper_resources_have_no_runtime_or_page_authority() {
 fn context_entry_restores_safe_descriptors_lazily_and_focuses_live_members() {
     let source = ADAPTER_SOURCE;
     let qml = QML_SOURCE;
-    assert!(source.contains("fn restore_context_membership"));
+    let restore_source = include_str!("../browser_ui_session_restore.rs");
+    assert!(restore_source.contains("fn restore_context_membership"));
     assert!(source.contains("focused_member"));
     assert!(source.contains("restored_tab_descriptors"));
-    assert!(source.contains("Runtime tab IDs are deliberately not reused"));
-    assert!(source.contains("selected_effects = Some(effects)"));
+    assert!(restore_source.contains("Runtime tab IDs are deliberately not reused"));
+    assert!(restore_source.contains("selected_effects = Some(effects)"));
     assert!(source.contains("context_entry_force_reuse"));
     assert!(source.contains("context-window\\tfalse\\t"));
     assert!(source.contains("let live_member_window = self"));
@@ -985,11 +2705,9 @@ fn popup_windows_capture_opener_context_identity() {
     assert!(qml.contains("property string popupProfileName"));
     assert!(qml.contains("popupWindow.popupProfileName"));
     assert!(qml.contains("popupWindow.popupEphemeralProfile"));
-    assert!(
-        qml.contains(
-            "popupWindow, popupView,\n                      popupWindow.popupPrivateProfile"
-        )
-    );
+    assert!(qml.contains(
+        "popupWindow, popupView,\n                      popupWindow.popupPrivateProfile"
+    ));
     assert!(qml.contains("property var viewUi: secondaryUi"));
     assert!(qml.contains("Ferric Browser popup · context"));
     assert!(qml.contains("popupPermissionUi: viewUi"));
@@ -1017,6 +2735,8 @@ fn journey_export_requires_preview_and_explicit_local_destination() {
 #[test]
 fn diagnostics_export_requires_explicit_local_save_and_never_overwrites() {
     let source = ADAPTER_SOURCE;
+    let site = include_str!("../browser_ui_site.rs");
+    let diagnostics = include_str!("../diagnostics.rs");
     let qml = [
         QML_SOURCE,
         include_str!("../../qml/components/FerricDiagnostics.qml"),
@@ -1024,16 +2744,32 @@ fn diagnostics_export_requires_explicit_local_save_and_never_overwrites() {
     .concat();
     let dialogs = include_str!("../../qml/components/FerricFileDialogSurfaces.qml");
     assert!(source.contains("fn export_diagnostics"));
-    assert!(source.contains("Diagnostics export requires reviewing the visible preview first"));
-    assert!(source.contains("diagnostics_preview_ready = false"));
-    assert!(source.contains("diagnostics_preview_payload = Some(serialized.clone())"));
+    assert!(source.contains("fn authorize_diagnostics_export"));
+    assert!(source.contains("diagnostics_snapshot_payload"));
+    assert!(source.contains("diagnostics_export_payload\n            .take()"));
+    assert!(site.contains("this.diagnostics_export_payload = None;"));
+    assert!(site.contains("reviewed_diagnostics_match("));
+    assert!(
+        site.contains("diagnostics_snapshot_payload = reviewable.then(|| serialized.clone())")
+    );
+    assert!(!site.contains("MAX_DIAGNOSTICS_TEXT"));
+    assert!(!site.contains("serialized.truncate("));
+    assert!(diagnostics.contains("MAX_REVIEWED_DIAGNOSTICS_BYTES"));
     assert!(source.contains("MAX_DIAGNOSTICS_EXPORT_BYTES"));
     assert!(source.contains("Diagnostics export requires an absolute local file path"));
     assert!(source.contains("Diagnostics export refuses to overwrite an existing file"));
     assert!(source.contains("atomic_write_private(path_ref, payload.as_bytes())"));
+    assert!(site.contains("Diagnostics export failed"));
+    assert!(!site.contains("Diagnostics export failed: {error}"));
+    assert!(site.contains("Site report unavailable"));
+    assert!(!site.contains("Site report unavailable: {error}"));
+    assert!(site.contains("Site-data clear failed"));
+    assert!(!site.contains("Site-data clear failed: {error}"));
     assert!(qml.contains("fileDialogSurfaces.openDiagnosticsExport()"));
     assert!(dialogs.contains("title: \"Choose diagnostics export destination\""));
     assert!(qml.contains("Save diagnostics preview"));
+    assert!(qml.contains("browserUi.authorize_diagnostics_export(window.diagnosticsText)"));
+    assert!(!qml.contains("onSaveRequested: {\n            window.refreshDiagnostics()"));
     assert!(qml.contains("browserUi.export_diagnostics(path)"));
 }
 
@@ -1174,12 +2910,12 @@ fn ephemeral_profile_uses_off_the_record_memory_only_setup() {
     let qml = QML_SOURCE;
     assert!(qml.contains("property bool ephemeralProfile"));
     assert!(qml.contains("WebEngineProfilePrototype {"));
-    assert!(qml.contains("storageName: window.temporaryProfile ? \"\""));
-    assert!(qml.contains("persistentStoragePath: window.temporaryProfile"));
-    assert!(qml.contains("cachePath: window.temporaryProfile"));
-    assert!(qml.contains(
-        "window.browserProfile = window.browserProfilePrototypeObject.instance()"
-    ));
+    assert!(qml.contains("storageName: profileHost.browserWindow.temporaryProfile"));
+    assert!(qml.contains("persistentStoragePath: profileHost.browserWindow.temporaryProfile"));
+    assert!(qml.contains("cachePath: profileHost.browserWindow.temporaryProfile"));
+    assert!(
+        qml.contains("window.browserProfile = window.browserProfilePrototypeObject.instance()")
+    );
     assert!(qml.contains("title: window.ephemeralProfile"));
     assert!(qml.contains("? \"Ferric Browser · \" + window.profileLabel"));
     assert!(qml.contains("window.temporaryProfile && !window.ephemeralProfile"));
@@ -1199,7 +2935,7 @@ fn ephemeral_profile_uses_off_the_record_memory_only_setup() {
     assert!(source.contains("Durable profile resources remain owned"));
     assert!(source.contains("this.session_permissions.clear()"));
     assert!(!source.contains("this.profile_lock ="));
-    assert!(source.contains("cannot save durable sessions"));
+    assert!(source.contains("Session saving is unavailable for this profile"));
     assert!(source.contains("cannot use durable contexts"));
     assert!(source.contains("private or ephemeral switcher activation is disabled"));
     assert!(source.contains("Created a fresh ephemeral profile window; it is not durable"));
@@ -1232,6 +2968,111 @@ fn ephemeral_hint_target_creates_a_typed_new_window_action() {
 }
 
 #[test]
+fn shutdown_waits_for_and_cancels_rust_owned_page_capture() {
+    let presentation = include_str!("../../qml/components/FerricBrowserRuntimePresentation.qml");
+    let requests = include_str!("../../qml/components/FerricBrowserRuntimeRequests.qml");
+    let callbacks = include_str!("../../qml/scripts/NativePageCaptureCallbacks.js");
+    let shutdown_requests = presentation
+        .split("function hasActiveShutdownRequestsFor(ui, hostWindow)")
+        .nth(1)
+        .expect("shutdown request accounting")
+        .split("function cancelShutdownRequestsFor")
+        .next()
+        .expect("shutdown request accounting boundary");
+    assert!(shutdown_requests.contains("ui.has_native_page_capture_request()"));
+    assert!(shutdown_requests.contains("hostWindow === window && ui === browserUi"));
+
+    let cancel_and_quit = presentation
+        .split("function cancelDownloadsAndQuit()")
+        .nth(1)
+        .expect("cancel-and-quit path")
+        .split("function refreshLibraryManager()")
+        .next()
+        .expect("cancel-and-quit boundary");
+    assert!(cancel_and_quit.contains("window.cancelNativePageCaptureForShutdown()"));
+
+    let wrapper = requests
+        .split("function cancelNativePageCaptureForShutdown()")
+        .nth(1)
+        .expect("native capture shutdown wrapper")
+        .split("function retireSupersededNativePageCapture")
+        .next()
+        .expect("native capture shutdown wrapper boundary");
+    assert!(wrapper.contains("cancelPendingCaptureForShutdown"));
+    assert!(callbacks.contains("browserUi.cancel_pending_native_page_capture_for_shutdown()"));
+}
+
+#[test]
+fn shutdown_waits_for_cancelled_versioning_object_worker_jobs() {
+    let presentation = include_str!("../../qml/components/FerricBrowserRuntimePresentation.qml");
+    let surface = include_str!("../../qml/components/FerricBrowserRuntimeSurface.qml");
+    let secondary = include_str!("../../qml/components/FerricBrowserWindow.qml");
+    let bridge = include_str!("../lib.rs");
+    let capture = include_str!("../browser_ui_versioning/capture.rs");
+
+    assert!(bridge.contains("fn has_pending_versioning_object_work"));
+    assert!(capture.contains("BrowserApplication::has_pending_versioning_object_work"));
+
+    for (function, boundary) in [
+        ("function continueQuitRequest()", "function finalizeQuit()"),
+        (
+            "function finalizeQuit()",
+            "function cancelDownloadsAndQuit()",
+        ),
+    ] {
+        let shutdown = presentation
+            .split(function)
+            .nth(1)
+            .expect("shutdown continuation exists")
+            .split(boundary)
+            .next()
+            .expect("shutdown continuation boundary");
+        assert!(shutdown.contains("has_pending_versioning_object_work()"));
+        assert!(shutdown.contains("shutdownWaitingForDownloadFinishes = true"));
+        assert!(shutdown.contains("scheduleRuntimeWork(50)"));
+    }
+
+    let runtime_work = surface
+        .split("function processRuntimeWork()")
+        .nth(1)
+        .expect("runtime work pump exists")
+        .split("function startNativePageCaptureSave")
+        .next()
+        .expect("runtime work pump boundary");
+    assert!(runtime_work.contains("has_pending_versioning_object_work()"));
+    assert!(runtime_work.contains("window.continueQuitRequest()"));
+    assert!(runtime_work.contains("window.scheduleRuntimeWork(50)"));
+
+    for (function, boundary) in [
+        ("function continueQuitRequest()", "function finalizeQuit()"),
+        (
+            "function finalizeQuit()",
+            "function cancelDownloadsAndQuit()",
+        ),
+    ] {
+        let shutdown = secondary
+            .split(function)
+            .nth(1)
+            .expect("secondary shutdown continuation exists")
+            .split(boundary)
+            .next()
+            .expect("secondary shutdown continuation boundary");
+        assert!(shutdown.contains("has_pending_versioning_object_work()"));
+        assert!(shutdown.contains("scheduleRuntimeWork(50)"));
+    }
+
+    let secondary_runtime_work = secondary
+        .split("function processRuntimeWork()")
+        .nth(1)
+        .expect("secondary runtime work pump exists")
+        .split("Timer {")
+        .next()
+        .expect("secondary runtime work pump boundary");
+    assert!(secondary_runtime_work.contains("has_pending_versioning_object_work()"));
+    assert!(secondary_runtime_work.contains("secondaryWindow.continueQuitRequest()"));
+}
+
+#[test]
 fn foreground_hint_tab_materializes_the_view_before_navigation() {
     let qml = include_str!("../../qml/components/FerricBrowserRuntimePresentation.qml");
     let foreground = qml
@@ -1248,7 +3089,10 @@ fn foreground_hint_tab_materializes_the_view_before_navigation() {
     let navigate = foreground
         .find("window.executePendingEngineAction()")
         .expect("foreground hint tab must apply its queued navigation");
-    assert!(sync < navigate, "the new tab view must exist before navigation");
+    assert!(
+        sync < navigate,
+        "the new tab view must exist before navigation"
+    );
 }
 
 #[test]
@@ -1380,7 +3224,7 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(qml.contains("BrowserScripts.pageUserscriptRun(scriptSource)"));
     assert!(qml.contains("BrowserScripts.pageUserscriptInstall(script.source)"));
     assert!(!qml.contains("function hintSelector(linksOnly)"));
-    assert!(script.contains("var VERSION = \"10\""));
+    assert!(script.contains("var VERSION = \"11\""));
     assert!(qml.contains("function scrollTargetPolicyScript(policy)"));
     assert!(qml.contains("return BrowserScripts.scrollTargetPolicy(policy)"));
     assert!(qml.contains("function scrollTargetStatusScript()"));
@@ -1411,7 +3255,9 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(script.contains("frame.contentWindow!==childView"));
     assert!(script.contains("kind=family==='scrollables'?'scrollable':'aria'"));
     assert!(script.contains("kind=candidateKind==='scrollable'?'scrollable':'aria'"));
-    assert!(script.contains("if(s.elements&&typeof s.elements.clear==='function')s.elements.clear()"));
+    assert!(
+        script.contains("if(s.elements&&typeof s.elements.clear==='function')s.elements.clear()")
+    );
     let target_start = script
         .find("function hintSetScrollTarget(elementId, framePath)")
         .expect("target assignment builder");
@@ -1455,9 +3301,9 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(script.contains("trim().slice(0,512)"));
     assert!(script.contains("kind==='link'&&href===null"));
     assert!(script.contains("function linkedSurface(el,r)"));
-    assert!(script.contains(
-        "family==='all'&&(kind==='image'||kind==='media')&&linkedSurface(el,r)"
-    ));
+    assert!(
+        script.contains("family==='all'&&(kind==='image'||kind==='media')&&linkedSurface(el,r)")
+    );
     assert!(script.contains("function hasPreferredLink(el,r)"));
     assert!(script.contains("String(current.href||current.getAttribute('href')||'')===href"));
 }
@@ -1497,8 +3343,7 @@ fn enhanced_hint_presentation_keeps_keyboard_policy_out_of_qml() {
 
 #[test]
 fn page_backed_hints_close_after_the_renderer_consumes_the_retained_record() {
-    let presentation =
-        include_str!("../../qml/components/FerricBrowserRuntimePresentation.qml");
+    let presentation = include_str!("../../qml/components/FerricBrowserRuntimePresentation.qml");
 
     for (action, next_action) in [
         ("focus", "scroll-target"),
@@ -1585,6 +3430,16 @@ fn site_ledger_exposes_bounded_userscript_metadata_without_sources() {
 }
 
 #[test]
+fn site_doctor_userscript_inventory_discards_dynamic_failure_reason() {
+    let source = include_str!("../browser_ui_query_site.rs");
+    assert!(source.contains("Err(reason) => unavailable_userscript_inventory(&reason)"));
+    assert!(!source.contains("bounded_navigation_failure_detail(&reason)"));
+    assert!(!source.contains("\"reason\": reason"));
+    assert!(source.contains("sanitize_untrusted_title(&tab.title)"));
+    assert!(!source.contains("tab.title.replace(['\\n', '\\r'], \" \")"));
+}
+
+#[test]
 fn site_data_clear_is_bound_to_its_originating_view() {
     let qml = QML_SOURCE;
     assert!(qml.contains("property var siteDataClearView"));
@@ -1597,6 +3452,7 @@ fn site_data_clear_is_bound_to_its_originating_view() {
 #[test]
 fn notifications_require_consent_and_push_is_explicitly_opt_in() {
     let qml = QML_SOURCE;
+    let runtime_base = include_str!("../../qml/components/FerricBrowserRuntimeBase.qml");
     assert!(qml.contains("onPresentNotification"));
     assert!(qml.contains("notification.show()"));
     assert!(qml.contains("notification.close()"));
@@ -1623,6 +3479,24 @@ fn notifications_require_consent_and_push_is_explicitly_opt_in() {
     assert!(qml.contains("ui.feature_push_service_enabled"));
     assert!(qml.contains("if (privateProfile)"));
     assert!(!qml.contains("Qt.openUrlExternally(notification"));
+    assert!(runtime_base.contains(
+        "entry.ui.status_text = \"Desktop notification permission revoked\""
+    ));
+    assert!(runtime_base.contains("ui.status_text = \"Desktop notification blocked\""));
+    assert!(runtime_base.contains("ui.status_text = \"Desktop notification shown\""));
+    assert!(!runtime_base.contains("Desktop notification revoked for \" + pendingOrigin"));
+    assert!(!runtime_base.contains("Desktop notification blocked for \" + origin"));
+    assert!(!runtime_base.contains("Desktop notification shown for \" + origin"));
+    assert!(!runtime_base.contains("Private desktop notification shown for \" + origin"));
+}
+
+#[test]
+fn secondary_window_unavailable_action_status_does_not_echo_action_id() {
+    let browser_window = include_str!("../../qml/components/FerricBrowserWindow.qml");
+    assert!(browser_window.contains(
+        "secondaryUi.status_text = \"Browser action is unavailable in this window\""
+    ));
+    assert!(!browser_window.contains("Browser action is unavailable in this window: "));
 }
 
 #[test]
@@ -1746,8 +3620,7 @@ fn focus_overlay_controller_owns_capture_state_and_only_restores_live_targets() 
 #[test]
 fn native_window_close_requires_a_user_decision_before_shutdown_checks() {
     let root = include_str!("../../qml/components/FerricBrowserRuntimeBase.qml");
-    let presentation =
-        include_str!("../../qml/components/FerricBrowserRuntimePresentation.qml");
+    let presentation = include_str!("../../qml/components/FerricBrowserRuntimePresentation.qml");
     let surface = include_str!("../../qml/components/FerricBrowserRuntimeSurface.qml");
     let secondary = include_str!("../../qml/components/FerricBrowserWindow.qml");
     let popup = include_str!("../../qml/components/FerricPopupWindow.qml");
@@ -1806,8 +3679,7 @@ fn native_window_close_requires_a_user_decision_before_shutdown_checks() {
 
 #[test]
 fn webengine_surface_recovery_is_frame_synchronized_and_wired_to_every_window() {
-    let controller =
-        include_str!("../../qml/components/FerricWebEngineSurfaceRecovery.qml");
+    let controller = include_str!("../../qml/components/FerricWebEngineSurfaceRecovery.qml");
     let primary = include_str!("../../qml/components/FerricBrowserRuntimeChrome.qml");
     let secondary = include_str!("../../qml/components/FerricBrowserWindow.qml");
     let popup = include_str!("../../qml/components/FerricPopupWindow.qml");
@@ -1877,9 +3749,10 @@ fn inherited_runtime_layers_cross_component_scopes_through_explicit_properties()
     assert!(runtime.contains(
         "readonly property var requestPresentationController: window.requestPresentationControllerObject"
     ));
-    assert!(runtime.contains(
-        "readonly property var requestInterceptor: window.primaryRequestInterceptor"
-    ));
+    assert!(
+        runtime
+            .contains("readonly property var requestInterceptor: window.primaryRequestInterceptor")
+    );
     for boundary in [
         "bindingOverlayTimer: window.bindingOverlayTimerObject",
         "engineUpdateNoticeTimer: window.engineUpdateNoticeTimerObject",
@@ -1887,7 +3760,10 @@ fn inherited_runtime_layers_cross_component_scopes_through_explicit_properties()
         "notificationPresenter: window.notificationPresenterObject",
         "siteDataClearPollTimer: window.siteDataClearPollTimerObject",
     ] {
-        assert!(runtime.contains(boundary), "missing QML boundary {boundary}");
+        assert!(
+            runtime.contains(boundary),
+            "missing QML boundary {boundary}"
+        );
     }
     assert!(runtime.contains("browserUi: window.browserUi"));
     assert!(!runtime.contains("browserUi: browserUi"));
@@ -1920,6 +3796,33 @@ fn window_registry_controller_keeps_ephemeral_owners_per_window_token() {
 }
 
 #[test]
+fn clean_branch_window_requires_distinct_off_record_profile_lease_before_navigation() {
+    let controller = include_str!("../../qml/components/FerricWindowRegistryController.qml");
+    let window = include_str!("../../qml/components/FerricBrowserWindow.qml");
+    let root = include_str!("../../qml/components/FerricBrowserRuntimeBase.qml");
+    assert!(controller.contains("function retainCleanBranchOwner(token, host, profile, view)"));
+    assert!(controller.contains("profile === controller.browserWindow.browserProfile"));
+    assert!(controller.contains("profile.offTheRecord !== true"));
+    assert!(controller.contains("view.profile !== profile"));
+    assert!(controller.contains("existing.profile === profile"));
+    assert!(controller.contains("function releaseCleanBranchOwner(token, host, profile, view)"));
+    assert!(window.contains("readonly property bool windowCleanBranch"));
+    assert!(window.contains("windowEphemeralProfile || windowCleanBranch"));
+    assert!(window.contains("rootWindow.retainCleanBranchOwner("));
+    assert!(window.contains("Clean branch profile isolation unavailable"));
+    assert!(window.contains("rootWindow.releaseCleanBranchOwner("));
+    assert!(window.contains("property bool windowCleanBranchNativeBound: false"));
+    assert!(window.contains("property bool windowCleanBranchNavigationAdmitted: false"));
+    assert!(window.contains("&& !secondaryWindow.windowCleanBranchNavigationAdmitted"));
+    assert!(window.contains("property bool windowCleanBranchLineagePublished: false"));
+    assert!(window.contains("|| !secondaryWindow.windowCleanBranchLineagePublished"));
+    assert!(window.contains("|| !secondaryWindow.windowCleanBranchNativeBound"));
+    assert!(window.contains("|| secondaryWindow.windowStartupUrl !== \"about:blank\""));
+    assert!(window.contains("if (secondaryWindow.windowCleanBranch) {\n            // A prepared child must stay inert"));
+    assert!(root.contains("function retainCleanBranchOwner(token, host, profile, view)"));
+}
+
+#[test]
 fn request_presentation_controller_bounds_dialog_text_and_has_no_resolution_authority() {
     let controller = include_str!("../../qml/components/FerricRequestPresentationController.qml");
     assert!(controller.contains("required property var browserWindow"));
@@ -1929,4 +3832,485 @@ fn request_presentation_controller_bounds_dialog_text_and_has_no_resolution_auth
     assert!(controller.contains("function pageDialogType"));
     assert!(!controller.contains("resolveQtRequest"));
     assert!(!controller.contains("runJavaScript"));
+}
+
+#[test]
+fn versioning_adapter_keeps_root_qml_composition_only() {
+    let root = include_str!("../../qml/Main.qml");
+    assert!(root.contains("FerricPrimaryBrowserWindow"));
+    assert!(!root.contains("versioning"));
+    assert!(!root.contains("localStorage"));
+    assert!(!root.contains("Settings"));
+    let adapter = include_str!("../browser_ui_versioning.rs");
+    let routing = include_str!("../browser_ui_versioning/capture.rs");
+    assert!(routing.contains("present_versioning_effect"));
+    assert!(!adapter.contains("StorageRequest"));
+    assert!(!adapter.contains("VersioningCoordinator"));
+}
+
+#[test]
+fn structural_restore_uses_a_tab_capable_blank_primary_window_for_multi_page_plans() {
+    let entry = include_str!("../../qml/Main.qml");
+    let wrapper = include_str!("../../qml/components/FerricVersionedRestoreWindow.qml");
+    let runtime_base = include_str!("../../qml/components/FerricBrowserRuntimeBase.qml");
+    let runtime_surface = include_str!("../../qml/components/FerricBrowserRuntimeSurface.qml");
+    let presentation = include_str!("../../qml/components/FerricBrowserRuntimePresentation.qml");
+    let restore_coordinator =
+        include_str!("../../qml/components/FerricVersioningRestoreCoordinator.qml");
+    let restore_host = include_str!("../../qml/components/FerricVersioningRestoreHost.qml");
+    let adapter = include_str!("../browser_ui_versioning/restore.rs");
+    let routing = include_str!("../browser_ui_library_versioning.rs");
+    let application = include_str!("../../../ferric-browser-application/src/versioning/restore.rs");
+
+    assert!(entry.contains("tabCapableWindowFactory: tabCapableWindowFactoryComponent"));
+    assert!(entry.contains("id: tabCapableWindowFactoryComponent"));
+    assert!(entry.contains("FerricVersionedRestoreWindow { }"));
+    assert!(wrapper.contains("FerricPrimaryBrowserWindow {"));
+    assert!(wrapper.contains("instanceRequestOwner: false"));
+    assert!(runtime_base.contains("property bool instanceRequestOwner: true"));
+    assert!(runtime_base.contains("function finishOwnedWindowClose()"));
+    assert!(runtime_base.contains("if (window.instanceRequestOwner) {\n            Qt.quit()\n        } else {\n            window.close()"));
+    assert!(!runtime_surface.contains("Qt.quit()"));
+    assert!(runtime_surface.contains("if (window.instanceRequestOwner)"));
+    assert!(runtime_surface.contains("if (window.instanceRequestOwner\n                && !window.temporaryProfile && !window.recoveryAvailable)"));
+    assert!(runtime_base.contains("FerricVersioningWindowOwner"));
+    assert!(runtime_base.contains("window.versioningWindowOwner.requestCloseAll()"));
+    assert!(presentation.contains("}, ui, window.versioningWindowOwner)"));
+    assert!(presentation.contains("versioningRestoreSharedProfile: sourceProfile"));
+    assert!(presentation.contains("sourceProfile !== browserProfile"));
+    assert!(runtime_base.contains("enabled: !window.versioningRestoreSharedProfile"));
+    assert!(runtime_surface.contains("if (!window.versioningRestoreSharedInterceptor"));
+    assert!(runtime_surface.contains("window.dispatchRoutedIpc(browserUi.poll_ipc())"));
+    assert!(runtime_base.contains("function dispatchRoutedIpc(windowIds)"));
+    assert!(runtime_base.contains("match.ui.poll_routed_ipc()"));
+    assert!(runtime_base.contains("browserUi.reject_routed_ipc(id)"));
+    assert!(runtime_surface.contains(
+        "if (window.instanceRequestOwner) {\n            browserUi.activate_runtime_wake()"
+    ));
+    assert!(runtime_base.contains("property var tabCapableWindowFactory: null"));
+    assert!(runtime_base.contains("property string versioningRestoreStartupCommitId"));
+    assert!(runtime_base.contains("property string versioningOpenRestoreCommitId"));
+    assert!(runtime_base.contains("property double versioningOpenRestoreOptionsAt"));
+    assert!(runtime_base.contains("property bool versioningOpenRestoreMediaPositionsRequested"));
+    assert!(runtime_base.contains("property bool versioningOpenRestoreEditableDraftsRequested"));
+    assert!(runtime_surface.contains("request_versioned_pristine_tab_restore("));
+    assert!(runtime_surface.contains("FerricVersioningRestoreHost"));
+    assert!(
+        runtime_surface
+            .contains("versioningRestoreCoordinator.handleSidecarReady(action, allowEditable)")
+    );
+    assert!(restore_host.contains("Qt.resolvedUrl(\"FerricVersioningRestoreCoordinator.qml\")"));
+    assert!(!restore_host.contains("sourceComponent:"));
+    assert!(presentation.contains("var restoreFactory = window.tabCapableWindowFactory"));
+    assert!(
+        presentation
+            .contains("String(hostWindow.versioningOpenRestoreCommitId || \"\") === fields[1]")
+    );
+    assert!(presentation.contains("optionsAgeMs <= 60000"));
+    assert!(
+        presentation.contains("Tab-capable restore window unavailable; current work remains open")
+    );
+    assert!(presentation.contains("versioningRestoreStartupCommitId: fields[1]"));
+    assert!(presentation.contains("startupProfileOverridesJson: profileOverrides"));
+    assert!(presentation.contains("startupConfigJson: String(ui.config_json"));
+    assert!(presentation.contains("startupCliOverridesJson: String(ui.cli_overrides_json"));
+    assert!(presentation.contains("startupContextsJson: String(ui.contexts_json"));
+    assert!(restore_coordinator.contains("browserUi.tab_index_for_id(tabId)"));
+    assert!(restore_coordinator.contains("hostWindow.activeWebView() === view"));
+    assert!(restore_coordinator.contains("confirm_versioned_restore_editable_preview"));
+    assert!(adapter.contains("pending_pristine_restore_tab_surface"));
+    assert!(routing.contains("apply_restore_to_pristine_window_with_options("));
+    assert!(application.contains("pub fn apply_restore_to_pristine_window_with_options("));
+    assert!(routing.contains("format!(\"versioning-restore-window\\t{}\", plan.commit)"));
+    assert!(!routing.contains("Multi-page versioned restore needs a tab-capable destination"));
+    assert!(routing.contains("Restored {} structural pages"));
+    assert!(routing.contains("only the selected safe page was loaded"));
+}
+
+#[test]
+fn stored_archive_view_uses_exact_materialized_file_and_stays_release_gated() {
+    let panel = include_str!("../../qml/components/FerricVersioningPanel.qml");
+    let chrome = include_str!("../../qml/components/FerricBrowserRuntimeChrome.qml");
+    let host = include_str!("../../qml/components/FerricVersioningArchiveHost.qml");
+    let view = include_str!("../../qml/components/FerricVersioningArchiveView.qml");
+    let adapter = include_str!("../browser_ui_versioning/restore.rs");
+    let storage_router = include_str!("../browser_ui_library_versioning.rs");
+    let interceptor = include_str!("../versioning_archive_interceptor.cpp");
+    assert!(panel.contains("readonly property bool archiveOfflineReleaseEnabled: false"));
+    assert!(panel.contains("request_versioned_archive_view(panel.payload.id)"));
+    assert!(panel.contains(r#"String(browserUi.versioning_archive_view_url || "").length === 0"#));
+    assert!(chrome.contains("FerricVersioningArchiveHost {"));
+    assert!(chrome.contains("browserUi: window.browserUi"));
+    assert!(
+        host.contains("active: String(browserUi.versioning_archive_view_url || \"\").length > 0")
+    );
+    assert!(
+        host.contains("authorizedArchiveUrl: archiveHost.browserUi.versioning_archive_view_url")
+    );
+    assert!(host.contains("sequence: \"Escape\""));
+    assert!(host.contains("close_versioned_archive_view(operation)"));
+    assert!(host.contains("textFormat: Text.PlainText"));
+    assert!(host.contains("versioning_archive_source_url"));
+    assert!(host.contains("Source (metadata only):"));
+    assert!(host.contains("versioning_archive_captured_at_ms"));
+    assert!(host.contains("versioning_archive_fidelity_label"));
+    assert!(view.contains("offTheRecord: true"));
+    assert!(view.contains("import io.github.ferricbrowser 1.0"));
+    assert!(view.contains("activeFocusOnPress: true"));
+    assert!(interceptor.contains("QStringLiteral(\"mhtml\")"));
+    assert!(view.contains("persistentCookiesPolicy: WebEngineProfile.NoPersistentCookies"));
+    assert!(view.contains("settings.javascriptEnabled: false"));
+    assert!(view.contains("archiveBlanked()"));
+    assert!(view.contains("archiveBlankingTimedOut()"));
+    assert!(view.contains("blankWaitExpired"));
+    assert!(view.contains("archiveHost.isExactAuthorizedArchiveUrl(request.url)"));
+    assert!(view.contains("sanitizeArchiveTitle(archiveView.title)"));
+    assert!(view.contains("[bidi]"));
+    assert!(view.contains("\\u061c\\u200e-\\u200f"));
+    assert!(view.contains("slice(0, 512)"));
+    assert!(view.contains("archiveLoaded(archiveHost.archiveTitle)"));
+    assert!(view.contains("new URL(String(candidate)).href"));
+    assert!(adapter.contains("request_versioned_archive_view(window, commit)"));
+    assert!(adapter.contains("close_versioned_archive_view(window, operation)"));
+    assert!(storage_router.contains("versioned_archive_view_metadata"));
+    assert!(storage_router.contains("archive_view_cleanup_retries < 2"));
+}
+
+#[test]
+fn application_shutdown_waits_for_archive_blank_and_cleanup() {
+    let runtime = include_str!("../../qml/components/FerricBrowserRuntimeBase.qml");
+    let chrome = include_str!("../../qml/components/FerricBrowserRuntimeChrome.qml");
+    let host = include_str!("../../qml/components/FerricVersioningArchiveHost.qml");
+
+    assert!(chrome.contains("versionedArchiveHostObject: versionedArchiveLoader"));
+    assert!(runtime.contains("!browserUi.versioned_archive_shutdown_ready()"));
+    assert!(runtime.contains("window.archiveShutdownCloseRequested = host.closeArchive()"));
+    assert!(runtime.contains("host.item.closeRetryAvailable"));
+    assert!(
+        host.contains(
+            "readonly property bool closeRetryAvailable: archiveSurface.blankWaitExpired"
+        )
+    );
+}
+
+#[test]
+fn ui_action_status_does_not_echo_dynamic_action_ids_or_errors() {
+    let actions = include_str!("../browser_ui_ui_actions.rs");
+
+    for dynamic_status in [
+        "format!(\"Executing {action_id}\")",
+        "format!(\"{action_id} failed: {error}\")",
+        "format!(\"Executing {resolved_id}\")",
+        "format!(\"{resolved_id} failed: {error}\")",
+    ] {
+        assert!(
+            !actions.contains(dynamic_status),
+            "dynamic action status returned: {dynamic_status}"
+        );
+    }
+    for fixed_status in [
+        "External action started",
+        "External action failed",
+        "Userscript action started",
+        "Userscript action failed",
+        "Action started",
+        "Action failed",
+    ] {
+        assert!(
+            actions.contains(fixed_status),
+            "missing fixed status: {fixed_status}"
+        );
+    }
+}
+
+#[test]
+fn binding_rejection_status_uses_fixed_reason_without_command_text() {
+    let input = include_str!("../../../ferric-browser-core/src/input.rs");
+    let presentation = include_str!("../browser_ui_input.rs");
+
+    assert!(input.contains("binding command does not accept a count"));
+    assert!(!input.contains("format!(\"command {command} does not accept a count\")"));
+    assert!(presentation.contains("BindingOutcome::Rejected { reason }"));
+}
+
+#[test]
+fn learning_mode_binding_status_uses_only_the_registered_command_name() {
+    let presentation = include_str!("../browser_ui_input.rs");
+    let expansion = presentation
+        .find("let expanded = match registry.expand_command(parsed)")
+        .expect("binding command is expanded through the registry");
+    let feedback_name = presentation
+        .find("let registered_command_name = parsed.name.clone();")
+        .expect("validated command name is captured for learning feedback");
+    let dispatch = presentation
+        .find("invocation: CommandInvocation::with_count(parsed, count)")
+        .expect("expanded command is dispatched");
+    let feedback = presentation
+        .find("format!(\"Binding executed: {registered_command_name}\")")
+        .expect("learning feedback uses the registered command name");
+
+    assert!(expansion < feedback_name && feedback_name < dispatch && dispatch < feedback);
+    assert!(!presentation.contains("format!(\"Binding executed: {command}\")"));
+}
+
+#[test]
+fn hint_status_does_not_echo_configured_targets_or_typed_filters() {
+    let source = include_str!("../browser_ui_navigation.rs");
+    assert!(source.contains("Hints ready · type a label or click"));
+    assert!(source.contains("Hint results updated"));
+    assert!(source.contains("Hint link sent\""));
+    assert!(source.contains("Hint userscript started\""));
+    assert!(source.contains("Hint userscript action started"));
+    assert!(source.contains("Rapid hint userscript started"));
+
+    for private_status in [
+        "format!(\"{target} · {typed} · {remaining}/{total}\")",
+        "format!(\"Hint link sent to {target_name}\")",
+        "format!(\"Hint userscript started: {script}\")",
+        "Hint userscript action started: {action_id}",
+        "Rapid hint userscript started: {script}",
+        "{} hint(s) · type a label or click",
+    ] {
+        assert!(
+            !source.contains(private_status),
+            "caller/configuration data returned to status: {private_status}"
+        );
+    }
+
+    // The structured result remains the explicit action response; only the
+    // shared status-bar projection is details-free.
+    assert!(source.contains("\"target\":target_name"));
+    assert!(source.contains("\"userscript\":script"));
+}
+
+#[test]
+fn selection_search_status_does_not_echo_configured_engine_name() {
+    let source = include_str!("../browser_ui_edit_commands.rs");
+    assert!(source.contains("Selection search requested\""));
+    assert!(source.contains("Searching selection\""));
+    assert!(source.contains("\"engine\": engine"));
+    assert!(!source.contains("Selection search requested with {engine}"));
+    assert!(!source.contains("Searching selection with {engine}"));
+}
+
+#[test]
+fn command_and_ipc_diagnostics_do_not_echo_caller_values_or_route_ids() {
+    let source = include_str!("../browser_ui_context_commands.rs");
+    let context_runtime = include_str!("../browser_ui_contexts.rs");
+    let ipc_route_validation = include_str!("../browser_ui_ipc_route_validation.rs");
+    let browsing_commands = include_str!("../browser_ui_browsing_commands.rs");
+    let switcher_query = include_str!("../browser_ui_query_switcher.rs");
+    let switcher_actions = include_str!("../browser_ui_ipc_switcher_actions.rs");
+    let edit_commands = include_str!("../browser_ui_edit_commands.rs");
+    for fixed_diagnostic in [
+        "window-new has an unsupported option",
+        "context-create option requires a value",
+        "context-create has an unsupported option",
+        "context-route option requires a value",
+        "context-route entry point is unsupported",
+        "context-route entry point is duplicated",
+        "context-route has an unsupported option",
+        "context does not exist",
+        "context route conflicts with an existing route; choose a unique priority",
+    ] {
+        assert!(source.contains(fixed_diagnostic), "missing {fixed_diagnostic}");
+    }
+    for dynamic_diagnostic in [
+        "unknown window-new option: {option}",
+        "{option} requires a value",
+        "unknown context-create option: {option}",
+        "unknown context-route option: {option}",
+        "unsupported context route entry point: {value}",
+        "context route entry point specified more than once: {value}",
+        "context not found: {context_name}",
+        "route conflicts with {} at priority",
+        "Context route {id} added",
+        "Context route {route_id} removed",
+    ] {
+        assert!(
+            !source.contains(dynamic_diagnostic),
+            "caller-controlled diagnostic returned: {dynamic_diagnostic}"
+        );
+    }
+    assert!(source.contains("Context route added; prompt applies before navigation only"));
+    assert!(source.contains("Context route removed; existing navigation chains were not changed"));
+    assert!(context_runtime.contains("\"context does not exist\".to_owned()"));
+    assert!(!context_runtime.contains("format!(\"context not found: {context_name}\")"));
+    for fixed_diagnostic in [
+        "requested context is unavailable",
+        "requested profile is unavailable",
+    ] {
+        assert!(ipc_route_validation.contains(fixed_diagnostic));
+    }
+    assert!(!ipc_route_validation.contains("context not found: {context_name}"));
+    assert!(!ipc_route_validation.contains("profile not found: {profile}"));
+    assert!(browsing_commands.contains("search has an unsupported option"));
+    assert!(!browsing_commands.contains("unknown search option: {value}"));
+    assert!(switcher_query.contains("switcher.query scope is unsupported"));
+    assert!(!switcher_query.contains("unknown switcher scope: {scope}"));
+    for fixed_diagnostic in [
+        "switcher.activate action is not allowed for this result kind",
+        "switcher.activate result kind is unsupported",
+    ] {
+        assert!(switcher_actions.contains(fixed_diagnostic));
+    }
+    assert!(!switcher_actions.contains("switcher.activate action {action:?}"));
+    assert!(!switcher_actions.contains("unknown switcher result kind: {kind}"));
+    assert!(edit_commands.contains("caret-move direction is unsupported"));
+    assert!(edit_commands.contains("mode-enter value is unsupported"));
+    assert!(!edit_commands.contains("unknown caret direction: {direction}"));
+    assert!(!edit_commands.contains("unknown mode: {mode}"));
+}
+
+#[test]
+fn tab_suspend_and_discard_refusals_use_closed_page_data_free_reasons() {
+    let presentation =
+        include_str!("../../qml/components/FerricBrowserRuntimePresentation.qml");
+    for (reason_function, next_function) in [
+        ("function tabSuspensionBlockReason", "function requestTabSuspension"),
+        ("function tabDiscardBlockReason", "function requestTabDiscard"),
+    ] {
+        let body = presentation
+            .split_once(reason_function)
+            .expect("tab lifecycle refusal reason exists")
+            .1
+            .split_once(next_function)
+            .expect("reason function ends before its request handler")
+            .0;
+        let mut return_count = 0;
+        for line in body.lines().map(str::trim) {
+            let Some(expression) = line.strip_prefix("return ") else {
+                continue;
+            };
+            let expression = expression.strip_suffix(';').unwrap_or(expression);
+            assert!(
+                (expression.starts_with('"') && expression.ends_with('"'))
+                    || expression == "\"\"",
+                "page-derived or computed refusal text must not be surfaced: {expression}"
+            );
+            return_count += 1;
+        }
+        assert!(return_count >= 2, "expected closed refusal reasons and allow case");
+    }
+}
+
+#[test]
+fn profile_download_routing_requires_a_validated_root_popup_snapshot() {
+    let requests = include_str!("../../qml/components/FerricBrowserRuntimeRequests.qml");
+    let runtime_base = include_str!("../../qml/components/FerricBrowserRuntimeBase.qml");
+    let presentation =
+        include_str!("../../qml/components/FerricBrowserRuntimePresentation.qml");
+    let routing = include_str!("../../qml/scripts/ProfileDownloadRouting.js");
+    let popup_ownership = include_str!("../../qml/scripts/PopupWindowOwnership.js");
+
+    let owner = requests
+        .split_once("function profileDownloadOwner(download, inspectView)")
+        .expect("profile-level download owner")
+        .1
+        .split_once("function popupEntriesForDownloadRouting()")
+        .expect("root popup snapshot helper follows the owner")
+        .0;
+    assert_eq!(owner.matches("ProfileDownloadRouting.resolve(").count(), 4);
+    assert_eq!(owner.matches("popupEntriesForDownloadRouting()").count(), 4);
+    assert!(!owner.contains("window.popupWindowRegistry || []"));
+    assert!(!owner.contains("window.browserWindowRegistry || []"));
+    assert!(owner.contains("window.browserWindowRegistry, ordinaryPopupEntries"));
+    assert!(owner.contains("window.browserWindowRegistry, permitPopupEntries"));
+    assert!(owner.contains("window.browserWindowRegistry, unpermittedPopupEntries"));
+    assert!(owner.contains("window.browserWindowRegistry, popupEntries"));
+
+    let snapshot = requests
+        .split_once("function popupEntriesForDownloadRouting()")
+        .expect("root popup snapshot boundary")
+        .1
+        .split_once("function handleDownloadRequested(download)")
+        .expect("root popup snapshot helper ends before request handling")
+        .0;
+    assert!(snapshot.contains("return window.rootPopupEntriesSnapshot()"));
+    let root_snapshot = runtime_base
+        .split_once("function rootPopupEntriesSnapshot()")
+        .expect("shared root popup snapshot")
+        .1
+        .split_once("function focusExistingContextWindow(")
+        .expect("root snapshot helper boundary")
+        .0;
+    assert!(root_snapshot.contains("owner.rootOwner()"));
+    assert!(root_snapshot.contains("PopupWindowOwnership.snapshotPopupEntries(root.hostWindow)"));
+    assert!(root_snapshot.contains("return null"));
+    let notification_focus = runtime_base
+        .split_once("function focusNotificationOrigin(")
+        .expect("notification popup routing")
+        .1
+        .split_once("function rootPopupEntriesSnapshot()")
+        .expect("notification focus boundary")
+        .0;
+    assert!(notification_focus.contains("window.rootPopupEntriesSnapshot()"));
+    assert!(!notification_focus.contains("window.popupWindowRegistry || []"));
+    let live_downloads = presentation
+        .split_once("function liveDownloadForId(id)")
+        .expect("download metrics owner lookup")
+        .1
+        .split_once("function downloadMetrics(")
+        .expect("live download lookup boundary")
+        .0;
+    assert!(live_downloads.contains("window.rootPopupEntriesSnapshot()"));
+    assert!(live_downloads.contains(
+        "var browserEntries = window.browserWindowRegistry"
+    ));
+    assert!(live_downloads.contains("ProfileDownloadRouting.liveRequestForId("));
+    assert!(live_downloads.contains(
+        "id, window, browserEntries, popupEntries, window.browserProfile"
+    ));
+    assert!(presentation.contains(
+        "import \"../scripts/ProfileDownloadRouting.js\" as ProfileDownloadRouting"
+    ));
+    assert!(!live_downloads.contains("window.browserWindowRegistry || []"));
+    assert!(!live_downloads.contains("window.popupWindowRegistry || []"));
+    assert!(routing.contains(
+        "function liveRequestForId(id, sourceHost, browserEntries, popupEntries, profile)"
+    ));
+    assert!(routing.contains("browserEntries.length > 64"));
+    assert!(routing.contains("popupEntries.length > 64"));
+    assert!(routing.contains("var browserSnapshots = browserEntries.slice(0)"));
+    assert!(routing.contains("var popupSnapshots = popupEntries.slice(0)"));
+    assert!(routing.contains("function ownRecordValue(entry, key)"));
+    assert!(routing.contains("Object.getOwnPropertyDescriptor(entry, key)"));
+    assert!(routing.contains("ownRecordValue(browserEntry, \"host\")"));
+    assert!(routing.contains("ownRecordValue(browserEntry, \"profile\")"));
+    assert!(routing.contains("ownRecordValue(browserEntry, \"view\")"));
+    assert!(routing.contains("ownRecordValue(popup, \"host\")"));
+    assert!(routing.contains("ownRecordValue(popup, \"view\")"));
+    assert!(popup_ownership.contains("function ownEntryValue(entry, key)"));
+    assert!(popup_ownership.contains("Object.getOwnPropertyDescriptor(entry, key)"));
+    assert!(routing.contains("var seenRegistryHosts = [sourceHost]"));
+    assert!(routing.contains("var sourceBrowserProfile = sourceHost.browserProfile"));
+    assert!(routing.contains("browserOwner.profile === profile"));
+    assert!(routing.contains("popupOwner.profile === profile"));
+    assert!(routing.contains(
+        "typeof candidate !== \"object\" && typeof candidate !== \"function\""
+    ));
+    assert!(routing.contains("var sourceRegistryEntrySeen = false"));
+    assert!(routing.contains("if (browserHost === sourceHost)"));
+    assert!(routing.contains("seenPopupHosts.indexOf(popupHost) >= 0"));
+    assert!(routing.contains("seenBrowserHosts.indexOf(browserHost) >= 0"));
+    assert!(routing.contains("seenBrowserHosts.indexOf(popupHost) >= 0"));
+    assert!(routing.contains("!download || !sourceHost || !profile"));
+    assert!(routing.contains("var popupProfile = popupHost.popupProfile"));
+    assert!(routing.contains("function isRecord(value)"));
+    assert!(routing.contains("function indexedRequest(index, id)"));
+    assert!(routing.contains("Object.prototype.hasOwnProperty.call(index, id)"));
+    assert!(routing.contains(
+        "if (!Array.isArray(sourceViews) || !consider(sourceHost, sourceViews))"
+    ));
+    assert!(routing.contains("var activeDownloads = host.activeDownloads"));
+    assert!(routing.contains("var pendingDownloadRequests = host.pendingDownloadRequests"));
+    assert!(routing.contains(
+        "var downloadCompletionRequests = host.downloadCompletionRequests"
+    ));
+    assert!(routing.contains("!isRecord(activeDownloads)"));
+    assert!(!routing.contains("host.activeDownloads || ({})"));
+    assert!(!routing.contains("host.pendingDownloadRequests || ({})"));
+    assert!(!routing.contains("host.downloadCompletionRequests || ({})"));
+    assert!(routing.contains("return resolveUnchecked(download, view, sourceHost, restoredHost,"));
+    assert!(routing.contains("catch (error) {\n        return undefined\n    }"));
 }

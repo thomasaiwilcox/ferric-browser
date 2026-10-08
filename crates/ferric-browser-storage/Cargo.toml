@@ -7,13 +7,29 @@ publish = false
 edition.workspace = true
 rust-version.workspace = true
 
+[features]
+# Test binaries only: permits a single scoped object-worker refusal.
+native-archive-fault-test = []
+
 [dependencies]
+ferric-browser-core = { path = "../ferric-browser-core" }
 fs2.workspace = true
 libc.workspace = true
 rusqlite.workspace = true
+sha2.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+rustix.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+getrandom.workspace = true
+hmac.workspace = true
+dbus-secret-service.workspace = true
+url.workspace = true
+zeroize.workspace = true
 
 [lints]
 workspace = true

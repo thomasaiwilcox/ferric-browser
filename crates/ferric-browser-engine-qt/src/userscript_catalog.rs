@@ -9,7 +9,6 @@ use ferric_browser_core::{ActionRegistry, ExistenceState, TabId, Target, WindowI
 use serde_json::Value;
 use std::path::Path;
 
-#[derive(Debug)]
 pub(super) struct ActionPresentation {
     pub(super) id: String,
     pub(super) label: String,

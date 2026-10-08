@@ -1,5 +1,7 @@
 //! Configuration composition, overrides, loading, and persistence.
 
+use std::fmt;
+
 use super::{
     ActionTargetConfig, BTreeMap, BTreeSet, BlockingConfig, CURRENT_SCHEMA_VERSION, ContentConfig,
     ContextsConfig, Deserialize, DesktopConfig, DiscoveryConfig, DownloadsConfig, HintsConfig,
@@ -8,14 +10,14 @@ use super::{
     NavigationConfig, Path, PathBuf, PermissionRuleConfig, PermissionsConfig, PrivacyConfig,
     ProfileDefinition, ProfilesConfig, RUNTIME_SCHEMA_VERSION, Serialize, SessionConfig,
     SiteDoctorConfig, SiteRule, SpellcheckConfig, SwitcherConfig, SystemTime, TabsConfig,
-    ThemeConfig, ToolsConfig, UNIX_EPOCH, UiConfig, Write, default_search_engines, fs, io_error,
-    runtime_site_rule_id, set_private_file_mode, set_private_permissions,
-    setting_supports_site_scope, validate, validate_contexts, validate_profile_definition,
-    validate_profiles, validate_runtime_binding, validate_runtime_key, validate_runtime_overrides,
-    validate_runtime_site_pattern,
+    ThemeConfig, ToolsConfig, UNIX_EPOCH, UiConfig, VersioningConfig, Write,
+    default_search_engines, fs, io_error, runtime_site_rule_id, set_private_file_mode,
+    set_private_permissions, setting_supports_site_scope, validate, validate_contexts,
+    validate_profile_definition, validate_profiles, validate_runtime_binding, validate_runtime_key,
+    validate_runtime_overrides, validate_runtime_site_pattern,
 };
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
     pub schema_version: u64,
@@ -50,6 +52,8 @@ pub struct Config {
     #[serde(default)]
     pub privacy: PrivacyConfig,
     #[serde(default)]
+    pub versioning: VersioningConfig,
+    #[serde(default)]
     pub permissions: PermissionsConfig,
     #[serde(default)]
     pub blocking: BlockingConfig,
@@ -79,6 +83,22 @@ pub struct Config {
     pub permission_rules: Vec<PermissionRuleConfig>,
 }
 
+impl fmt::Debug for Config {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("Config")
+            .field("schema_version", &self.schema_version)
+            .field("include_count", &self.include.len())
+            .field("search_engine_count", &self.search_engines.len())
+            .field("action_target_count", &self.action_targets.len())
+            .field("binding_mode_count", &self.bindings.len())
+            .field("site_rule_count", &self.site_rules.len())
+            .field("permission_rule_count", &self.permission_rules.len())
+            .field("values", &"[redacted]")
+            .finish()
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -98,6 +118,7 @@ impl Default for Config {
             history: HistoryConfig::default(),
             content: ContentConfig::default(),
             privacy: PrivacyConfig::default(),
+            versioning: VersioningConfig::default(),
             permissions: PermissionsConfig::default(),
             blocking: BlockingConfig::default(),
             downloads: DownloadsConfig::default(),
@@ -116,7 +137,7 @@ impl Default for Config {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub enum ConfigError {
     Io { path: PathBuf, message: String },
     Parse { path: PathBuf, message: String },
@@ -127,45 +148,78 @@ pub enum ConfigError {
     Validation(String),
 }
 
-impl std::fmt::Display for ConfigError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for ConfigError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::Io { .. } => "ConfigError::Io([redacted])",
+            Self::Parse { .. } => "ConfigError::Parse([redacted])",
+            Self::IncludeDepth { .. } => "ConfigError::IncludeDepth([redacted])",
+            Self::IncludeCycle { .. } => "ConfigError::IncludeCycle([redacted])",
+            Self::IncludeRepeated { .. } => "ConfigError::IncludeRepeated([redacted])",
+            Self::SizeLimit => "ConfigError::SizeLimit",
+            Self::Validation(_) => "ConfigError::Validation([redacted])",
+        })
+    }
+}
+
+impl fmt::Display for ConfigError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Io { path, message } | Self::Parse { path, message } => {
-                write!(formatter, "{}: {message}", path.display())
+            Self::Io { .. } => formatter.write_str("configuration file access failed"),
+            Self::Parse { .. } => formatter.write_str("configuration file could not be parsed"),
+            Self::IncludeDepth { .. } => {
+                formatter.write_str("configuration include depth exceeded")
             }
-            Self::IncludeDepth { path } => write!(
-                formatter,
-                "include depth exceeds {MAX_INCLUDE_DEPTH}: {}",
-                path.display()
-            ),
-            Self::IncludeCycle { path } => write!(formatter, "include cycle at {}", path.display()),
-            Self::IncludeRepeated { path } => {
-                write!(formatter, "include repeated: {}", path.display())
+            Self::IncludeCycle { .. } => {
+                formatter.write_str("configuration include cycle rejected")
+            }
+            Self::IncludeRepeated { .. } => {
+                formatter.write_str("repeated configuration include rejected")
             }
             Self::SizeLimit => formatter.write_str("configuration includes exceed 2 MiB"),
-            Self::Validation(message) => formatter.write_str(message),
+            Self::Validation(_) => formatter.write_str("configuration validation failed"),
         }
     }
 }
 
 impl std::error::Error for ConfigError {}
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct LoadedConfig {
     pub config: Config,
     pub sources: Vec<PathBuf>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+impl fmt::Debug for LoadedConfig {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("LoadedConfig")
+            .field("config", &"[redacted]")
+            .field("source_count", &self.sources.len())
+            .finish()
+    }
+}
+
+#[derive(Clone, Default, PartialEq)]
 pub struct ConfigStore {
     current: Option<LoadedConfig>,
     revision: u64,
 }
 
+impl fmt::Debug for ConfigStore {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ConfigStore")
+            .field("has_current", &self.current.is_some())
+            .field("revision", &self.revision)
+            .finish()
+    }
+}
+
 /// Generated settings and bindings written by interactive configuration
 /// commands. This document is intentionally separate from the user-edited
 /// configuration so an interactive change can never rewrite lower layers.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RuntimeOverrides {
     pub schema_version: u64,
@@ -179,6 +233,19 @@ pub struct RuntimeOverrides {
     /// Generated site rules written by interactive `set --pattern` commands.
     #[serde(default)]
     pub site_rules: Vec<SiteRule>,
+}
+
+impl fmt::Debug for RuntimeOverrides {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("RuntimeOverrides")
+            .field("schema_version", &self.schema_version)
+            .field("setting_count", &self.settings.len())
+            .field("binding_mode_count", &self.bindings.len())
+            .field("site_rule_count", &self.site_rules.len())
+            .field("values", &"[redacted]")
+            .finish()
+    }
 }
 
 impl Default for RuntimeOverrides {
@@ -845,6 +912,54 @@ fn merge(destination: &mut toml::Value, source: &toml::Value) {
             } else {
                 destination.insert(key.clone(), value.clone());
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod debug_tests {
+    use super::*;
+    use crate::PendingSettingChange;
+
+    #[test]
+    fn configuration_debug_and_errors_redact_paths_messages_and_values() {
+        let sentinel = "private-config-sentinel-852c";
+        let path = PathBuf::from(format!("/private/{sentinel}/config.toml"));
+        let error = ConfigError::Parse {
+            path: path.clone(),
+            message: sentinel.into(),
+        };
+        let mut config = Config::default();
+        config.search_engines.insert(
+            sentinel.into(),
+            format!("https://example.test/?q={sentinel}"),
+        );
+        config.include.push(sentinel.into());
+        let loaded = LoadedConfig {
+            config: config.clone(),
+            sources: vec![path],
+        };
+        let mut overrides = RuntimeOverrides::default();
+        overrides
+            .settings
+            .insert(sentinel.into(), toml::Value::String(sentinel.into()));
+        let pending = PendingSettingChange {
+            key: sentinel.into(),
+            current: toml::Value::String(sentinel.into()),
+            pending: toml::Value::String(sentinel.into()),
+            apply_time: "restart",
+        };
+
+        for projection in [
+            format!("{error:?}"),
+            format!("{error}"),
+            format!("{config:?}"),
+            format!("{loaded:?}"),
+            format!("{overrides:?}"),
+            format!("{pending:?}"),
+        ] {
+            assert!(!projection.contains(sentinel), "{projection}");
+            assert!(!projection.contains("/private/"), "{projection}");
         }
     }
 }

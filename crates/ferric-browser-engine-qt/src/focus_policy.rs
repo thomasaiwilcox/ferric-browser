@@ -2,7 +2,7 @@
 
 use ferric_browser_core::Mode;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub(super) struct FocusObservation {
     pub(super) url: String,
     pub(super) sequence: i32,

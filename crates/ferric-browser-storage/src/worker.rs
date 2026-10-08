@@ -23,6 +23,15 @@ use super::{
     current_session_paths, delete_named_session, list_named_sessions, load_session,
     save_session_atomic,
 };
+use crate::versioning::{
+    CommitDeletePreview, CommitDeleteReceipt, CommitInfo, CommitSummary, ManifestObjectRole,
+    VersionedCaptureManifest, VersioningGcReport,
+    objects::{RecoverySummary, VersionedSidecarBytes, VersioningObjectStore},
+};
+use ferric_browser_core::{
+    CommitId, LogicalPageId, OperationId,
+    versioning::{MAX_PAGE_SIDECAR_BYTES, limits::MAX_LIST_ITEMS},
+};
 use uuid::Uuid;
 
 const QUEUE_CAPACITY: usize = 1;
@@ -33,7 +42,7 @@ const MAX_PERMISSION_BATCH: usize = 16;
 const MAX_DOWNLOAD_BATCH: usize = 32;
 const MAX_MARK_BATCH: usize = 16;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct ProfileLibrarySnapshot {
     pub history: Vec<HistoryRecord>,
     pub command_history: Vec<String>,
@@ -43,7 +52,21 @@ pub struct ProfileLibrarySnapshot {
     pub permissions: Vec<PermissionRule>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+impl std::fmt::Debug for ProfileLibrarySnapshot {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ProfileLibrarySnapshot")
+            .field("history_count", &self.history.len())
+            .field("command_count", &self.command_history.len())
+            .field("bookmark_count", &self.bookmarks.len())
+            .field("quickmark_count", &self.quickmarks.len())
+            .field("download_count", &self.downloads.len())
+            .field("permission_count", &self.permissions.len())
+            .finish()
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
 pub enum StorageWorkerError {
     Busy,
     QueueFull,
@@ -54,6 +77,24 @@ pub enum StorageWorkerError {
     InvalidPermissionBatch,
     InvalidDownloadBatch,
     InvalidMarkBatch,
+    RecoveryFailed,
+}
+
+impl std::fmt::Debug for StorageWorkerError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Busy => formatter.write_str("Busy"),
+            Self::QueueFull => formatter.write_str("QueueFull"),
+            Self::Stopped => formatter.write_str("Stopped"),
+            Self::Spawn(_) => formatter.write_str("Spawn([redacted])"),
+            Self::InvalidLimit => formatter.write_str("InvalidLimit"),
+            Self::InvalidBatch => formatter.write_str("InvalidBatch"),
+            Self::InvalidPermissionBatch => formatter.write_str("InvalidPermissionBatch"),
+            Self::InvalidDownloadBatch => formatter.write_str("InvalidDownloadBatch"),
+            Self::InvalidMarkBatch => formatter.write_str("InvalidMarkBatch"),
+            Self::RecoveryFailed => formatter.write_str("RecoveryFailed"),
+        }
+    }
 }
 
 impl std::fmt::Display for StorageWorkerError {
@@ -62,10 +103,7 @@ impl std::fmt::Display for StorageWorkerError {
             Self::Busy => formatter.write_str("a profile metadata query is already pending"),
             Self::QueueFull => formatter.write_str("profile metadata worker queue is full"),
             Self::Stopped => formatter.write_str("profile metadata worker has stopped"),
-            Self::Spawn(reason) => write!(
-                formatter,
-                "profile metadata worker could not start: {reason}"
-            ),
+            Self::Spawn(_) => formatter.write_str("profile metadata worker could not start"),
             Self::InvalidLimit => formatter.write_str("profile metadata query limit is invalid"),
             Self::InvalidBatch => formatter.write_str("history write batch is invalid"),
             Self::InvalidPermissionBatch => {
@@ -75,13 +113,16 @@ impl std::fmt::Display for StorageWorkerError {
             Self::InvalidMarkBatch => {
                 formatter.write_str("bookmark/quickmark write batch is invalid")
             }
+            Self::RecoveryFailed => formatter.write_str(
+                "versioning recovery failed; new captures are unavailable for this profile",
+            ),
         }
     }
 }
 
 impl std::error::Error for StorageWorkerError {}
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum StorageCommand {
     Library {
         limit: usize,
@@ -157,6 +198,67 @@ pub enum StorageCommand {
         since: Option<i64>,
         origin: Option<String>,
     },
+    VersioningStructuralPublish {
+        operation: OperationId,
+        profile_uuid: Uuid,
+        manifest: VersionedCaptureManifest,
+    },
+    VersioningBegin {
+        operation: OperationId,
+        profile_uuid: Uuid,
+        /// Maximum archive-plus-manifest bytes reserved for this operation.
+        reserved_bytes: u64,
+        /// Trusted private root for bounded unpublished-quarantine admission.
+        /// Structural-only reservations can omit it.
+        state_root: Option<PathBuf>,
+    },
+    VersioningAbort {
+        operation: OperationId,
+        profile_uuid: Uuid,
+    },
+    VersioningObjectPublish {
+        operation: OperationId,
+        profile_uuid: Uuid,
+        state_root: PathBuf,
+        manifest: VersionedCaptureManifest,
+    },
+    VersioningRecover {
+        profile_uuid: Uuid,
+        state_root: PathBuf,
+    },
+    VersioningList {
+        profile_uuid: Uuid,
+        limit: usize,
+        offset: usize,
+    },
+    VersioningInfo {
+        profile_uuid: Uuid,
+        id: CommitId,
+    },
+    VersioningDeletePreview {
+        profile_uuid: Uuid,
+        id: CommitId,
+    },
+    VersioningDelete {
+        profile_uuid: Uuid,
+        id: CommitId,
+        expected_snapshot: [u8; 32],
+        state_root: PathBuf,
+    },
+    VersioningCollect {
+        profile_uuid: Uuid,
+        state_root: PathBuf,
+    },
+    VersioningManifest {
+        profile_uuid: Uuid,
+        id: CommitId,
+    },
+    VersioningSidecarRead {
+        profile_uuid: Uuid,
+        state_root: PathBuf,
+        id: CommitId,
+        logical_page: LogicalPageId,
+    },
     Flush,
 }
 
@@ -174,10 +276,20 @@ pub struct SessionRestoreSnapshot {
     pub closed_tabs: Vec<ClosedTabSnapshot>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct JourneyQuerySnapshot {
     pub nodes: Vec<JourneyNodeRecord>,
     pub edges: Vec<super::JourneyEdgeRecord>,
+}
+
+impl std::fmt::Debug for JourneyQuerySnapshot {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("JourneyQuerySnapshot")
+            .field("node_count", &self.nodes.len())
+            .field("edge_count", &self.edges.len())
+            .finish()
+    }
 }
 
 /// One typed storage outcome emitted by the single profile metadata owner.
@@ -206,7 +318,32 @@ pub enum StorageOperation {
     JourneyExport,
     MarkWrite,
     HistoryClear,
+    VersioningStructuralPublish,
+    VersioningBegin,
+    VersioningAbort,
+    VersioningCaptureStage,
+    VersioningObjectInstall,
+    VersioningArchiveView,
+    VersioningArchiveViewCleanup,
+    VersioningObjectPublish,
+    VersioningRecover,
+    VersioningList,
+    VersioningInfo,
+    VersioningDeletePreview,
+    VersioningDelete,
+    VersioningCollect,
+    VersioningManifest,
+    VersioningSidecarRead,
     Flush,
+}
+
+impl std::fmt::Debug for StorageCommand {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_tuple("StorageCommand")
+            .field(&self.operation())
+            .finish()
+    }
 }
 
 impl StorageCommand {
@@ -234,6 +371,20 @@ impl StorageCommand {
             Self::JourneyExport => StorageOperation::JourneyExport,
             Self::MarkBatch { .. } => StorageOperation::MarkWrite,
             Self::HistoryClear { .. } => StorageOperation::HistoryClear,
+            Self::VersioningStructuralPublish { .. } => {
+                StorageOperation::VersioningStructuralPublish
+            }
+            Self::VersioningBegin { .. } => StorageOperation::VersioningBegin,
+            Self::VersioningAbort { .. } => StorageOperation::VersioningAbort,
+            Self::VersioningObjectPublish { .. } => StorageOperation::VersioningObjectPublish,
+            Self::VersioningRecover { .. } => StorageOperation::VersioningRecover,
+            Self::VersioningList { .. } => StorageOperation::VersioningList,
+            Self::VersioningInfo { .. } => StorageOperation::VersioningInfo,
+            Self::VersioningDeletePreview { .. } => StorageOperation::VersioningDeletePreview,
+            Self::VersioningDelete { .. } => StorageOperation::VersioningDelete,
+            Self::VersioningCollect { .. } => StorageOperation::VersioningCollect,
+            Self::VersioningManifest { .. } => StorageOperation::VersioningManifest,
+            Self::VersioningSidecarRead { .. } => StorageOperation::VersioningSidecarRead,
             Self::Flush => StorageOperation::Flush,
         }
     }
@@ -275,6 +426,32 @@ impl StorageCommand {
             Self::SessionRestore { paths } if paths.is_empty() => {
                 Err(StorageWorkerError::InvalidBatch)
             }
+            Self::VersioningStructuralPublish {
+                profile_uuid,
+                manifest,
+                ..
+            }
+            | Self::VersioningObjectPublish {
+                profile_uuid,
+                manifest,
+                ..
+            } if manifest.profile_uuid != *profile_uuid || manifest.validate().is_err() => {
+                Err(StorageWorkerError::InvalidBatch)
+            }
+            Self::VersioningBegin {
+                reserved_bytes,
+                state_root,
+                ..
+            } if *reserved_bytes > crate::versioning::MAX_WINDOW_CAPTURE_RESERVATION_BYTES
+                || (*reserved_bytes > 0 && state_root.is_none()) =>
+            {
+                Err(StorageWorkerError::InvalidBatch)
+            }
+            Self::VersioningList { limit, offset, .. }
+                if !(1..=(MAX_LIST_ITEMS + 1)).contains(limit) || *offset > 100_000 =>
+            {
+                Err(StorageWorkerError::InvalidLimit)
+            }
             _ => Ok(()),
         }
     }
@@ -282,23 +459,41 @@ impl StorageCommand {
 
 /// A structured storage failure surfaced by the application completion stream.
 ///
-/// The message remains suitable for diagnostics, while `operation` lets
-/// callers choose recovery and presentation behavior without parsing prose.
-#[derive(Clone, Debug, Eq, PartialEq)]
+/// The application may consume `message` for an authorized, operation-aware
+/// presentation. Ordinary `Debug` and `Display` projections redact it because
+/// lower-level storage messages may contain private paths or database details.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StorageFailureKind {
+    Other,
+    StorageFull,
+}
+
+#[derive(Clone, Eq, PartialEq)]
 pub struct StorageOperationError {
     pub operation: StorageOperation,
+    pub kind: StorageFailureKind,
     pub message: String,
+}
+
+impl std::fmt::Debug for StorageOperationError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("StorageOperationError")
+            .field("operation", &self.operation)
+            .field("kind", &self.kind)
+            .field("message", &"[redacted]")
+            .finish()
+    }
 }
 
 impl std::fmt::Display for StorageOperationError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(formatter, "{:?}: {}", self.operation, self.message)
+        write!(formatter, "{:?}: {:?}", self.operation, self.kind)
     }
 }
 
 impl std::error::Error for StorageOperationError {}
 
-#[derive(Debug)]
 pub enum StorageCompletion {
     Library(Result<ProfileLibrarySnapshot, StorageOperationError>),
     SessionList(Result<Vec<String>, StorageOperationError>),
@@ -319,7 +514,40 @@ pub enum StorageCompletion {
     JourneyExport(Result<JourneyQuerySnapshot, StorageOperationError>),
     MarkWrite(Result<usize, StorageOperationError>),
     HistoryClear(Result<u64, StorageOperationError>),
+    VersioningStructuralPublish(Result<(), StorageOperationError>),
+    VersioningBegin(Result<(), StorageOperationError>),
+    VersioningAbort(Result<(), StorageOperationError>),
+    VersioningCaptureStage(Result<crate::versioning::CaptureStageTarget, StorageOperationError>),
+    VersioningObjectInstall(Result<crate::versioning::InstalledObject, StorageOperationError>),
+    VersioningArchiveView(Result<crate::versioning::ArchiveViewFile, StorageOperationError>),
+    VersioningArchiveViewCleanup(Result<(), StorageOperationError>),
+    VersioningObjectPublish(Result<VersioningObjectPublishReceipt, StorageOperationError>),
+    VersioningRecover(Result<RecoverySummary, StorageOperationError>),
+    VersioningList(Result<Vec<CommitSummary>, StorageOperationError>),
+    VersioningInfo(Result<Option<CommitInfo>, StorageOperationError>),
+    VersioningDeletePreview(Result<Option<CommitDeletePreview>, StorageOperationError>),
+    VersioningDelete(Result<CommitDeleteReceipt, StorageOperationError>),
+    VersioningCollect(Result<VersioningGcReport, StorageOperationError>),
+    VersioningManifest(Result<Option<VersionedCaptureManifest>, StorageOperationError>),
+    VersioningSidecarRead(Result<Option<VersionedSidecarBytes>, StorageOperationError>),
     Flush(Result<(), StorageOperationError>),
+}
+
+impl std::fmt::Debug for StorageCompletion {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("StorageCompletion")
+            .field("operation", &self.operation())
+            .finish()
+    }
+}
+
+/// Outcome of object-backed metadata publication and its post-commit cleanup.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct VersioningObjectPublishReceipt {
+    /// False means the commit is durable but exact staging cleanup was refused
+    /// or could not be confirmed; any bytes still present remain budget-accounted.
+    pub staging_cleanup_complete: bool,
 }
 
 impl StorageCompletion {
@@ -346,6 +574,22 @@ impl StorageCompletion {
             Self::JourneyExport(_) => StorageOperation::JourneyExport,
             Self::MarkWrite(_) => StorageOperation::MarkWrite,
             Self::HistoryClear(_) => StorageOperation::HistoryClear,
+            Self::VersioningStructuralPublish(_) => StorageOperation::VersioningStructuralPublish,
+            Self::VersioningBegin(_) => StorageOperation::VersioningBegin,
+            Self::VersioningAbort(_) => StorageOperation::VersioningAbort,
+            Self::VersioningCaptureStage(_) => StorageOperation::VersioningCaptureStage,
+            Self::VersioningObjectInstall(_) => StorageOperation::VersioningObjectInstall,
+            Self::VersioningArchiveView(_) => StorageOperation::VersioningArchiveView,
+            Self::VersioningArchiveViewCleanup(_) => StorageOperation::VersioningArchiveViewCleanup,
+            Self::VersioningObjectPublish(_) => StorageOperation::VersioningObjectPublish,
+            Self::VersioningRecover(_) => StorageOperation::VersioningRecover,
+            Self::VersioningList(_) => StorageOperation::VersioningList,
+            Self::VersioningInfo(_) => StorageOperation::VersioningInfo,
+            Self::VersioningDeletePreview(_) => StorageOperation::VersioningDeletePreview,
+            Self::VersioningDelete(_) => StorageOperation::VersioningDelete,
+            Self::VersioningCollect(_) => StorageOperation::VersioningCollect,
+            Self::VersioningManifest(_) => StorageOperation::VersioningManifest,
+            Self::VersioningSidecarRead(_) => StorageOperation::VersioningSidecarRead,
             Self::Flush(_) => StorageOperation::Flush,
         }
     }
@@ -356,6 +600,7 @@ impl StorageCompletion {
     pub fn failed(operation: StorageOperation, message: impl Into<String>) -> Self {
         let error = StorageOperationError {
             operation,
+            kind: StorageFailureKind::Other,
             message: message.into(),
         };
         match operation {
@@ -378,6 +623,26 @@ impl StorageCompletion {
             StorageOperation::JourneyExport => Self::JourneyExport(Err(error)),
             StorageOperation::MarkWrite => Self::MarkWrite(Err(error)),
             StorageOperation::HistoryClear => Self::HistoryClear(Err(error)),
+            StorageOperation::VersioningStructuralPublish => {
+                Self::VersioningStructuralPublish(Err(error))
+            }
+            StorageOperation::VersioningBegin => Self::VersioningBegin(Err(error)),
+            StorageOperation::VersioningAbort => Self::VersioningAbort(Err(error)),
+            StorageOperation::VersioningCaptureStage => Self::VersioningCaptureStage(Err(error)),
+            StorageOperation::VersioningObjectInstall => Self::VersioningObjectInstall(Err(error)),
+            StorageOperation::VersioningArchiveView => Self::VersioningArchiveView(Err(error)),
+            StorageOperation::VersioningArchiveViewCleanup => {
+                Self::VersioningArchiveViewCleanup(Err(error))
+            }
+            StorageOperation::VersioningObjectPublish => Self::VersioningObjectPublish(Err(error)),
+            StorageOperation::VersioningRecover => Self::VersioningRecover(Err(error)),
+            StorageOperation::VersioningList => Self::VersioningList(Err(error)),
+            StorageOperation::VersioningInfo => Self::VersioningInfo(Err(error)),
+            StorageOperation::VersioningDeletePreview => Self::VersioningDeletePreview(Err(error)),
+            StorageOperation::VersioningDelete => Self::VersioningDelete(Err(error)),
+            StorageOperation::VersioningCollect => Self::VersioningCollect(Err(error)),
+            StorageOperation::VersioningManifest => Self::VersioningManifest(Err(error)),
+            StorageOperation::VersioningSidecarRead => Self::VersioningSidecarRead(Err(error)),
             StorageOperation::Flush => Self::Flush(Err(error)),
         }
     }
@@ -1085,7 +1350,7 @@ fn run_worker(
     requests: Receiver<WorkerMessage>,
     completions: SyncSender<StorageCompletion>,
 ) {
-    let store = ProfileStore::open(path, StoreMode::Normal).map_err(|error| error.to_string());
+    let mut store = ProfileStore::open(path, StoreMode::Normal).map_err(|error| error.to_string());
     while let Ok(message) = requests.recv() {
         let WorkerMessage::Execute(request) = message else {
             break;
@@ -1326,6 +1591,345 @@ fn run_worker(
                     deleted,
                 ))
             }
+            StorageCommand::VersioningBegin {
+                operation,
+                profile_uuid,
+                reserved_bytes,
+                state_root,
+            } => {
+                let begun = store.as_mut().map_or_else(
+                    |error| Err(error.clone()),
+                    |store| {
+                        if bound_profile_uuid(store) != Some(profile_uuid) {
+                            return Err("versioning owner does not match profile database".into());
+                        }
+                        let unpublished_bytes = if let Some(root) = state_root.as_ref() {
+                            let ready_objects = store
+                                .ready_versioning_object_sizes()
+                                .map_err(|_| "versioning object accounting unavailable".to_owned())?;
+                            let active_reservations = store
+                                .active_versioning_capture_reservations(profile_uuid)
+                                .map_err(|_| "versioning object accounting unavailable".to_owned())?;
+                            let objects = VersioningObjectStore::open(root, profile_uuid)
+                                .map_err(|_| "versioning object accounting unavailable".to_owned())?;
+                            objects
+                                .unpublished_quarantine_bytes()
+                                .and_then(|quarantined| {
+                                    let unindexed = objects.unindexed_live_object_bytes(&ready_objects)?;
+                                    let viewers = objects.live_viewer_bytes()?;
+                                    let staging = objects
+                                        .unreserved_live_staging_bytes(&active_reservations)?;
+                                    quarantined
+                                        .checked_add(unindexed)
+                                        .and_then(|total| total.checked_add(viewers))
+                                        .and_then(|total| total.checked_add(staging))
+                                        .ok_or(crate::versioning::objects::ObjectPathError::CaptureTooLarge)
+                                })
+                                .map_err(|_| "versioning object accounting unavailable".to_owned())?
+                        } else {
+                            0
+                        };
+                        store
+                            .begin_versioning_capture_reserved(
+                                operation,
+                                profile_uuid,
+                                reserved_bytes,
+                                unpublished_bytes,
+                            )
+                            .map_err(|error| error.to_string())
+                    },
+                );
+                StorageCompletion::VersioningBegin(storage_result(
+                    StorageOperation::VersioningBegin,
+                    begun,
+                ))
+            }
+            StorageCommand::VersioningAbort {
+                operation,
+                profile_uuid,
+            } => {
+                let aborted = store.as_mut().map_or_else(
+                    |error| Err(error.clone()),
+                    |store| {
+                        if bound_profile_uuid(store) != Some(profile_uuid) {
+                            return Err("versioning owner does not match profile database".into());
+                        }
+                        store
+                            .abort_versioning_capture(profile_uuid, operation)
+                            .map_err(|error| error.to_string())
+                    },
+                );
+                StorageCompletion::VersioningAbort(storage_result(
+                    StorageOperation::VersioningAbort,
+                    aborted,
+                ))
+            }
+            StorageCommand::VersioningStructuralPublish {
+                operation,
+                profile_uuid,
+                manifest,
+            } => {
+                let published = store.as_mut().map_or_else(
+                    |error| Err(error.clone()),
+                    |store| {
+                        if bound_profile_uuid(store) != Some(profile_uuid) {
+                            return Err("versioning owner does not match profile database".into());
+                        }
+                        store
+                            .publish_structural_commit(operation, profile_uuid, &manifest)
+                            .map_err(|error| error.to_string())
+                    },
+                );
+                StorageCompletion::VersioningStructuralPublish(storage_result(
+                    StorageOperation::VersioningStructuralPublish,
+                    published,
+                ))
+            }
+            StorageCommand::VersioningObjectPublish {
+                operation,
+                profile_uuid,
+                state_root,
+                manifest,
+            } => {
+                let published = store.as_mut().map_or_else(
+                    |error| Err(error.clone()),
+                    |store| {
+                        if bound_profile_uuid(store) != Some(profile_uuid) {
+                            return Err("versioning owner does not match profile database".into());
+                        }
+                        let objects = VersioningObjectStore::open(&state_root, profile_uuid)
+                            .map_err(|error| error.to_string())?;
+                        store
+                            .publish_commit_with_objects(
+                                operation,
+                                profile_uuid,
+                                &manifest,
+                                &objects,
+                            )
+                            .map(|staging_cleanup_complete| VersioningObjectPublishReceipt {
+                                staging_cleanup_complete,
+                            })
+                            .map_err(|error| error.to_string())
+                    },
+                );
+                StorageCompletion::VersioningObjectPublish(storage_result(
+                    StorageOperation::VersioningObjectPublish,
+                    published,
+                ))
+            }
+            StorageCommand::VersioningRecover {
+                profile_uuid,
+                state_root,
+            } => {
+                let recovered = store.as_mut().map_or_else(
+                    |error| Err(error.clone()),
+                    |store| {
+                        if bound_profile_uuid(store) != Some(profile_uuid) {
+                            return Err("versioning owner does not match profile database".into());
+                        }
+                        let objects = VersioningObjectStore::open(&state_root, profile_uuid)
+                            .map_err(|error| error.to_string())?;
+                        store
+                            .recover_versioning_after_restart(profile_uuid, &objects)
+                            .map_err(|error| error.to_string())
+                    },
+                );
+                StorageCompletion::VersioningRecover(storage_result(
+                    StorageOperation::VersioningRecover,
+                    recovered,
+                ))
+            }
+            StorageCommand::VersioningList {
+                profile_uuid,
+                limit,
+                offset,
+            } => {
+                let listed = store.as_ref().map_or_else(
+                    |error| Err(error.clone()),
+                    |store| {
+                        if bound_profile_uuid(store) != Some(profile_uuid) {
+                            return Err("versioning owner does not match profile database".into());
+                        }
+                        store
+                            .list_versioning_commits(profile_uuid, limit, offset)
+                            .map_err(|error| error.to_string())
+                    },
+                );
+                StorageCompletion::VersioningList(storage_result(
+                    StorageOperation::VersioningList,
+                    listed,
+                ))
+            }
+            StorageCommand::VersioningInfo { profile_uuid, id } => {
+                let info = store.as_ref().map_or_else(
+                    |error| Err(error.clone()),
+                    |store| {
+                        if bound_profile_uuid(store) != Some(profile_uuid) {
+                            return Err("versioning owner does not match profile database".into());
+                        }
+                        store
+                            .versioning_commit_info(profile_uuid, id)
+                            .map_err(|error| error.to_string())
+                    },
+                );
+                StorageCompletion::VersioningInfo(storage_result(
+                    StorageOperation::VersioningInfo,
+                    info,
+                ))
+            }
+            StorageCommand::VersioningDeletePreview { profile_uuid, id } => {
+                let preview = store.as_ref().map_or_else(
+                    |error| Err(error.clone()),
+                    |store| {
+                        if bound_profile_uuid(store) != Some(profile_uuid) {
+                            return Err("versioning owner does not match profile database".into());
+                        }
+                        store
+                            .preview_versioning_delete(profile_uuid, id)
+                            .map_err(|error| error.to_string())
+                    },
+                );
+                StorageCompletion::VersioningDeletePreview(storage_result(
+                    StorageOperation::VersioningDeletePreview,
+                    preview,
+                ))
+            }
+            StorageCommand::VersioningDelete {
+                profile_uuid,
+                id,
+                expected_snapshot,
+                state_root,
+            } => {
+                let deleted = store.as_mut().map_or_else(
+                    |error| Err(error.clone()),
+                    |store| {
+                        if bound_profile_uuid(store) != Some(profile_uuid) {
+                            return Err("versioning owner does not match profile database".into());
+                        }
+                        let mut receipt = store
+                            .delete_versioning_commit(profile_uuid, id, expected_snapshot)
+                            .map_err(|error| error.to_string())?;
+                        match VersioningObjectStore::open(&state_root, profile_uuid)
+                            .map_err(|_| "versioning GC root is invalid".to_owned())
+                            .and_then(|objects| {
+                                store
+                                    .collect_versioning_garbage(profile_uuid, &objects)
+                                    .map_err(|error| error.to_string())
+                            }) {
+                            Ok(report) => {
+                                receipt.cleanup_pending = report.deferred_active_operations != 0;
+                                receipt.quarantined_staging_operations =
+                                    report.quarantined_staging_operations;
+                                receipt.quarantined_orphan_objects =
+                                    report.quarantined_orphan_objects;
+                                receipt.quarantined_corrupt_objects =
+                                    report.quarantined_corrupt_objects;
+                                receipt.missing_objects = report.missing_objects;
+                            }
+                            Err(_) => receipt.cleanup_pending = true,
+                        }
+                        Ok(receipt)
+                    },
+                );
+                StorageCompletion::VersioningDelete(storage_result(
+                    StorageOperation::VersioningDelete,
+                    deleted,
+                ))
+            }
+            StorageCommand::VersioningCollect {
+                profile_uuid,
+                state_root,
+            } => {
+                let collected = store.as_mut().map_or_else(
+                    |error| Err(error.clone()),
+                    |store| {
+                        if bound_profile_uuid(store) != Some(profile_uuid) {
+                            return Err("versioning owner does not match profile database".into());
+                        }
+                        let objects = VersioningObjectStore::open(&state_root, profile_uuid)
+                            .map_err(|error| error.to_string())?;
+                        store
+                            .collect_versioning_garbage(profile_uuid, &objects)
+                            .map_err(|error| error.to_string())
+                    },
+                );
+                StorageCompletion::VersioningCollect(storage_result(
+                    StorageOperation::VersioningCollect,
+                    collected,
+                ))
+            }
+            StorageCommand::VersioningManifest { profile_uuid, id } => {
+                let manifest = store.as_ref().map_or_else(
+                    |error| Err(error.clone()),
+                    |store| {
+                        if bound_profile_uuid(store) != Some(profile_uuid) {
+                            return Err("versioning owner does not match profile database".into());
+                        }
+                        store
+                            .versioning_commit_manifest(profile_uuid, id)
+                            .map_err(|error| error.to_string())
+                    },
+                );
+                StorageCompletion::VersioningManifest(storage_result(
+                    StorageOperation::VersioningManifest,
+                    manifest,
+                ))
+            }
+            StorageCommand::VersioningSidecarRead {
+                profile_uuid,
+                state_root,
+                id,
+                logical_page,
+            } => {
+                let sidecar = store.as_ref().map_or_else(
+                    |error| Err(error.clone()),
+                    |store| {
+                        if bound_profile_uuid(store) != Some(profile_uuid) {
+                            return Err("versioning owner does not match profile database".into());
+                        }
+                        let Some(manifest) = store
+                            .versioning_commit_manifest(profile_uuid, id)
+                            .map_err(|error| error.to_string())?
+                        else {
+                            return Ok(None);
+                        };
+                        let requested_page = logical_page.to_string();
+                        let mut matches = manifest
+                            .windows
+                            .iter()
+                            .flat_map(|window| window.pages.iter())
+                            .filter(|page| page.logical_page_id == requested_page);
+                        let Some(page) = matches.next() else {
+                            return Ok(None);
+                        };
+                        if matches.next().is_some() {
+                            return Err("versioned sidecar page identity is ambiguous".into());
+                        }
+                        let Some(object) = page.sidecar_object.as_ref() else {
+                            return Ok(None);
+                        };
+                        if object.role != ManifestObjectRole::Sidecar
+                            || object.bytes > MAX_PAGE_SIDECAR_BYTES as u64
+                        {
+                            return Err("versioned sidecar reference is invalid".into());
+                        }
+                        let objects = VersioningObjectStore::open(&state_root, profile_uuid)
+                            .map_err(|error| error.to_string())?;
+                        objects
+                            .read_object_reference(
+                                &object.sha256,
+                                object.bytes,
+                                MAX_PAGE_SIDECAR_BYTES as u64,
+                            )
+                            .map(Some)
+                            .map_err(|error| error.to_string())
+                    },
+                );
+                StorageCompletion::VersioningSidecarRead(storage_result(
+                    StorageOperation::VersioningSidecarRead,
+                    sidecar,
+                ))
+            }
             StorageCommand::Flush => {
                 let flushed = store.as_ref().map_or_else(
                     |error| Err(error.clone()),
@@ -1340,11 +1944,26 @@ fn run_worker(
     }
 }
 
+fn bound_profile_uuid(store: &ProfileStore) -> Option<Uuid> {
+    store
+        .path()
+        .file_name()
+        .filter(|name| *name == "browser.sqlite")
+        .and_then(|_| store.path().parent())
+        .and_then(|parent| parent.file_name())
+        .and_then(|name| name.to_str())
+        .and_then(|name| Uuid::parse_str(name).ok())
+}
+
 fn storage_result<T>(
     operation: StorageOperation,
     result: Result<T, String>,
 ) -> Result<T, StorageOperationError> {
-    result.map_err(|message| StorageOperationError { operation, message })
+    result.map_err(|message| StorageOperationError {
+        operation,
+        kind: StorageFailureKind::Other,
+        message,
+    })
 }
 
 fn restore_session_paths(paths: Vec<PathBuf>) -> Result<SessionRestoreSnapshot, String> {
@@ -1452,8 +2071,8 @@ fn load_journey_export(store: &ProfileStore) -> Result<JourneyQuerySnapshot, Str
 mod tests {
     use super::*;
     use crate::{
-        DownloadState, RestoreSafety, SessionSnapshot, SnapshotTabInput, SnapshotWindowInput,
-        StoreMode, named_session_path, unix_timestamp,
+        DownloadState, JourneyEdgeRecord, RestoreSafety, SessionSnapshot, SnapshotTabInput,
+        SnapshotWindowInput, StoreMode, named_session_path, unix_timestamp,
     };
 
     fn temp_path(suffix: &str) -> PathBuf {
@@ -1462,6 +2081,89 @@ mod tests {
             std::process::id(),
             unix_timestamp()
         ))
+    }
+
+    #[test]
+    fn storage_completion_and_error_debug_redact_names_and_paths() {
+        let name_sentinel = "private-session-name-sentinel";
+        let path_sentinel = "/private/profile/session-path-sentinel";
+        let names = StorageCompletion::SessionList(Ok(vec![name_sentinel.to_owned()]));
+        let names_debug = format!("{names:?}");
+        assert!(names_debug.contains("SessionList"));
+        assert!(!names_debug.contains(name_sentinel));
+
+        let error = StorageOperationError {
+            operation: StorageOperation::SessionRestore,
+            kind: StorageFailureKind::Other,
+            message: format!("{name_sentinel} {path_sentinel}"),
+        };
+        let error_debug = format!("{error:?}");
+        let error_display = error.to_string();
+        assert!(error.message.contains(name_sentinel));
+        assert!(error.message.contains(path_sentinel));
+        assert!(error_debug.contains("SessionRestore"));
+        assert!(error_debug.contains("[redacted]"));
+        assert!(!error_debug.contains(name_sentinel));
+        assert!(!error_debug.contains(path_sentinel));
+        assert!(error_display.contains("SessionRestore"));
+        assert!(error_display.contains("Other"));
+        assert!(!error_display.contains(name_sentinel));
+        assert!(!error_display.contains(path_sentinel));
+
+        let completion = StorageCompletion::SessionRestore(Err(error));
+        let completion_debug = format!("{completion:?}");
+        assert!(completion_debug.contains("SessionRestore"));
+        assert!(!completion_debug.contains(name_sentinel));
+        assert!(!completion_debug.contains(path_sentinel));
+    }
+
+    #[test]
+    fn library_and_journey_snapshot_debug_redact_page_content() {
+        let sentinel = "https://private.example.test/path?token=page-data-sentinel";
+        let library = ProfileLibrarySnapshot {
+            history: vec![HistoryRecord {
+                id: 1,
+                url: sentinel.to_owned(),
+                title: "private-title-sentinel".to_owned(),
+                visit_count: 1,
+                last_visit: 1,
+            }],
+            command_history: vec!["private-command-sentinel".to_owned()],
+            bookmarks: Vec::new(),
+            quickmarks: Vec::new(),
+            downloads: Vec::new(),
+            permissions: Vec::new(),
+        };
+        let library_debug = format!("{library:?}");
+        assert!(library_debug.contains("history_count: 1"));
+        assert!(!library_debug.contains(sentinel));
+        assert!(!library_debug.contains("private-title-sentinel"));
+        assert!(!library_debug.contains("private-command-sentinel"));
+
+        let journey = JourneyQuerySnapshot {
+            nodes: vec![JourneyNodeRecord {
+                id: "private-node-id".to_owned(),
+                profile_id: "profile".to_owned(),
+                tab_id: "tab".to_owned(),
+                url: sentinel.to_owned(),
+                title: "private-journey-title".to_owned(),
+                committed_at: 1,
+                transition: "link".to_owned(),
+                source: Some("private-source".to_owned()),
+            }],
+            edges: vec![JourneyEdgeRecord {
+                source_id: "private-source-node".to_owned(),
+                target_id: "private-target-node".to_owned(),
+                transition: "link".to_owned(),
+                created_at: 1,
+            }],
+        };
+        let journey_debug = format!("{journey:?}");
+        assert!(journey_debug.contains("node_count: 1"));
+        assert!(journey_debug.contains("edge_count: 1"));
+        assert!(!journey_debug.contains(sentinel));
+        assert!(!journey_debug.contains("private-journey-title"));
+        assert!(!journey_debug.contains("private-source-node"));
     }
 
     #[test]
@@ -1542,6 +2244,7 @@ mod tests {
             StorageCompletion::HistoryClear(Err(StorageOperationError {
                 operation: StorageOperation::HistoryClear,
                 message,
+                ..
             })) if message == "database unavailable"
         ));
     }
@@ -1690,6 +2393,51 @@ mod tests {
         let _ = std::fs::remove_file(format!("{}-wal", path.display()));
         let _ = std::fs::remove_file(format!("{}-shm", path.display()));
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn session_save_command_debug_does_not_expose_snapshot_content_or_path() {
+        let profile_id = uuid::Uuid::new_v4();
+        let tab_id = uuid::Uuid::new_v4();
+        let snapshot = SessionSnapshot::new(
+            uuid::Uuid::new_v4(),
+            "debug-session-name-secret",
+            profile_id,
+            1,
+            "1",
+            vec![SnapshotWindowInput {
+                selected_tab: Some(tab_id),
+                workspace: Some("debug-workspace-secret".into()),
+                tabs: vec![SnapshotTabInput {
+                    id: tab_id,
+                    url: "https://example.test/?token=debug-url-secret".into(),
+                    safety: RestoreSafety::SafeGet,
+                    private: false,
+                    pinned: false,
+                    muted: false,
+                    zoom: 1.0,
+                    scroll_position: None,
+                }],
+            }],
+        )
+        .expect("snapshot");
+        let command = StorageCommand::SessionSave {
+            path: PathBuf::from("/tmp/session-command-path-secret.json"),
+            snapshot,
+        };
+
+        let debug = format!("{command:?}");
+        for sentinel in [
+            "debug-session-name-secret",
+            "debug-workspace-secret",
+            "debug-url-secret",
+            "session-command-path-secret",
+        ] {
+            assert!(
+                !debug.contains(sentinel),
+                "command debug exposed {sentinel}"
+            );
+        }
     }
 
     #[test]

@@ -386,6 +386,88 @@ mod tests {
     use super::*;
 
     #[test]
+    fn userscript_debug_redacts_manifest_paths_script_source_and_result_data() {
+        let sentinel = "private-userscript-debug-sentinel-91a6";
+        let action_manifest = ActionManifest {
+            id: sentinel.into(),
+            subject: sentinel.into(),
+            verb: sentinel.into(),
+            label: sentinel.into(),
+            required_fields: vec![sentinel.into()],
+        };
+        let manifest = Manifest {
+            schema_version: 1,
+            name: sentinel.into(),
+            executable: format!("/home/{sentinel}/bin/script"),
+            argv: vec![sentinel.into()],
+            context_fields: vec![sentinel.into()],
+            allowed_results: vec![sentinel.into()],
+            allowed_commands: vec![sentinel.into()],
+            timeout_seconds: 30,
+            allow_private: false,
+            actions: vec![action_manifest.clone()],
+            matches: vec![format!("https://{sentinel}.test/*")],
+            excludes: Vec::new(),
+            run_at: RunAt::Idle,
+            frames: FrameScope::Top,
+            page_world: true,
+            enabled: true,
+            source: Some(format!("{sentinel}.js")),
+        };
+        let loaded = LoadedManifest {
+            manifest: manifest.clone(),
+            path: PathBuf::from(format!("/home/{sentinel}/manifest.toml")),
+            executable: PathBuf::from(format!("/home/{sentinel}/bin/script")),
+        };
+        let registered = RegisteredAction {
+            script: sentinel.into(),
+            id: sentinel.into(),
+            subject: sentinel.into(),
+            verb: sentinel.into(),
+            label: sentinel.into(),
+            required_fields: vec![sentinel.into()],
+            allow_private: false,
+        };
+        let installed = InstalledScript {
+            name: sentinel.into(),
+            enabled: true,
+            page_world: true,
+            run_at: RunAt::Idle,
+            allow_private: false,
+            matches: vec![format!("https://{sentinel}.test/*")],
+            actions: 1,
+        };
+        let page_script = PageScript {
+            name: sentinel.into(),
+            source: format!("// {sentinel}"),
+            run_at: "document_idle",
+            runs_on_sub_frames: false,
+        };
+        let result_action = UserscriptAction::Command {
+            name: sentinel.into(),
+            arguments: json!({ "private": sentinel }),
+        };
+        let parsed = ParsedOutput {
+            message: sentinel.into(),
+            action: Some(result_action),
+        };
+        let debug_projections = [
+            format!("{manifest:?}"),
+            format!("{action_manifest:?}"),
+            format!("{loaded:?}"),
+            format!("{registered:?}"),
+            format!("{installed:?}"),
+            format!("{page_script:?}"),
+            format!("{parsed:?}"),
+            format!("{:?}", parsed.action),
+        ];
+
+        for debug in debug_projections {
+            assert!(!debug.contains(sentinel), "unredacted debug: {debug}");
+        }
+    }
+
+    #[test]
     fn manifest_validation_rejects_unknown_fields_and_unscoped_actions() {
         let manifest: Manifest = toml::from_str(
             r#"
@@ -667,6 +749,54 @@ allowed_commands = ["open"]
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn userscript_protocol_errors_do_not_echo_process_supplied_values() {
+        let sentinel = "page-private-userscript-result-sentinel";
+        let manifest: Manifest = toml::from_str(
+            r#"
+schema_version = 1
+name = "test"
+executable = "/bin/true"
+allowed_results = ["message", "command"]
+allowed_commands = ["open"]
+"#,
+        )
+        .expect("manifest parses");
+
+        let malformed = format!(r#"{{"type":"{sentinel}""#);
+        let malformed_error = parse_output(malformed.as_bytes(), &manifest)
+            .expect_err("malformed process result must be rejected");
+        assert_eq!(malformed_error, "invalid userscript JSON result");
+        assert!(!malformed_error.contains(sentinel));
+
+        let result_type = format!(r#"{{"type":"{sentinel}"}}"#);
+        let unlisted_result = parse_output(result_type.as_bytes(), &manifest)
+            .expect_err("unlisted result type must be rejected");
+        assert_eq!(unlisted_result, "userscript result type is not allowed");
+        assert!(!unlisted_result.contains(sentinel));
+
+        let unsupported_manifest: Manifest = toml::from_str(
+            r#"
+schema_version = 1
+name = "test"
+executable = "/bin/true"
+allowed_results = ["page-private-userscript-result-sentinel"]
+"#,
+        )
+        .expect("manifest parses");
+        let unsupported_result = parse_output(result_type.as_bytes(), &unsupported_manifest)
+            .expect_err("unknown result type must be rejected");
+        assert_eq!(unsupported_result, "userscript result type is unsupported");
+        assert!(!unsupported_result.contains(sentinel));
+
+        let unlisted_command =
+            format!(r#"{{"type":"command","command":"{sentinel}","arguments":{{}}}}"#);
+        let command_error = parse_output(unlisted_command.as_bytes(), &manifest)
+            .expect_err("unlisted process command must be rejected");
+        assert_eq!(command_error, "userscript command is not allowed");
+        assert!(!command_error.contains(sentinel));
     }
 
     #[test]

@@ -164,7 +164,10 @@ FerricModalSurface {
 
         Repeater {
             id: actionRepeater
-            model: dialog.actions
+            // Most command dialogs are declarative objects kept ready by the
+            // browser window while hidden. Materialize action controls only
+            // for the dialog that is actually being presented.
+            model: dialog.visible ? dialog.actions : []
 
             FerricCommandAction {
                 required property var modelData

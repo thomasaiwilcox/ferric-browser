@@ -1,0 +1,95 @@
+--- a/src/webenginequick/api/qquickwebengineview_p.h
++++ b/src/webenginequick/api/qquickwebengineview_p.h
+@@ -474,6 +474,13 @@ QT_WARNING_POP
+ 
+     LifecycleState recommendedState() const;
+ 
++    // Ferric's versioned native-backend ABI. These are identity witnesses,
++    // not activity, cookie or download capability certificates. The caller
++    // must also retain and compare the exact QObject and profile owner.
++    Q_INVOKABLE int ferricVersioningBackendRevision() const;
++    Q_INVOKABLE QString ferricVersioningViewId() const;
++    Q_INVOKABLE QString ferricVersioningAdapterId() const;
++
+     QQmlComponent *touchHandleDelegate() const;
+     void setTouchHandleDelegate(QQmlComponent *delegagte);
+ 
+--- a/src/webenginequick/api/qquickwebengineview_p_p.h
++++ b/src/webenginequick/api/qquickwebengineview_p_p.h
+@@ -25,6 +25,7 @@
+ 
+ #include <QtCore/qcompilerdetection.h>
+ #include <QtCore/qpointer.h>
++#include <QtCore/quuid.h>
+ #include <QtCore/qscopedpointer.h>
+ #include <QtCore/qsharedpointer.h>
+ #include <QtCore/qstring.h>
+@@ -153,6 +154,8 @@ public:
+ 
+     QQuickWebEngineProfile *m_profile;
+     QSharedPointer<QtWebEngineCore::WebContentsAdapter> adapter;
++    const QUuid ferricViewId = QUuid::createUuid();
++    QUuid ferricAdapterId = QUuid::createUuid();
+     QScopedPointer<QWebEngineHistory> m_history;
+     QScopedPointer<QQuickWebEngineSettings> m_settings;
+     QQmlComponent *contextMenuExtraItems;
+--- a/src/webenginequick/api/qquickwebengineview.cpp
++++ b/src/webenginequick/api/qquickwebengineview.cpp
+@@ -964,6 +964,7 @@ bool QQuickWebEngineViewPrivate::adoptWebContents(WebContentsAdapter *webContents)
+     adapterOwner->deleteLater();
+ 
+     adapter = webContents->sharedFromThis();
++    ferricAdapterId = QUuid::createUuid();
+     adapter->setClient(this);
+     return true;
+ }
+@@ -1284,6 +1285,23 @@ QQuickWebEngineProfile *QQuickWebEngineView::profile()
+     return d->m_profile;
+ }
+ 
++int QQuickWebEngineView::ferricVersioningBackendRevision() const
++{
++    return 1;
++}
++
++QString QQuickWebEngineView::ferricVersioningViewId() const
++{
++    Q_D(const QQuickWebEngineView);
++    return d->ferricViewId.toString(QUuid::WithoutBraces);
++}
++
++QString QQuickWebEngineView::ferricVersioningAdapterId() const
++{
++    Q_D(const QQuickWebEngineView);
++    return d->ferricAdapterId.toString(QUuid::WithoutBraces);
++}
++
+ void QQuickWebEngineView::setProfile(QQuickWebEngineProfile *profile)
+ {
+     Q_D(QQuickWebEngineView);
+@@ -1293,6 +1311,7 @@ void QQuickWebEngineView::setProfile(QQuickWebEngineProfile *profile)
+ 
+     if (!d->profileInitialized()) {
+         d->m_profile = profile;
++        d->ferricAdapterId = QUuid::createUuid();
+         return;
+     }
+ 
+@@ -1325,6 +1344,7 @@ void QQuickWebEngineViewPrivate::updateAdapter()
+     // When the profile changes we need to create a new WebContentAdapter and reload the active URL.
+     bool wasInitialized = adapter->isInitialized();
+     adapter = QSharedPointer<WebContentsAdapter>::create();
++    ferricAdapterId = QUuid::createUuid();
+     adapter->setClient(this);
+     if (wasInitialized) {
+         if (!m_html.isEmpty())
+@@ -1386,6 +1406,9 @@ void QQuickWebEngineViewPrivate::renderProcessTerminated(
+         RenderProcessTerminationStatus terminationStatus, int exitCode)
+ {
+     Q_Q(QQuickWebEngineView);
++    // A renderer failure invalidates any native owner witness held for the
++    // previous process, even when Qt keeps the WebContentsAdapter object.
++    ferricAdapterId = QUuid::createUuid();
+     Q_EMIT q->renderProcessTerminated(static_cast<QQuickWebEngineView::RenderProcessTerminationStatus>(
+                                       renderProcessExitStatus(terminationStatus)), exitCode);
+ }

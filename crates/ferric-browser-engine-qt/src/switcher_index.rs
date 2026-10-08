@@ -6,7 +6,7 @@
 use ferric_browser_storage::ProfileLibrarySnapshot;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub(super) struct SwitcherLibraryCandidate {
     pub(super) kind: String,
     pub(super) id: String,
@@ -16,13 +16,13 @@ pub(super) struct SwitcherLibraryCandidate {
     pub(super) fields: Vec<String>,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 pub(super) struct SwitcherLibraryIndex {
     pub(super) profile_name: String,
     pub(super) candidates: Vec<SwitcherLibraryCandidate>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub(super) struct SwitcherLibraryIndexResult {
     pub(super) revision: i64,
     pub(super) index: Option<SwitcherLibraryIndex>,

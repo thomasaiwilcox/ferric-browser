@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Ferric Viewless Download Probe",
+  "version": "1.0.0",
+  "description": "Disposable native test stimulus for a profile-owned download.",
+  "permissions": ["downloads"],
+  "host_permissions": ["http://127.0.0.1/*"],
+  "background": {
+    "service_worker": "service_worker.js"
+  },
+  "action": {
+    "default_popup": "popup.html"
+  }
+}

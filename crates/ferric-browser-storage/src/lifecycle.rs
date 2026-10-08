@@ -15,15 +15,22 @@ const CRASH_LOG_NAME: &str = "crash-events.json";
 const CRASH_LOG_SCHEMA: u32 = 1;
 const MAX_CRASH_EVENTS: usize = 32;
 
-#[derive(Debug)]
 pub enum CrashMarkerError {
     Io { path: PathBuf, message: String },
+}
+
+impl std::fmt::Debug for CrashMarkerError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Io { .. } => formatter.write_str("CrashMarkerError::Io([redacted])"),
+        }
+    }
 }
 
 impl std::fmt::Display for CrashMarkerError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Io { path, message } => write!(formatter, "{}: {message}", path.display()),
+            Self::Io { .. } => formatter.write_str("crash marker I/O failed"),
         }
     }
 }
@@ -468,6 +475,18 @@ mod tests {
         assert!(!serialized.contains("http://"));
         assert!(!serialized.contains("password"));
         let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn crash_marker_error_diagnostics_redact_paths_and_io_messages() {
+        let sentinel = "private-state-path-sentinel";
+        let error = CrashMarkerError::Io {
+            path: PathBuf::from(sentinel),
+            message: format!("permission denied at {sentinel}"),
+        };
+
+        assert!(!format!("{error:?}").contains(sentinel));
+        assert!(!error.to_string().contains(sentinel));
     }
 
     #[test]

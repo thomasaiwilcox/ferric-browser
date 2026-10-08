@@ -9,30 +9,48 @@ use cxx_qt_lib::QString;
 use ferric_browser_core::{CleanLinkResult, CleaningRules, ValidatedUrl, canonical_origin};
 use serde_json::{Value, json};
 
-pub(super) fn canonical_engine_url(url: QString) -> Result<String, String> {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum EngineUrlError {
+    RustRejected,
+    QtRejected,
+    CanonicalizationFailed,
+    OriginMismatch,
+}
+
+impl std::fmt::Display for EngineUrlError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::RustRejected => "Rust rejected the engine URL",
+            Self::QtRejected => "Qt rejected the engine URL",
+            Self::CanonicalizationFailed => "Qt/Rust URL canonicalization failed",
+            Self::OriginMismatch => "URL normalization mismatch",
+        })
+    }
+}
+
+pub(super) fn canonical_engine_url(url: QString) -> Result<String, EngineUrlError> {
     let raw_url = url.to_string();
     let rust_raw_url = ValidatedUrl::parse(raw_url)
         .map(|url| url.to_string())
-        .map_err(|error| format!("Rust rejected the engine URL: {error}"))?;
+        .map_err(|_| EngineUrlError::RustRejected)?;
     let qt_url = qobject::ferric_browser_canonicalize_url(&url).to_string();
     if qt_url.is_empty() {
-        return Err("Qt rejected the engine URL".into());
+        return Err(EngineUrlError::QtRejected);
     }
     drop(url);
     let rust_qt_url = ValidatedUrl::parse(qt_url)
         .map(|url| url.to_string())
-        .map_err(|error| format!("Qt/Rust URL canonicalization failed: {error}"))?;
-    let rust_origin = canonical_origin(&rust_raw_url);
-    let qt_origin = canonical_origin(&rust_qt_url);
-    if rust_origin != qt_origin {
-        let describe = |origin: Option<String>| origin.unwrap_or_else(|| "opaque".into());
-        return Err(format!(
-            "URL normalization mismatch; Rust origin={} Qt origin={}",
-            describe(rust_origin),
-            describe(qt_origin)
-        ));
-    }
+        .map_err(|_| EngineUrlError::CanonicalizationFailed)?;
+    ensure_canonical_origins_match(&rust_raw_url, &rust_qt_url)?;
     Ok(rust_qt_url)
+}
+
+fn ensure_canonical_origins_match(rust_url: &str, qt_url: &str) -> Result<(), EngineUrlError> {
+    if canonical_origin(rust_url) == canonical_origin(qt_url) {
+        Ok(())
+    } else {
+        Err(EngineUrlError::OriginMismatch)
+    }
 }
 
 fn display_authority(authority: &str) -> String {
@@ -240,5 +258,18 @@ mod tests {
         assert_eq!(blocking_site_host("http://[::1]:8080/"), Some("::1".into()));
         assert!(blocking_site_host("https://user@example.test/").is_none());
         assert!(blocking_site_host("https://example.test:bad/").is_none());
+    }
+
+    #[test]
+    fn engine_url_origin_mismatch_error_omits_both_origins() {
+        let error = ensure_canonical_origins_match(
+            "https://private-origin.sentinel.invalid/path?token=private",
+            "https://different-origin.sentinel.invalid/path?token=other",
+        )
+        .expect_err("different origins must refuse canonicalization");
+
+        assert_eq!(error, EngineUrlError::OriginMismatch);
+        assert_eq!(error.to_string(), "URL normalization mismatch");
+        assert!(!format!("{error:?}").contains("sentinel"));
     }
 }

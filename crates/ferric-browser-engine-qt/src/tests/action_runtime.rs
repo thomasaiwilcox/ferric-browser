@@ -506,6 +506,21 @@ fn every_builtin_action_example_maps_through_typed_parser() {
                 "{} example must be one command",
                 definition.id
             );
+            if matches!(
+                definition.subject,
+                ActionSubject::Commit
+                    | ActionSubject::Stash
+                    | ActionSubject::Branch
+                    | ActionSubject::MergePlan
+            ) {
+                assert_eq!(
+                    parse_action_invocation(&commands[0]),
+                    Err("action executor is not implemented".to_owned()),
+                    "{} must remain unavailable until its executor is qualified",
+                    definition.id
+                );
+                continue;
+            }
             let (mapped, action_id) = parse_action_invocation(&commands[0])
                 .unwrap_or_else(|error| panic!("{} example does not map: {error}", definition.id));
             assert_eq!(action_id, definition.id);
@@ -660,10 +675,13 @@ fn terminal_operation_states_cannot_be_cancelled_again() {
 
 #[test]
 fn userscript_stderr_is_bounded_redacted_and_explicit() {
-    let stderr =
-        sanitize_process_stderr(b"password=secret https://example.test/?token=hidden\nmessage\x01");
+    let stderr = sanitize_process_stderr(
+        b"password=secret Cookie: sid=cookie-secret\nAuthorization: Bearer bearer-secret\nhttps://example.test/?token=hidden\nmessage\x01",
+    );
     assert!(stderr.contains("password=[redacted]"));
     assert!(!stderr.contains("secret"));
+    assert!(!stderr.contains("cookie-secret"));
+    assert!(!stderr.contains("bearer-secret"));
     assert!(!stderr.contains("token=hidden"));
     assert!(stderr.contains("message"));
 
@@ -685,6 +703,24 @@ fn userscript_stderr_is_bounded_redacted_and_explicit() {
     .expect("explicit stderr operation query");
     assert_eq!(visible["operations"][0]["stderr"], stderr);
     assert!(operations_query_value(&rust, &serde_json::json!({"include_stderr": "yes"})).is_err());
+}
+
+#[test]
+fn operation_query_redacts_public_status_without_changing_internal_state() {
+    let mut rust = BrowserUiRust::default();
+    let sentinel_status = "failed: password=secret https://example.test/?token=hidden /home/alice/private/archive.mhtml trailing text";
+    rust.operation_states
+        .insert("op-status".into(), sentinel_status.into());
+
+    let response = operations_query_value(&rust, &serde_json::json!({"operation_id": "op-status"}))
+        .expect("operation query");
+
+    assert_eq!(
+        response["operations"][0]["status"],
+        "failed: password=[redacted] https://example.test/ [local-path]"
+    );
+    assert_eq!(rust.operation_states["op-status"], sentinel_status);
+    assert!(operation_is_terminal(&rust.operation_states["op-status"]));
 }
 
 #[test]
@@ -769,7 +805,7 @@ fn qml_idle_path_is_event_driven_and_devtools_are_lazy() {
     assert!(!qml.contains("id: attachedDevToolsView"));
     assert!(!qml.contains("id: secondaryDevToolsView"));
     assert!(script.contains("if(!root)return null"));
-    assert!(qml.contains("WebEngineProfilePrototype {\n        id: browserProfilePrototype"));
+    assert!(qml.contains("FerricVersioningProfileHost {\n        id: browserProfilePrototype"));
 }
 
 #[test]

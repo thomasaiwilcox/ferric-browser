@@ -5,12 +5,16 @@ import QtQuick.Dialogs
 import QtWebEngine
 import io.github.ferricbrowser 1.0
 import "../scripts/BrowserScripts.js" as BrowserScripts
+import "../scripts/ShutdownPageProbeState.js" as ShutdownPageProbeState
+import "../scripts/VersionedRestorePresentation.js" as VersionedRestorePresentation
 import "../scripts/SpellcheckPresentation.js" as SpellcheckPresentation
+import "../scripts/ProfileDownloadRouting.js" as ProfileDownloadRouting
+import "../scripts/CleanBranchPreparation.js" as CleanBranchPreparation
+import "../scripts/CleanBranchSwitch.js" as CleanBranchSwitch
 
 FerricBrowserRuntimeServices {
     id: window
 
-    readonly property var clipboardBridge: window.clipboardBridgeObject
     readonly property var activationOutcomeTimer: window.activationOutcomeTimerObject
     readonly property var fileDialogSurfaces: window.fileDialogSurfacesObject
     readonly property var certificatePrompts: window.certificatePromptsObject
@@ -48,37 +52,14 @@ FerricBrowserRuntimeServices {
     }
 
     function liveDownloadForId(id) {
-        var requested = String(id)
-        function find(host) {
-            if (!host) {
-                return null
-            }
-            var active = host.activeDownloads || ({})
-            if (active[requested]) {
-                return active[requested]
-            }
-            var pending = host.pendingDownloadRequests || ({})
-            return pending[requested] || null
+        try {
+            var browserEntries = window.browserWindowRegistry
+            var popupEntries = window.rootPopupEntriesSnapshot()
+            return ProfileDownloadRouting.liveRequestForId(
+                        id, window, browserEntries, popupEntries, window.browserProfile)
+        } catch (error) {
+            return undefined
         }
-        var result = find(window)
-        if (result) {
-            return result
-        }
-        var entries = window.browserWindowRegistry || []
-        for (var i = 0; i < entries.length; ++i) {
-            result = find(entries[i] && entries[i].host)
-            if (result) {
-                return result
-            }
-        }
-        var popups = window.popupWindowRegistry || []
-        for (var j = 0; j < popups.length; ++j) {
-            result = find(popups[j] && popups[j].host)
-            if (result) {
-                return result
-            }
-        }
-        return null
     }
 
     function downloadMetrics(id, download) {
@@ -203,26 +184,28 @@ FerricBrowserRuntimeServices {
     }
 
     function hasActiveDownloads() {
+        if (window.pendingNativePageCaptureClose || window.nativePageCaptureSave) {
+            return true
+        }
         if (window.pendingDownloadId.length > 0) {
             return true
         }
-        for (var key in window.pendingDownloadRequests) {
-            if (window.pendingDownloadRequests[key]) {
-                return true
-            }
-        }
-        for (var activeKey in window.activeDownloads) {
-            var download = window.activeDownloads[activeKey]
-            if (download && !download.isFinished) {
-                return true
-            }
-        }
-        return false
+        return ProfileDownloadRouting.hasOutstandingDownloadRequests(
+                    window.pendingDownloadRequests)
+                || ProfileDownloadRouting.hasOutstandingDownloadRequests(
+                    window.activeDownloads)
+                || ProfileDownloadRouting.hasOutstandingDownloadRequests(
+                    window.downloadCompletionRequests)
     }
 
     function hasActiveShutdownRequestsFor(ui, hostWindow) {
         if (!ui) {
             return false
+        }
+        if (hostWindow === window && ui === browserUi
+                && typeof ui.has_native_page_capture_request === "function"
+                && ui.has_native_page_capture_request()) {
+            return true
         }
         if (window.pendingFileDialogUi === ui
                 || window.pendingPermissionUi === ui
@@ -421,18 +404,46 @@ FerricBrowserRuntimeServices {
         return BrowserScripts.shutdownPageProbe()
     }
 
+    function showShutdownPagePrompt(reason) {
+        shutdownPageProbeTimer.stop()
+        window.shutdownPagePromptSnapshot = ShutdownPageProbeState.snapshotActive(
+            tabViews, WebEngineView.LifecycleState.Active, true)
+        window.shutdownPagePromptReason = reason
+        window.shutdownPagePromptVisible = true
+    }
+
+    function confirmShutdownPagePrompt() {
+        window.shutdownPagePromptVisible = false
+        if (!ShutdownPageProbeState.stillCurrent(
+                window.shutdownPagePromptSnapshot, tabViews,
+                WebEngineView.LifecycleState.Active, true)) {
+            window.shutdownPagePromptSnapshot = null
+            window.checkPageStateBeforeQuit()
+            return
+        }
+        window.shutdownPagePromptSnapshot = null
+        window.finalizeQuit()
+    }
+
     function checkPageStateBeforeQuit() {
         var generation = ++window.shutdownPageProbeGeneration
+        window.shutdownPagePromptSnapshot = null
         shutdownPageProbeTimer.restart()
-        var candidates = []
-        for (var i = 0; i < tabViews.length; ++i) {
-            var view = tabViewAt(i)
-            if (view && view.lifecycleState === WebEngineView.LifecycleState.Active) {
-                candidates.push(view)
-            }
+        var candidates = ShutdownPageProbeState.snapshotActive(
+            tabViews, WebEngineView.LifecycleState.Active)
+        if (!candidates) {
+            window.showShutdownPagePrompt(
+                "A page or browser activity changed during the close check.")
+            return
         }
         var probe = function(position) {
             if (generation !== window.shutdownPageProbeGeneration) {
+                return
+            }
+            if (!ShutdownPageProbeState.stillCurrent(
+                    candidates, tabViews, WebEngineView.LifecycleState.Active)) {
+                window.showShutdownPagePrompt(
+                    "A page or browser activity changed during the close check.")
                 return
             }
             if (position >= candidates.length) {
@@ -440,20 +451,25 @@ FerricBrowserRuntimeServices {
                 window.finalizeQuit()
                 return
             }
-            candidates[position].runJavaScript(window.shutdownPageProbeScript(), function(result) {
+            candidates[position].view.runJavaScript(
+                    window.shutdownPageProbeScript(), function(result) {
                 if (generation !== window.shutdownPageProbeGeneration) {
                     return
                 }
+                if (!ShutdownPageProbeState.stillCurrent(
+                        candidates, tabViews, WebEngineView.LifecycleState.Active)) {
+                    window.showShutdownPagePrompt(
+                        "A page or browser activity changed during the close check.")
+                    return
+                }
                 if (result === "dirty") {
-                    shutdownPageProbeTimer.stop()
-                    window.shutdownPagePromptReason = "A page has unsaved form or editor state."
-                    window.shutdownPagePromptVisible = true
+                    window.showShutdownPagePrompt(
+                        "A page has unsaved form or editor state.")
                     return
                 }
                 if (result !== "clean") {
-                    shutdownPageProbeTimer.stop()
-                    window.shutdownPagePromptReason = "Ferric Browser could not verify every page before closing."
-                    window.shutdownPagePromptVisible = true
+                    window.showShutdownPagePrompt(
+                        "Ferric Browser could not verify every page before closing.")
                     return
                 }
                 probe(position + 1)
@@ -483,17 +499,43 @@ FerricBrowserRuntimeServices {
             window.shutdownPromptVisible = true
             return
         }
+        if (browserUi.has_pending_versioning_object_work()) {
+            window.shutdownWaitingForDownloadFinishes = true
+            window.shutdownPromptVisible = true
+            window.scheduleRuntimeWork(50)
+            return
+        }
+        window.shutdownWaitingForDownloadFinishes = false
         window.checkPageStateBeforeQuit()
     }
 
     function finalizeQuit() {
         shutdownPageProbeTimer.stop()
-        window.shutdownPromptVisible = false
         window.shutdownPagePromptVisible = false
+        window.shutdownPagePromptSnapshot = null
+        if (window.hasActiveDownloads()
+                || window.hasActiveShutdownRequestsFor(browserUi, window)) {
+            window.shutdownPromptVisible = true
+            return
+        }
+        if (browserUi.has_pending_versioning_object_work()) {
+            window.shutdownWaitingForDownloadFinishes = true
+            window.shutdownPromptVisible = true
+            window.scheduleRuntimeWork(50)
+            return
+        }
+        window.shutdownPromptVisible = false
         window.beginApplicationShutdown()
     }
 
     function cancelDownloadsAndQuit() {
+        window.shutdownWaitingForDownloadFinishes = true
+        if (window.nativePageCaptureSave
+                || (browserUi
+                    && typeof browserUi.has_native_page_capture_request === "function"
+                    && browserUi.has_native_page_capture_request())) {
+            window.cancelNativePageCaptureForShutdown()
+        }
         if (window.pendingDownloadId.length > 0) {
             window.cancelPendingDownload()
         }
@@ -504,17 +546,25 @@ FerricBrowserRuntimeServices {
                 browserUi.update_download(pendingKey, "cancelled", pending.receivedBytes, true)
             }
         }
-        window.pendingDownloadRequests = ({})
         for (var activeKey in window.activeDownloads) {
             var download = window.activeDownloads[activeKey]
             if (download && !download.isFinished) {
-                window.resolveQtRequest(browserUi, download, "download", "cancel", [])
-                browserUi.update_download(activeKey, "cancelled", download.receivedBytes, true)
+                if (window.resolveQtRequest(browserUi, download, "download", "cancel", [])) {
+                    var state = window.downloadStateName(download)
+                    if (!download.isFinished)
+                        state = "cancelled"
+                    browserUi.update_download(activeKey, state,
+                                              download.receivedBytes, true)
+                }
             }
         }
-        window.activeDownloads = ({})
         window.cancelShutdownRequestsFor(browserUi, window)
-        window.continueQuitRequest()
+        if (window.hasActiveDownloads()) {
+            window.shutdownPromptVisible = true
+        } else {
+            window.shutdownWaitingForDownloadFinishes = false
+            window.continueQuitRequest()
+        }
     }
 
     function refreshLibraryManager() {
@@ -1266,6 +1316,510 @@ FerricBrowserRuntimeServices {
         }
         if (ui) {
             ui.status_text = "Opened safe URL in a new same-profile window; live state was lost"
+        }
+        return true
+    }
+
+    function clearVersionedRestoreOptions(hostWindow) {
+        if (!hostWindow) {
+            return
+        }
+        hostWindow.versioningOpenRestoreCommitId = ""
+        hostWindow.versioningOpenRestoreOptionsAt = 0
+        hostWindow.versioningOpenRestoreMediaPositionsRequested = false
+        hostWindow.versioningOpenRestoreEditableDraftsRequested = false
+    }
+
+    property var pendingCleanBranchWindows: ({})
+
+    function cleanBranchPageOutcomeIndex(view, ui, index) {
+        if (!window.windowCleanBranchLineagePublished || ui !== browserUi
+                || !view || view.viewUi !== ui || view.profile !== browserProfile
+                || index < 0 || index >= ui.tab_count
+                || String(view.stableTabId) !== String(ui.tab_id_for_index(index)))
+            return -1
+        return window.windowBranchPageOutcomeIds.indexOf(String(view.stableTabId))
+    }
+
+    function startCleanBranchPageNavigation(view, ui, index, url) {
+        if (window.cleanBranchPageOutcomeIndex(view, ui, index) < 0)
+            return false
+        var next = CleanBranchPreparation.startWindowPageNavigation(
+                    window.windowBranchPageOutcomeIds,
+                    window.windowBranchPageExpectedUrls,
+                    window.windowBranchPageNavigationStarted,
+                    window.windowBranchPageOutcomes,
+                    String(view.stableTabId), String(url || ""))
+        if (!next)
+            return false
+        window.windowBranchPageNavigationStarted = next
+        var originalIndex = window.windowBranchPageOutcomeIds.indexOf(
+                    String(view.stableTabId))
+        var startedAt = window.windowBranchPageStartedAt.slice()
+        if (!startedAt[originalIndex])
+            startedAt[originalIndex] = Date.now()
+        window.windowBranchPageStartedAt = startedAt
+        return true
+    }
+
+    function recordCleanBranchPageOutcome(view, ui, index, outcome, url) {
+        if (window.cleanBranchPageOutcomeIndex(view, ui, index) < 0)
+            return false
+        var terminal = CleanBranchPreparation.classifyWindowTerminalOutcome(
+                    outcome, String(url || ""))
+        if (!terminal)
+            return false
+        var next = CleanBranchPreparation.recordWindowPageOutcome(
+                    window.windowBranchPageOutcomeIds,
+                    window.windowBranchPageNavigationStarted,
+                    window.windowBranchPageOutcomes,
+                    String(view.stableTabId), terminal)
+        if (!next)
+            return false
+        window.windowBranchPageOutcomes = next
+        return true
+    }
+
+    function loadDeferredCleanBranchPage(index) {
+        if (!window.windowCleanBranch || !window.windowCleanBranchPublished
+                || browserUi.active_tab_index !== index)
+            return false
+        var next = CleanBranchPreparation.takeDeferredWindowUrl(
+                    window.windowBranchDeferredNavigations, index)
+        if (!next)
+            return false
+        window.windowBranchDeferredNavigations = next.deferred
+        if (!browserUi.navigate_clean_branch_safe_get(next.url)) {
+            browserUi.status_text = "Clean branch page " + (index + 1)
+                    + " could not start its proved safe navigation"
+            return false
+        }
+        window.executePendingEngineAction()
+        window.updateActiveTabUrl()
+        return true
+    }
+
+    Connections {
+        target: browserUi
+        function onActive_tab_indexChanged() {
+            window.loadDeferredCleanBranchPage(browserUi.active_tab_index)
+        }
+    }
+
+    Timer {
+        interval: 1000
+        repeat: true
+        running: window.windowCleanBranch && window.windowCleanBranchPublished
+        onTriggered: {
+            var expired = CleanBranchPreparation.expiredWindowPageIndexes(
+                        window.windowBranchPageOutcomeIds,
+                        window.windowBranchPageNavigationStarted,
+                        window.windowBranchPageOutcomes,
+                        window.windowBranchPageStartedAt, Date.now(), 15000)
+            for (var expiredIndex = 0; expiredIndex < expired.length; ++expiredIndex) {
+                var original = expired[expiredIndex]
+                var tabId = window.windowBranchPageOutcomeIds[original]
+                for (var index = 0; index < window.tabViews.length; ++index) {
+                    var view = window.tabViews[index]
+                    if (view && String(view.stableTabId) === tabId
+                            && window.recordCleanBranchPageOutcome(
+                                view, browserUi, index, "failed",
+                                window.windowBranchPageExpectedUrls[original])) {
+                        if (browserUi.active_tab_index === index)
+                            browserUi.status_text = "Clean branch page load timed out"
+                        break
+                    }
+                }
+            }
+        }
+    }
+
+    // Resolve in the source application's typed lineage registry, then focus
+    // only the exact native window still registered for that owner. No URL is
+    // replayed and no profile or view is reparented by switching.
+    function switchVersionedCleanBranch(parentUi, sourceUi, command) {
+        if (!parentUi || !sourceUi)
+            return false
+        var target = sourceUi === parentUi
+                ? parentUi.switch_versioned_clean_branch_parent(command)
+                : parentUi.switch_versioned_clean_branch_child(sourceUi, command)
+        return window.activateVersionedBranchTarget(parentUi, target)
+    }
+
+    function activateVersionedBranchTarget(parentUi, target) {
+        return CleanBranchSwitch.activate(
+                    parentUi, String(target || ""),
+                    (window.browserWindowRegistry || []).concat(
+                        window.versioningWindowOwner.discoveryEntries(64)),
+                    function(token) { return window.cleanBranchOwner(token) },
+                    function(childUi, branchId) {
+                        return parentUi.validate_versioned_clean_branch_target(
+                                    childUi, branchId)
+                    },
+                    function(host, ui) {
+                        return window.activateBrowserWindow(host, ui)
+                    })
+    }
+
+    Timer {
+        id: cleanBranchPreparationTimer
+        interval: 25
+        repeat: true
+        onTriggered: window.pollPreparedCleanBranches()
+    }
+
+    function openVersionedCleanBranch(ui, hostWindow, action) {
+        var prefix = "versioning-clean-branch-ready\t"
+        var encoded = String(action || "")
+        if (!ui || !hostWindow || encoded.indexOf(prefix) !== 0
+                || encoded.length > 1200000) {
+            return false
+        }
+        var request
+        try {
+            request = JSON.parse(encoded.slice(prefix.length))
+        } catch (error) {
+            ui.status_text = "Clean branch request was invalid; source remains active"
+            return false
+        }
+        if (request && request.scope === "window")
+            return window.openVersionedCleanBranchWindow(ui, hostWindow, request)
+        if (encoded.length > 12 * 1024) {
+            ui.status_text = "Clean branch request exceeded its bound"
+            return false
+        }
+        var token = request && String(request.branch || "")
+        var navigation = request && String(request.navigation || "")
+        var url = request && String(request.url || "")
+        var safeGet = navigation === "safe-get"
+        if (!/^branch:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(token)
+                || (navigation !== "placeholder" && !safeGet)
+                || (safeGet && (url.length === 0 || url.length > 8192
+                                || !/^https?:\/\//.test(url)
+                                || /[\u0000-\u001f\u007f]/.test(url)))
+                || (!safeGet && url.length > 0)
+                || Object.keys(window.pendingCleanBranchWindows).length >= 32
+                || window.pendingCleanBranchWindows[token]) {
+            ui.status_text = "Clean branch request was invalid; source remains active"
+            ui.abort_versioned_clean_branch(token)
+            return false
+        }
+        var sourceTransient = hostWindow === window
+                ? !!(window.temporaryProfile || window.ephemeralProfile)
+                : !!hostWindow.windowTransientProfile
+        var factory = window.browserWindowFactory
+        if (sourceTransient || !factory || typeof factory.createObject !== "function") {
+            ui.status_text = "Clean branch source or child factory unavailable"
+            ui.abort_versioned_clean_branch(token)
+            return false
+        }
+        var child = CleanBranchPreparation.createHiddenChild(factory, {
+            rootWindow: window,
+            windowBranchToken: token,
+            windowBranchParentUi: ui,
+            windowStartupUrl: "about:blank",
+            windowProfileName: "branch-" + token.slice(7, 15),
+            windowProfileLabel: "Clean branch"
+        }, token, ui)
+        if (!child) {
+            ui.abort_versioned_clean_branch(token)
+            ui.status_text = "Clean branch child preparation failed; source remains active"
+            return false
+        }
+        var pending = window.pendingCleanBranchWindows
+        pending[token] = {
+            parentUi: ui,
+            child: child,
+            navigation: navigation,
+            url: url,
+            createdAt: Date.now()
+        }
+        window.pendingCleanBranchWindows = pending
+        cleanBranchPreparationTimer.start()
+        return true
+    }
+
+    function openVersionedCleanBranchWindow(ui, hostWindow, request) {
+        var token = String(request.branch || "")
+        var pages = request.pages
+        var selected = Number(request.selected_index)
+        var valid = /^branch:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(token)
+                && Array.isArray(pages) && pages.length > 0 && pages.length <= 128
+                && Number.isInteger(selected) && selected >= 0 && selected < pages.length
+                && Object.keys(window.pendingCleanBranchWindows).length < 32
+                && !window.pendingCleanBranchWindows[token]
+                && !window.temporaryProfile && !window.ephemeralProfile
+                && (hostWindow === window || !hostWindow.windowTransientProfile)
+        if (valid) {
+            for (var index = 0; index < pages.length; ++index) {
+                var page = pages[index]
+                var navigation = page && String(page.navigation || "")
+                var url = page && String(page.url || "")
+                if ((navigation !== "placeholder" && navigation !== "safe-get")
+                        || (navigation === "placeholder" && url.length > 0)
+                        || (navigation === "safe-get"
+                            && (url.length === 0 || url.length > 8192
+                                || !/^https?:\/\//.test(url)
+                                || /[\u0000-\u001f\u007f]/.test(url)))) {
+                    valid = false
+                    break
+                }
+            }
+        }
+        if (!valid || !window.tabCapableWindowFactory) {
+            ui.status_text = "Clean window branch request or host unavailable"
+            ui.abort_versioned_clean_branch(token)
+            return false
+        }
+        var factory = window.tabCapableWindowFactory
+        var child = VersionedRestorePresentation.openRestoreWindow(
+            factory, {
+                startupUrl: "about:blank",
+                startupAdditionalUrls: [],
+                startupEntryPoint: "typed-initial-url",
+                startupTrustedLocalInput: false,
+                temporaryProfile: true,
+                ephemeralProfile: true,
+                instanceRequestOwner: false,
+                safeMode: window.safeMode,
+                userscriptsOff: window.userscriptsOff,
+                softwareRendering: window.softwareRendering,
+                nativeWayland: window.nativeWayland,
+                instanceLockPath: window.instanceLockPath,
+                instanceSelector: window.instanceSelector,
+                profileName: "branch-" + token.slice(7, 15),
+                profileLabel: "Clean branch",
+                storageBasePath: window.storageBasePath,
+                startupConfigJson: String(ui.config_json || window.startupConfigJson),
+                startupConfigBaseJson: String(ui.config_base_json
+                                              || window.startupConfigBaseJson),
+                startupCliOverridesJson: String(ui.cli_overrides_json
+                                                || window.startupCliOverridesJson),
+                startupProfileOverridesJson: String(ui.profile_overrides_json
+                                                    || window.startupProfileOverridesJson),
+                startupConfigPath: String(ui.config_path || window.startupConfigPath),
+                startupConfigSource: String(ui.config_source || window.startupConfigSource),
+                startupContextsJson: String(ui.contexts_json || window.startupContextsJson),
+                tabCapableWindowFactory: factory,
+                versioningRestoreParentOwner: window.versioningWindowOwner,
+                windowBranchToken: token,
+                windowBranchParentUi: ui,
+                windowBranchRootWindow: window
+            }, ui, window.versioningWindowOwner)
+        if (!child) {
+            ui.abort_versioned_clean_branch(token)
+            return false
+        }
+        var pending = window.pendingCleanBranchWindows
+        pending[token] = {
+            scope: "window", parentUi: ui, child: child,
+            pages: pages, selectedIndex: selected, createdAt: Date.now()
+        }
+        window.pendingCleanBranchWindows = pending
+        cleanBranchPreparationTimer.start()
+        return true
+    }
+
+    function publishPreparedCleanBranchWindow(entry, token, owner) {
+        var child = entry.child
+        var childUi = child.windowBranchUi
+        if (!owner || owner.host !== child
+                || owner.profile !== child.windowBranchProfile
+                || owner.view !== child.windowBranchInitialView
+                || !childUi || childUi.tab_count !== 1) {
+            return false
+        }
+        for (var index = 1; index < entry.pages.length; ++index) {
+            if (childUi.new_tab() !== index)
+                return false
+        }
+        child.syncTabModel()
+        if (child.tabViews.length !== entry.pages.length
+                || !childUi.select_tab(entry.selectedIndex))
+            return false
+        var seen = []
+        for (var viewIndex = 0; viewIndex < entry.pages.length; ++viewIndex) {
+            var view = child.tabViews[viewIndex]
+            if (!view || seen.indexOf(view) >= 0
+                    || view.profile !== owner.profile
+                    || view.viewUi !== childUi
+                    || view.viewInterceptor !== child.primaryRequestInterceptor
+                    || String(view.stableTabId) !== String(childUi.tab_id_for_index(viewIndex)))
+                return false
+            seen.push(view)
+        }
+        child.windowBranchGroupViews = seen.slice(1)
+        if (!entry.parentUi.publish_versioned_clean_branch_window(childUi, token))
+            return false
+        child.windowCleanBranchLineagePublished = true
+        child.windowBranchPageOutcomeIds = seen.map(function(view) {
+            return String(view.stableTabId)
+        })
+        child.windowBranchPageOutcomes = seen.map(function() { return "pending" })
+        child.windowBranchPageExpectedUrls = entry.pages.map(function(page) {
+            return page.navigation === "safe-get" ? String(page.url) : ""
+        })
+        child.windowBranchPageNavigationStarted = seen.map(function() { return false })
+        child.windowBranchPageStartedAt = seen.map(function() { return 0 })
+        var schedule = CleanBranchPreparation.windowNavigationSchedule(
+                    entry.pages, entry.selectedIndex)
+        if (!schedule)
+            return false
+        child.windowBranchDeferredNavigations = schedule.deferred
+        if (schedule.selectedUrl.length > 0) {
+            if (!childUi.select_tab(entry.selectedIndex)
+                    || !childUi.navigate_clean_branch_safe_get(schedule.selectedUrl))
+                return false
+            child.executePendingEngineAction()
+            child.updateActiveTabUrl()
+        }
+        if (!childUi.select_tab(entry.selectedIndex))
+            return false
+        child.syncTabModel()
+        if (!child.registerBrowserWindow(
+                child, childUi, child.windowBranchInitialView,
+                child.browserProfile, child.profileName, token, true))
+            return false
+        child.windowCleanBranchPublished = true
+        child.show()
+        return true
+    }
+
+    function pollPreparedCleanBranches() {
+        var pending = window.pendingCleanBranchWindows || ({})
+        var remaining = ({})
+        var tokens = Object.keys(pending)
+        for (var i = 0; i < tokens.length; ++i) {
+            var token = tokens[i]
+            var entry = pending[token]
+            var child = entry && entry.child
+            var ui = entry && entry.parentUi
+            if (!child || !ui || !entry || Date.now() - entry.createdAt > 10000) {
+                if (child)
+                    child.destroy()
+                if (ui)
+                    ui.abort_versioned_clean_branch(token)
+                continue
+            }
+            if (!child.windowCleanBranchNativeBound) {
+                remaining[token] = entry
+                continue
+            }
+            var owner = window.cleanBranchOwner(token)
+            if (entry.scope === "window") {
+                if (!window.publishPreparedCleanBranchWindow(entry, token, owner)) {
+                    ui.status_text = "Clean window branch publication failed; source remains active"
+                    child.destroy()
+                    ui.abort_versioned_clean_branch(token)
+                } else {
+                    ui.status_text = "Clean window branch opened (structural-only; local site data not copied)"
+                }
+                continue
+            }
+            var result = CleanBranchPreparation.publishPreparedChild(
+                    entry, token, owner)
+            if (result === "owner-failed") {
+                ui.status_text = "Clean branch owner publication failed; source remains active"
+                continue
+            }
+            if (result === "navigation-failed") {
+                ui.status_text = "Clean branch navigation failed; source remains active"
+                continue
+            }
+            if (result === "publication-failed") {
+                ui.status_text = "Clean branch window publication failed; source remains active"
+            } else {
+                ui.status_text = "Clean branch opened (parent-active; child structural-only; local site data not copied)"
+            }
+        }
+        window.pendingCleanBranchWindows = remaining
+        if (Object.keys(remaining).length === 0)
+            cleanBranchPreparationTimer.stop()
+    }
+
+    function openVersionedRestoreWindow(ui, hostWindow, action) {
+        var fields = String(action || "").split("\t")
+        if (fields.length !== 2 || fields[0] !== "versioning-restore-window"
+                || fields[1].length === 0) {
+            window.clearVersionedRestoreOptions(hostWindow)
+            if (ui) {
+                ui.status_text = "Versioned restore target was invalid"
+            }
+            return false
+        }
+        var secondary = hostWindow !== window
+        var profileName = secondary ? hostWindow.windowProfileName : window.profileName
+        var profileLabel = secondary ? hostWindow.windowProfileLabel : window.profileLabel
+        var optionsAgeMs = hostWindow
+                ? Date.now() - Number(hostWindow.versioningOpenRestoreOptionsAt) : -1
+        var restoreOptionsMatch = !!hostWindow
+                && String(hostWindow.versioningOpenRestoreCommitId || "") === fields[1]
+                && Number.isFinite(optionsAgeMs) && optionsAgeMs >= 0
+                && optionsAgeMs <= 60000
+        var restoreMediaPositions = restoreOptionsMatch
+                && !!hostWindow.versioningOpenRestoreMediaPositionsRequested
+        var restoreEditableDrafts = restoreOptionsMatch
+                && !!hostWindow.versioningOpenRestoreEditableDraftsRequested
+        window.clearVersionedRestoreOptions(hostWindow)
+        var sourceProfile = secondary ? hostWindow.windowWebEngineProfile : browserProfile
+        // The owning primary surface alone receives profile-wide callbacks.
+        // A different-profile secondary needs its own qualified owner adapter.
+        if (!sourceProfile || sourceProfile !== browserProfile || !requestInterceptor) {
+            if (ui)
+                ui.status_text = "Same-profile restore owner unavailable; current work remains open"
+            return false
+        }
+        var restoreFactory = window.tabCapableWindowFactory
+        if (!restoreFactory || typeof restoreFactory.createObject !== "function") {
+            if (ui) {
+                ui.status_text = "Tab-capable restore window unavailable; current work remains open"
+            }
+            return false
+        }
+
+        var profileOverrides = secondary
+                ? String(hostWindow.windowProfileOverridesJson || "{}")
+                : String(ui.profile_overrides_json || window.startupProfileOverridesJson)
+        var tabCapableChild = VersionedRestorePresentation.openRestoreWindow(
+            restoreFactory, {
+                startupUrl: "about:blank",
+                startupAdditionalUrls: [],
+                startupEntryPoint: "typed-initial-url",
+                startupTrustedLocalInput: false,
+                startupBackground: false,
+                startupContext: "",
+                startupCleanLink: false,
+                temporaryProfile: false,
+                ephemeralProfile: false,
+                safeMode: window.safeMode,
+                userscriptsOff: window.userscriptsOff,
+                softwareRendering: window.softwareRendering,
+                nativeWayland: window.nativeWayland,
+                instanceLockPath: window.instanceLockPath,
+                instanceSelector: window.instanceSelector,
+                profileName: profileName,
+                profileLabel: profileLabel,
+                storageBasePath: window.storageBasePath,
+                startupConfigJson: String(ui.config_json || window.startupConfigJson),
+                startupConfigBaseJson: String(ui.config_base_json
+                                              || window.startupConfigBaseJson),
+                startupCliOverridesJson: String(ui.cli_overrides_json
+                                                 || window.startupCliOverridesJson),
+                startupProfileOverridesJson: profileOverrides,
+                startupConfigPath: String(ui.config_path || window.startupConfigPath),
+                startupConfigSource: String(ui.config_source || window.startupConfigSource),
+                startupContextsJson: String(ui.contexts_json || window.startupContextsJson),
+                tabCapableWindowFactory: restoreFactory,
+                versioningRestoreStartupCommitId: fields[1],
+                versioningRestoreSourceUi: ui,
+                versioningRestoreParentOwner: window.versioningWindowOwner,
+                versioningRestoreSharedProfile: sourceProfile,
+                versioningRestoreSharedInterceptor: requestInterceptor,
+                versioningRestoreStartupMediaPositions: restoreMediaPositions,
+                versioningRestoreStartupEditableDrafts: restoreEditableDrafts
+            }, ui, window.versioningWindowOwner)
+        if (!tabCapableChild) {
+            return false
         }
         return true
     }

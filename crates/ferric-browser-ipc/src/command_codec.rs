@@ -19,6 +19,12 @@ mod command_codec_navigation;
 mod command_codec_spatial;
 #[path = "command_codec_tabs_windows.rs"]
 mod command_codec_tabs_windows;
+#[path = "command_codec_versioning.rs"]
+mod command_codec_versioning;
+
+pub(crate) use command_codec_versioning::{
+    decode as decode_versioning_command, is_versioning_command,
+};
 
 const MAX_JOURNEY_QUERY_BYTES: usize = 256;
 
@@ -52,22 +58,18 @@ pub fn encode_command(command: &ParsedCommand) -> Result<Value, String> {
         command_codec_content::encode,
         command_codec_automation::encode,
         command_codec_spatial::encode,
+        command_codec_versioning::encode,
     ] {
         if let Some(value) = encode(command)? {
             encoded = Some(value);
             break;
         }
     }
-    let encoded = encoded.map_or_else(
-        || {
-            if command.arguments.is_empty() {
-                Ok(EncodedCommand::new(serde_json::json!({})))
-            } else {
-                Err(format!("{} does not accept arguments", command.name))
-            }
-        },
-        Ok,
-    )?;
+    let encoded = match encoded {
+        Some(encoded) => encoded,
+        None if command.arguments.is_empty() => EncodedCommand::new(serde_json::json!({})),
+        None => return Err("command does not accept arguments".into()),
+    };
     let argument_object = encoded
         .arguments
         .as_object()

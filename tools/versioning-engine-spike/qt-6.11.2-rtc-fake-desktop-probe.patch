@@ -1,0 +1,29 @@
+--- a/src/3rdparty/chromium/content/browser/media/capture/desktop_capture_device.cc
++++ b/src/3rdparty/chromium/content/browser/media/capture/desktop_capture_device.cc
+@@ -208,0 +209,18 @@
++// The browser-test fake ID must never consult an OS screen capturer. Give the
++// disposable probe deterministic synthetic frames so it can observe both the
++// real capture-device start and frame handoff without reading the user's screen.
++class FerricFakeDesktopCapturer final : public webrtc::FakeDesktopCapturer {
++ public:
++  FerricFakeDesktopCapturer() {
++    generator_.size()->set(640, 480);
++    generator_.set_return_frame(true);
++    generator_.set_provide_updated_region_hints(true);
++    generator_.set_desktop_frame_painter(&painter_);
++    set_frame_generator(&generator_);
++  }
++
++ private:
++  webrtc::BlackWhiteDesktopFramePainter painter_;
++  webrtc::PainterDesktopFrameGenerator generator_;
++};
++
+@@ -933,7 +951,7 @@
+   // For browser tests, to create a fake desktop capturer.
+   if (source.id == DesktopMediaID::kFakeId) {
+-    capturer = std::make_unique<webrtc::FakeDesktopCapturer>();
++    capturer = std::make_unique<FerricFakeDesktopCapturer>();
+     result.reset(new DesktopCaptureDevice(std::move(capturer), source.type));
+     return result;
+   }

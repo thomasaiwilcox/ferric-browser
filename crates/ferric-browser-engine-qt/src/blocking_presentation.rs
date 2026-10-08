@@ -100,10 +100,9 @@ impl qobject::BrowserUi {
                     .collect(),
             );
         } else {
-            self.as_mut().set_status_text(QString::from(format!(
-                "Blocklist compilation failed; current rules retained: {}",
-                policy.compile_failures.join(", ")
-            )));
+            self.as_mut().set_status_text(QString::from(
+                "Blocklist compilation failed; current rules retained; details suppressed",
+            ));
         }
         self.as_mut().set_blocking_skipped_lists(QString::from(
             serde_json::to_string(&policy.skipped_lists).unwrap_or_else(|_| "[]".into()),
@@ -158,9 +157,7 @@ impl qobject::BrowserUi {
             sites.remove(index);
             self.as_mut()
                 .set_blocking_bypass_sites(sites.iter().map(QString::from).collect());
-            self.set_status_text(QString::from(format!(
-                "Site blocker bypass disabled for {host}"
-            )));
+            self.set_status_text(QString::from("Site blocker bypass disabled"));
         } else {
             if sites.len() >= 64 {
                 self.set_status_text(QString::from(
@@ -171,9 +168,7 @@ impl qobject::BrowserUi {
             sites.push(host.clone());
             self.as_mut()
                 .set_blocking_bypass_sites(sites.iter().map(QString::from).collect());
-            self.set_status_text(QString::from(format!(
-                "Site blocker bypass enabled for {host}"
-            )));
+            self.set_status_text(QString::from("Site blocker bypass enabled"));
         }
         true
     }

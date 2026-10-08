@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Manifest {
     pub schema_version: u64,
@@ -38,6 +38,28 @@ pub struct Manifest {
     pub source: Option<String>,
 }
 
+impl std::fmt::Debug for Manifest {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("Manifest")
+            .field("schema_version", &self.schema_version)
+            .field("timeout_seconds", &self.timeout_seconds)
+            .field("allow_private", &self.allow_private)
+            .field("run_at", &self.run_at)
+            .field("frames", &self.frames)
+            .field("page_world", &self.page_world)
+            .field("enabled", &self.enabled)
+            .field("action_count", &self.actions.len())
+            .field("match_count", &self.matches.len())
+            .field("exclude_count", &self.excludes.len())
+            .field("context_field_count", &self.context_fields.len())
+            .field("allowed_result_count", &self.allowed_results.len())
+            .field("allowed_command_count", &self.allowed_commands.len())
+            .field("has_source", &self.source.is_some())
+            .finish()
+    }
+}
+
 #[derive(Clone, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum RunAt {
@@ -58,7 +80,7 @@ pub enum FrameScope {
     All,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ActionManifest {
     pub id: String,
@@ -69,11 +91,32 @@ pub struct ActionManifest {
     pub required_fields: Vec<String>,
 }
 
-#[derive(Clone, Debug)]
+impl std::fmt::Debug for ActionManifest {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ActionManifest")
+            .field("identity_and_label", &"[REDACTED]")
+            .field("required_field_count", &self.required_fields.len())
+            .finish()
+    }
+}
+
+#[derive(Clone)]
 pub struct LoadedManifest {
     pub manifest: Manifest,
     pub path: PathBuf,
     pub executable: PathBuf,
+}
+
+impl std::fmt::Debug for LoadedManifest {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("LoadedManifest")
+            .field("manifest", &self.manifest)
+            .field("path", &"[REDACTED]")
+            .field("executable", &"[REDACTED]")
+            .finish()
+    }
 }
 
 const fn default_timeout() -> u64 {

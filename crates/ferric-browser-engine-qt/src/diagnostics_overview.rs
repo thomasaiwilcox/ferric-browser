@@ -6,6 +6,16 @@ use std::{collections::BTreeMap, path::Path};
 
 const ACTION_ERROR_RECORD_LIMIT: usize = 128;
 const ACTION_ERROR_CATEGORY_LIMIT: usize = 32;
+const ACTION_ERROR_CATEGORIES: &[&str] = &[
+    "invalid-subject-or-parameters",
+    "not-found",
+    "stale-target",
+    "confirmation-required",
+    "missing-capability",
+    "denied-source-or-privacy",
+    "cancelled",
+    "executor-failure",
+];
 
 pub(crate) fn hyprland_version_fact() -> Value {
     let adapter = hyprland::HyprlandAdapter::from_config(&HyprlandConfig {
@@ -27,13 +37,17 @@ pub(crate) fn hyprland_version_fact() -> Value {
             "reason": "Hyprland j/version IPC response was observed",
             "provenance": "runtime-hyprland"
         }),
-        Err(error) => json!({
-            "status": "unavailable",
-            "value": null,
-            "reason": error.to_string(),
-            "provenance": "runtime-hyprland"
-        }),
+        Err(error) => hyprland_version_error_fact(error),
     }
+}
+
+fn hyprland_version_error_fact(_error: impl std::fmt::Display) -> Value {
+    json!({
+        "status": "unavailable",
+        "value": null,
+        "reason": "the Hyprland version probe failed",
+        "provenance": "runtime-hyprland"
+    })
 }
 
 /// Returns a privacy-safe health fact for one Rust-owned database. The probe
@@ -69,9 +83,7 @@ pub fn action_error_summary(records: &[Value]) -> Value {
         let category = record
             .get("category")
             .and_then(Value::as_str)
-            .filter(|value| {
-                !value.is_empty() && value.len() <= 128 && !value.chars().any(char::is_control)
-            })
+            .filter(|value| ACTION_ERROR_CATEGORIES.contains(value))
             .unwrap_or("unknown")
             .to_owned();
         *counts.entry(category).or_default() += 1;
@@ -90,4 +102,34 @@ pub fn action_error_summary(records: &[Value]) -> Value {
         "reason": "bounded in-memory action failures are summarized by redacted category",
         "provenance": "runtime-memory"
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn failed_compositor_probe_diagnostic_uses_a_fixed_reason() {
+        let fact =
+            hyprland_version_error_fact("private /run/user/1000/hyprland.sock: profile secret");
+        assert_eq!(fact["reason"], "the Hyprland version probe failed");
+        assert!(!fact.to_string().contains("/run/user/1000/hyprland.sock"));
+        assert!(!fact.to_string().contains("profile secret"));
+    }
+
+    #[test]
+    fn action_error_summary_keeps_only_closed_failure_categories() {
+        let summary = action_error_summary(&[json!({
+            "outcome": "failed",
+            "category": "private /home/person/profile.sqlite"
+        })]);
+        assert!(!summary.to_string().contains("/home/person/profile.sqlite"));
+        assert_eq!(summary["categories"][0]["category"], "unknown");
+
+        let stable = action_error_summary(&[json!({
+            "outcome": "failed",
+            "category": "stale-target"
+        })]);
+        assert_eq!(stable["categories"][0]["category"], "stale-target");
+    }
 }

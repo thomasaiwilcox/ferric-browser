@@ -43,8 +43,11 @@ and start fresh, run:
 ferric-browser reset-data --confirm
 ```
 
-The command rejects unsafe root symlinks and leaves root directories and their
-parents in place. See [the clean-break policy](packaging/MIGRATIONS.md).
+The command rejects unsafe root symlinks, removes marked profile media keys
+from the OS credential store before clearing their retry markers, and leaves
+root directories and their parents in place. If a marked key cannot be removed,
+the reset stops before clearing Ferric-owned files. See
+[the clean-break policy](packaging/MIGRATIONS.md).
 
 ## Using the browser
 

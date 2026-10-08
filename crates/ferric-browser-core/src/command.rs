@@ -14,13 +14,23 @@ pub enum ParseInput {
     Ipc,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct ParsedCommand {
     pub name: String,
     pub arguments: Vec<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+impl fmt::Debug for ParsedCommand {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ParsedCommand")
+            .field("name", &"[redacted]")
+            .field("argument_count", &self.arguments.len())
+            .finish()
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
 pub enum CommandError {
     Empty,
     TooLong,
@@ -38,6 +48,27 @@ pub enum CommandError {
     AliasDepth,
 }
 
+impl fmt::Debug for CommandError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Empty => formatter.write_str("Empty"),
+            Self::TooLong => formatter.write_str("TooLong"),
+            Self::TooManyCommands => formatter.write_str("TooManyCommands"),
+            Self::TooManyArguments => formatter.write_str("TooManyArguments"),
+            Self::Nul => formatter.write_str("Nul"),
+            Self::ControlCharacter(_) => formatter.write_str("ControlCharacter"),
+            Self::UnterminatedQuote => formatter.write_str("UnterminatedQuote"),
+            Self::TrailingEscape => formatter.write_str("TrailingEscape"),
+            Self::EmptyCommand => formatter.write_str("EmptyCommand"),
+            Self::InvalidName(_) => formatter.write_str("InvalidName([redacted])"),
+            Self::UnknownCommand(_) => formatter.write_str("UnknownCommand([redacted])"),
+            Self::DuplicateAlias(_) => formatter.write_str("DuplicateAlias([redacted])"),
+            Self::AliasCycle(_) => formatter.write_str("AliasCycle([redacted])"),
+            Self::AliasDepth => formatter.write_str("AliasDepth"),
+        }
+    }
+}
+
 impl fmt::Display for CommandError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -46,19 +77,16 @@ impl fmt::Display for CommandError {
             Self::TooManyCommands => formatter.write_str("command chain exceeds 64 commands"),
             Self::TooManyArguments => formatter.write_str("command exceeds 256 arguments"),
             Self::Nul => formatter.write_str("command contains NUL"),
-            Self::ControlCharacter(character) => {
-                write!(
-                    formatter,
-                    "command contains disallowed control character {character:?}"
-                )
+            Self::ControlCharacter(_) => {
+                formatter.write_str("command contains a disallowed control character")
             }
             Self::UnterminatedQuote => formatter.write_str("command has an unterminated quote"),
             Self::TrailingEscape => formatter.write_str("command ends with an incomplete escape"),
             Self::EmptyCommand => formatter.write_str("command chain contains an empty command"),
-            Self::InvalidName(name) => write!(formatter, "invalid command name: {name}"),
-            Self::UnknownCommand(name) => write!(formatter, "unknown command: {name}"),
-            Self::DuplicateAlias(name) => write!(formatter, "duplicate command alias: {name}"),
-            Self::AliasCycle(name) => write!(formatter, "command alias cycle at: {name}"),
+            Self::InvalidName(_) => formatter.write_str("command name is invalid"),
+            Self::UnknownCommand(_) => formatter.write_str("command is not registered"),
+            Self::DuplicateAlias(_) => formatter.write_str("command alias is already registered"),
+            Self::AliasCycle(_) => formatter.write_str("command alias cycle detected"),
             Self::AliasDepth => formatter.write_str("command alias expansion exceeds depth 8"),
         }
     }
@@ -268,6 +296,7 @@ pub enum CompletionProvider {
     Profiles,
     Tabs,
     Settings,
+    VersioningRefs,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -284,6 +313,15 @@ pub struct CommandDefinition {
     pub effect: EffectClass,
     pub completion: CompletionProvider,
     pub examples: Vec<String>,
+}
+
+impl CommandDefinition {
+    /// Static primitive requirements for registry discovery. Runtime
+    /// qualification and option-sensitive checks remain separate gates.
+    #[must_use]
+    pub fn required_capabilities(&self) -> &'static [&'static str] {
+        crate::versioning::command_capabilities(&self.name)
+    }
 }
 
 /// A parsed-token command alias.
@@ -1487,7 +1525,7 @@ impl CommandRegistry {
                 vec![Mode::Normal, Mode::Command],
                 CountPolicy::NotSupported,
                 false,
-                "Save the current window membership to a browsing context.",
+                "Save exact live same-profile window membership to a browsing context.",
             ),
             definition(
                 "context-route",
@@ -1522,6 +1560,11 @@ impl CommandRegistry {
                 "Open the privacy-safe runtime diagnostics report.",
             ),
         ]);
+        let next_id = registry.definitions.len();
+        for (index, mut command) in versioning_command_definitions().into_iter().enumerate() {
+            command.action = ActionId::from_raw((next_id + index + 1) as u64);
+            registry.definitions.push(command);
+        }
         for name in ["set", "unset"] {
             if let Some(command) = registry
                 .definitions
@@ -3467,6 +3510,270 @@ fn definition(
     }
 }
 
+#[allow(clippy::too_many_lines)]
+fn versioning_command_definitions() -> Vec<CommandDefinition> {
+    use ArgumentKind::{Boolean, Enum, Integer, Text};
+    use CommandScope::{Profile, Tab, Window};
+    use EffectClass::{Query, Sensitive};
+    type Entry<'a> = (
+        &'a str,
+        &'a str,
+        CommandScope,
+        EffectClass,
+        &'a [(&'a str, ArgumentKind, bool)],
+        &'a [&'a str],
+    );
+    let entries: &[Entry<'_>] = &[
+        (
+            "commit",
+            "Capture a tab, window, or refreshed same-profile context; page/editable capture requires consent and qualification.",
+            Window,
+            Sensitive,
+            &[
+                ("message", Text, true),
+                ("scope", Enum, false),
+                ("pages", Boolean, false),
+                ("editable", Boolean, false),
+            ],
+            &[
+                "commit 'Before experiment'",
+                "commit 'Context checkpoint' --scope=context",
+                "commit 'Page copy' --pages",
+            ],
+        ),
+        (
+            "commit-list",
+            "List redacted commits in the current profile.",
+            Profile,
+            Query,
+            &[("limit", Integer, false)],
+            &[
+                "commit-list --limit=20",
+                "commit-list --limit=20 --offset=40",
+            ],
+        ),
+        (
+            "commit-info",
+            "Inspect a commit's coverage and fidelity.",
+            Profile,
+            Query,
+            &[("ref", Text, true)],
+            &["commit-info main"],
+        ),
+        (
+            "commit-delete",
+            "Preview deletion and remaining references; confirmation required.",
+            Profile,
+            Sensitive,
+            &[("ref", Text, true)],
+            &["commit-delete main"],
+        ),
+        (
+            "stash",
+            "Retain a live tab or window without implying a snapshot.",
+            Tab,
+            EffectClass::Mutating,
+            &[("name", Text, false), ("scope", Enum, false)],
+            &["stash", "stash 'Research set' --scope=window"],
+        ),
+        (
+            "stash-list",
+            "List retained live leases.",
+            Profile,
+            Query,
+            &[],
+            &["stash-list"],
+        ),
+        (
+            "stash-info",
+            "Inspect one retained live lease.",
+            Profile,
+            Query,
+            &[("id", Text, true)],
+            &["stash-info lease"],
+        ),
+        (
+            "stash-resume",
+            "Resume the exact retained native instance.",
+            Profile,
+            EffectClass::Mutating,
+            &[("id", Text, true)],
+            &["stash-resume lease"],
+        ),
+        (
+            "stash-drop",
+            "Release retained live work after confirmation.",
+            Profile,
+            Sensitive,
+            &[("id", Text, true)],
+            &["stash-drop lease"],
+        ),
+        (
+            "branch",
+            "Create an isolated branch; use --clean when snapshot inheritance is unavailable.",
+            Tab,
+            Sensitive,
+            &[
+                ("name", Text, true),
+                ("scope", Enum, false),
+                ("clean", Boolean, false),
+            ],
+            &["branch trial --clean"],
+        ),
+        (
+            "branch-list",
+            "List branch lineage and state.",
+            Profile,
+            Query,
+            &[],
+            &["branch-list"],
+        ),
+        (
+            "branch-info",
+            "Inspect one branch lineage.",
+            Profile,
+            Query,
+            &[("ref", Text, true)],
+            &["branch-info trial"],
+        ),
+        (
+            "branch-delete",
+            "Preview deletion of a branch and its live state.",
+            Profile,
+            Sensitive,
+            &[("ref", Text, true)],
+            &["branch-delete trial"],
+        ),
+        (
+            "switch",
+            "Focus an existing branch by exact owner identity.",
+            Profile,
+            EffectClass::Mutating,
+            &[("ref", Text, true)],
+            &["switch trial"],
+        ),
+        (
+            "diff",
+            "Compare two explicit versioning references without capturing.",
+            Profile,
+            Query,
+            &[
+                ("left", Text, true),
+                ("right", Text, true),
+                ("kind", Enum, false),
+            ],
+            &[
+                "diff main trial --kind=browser",
+                "diff main trial --kind=page --offset=100",
+            ],
+        ),
+        (
+            "restore",
+            "Preview restore into a new or current window; replacement requires confirmation.",
+            Window,
+            Sensitive,
+            &[
+                ("ref", Text, true),
+                ("mode", Enum, false),
+                ("into", Enum, false),
+                ("policies", Boolean, false),
+            ],
+            &["restore main --mode=live --into=new-window"],
+        ),
+        (
+            "merge",
+            "Create a read-only expiring cookie reconciliation plan, not a write.",
+            Profile,
+            Query,
+            &[
+                ("branch", Text, true),
+                ("cookies", Boolean, true),
+                ("site", Text, false),
+            ],
+            &["merge trial --cookies"],
+        ),
+        (
+            "merge-resolve",
+            "Choose a whole supported record for one plan conflict.",
+            Profile,
+            EffectClass::Mutating,
+            &[
+                ("plan", Text, true),
+                ("item", Text, true),
+                ("choice", Enum, true),
+            ],
+            &["merge-resolve plan item skip"],
+        ),
+        (
+            "merge-apply",
+            "Apply a revalidated plan only on a qualified backend with native consent.",
+            Profile,
+            Sensitive,
+            &[("plan", Text, true)],
+            &["merge-apply plan"],
+        ),
+        (
+            "versioning-status",
+            "Inspect capabilities and admitted jobs.",
+            Profile,
+            Query,
+            &[],
+            &["versioning-status"],
+        ),
+        (
+            "versioning-cancel",
+            "Cancel an exact admitted versioning operation.",
+            Profile,
+            EffectClass::Mutating,
+            &[("operation", Text, true)],
+            &["versioning-cancel operation:00000000-0000-4000-8000-000000000001"],
+        ),
+    ];
+    entries
+        .iter()
+        .map(|(name, description, scope, effect, arguments, examples)| {
+            let mut command = definition(
+                name,
+                &[],
+                vec![Mode::Normal, Mode::Command],
+                CountPolicy::NotSupported,
+                *effect == Sensitive,
+                description,
+            );
+            command.scope = *scope;
+            command.effect = *effect;
+            command.arguments = arguments
+                .iter()
+                .map(|(name, kind, required)| ArgumentDefinition {
+                    name: (*name).into(),
+                    kind: *kind,
+                    required: *required,
+                })
+                .collect();
+            command.examples = examples.iter().map(|example| (*example).into()).collect();
+            if matches!(
+                *name,
+                "commit-info"
+                    | "commit-delete"
+                    | "stash-info"
+                    | "stash-resume"
+                    | "stash-drop"
+                    | "branch-info"
+                    | "branch-delete"
+                    | "switch"
+                    | "diff"
+                    | "restore"
+                    | "merge"
+                    | "merge-resolve"
+                    | "merge-apply"
+            ) {
+                command.completion = CompletionProvider::VersioningRefs;
+            }
+            command
+        })
+        .collect()
+}
+
 /// Rejects the one open-option combination whose semantics cannot be preserved
 /// by the native clean-link preview surface. Every open entry point should use
 /// this shared invariant before it mutates a tab or window.
@@ -3494,6 +3801,33 @@ mod tests {
         assert_eq!(
             validate_open_target(Some("tab-bg"), true),
             Err("open --clean-link cannot be combined with --target tab-bg")
+        );
+    }
+
+    #[test]
+    fn command_debug_redacts_arguments_and_dynamic_parse_errors() {
+        let sentinel = "private-command-argument-sentinel";
+        let parsed = ParsedCommand {
+            name: "open".into(),
+            arguments: vec![format!("https://example.test/{sentinel}?token=secret")],
+        };
+        assert!(!format!("{parsed:?}").contains(sentinel));
+        assert!(!format!("{parsed:?}").contains("token=secret"));
+
+        for error in [
+            CommandError::InvalidName(sentinel.into()),
+            CommandError::UnknownCommand(sentinel.into()),
+            CommandError::DuplicateAlias(sentinel.into()),
+            CommandError::AliasCycle(sentinel.into()),
+        ] {
+            assert!(!format!("{error:?}").contains(sentinel));
+            assert!(!error.to_string().contains(sentinel));
+        }
+        let control = '\u{0007}';
+        assert!(
+            !CommandError::ControlCharacter(control)
+                .to_string()
+                .contains(control)
         );
     }
 
@@ -3552,7 +3886,7 @@ mod tests {
             .remove(0);
         assert_eq!(registry.resolve(&command.name).unwrap().name, "open");
         assert!(registry.validate(&command, Mode::Normal).is_ok());
-        assert_eq!(registry.definitions().len(), 138);
+        assert_eq!(registry.definitions().len(), 159);
         let open = registry.resolve("open").unwrap();
         assert_ne!(open.action, ActionId::from_raw(0));
         assert_eq!(open.effect, EffectClass::Navigation);

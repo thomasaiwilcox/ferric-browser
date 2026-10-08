@@ -5,22 +5,16 @@ use super::*;
 
 impl qobject::BrowserUi {
     pub(super) fn ipc_permissions_query(&self, params: &Value) -> Result<Value, IpcQueryError> {
-        let object = params.as_object().ok_or_else(|| {
-            IpcQueryError::Invalid("permissions.query params must be an object".into())
-        })?;
+        let object = params.as_object().ok_or(IpcQueryError::Invalid)?;
         if object.keys().any(|key| key != "origin") {
-            return Err(IpcQueryError::Invalid(
-                "permissions.query contains an unknown field".into(),
-            ));
+            return Err(IpcQueryError::Invalid);
         }
         let origin = object.get("origin").and_then(Value::as_str);
         if object
             .get("origin")
             .is_some_and(|value| !value.is_null() && origin.is_none_or(str::is_empty))
         {
-            return Err(IpcQueryError::Invalid(
-                "permissions.query origin must be a nonempty string or null".into(),
-            ));
+            return Err(IpcQueryError::Invalid);
         }
         if self.rust().profile_persistence.lacks_durable_storage() {
             return Ok(serde_json::json!({
@@ -31,19 +25,17 @@ impl qobject::BrowserUi {
             }));
         }
         if self.rust().storage_library_dirty.get() || self.rust().storage_library.is_none() {
-            return Err(IpcQueryError::Busy(
-                "permission metadata is still loading; retry".into(),
-            ));
+            return Err(IpcQueryError::Busy);
         }
         let normalized_origin = origin
             .map(ferric_browser_storage::normalize_permission_origin)
             .transpose()
-            .map_err(|error| IpcQueryError::Invalid(error.to_string()))?;
+            .map_err(|_| IpcQueryError::Invalid)?;
         let rules = self
             .rust()
             .storage_library
             .as_ref()
-            .ok_or_else(|| IpcQueryError::Unavailable("permission metadata is unavailable".into()))?
+            .ok_or(IpcQueryError::Unavailable)?
             .permissions
             .iter()
             .filter(|rule| {
@@ -70,13 +62,11 @@ impl qobject::BrowserUi {
 
     pub(super) fn ipc_downloads_query(&self, params: &Value) -> Result<Value, IpcQueryError> {
         let object = query_object(params, "downloads.query", &["include_private"])
-            .map_err(IpcQueryError::Invalid)?;
+            .map_err(|_| IpcQueryError::Invalid)?;
         let include_private = query_bool_param(object, "downloads.query", "include_private", false)
-            .map_err(IpcQueryError::Invalid)?;
+            .map_err(|_| IpcQueryError::Invalid)?;
         if include_private && !self.ipc_private_queries_enabled() {
-            return Err(IpcQueryError::Invalid(
-                "private download queries are disabled by configuration".into(),
-            ));
+            return Err(IpcQueryError::Invalid);
         }
         if self.rust().profile_persistence.lacks_durable_storage() {
             return Ok(serde_json::json!({
@@ -87,14 +77,10 @@ impl qobject::BrowserUi {
             }));
         }
         if self.rust().storage_library_dirty.get() || self.rust().storage_library.is_none() {
-            return Err(IpcQueryError::Busy(
-                "download metadata is still loading; retry".into(),
-            ));
+            return Err(IpcQueryError::Busy);
         }
         let Some(library) = self.rust().storage_library.as_ref() else {
-            return Err(IpcQueryError::Unavailable(
-                "download metadata is unavailable".into(),
-            ));
+            return Err(IpcQueryError::Unavailable);
         };
         let downloads = library.downloads.clone();
         let downloads = downloads

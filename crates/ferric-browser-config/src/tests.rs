@@ -65,7 +65,7 @@ fn statusbar_visibility_accepts_qutebrowser_policies_and_legacy_command_alias() 
     let mut config = Config::default();
     config.ui.statusbar = "sometimes".into();
     let error = validate(&config).expect_err("unknown policy rejected");
-    assert!(error.to_string().contains("always, in-mode, or never"));
+    assert_eq!(error.to_string(), "configuration validation failed");
 }
 
 #[test]
@@ -82,7 +82,7 @@ fn remote_suggestions_are_rejected_without_a_provider() {
     let mut config = Config::default();
     config.privacy.remote_suggestions = true;
     let error = validate(&config).expect_err("unsupported remote suggestions rejected");
-    assert!(error.to_string().contains("remote suggestion provider"));
+    assert_eq!(error.to_string(), "configuration validation failed");
 }
 
 #[test]
@@ -426,6 +426,53 @@ fn setting_registry_entries_are_unique_and_complete() {
         assert!(!metadata.sensitivity.is_empty());
     }
     assert!(keys.len() >= 70);
+}
+
+#[test]
+fn sensitive_page_capture_settings_default_to_per_operation_ask_and_support_deny() {
+    let config = Config::default();
+    assert_eq!(config.versioning.page_capture, SensitiveCapturePolicy::Ask);
+    assert_eq!(
+        config.versioning.editable_capture,
+        SensitiveCapturePolicy::Ask
+    );
+    let page = setting_metadata("versioning.page_capture").expect("page-capture setting");
+    assert_eq!(page.default_value, "ask");
+    assert_eq!(page.supported_scopes, ["global", "profile"]);
+    assert_eq!(page.sensitivity, "sensitive");
+    let editable = setting_metadata("versioning.editable_capture").expect("editable setting");
+    assert_eq!(editable.default_value, "ask");
+    assert_eq!(editable.sensitivity, "sensitive");
+
+    let mut overrides = RuntimeOverrides::default();
+    overrides
+        .set_setting(
+            "versioning.page_capture",
+            toml::Value::String("deny".into()),
+        )
+        .expect("deny archive capture");
+    overrides
+        .set_setting(
+            "versioning.editable_capture",
+            toml::Value::String("deny".into()),
+        )
+        .expect("deny editable capture");
+    let effective = apply_runtime_overrides(&config, &overrides).expect("typed overrides");
+    assert_eq!(
+        effective.versioning.page_capture,
+        SensitiveCapturePolicy::Deny
+    );
+    assert_eq!(
+        effective.versioning.editable_capture,
+        SensitiveCapturePolicy::Deny
+    );
+    overrides
+        .set_setting(
+            "versioning.page_capture",
+            toml::Value::String("allow".into()),
+        )
+        .expect("retain the candidate for typed schema validation");
+    assert!(apply_runtime_overrides(&config, &overrides).is_err());
 }
 
 #[test]
@@ -918,7 +965,7 @@ fn runtime_override_unset_preserves_lower_layer_and_rejects_bad_types() {
         .expect("string is stored until typed application");
     let error =
         apply_runtime_overrides(&Config::default(), &overrides).expect_err("wrong type rejected");
-    assert!(error.to_string().contains("wrong type"));
+    assert_eq!(error.to_string(), "configuration validation failed");
 }
 
 #[test]
@@ -1129,4 +1176,29 @@ fn context_route_validation_rejects_unknown_entry_points_and_conflicts() {
         ..ContextsConfig::default()
     };
     assert!(validate_contexts(&ambiguous).is_err());
+}
+
+#[test]
+fn site_and_action_target_debug_redact_private_configuration() {
+    let sentinel = "private-rule-target-sentinel-4f21";
+    let site_rule = SiteRule {
+        id: sentinel.into(),
+        pattern: format!("https://{sentinel}.example.test/private/*"),
+        priority: 1,
+        set: [(sentinel.into(), toml::Value::String(sentinel.into()))]
+            .into_iter()
+            .collect(),
+    };
+    let action_target = ActionTargetConfig {
+        subject_types: vec![sentinel.into()],
+        executable: format!("/private/{sentinel}/handler"),
+        argv: vec![sentinel.into()],
+        detach: true,
+        allow_private: false,
+    };
+
+    for projection in [format!("{site_rule:?}"), format!("{action_target:?}")] {
+        assert!(!projection.contains(sentinel), "{projection}");
+        assert!(!projection.contains("/private/"), "{projection}");
+    }
 }

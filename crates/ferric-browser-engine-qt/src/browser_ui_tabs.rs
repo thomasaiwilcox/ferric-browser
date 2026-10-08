@@ -67,8 +67,8 @@ impl qobject::BrowserUi {
                     .and_then(|position| i32::try_from(position).ok())
                     .unwrap_or(-1)
             }
-            Err(error) => {
-                self.set_status_text(QString::from(format!("Tab pinning rejected: {error}")));
+            Err(_) => {
+                self.set_status_text(QString::from("Tab pinning rejected; details suppressed"));
                 -1
             }
         }
@@ -96,8 +96,8 @@ impl qobject::BrowserUi {
                 }));
                 true
             }
-            Err(error) => {
-                self.set_status_text(QString::from(format!("Tab mute rejected: {error}")));
+            Err(_) => {
+                self.set_status_text(QString::from("Tab mute rejected; details suppressed"));
                 false
             }
         }
@@ -357,11 +357,12 @@ impl qobject::BrowserUi {
             self.set_status_text(QString::from("Tab is no longer live"));
             return false;
         };
-        if let Err(error) = self
+        if self
             .as_mut()
             .reduce_event(Event::CloseTab { tab: target.tab })
+            .is_err()
         {
-            self.set_status_text(QString::from(format!("Tab close rejected: {error}")));
+            self.set_status_text(QString::from("Tab close rejected; details suppressed"));
             return false;
         }
         // Complete the core close handshake in one Rust call. Splitting
@@ -929,9 +930,8 @@ impl qobject::BrowserUi {
                 }
                 let typed_arguments = encoded_arguments
                     .map(|encoded| {
-                        serde_json::from_str::<Value>(encoded).map_err(|error| {
-                            format!("captured command arguments are invalid JSON: {error}")
-                        })
+                        serde_json::from_str::<Value>(encoded)
+                            .map_err(|_| "captured command arguments are invalid JSON".to_owned())
                     })
                     .transpose()?
                     .unwrap_or_else(|| serde_json::json!({}));
@@ -959,7 +959,7 @@ impl qobject::BrowserUi {
                     }));
                 }
                 if !self.as_mut().execute_parsed_commands(vec![parsed]) {
-                    return Err(self.as_ref().rust().status_text.to_string());
+                    return Err("Command action could not be executed; details suppressed".into());
                 }
                 Ok(serde_json::json!({
                     "status": "accepted",

@@ -73,15 +73,23 @@ impl qobject::BrowserUi {
             let Some(window) = rust.window else {
                 return;
             };
-            let Some(window_state) = rust
-                .state
-                .as_ref()
-                .and_then(|state| state.windows().get(&window))
-            else {
+            let Some(state) = rust.state.as_ref() else {
                 return;
             };
-            (window_state.tabs.clone(), window_state.active_tab)
+            let Some(window_state) = state.windows().get(&window) else {
+                return;
+            };
+            let Some(visible) = state.visible_versioning_tabs_for_window(window) else {
+                return;
+            };
+            (visible, window_state.active_tab)
         };
+        if active_tab.is_some_and(|tab| !tab_ids.contains(&tab)) {
+            self.as_mut().set_status_text(QString::from(
+                "Retained tab is still selected; visible tab projection was not changed",
+            ));
+            return;
+        }
         let active_index = i32::try_from(
             active_tab
                 .and_then(|tab| tab_ids.iter().position(|candidate| *candidate == tab))

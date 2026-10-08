@@ -5,23 +5,38 @@
 
 use std::{error::Error, fmt};
 
+use ferric_browser_core::versioning::SensitiveCategory;
 use ferric_browser_core::{
-    ApplicationState, CommandContext, CommandInvocation, CommandRegistry, CommandSource,
-    Diagnostic, DispatchError, DispatchTarget, Effect, EngineEffect, Event, JourneyGraph, Mode,
-    NavigationContext, PersistEffect, ProfileId, ProfileState, ReduceError, ShutdownState, TabId,
-    TabState, Target, ValidatedUrl, WindowId, WindowState, dispatch_command_for, reduce,
+    ApplicationOwnerId, ApplicationState, BranchId, BranchRecord, CapturedScope, CommandContext,
+    CommandInvocation, CommandRegistry, CommandSource, Diagnostic, DispatchError, DispatchTarget,
+    Effect, EngineEffect, Event, JourneyGraph, LogicalPageId, LogicalWindowId, Mode,
+    NativeProfileOwner, NavigationContext, PageCaptureInput, PersistEffect, ProfileId,
+    ProfileState, ReduceError, RetainedViewId, RetentionRecord, ScopeError, ScopeSelector,
+    ShutdownState, StructuralCaptureError, StructuralSnapshot, TabId, TabState, Target,
+    ValidatedUrl, VersioningEvent, VersioningFailure, WindowId, WindowState, dispatch_command_for,
+    project_structural_scope, reduce,
 };
 pub use ferric_browser_ipc::ErrorCode;
+use ferric_browser_ipc::PublicError;
 
 mod ipc_projection;
 pub use ipc_projection::{ipc_event_payload, ipc_event_type};
 
-#[derive(Debug)]
 pub struct RuntimeError {
     code: ErrorCode,
     user_message: String,
     diagnostic_context: String,
-    source: Option<Box<dyn Error + Send + Sync>>,
+}
+
+impl fmt::Debug for RuntimeError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("RuntimeError")
+            .field("code", &self.code)
+            .field("user_message", &"[redacted]")
+            .field("diagnostic_context", &"[redacted]")
+            .finish()
+    }
 }
 
 impl RuntimeError {
@@ -47,17 +62,31 @@ impl fmt::Display for RuntimeError {
     }
 }
 
-impl Error for RuntimeError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        self.source
-            .as_deref()
-            .map(|source| source as &(dyn Error + 'static))
+// INVARIANT: converted runtime errors retain only their closed public code,
+// fixed user text, and redacted diagnostic category. The consumed source may
+// contain caller-controlled URLs, command text, or runtime identity and must
+// not remain available through Error::source/downcasting.
+impl Error for RuntimeError {}
+
+impl From<VersioningFailure> for RuntimeError {
+    fn from(error: VersioningFailure) -> Self {
+        let public = PublicError::from(error);
+        Self {
+            code: public.code(),
+            user_message: public.user_message().into(),
+            diagnostic_context: public.diagnostic_context().into(),
+        }
     }
 }
 
 impl From<ReduceError> for RuntimeError {
     fn from(error: ReduceError) -> Self {
-        let code = match error {
+        let code = match &error {
+            ReduceError::Versioning(inner) => PublicError::from(VersioningFailure::new(
+                inner.reason(),
+                SensitiveCategory::None,
+            ))
+            .code(),
             ReduceError::UnknownProfile(_)
             | ReduceError::UnknownWindow(_)
             | ReduceError::UnknownTab(_) => ErrorCode::NotFound,
@@ -73,7 +102,6 @@ impl From<ReduceError> for RuntimeError {
             code,
             user_message: "The browser could not apply that request.".into(),
             diagnostic_context: error.to_string(),
-            source: Some(Box::new(error)),
         }
     }
 }
@@ -87,6 +115,7 @@ impl From<DispatchError> for RuntimeError {
                 ferric_browser_core::NavigationError::ExternalSchemeRequiresConfirmation { .. },
             ) => ErrorCode::ConfirmationRequired,
             DispatchError::Command(_)
+            | DispatchError::Versioning(_)
             | DispatchError::Navigation(_)
             | DispatchError::MissingArgument { .. }
             | DispatchError::UnexpectedArguments { .. }
@@ -98,12 +127,11 @@ impl From<DispatchError> for RuntimeError {
             code,
             user_message: "The browser could not execute that command.".into(),
             diagnostic_context: error.to_string(),
-            source: Some(Box::new(error)),
         }
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum RuntimeCommand {
     /// Executes a registry-validated command against a captured target.
     Dispatch(Box<RuntimeDispatch>),
@@ -128,15 +156,48 @@ pub enum RuntimeCommand {
     },
 }
 
+impl fmt::Debug for RuntimeCommand {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Dispatch(_) => formatter.write_str("RuntimeCommand::Dispatch([redacted])"),
+            Self::Navigate { .. } => formatter.write_str("RuntimeCommand::Navigate([redacted])"),
+            Self::OpenTab {
+                url, background, ..
+            } => formatter
+                .debug_struct("RuntimeCommand::OpenTab")
+                .field("has_url", &url.is_some())
+                .field("background", background)
+                .finish(),
+            Self::CloseTab { .. } => formatter.write_str("RuntimeCommand::CloseTab([redacted])"),
+            Self::EnterMode { mode, .. } => formatter
+                .debug_struct("RuntimeCommand::EnterMode")
+                .field("mode", mode)
+                .finish(),
+            Self::LeaveMode { .. } => formatter.write_str("RuntimeCommand::LeaveMode"),
+        }
+    }
+}
+
 /// Typed dispatch request accepted by [`BrowserRuntime`].
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct RuntimeDispatch {
     pub invocation: CommandInvocation,
     pub navigation: NavigationContext,
     pub target: DispatchTarget,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+impl fmt::Debug for RuntimeDispatch {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("RuntimeDispatch")
+            .field("invocation", &"[redacted]")
+            .field("navigation", &"[redacted]")
+            .field("target", &"[redacted]")
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq)]
 pub enum RuntimeInput {
     Command(RuntimeCommand),
     EngineFact(Event),
@@ -145,13 +206,31 @@ pub enum RuntimeInput {
     UserDecision(Event),
 }
 
+impl fmt::Debug for RuntimeInput {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Command(command) => formatter
+                .debug_tuple("RuntimeInput::Command")
+                .field(command)
+                .finish(),
+            Self::EngineFact(_) => formatter.write_str("RuntimeInput::EngineFact([redacted])"),
+            Self::WorkerCompletion { outcome, .. } => formatter
+                .debug_struct("RuntimeInput::WorkerCompletion")
+                .field("outcome", outcome)
+                .finish(),
+            Self::Lifecycle(_) => formatter.write_str("RuntimeInput::Lifecycle([redacted])"),
+            Self::UserDecision(_) => formatter.write_str("RuntimeInput::UserDecision([redacted])"),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum WorkerOutcome {
     Completed,
     Failed { code: ErrorCode },
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub enum RuntimeEffect {
     Engine(EngineEffect),
     Storage(PersistEffect),
@@ -175,12 +254,49 @@ pub enum RuntimeEffect {
     },
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+impl fmt::Debug for RuntimeEffect {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Engine(_) => formatter.write_str("RuntimeEffect::Engine([redacted])"),
+            Self::Storage(_) => formatter.write_str("RuntimeEffect::Storage([redacted])"),
+            Self::UiModelUpdated(snapshot) => formatter
+                .debug_struct("RuntimeEffect::UiModelUpdated")
+                .field("revision", &snapshot.revision)
+                .field("window_count", &snapshot.windows.len())
+                .finish(),
+            Self::Diagnostic(_) => formatter.write_str("RuntimeEffect::Diagnostic([redacted])"),
+            Self::AppliedEvent(_) => formatter.write_str("RuntimeEffect::AppliedEvent([redacted])"),
+            Self::IpcEvent { event_type, .. } => formatter
+                .debug_struct("RuntimeEffect::IpcEvent")
+                .field("event_type", event_type)
+                .field("payload", &"[redacted]")
+                .finish(),
+            Self::WorkerObserved { outcome, .. } => formatter
+                .debug_struct("RuntimeEffect::WorkerObserved")
+                .field("outcome", outcome)
+                .finish(),
+        }
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
 pub struct RuntimeSnapshot {
     revision: u64,
     shutdown: ShutdownState,
     active_window: Option<WindowId>,
     windows: Vec<WindowSnapshot>,
+}
+
+impl fmt::Debug for RuntimeSnapshot {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("RuntimeSnapshot")
+            .field("revision", &self.revision)
+            .field("shutdown", &self.shutdown)
+            .field("has_active_window", &self.active_window.is_some())
+            .field("window_count", &self.windows.len())
+            .finish()
+    }
 }
 
 impl RuntimeSnapshot {
@@ -205,13 +321,26 @@ impl RuntimeSnapshot {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct WindowSnapshot {
     pub id: WindowId,
     pub profile: ProfileId,
     pub active_tab: Option<TabId>,
     pub tabs: Vec<TabId>,
     pub mode: Mode,
+}
+
+impl fmt::Debug for WindowSnapshot {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("WindowSnapshot")
+            .field("id", &"[redacted]")
+            .field("profile", &"[redacted]")
+            .field("has_active_tab", &self.active_tab.is_some())
+            .field("tab_count", &self.tabs.len())
+            .field("mode", &self.mode)
+            .finish()
+    }
 }
 
 /// Borrowed, immutable projection of runtime state.
@@ -224,6 +353,80 @@ pub struct RuntimeView<'a> {
 }
 
 impl<'a> RuntimeView<'a> {
+    /// Predicts fresh reducer-owned IDs for a new window and its tabs on an
+    /// isolated state clone. The caller must retain `revision()` and refuse
+    /// execution if the live revision changes before applying the same events.
+    /// No live state is changed and no persistence effect is delivered.
+    ///
+    /// # Errors
+    /// Refuses an unknown profile or a tab count outside the bounded window.
+    pub fn preview_new_window_ids(
+        &self,
+        profile: ProfileId,
+        tab_count: usize,
+    ) -> Result<(WindowId, Vec<TabId>), ferric_browser_core::ReduceError> {
+        if !(1..=128).contains(&tab_count) {
+            return Err(ReduceError::InvalidActivation);
+        }
+        let mut preview = self.state.clone_for_identity_preview();
+        reduce(&mut preview, Event::CreateWindow { profile })?;
+        let window = preview
+            .active_window()
+            .ok_or(ReduceError::InvalidActivation)?;
+        let mut tabs = Vec::with_capacity(tab_count);
+        for _ in 0..tab_count {
+            reduce(&mut preview, Event::OpenTab { window })?;
+            tabs.push(
+                preview
+                    .active_tab()
+                    .ok_or(ReduceError::InvalidActivation)?
+                    .id,
+            );
+        }
+        Ok((window, tabs))
+    }
+
+    /// Resolves an immutable versioning subject set without exposing mutable
+    /// reducer state to the application coordinator.
+    ///
+    /// # Errors
+    /// Rejects stale, mixed-owner or unsupported context scopes.
+    pub fn resolve_versioning_scope(
+        &self,
+        selector: ScopeSelector,
+        native: NativeProfileOwner,
+    ) -> Result<CapturedScope, ScopeError> {
+        ferric_browser_core::resolve_scope(self.state, selector, native)
+    }
+
+    #[must_use]
+    pub fn logical_window(&self, window: WindowId) -> Option<LogicalWindowId> {
+        self.state.versioning().logical_window(window)
+    }
+
+    #[must_use]
+    pub fn logical_page(&self, tab: TabId) -> Option<LogicalPageId> {
+        self.state.versioning().logical_page(tab)
+    }
+
+    #[must_use]
+    pub fn lineage_parent(&self, tab: TabId) -> Option<LogicalPageId> {
+        self.state.versioning().lineage_parent(tab)
+    }
+
+    /// Projects only the previously admitted scope at its exact revision.
+    ///
+    /// # Errors
+    /// Rejects stale or mismatched structural input before any storage write.
+    pub fn project_structural_scope(
+        &self,
+        scope: &CapturedScope,
+        logical_window: LogicalWindowId,
+        inputs: &std::collections::BTreeMap<TabId, PageCaptureInput>,
+    ) -> Result<StructuralSnapshot, StructuralCaptureError> {
+        project_structural_scope(self.state, scope, logical_window, inputs)
+    }
+
     #[must_use]
     pub fn profiles(&self) -> &'a std::collections::BTreeMap<ProfileId, ProfileState> {
         self.state.profiles()
@@ -237,6 +440,58 @@ impl<'a> RuntimeView<'a> {
     #[must_use]
     pub fn tabs(&self) -> &'a std::collections::BTreeMap<TabId, TabState> {
         self.state.tabs()
+    }
+
+    /// The tab strip excludes reducer-owned retained/transferring views while
+    /// the logical window continues to own their live tab records.
+    #[must_use]
+    pub fn visible_versioning_tabs_for_window(&self, window: WindowId) -> Option<Vec<TabId>> {
+        self.state
+            .versioning()
+            .visible_tabs_for_window(self.state, window)
+    }
+
+    /// Reports whether a profile has any child-branch record not explicitly
+    /// closed. Callers lacking exact window ownership must treat this as a
+    /// profile-wide gate.
+    #[must_use]
+    pub fn has_unresolved_child_branch_for_profile(&self, profile: ProfileId) -> bool {
+        self.state
+            .versioning()
+            .has_unresolved_child_branch_for_profile(profile)
+    }
+
+    #[must_use]
+    pub fn versioning_root_branch(
+        &self,
+        application: ApplicationOwnerId,
+        profile: ProfileId,
+    ) -> Option<&'a BranchRecord> {
+        self.state.versioning().branches().values().find(|branch| {
+            branch.parent().is_none()
+                && branch.application() == application
+                && branch.profile() == profile
+        })
+    }
+
+    #[must_use]
+    pub fn versioning_branch(&self, id: BranchId) -> Option<&'a BranchRecord> {
+        self.state.versioning().branch(id)
+    }
+
+    /// Verify a finite sequence of lineage events against a disposable state
+    /// clone before a multi-owner coordinator mutates either live runtime.
+    pub fn preview_versioning_events(&self, events: &[VersioningEvent]) -> Result<(), ReduceError> {
+        let mut preview = self.state.clone_for_identity_preview();
+        for event in events {
+            reduce(&mut preview, Event::Versioning(event.clone()))?;
+        }
+        Ok(())
+    }
+
+    #[must_use]
+    pub fn versioning_retention(&self, view: RetainedViewId) -> Option<&'a RetentionRecord> {
+        self.state.versioning().retained().get(&view)
     }
 
     #[must_use]
@@ -315,34 +570,59 @@ impl BrowserRuntime {
         privacy: ferric_browser_core::PrivacyKind,
         profile_label: impl Into<String>,
     ) -> Result<(Self, WindowId, TabId), RuntimeError> {
-        let mut runtime = Self::new();
-        runtime.handle(RuntimeInput::Lifecycle(Event::CreateProfile {
+        Self::new().finish_bootstrap(privacy, profile_label)
+    }
+
+    /// Bootstraps a UI-owned runtime with process-wide opaque identities.
+    /// Separate browser windows must use this path to avoid ID collisions.
+    ///
+    /// # Errors
+    ///
+    /// Returns a structured error if the reducer cannot establish the initial
+    /// browser state.
+    pub fn bootstrap_process_unique(
+        privacy: ferric_browser_core::PrivacyKind,
+        profile_label: impl Into<String>,
+    ) -> Result<(Self, WindowId, TabId), RuntimeError> {
+        Self {
+            state: ApplicationState::new_process_unique(),
+            registry: CommandRegistry::default_v1(),
+        }
+        .finish_bootstrap(privacy, profile_label)
+    }
+
+    fn finish_bootstrap(
+        mut self,
+        privacy: ferric_browser_core::PrivacyKind,
+        profile_label: impl Into<String>,
+    ) -> Result<(Self, WindowId, TabId), RuntimeError> {
+        self.handle(RuntimeInput::Lifecycle(Event::CreateProfile {
             label: profile_label.into(),
             privacy,
         }))?;
-        let profile = runtime
+        let profile = self
             .state
             .profiles()
             .keys()
             .next()
             .copied()
             .ok_or_else(|| Self::invariant("initial profile was not created"))?;
-        runtime.handle(RuntimeInput::Lifecycle(Event::CreateWindow { profile }))?;
-        let window = runtime
+        self.handle(RuntimeInput::Lifecycle(Event::CreateWindow { profile }))?;
+        let window = self
             .state
             .active_window()
             .ok_or_else(|| Self::invariant("initial window was not created"))?;
-        runtime.handle(RuntimeInput::Command(RuntimeCommand::OpenTab {
+        self.handle(RuntimeInput::Command(RuntimeCommand::OpenTab {
             window,
             url: None,
             background: false,
         }))?;
-        let tab = runtime
+        let tab = self
             .state
             .active_tab()
             .map(|tab| tab.id)
             .ok_or_else(|| Self::invariant("initial tab was not created"))?;
-        Ok((runtime, window, tab))
+        Ok((self, window, tab))
     }
 
     /// Returns a read-only projection without exposing the reducer owner.
@@ -391,7 +671,6 @@ impl BrowserRuntime {
             code: ErrorCode::Engine,
             user_message: "The browser could not initialize its runtime.".into(),
             diagnostic_context: diagnostic_context.into(),
-            source: None,
         }
     }
 
@@ -470,7 +749,7 @@ impl BrowserRuntime {
                 Effect::Diagnostic(diagnostic) => RuntimeEffect::Diagnostic(diagnostic),
             })
             .collect::<Vec<_>>();
-        if !ignored_stale_target {
+        if !ignored_stale_target && !matches!(event, Event::VersioningRequest(_)) {
             runtime_effects.push(RuntimeEffect::IpcEvent {
                 event_type: ipc_event_type(event),
                 payload: ipc_event_payload(event, state),
@@ -509,7 +788,99 @@ impl RuntimeCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ferric_browser_core::PrivacyKind;
+    use ferric_browser_core::{
+        PrivacyKind,
+        versioning::{SensitiveCategory, VersioningReason},
+    };
+
+    #[test]
+    fn versioning_failure_maps_through_public_error_without_sensitive_payload() {
+        let error = RuntimeError::from(VersioningFailure::new(
+            VersioningReason::MergeOutcomeUnknown,
+            SensitiveCategory::Cookie,
+        ));
+        assert_eq!(error.code(), ErrorCode::OutcomeUnknown);
+        assert!(error.diagnostic_context().contains("merge-outcome-unknown"));
+        assert!(!error.user_message().contains("cookie"));
+        assert!(!error.to_string().contains("cookie"));
+    }
+
+    #[test]
+    fn runtime_error_debug_redacts_navigation_url_and_source_chain() {
+        let sentinel = "private-navigation-url-sentinel";
+        let error = RuntimeError::from(DispatchError::Navigation(
+            ferric_browser_core::NavigationError::ExternalSchemeRequiresConfirmation {
+                scheme: "mailto".into(),
+                url: format!("mailto:{sentinel}@example.test?subject=private"),
+            },
+        ));
+
+        let debug = format!("{error:?}");
+        assert!(std::error::Error::source(&error).is_none());
+        assert!(!debug.contains(sentinel));
+        assert!(!debug.contains("subject=private"));
+        assert!(!debug.contains("has_source"));
+        assert_eq!(error.diagnostic_context(), "navigation request failed");
+        assert!(!error.diagnostic_context().contains(sentinel));
+        assert!(!error.diagnostic_context().contains("subject=private"));
+        assert!(!error.to_string().contains(sentinel));
+    }
+
+    #[test]
+    fn runtime_command_input_dispatch_and_effect_debug_redact_page_data() {
+        let sentinel = "private-runtime-page-data-sentinel";
+        let url = ValidatedUrl::parse(format!("https://example.test/{sentinel}?query=secret"))
+            .expect("valid sentinel URL");
+        let command = RuntimeCommand::OpenTab {
+            window: WindowId::from_display("windowid-1").expect("window id"),
+            url: Some(url.clone()),
+            background: false,
+        };
+        let invocation = CommandInvocation {
+            command: ferric_browser_core::ParsedCommand {
+                name: "open".into(),
+                arguments: vec![sentinel.into()],
+            },
+            count: 1,
+            context: CommandContext {
+                context: Some(sentinel.into()),
+                operation_id: Some(sentinel.into()),
+                ..CommandContext::default()
+            },
+        };
+        let dispatch = RuntimeDispatch {
+            invocation,
+            navigation: NavigationContext {
+                quickmarks: std::collections::BTreeMap::from([(sentinel.into(), url.to_string())]),
+                default_search_template: Some(url.to_string()),
+                ..NavigationContext::default()
+            },
+            target: DispatchTarget::Active,
+        };
+        let target = Target {
+            tab: TabId::from_display("tabid-1").expect("tab id"),
+            generation: 1,
+            document: ferric_browser_core::DocumentId::from_display("documentid-1")
+                .expect("document id"),
+        };
+        let event = Event::CommitNavigation {
+            target,
+            url,
+            title: sentinel.into(),
+        };
+
+        for debug in [
+            format!("{command:?}"),
+            format!("{:?}", RuntimeCommand::Dispatch(Box::new(dispatch.clone()))),
+            format!("{dispatch:?}"),
+            format!("{:?}", RuntimeInput::Command(command)),
+            format!("{:?}", RuntimeInput::EngineFact(event.clone())),
+            format!("{:?}", RuntimeEffect::AppliedEvent(event)),
+        ] {
+            assert!(!debug.contains(sentinel));
+            assert!(!debug.contains("query=secret"));
+        }
+    }
 
     fn runtime_with_tab() -> (BrowserRuntime, WindowId, TabId) {
         let mut runtime = BrowserRuntime::new();
@@ -548,6 +919,18 @@ mod tests {
         assert_eq!(runtime.view().active_window(), Some(window));
         assert_eq!(runtime.view().active_tab().map(|tab| tab.id), Some(tab));
         assert_eq!(runtime.snapshot().windows()[0].tabs, vec![tab]);
+    }
+
+    #[test]
+    fn independently_bootstrapped_ui_owners_have_distinct_runtime_ids() {
+        let (_, first_window, first_tab) =
+            BrowserRuntime::bootstrap_process_unique(PrivacyKind::Normal, "Default")
+                .expect("first UI owner");
+        let (_, second_window, second_tab) =
+            BrowserRuntime::bootstrap_process_unique(PrivacyKind::Normal, "Default")
+                .expect("second UI owner");
+        assert_ne!(first_window, second_window);
+        assert_ne!(first_tab, second_tab);
     }
 
     #[test]

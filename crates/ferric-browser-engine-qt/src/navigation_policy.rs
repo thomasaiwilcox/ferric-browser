@@ -54,7 +54,7 @@ pub(super) fn configured_search_url(
     query: &str,
 ) -> Result<(String, String), String> {
     let config = serde_json::from_value::<Config>(config_value.clone())
-        .map_err(|error| format!("search configuration is invalid: {error}"))?;
+        .map_err(|_| "search configuration is invalid; details suppressed".to_owned())?;
     let engine = requested_engine
         .unwrap_or(config.navigation.default_search.as_str())
         .to_owned();
@@ -64,8 +64,9 @@ pub(super) fn configured_search_url(
     let template = config
         .search_engines
         .get(&engine)
-        .ok_or_else(|| format!("configured search engine not found: {engine}"))?;
-    let url = resolve_search_query(template, query).map_err(|error| error.to_string())?;
+        .ok_or_else(|| "configured search engine was not found".to_owned())?;
+    let url = resolve_search_query(template, query)
+        .map_err(|_| "search URL could not be resolved; details suppressed".to_owned())?;
     Ok((engine, url.to_string()))
 }
 
@@ -117,5 +118,21 @@ mod tests {
             configured_search_url(&config, None, "ferric browser").expect("resolve default search");
         assert_eq!(engine, "ddg");
         assert!(url.contains("ferric%20browser"));
+    }
+
+    #[test]
+    fn search_configuration_errors_redact_engine_names_and_parser_details() {
+        let sentinel = "private-search-config-sentinel";
+        let config = serde_json::to_value(Config::default()).expect("serialize default config");
+        let missing = configured_search_url(&config, Some(sentinel), "query")
+            .expect_err("unknown engine is rejected");
+        assert!(!missing.contains(sentinel));
+
+        let mut malformed = config;
+        malformed["search_engines"][sentinel] = serde_json::json!({"invalid": true});
+        let invalid = configured_search_url(&malformed, Some(sentinel), "query")
+            .expect_err("malformed search config is rejected");
+        assert!(!invalid.contains(sentinel));
+        assert!(invalid.contains("details suppressed"));
     }
 }

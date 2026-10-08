@@ -2,25 +2,38 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
+import QtQml
 import QtWebEngine
 import io.github.ferricbrowser 1.0
+import "../scripts/ShutdownPageProbeState.js" as ShutdownPageProbeState
+import "../scripts/VersionedPageState.js" as VersionedPageState
+import "../scripts/ProfileDownloadRouting.js" as ProfileDownloadRouting
+import "../scripts/PopupWindowOwnership.js" as PopupWindowOwnership
+import "../scripts/CleanBranchPopupOwnership.js" as CleanBranchPopupOwnership
 
 ApplicationWindow {
     required property var rootWindow
     id: secondaryWindow
     width: 1180
     height: 760
-    visible: true
-    title: secondaryWindow.windowEphemeralProfile
+    visible: !secondaryWindow.windowCleanBranch
+    title: secondaryWindow.windowCleanBranch
+           ? "Ferric Browser · Clean branch (parent active)"
+           : secondaryWindow.windowEphemeralProfile
            ? "Ferric Browser · " + secondaryWindow.windowProfileLabel
            : "Ferric Browser · " + secondaryWindow.windowProfileName
     color: rootWindow.backgroundColor
     font: rootWindow.font
     palette: rootWindow.palette
     property string windowStartupUrl: "about:blank"
+    property string windowRestoreCommitId: ""
+    property bool windowRestoreMediaPositionEnabled: false
+    property bool windowRestoreEditableDraftsEnabled: false
+    property bool windowRestoreEditableReviewEnabled: false
     property string windowBookmarkTransferUrl: ""
     property string windowBookmarkTransferTitle: ""
     property string windowProfileName: "secondary"
+    property string windowProfileOverridesJson: secondaryUi.profile_overrides_json
     property string windowStartupContext: ""
     property bool windowStartupContextRestore: false
     property bool windowStartupRoutePreflighted: true
@@ -29,6 +42,31 @@ ApplicationWindow {
     property bool windowPrivateProfile: false
     property bool windowEphemeralProfile: false
     property string windowEphemeralInvocationToken: ""
+    // Set only by the trusted clean-branch transaction. The branch retains
+    // its own off-record profile and never reassigns the source view/profile.
+    property string windowBranchToken: ""
+    property string windowBoundBranchToken: ""
+    property bool windowBranchTokenLocked: false
+    readonly property bool windowCleanBranch: windowBranchTokenLocked
+            ? windowBoundBranchToken.length > 0 : windowBranchToken.length > 0
+    property bool windowCleanBranchPublished: false
+    property bool windowCleanBranchNativeBound: false
+    property bool windowCleanBranchNavigationAdmitted: false
+    property bool windowCleanBranchLineagePublished: false
+    property var windowBranchParentUi: null
+    readonly property alias windowBranchUi: secondaryUi
+    readonly property alias windowBranchProfile: secondaryProfile
+    readonly property alias windowBranchInitialView: secondaryView
+    // Additional native page views may be registered only by the future
+    // window-branch host. The first-view lease remains the registry anchor.
+    property var windowBranchGroupViews: []
+    onWindowBranchTokenChanged: {
+        if (windowBranchTokenLocked
+                && windowBranchToken !== windowBoundBranchToken) {
+            secondaryWindow.visible = false
+            Qt.callLater(function() { secondaryWindow.destroy() })
+        }
+    }
     property var windowSharedProfile: null
     property var windowSharedRequestInterceptor: null
     property var windowTransferView: null
@@ -50,6 +88,9 @@ ApplicationWindow {
     property string commandNoticeText: ""
     property bool commandNoticeError: false
     property string pendingInteractiveCommand: ""
+    property string branchExportOperation: ""
+    property string branchExportDestination: ""
+    property int branchExportPageCount: 0
     readonly property bool statusBarVisible:
         (secondaryWindow.commandNoticeVisible && !secondaryWindow.inputBarActive)
         || rootWindow.statusBarVisibleForMode(secondaryUi.mode)
@@ -65,15 +106,40 @@ ApplicationWindow {
         && !windowShutdownPromptVisible
         && !windowShutdownPagePromptVisible
         && !windowShutdownStoragePromptVisible
+        && !versioningEditableRestoreReview.visible
         && !secondaryUi.external_navigation_visible
     readonly property bool windowTransientProfile:
-        windowPrivateProfile || windowEphemeralProfile
+        windowPrivateProfile || windowEphemeralProfile || windowCleanBranch
     readonly property var windowWebEngineProfile:
         windowSharedProfile || secondaryProfile
     readonly property var windowRequestInterceptor:
         windowSharedProfile
         ? (windowSharedRequestInterceptor || rootWindow.primaryRequestInterceptor)
         : secondaryRequestInterceptor
+
+    // A prepared branch is neither visible nor discoverable until VB-059 has
+    // committed its lineage and child navigation policy. No fallback to a
+    // normal-profile window is allowed if the exact lease disappears.
+    function publishCleanBranchWindow() {
+        if (!secondaryWindow.windowCleanBranch
+                || secondaryWindow.windowCleanBranchPublished
+                || !secondaryWindow.windowCleanBranchNativeBound
+                || !secondaryWindow.windowCleanBranchLineagePublished
+                || secondaryUi.profile_bootstrap_pending)
+            return false
+        var owner = rootWindow.cleanBranchOwner(secondaryWindow.windowBoundBranchToken)
+        if (!owner || owner.host !== secondaryWindow
+                || owner.profile !== secondaryProfile || owner.view !== secondaryView)
+            return false
+        if (!rootWindow.registerBrowserWindow(
+                    secondaryWindow, secondaryUi, secondaryView,
+                    secondaryProfile, secondaryWindow.windowProfileName,
+                    secondaryWindow.windowBoundBranchToken, true))
+            return false
+        secondaryWindow.windowCleanBranchPublished = true
+        secondaryWindow.show()
+        return true
+    }
     property var permissionPromptSurface: null
     property var desktopMediaSurface: null
     property var captureIndicatorSurface: null
@@ -83,14 +149,33 @@ ApplicationWindow {
     property bool pendingFileDialogWaitingForPortal: false
     property double pendingFileDialogPortalDeadlineMs: 0
     property bool windowShutdownApproved: false
+    property bool windowDestroyQueued: false
     property bool windowCloseConfirmationVisible: false
     property bool windowShutdownPromptVisible: false
+    property bool windowShutdownWaitingForDownloadFinishes: false
     property bool windowShutdownPagePromptVisible: false
     property bool windowShutdownStoragePromptVisible: false
     property string windowShutdownPagePromptReason: ""
+    property var windowShutdownPagePromptSnapshot: null
     property int windowShutdownPageProbeGeneration: 0
     property var activeDownloads: ({})
+    property var pendingDownloadRequests: ({})
+    property var downloadCompletionRequests: ({})
+    property string pendingDownloadId: ""
     property bool caretSelecting: false
+    property string versioningRestoreSidecarRequestId: ""
+    property string versioningRestoreSidecarTabId: ""
+    property int versioningRestoreSidecarAttempts: 0
+    property int versioningRestoreSidecarGeneration: 0
+    property bool versioningRestoreSidecarCaptureRunning: false
+    property bool versioningOpenRestoreMediaPositionsRequested: false
+    property bool versioningOpenRestoreEditableDraftsRequested: false
+    property string versioningOpenRestoreCommitId: ""
+    property double versioningOpenRestoreOptionsAt: 0
+    property string versioningEditablePreviewRequestId: ""
+    property string versioningEditablePreviewTabId: ""
+    property var versioningEditablePreviewItems: []
+    property int versioningEditablePreviewOmitted: 0
 
     Timer {
         id: secondaryCommandNoticeTimer
@@ -151,58 +236,171 @@ ApplicationWindow {
         repeat: false
         onTriggered: {
             secondaryWindow.windowShutdownPageProbeGeneration += 1
-            secondaryWindow.windowShutdownPagePromptReason = "Page state check timed out."
-            secondaryWindow.windowShutdownPagePromptVisible = true
+            secondaryWindow.showShutdownPagePrompt("Page state check timed out.")
             secondaryUi.status_text =
                     "Page state check timed out; choose Close anyway"
         }
     }
 
+    Timer {
+        id: versioningRestoreReadinessTimer
+        interval: 200
+        repeat: true
+        onTriggered: secondaryWindow.advanceVersioningRestoreGeometry()
+    }
+
+    Timer {
+        id: versioningEditablePreviewTimeout
+        interval: 60000
+        repeat: false
+        onTriggered: secondaryWindow.finishVersioningEditableReview(false)
+    }
+
     onClosing: function(close) {
         if (secondaryWindow.windowShutdownApproved) {
+            if (secondaryWindow.versioningRestoreSidecarRequestId.length > 0) {
+                secondaryWindow.clearVersioningRestoreGeometry(
+                            secondaryWindow.versioningRestoreSidecarRequestId, true)
+            }
+            var previewRequestId = secondaryWindow.versioningEditablePreviewRequestId
+            secondaryWindow.clearVersioningEditablePreview()
+            if (previewRequestId.length > 0) {
+                secondaryUi.discard_versioned_restore_sidecar(previewRequestId)
+            }
             return
         }
         close.accepted = false
         secondaryWindow.beginQuitRequest()
     }
 
+    onVisibleChanged: {
+        if (!visible && windowShutdownApproved)
+            requestApprovedWindowRelease()
+    }
+
+    function requestApprovedWindowRelease() {
+        if (secondaryWindow.visible || !secondaryWindow.windowShutdownApproved
+                || secondaryWindow.windowDestroyQueued)
+            return false
+        secondaryWindow.windowDestroyQueued = true
+        Qt.callLater(function() {
+            if (secondaryWindow.visible || !secondaryWindow.windowShutdownApproved) {
+                secondaryWindow.windowDestroyQueued = false
+                return
+            }
+            if (secondaryWindow.hasActiveDownloads()) {
+                // Keep the exact profile owner alive until every retained
+                // request receives its terminal callback.
+                secondaryWindow.windowDestroyQueued = false
+                return
+            }
+            if (secondaryWindow.hasOwnedPopupWindows()) {
+                // Popup callbacks and UI operations remain owned by this
+                // restore window until each popup has completed destruction.
+                secondaryWindow.windowDestroyQueued = false
+                return
+            }
+            var nestedOwner = secondaryWindow.versioningWindowOwner
+            var parentOwner = nestedOwner ? nestedOwner.parentOwner : null
+            if (parentOwner && typeof parentOwner.releaseClosed === "function") {
+                if (!parentOwner.releaseClosed(secondaryWindow))
+                    secondaryWindow.windowDestroyQueued = false
+            } else {
+                secondaryWindow.destroy()
+            }
+        })
+        return true
+    }
+
     function hasActiveDownloads() {
         if (secondaryWindow.pendingDownloadId.length > 0) {
             return true
         }
-        for (var pendingKey in secondaryWindow.pendingDownloadRequests) {
-            if (secondaryWindow.pendingDownloadRequests[pendingKey]) {
-                return true
-            }
-        }
-        for (var key in secondaryWindow.activeDownloads) {
-            var download = secondaryWindow.activeDownloads[key]
-            if (download && !download.isFinished) {
-                return true
-            }
-        }
-        return false
+        return ProfileDownloadRouting.hasOutstandingDownloadRequests(
+                    secondaryWindow.pendingDownloadRequests)
+                || ProfileDownloadRouting.hasOutstandingDownloadRequests(
+                    secondaryWindow.activeDownloads)
+                || ProfileDownloadRouting.hasOutstandingDownloadRequests(
+                    secondaryWindow.downloadCompletionRequests)
     }
 
-    function downloadOwnerFor(download) {
-        var view = download && download.view
-        if (!view) {
-            return secondaryWindow
+    function hasOwnedPopupWindows() {
+        return PopupWindowOwnership.hasOwnedPopupWindows(
+                    rootWindow, secondaryWindow, secondaryUi)
+    }
+
+    function downloadOwnerFor(download, inspectView) {
+        if (!download)
+            return null
+        // This secondary surface has no versioned page-capture path. Its own
+        // profile signal can therefore be managed at profile scope without
+        // reading Qt Quick's potentially viewless getter.
+        try {
+            var popupHosts = PopupWindowOwnership.snapshotPopupHosts(rootWindow)
+            if (popupHosts === null)
+                return undefined
+            var exactOwner = ProfileDownloadRouting.requestOwnerForExactDownload(
+                        download, secondaryWindow, popupHosts, secondaryProfile)
+            if (exactOwner === undefined)
+                return undefined
+            if (exactOwner)
+                return exactOwner
+            if (inspectView !== false)
+                return ProfileDownloadRouting.boundProfileOwner(
+                            download, secondaryWindow, secondaryProfile,
+                            download.isSavePageDownload === true)
+            return null
+        } catch (error) {
+            return undefined
         }
-        var popups = rootWindow.popupWindowRegistry || []
-        for (var i = 0; i < popups.length; ++i) {
-            if (popups[i] && popups[i].view === view && popups[i].host) {
-                return popups[i].host
-            }
+    }
+
+    // A shared-profile secondary receives its profile-wide signals through
+    // the owning entry surface; a private profile still calls the same path.
+    function handleDownloadRequested(download) {
+        secondaryProfile.handleForwardedDownloadRequested(download)
+    }
+
+    function handleDownloadFinished(download) {
+        secondaryProfile.handleForwardedDownloadFinished(download)
+    }
+
+    function showShutdownPagePrompt(reason) {
+        secondaryShutdownPageProbeTimer.stop()
+        secondaryWindow.windowShutdownPagePromptSnapshot =
+                ShutdownPageProbeState.snapshotActive(
+                    [secondaryWindow.activeView],
+                    WebEngineView.LifecycleState.Active, true)
+        secondaryWindow.windowShutdownPagePromptReason = reason
+        secondaryWindow.windowShutdownPagePromptVisible = true
+    }
+
+    function confirmShutdownPagePrompt() {
+        secondaryWindow.windowShutdownPagePromptVisible = false
+        if (!ShutdownPageProbeState.stillCurrent(
+                secondaryWindow.windowShutdownPagePromptSnapshot,
+                [secondaryWindow.activeView], WebEngineView.LifecycleState.Active, true)) {
+            secondaryWindow.windowShutdownPagePromptSnapshot = null
+            secondaryWindow.checkPageStateBeforeQuit()
+            return
         }
-        return secondaryWindow
+        secondaryWindow.windowShutdownPagePromptSnapshot = null
+        secondaryWindow.finalizeQuit()
     }
 
     function checkPageStateBeforeQuit() {
         var generation = ++secondaryWindow.windowShutdownPageProbeGeneration
+        secondaryWindow.windowShutdownPagePromptSnapshot = null
         var view = secondaryWindow.activeView
         if (!view || view.lifecycleState !== WebEngineView.LifecycleState.Active) {
             secondaryWindow.finalizeQuit()
+            return
+        }
+        var snapshot = ShutdownPageProbeState.snapshotActive(
+            [view], WebEngineView.LifecycleState.Active)
+        if (!snapshot) {
+            secondaryWindow.showShutdownPagePrompt(
+                "A page or browser activity changed during the close check.")
             return
         }
         secondaryShutdownPageProbeTimer.restart()
@@ -210,15 +408,21 @@ ApplicationWindow {
             if (generation !== secondaryWindow.windowShutdownPageProbeGeneration) {
                 return
             }
+            if (!ShutdownPageProbeState.stillCurrent(
+                    snapshot, [secondaryWindow.activeView],
+                    WebEngineView.LifecycleState.Active)) {
+                secondaryWindow.showShutdownPagePrompt(
+                    "A page or browser activity changed during the close check.")
+                return
+            }
             secondaryShutdownPageProbeTimer.stop()
             if (result === "clean") {
                 secondaryWindow.finalizeQuit()
                 return
             }
-            secondaryWindow.windowShutdownPagePromptReason = result === "dirty"
+            secondaryWindow.showShutdownPagePrompt(result === "dirty"
                     ? "This page has unsaved form or editor state."
-                    : "Ferric Browser could not verify this page before closing."
-            secondaryWindow.windowShutdownPagePromptVisible = true
+                    : "Ferric Browser could not verify this page before closing.")
         })
     }
 
@@ -226,6 +430,287 @@ ApplicationWindow {
         secondaryWindow.windowShutdownPageProbeGeneration += 1
         secondaryShutdownPageProbeTimer.stop()
         secondaryWindow.windowShutdownPagePromptVisible = false
+        secondaryWindow.windowShutdownPagePromptSnapshot = null
+    }
+
+    function clearVersioningRestoreGeometry(requestId, discard) {
+        if (secondaryWindow.versioningRestoreSidecarRequestId !== requestId) {
+            return false
+        }
+        versioningRestoreReadinessTimer.stop()
+        secondaryWindow.versioningRestoreSidecarRequestId = ""
+        secondaryWindow.versioningRestoreSidecarTabId = ""
+        secondaryWindow.versioningRestoreSidecarAttempts = 0
+        secondaryWindow.versioningRestoreSidecarCaptureRunning = false
+        secondaryWindow.versioningRestoreSidecarGeneration += 1
+        if (discard) {
+            secondaryUi.discard_versioned_restore_sidecar(requestId)
+        }
+        return true
+    }
+
+    function queueVersioningRestoreGeometry(requestId, tabId) {
+        if (!/^\d{1,20}$/.test(requestId) || requestId.length === 0
+                || typeof tabId !== "string" || tabId.length > 64) {
+            secondaryUi.status_text = "Geometry restore request was invalid"
+            return false
+        }
+        if (secondaryWindow.versioningRestoreSidecarRequestId.length > 0) {
+            secondaryWindow.clearVersioningRestoreGeometry(
+                secondaryWindow.versioningRestoreSidecarRequestId, true)
+        }
+        secondaryWindow.versioningRestoreSidecarRequestId = requestId
+        secondaryWindow.versioningRestoreSidecarTabId = tabId
+        secondaryWindow.versioningRestoreSidecarAttempts = 0
+        secondaryWindow.versioningRestoreSidecarCaptureRunning = false
+        secondaryWindow.versioningRestoreSidecarGeneration += 1
+        versioningRestoreReadinessTimer.start()
+        return true
+    }
+
+    function clearVersioningEditablePreview() {
+        versioningEditablePreviewTimeout.stop()
+        secondaryWindow.versioningEditablePreviewItems = []
+        secondaryWindow.versioningEditablePreviewOmitted = 0
+        secondaryWindow.versioningEditablePreviewRequestId = ""
+        secondaryWindow.versioningEditablePreviewTabId = ""
+        versioningEditableRestoreReview.close()
+    }
+
+    function finishVersioningEditableReview(confirmed) {
+        var requestId = secondaryWindow.versioningEditablePreviewRequestId
+        var tabId = secondaryWindow.versioningEditablePreviewTabId
+        secondaryWindow.clearVersioningEditablePreview()
+        if (requestId.length === 0) {
+            return
+        }
+        var refillConfirmed = !!confirmed
+                && secondaryUi.confirm_versioned_restore_editable_preview(requestId)
+        if (confirmed && !refillConfirmed) {
+            secondaryUi.status_text = "Editable draft refill was not authorized; restoring page structure only"
+        } else if (!confirmed) {
+            secondaryUi.status_text = "Editable draft refill skipped"
+        }
+        secondaryWindow.queueVersioningRestoreGeometry(requestId, tabId)
+    }
+
+    function reviewVersioningEditableRestore(requestId, tabId) {
+        if (!/^\d{1,20}$/.test(requestId) || requestId.length === 0
+                || typeof tabId !== "string" || tabId.length > 64) {
+            secondaryUi.status_text = "Editable draft review request was invalid"
+            return false
+        }
+        if (!secondaryWindow.windowRestoreEditableReviewEnabled) {
+            return secondaryWindow.queueVersioningRestoreGeometry(requestId, tabId)
+        }
+        secondaryWindow.windowRestoreEditableReviewEnabled = false
+        var previewJson = secondaryUi.versioned_restore_editable_preview(requestId)
+        if (typeof previewJson !== "string" || previewJson.length === 0
+                || previewJson.length > 20 * 1024) {
+            secondaryUi.status_text = "Editable draft preview unavailable; restoring page structure only"
+            return secondaryWindow.queueVersioningRestoreGeometry(requestId, tabId)
+        }
+        var preview
+        try {
+            preview = JSON.parse(previewJson)
+        } catch (error) {
+            secondaryUi.status_text = "Editable draft preview unavailable; restoring page structure only"
+            return secondaryWindow.queueVersioningRestoreGeometry(requestId, tabId)
+        }
+        if (!preview || !Array.isArray(preview.items)
+                || preview.items.length > 64
+                || !Number.isFinite(Number(preview.omitted || 0))) {
+            secondaryUi.status_text = "Editable draft preview invalid; restoring page structure only"
+            return secondaryWindow.queueVersioningRestoreGeometry(requestId, tabId)
+        }
+        var safeItems = []
+        var usedBytes = 0
+        for (var i = 0; i < preview.items.length; ++i) {
+            var item = preview.items[i]
+            if (!item || (item.kind !== "text" && item.kind !== "textarea"
+                          && item.kind !== "checkbox")) {
+                secondaryUi.status_text = "Editable draft preview invalid; restoring page structure only"
+                return secondaryWindow.queueVersioningRestoreGeometry(requestId, tabId)
+            }
+            if (item.kind === "checkbox" && item.value === true) {
+                safeItems.push({ kind: "checkbox", displayValue: "Checked" })
+                continue
+            }
+            if ((item.kind !== "text" && item.kind !== "textarea")
+                    || typeof item.value !== "string" || item.value.length === 0
+                    || item.value.length > 4096) {
+                secondaryUi.status_text = "Editable draft preview invalid; restoring page structure only"
+                return secondaryWindow.queueVersioningRestoreGeometry(requestId, tabId)
+            }
+            usedBytes += item.value.length * 2
+            if (usedBytes > 16 * 1024) {
+                secondaryUi.status_text = "Editable draft preview exceeded its safe limit; restoring page structure only"
+                return secondaryWindow.queueVersioningRestoreGeometry(requestId, tabId)
+            }
+            safeItems.push({ kind: item.kind, displayValue: item.value })
+        }
+        if (safeItems.length === 0) {
+            if (Number(preview.omitted || 0) > 0) {
+                secondaryUi.status_text = "Some editable drafts were not eligible for review"
+            }
+            return secondaryWindow.queueVersioningRestoreGeometry(requestId, tabId)
+        }
+        secondaryWindow.versioningEditablePreviewRequestId = requestId
+        secondaryWindow.versioningEditablePreviewTabId = tabId
+        secondaryWindow.versioningEditablePreviewItems = safeItems
+        secondaryWindow.versioningEditablePreviewOmitted = Number(preview.omitted || 0)
+        versioningEditableRestoreReview.open()
+        versioningEditablePreviewTimeout.restart()
+        return true
+    }
+
+    function versioningRestoreContextCurrent(requestId, generation,
+                                             view, tabId, epoch, pageUrl) {
+        return secondaryWindow.versioningRestoreSidecarRequestId === requestId
+                && secondaryWindow.versioningRestoreSidecarGeneration === generation
+                && secondaryWindow.activeView === view
+                && secondaryUi.active_tab_index === 0
+                && secondaryUi.tab_id_for_index(0) === tabId
+                && view.versioningNavigationEpoch === epoch
+                && view.url.toString() === pageUrl
+                && secondaryUi.current_url === pageUrl
+                && view.profile === secondaryWindow.windowWebEngineProfile
+                && !secondaryWindow.windowTransientProfile
+                && view.lifecycleState === WebEngineView.LifecycleState.Active
+    }
+
+    function advanceVersioningRestoreGeometry() {
+        var requestId = secondaryWindow.versioningRestoreSidecarRequestId
+        if (requestId.length === 0) {
+            versioningRestoreReadinessTimer.stop()
+            return
+        }
+        secondaryWindow.versioningRestoreSidecarAttempts += 1
+        if (secondaryWindow.versioningRestoreSidecarAttempts > 25) {
+            secondaryWindow.clearVersioningRestoreGeometry(requestId, true)
+            secondaryUi.status_text = "Geometry restore skipped: page was not ready in time"
+            return
+        }
+        if (secondaryWindow.versioningRestoreSidecarCaptureRunning) {
+            return
+        }
+        var view = secondaryWindow.activeView
+        var tabId = secondaryUi.tab_id_for_index(0)
+        if (secondaryWindow.windowTransferMode
+                || secondaryUi.active_tab_index !== 0
+                || tabId !== secondaryWindow.versioningRestoreSidecarTabId
+                || !view || view !== secondaryView
+                || view.profile !== secondaryWindow.windowWebEngineProfile
+                || secondaryWindow.windowTransientProfile
+                || view.lifecycleState !== WebEngineView.LifecycleState.Active) {
+            secondaryWindow.clearVersioningRestoreGeometry(requestId, true)
+            secondaryUi.status_text = "Geometry restore skipped: destination view changed"
+            return
+        }
+        if (view.loading || !view.visible || !view.enabled) {
+            return
+        }
+        var pageUrl = view.url.toString()
+        if (!/^https?:\/\//i.test(pageUrl) || secondaryUi.current_url !== pageUrl) {
+            return
+        }
+        var epoch = view.versioningNavigationEpoch
+        var requestJson = secondaryUi.versioned_restore_geometry_capture_request(
+            requestId, tabId)
+        if (requestJson === "ferric-media-fingerprint-key-pending") {
+            return
+        }
+        if (!requestJson || requestJson.length === 0) {
+            secondaryWindow.clearVersioningRestoreGeometry(requestId, true)
+            secondaryUi.status_text = "Geometry restore skipped: page qualification failed"
+            return
+        }
+        var request
+        try {
+            request = JSON.parse(requestJson)
+        } catch (error) {
+            secondaryWindow.clearVersioningRestoreGeometry(requestId, true)
+            secondaryUi.status_text = "Geometry restore skipped: page qualification failed"
+            return
+        }
+        var script = VersionedPageState.geometryScript(request)
+        if (typeof script !== "string" || script.length === 0) {
+            secondaryWindow.clearVersioningRestoreGeometry(requestId, true)
+            secondaryUi.status_text = "Geometry restore skipped: capture request was invalid"
+            return
+        }
+        secondaryWindow.versioningRestoreSidecarCaptureRunning = true
+        secondaryWindow.versioningRestoreSidecarAttempts = 0
+        var generation = secondaryWindow.versioningRestoreSidecarGeneration
+        view.runJavaScript(script, rootWindow.browserScriptWorld, function(currentJson) {
+            if (!secondaryWindow.versioningRestoreContextCurrent(
+                        requestId, generation, view, tabId, epoch, pageUrl)) {
+                secondaryWindow.clearVersioningRestoreGeometry(requestId, true)
+                return
+            }
+            if (typeof currentJson !== "string" || currentJson.length === 0
+                    || currentJson.length > 262144) {
+                secondaryWindow.clearVersioningRestoreGeometry(requestId, true)
+                secondaryUi.status_text = "Geometry restore skipped: live observation was unavailable"
+                return
+            }
+            var geometryRequest = secondaryUi.versioned_restore_geometry_script(
+                requestId, currentJson)
+            if (!geometryRequest || geometryRequest.length === 0) {
+                secondaryWindow.clearVersioningRestoreGeometry(requestId, true)
+                secondaryUi.status_text = "Geometry restore skipped: live observation did not qualify"
+                return
+            }
+            var restoreScript = VersionedPageState.restoreGeometryScript(geometryRequest)
+            if (typeof restoreScript !== "string" || restoreScript.length === 0) {
+                secondaryWindow.clearVersioningRestoreGeometry(requestId, true)
+                secondaryUi.status_text = "Geometry restore skipped: plan was invalid"
+                return
+            }
+            view.runJavaScript(restoreScript, rootWindow.browserScriptWorld, function(resultJson) {
+                if (!secondaryWindow.versioningRestoreContextCurrent(
+                            requestId, generation, view, tabId, epoch, pageUrl)) {
+                    secondaryWindow.clearVersioningRestoreGeometry(requestId, true)
+                    return
+                }
+                secondaryWindow.clearVersioningRestoreGeometry(requestId, true)
+                var result = null
+                try {
+                    result = typeof resultJson === "string" ? JSON.parse(resultJson) : null
+                } catch (error) {
+                    result = null
+                }
+                if (!result || result.ok !== true
+                        || !Number.isFinite(Number(result.applied))
+                        || !Number.isFinite(Number(result.skipped))) {
+                    secondaryUi.status_text = "Structural restore completed; geometry was not applied"
+                    return
+                }
+                var applied = Number(result.applied)
+                var skipped = Number(result.skipped)
+                var mediaApplied = Number(result.media_applied || 0)
+                var mediaSkipped = Number(result.media_skipped || 0)
+                var editableApplied = Number(result.editable_applied || 0)
+                var editableSkipped = Number(result.editable_skipped || 0)
+                var editableUnaccepted = Number(result.editable_unaccepted || 0)
+                var mediaStatus = mediaApplied > 0 || mediaSkipped > 0
+                        ? "; media positions " + mediaApplied + " applied, "
+                          + mediaSkipped + " skipped"
+                        : ""
+                var editableStatus = editableApplied > 0 || editableSkipped > 0
+                        ? "; editable drafts " + editableApplied + " applied, "
+                          + editableSkipped + " skipped (" + editableUnaccepted
+                          + " not accepted by the page)"
+                        : ""
+                secondaryUi.status_text = skipped > 0 || mediaSkipped > 0
+                        || editableSkipped > 0
+                        ? "Restore applied partially (" + applied + " geometry, "
+                          + skipped + " geometry skipped" + mediaStatus
+                          + editableStatus + ")"
+                        : "Restore applied (" + applied + " geometry positions"
+                          + mediaStatus + editableStatus + ")"
+            })
+        })
     }
 
     function beginQuitRequest() {
@@ -246,10 +731,29 @@ ApplicationWindow {
             secondaryWindow.windowShutdownPromptVisible = true
             return
         }
+        if (secondaryUi.has_pending_versioning_object_work()) {
+            secondaryWindow.windowShutdownWaitingForDownloadFinishes = true
+            secondaryWindow.windowShutdownPromptVisible = true
+            secondaryWindow.scheduleRuntimeWork(50)
+            return
+        }
+        secondaryWindow.windowShutdownWaitingForDownloadFinishes = false
         secondaryWindow.checkPageStateBeforeQuit()
     }
 
     function finalizeQuit() {
+        if (secondaryWindow.hasActiveDownloads()
+                || rootWindow.hasActiveShutdownRequestsFor(
+                    secondaryUi, secondaryWindow)) {
+            secondaryWindow.windowShutdownPromptVisible = true
+            return
+        }
+        if (secondaryUi.has_pending_versioning_object_work()) {
+            secondaryWindow.windowShutdownWaitingForDownloadFinishes = true
+            secondaryWindow.windowShutdownPromptVisible = true
+            secondaryWindow.scheduleRuntimeWork(50)
+            return
+        }
         if (!secondaryUi.flush_durable_state()) {
             secondaryWindow.windowShutdownStoragePromptVisible = true
             return
@@ -265,6 +769,7 @@ ApplicationWindow {
     }
 
     function cancelDownloadsAndQuit() {
+        secondaryWindow.windowShutdownWaitingForDownloadFinishes = true
         if (secondaryWindow.pendingDownloadId.length > 0) {
             secondaryProfile.cancelPendingDownload()
         }
@@ -276,16 +781,19 @@ ApplicationWindow {
                     String(pendingKey), "cancelled", pendingDownload.receivedBytes, true)
             }
         }
-        secondaryWindow.pendingDownloadRequests = ({})
         for (var key in secondaryWindow.activeDownloads) {
             var download = secondaryWindow.activeDownloads[key]
             if (download && !download.isFinished) {
                 rootWindow.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
             }
         }
-        secondaryWindow.activeDownloads = ({})
         rootWindow.cancelShutdownRequestsFor(secondaryUi, secondaryWindow)
-        secondaryWindow.continueQuitRequest()
+        if (secondaryWindow.hasActiveDownloads()) {
+            secondaryWindow.windowShutdownPromptVisible = true
+        } else {
+            secondaryWindow.windowShutdownWaitingForDownloadFinishes = false
+            secondaryWindow.continueQuitRequest()
+        }
     }
 
     FerricFileDialogSurfaces {
@@ -310,6 +818,92 @@ ApplicationWindow {
         nameFilters: ["All files (*)"]
         onAccepted: secondaryProfile.acceptPendingDownload()
         onRejected: secondaryProfile.cancelPendingDownload()
+    }
+
+    Dialog {
+        id: versioningEditableRestoreReview
+        modal: true
+        focus: true
+        title: "Review recovered form drafts"
+        anchors.centerIn: Overlay.overlay
+        width: Math.max(320, Math.min(720, secondaryWindow.width - 48))
+        height: Math.max(300, Math.min(560, secondaryWindow.height - 48))
+        padding: 20
+        closePolicy: Popup.CloseOnEscape
+        standardButtons: Dialog.NoButton
+        Accessible.role: Accessible.Dialog
+
+        onRejected: secondaryWindow.finishVersioningEditableReview(false)
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 12
+
+            Label {
+                Layout.fillWidth: true
+                text: "These saved values can be sensitive. Review them before allowing a one-time refill into matching blank native fields. Ferric will not submit the page or dispatch input/change events. The site may still replace a value."
+                wrapMode: Text.WordWrap
+            }
+
+            ScrollView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+
+                ColumnLayout {
+                    width: parent.width
+                    spacing: 8
+
+                    Repeater {
+                        model: secondaryWindow.versioningEditablePreviewItems
+
+                        delegate: Frame {
+                            required property var modelData
+                            Layout.fillWidth: true
+
+                            ColumnLayout {
+                                anchors.fill: parent
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: modelData.kind === "textarea" ? "Text area"
+                                          : (modelData.kind === "checkbox" ? "Checkbox" : "Text field")
+                                    font.bold: true
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: String(modelData.displayValue || "")
+                                    textFormat: Text.PlainText
+                                    wrapMode: Text.WrapAnywhere
+                                    Accessible.name: "Recovered " + modelData.kind + " value"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Label {
+                Layout.fillWidth: true
+                visible: secondaryWindow.versioningEditablePreviewOmitted > 0
+                text: secondaryWindow.versioningEditablePreviewOmitted
+                      + " additional value(s) were omitted because they were unsupported or exceeded the preview limit."
+                wrapMode: Text.WordWrap
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "Skip refilling"
+                    onClicked: secondaryWindow.finishVersioningEditableReview(false)
+                }
+                Button {
+                    text: "Fill matching blank fields once"
+                    highlighted: true
+                    onClicked: secondaryWindow.finishVersioningEditableReview(true)
+                }
+            }
+        }
     }
 
     WebEngineProfile {
@@ -361,6 +955,7 @@ ApplicationWindow {
                 download.downloadDirectory = stagingDirectory
                 download.downloadFileName = finalName
                 secondaryWindow.activeDownloads[id] = download
+                delete secondaryWindow.pendingDownloadRequests[id]
                 download.stateChanged.connect(function() {
                     secondaryUi.update_download(
                         id, secondaryWindow.secondaryDownloadStateName(download),
@@ -388,13 +983,24 @@ ApplicationWindow {
             rootWindow.restoreOverlayFocus()
         }
 
-        onDownloadRequested: function(download) {
+        function handleForwardedDownloadRequested(download) {
             var owner = secondaryWindow.downloadOwnerFor(download)
+            if (!owner) {
+                download.cancel()
+                secondaryUi.status_text = "Download refused: window owner was ambiguous"
+                return
+            }
             if (owner !== secondaryWindow && owner.handleDownloadRequested) {
                 owner.handleDownloadRequested(download)
                 return
             }
             var id = String(download.id)
+            if (ProfileDownloadRouting.retainAndCancelIfShutdownApproved(
+                        secondaryWindow, download, function(request) {
+                            return rootWindow.resolveQtRequest(
+                                       secondaryUi, request, "download", "cancel", [])
+                        }))
+                return
             var safeName = secondaryUi.offer_download(id, download.url.toString(), download.suggestedFileName)
             var requestedPath = download.savePageFormat === WebEngineDownloadRequest.MimeHtmlSaveFormat
                     ? secondaryUi.take_save_page_path() : ""
@@ -417,6 +1023,7 @@ ApplicationWindow {
                 download.downloadDirectory = stagingDirectory
                 download.downloadFileName = requestedName
                 secondaryWindow.activeDownloads[id] = download
+                delete secondaryWindow.pendingDownloadRequests[id]
                 download.stateChanged.connect(function() {
                     secondaryUi.update_download(id, secondaryWindow.secondaryDownloadStateName(download), download.receivedBytes, false)
                 })
@@ -444,6 +1051,7 @@ ApplicationWindow {
             var finalName = secondaryUi.accept_download(id, directory, safeName)
             if (finalName.length === 0) {
                 rootWindow.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
+                secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
                 return
             }
             var stagingDirectory = rootWindow.downloadStagingDirectory(secondaryUi, id)
@@ -458,12 +1066,20 @@ ApplicationWindow {
             download.stateChanged.connect(function() {
                 secondaryUi.update_download(id, secondaryWindow.secondaryDownloadStateName(download), download.receivedBytes, false)
             })
-            rootWindow.resolveQtRequest(secondaryUi, download, "download", "accept", [])
             secondaryWindow.activeDownloads[id] = download
+            delete secondaryWindow.pendingDownloadRequests[id]
+            rootWindow.resolveQtRequest(secondaryUi, download, "download", "accept", [])
             secondaryUi.update_download(id, "in-progress", 0, false)
         }
-        onDownloadFinished: function(download) {
-            var owner = secondaryWindow.downloadOwnerFor(download)
+        onDownloadRequested: function(download) {
+            secondaryProfile.handleForwardedDownloadRequested(download)
+        }
+        function handleForwardedDownloadFinished(download) {
+            var owner = secondaryWindow.downloadOwnerFor(download, false)
+            if (!owner) {
+                secondaryUi.status_text = "Download completion owner was unavailable"
+                return
+            }
             if (owner !== secondaryWindow && owner.handleDownloadFinished) {
                 owner.handleDownloadFinished(download)
                 return
@@ -477,11 +1093,24 @@ ApplicationWindow {
             }
             delete secondaryWindow.activeDownloads[id]
             delete secondaryWindow.pendingDownloadRequests[id]
+            delete secondaryWindow.downloadCompletionRequests[id]
             if (secondaryWindow.pendingDownloadId === id) {
                 secondaryWindow.pendingDownloadId = ""
                 secondaryWindow.pendingDownloadSuggestedName = ""
             }
             secondaryUi.update_download(id, state, download.receivedBytes, true)
+            if (secondaryWindow.windowShutdownWaitingForDownloadFinishes
+                    && !secondaryWindow.hasActiveDownloads()) {
+                secondaryWindow.windowShutdownWaitingForDownloadFinishes = false
+                secondaryWindow.windowShutdownPromptVisible = false
+                secondaryWindow.continueQuitRequest()
+            }
+            if (!secondaryWindow.hasActiveDownloads()
+                    && secondaryWindow.windowShutdownApproved)
+                secondaryWindow.requestApprovedWindowRelease()
+        }
+        onDownloadFinished: function(download) {
+            secondaryProfile.handleForwardedDownloadFinished(download)
         }
         onPresentNotification: function(notification) {
             rootWindow.presentWebNotification(
@@ -493,6 +1122,8 @@ ApplicationWindow {
         id: secondaryUi
         hint_chrome_available: false
         status_text: "Ready"
+        onCore_window_idChanged: rootWindow.refreshBrowserWindowIdentity(secondaryUi)
+        onWindow_tokenChanged: rootWindow.refreshBrowserWindowIdentity(secondaryUi)
         onRuntime_work_available: secondaryWindow.scheduleRuntimeWork(0)
         onStatus_textChanged: {
             secondaryWindow.scheduleRuntimeWork(0)
@@ -537,13 +1168,17 @@ ApplicationWindow {
         hostWindow: secondaryWindow
         promptVisible: secondaryWindow.windowShutdownPromptVisible
         commandText: ":window-close"
-        title: "Active browser work is still running"
-        message: "Cancel active work before closing, or keep this window open."
+        title: secondaryWindow.windowShutdownWaitingForDownloadFinishes
+               ? "Waiting for active work to finish" : "Active browser work is still running"
+        message: secondaryWindow.windowShutdownWaitingForDownloadFinishes
+                 ? "Waiting for canceled downloads and archive storage work to retire. Keep the window open to stop closing."
+                 : "Cancel active work before closing, or keep this window open."
         keepLabel: "Keep window open"
         proceedLabel: "Cancel and close"
-        dialogHeight: 190 * rootWindow.chromeScale
+        dialogHeight: 220 * rootWindow.chromeScale
         onKeepRequested: {
             secondaryWindow.windowShutdownPromptVisible = false
+            secondaryWindow.windowShutdownWaitingForDownloadFinishes = false
             rootWindow.abortApplicationShutdown()
             secondaryUi.status_text = "Shutdown cancelled"
         }
@@ -570,8 +1205,7 @@ ApplicationWindow {
             secondaryUi.status_text = "Shutdown cancelled"
         }
         onProceedRequested: {
-            secondaryWindow.windowShutdownPagePromptVisible = false
-            secondaryWindow.finalizeQuit()
+            secondaryWindow.confirmShutdownPagePrompt()
         }
     }
 
@@ -887,6 +1521,14 @@ function onContext_workspaceChanged() {
         if (!action || action.length === 0) {
             return
         }
+        if (action === "context-save-request") {
+            rootWindow.saveContextMembership(secondaryUi)
+            return
+        }
+        if (action === "context-commit-request") {
+            rootWindow.commitSavedContext(secondaryUi)
+            return
+        }
         if (action.indexOf("command-prefill\t") === 0) {
             secondaryCommandBar.commandText = action.slice("command-prefill\t".length)
             secondaryCommandBar.cursorPosition = secondaryCommandBar.commandText.length
@@ -899,6 +1541,22 @@ function onContext_workspaceChanged() {
         }
         if (action === "window-close-request") {
             secondaryWindow.beginQuitRequest()
+            return
+        }
+        if (action.indexOf("versioning-sidecar-ready\t") === 0) {
+            var sidecarFields = action.split("\t")
+            if (sidecarFields.length === 3) {
+                secondaryWindow.reviewVersioningEditableRestore(
+                    sidecarFields[1], sidecarFields[2])
+            } else {
+                secondaryUi.status_text = "Restore sidecar request was invalid"
+            }
+            return
+        }
+        if (action.indexOf("versioning-branch-switch\t") === 0) {
+            if (!rootWindow.activateVersionedBranchTarget(
+                        secondaryUi, action.slice("versioning-branch-switch\t".length)))
+                secondaryUi.status_text = "Clean branch switch refused: target is stale or unavailable"
             return
         }
         if (action.indexOf("scroll-target\t") === 0) {
@@ -1010,6 +1668,14 @@ function onContext_workspaceChanged() {
         if (action.indexOf("reopen-window\t") === 0) {
             rootWindow.openReopenedWindow(secondaryUi, secondaryWindow, action)
             secondaryWindow.activeView.forceActiveFocus()
+            return
+        }
+        if (action.indexOf("versioning-restore-window\t") === 0) {
+            rootWindow.openVersionedRestoreWindow(secondaryUi, secondaryWindow, action)
+            return
+        }
+        if (action.indexOf("versioning-clean-branch-ready\t") === 0) {
+            rootWindow.openVersionedCleanBranch(secondaryUi, secondaryWindow, action)
             return
         }
         if (action.indexOf("zoom\t") === 0) {
@@ -1194,8 +1860,7 @@ function onContext_workspaceChanged() {
                                    action.split("\t").slice(1).join("\t"))
             return
         }
-        secondaryUi.status_text = "Browser action is unavailable in this window: "
-                + action.split("\t")[0]
+        secondaryUi.status_text = "Browser action is unavailable in this window"
         secondaryWindow.activeView.forceActiveFocus()
     }
 
@@ -1261,13 +1926,9 @@ function onContext_workspaceChanged() {
             var editorOriginal = secondaryUi.editor_completion_original
             var editorUpdated = secondaryUi.editor_completion_updated
             var editorError = secondaryUi.editor_completion_error
-            var editorStderr = secondaryUi.editor_completion_stderr
             if (editorError.length > 0) {
-                if (editorStderr.length > 0) {
-                    editorError += " (stderr: " + editorStderr + ")"
-                }
                 secondaryUi.deliver_editor_apply(
-                    editorToken, JSON.stringify({error: editorError}))
+                    editorToken, JSON.stringify({error: "external-editor-failed"}))
             } else if (secondaryWindow.activeView) {
                 rootWindow.runBrowserScript(
                     secondaryWindow.activeView,
@@ -1325,6 +1986,16 @@ function onContext_workspaceChanged() {
         }
 
         secondaryWindow.applySwitcherEngineAction()
+        if (secondaryWindow.windowShutdownWaitingForDownloadFinishes) {
+            if (!secondaryWindow.hasActiveDownloads()
+                    && !secondaryUi.has_pending_versioning_object_work()) {
+                secondaryWindow.windowShutdownWaitingForDownloadFinishes = false
+                secondaryWindow.windowShutdownPromptVisible = false
+                secondaryWindow.continueQuitRequest()
+            } else if (!secondaryWindow.hasActiveDownloads()) {
+                secondaryWindow.scheduleRuntimeWork(50)
+            }
+        }
         var nextDelay = secondaryUi.maintenance_delay_ms()
         if (nextDelay >= 0) {
             secondaryWindow.scheduleRuntimeWork(nextDelay)
@@ -1474,8 +2145,18 @@ function onContext_workspaceChanged() {
         property bool viewTransferred: false
         property bool viewIsSecondaryStatic: true
         property int tabIndex: -1
+        property int versioningNavigationEpoch: 0
+        property string versioningTypedGetCandidateUrl: ""
+        property double versioningMethodSequence: -1
         property var viewTabs: null
         property var viewModel: ({})
+        property string modelNavigationUrl:
+            secondaryWindow.windowTransferMode
+            || (secondaryWindow.windowCleanBranch
+                && !secondaryWindow.windowCleanBranchNavigationAdmitted)
+            ? "about:blank" : secondaryUi.initial_url
+        property bool versioningUrlBindingSuspended: false
+        property bool versioningFormNavigationPending: false
         property var pageUserScriptNames: []
         property string pageUserScriptReloadUrl: ""
         property string pageDialogDocumentKey: ""
@@ -1496,6 +2177,13 @@ function onContext_workspaceChanged() {
             effectiveSiteSettings = rootWindow.siteRuleSettingsFor(
                 viewUi, secondaryView.url.toString())
         }
+        onModelNavigationUrlChanged: {
+            if (versioningUrlBindingSuspended
+                    && !versioningFormNavigationPending
+                    && modelNavigationUrl !== secondaryView.url.toString()) {
+                versioningUrlBindingSuspended = false
+            }
+        }
         Connections {
             target: viewUi
             function onSite_experiment_kindChanged() {
@@ -1512,7 +2200,13 @@ function onContext_workspaceChanged() {
         anchors.bottomMargin: secondaryWindow.bottomChromeHeight
         visible: !secondaryWindow.windowTransferMode
         profile: viewProfile
-        url: secondaryWindow.windowTransferMode ? "about:blank" : secondaryUi.initial_url
+        // A bound URL starts a GET. Let an in-view form own its POST result
+        // until a distinct model navigation target is requested.
+        Binding on url {
+            when: !secondaryView.versioningUrlBindingSuspended
+            value: secondaryView.modelNavigationUrl
+            restoreMode: Binding.RestoreNone
+        }
         settings.javascriptEnabled: !!rootWindow.siteRuleValue(
             effectiveSiteSettings, "content.javascript", true)
         settings.autoLoadImages: !!rootWindow.siteRuleValue(
@@ -1554,8 +2248,25 @@ function onContext_workspaceChanged() {
                 rootWindow.updateMprisForPrimaryView(webView)
             }
         }
+        onNavigationRequested: function(request) {
+            if (!request.isMainFrame)
+                return
+            if (request.hasFormData) {
+                secondaryView.versioningFormNavigationPending = true
+                secondaryView.versioningUrlBindingSuspended = true
+            }
+            secondaryView.versioningMethodSequence = viewInterceptor.mainFrameMethodSequence()
+            secondaryView.versioningTypedGetCandidateUrl =
+                request.navigationType === WebEngineNavigationRequest.TypedNavigation
+                && !request.hasFormData ? request.url.toString() : ""
+        }
         onLoadingChanged: function(loadRequest) {
             if (loadRequest.status === WebEngineView.LoadStartedStatus) {
+                secondaryView.versioningNavigationEpoch += 1
+                if (secondaryView.versioningTypedGetCandidateUrl
+                        !== loadRequest.url.toString()) {
+                    secondaryView.versioningTypedGetCandidateUrl = ""
+                }
                 rootWindow.clearPageDialogForView(secondaryView)
                 rootWindow.clearClientCertificateForView(secondaryView)
                 rootWindow.clearCertificateErrorForView(secondaryView)
@@ -1582,12 +2293,33 @@ function onContext_workspaceChanged() {
                     viewUi.navigation_started(loadRequest.url.toString())
                 }
             } else if (loadRequest.status === WebEngineView.LoadSucceededStatus) {
+                secondaryView.versioningFormNavigationPending = false
                 if (viewTabs === tabs) {
                     viewUi.navigation_committed_for(
                         tabIndex, secondaryView.url.toString(), secondaryView.title)
+                    if (secondaryView.versioningTypedGetCandidateUrl
+                            === secondaryView.url.toString()
+                            && secondaryView.versioningMethodSequence >= 0
+                            && viewInterceptor.uniqueMainFrameGetSince(
+                                secondaryView.versioningMethodSequence,
+                                secondaryView.url.toString())) {
+                        viewUi.navigation_typed_safe_get_committed_for(
+                            tabIndex, secondaryView.url.toString())
+                    }
                 } else {
                     viewUi.navigation_committed(secondaryView.url.toString(), secondaryView.title)
+                    if (secondaryView.versioningTypedGetCandidateUrl
+                            === secondaryView.url.toString()
+                            && secondaryView.versioningMethodSequence >= 0
+                            && viewInterceptor.uniqueMainFrameGetSince(
+                                secondaryView.versioningMethodSequence,
+                                secondaryView.url.toString())) {
+                        viewUi.navigation_typed_safe_get_committed_for(
+                            viewUi.active_tab_index, secondaryView.url.toString())
+                    }
                 }
+                secondaryView.versioningTypedGetCandidateUrl = ""
+                secondaryView.versioningMethodSequence = -1
                 rootWindow.injectPageUserscripts(
                     viewUi, secondaryView, secondaryView.url.toString(),
                     viewTransientProfile, "document_end")
@@ -1603,6 +2335,9 @@ function onContext_workspaceChanged() {
                     viewUi.navigation_completed()
                 }
             } else if (loadRequest.status === WebEngineView.LoadFailedStatus) {
+                secondaryView.versioningFormNavigationPending = false
+                secondaryView.versioningTypedGetCandidateUrl = ""
+                secondaryView.versioningMethodSequence = -1
                 if (viewTabs === tabs) {
                     viewUi.navigation_failed_with_details(
                         tabIndex,
@@ -1674,8 +2409,20 @@ function onContext_workspaceChanged() {
             if (!viewUi.popup_allowed(request.requestedUrl.toString(), request.userInitiated)) {
                 return
             }
+            if (secondaryWindow.windowCleanBranch) {
+                if (!CleanBranchPopupOwnership.sourceReady(
+                            rootWindow, secondaryWindow, viewUi,
+                            viewProfile, viewInterceptor, secondaryView)) {
+                    viewUi.navigation_failed()
+                    return
+                }
+            }
+            if (!rootWindow.canRegisterPopupWindow()) {
+                return
+            }
             var popup = rootWindow.popupWindowFactory.createObject(null, {
                 popupRequest: request,
+                popupOpenerHost: secondaryWindow,
                 popupJourneyToken: viewUi.take_popup_journey_token(
                     request.requestedUrl.toString()),
                 popupProfile: viewProfile,
@@ -1684,7 +2431,10 @@ function onContext_workspaceChanged() {
                 popupContextName: viewUi.context_name,
                 popupContextLabel: viewUi.context_label,
                 popupPrivateProfile: viewTransientProfile,
-                popupEphemeralProfile: secondaryWindow.windowEphemeralProfile,
+                popupEphemeralProfile: secondaryWindow.windowEphemeralProfile
+                        || secondaryWindow.windowCleanBranch,
+                popupBranchToken: secondaryWindow.windowCleanBranch
+                        ? secondaryWindow.windowBoundBranchToken : "",
                 popupProfileName: secondaryWindow.windowProfileName
             })
             if (!popup) {
@@ -1830,6 +2580,62 @@ function onContext_workspaceChanged() {
     }
 
     function submitInteractiveCommand(text) {
+        if (secondaryWindow.windowCleanBranch
+                && /^commit(?:\s|$)/.test(String(text || "").trim())) {
+            if (!secondaryWindow.windowCleanBranchPublished
+                    || !secondaryWindow.windowBranchParentUi) {
+                secondaryUi.status_text = "Branch export refused: owner unavailable"
+                secondaryCommandBar.showFeedback(secondaryUi.status_text, true)
+                return
+            }
+            var encoded = secondaryWindow.windowBranchParentUi
+                    .preview_versioned_clean_branch_export(
+                        secondaryUi, secondaryWindow.windowBoundBranchToken, text)
+            var preview = null
+            try {
+                preview = JSON.parse(String(encoded || ""))
+            } catch (error) {
+                preview = null
+            }
+            if (!preview
+                    || !/^operation:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(String(preview.operation || ""))
+                    || typeof preview.destination !== "string"
+                    || preview.destination.length === 0
+                    || preview.destination.length > 256
+                    || !Number.isInteger(preview.pages)
+                    || preview.pages < 1 || preview.pages > 128) {
+                if (preview && typeof preview.operation === "string")
+                    secondaryWindow.windowBranchParentUi
+                        .cancel_versioned_clean_branch_export(preview.operation)
+                secondaryUi.status_text = "Branch export refused: scope or owner unavailable"
+                secondaryCommandBar.showFeedback(secondaryUi.status_text, true)
+                return
+            }
+            secondaryWindow.branchExportOperation = preview.operation
+            secondaryWindow.branchExportDestination = preview.destination
+            secondaryWindow.branchExportPageCount = preview.pages
+            secondaryWindow.pendingInteractiveCommand = ""
+            secondaryCommandBar.clearInput()
+            branchExportDialog.open()
+            return
+        }
+        if (secondaryWindow.windowCleanBranch
+                && secondaryWindow.windowBranchParentUi
+                && /^switch(?:\s|$)/.test(String(text || "").trim())) {
+            var switched = rootWindow.switchVersionedCleanBranch(
+                    secondaryWindow.windowBranchParentUi, secondaryUi, text)
+            if (!switched) {
+                secondaryUi.status_text = "Clean branch switch refused: target is stale, ambiguous, or unavailable"
+                secondaryCommandBar.showFeedback(secondaryUi.status_text, true)
+                secondaryCommandBar.selectAllInput()
+                return
+            }
+            secondaryWindow.pendingInteractiveCommand = ""
+            secondaryCommandBar.clearInput()
+            secondaryWindow.showCommandNotice(
+                        "Live branch window activation requested", false)
+            return
+        }
         if (!secondaryUi.execute_secondary_interactive_command(text)) {
             secondaryWindow.pendingInteractiveCommand = secondaryUi.command_retryable
                     ? text : ""
@@ -1848,6 +2654,72 @@ function onContext_workspaceChanged() {
             secondaryUi.status_text = commandStatus
         }
         secondaryWindow.showCommandNotice(commandStatus, false)
+    }
+
+    Dialog {
+        id: branchExportDialog
+        parent: secondaryWindow.contentItem
+        anchors.centerIn: parent
+        width: Math.min(520, secondaryWindow.width - 32)
+        modal: true
+        title: "Export clean branch structure?"
+        standardButtons: Dialog.NoButton
+        closePolicy: Popup.CloseOnEscape
+        onClosed: {
+            if (secondaryWindow.branchExportOperation.length > 0
+                    && secondaryWindow.windowBranchParentUi) {
+                secondaryWindow.windowBranchParentUi
+                    .cancel_versioned_clean_branch_export(
+                        secondaryWindow.branchExportOperation)
+            }
+            secondaryWindow.branchExportOperation = ""
+            secondaryWindow.branchExportDestination = ""
+            secondaryWindow.branchExportPageCount = 0
+        }
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 12
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                text: "Save " + secondaryWindow.branchExportPageCount
+                      + " branch page structure(s) to normal profile ‘"
+                      + secondaryWindow.branchExportDestination + "’?"
+            }
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                text: "This durable capture may include browsing URLs, tab order and basic page settings. It does not copy cookies, page bodies, grants or the live authenticated branch. The branch remains transient."
+            }
+            RowLayout {
+                Layout.alignment: Qt.AlignRight
+                Button {
+                    text: "Cancel"
+                    onClicked: branchExportDialog.close()
+                }
+                Button {
+                    text: "Export structure"
+                    enabled: secondaryWindow.branchExportOperation.length > 0
+                    onClicked: {
+                        var operation = secondaryWindow.branchExportOperation
+                        var accepted = secondaryWindow.windowBranchParentUi
+                                && secondaryWindow.windowBranchParentUi
+                                    .confirm_versioned_clean_branch_export(
+                                        secondaryUi, operation)
+                        if (!accepted && secondaryWindow.windowBranchParentUi)
+                            secondaryWindow.windowBranchParentUi
+                                .cancel_versioned_clean_branch_export(operation)
+                        secondaryWindow.branchExportOperation = ""
+                        branchExportDialog.close()
+                        secondaryWindow.showCommandNotice(
+                            accepted
+                            ? "Branch structure export queued for durable publication"
+                            : "Branch export refused: owner or pages changed",
+                            !accepted)
+                    }
+                }
+            }
+        }
     }
 
     FerricCommandLine {
@@ -2068,7 +2940,54 @@ function onContext_workspaceChanged() {
         }
     }
 
+    Timer {
+        id: secondaryVersioningBindTimer
+        interval: 25
+        repeat: true
+        onTriggered: {
+            if (secondaryUi.profile_bootstrap_pending) {
+                return
+            }
+            stop()
+            rootWindow.refreshBrowserWindowIdentity(secondaryUi)
+            if (!secondaryWindow.windowWebEngineProfile
+                    || !secondaryUi.bind_native_versioning_profile()) {
+                secondaryUi.status_text = "Versioning native profile binding unavailable"
+                if (secondaryWindow.windowCleanBranch) {
+                    secondaryWindow.visible = false
+                    Qt.callLater(function() { secondaryWindow.destroy() })
+                }
+            } else if (secondaryWindow.windowCleanBranch) {
+                secondaryWindow.windowCleanBranchNativeBound = true
+            } else if (secondaryWindow.windowRestoreCommitId.length > 0) {
+                secondaryUi.request_versioned_pristine_restore(
+                                secondaryWindow.windowRestoreCommitId,
+                                secondaryWindow.windowRestoreMediaPositionEnabled,
+                                secondaryWindow.windowRestoreEditableDraftsEnabled)
+                secondaryWindow.windowRestoreCommitId = ""
+                secondaryWindow.windowRestoreMediaPositionEnabled = false
+                secondaryWindow.windowRestoreEditableDraftsEnabled = false
+            }
+        }
+    }
+
     Component.onCompleted: {
+        secondaryWindow.windowBoundBranchToken = secondaryWindow.windowBranchToken
+        secondaryWindow.windowBranchTokenLocked = true
+        if (secondaryWindow.windowCleanBranch
+                && (secondaryWindow.windowPrivateProfile
+                    || secondaryWindow.windowEphemeralProfile
+                    || secondaryWindow.windowSharedProfile
+                    || secondaryWindow.windowTransferMode
+                    || secondaryWindow.windowRestoreCommitId.length > 0
+                    || secondaryWindow.windowStartupContext.length > 0
+                    || secondaryWindow.windowStartupContextRestore
+                    || secondaryWindow.windowBookmarkTransferUrl.length > 0
+                    || secondaryWindow.windowStartupUrl !== "about:blank")) {
+            secondaryWindow.visible = false
+            Qt.callLater(function() { secondaryWindow.destroy() })
+            return
+        }
         secondaryWindow.scheduleRuntimeWork(0)
         secondaryWindow.permissionPromptSurface =
                 rootWindow.permissionPromptFactory.createObject(
@@ -2091,23 +3010,41 @@ function onContext_workspaceChanged() {
         secondaryUi.set_contexts_configuration(rootWindow.primaryBrowserUi.contexts_json)
         secondaryUi.configure_profile(
                                       secondaryWindow.windowPrivateProfile,
-                                      secondaryWindow.windowEphemeralProfile,
+                                      secondaryWindow.windowEphemeralProfile
+                                      || secondaryWindow.windowCleanBranch,
                                       secondaryWindow.windowProfileLabel,
                                       secondaryWindow.windowProfileName,
                                       rootWindow.storageBasePath)
+        secondaryVersioningBindTimer.start()
         if (secondaryWindow.windowBookmarkTransferUrl.length > 0) {
             bookmarkTransferTimer.start()
         }
         secondaryUi.set_context_entry_reuse(secondaryWindow.windowStartupContextRestore)
-        rootWindow.registerBrowserWindow(
-                    secondaryWindow, secondaryUi, secondaryWindow.activeView,
-                    secondaryWindow.windowWebEngineProfile,
-                    secondaryWindow.windowProfileName,
-                    secondaryWindow.windowEphemeralInvocationToken,
-                    secondaryWindow.windowEphemeralProfile)
-        if (!secondaryWindow.windowSharedProfile
-                && !secondaryRequestInterceptor.attach(secondaryProfile)) {
+        if (secondaryWindow.windowCleanBranch
+                && !rootWindow.retainCleanBranchOwner(
+                        secondaryWindow.windowBoundBranchToken, secondaryWindow,
+                        secondaryProfile, secondaryView)) {
+            secondaryUi.status_text = "Clean branch profile isolation unavailable"
+            secondaryWindow.visible = false
+            Qt.callLater(function() { secondaryWindow.destroy() })
+            return
+        }
+        if (!secondaryWindow.windowCleanBranch)
+            rootWindow.registerBrowserWindow(
+                        secondaryWindow, secondaryUi, secondaryWindow.activeView,
+                        secondaryWindow.windowWebEngineProfile,
+                        secondaryWindow.windowProfileName,
+                        secondaryWindow.windowEphemeralInvocationToken,
+                        secondaryWindow.windowEphemeralProfile)
+        var interceptorAttached = secondaryWindow.windowSharedProfile
+                || secondaryRequestInterceptor.attach(secondaryProfile)
+        if (!interceptorAttached) {
             secondaryUi.status_text = "Request interceptor unavailable"
+            if (secondaryWindow.windowCleanBranch) {
+                secondaryWindow.visible = false
+                Qt.callLater(function() { secondaryWindow.destroy() })
+                return
+            }
         }
         if (secondaryWindow.windowTransferMode) {
             if (!secondaryWindow.attachTransferredView(
@@ -2125,12 +3062,18 @@ function onContext_workspaceChanged() {
                 }
                 return
             }
+        } else if (secondaryWindow.windowRestoreCommitId.length > 0) {
+            // Keep the fresh destination inert until its own profile worker
+            // validates the exact commit and admits the restore plan.
         } else if (secondaryWindow.windowStartupContext.length > 0) {
             secondaryUi.execute_command(
                         "context-enter " + secondaryWindow.windowStartupContext)
             rootWindow.routeContextWorkspace(secondaryUi)
         }
-        if (secondaryWindow.windowStartupContextRestore) {
+        if (secondaryWindow.windowCleanBranch) {
+            // A prepared child must stay inert until Rust admits its fork and
+            // exact owner. No caller-supplied startup URL may navigate here.
+        } else if (secondaryWindow.windowStartupContextRestore) {
             secondaryWindow.applySwitcherEngineAction()
         } else if (secondaryWindow.windowStartupRoutePreflighted) {
             secondaryUi.navigate_without_context_route(
@@ -2141,6 +3084,18 @@ function onContext_workspaceChanged() {
         }
     }
     Component.onDestruction: {
+        if (secondaryWindow.branchExportOperation.length > 0
+                && secondaryWindow.windowBranchParentUi) {
+            secondaryWindow.windowBranchParentUi
+                .cancel_versioned_clean_branch_export(
+                    secondaryWindow.branchExportOperation)
+            secondaryWindow.branchExportOperation = ""
+        }
+        if (secondaryWindow.versioningRestoreSidecarRequestId.length > 0) {
+            secondaryUi.discard_versioned_restore_sidecar(
+                secondaryWindow.versioningRestoreSidecarRequestId)
+            secondaryWindow.versioningRestoreSidecarRequestId = ""
+        }
         if (secondaryWindow.devToolsWindow) {
             secondaryWindow.devToolsWindow.close()
             secondaryWindow.devToolsWindow = null
@@ -2177,6 +3132,19 @@ rootWindow.clearCaptureSessionsForHost(secondaryWindow)
             secondaryWindow.rendererFailureSurface = null
         }
         secondaryUi.view_closed()
+        if (secondaryWindow.windowCleanBranch) {
+            if (secondaryWindow.windowCleanBranchLineagePublished
+                    && secondaryWindow.windowBranchParentUi) {
+                secondaryWindow.windowBranchParentUi.close_versioned_clean_branch(
+                            secondaryUi, secondaryWindow.windowBoundBranchToken)
+            } else if (secondaryWindow.windowBranchParentUi) {
+                secondaryWindow.windowBranchParentUi.abort_versioned_clean_branch(
+                            secondaryWindow.windowBoundBranchToken)
+            }
+            rootWindow.releaseCleanBranchOwner(
+                        secondaryWindow.windowBoundBranchToken, secondaryWindow,
+                        secondaryProfile, secondaryView)
+        }
         secondaryUi.release_transient_resources()
     }
 }

@@ -1,0 +1,129 @@
+diff --git a/src/core/permission_manager_qt.cpp b/src/core/permission_manager_qt.cpp
+index 8aa8efb..b86ef11 100644
+--- a/src/core/permission_manager_qt.cpp
++++ b/src/core/permission_manager_qt.cpp
+@@ -26,1 +26,2 @@
+ #include <QtWebEngineCore/private/qwebenginepermission_p.h>
++#include <cstdio>
+@@ -525,6 +526,13 @@ void PermissionManagerQt::requestMediaPermissions(
+ void PermissionManagerQt::requestMediaPermissions(
+         content::RenderFrameHost *render_frame_host,
+         const WebContentsAdapterClient::MediaRequestFlags flags,
+         base::OnceCallback<void(WebContentsAdapterClient::MediaRequestFlags authorizationFlags)> callback)
+ {
++    std::fprintf(stderr, "Ferric stderr requestMediaPermissions frame=%p flags=%d\n",
++                 render_frame_host, static_cast<int>(flags));
++    std::fflush(stderr);
++    qWarning("Ferric permission-flow media request frame=%p origin=%s flags=%d",
++             render_frame_host,
++             render_frame_host ? render_frame_host->GetLastCommittedOrigin().GetURL().spec().c_str() : "<null>",
++             static_cast<int>(flags));
+     std::vector<blink::PermissionType> permissionTypesBlink;
+@@ -630,10 +638,40 @@ void PermissionManagerQt::RequestPermissions(
+         const blink::PermissionType permissionTypeBlink = blink::PermissionDescriptorToPermissionType(permissionDesc);
+         const QWebEnginePermission::PermissionType permissionTypeQt = toQt(permissionTypeBlink);
++        std::fprintf(stderr, "Ferric stderr Qt permission request origin=%s type=%d\n",
++                     requestDescription.requesting_origin.spec().c_str(),
++                     static_cast<int>(permissionTypeQt));
++        std::fflush(stderr);
++        qWarning("Ferric permission-flow Qt permission request origin=%s type=%d frame=%s",
++                 requestDescription.requesting_origin.spec().c_str(),
++                 static_cast<int>(permissionTypeQt), frameToken.frame_token.ToString().c_str());
+         if (permissionTypeQt == QWebEnginePermission::PermissionType::Unsupported) {
+             result.push_back(blink::mojom::PermissionStatus::DENIED);
+             continue;
+         }
+ 
++        // Disposable negative control: prove the exact child media request
++        // traverses this Qt permission-status path before the grant variant.
++        if (qEnvironmentVariableIsSet("FERRIC_SPIKE_FORCE_CHILD_VIDEO_DENY_PROBE")
++                && permissionTypeQt == QWebEnginePermission::PermissionType::MediaVideoCapture
++                && requestDescription.requesting_origin.host() == "top-a.localhost") {
++            std::fprintf(stderr, "Ferric stderr exact child video deny branch\n");
++            std::fflush(stderr);
++            result.push_back(blink::mojom::PermissionStatus::DENIED);
++            continue;
++        }
++
++        // Disposable probe only: prove whether an exact fake-camera child
++        // request reaches capture after bypassing Qt's unobserved prompt path.
++        if (qEnvironmentVariableIsSet("FERRIC_SPIKE_FORCE_CHILD_VIDEO_GRANT_PROBE")
++                && permissionTypeQt == QWebEnginePermission::PermissionType::MediaVideoCapture
++                && requestDescription.requesting_origin.host() == "top-a.localhost") {
++            std::fprintf(stderr, "Ferric stderr exact child video grant branch\n");
++            std::fflush(stderr);
++            qWarning("Ferric test-only child video grant for %s",
++                     requestDescription.requesting_origin.spec().c_str());
++            result.push_back(blink::mojom::PermissionStatus::GRANTED);
++            continue;
++        }
+ 
+         blink::mojom::PermissionStatus permissionStatusBlink = getStatusFromSettings(
+             permissionTypeBlink, contentsDelegate->webEngineSettings());
+@@ -634,2 +672,5 @@
+         blink::mojom::PermissionStatus permissionStatusBlink = getStatusFromSettings(
+             permissionTypeBlink, contentsDelegate->webEngineSettings());
++        std::fprintf(stderr, "Ferric stderr settings status=%d\n",
++                     static_cast<int>(permissionStatusBlink));
++        std::fflush(stderr);
+@@ -656,1 +697,4 @@
+             permissionStatusBlink = GetPermissionStatus(permissionDesc, rorigin, rorigin);
++            std::fprintf(stderr, "Ferric stderr resolved status=%d\n",
++                         static_cast<int>(permissionStatusBlink));
++            std::fflush(stderr);
+@@ -688,2 +735,5 @@
+     for (const QWebEnginePermission::PermissionType permissionTypeQt : qtPermissions) {
++        std::fprintf(stderr, "Ferric stderr dispatch QML permission type=%d\n",
++                     static_cast<int>(permissionTypeQt));
++        std::fflush(stderr);
+         contentsDelegate->requestFeaturePermission(permissionTypeQt, requestOrigin, frameToken);
+diff --git a/src/core/web_contents_delegate_qt.cpp b/src/core/web_contents_delegate_qt.cpp
+--- a/src/core/web_contents_delegate_qt.cpp
++++ b/src/core/web_contents_delegate_qt.cpp
+@@ -9,2 +9,4 @@
+ #include "web_contents_delegate_qt.h"
+ 
++#include <cstdio>
++
+@@ -809,6 +811,10 @@ void WebContentsDelegateQt::requestFeaturePermission(
+         QWebEnginePermission::PermissionType permissionType,
+         const QUrl &requestingOrigin,
+         const content::GlobalRenderFrameHostToken &frameToken)
+ {
++    std::fprintf(stderr, "Ferric stderr delegate permission type=%d origin=%s child=%d frame=%s\n",
++                 static_cast<int>(permissionType), requestingOrigin.toString().toUtf8().constData(),
++                 frameToken.child_id, frameToken.frame_token.ToString().c_str());
++    std::fflush(stderr);
+     m_viewClient->runFeaturePermissionRequest(permissionType, requestingOrigin, frameToken.child_id, frameToken.frame_token.ToString());
+ }
+diff --git a/src/core/api/qwebenginepage.cpp b/src/core/api/qwebenginepage.cpp
+--- a/src/core/api/qwebenginepage.cpp
++++ b/src/core/api/qwebenginepage.cpp
+@@ -5,1 +5,2 @@
+ #include "qwebenginepage.h"
++#include <cstdio>
+@@ -640,3 +641,7 @@ void QWebEnginePagePrivate::runFeaturePermissionRequest(
+ {
+     Q_Q(QWebEnginePage);
+ 
++    std::fprintf(stderr, "Ferric stderr page permission signal type=%d origin=%s child=%d frame=%s\n",
++                 static_cast<int>(permissionType), securityOrigin.toString().toUtf8().constData(), childId,
++                 serializedToken.c_str());
++    std::fflush(stderr);
+diff --git a/src/webenginequick/api/qquickwebengineview.cpp b/src/webenginequick/api/qquickwebengineview.cpp
+--- a/src/webenginequick/api/qquickwebengineview.cpp
++++ b/src/webenginequick/api/qquickwebengineview.cpp
+@@ -38,3 +38,5 @@
+ #include <QtWebEngineCore/qwebengineloadinginfo.h>
+ 
++#include <cstdio>
++
+ #include <QtWebEngineCore/qwebenginenavigationrequest.h>
+@@ -550,3 +552,7 @@ void QQuickWebEngineViewPrivate::runFeaturePermissionRequest(
+ {
+     Q_Q(QQuickWebEngineView);
+ 
++    std::fprintf(stderr, "Ferric stderr Quick permission signal type=%d origin=%s child=%d frame=%s\n",
++                 static_cast<int>(permissionType), securityOrigin.toString().toUtf8().constData(), childId,
++                 serializedToken.c_str());
++    std::fflush(stderr);

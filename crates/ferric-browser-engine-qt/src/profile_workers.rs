@@ -47,8 +47,8 @@ pub(super) enum ProfileMutationResult {
 }
 
 fn profile_delete_preview_text(roots: &StorageRoots, name: &str) -> Result<String, String> {
-    let registry = ProfileRegistry::open(roots)
-        .map_err(|error| format!("profile registry unavailable: {error}"))?;
+    let registry =
+        ProfileRegistry::open(roots).map_err(|_| "profile registry unavailable".to_owned())?;
     let profile = registry
         .profiles()
         .iter()
@@ -93,18 +93,18 @@ impl ProfileDeleteWorker {
                 (|| match request {
                     ProfileMutation::Create { roots, name, label } => {
                         let mut registry = ProfileRegistry::open(&roots)
-                            .map_err(|error| format!("profile registry unavailable: {error}"))?;
+                            .map_err(|_| "profile registry unavailable".to_owned())?;
                         registry
                             .create(&name, &label, ProfilePrivacy::Normal)
-                            .map_err(|error| format!("profile creation failed: {error}"))?;
+                            .map_err(|_| "profile creation failed".to_owned())?;
                         Ok(ProfileMutationResult::Created)
                     }
                     ProfileMutation::Rename { roots, name, label } => {
                         let mut registry = ProfileRegistry::open(&roots)
-                            .map_err(|error| format!("profile registry unavailable: {error}"))?;
+                            .map_err(|_| "profile registry unavailable".to_owned())?;
                         registry
                             .rename_label(&name, &label)
-                            .map_err(|error| format!("profile rename failed: {error}"))?;
+                            .map_err(|_| "profile rename failed".to_owned())?;
                         Ok(ProfileMutationResult::Renamed)
                     }
                     ProfileMutation::Delete {
@@ -113,7 +113,7 @@ impl ProfileDeleteWorker {
                         active_profile_id,
                     } => {
                         let registry = ProfileRegistry::open(&roots)
-                            .map_err(|error| format!("profile registry unavailable: {error}"))?;
+                            .map_err(|_| "profile registry unavailable".to_owned())?;
                         let profile = registry
                             .profiles()
                             .iter()
@@ -126,13 +126,13 @@ impl ProfileDeleteWorker {
                             return Err("profile is loaded and cannot be deleted".into());
                         }
                         let outcome = delete_profile_transaction(&roots, &profile.name)
-                            .map_err(|error| error.to_string())?;
+                            .map_err(|_| "profile deletion failed".to_owned())?;
                         Ok(ProfileMutationResult::Deleted(outcome))
                     }
                 })()
             },
         )
-        .map_err(|error| error.to_string())?;
+        .map_err(|_| "profile mutation worker could not start".to_owned())?;
         Ok(Self { inner })
     }
 
@@ -204,9 +204,9 @@ impl ProfileListWorker {
                             .collect::<Vec<_>>()
                             .join("\n")
                     })
-                    .map_err(|error| format!("profile registry unavailable: {error}"))
+                    .map_err(|_| "profile registry unavailable".to_owned())
             })
-            .map_err(|error| error.to_string())?;
+            .map_err(|_| "profile reader could not start".to_owned())?;
         Ok(Self { inner })
     }
 
@@ -238,7 +238,7 @@ impl ProfilePreviewWorker {
             "ferric-browser-profile-preview-reader",
             |(roots, name): (StorageRoots, String)| profile_delete_preview_text(&roots, &name),
         )
-        .map_err(|error| error.to_string())?;
+        .map_err(|_| "profile preview reader could not start".to_owned())?;
         Ok(Self { inner })
     }
 

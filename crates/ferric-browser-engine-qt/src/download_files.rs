@@ -14,11 +14,22 @@ use std::{
 };
 use uuid::Uuid;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub(super) struct StagedDownload {
     staging_directory: PathBuf,
     staging_path: PathBuf,
     final_path: PathBuf,
+}
+
+impl std::fmt::Debug for StagedDownload {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("StagedDownload")
+            .field("has_staging_directory", &true)
+            .field("has_staging_path", &true)
+            .field("has_final_path", &true)
+            .finish()
+    }
 }
 
 impl StagedDownload {
@@ -337,5 +348,19 @@ mod tests {
             "file:///tmp/a%20file%231.txt"
         );
         assert!(path_to_file_url(Path::new("relative.txt")).is_err());
+    }
+
+    #[test]
+    fn staged_download_debug_redacts_local_paths() {
+        let sentinel = "private-download-path-sentinel";
+        let staged = StagedDownload {
+            staging_directory: PathBuf::from(format!("/home/{sentinel}/stage")),
+            staging_path: PathBuf::from(format!("/home/{sentinel}/stage/item")),
+            final_path: PathBuf::from(format!("/home/{sentinel}/Downloads/item")),
+        };
+
+        let debug = format!("{staged:?}");
+        assert!(debug.contains("has_staging_directory: true"));
+        assert!(!debug.contains(sentinel));
     }
 }

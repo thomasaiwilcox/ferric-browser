@@ -12,14 +12,25 @@ pub enum NavigationSource {
     Search,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct NavigationResult {
     pub requested: String,
     pub url: ValidatedUrl,
     pub source: NavigationSource,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+impl fmt::Debug for NavigationResult {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("NavigationResult")
+            .field("requested", &"[redacted]")
+            .field("url", &"[redacted]")
+            .field("source", &self.source)
+            .finish()
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
 pub enum NavigationError {
     Empty,
     InvalidUrl(UrlError),
@@ -27,15 +38,27 @@ pub enum NavigationError {
     InvalidSearchTemplate,
 }
 
+impl fmt::Debug for NavigationError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Empty => formatter.write_str("Empty"),
+            Self::InvalidUrl(_) => formatter.write_str("InvalidUrl([redacted])"),
+            Self::ExternalSchemeRequiresConfirmation { .. } => {
+                formatter.write_str("ExternalSchemeRequiresConfirmation([redacted])")
+            }
+            Self::InvalidSearchTemplate => formatter.write_str("InvalidSearchTemplate"),
+        }
+    }
+}
+
 impl fmt::Display for NavigationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Empty => formatter.write_str("navigation input is empty"),
-            Self::InvalidUrl(error) => write!(formatter, "invalid navigation URL: {error}"),
-            Self::ExternalSchemeRequiresConfirmation { scheme, url } => write!(
-                formatter,
-                "external URI requires confirmation ({scheme}): {url}"
-            ),
+            Self::InvalidUrl(_) => formatter.write_str("invalid navigation URL"),
+            Self::ExternalSchemeRequiresConfirmation { .. } => {
+                formatter.write_str("external URI requires confirmation")
+            }
             Self::InvalidSearchTemplate => {
                 formatter.write_str("search keyword template is invalid")
             }
@@ -45,7 +68,7 @@ impl fmt::Display for NavigationError {
 
 impl std::error::Error for NavigationError {}
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Default, Eq, PartialEq)]
 pub struct NavigationContext {
     pub quickmarks: BTreeMap<String, String>,
     pub search_keywords: BTreeMap<String, String>,
@@ -53,6 +76,21 @@ pub struct NavigationContext {
     /// `{query}` as its single data-only placeholder.
     pub default_search_template: Option<String>,
     pub trusted_local_input: bool,
+}
+
+impl fmt::Debug for NavigationContext {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("NavigationContext")
+            .field("quickmark_count", &self.quickmarks.len())
+            .field("search_keyword_count", &self.search_keywords.len())
+            .field(
+                "has_default_search_template",
+                &self.default_search_template.is_some(),
+            )
+            .field("trusted_local_input", &self.trusted_local_input)
+            .finish()
+    }
 }
 
 /// Resolves an input without probing the network or performing DNS lookups.
@@ -253,6 +291,42 @@ mod tests {
             resolve_input("ferric browser", &context).unwrap().source,
             NavigationSource::Search
         );
+    }
+
+    #[test]
+    fn navigation_debug_redacts_input_context_and_external_uri() {
+        let sentinel = "private-navigation-debug-sentinel";
+        let context = NavigationContext {
+            quickmarks: BTreeMap::from([(
+                sentinel.into(),
+                format!("https://example.test/{sentinel}"),
+            )]),
+            search_keywords: BTreeMap::from([(
+                "q".into(),
+                format!("https://example.test/{sentinel}"),
+            )]),
+            default_search_template: Some(format!("https://example.test/?q={sentinel}")),
+            trusted_local_input: true,
+        };
+        let result = NavigationResult {
+            requested: sentinel.into(),
+            url: ValidatedUrl::parse(format!("https://example.test/{sentinel}"))
+                .expect("valid sentinel URL"),
+            source: NavigationSource::Quickmark,
+        };
+        let error = NavigationError::ExternalSchemeRequiresConfirmation {
+            scheme: "mailto".into(),
+            url: format!("mailto:{sentinel}@example.test?subject=private"),
+        };
+
+        for debug in [
+            format!("{context:?}"),
+            format!("{result:?}"),
+            format!("{error:?}"),
+        ] {
+            assert!(!debug.contains(sentinel));
+            assert!(!debug.contains("subject=private"));
+        }
     }
 
     #[test]

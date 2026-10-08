@@ -3,6 +3,7 @@
 
 #include <QtCore/QPointer>
 #include <QtCore/QHash>
+#include <QtCore/QByteArray>
 #include <QtCore/QReadWriteLock>
 #include <QtCore/QList>
 #include <QtCore/QStringList>
@@ -92,6 +93,10 @@ public:
     Q_INVOKABLE QStringList blockedRequestExplanationFields(const QString &site) const;
     Q_INVOKABLE QStringList blockedRequestDecisionFields(const QString &site) const;
     Q_INVOKABLE void clearSiteEvidence(const QString &site);
+    // Profile-wide, bounded method evidence. A native view must also supply
+    // its own typed, bodyless main-frame navigation observation.
+    Q_INVOKABLE qulonglong mainFrameMethodSequence() const;
+    Q_INVOKABLE bool uniqueMainFrameGetSince(qulonglong sequence, const QString &url) const;
 
     Q_INVOKABLE bool attach(QObject *profile);
     Q_INVOKABLE bool detach(QObject *profile);
@@ -149,6 +154,14 @@ private:
     QHash<QString, QVariantMap> blockedRequestExplanations_;
     QHash<QString, QList<QVariantMap>> requestDecisionLog_;
     std::atomic_bool evidenceSignalPending_{false};
+    struct MainFrameMethodObservation {
+        qulonglong sequence;
+        QByteArray urlHash;
+        bool get;
+    };
+    mutable QReadWriteLock methodLock_;
+    qulonglong methodSequence_ = 0;
+    QList<MainFrameMethodObservation> mainFrameMethods_;
     QList<QPointer<QQuickWebEngineProfile>> profiles_;
 };
 

@@ -7,6 +7,7 @@ use crate::{
         normalize_history_clear_origin, valid_ipc_mode, valid_switcher_scope,
         validate_command_arguments, validate_jseval_script,
     },
+    command_codec::{decode_versioning_command, is_versioning_command},
 };
 use ferric_browser_core::ParsedCommand;
 use serde_json::Value;
@@ -24,6 +25,9 @@ pub(super) fn decode_command_arguments(
 ) -> Result<ParsedCommand, String> {
     let command_name = envelope.command.clone();
     let name = command_name.as_str();
+    if is_versioning_command(name) {
+        return decode_versioning_command(name, &envelope.arguments);
+    }
     let arguments = Some(&envelope.arguments);
     let text_argument = |key: &str| -> Result<String, String> {
         arguments
@@ -632,7 +636,7 @@ pub(super) fn decode_command_arguments(
                     return Err("command argument arguments must be an object".into());
                 }
                 let encoded = serde_json::to_string(command_arguments)
-                    .map_err(|error| format!("command arguments could not be encoded: {error}"))?;
+                    .map_err(|_| "command arguments could not be encoded".to_owned())?;
                 if encoded.len() > 64 * 1024 {
                     return Err("command argument arguments exceed 64 KiB".into());
                 }
@@ -726,8 +730,8 @@ pub(super) fn decode_command_arguments(
                         args.push(input);
                     }
                 }
-                Some(other) => {
-                    return Err(format!("command argument send_subject is invalid: {other}"));
+                Some(_) => {
+                    return Err("command argument send_subject is invalid".into());
                 }
                 None => {
                     if arguments

@@ -6,7 +6,7 @@
 
 use ferric_browser_config::{Config, ReducedMotion};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub(super) struct ChromePreferences {
     pub font_family: String,
     pub font_size_pt: f64,
@@ -14,6 +14,20 @@ pub(super) struct ChromePreferences {
     pub tabs_mode: &'static str,
     pub tab_position: &'static str,
     pub reduced_motion: &'static str,
+}
+
+impl std::fmt::Debug for ChromePreferences {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ChromePreferences")
+            .field("font_family", &"[REDACTED]")
+            .field("font_size_pt", &self.font_size_pt)
+            .field("statusbar_mode", &self.statusbar_mode)
+            .field("tabs_mode", &self.tabs_mode)
+            .field("tab_position", &self.tab_position)
+            .field("reduced_motion", &self.reduced_motion)
+            .finish()
+    }
 }
 
 #[must_use]
@@ -114,5 +128,14 @@ mod tests {
 
         config.ui.statusbar = "never".into();
         assert_eq!(project(&config).statusbar_mode, "never");
+    }
+
+    #[test]
+    fn chrome_preference_debug_redacts_custom_font_family() {
+        let mut config = Config::default();
+        config.ui.font_family = "private-font-family-sentinel".into();
+        let debug = format!("{:?}", project(&config));
+        assert!(debug.contains("REDACTED"));
+        assert!(!debug.contains("private-font-family-sentinel"));
     }
 }

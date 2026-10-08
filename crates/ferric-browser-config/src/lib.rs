@@ -8,7 +8,7 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fs,
+    fmt, fs,
     io::Write,
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
@@ -57,7 +57,7 @@ const MAX_RUNTIME_KEY_BYTES: usize = 256;
 const MAX_RUNTIME_VALUE_BYTES: usize = 16 * 1024;
 const RUNTIME_SCHEMA_VERSION: u64 = 3;
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SiteRule {
     pub id: String,
@@ -66,6 +66,18 @@ pub struct SiteRule {
     pub priority: i32,
     #[serde(default)]
     pub set: BTreeMap<String, toml::Value>,
+}
+
+impl fmt::Debug for SiteRule {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SiteRule")
+            .field("id", &"[redacted]")
+            .field("pattern", &"[redacted]")
+            .field("priority", &self.priority)
+            .field("setting_count", &self.set.len())
+            .finish()
+    }
 }
 
 /// Validates one site rule independently of the surrounding configuration.

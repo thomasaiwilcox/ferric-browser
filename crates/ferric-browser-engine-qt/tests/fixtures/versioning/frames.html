@@ -1,0 +1,8 @@
+<!doctype html><meta charset="utf-8"><title>Versioning frames</title>
+<h1>Frame identity fixture</h1>
+<button id="reorder" onclick="document.querySelector('#frames').prepend(document.querySelector('#cross'))">Reorder</button>
+<button id="delete" onclick="document.querySelector('#same').remove()">Delete same-origin</button>
+<div id="frames">
+  <iframe id="same" title="same-origin" src="/versioning/frame-child?kind=same"></iframe>
+  <iframe id="cross" title="cross-origin" src="{{CROSS_ORIGIN}}"></iframe>
+</div>

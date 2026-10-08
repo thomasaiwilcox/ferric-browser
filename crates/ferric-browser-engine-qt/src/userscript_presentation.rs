@@ -81,16 +81,16 @@ impl qobject::BrowserUi {
                 );
                 true
             }
-            Err(error) => {
+            Err(_) => {
                 self.as_mut()
                     .set_userscript_action_ids(QStringList::default());
                 self.as_mut()
                     .set_userscript_action_labels(QStringList::default());
                 self.as_mut()
                     .set_userscript_action_availability(QStringList::default());
-                self.set_status_text(QString::from(format!(
-                    "Userscript actions unavailable: {error}"
-                )));
+                self.set_status_text(QString::from(
+                    "Userscript actions unavailable; details suppressed",
+                ));
                 false
             }
         }

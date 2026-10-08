@@ -10,7 +10,7 @@ pub(super) fn read_bounded<R: Read>(mut reader: R, maximum: usize) -> Result<Vec
     loop {
         let count = reader
             .read(&mut buffer)
-            .map_err(|error| format!("userscript pipe read failed: {error}"))?;
+            .map_err(|_| "external process output read failed".to_owned())?;
         if count == 0 {
             return Ok(output);
         }
@@ -23,13 +23,28 @@ pub(super) fn read_bounded<R: Read>(mut reader: R, maximum: usize) -> Result<Vec
 
 #[cfg(test)]
 mod tests {
-    use std::io::Cursor;
+    use std::io::{Cursor, Error, Read};
 
     use super::read_bounded;
+
+    struct FailingReader;
+
+    impl Read for FailingReader {
+        fn read(&mut self, _buffer: &mut [u8]) -> std::io::Result<usize> {
+            Err(Error::other("private path and process-output sentinel"))
+        }
+    }
 
     #[test]
     fn bounds_untrusted_child_output_without_returning_a_partial_payload() {
         assert_eq!(read_bounded(Cursor::new(b"safe"), 4), Ok(b"safe".to_vec()));
         assert!(read_bounded(Cursor::new(b"oversized"), 4).is_err());
+    }
+
+    #[test]
+    fn pipe_read_failure_uses_fixed_text_without_io_details() {
+        let error = read_bounded(FailingReader, 64).expect_err("the reader must fail");
+        assert_eq!(error, "external process output read failed");
+        assert!(!error.contains("private path and process-output sentinel"));
     }
 }

@@ -1,0 +1,284 @@
+--- a/src/core/api/qwebenginecookiestore.h
++++ b/src/core/api/qwebenginecookiestore.h
+@@ -71,6 +71,10 @@
+     // The caller owns/discards both disposable profiles; this is not a backend.
+     void ferricCookieCopyExistingProbe(QWebEngineCookieStore *destination,
+                                       std::function<void(FerricProbeResult)> completion);
++    // Research-only complete-list seed into a fresh disposable persistent
++    // child. No production writer lease or merge guarantee is implied.
++    void ferricCookieSeedExistingProbe(QWebEngineCookieStore *destination,
++                                      std::function<void(FerricProbeResult)> completion);
+     // Research-only substitution after a valid synthetic source snapshot.
+     // It does not create a real legacy/older cookie in the source profile.
+     void ferricCookieSyntheticPreflightProbe(QWebEngineCookieStore *destination,
+--- a/src/core/api/qwebenginecookiestore.cpp
++++ b/src/core/api/qwebenginecookiestore.cpp
+@@ -98,6 +98,26 @@
+                                       std::move(completion), true);
+ }
+ 
++void QWebEngineCookieStore::ferricCookieSeedExistingProbe(
++        QWebEngineCookieStore *destination,
++        std::function<void(FerricProbeResult)> completion)
++{
++    if (!completion)
++        return;
++    Q_D(QWebEngineCookieStore);
++    if (!destination || destination == this || QThread::currentThread() != thread()
++            || destination->thread() != thread() || !d->delegate
++            || !destination->d_func()->delegate || d->filterCallback
++            || destination->d_func()->filterCallback) {
++        completion({FerricProbeStatus::Unavailable, 0, 0});
++        return;
++    }
++    d->delegate->ferricCookieCloneProbe(destination->d_func()->delegate, false,
++                                       std::move(completion), true,
++                                       FerricSyntheticPreflightCase::None,
++                                       false, false, true);
++}
++
+ void QWebEngineCookieStore::ferricCookieSyntheticPreflightProbe(
+         QWebEngineCookieStore *destination, FerricSyntheticPreflightCase fixture,
+         std::function<void(FerricProbeResult)> completion)
+--- a/src/core/net/cookie_monster_delegate_qt.h
++++ b/src/core/net/cookie_monster_delegate_qt.h
+@@ -73,7 +73,8 @@
+                                QWebEngineCookieStore::FerricSyntheticPreflightCase syntheticCase =
+                                        QWebEngineCookieStore::FerricSyntheticPreflightCase::None,
+                                bool opaqueFixture = false,
+-                               bool destinationRejectFixture = false);
++                               bool destinationRejectFixture = false,
++                               bool seedIfEmptyFixture = false);
+     void deleteSessionCookies();
+     void deleteAllCookies();
+ 
+--- a/src/core/net/cookie_monster_delegate_qt.cpp
++++ b/src/core/net/cookie_monster_delegate_qt.cpp
+@@ -43,6 +43,7 @@
+     SyntheticCase m_syntheticCase;
+     bool m_opaqueFixture;
+     bool m_destinationRejectFixture;
++    bool m_seedIfEmptyFixture;
+     int m_destinationCount = 0;
+ 
+     bool valid()
+@@ -238,6 +239,22 @@
+                         self->finish(Status::Unavailable);
+                         return;
+                     }
++                    if (self->m_seedIfEmptyFixture) {
++                        self->m_destination->m_mojoCookieManager->FerricProbeSeedIfEmpty(
++                                self->m_snapshot,
++                                base::BindOnce([](QPointer<FerricCookieProbeOperation> self,
++                                                  bool accepted) {
++                                    if (!self || !self->valid())
++                                        return;
++                                    if (!accepted) {
++                                        self->m_destinationCount = -1;
++                                        self->finish(Status::MutationRejected);
++                                        return;
++                                    }
++                                    self->readback();
++                                }, self));
++                        return;
++                    }
+                     for (const auto &cookie : self->m_snapshot) {
+                         if ((cookie.PartitionKey() && (!cookie.PartitionKey()->IsSerializeable()
+                                 || cookie.PartitionKey()->nonce()))
+@@ -284,13 +301,14 @@
+                               CookieMonsterDelegateQt *destination, bool nonceFixture,
+                               std::function<void(Result)> completion, bool existingSource,
+                               SyntheticCase syntheticCase, bool opaqueFixture,
+-                              bool destinationRejectFixture)
++                              bool destinationRejectFixture, bool seedIfEmptyFixture)
+         : m_source(source), m_destination(destination), m_sourceOwner(source->m_client),
+           m_destinationOwner(destination->m_client), m_sourceGeneration(source->m_ferricGeneration),
+           m_destinationGeneration(destination->m_ferricGeneration),
+           m_completion(std::move(completion)), m_nonceFixture(nonceFixture),
+           m_existingSource(existingSource), m_syntheticCase(syntheticCase),
+-          m_opaqueFixture(opaqueFixture), m_destinationRejectFixture(destinationRejectFixture)
++          m_opaqueFixture(opaqueFixture), m_destinationRejectFixture(destinationRejectFixture),
++          m_seedIfEmptyFixture(seedIfEmptyFixture)
+     {
+         source->m_ferricProbeBusy = destination->m_ferricProbeBusy = true;
+         connect(m_sourceOwner, &QObject::destroyed, this, [this] { finish(Status::OwnerLost); });
+@@ -316,7 +334,7 @@
+                             [](QPointer<FerricCookieProbeOperation> self, const net::CookieList &cookies) {
+                                 if (!self || !self->valid())
+                                     return;
+-                                if (!cookies.empty()) {
++                                if (!cookies.empty() && !self->m_seedIfEmptyFixture) {
+                                     self->finish(Status::NonEmptyStore);
+                                     return;
+                                 }
+@@ -338,9 +356,11 @@
+         CookieMonsterDelegateQt *destination, bool nonceFixture,
+         std::function<void(QWebEngineCookieStore::FerricProbeResult)> completion,
+         bool existingSource, QWebEngineCookieStore::FerricSyntheticPreflightCase syntheticCase,
+-        bool opaqueFixture, bool destinationRejectFixture)
++        bool opaqueFixture, bool destinationRejectFixture, bool seedIfEmptyFixture)
+ {
+-    if ((nonceFixture && opaqueFixture) || (destinationRejectFixture && (nonceFixture || opaqueFixture
++    if ((seedIfEmptyFixture && (!existingSource || nonceFixture || opaqueFixture
++                                  || destinationRejectFixture || syntheticCase != QWebEngineCookieStore::FerricSyntheticPreflightCase::None))
++            || (nonceFixture && opaqueFixture) || (destinationRejectFixture && (nonceFixture || opaqueFixture
+             || existingSource || syntheticCase != QWebEngineCookieStore::FerricSyntheticPreflightCase::None))
+             || destination == this
+             || !hasCookieMonster() || !destination->hasCookieMonster()
+@@ -351,7 +371,7 @@
+     }
+     (new FerricCookieProbeOperation(this, destination, nonceFixture,
+                                    std::move(completion), existingSource, syntheticCase,
+-                                   opaqueFixture, destinationRejectFixture))->start();
++                                   opaqueFixture, destinationRejectFixture, seedIfEmptyFixture))->start();
+ }
+ 
+ class CookieChangeListener : public network::mojom::CookieChangeListener
+--- a/src/3rdparty/chromium/net/cookies/cookie_monster.h
++++ b/src/3rdparty/chromium/net/cookies/cookie_monster.h
+@@ -205,6 +205,12 @@
+   // See https://codereview.chromium.org/2882063002/#msg64.
+   void SetAllCookiesAsync(const CookieList& list, SetCookiesCallback callback);
+ 
++  // Ferric research build only. The empty-store check and insertion run on the
++  // CookieMonster sequence without an intervening callback. This does not
++  // grant a lease against subsequent network writers.
++  void FerricProbeSeedIfEmptyAsync(const CookieList& list,
++                                  base::OnceCallback<void(bool)> callback);
++
+   // CookieStore implementation.
+   void SetCanonicalCookieAsync(
+       std::unique_ptr<CanonicalCookie> cookie,
+@@ -635,6 +641,8 @@
+   // For data gathering purposes, this routine is treated as if it is
+   // restoring saved cookies; some statistics are not gathered in this case.
+   void SetAllCookies(CookieList list, SetCookiesCallback callback);
++  void FerricProbeSeedIfEmpty(CookieList list,
++                             base::OnceCallback<void(bool)> callback);
+ 
+   void InternalUpdateCookieAccessTime(CanonicalCookie& cc,
+                                       base::Time current_time);
+--- a/src/3rdparty/chromium/net/cookies/cookie_monster.cc
++++ b/src/3rdparty/chromium/net/cookies/cookie_monster.cc
+@@ -522,6 +522,14 @@
+       std::move(callback)));
+ }
+ 
++void CookieMonster::FerricProbeSeedIfEmptyAsync(
++    const CookieList& list,
++    base::OnceCallback<void(bool)> callback) {
++  DoCookieCallback(base::BindOnce(&CookieMonster::FerricProbeSeedIfEmpty,
++                                  base::Unretained(this), list,
++                                  std::move(callback)));
++}
++
+ void CookieMonster::SetCanonicalCookieAsyncAndFiltered(
+     const GURL& url,
+     const SiteForCookies& site_for_cookies,
+@@ -1953,6 +1961,21 @@
+   MaybeRunCookieCallback(std::move(callback), access_result);
+ }
+ 
++void CookieMonster::FerricProbeSeedIfEmpty(
++    CookieList list,
++    base::OnceCallback<void(bool)> callback) {
++  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
++  if (list.empty() || !cookies_.empty() || !partitioned_cookies_.empty()) {
++    std::move(callback).Run(false);
++    return;
++  }
++  SetAllCookies(std::move(list),
++                base::BindOnce(
++                    [](base::OnceCallback<void(bool)> completion,
++                       CookieAccessResult) { std::move(completion).Run(true); },
++                    std::move(callback)));
++}
++
+ void CookieMonster::SetAllCookies(CookieList list,
+                                   SetCookiesCallback callback) {
+   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+--- a/src/3rdparty/chromium/services/network/public/mojom/cookie_manager.mojom
++++ b/src/3rdparty/chromium/services/network/public/mojom/cookie_manager.mojom
+@@ -402,6 +402,10 @@
+   // on origin.  Should the returned cookies also be sorted by origin?
+   GetAllCookies() => (array<CanonicalCookie> cookies);
+ 
++  // Ferric source-pinned research build only. Never expose this method in a
++  // shipping network service: it bypasses ordinary cookie setter policy.
++  FerricProbeSeedIfEmpty(array<CanonicalCookie> cookies) => (bool accepted);
++
+   // Get all the cookies known to the service.
+   // Returned cookie list is sorted first by path length (longest first)
+   // and second by creation time.
+--- a/src/3rdparty/chromium/services/network/cookie_manager.h
++++ b/src/3rdparty/chromium/services/network/cookie_manager.h
+@@ -17,6 +17,7 @@
+ #include "components/content_settings/core/common/content_settings_types.h"
+ #include "mojo/public/cpp/bindings/receiver_set.h"
+ #include "mojo/public/cpp/bindings/remote.h"
++#include "net/cookies/canonical_cookie.h"
+ #include "net/cookies/cookie_change_dispatcher.h"
+ #include "net/cookies/cookie_deletion_info.h"
+ #include "services/network/cookie_settings.h"
+@@ -74,6 +75,9 @@
+ 
+   // mojom::CookieManager
+   void GetAllCookies(GetAllCookiesCallback callback) override;
++  void FerricProbeSeedIfEmpty(
++      const net::CookieList& cookies,
++      FerricProbeSeedIfEmptyCallback callback) override;
+   void GetAllCookiesWithAccessSemantics(
+       GetAllCookiesWithAccessSemanticsCallback callback) override;
+   void GetCookieList(
+@@ -163,6 +167,7 @@
+ 
+   const raw_ptr<net::CookieStore> cookie_store_;
+   scoped_refptr<SessionCleanupCookieStore> session_cleanup_cookie_store_;
++  bool ferric_probe_seed_busy_ = false;
+   mojo::ReceiverSet<mojom::CookieManager> receivers_;
+   std::vector<std::unique_ptr<ListenerRegistration>> listener_registrations_;
+   mojo::Remote<mojom::CookieRemoteAccessFilter> filter_;
+--- a/src/3rdparty/chromium/services/network/cookie_manager.cc
++++ b/src/3rdparty/chromium/services/network/cookie_manager.cc
+@@ -110,6 +110,41 @@
+   cookie_store_->GetAllCookiesAsync(std::move(callback));
+ }
+ 
++void CookieManager::FerricProbeSeedIfEmpty(
++    const net::CookieList& cookies,
++    FerricProbeSeedIfEmptyCallback callback) {
++  // Research-only: Qt's persistent NetworkContext constructs CookieMonster
++  // whenever it supplies SessionCleanupCookieStore. The production backend
++  // would need an explicit typed store witness, not this source-pinned cast.
++  if (!session_cleanup_cookie_store_ || ferric_probe_seed_busy_ ||
++      cookies.empty() || cookies.size() > 64) {
++    std::move(callback).Run(false);
++    return;
++  }
++  size_t bytes = 0;
++  for (const auto& cookie : cookies) {
++    bytes += cookie.Name().size() + cookie.Value().size() +
++             cookie.Domain().size() + cookie.Path().size();
++    if (bytes > 512 * 1024) {
++      std::move(callback).Run(false);
++      return;
++    }
++  }
++  ferric_probe_seed_busy_ = true;
++  static_cast<net::CookieMonster*>(cookie_store_)
++      ->FerricProbeSeedIfEmptyAsync(
++          cookies,
++          base::BindOnce(
++              [](base::WeakPtr<CookieManager> self,
++                 FerricProbeSeedIfEmptyCallback completion, bool accepted) {
++                if (!self)
++                  return;
++                self->ferric_probe_seed_busy_ = false;
++                std::move(completion).Run(accepted);
++              },
++              weak_factory_.GetWeakPtr(), std::move(callback)));
++}
++
+ void CookieManager::GetAllCookiesWithAccessSemantics(
+     GetAllCookiesWithAccessSemanticsCallback callback) {
+   cookie_store_->GetAllCookiesWithAccessSemanticsAsync(std::move(callback));

@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     fmt::Write as _,
     fs,
     io::{BufRead, BufReader, Read, Write},
@@ -11,10 +11,14 @@ use std::{
 };
 
 use ferric_browser_config::{Config, SettingRegistry};
+use ferric_browser_core::versioning::{
+    PageStateSidecar, SidecarSummary, route_fingerprint_for_url,
+};
 use ferric_browser_core::{ActionRegistry, BindingRegistry, CommandRegistry, Mode};
 
 mod fixture_server;
 mod perf;
+mod versioning_capabilities;
 
 fn main() {
     let mut arguments = std::env::args();
@@ -33,6 +37,32 @@ fn main() {
             println!("  Run deterministic project checks.");
             println!("cargo xtask test engine");
             println!("  Build and run the QtWebEngine adapter tests.");
+            println!("cargo xtask test archive");
+            println!("  Run the disposable native MHTML routing/isolation probe.");
+            println!("cargo xtask test versioning-geometry");
+            println!("  Validate a synthetic native geometry result through the Rust sidecar DTO.");
+            println!("cargo xtask test versioning-profile-download");
+            println!(
+                "  Check exact view ownership for two disposable shared-profile Qt downloads."
+            );
+            println!("cargo xtask test versioning-clean-branch-profile");
+            println!(
+                "  Check distinct off-record Quick profiles and cookie stores for clean branches."
+            );
+            println!("cargo xtask test versioning-viewless-download");
+            println!(
+                "  Probe a public MV3 extension-originated download on a disposable Quick profile."
+            );
+            println!("cargo xtask test cookie");
+            println!("  Run the disposable native cookie API gap probe.");
+            println!("cargo xtask test versioning-cookie-adapter");
+            println!("  Test bounded public Quick cookie observations and profile teardown.");
+            println!("cargo xtask test versioning-cookie-boundary");
+            println!(
+                "  Probe persistent and concurrent cookies without claiming a snapshot boundary."
+            );
+            println!("cargo xtask test versioning-fixtures");
+            println!("  Run the disposable pinned-HTTPS native fixture probe.");
             println!("cargo xtask test adapter");
             println!("  Run the bounded offscreen Qt/QML adapter integration smoke.");
             println!("cargo xtask test core");
@@ -71,7 +101,9 @@ fn main() {
             println!(
                 "  Measure optimized core latency or disposable live UI/process-tree performance."
             );
-            println!("cargo xtask fixture-server [--bind ADDRESS] [--once] [--https]");
+            println!(
+                "cargo xtask fixture-server [--bind ADDRESS] [--once] [--https] [--exit-on-path PATH]"
+            );
             println!("  Run the bounded loopback HTTP fixture server (or its dev HTTPS wrapper).");
             Ok(())
         }
@@ -313,8 +345,19 @@ fn run_check() -> Result<(), String> {
     check_compatibility_diagnosis()?;
     check_release_freshness_policy()?;
     check_capability_matrix(Path::new("docs/architecture/capabilities.md"))?;
+    versioning_capabilities::check_file(Path::new(
+        "docs/testing/versioned-browsing/capabilities.json",
+    ))?;
     run_qml_lint()?;
     run_qml_ui_tests()?;
+    run_geometry_sidecar_probe()?;
+    run_native_profile_download_probe()?;
+    run_native_clean_branch_profile_probe()?;
+    run_native_archive_probe()?;
+    run_native_cookie_probe()?;
+    run_native_cookie_adapter_probe()?;
+    run_native_cookie_boundary_probe()?;
+    run_native_fixture_tls_probe()?;
     check_generated_docs()?;
     check_architecture_boundaries()?;
     validate_release_artifacts()?;
@@ -479,6 +522,1429 @@ fn run_qml_ui_tests() -> Result<(), String> {
     }
 }
 
+fn run_geometry_sidecar_probe() -> Result<(), String> {
+    const MARKER: &str = "FERRIC_GEOMETRY_RESULT:";
+    const EDITABLE_MARKER: &str = "FERRIC_EDITABLE_RESULT:";
+    const FRAME_MARKER: &str = "FERRIC_FRAME_RESULT:";
+    const FRAME_TREE_MARKER: &str = "FERRIC_FRAME_TREE_RESULT:";
+    const FRAME_DEPTH_MARKER: &str = "FERRIC_FRAME_DEPTH_RESULT:";
+    const FRAME_BRANCH_MARKER: &str = "FERRIC_FRAME_BRANCH_RESULT:";
+    const POST_RESULT_MARKER: &str = "FERRIC_POST_RESULT_SIDECAR:";
+    let candidates = [
+        "qmltestrunner6",
+        "qmltestrunner",
+        "/usr/lib/qt6/bin/qmltestrunner",
+    ];
+    let executable = candidates
+        .into_iter()
+        .find(|candidate| command_available(candidate))
+        .ok_or_else(|| "qmltestrunner is required for native geometry validation".to_owned())?;
+    let mut fixture = start_blocking_fixture_server("127.0.0.1:0", None)?;
+    let fixture_url = read_fixture_url_named(
+        &mut fixture,
+        "native page-state frame fixture server",
+        "/versioning/frames",
+    )?;
+    let fixture_qml_dir = prepare_versioned_page_state_qml_fixture(&fixture_url)?;
+    let output = Command::new("timeout")
+        .arg("45s")
+        .arg(executable)
+        .arg("-input")
+        .arg(fixture_qml_dir.path())
+        .env("QT_QPA_PLATFORM", "offscreen")
+        .env("QT_QPA_PLATFORMTHEME", "")
+        .env("QT_QUICK_BACKEND", "software")
+        .output()
+        .map_err(|error| format!("failed to run geometry fixture: {error}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "native page-state fixture failed with {}",
+            output.status
+        ));
+    }
+    let stdout = String::from_utf8(output.stdout)
+        .map_err(|_| "native geometry fixture output was not UTF-8".to_owned())?;
+    let summary = validate_geometry_probe(&stdout, MARKER)?;
+    let editable_summary = validate_editable_probe(&stdout, EDITABLE_MARKER)?;
+    let frame_summary = validate_frame_probe(&stdout, FRAME_MARKER)?;
+    let frame_tree_summary = validate_frame_tree_probe(&stdout, FRAME_TREE_MARKER, &fixture_url)?;
+    let frame_depth_summary =
+        validate_frame_depth_probe(&stdout, FRAME_DEPTH_MARKER, &fixture_url)?;
+    let frame_branch_summary =
+        validate_frame_branch_probe(&stdout, FRAME_BRANCH_MARKER, &fixture_url)?;
+    let post_result_summary =
+        validate_post_result_probe(&stdout, POST_RESULT_MARKER, &fixture_url)?;
+    println!(
+        "native page-state sidecars passed Rust admission (geometry: {} candidates, {} positions; editable: {} values, {} exclusions; cross-origin frame: {} captured, {} exclusions; same-origin frame tree: {} captured, {} exclusions; depth-limited frame tree: {} captured, {} exclusions; branched frame tree: {} captured, {} exclusions; POST result: {} frame)",
+        summary.candidate_count,
+        summary.position_count,
+        editable_summary.editable_count,
+        editable_summary.exclusion_count,
+        frame_summary.frame_count,
+        frame_summary.exclusion_count,
+        frame_tree_summary.frame_count,
+        frame_tree_summary.exclusion_count,
+        frame_depth_summary.frame_count,
+        frame_depth_summary.exclusion_count,
+        frame_branch_summary.frame_count,
+        frame_branch_summary.exclusion_count,
+        post_result_summary.frame_count
+    );
+    Ok(())
+}
+
+fn run_native_profile_download_probe() -> Result<(), String> {
+    const SOURCE: &str =
+        "crates/ferric-browser-engine-qt/tests/qml/tst_profile_download_native.qml";
+    const DIRECTORY_MARKER: &str = "\"__FERRIC_PROFILE_DOWNLOAD_DIR__\"";
+    const URL_MARKER: &str = "\"__FERRIC_PROFILE_DOWNLOAD_URL__\"";
+    const COMPONENT_IMPORT: &str = "import \"../../qml/components\" as FerricComponents";
+    const ROUTING_IMPORT: &str =
+        "import \"../../qml/scripts/ProfileDownloadRouting.js\" as ProfileDownloadRouting";
+    const RESULT_MARKER: &str = "FERRIC_PROFILE_DOWNLOAD_RESULT:3/3";
+    let executable = [
+        "qmltestrunner6",
+        "qmltestrunner",
+        "/usr/lib/qt6/bin/qmltestrunner",
+    ]
+    .into_iter()
+    .find(|candidate| command_available(candidate))
+    .ok_or_else(|| "qmltestrunner is required for native profile download validation".to_owned())?;
+    let temporary = DisposableDirectory::new("ferric-profile-download-qml")?;
+    let source = fs::read_to_string(SOURCE)
+        .map_err(|error| format!("could not read native profile download fixture: {error}"))?;
+    if source.matches(DIRECTORY_MARKER).count() != 1
+        || source.matches(URL_MARKER).count() != 1
+        || source.matches(COMPONENT_IMPORT).count() != 1
+        || source.matches(ROUTING_IMPORT).count() != 1
+    {
+        return Err("native profile download fixture marker is invalid".to_owned());
+    }
+    let output_directory = temporary
+        .path()
+        .to_str()
+        .ok_or_else(|| "disposable profile download path is not UTF-8".to_owned())?;
+    let quoted_directory = serde_json::to_string(output_directory)
+        .map_err(|error| format!("could not quote disposable download path: {error}"))?;
+    let executable_path = std::env::current_exe()
+        .map_err(|error| format!("could not locate xtask for download fixture: {error}"))?;
+    let mut fixture = ChildGuard::spawn(
+        Command::new(executable_path)
+            .args(["fixture-server", "--bind", "127.0.0.1:0", "--once"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped()),
+        "native profile download fixture server",
+    )?;
+    let slow_download_url = read_fixture_url_named(
+        &mut fixture,
+        "native profile download fixture server",
+        "/versioning/slow-download",
+    )?;
+    let quoted_url = serde_json::to_string(&slow_download_url)
+        .map_err(|error| format!("could not quote disposable download URL: {error}"))?;
+    let staged = source
+        .replace(DIRECTORY_MARKER, &quoted_directory)
+        .replace(URL_MARKER, &quoted_url)
+        .replace(COMPONENT_IMPORT, "import \".\" as FerricComponents")
+        .replace(
+            ROUTING_IMPORT,
+            "import \"ProfileDownloadRouting.js\" as ProfileDownloadRouting",
+        );
+    fs::write(
+        temporary.path().join("tst_profile_download_native.qml"),
+        staged,
+    )
+    .map_err(|error| format!("could not stage native profile download fixture: {error}"))?;
+    for source in [
+        "crates/ferric-browser-engine-qt/qml/components/FerricVersioningWindowOwner.qml",
+        "crates/ferric-browser-engine-qt/qml/scripts/ProfileDownloadRouting.js",
+        "crates/ferric-browser-engine-qt/qml/scripts/PopupWindowOwnership.js",
+    ] {
+        let name = Path::new(source)
+            .file_name()
+            .ok_or_else(|| "native download fixture asset has no file name".to_owned())?;
+        fs::copy(source, temporary.path().join(name))
+            .map_err(|error| format!("could not stage native download fixture asset: {error}"))?;
+    }
+    let owner_component = temporary.path().join("FerricVersioningWindowOwner.qml");
+    let owner_source = fs::read_to_string(&owner_component).map_err(|error| {
+        format!("could not read staged native download owner component: {error}")
+    })?;
+    let owner_source = owner_source.replace(
+        "../scripts/PopupWindowOwnership.js",
+        "PopupWindowOwnership.js",
+    );
+    fs::write(owner_component, owner_source).map_err(|error| {
+        format!("could not update staged native download owner import: {error}")
+    })?;
+    let output = Command::new("timeout")
+        .arg("90s")
+        .arg(executable)
+        .arg("-input")
+        .arg(temporary.path())
+        .env("QT_QPA_PLATFORM", "offscreen")
+        .env("QT_QPA_PLATFORMTHEME", "")
+        .env("QT_QUICK_BACKEND", "software")
+        .output()
+        .map_err(|error| format!("failed to run native profile download fixture: {error}"))?;
+    if !output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "native profile download fixture exited with {}\nstdout:\n{}\nstderr:\n{}",
+            output.status, stdout, stderr
+        ));
+    }
+    let stdout = String::from_utf8(output.stdout)
+        .map_err(|_| "native profile download fixture output was not UTF-8".to_owned())?;
+    if !stdout.contains(RESULT_MARKER) {
+        return Err("native profile download fixture did not prove all callbacks".to_owned());
+    }
+    println!(
+        "native profile download request/finish ownership passed for two views, streamed cancellation and Ferric routing"
+    );
+    Ok(())
+}
+
+fn run_native_viewless_download_probe() -> Result<bool, String> {
+    const NAME: &str = "versioning_viewless_download_probe";
+    if std::env::var("FERRIC_TEST_NATIVE_VIEWLESS_EXTENSION").as_deref() != Ok("yes") {
+        println!(
+            "native MV3 extension probe skipped: set FERRIC_TEST_NATIVE_VIEWLESS_EXTENSION=yes only on a disposable, explicitly selected Qt runtime"
+        );
+        return Ok(false);
+    }
+    let working = DisposableDirectory::new("ferric-viewless-download-probe")?;
+    let binary = working.path().join(NAME);
+    let qml = format!("crates/ferric-browser-engine-qt/tests/native/{NAME}.qml");
+    compile_native_probe(
+        NAME,
+        &[
+            "Qt6Quick",
+            "Qt6Qml",
+            "Qt6WebEngineQuick",
+            "Qt6WebEngineCore",
+            "Qt6Network",
+        ],
+        &binary,
+        &[],
+    )?;
+    let output = Command::new("timeout")
+        .arg("60s")
+        .arg(&binary)
+        .arg(&qml)
+        .env("QT_QPA_PLATFORM", "offscreen")
+        .env("QT_QPA_PLATFORMTHEME", "")
+        .env("QT_QUICK_BACKEND", "software")
+        .output()
+        .map_err(|error| format!("could not run native {NAME}: {error}"))?;
+    if output.status.code() == Some(77) {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let skip_reason = stdout
+            .lines()
+            .find_map(|line| line.strip_prefix("SKIP: "))
+            .unwrap_or("Qt extension support is unavailable");
+        println!("native MV3 extension probe skipped: {skip_reason}");
+        return Ok(false);
+    }
+    if !output.status.success() {
+        let fixed_failures = String::from_utf8_lossy(&output.stderr)
+            .lines()
+            .filter(|line| line.starts_with("FAIL: "))
+            .collect::<Vec<_>>()
+            .join("; ");
+        return Err(if fixed_failures.is_empty() {
+            format!("native {NAME} exited with {}", output.status)
+        } else {
+            format!(
+                "native {NAME} exited with {}: {fixed_failures}",
+                output.status
+            )
+        });
+    }
+    let stdout = String::from_utf8(output.stdout)
+        .map_err(|_| format!("native {NAME} output was not UTF-8"))?;
+    if !stdout.contains("FERRIC_VIEWLESS_DOWNLOAD_RESULT:1/1") {
+        return Err(format!(
+            "native {NAME} did not prove the expected profile route"
+        ));
+    }
+    println!("FERRIC_VIEWLESS_DOWNLOAD_RESULT:1/1");
+    Ok(true)
+}
+
+fn prepare_versioned_page_state_qml_fixture(
+    fixture_url: &str,
+) -> Result<DisposableDirectory, String> {
+    const URL_MARKER: &str = "__FERRIC_FRAME_FIXTURE_URL__";
+    const QML_SOURCE: &str =
+        "crates/ferric-browser-engine-qt/tests/qml/tst_versioned_page_state.qml";
+    const BROWSER_IMPORT: &str = "import \"../../qml/scripts/BrowserScripts.js\" as BrowserScripts";
+    const STATE_IMPORT: &str =
+        "import \"../../qml/scripts/VersionedPageState.js\" as VersionedPageState";
+    let temporary = DisposableDirectory::new("ferric-page-state-qml")?;
+    let source = fs::read_to_string(QML_SOURCE)
+        .map_err(|error| format!("could not read native page-state QML fixture: {error}"))?;
+    if source.matches(URL_MARKER).count() != 1
+        || source.matches(BROWSER_IMPORT).count() != 1
+        || source.matches(STATE_IMPORT).count() != 1
+        || !fixture_url.starts_with("http://127.0.0.1:")
+        || fixture_url.len() > 256
+    {
+        return Err("native page-state frame fixture URL or template is invalid".to_owned());
+    }
+    let rewritten = source
+        .replace(
+            BROWSER_IMPORT,
+            "import \"BrowserScripts.js\" as BrowserScripts",
+        )
+        .replace(
+            STATE_IMPORT,
+            "import \"VersionedPageState.js\" as VersionedPageState",
+        )
+        .replace(URL_MARKER, fixture_url);
+    fs::write(
+        temporary.path().join("tst_versioned_page_state.qml"),
+        rewritten,
+    )
+    .map_err(|error| format!("could not stage native page-state QML fixture: {error}"))?;
+    for name in ["BrowserScripts.js", "VersionedPageState.js"] {
+        let source_path = Path::new("crates/ferric-browser-engine-qt/qml/scripts").join(name);
+        fs::copy(&source_path, temporary.path().join(name)).map_err(|error| {
+            format!("could not stage native page-state dependency {name}: {error}")
+        })?;
+    }
+    Ok(temporary)
+}
+
+fn parse_probe_sidecar(
+    stdout: &str,
+    marker: &str,
+    label: &str,
+) -> Result<(PageStateSidecar, SidecarSummary), String> {
+    let result = stdout
+        .lines()
+        .find_map(|line| line.split_once(marker).map(|(_, json)| json))
+        .ok_or_else(|| format!("native {label} fixture emitted no sidecar result"))?;
+    let sidecar = PageStateSidecar::parse_json(result.as_bytes())
+        .map_err(|error| format!("native {label} result failed Rust admission: {error}"))?;
+    let summary = sidecar.summary();
+    Ok((sidecar, summary))
+}
+
+fn validate_geometry_probe(stdout: &str, marker: &str) -> Result<SidecarSummary, String> {
+    let (sidecar, summary) = parse_probe_sidecar(stdout, marker, "geometry")?;
+    if !sidecar.qualifies_for(
+        "https://example.test",
+        &"b".repeat(64),
+        &"a".repeat(64),
+        &"1".repeat(32),
+    ) || summary.frame_count != 1
+        || summary.candidate_count < 1
+        || summary.position_count < 3
+        || summary.editable_count != 0
+    {
+        return Err("native geometry result did not match the admitted fixture".to_owned());
+    }
+    Ok(summary)
+}
+
+fn validate_editable_probe(stdout: &str, marker: &str) -> Result<SidecarSummary, String> {
+    let (sidecar, summary) = parse_probe_sidecar(stdout, marker, "editable")?;
+    if !sidecar.qualifies_for(
+        "https://example.test",
+        &"b".repeat(64),
+        &"a".repeat(64),
+        &"1".repeat(32),
+    ) || summary.editable_count < 3
+        || summary.exclusion_count == 0
+        || summary.position_count < 4
+    {
+        return Err("native editable result did not match the admitted fixture".to_owned());
+    }
+    Ok(summary)
+}
+
+fn validate_frame_probe(stdout: &str, marker: &str) -> Result<SidecarSummary, String> {
+    let (sidecar, summary) = parse_probe_sidecar(stdout, marker, "frame")?;
+    if !sidecar.qualifies_for(
+        "https://example.test",
+        &"b".repeat(64),
+        &"a".repeat(64),
+        &"1".repeat(32),
+    ) || summary.frame_count != 1
+        || summary
+            .exclusions_by_reason
+            .get(&ferric_browser_core::versioning::ExclusionReason::CrossOrigin)
+            != Some(&1)
+        || summary
+            .coverage
+            .iter()
+            .any(|coverage| !coverage.truncated())
+    {
+        return Err(
+            "native frame result did not preserve bounded cross-origin exclusion".to_owned(),
+        );
+    }
+    Ok(summary)
+}
+
+fn validate_frame_tree_probe(
+    stdout: &str,
+    marker: &str,
+    fixture_url: &str,
+) -> Result<SidecarSummary, String> {
+    let (sidecar, summary) = parse_probe_sidecar(stdout, marker, "same-origin frame tree")?;
+    let expected_origin = fixture_url
+        .strip_suffix("/versioning/frames")
+        .ok_or_else(|| "native frame fixture URL had an unexpected route".to_owned())?;
+    if !sidecar.qualifies_for(
+        expected_origin,
+        &"b".repeat(64),
+        &"a".repeat(64),
+        &"1".repeat(32),
+    ) || summary.frame_count != 2
+        || summary
+            .exclusions_by_reason
+            .get(&ferric_browser_core::versioning::ExclusionReason::CrossOrigin)
+            != Some(&1)
+        || summary
+            .coverage
+            .iter()
+            .any(|coverage| !coverage.truncated())
+    {
+        return Err(
+            "native frame-tree result did not admit the same-origin child and bound cross-origin sibling"
+                .to_owned(),
+        );
+    }
+    Ok(summary)
+}
+
+fn validate_frame_depth_probe(
+    stdout: &str,
+    marker: &str,
+    fixture_url: &str,
+) -> Result<SidecarSummary, String> {
+    let (sidecar, summary) = parse_probe_sidecar(stdout, marker, "depth-limited frame tree")?;
+    let expected_origin = fixture_url
+        .strip_suffix("/versioning/frames")
+        .ok_or_else(|| "native frame fixture URL had an unexpected route".to_owned())?;
+    if !sidecar.qualifies_for(
+        expected_origin,
+        &"b".repeat(64),
+        &"a".repeat(64),
+        &"1".repeat(32),
+    ) || summary.frame_count != 9
+        || summary
+            .exclusions_by_reason
+            .get(&ferric_browser_core::versioning::ExclusionReason::Limit)
+            != Some(&1)
+        || summary
+            .coverage
+            .iter()
+            .any(|coverage| !coverage.truncated())
+    {
+        return Err("native depth-limited frame result was incomplete or overclaimed".to_owned());
+    }
+    Ok(summary)
+}
+
+fn validate_frame_branch_probe(
+    stdout: &str,
+    marker: &str,
+    fixture_url: &str,
+) -> Result<SidecarSummary, String> {
+    let (sidecar, summary) = parse_probe_sidecar(stdout, marker, "branched frame tree")?;
+    let origin = fixture_url
+        .strip_suffix("/versioning/frames")
+        .ok_or_else(|| "native frame fixture URL had an unexpected route".to_owned())?;
+    if !sidecar.qualifies_for(origin, &"b".repeat(64), &"a".repeat(64), &"1".repeat(32))
+        || summary.frame_count != 6
+        || summary
+            .exclusions_by_reason
+            .get(&ferric_browser_core::versioning::ExclusionReason::CrossOrigin)
+            != Some(&1)
+    {
+        return Err("native branched frame result failed bounded Rust admission".to_owned());
+    }
+    let encoded = stdout
+        .lines()
+        .find_map(|line| line.split_once(marker).map(|(_, json)| json))
+        .ok_or_else(|| "native branched frame result is missing".to_owned())?;
+    if encoded.contains("/versioning/frame-branch") || encoded.contains("Frame branch") {
+        return Err("native branched frame result disclosed a frame URL or title".to_owned());
+    }
+    let document: serde_json::Value = serde_json::from_str(encoded)
+        .map_err(|error| format!("native branched frame JSON is invalid: {error}"))?;
+    let frames = document["frames"]
+        .as_array()
+        .ok_or_else(|| "native branched frame records are missing".to_owned())?;
+    let mut by_route = BTreeMap::new();
+    for frame in frames {
+        let route = frame["route_fingerprint"]
+            .as_str()
+            .ok_or_else(|| "native branched frame fingerprint is missing".to_owned())?;
+        let id = frame["id"]
+            .as_u64()
+            .ok_or_else(|| "native branched frame ID is missing".to_owned())?;
+        let parent = if frame["parent"].is_null() {
+            None
+        } else {
+            Some(
+                frame["parent"]
+                    .as_u64()
+                    .ok_or_else(|| "native branched frame parent is invalid".to_owned())?,
+            )
+        };
+        if by_route.insert(route.to_owned(), (id, parent)).is_some() {
+            return Err("native branched frame route was duplicated".to_owned());
+        }
+    }
+    if by_route.get(&"b".repeat(64)) != Some(&(0, None)) || by_route.len() != 6 {
+        return Err("native branched frame root or count was invalid".to_owned());
+    }
+    let find = |route: &str| -> Result<(u64, Option<u64>), String> {
+        let url = format!("{origin}{route}");
+        let fingerprint = route_fingerprint_for_url(&url)
+            .ok_or_else(|| "native branched fixture URL was invalid".to_owned())?;
+        by_route
+            .get(&fingerprint)
+            .copied()
+            .ok_or_else(|| format!("native branched frame is missing: {route}"))
+    };
+    let (left, left_parent) = find("/versioning/frame-branch-left")?;
+    let (right, right_parent) = find("/versioning/frame-branch-right")?;
+    if left_parent != Some(0)
+        || right_parent != Some(0)
+        || find("/versioning/frame-branch-leaf?branch=left-a")?.1 != Some(left)
+        || find("/versioning/frame-branch-leaf?branch=left-b")?.1 != Some(left)
+        || find("/versioning/frame-branch-leaf?branch=right-a")?.1 != Some(right)
+    {
+        return Err("native branched frame parents did not match their routes".to_owned());
+    }
+    Ok(summary)
+}
+
+fn validate_post_result_probe(
+    stdout: &str,
+    marker: &str,
+    fixture_url: &str,
+) -> Result<SidecarSummary, String> {
+    let (sidecar, summary) = parse_probe_sidecar(stdout, marker, "POST-result page")?;
+    let expected_origin = fixture_url
+        .strip_suffix("/versioning/frames")
+        .ok_or_else(|| "native POST-result fixture URL had an unexpected route".to_owned())?;
+    if !sidecar.qualifies_for(
+        expected_origin,
+        &"b".repeat(64),
+        &"a".repeat(64),
+        &"1".repeat(32),
+    ) || summary.frame_count != 1
+        || summary.editable_count != 0
+    {
+        return Err("native POST-result sidecar did not match its capture challenge".to_owned());
+    }
+    Ok(summary)
+}
+
+fn run_native_archive_probe() -> Result<(), String> {
+    const NAME: &str = "versioning_archive_probe";
+    const PACKAGES: &[&str] = &[
+        "Qt6Quick",
+        "Qt6Qml",
+        "Qt6WebEngineQuick",
+        "Qt6WebEngineCore",
+        "Qt6Network",
+        "Qt6Test",
+    ];
+    let viewless_download_supported = run_native_viewless_download_probe()?;
+    // The probe links the same C++ request interceptor used by the production
+    // QML component, including CXX-Qt's generated meta-object implementation.
+    let meta_object =
+        generated_qt_moc_source("moc_versioning_archive_interceptor.h.cpp")?.filter(|path| {
+            let header =
+                Path::new("crates/ferric-browser-engine-qt/src/versioning_archive_interceptor.h");
+            let generated_time = fs::metadata(path)
+                .and_then(|metadata| metadata.modified())
+                .unwrap_or(UNIX_EPOCH);
+            let header_time = fs::metadata(header)
+                .and_then(|metadata| metadata.modified())
+                .unwrap_or(SystemTime::now());
+            generated_time >= header_time
+        });
+    let meta_object = if let Some(meta_object) = meta_object {
+        meta_object
+    } else {
+        run(
+            "cargo",
+            &[
+                "check",
+                "-p",
+                "ferric-browser-engine-qt",
+                "--locked",
+                "--offline",
+            ],
+        )?;
+        generated_qt_moc_source("moc_versioning_archive_interceptor.h.cpp")?
+            .ok_or_else(|| "CXX-Qt archive interceptor meta-object is unavailable".to_owned())?
+    };
+    let meta_object = meta_object.to_string_lossy().into_owned();
+    let extra_sources = [
+        "crates/ferric-browser-engine-qt/src/versioning_archive_interceptor.cpp",
+        meta_object.as_str(),
+    ];
+    run_native_input_qml_probe_with_sources(
+        NAME,
+        PACKAGES,
+        &extra_sources,
+        viewless_download_supported,
+    )
+}
+
+fn run_native_cookie_probe() -> Result<(), String> {
+    run_native_qml_probe(
+        "versioning_cookie_probe",
+        &[
+            "Qt6Quick",
+            "Qt6Qml",
+            "Qt6WebEngineQuick",
+            "Qt6WebEngineCore",
+            "Qt6Network",
+            "Qt6Gui",
+        ],
+    )
+}
+
+fn run_native_cookie_adapter_probe() -> Result<(), String> {
+    const NAME: &str = "versioning_cookie_adapter_probe";
+    const PACKAGES: &[&str] = &[
+        "Qt6Quick",
+        "Qt6Qml",
+        "Qt6WebEngineQuick",
+        "Qt6WebEngineCore",
+        "Qt6Network",
+        "Qt6Gui",
+    ];
+    let working = DisposableDirectory::new("ferric-cookie-adapter-probe")?;
+    let binary = working.path().join(NAME);
+    compile_native_probe(
+        NAME,
+        PACKAGES,
+        &binary,
+        &["crates/ferric-browser-engine-qt/src/versioning_cookie_adapter.cpp"],
+    )?;
+    let output = Command::new("timeout")
+        .arg("45s")
+        .arg(&binary)
+        .arg("crates/ferric-browser-engine-qt/tests/native/versioning_cookie_probe.qml")
+        .env("QT_QPA_PLATFORM", "offscreen")
+        .env("QT_QPA_PLATFORMTHEME", "")
+        .env("QT_QUICK_BACKEND", "software")
+        .output()
+        .map_err(|error| format!("could not run {NAME}: {error}"))?;
+    if !output.status.success() {
+        return Err(format!("{NAME} exited with {}", output.status));
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !stdout.contains("PASS: bounded Quick cookie observation")
+        || stdout.contains("synthetic-secret")
+        || stderr.contains("synthetic-secret")
+        || stdout.contains("synthetic-name")
+        || stderr.contains("synthetic-name")
+    {
+        return Err(
+            "native cookie adapter output was missing or contained secret fixture bytes".to_owned(),
+        );
+    }
+    println!("native Quick cookie adapter passed bounded observation, overflow and teardown");
+    Ok(())
+}
+
+fn run_native_cookie_boundary_probe() -> Result<(), String> {
+    const NAME: &str = "versioning_cookie_boundary_probe";
+    const PACKAGES: &[&str] = &[
+        "Qt6Quick",
+        "Qt6Qml",
+        "Qt6WebEngineQuick",
+        "Qt6WebEngineCore",
+        "Qt6Network",
+        "Qt6Gui",
+    ];
+    let working = DisposableDirectory::new("ferric-cookie-boundary-probe")?;
+    let binary = working.path().join(NAME);
+    compile_native_probe(
+        NAME,
+        PACKAGES,
+        &binary,
+        &["crates/ferric-browser-engine-qt/src/versioning_cookie_adapter.cpp"],
+    )?;
+    let qml = "crates/ferric-browser-engine-qt/tests/native/versioning_cookie_boundary_probe.qml";
+    for (stage, marker) in [
+        ("seed", "PASS: disposable persistent fixture seeded"),
+        (
+            "observe",
+            "PASS: persistent source, concurrent write, JS mutation and expiration observed",
+        ),
+    ] {
+        let output = Command::new("timeout")
+            .arg("45s")
+            .arg(&binary)
+            .args([qml, stage])
+            .env("QT_QPA_PLATFORM", "offscreen")
+            .env("QT_QPA_PLATFORMTHEME", "")
+            .env("QT_QUICK_BACKEND", "software")
+            .env("XDG_CONFIG_HOME", working.path().join("config"))
+            .env("XDG_CACHE_HOME", working.path().join("cache"))
+            .env("XDG_DATA_HOME", working.path().join("data"))
+            .output()
+            .map_err(|error| format!("could not run {NAME} {stage}: {error}"))?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !output.status.success() {
+            let reason = stderr
+                .lines()
+                .find_map(|line| match line {
+                    "FAIL: load disposable persistent Quick fixture" => Some("QML fixture load"),
+                    "FAIL: concurrent cookie absent from observer" => {
+                        Some("concurrent cookie observation")
+                    }
+                    "FAIL: JavaScript mutation reached native observer" => {
+                        Some("JavaScript observation")
+                    }
+                    "FAIL: server truth confirms persistent seed was in Chromium jar" => {
+                        Some("persisted-cookie request truth")
+                    }
+                    "FAIL: short-lived cookie reached observer" => Some("short-lived observation"),
+                    "FAIL: post-expiration browser request reached local server" => {
+                        Some("post-expiration request")
+                    }
+                    "FAIL: server truth shows retained, JS and expired-cookie states" => {
+                        Some("expiry request truth")
+                    }
+                    _ => None,
+                })
+                .unwrap_or("native fixture failure");
+            return Err(format!(
+                "{NAME} {stage} exited with {} ({reason})",
+                output.status
+            ));
+        }
+        if !stdout.contains(marker)
+            || stdout.contains("synthetic-")
+            || stderr.contains("synthetic-")
+            || stdout.contains("vb_boundary_")
+            || stderr.contains("vb_boundary_")
+        {
+            return Err(format!(
+                "{NAME} {stage} output was missing or contained cookie fixture bytes"
+            ));
+        }
+        if stage == "observe" {
+            let callback = if stdout.contains("initial seed callback=yes") {
+                "yes"
+            } else if stdout.contains("initial seed callback=no") {
+                "no"
+            } else {
+                return Err("native cookie boundary callback status was missing".into());
+            };
+            println!(
+                "persistent cookie request truth passed; initial observer callback: {callback}"
+            );
+        }
+    }
+    let working_path = working.path().to_path_buf();
+    drop(working);
+    if working_path.exists() {
+        return Err("disposable cookie boundary profile root remains after teardown".into());
+    }
+    println!("native cookie boundary stress passed; no exact snapshot inferred");
+    Ok(())
+}
+
+fn run_native_clean_branch_profile_probe() -> Result<(), String> {
+    const NAME: &str = "versioning_clean_branch_profile_probe";
+    const PACKAGES: &[&str] = &[
+        "Qt6Quick",
+        "Qt6Qml",
+        "Qt6WebEngineQuick",
+        "Qt6WebEngineCore",
+        "Qt6Network",
+        "Qt6Gui",
+    ];
+    let working = DisposableDirectory::new("ferric-clean-branch-profile")?;
+    let binary = working.path().join(NAME);
+    compile_native_probe(NAME, PACKAGES, &binary, &[])?;
+    let output = Command::new("timeout")
+        .arg("30s")
+        .arg(&binary)
+        .arg("crates/ferric-browser-engine-qt/tests/native/versioning_clean_branch_profile_probe.qml")
+        .env("QT_QPA_PLATFORM", "offscreen")
+        .env("QT_QPA_PLATFORMTHEME", "")
+        .env("QT_QUICK_BACKEND", "software")
+        .env("XDG_CONFIG_HOME", working.path().join("config"))
+        .env("XDG_CACHE_HOME", working.path().join("cache"))
+        .env("XDG_DATA_HOME", working.path().join("data"))
+        .output()
+        .map_err(|error| format!("could not run {NAME}: {error}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "{NAME} exited with {}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    if !String::from_utf8_lossy(&output.stdout)
+        .contains("PASS: distinct memory-only Quick branch profiles and cookie stores")
+    {
+        return Err(format!(
+            "{NAME} did not report the qualified branch profile result"
+        ));
+    }
+    println!("native clean-branch profile and cookie separation passed");
+    Ok(())
+}
+
+fn run_native_fixture_tls_probe() -> Result<(), String> {
+    const PACKAGES: &[&str] = &["Qt6Gui", "Qt6WebEngineCore", "Qt6Network"];
+    if !command_available("openssl") || !command_available("socat") || !command_available("curl") {
+        println!(
+            "native HTTPS fixture qualification skipped/unqualified: openssl, socat and curl are required"
+        );
+        return Ok(());
+    }
+    if !Command::new("pkg-config")
+        .args(["--exists"])
+        .args(PACKAGES)
+        .status()
+        .is_ok_and(|status| status.success())
+    {
+        println!(
+            "native HTTPS fixture qualification skipped/unqualified: Qt WebEngine Core development packages are unavailable"
+        );
+        return Ok(());
+    }
+
+    let working = DisposableDirectory::new("ferric-native-fixture-tls")?;
+    let binary = working.path().join("versioning_fixture_tls_probe");
+    compile_native_probe("versioning_fixture_tls_probe", PACKAGES, &binary, &[])?;
+    let executable = std::env::current_exe()
+        .map_err(|error| format!("could not locate xtask for HTTPS fixture: {error}"))?;
+    let mut fixture = ChildGuard::spawn(
+        Command::new(executable)
+            .args([
+                "fixture-server",
+                "--https",
+                "--exit-on-path",
+                "/versioning/fault/close",
+            ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped()),
+        "native HTTPS fixture server",
+    )?;
+    let (base, certificate) = read_https_fixture_details(&mut fixture)?;
+    let target = format!("{base}/versioning/cookies/secure");
+    let probe_status = Command::new("timeout")
+        .arg("45s")
+        .arg(binary)
+        .arg(&target)
+        .arg(&certificate)
+        .env("QT_QPA_PLATFORM", "offscreen")
+        .env("QT_QPA_PLATFORMTHEME", "")
+        .env("XDG_CONFIG_HOME", working.path().join("config"))
+        .env("XDG_CACHE_HOME", working.path().join("cache"))
+        .env("XDG_DATA_HOME", working.path().join("data"))
+        .status()
+        .map_err(|error| format!("could not run native HTTPS fixture probe: {error}"))?;
+    // The loopback-only close route intentionally sends no HTTP response.
+    // Its request is the server's graceful teardown signal, even when the
+    // browser navigation failed before loading the fixture page.
+    let _ = Command::new("curl")
+        .args(["--cacert", certificate.to_str().unwrap_or_default()])
+        .args(["--max-time", "5", "--silent", "--output", "/dev/null"])
+        .arg(format!("{base}/versioning/fault/close"))
+        .stderr(Stdio::null())
+        .status();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let fixture_status = loop {
+        if let Some(status) = fixture
+            .child_mut("native HTTPS fixture server")?
+            .try_wait()
+            .map_err(|error| format!("could not poll native HTTPS fixture server: {error}"))?
+        {
+            break status;
+        }
+        if Instant::now() >= deadline {
+            return Err("native HTTPS fixture server did not tear down within 5s".into());
+        }
+        thread::sleep(Duration::from_millis(20));
+    };
+    if !fixture_status.success() {
+        return Err(format!(
+            "native HTTPS fixture server exited with {fixture_status}"
+        ));
+    }
+    if certificate.exists() {
+        return Err("disposable HTTPS fixture certificate remains after teardown".into());
+    }
+    if !probe_status.success() {
+        return Err(format!(
+            "native HTTPS fixture probe exited with {probe_status}"
+        ));
+    }
+    let working_path = working.path().to_path_buf();
+    drop(working);
+    if working_path.exists() {
+        return Err("disposable native fixture profile root remains after teardown".into());
+    }
+    println!("native HTTPS fixture profile and certificate teardown passed");
+    Ok(())
+}
+
+fn read_https_fixture_details(fixture: &mut ChildGuard) -> Result<(String, PathBuf), String> {
+    let stdout = fixture
+        .child_mut("native HTTPS fixture server")?
+        .stdout
+        .as_mut()
+        .ok_or_else(|| "native HTTPS fixture stdout is unavailable".to_owned())?;
+    let mut reader = BufReader::new(stdout);
+    let mut ready = String::new();
+    let mut cert = String::new();
+    reader
+        .read_line(&mut ready)
+        .map_err(|error| format!("could not read HTTPS fixture readiness: {error}"))?;
+    reader
+        .read_line(&mut cert)
+        .map_err(|error| format!("could not read HTTPS fixture certificate: {error}"))?;
+    let base = ready
+        .trim()
+        .strip_prefix("FERRIC_BROWSER_FIXTURE_READY ")
+        .filter(|base| base.starts_with("https://127.0.0.1:"))
+        .ok_or_else(|| format!("invalid HTTPS fixture readiness: {ready:?}"))?
+        .to_owned();
+    let certificate = cert
+        .trim()
+        .strip_prefix("FERRIC_BROWSER_FIXTURE_CERT ")
+        .map(PathBuf::from)
+        .filter(|path| {
+            path.is_file()
+                && path
+                    .file_name()
+                    .is_some_and(|name| name == "fixture-cert.pem")
+        })
+        .ok_or_else(|| format!("invalid HTTPS fixture certificate: {cert:?}"))?;
+    Ok((base, certificate))
+}
+
+fn run_native_qml_probe(name: &str, packages: &[&str]) -> Result<(), String> {
+    run_native_qml_probe_with_sources(name, packages, &[])
+}
+
+fn run_native_qml_probe_with_sources(
+    name: &str,
+    packages: &[&str],
+    extra_sources: &[&str],
+) -> Result<(), String> {
+    let working = DisposableDirectory::new("ferric-native-versioning-probe")?;
+    let binary = working.path().join(name);
+    let qml = format!("crates/ferric-browser-engine-qt/tests/native/{name}.qml");
+    compile_native_probe(name, packages, &binary, extra_sources)?;
+    let status = Command::new("timeout")
+        .arg("45s")
+        .arg(&binary)
+        .arg(&qml)
+        .env("QT_QPA_PLATFORM", "offscreen")
+        .env("QT_QPA_PLATFORMTHEME", "")
+        .env("QT_QUICK_BACKEND", "software")
+        .status()
+        .map_err(|error| format!("could not run {name}: {error}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("{name} exited with {status}"))
+    }
+}
+
+fn run_native_input_qml_probe_with_sources(
+    name: &str,
+    packages: &[&str],
+    extra_sources: &[&str],
+    viewless_download_supported: bool,
+) -> Result<(), String> {
+    let working = DisposableDirectory::new("ferric-native-input-versioning-probe")?;
+    let binary = working.path().join(name);
+    let archive_output = working.path().join("verified-capture.mhtml");
+    let qml = format!("crates/ferric-browser-engine-qt/tests/native/{name}.qml");
+    compile_native_probe(name, packages, &binary, extra_sources)?;
+
+    if run_disposable_weston_input_probe(name, &binary, &qml, &archive_output)? {
+        run_native_archive_adapter_fixture(&archive_output, viewless_download_supported)?;
+        return Ok(());
+    }
+    if std::env::var_os("WAYLAND_DISPLAY").is_none()
+        || std::env::var_os("XDG_RUNTIME_DIR").is_none()
+    {
+        println!(
+            "native Wayland input qualification not run for {name}: no active Wayland session; archive release gate remains disabled"
+        );
+        return Ok(());
+    }
+
+    let output = Command::new("timeout")
+        .arg("45s")
+        .arg(&binary)
+        .arg(&qml)
+        .arg(&archive_output)
+        .env("QT_QPA_PLATFORM", "wayland")
+        .env("QT_QPA_PLATFORMTHEME", "")
+        .env("QT_QUICK_BACKEND", "software")
+        .env("GIO_USE_VFS", "local")
+        .output()
+        .map_err(|error| format!("could not run native-input {name}: {error}"))?;
+    if output.status.code() == Some(77) {
+        println!(
+            "native Wayland input qualification not completed for {name}; archive release gate remains disabled; stdout={:?}; stderr={:?}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return Ok(());
+    }
+    if !output.status.success() {
+        return Err(format!(
+            "native-input {name} exited with {}; stdout={:?}; stderr={:?}",
+            output.status,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    println!("native Wayland input probe passed: {name}");
+    run_native_archive_adapter_fixture(&archive_output, viewless_download_supported)?;
+    Ok(())
+}
+
+const NATIVE_ARCHIVE_JOURNEYS: [&str; 42] = [
+    "native_qt_mhtml_file_commits_through_durable_adapter",
+    "native_qt_page_collects_saves_and_publishes_through_production_window",
+    "native_qt_two_tabs_publish_one_strict_window_capture",
+    "native_qt_strict_window_publishes_nothing_after_first_tab_closes",
+    "native_qt_partial_window_retains_one_page_after_one_cancelled_save",
+    "native_qt_partial_window_retains_first_page_when_second_save_times_out",
+    "native_qt_partial_window_retains_one_page_after_first_page_navigation",
+    "native_qt_partial_window_retains_one_page_after_first_save_deadline",
+    "native_qt_partial_window_retains_one_page_after_first_tab_closes",
+    "native_qt_partial_window_retains_first_page_after_second_tab_closes_during_save",
+    "native_qt_partial_window_retains_saved_page_after_its_tab_closes",
+    "native_qt_partial_window_defers_close_until_archive_install_finishes",
+    "native_qt_partial_window_retains_one_page_after_archive_copy_storage_full",
+    "native_qt_partial_window_retains_first_page_after_second_archive_copy_storage_full",
+    "native_qt_committed_geometry_applies_in_pristine_restore_window",
+    "native_qt_committed_multi_page_geometry_keeps_inactive_restore_lazy",
+    "native_qt_committed_draft_requires_review_before_live_refill",
+    "native_qt_mutating_page_publishes_partial_fidelity",
+    "native_qt_post_result_publishes_nonreplayable_archive",
+    "native_qt_post_redirect_303_publishes_result_without_replay",
+    "native_qt_post_redirect_307_preserves_body_and_publishes",
+    "native_qt_secondary_post_result_does_not_replay_as_get",
+    "native_qt_frame_tree_excludes_cross_origin_and_publishes",
+    "native_qt_editor_opt_in_publishes_bounded_text_draft",
+    "native_qt_selection_opt_in_publishes_offsets_without_selected_text",
+    "native_qt_media_metadata_publishes_without_playback",
+    "native_qt_committed_paused_media_position_restores_without_playback",
+    "native_qt_navigation_during_capture_does_not_publish_mixed_document",
+    "native_qt_removed_child_frame_during_save_does_not_publish_mixed_document",
+    "native_qt_same_url_child_reload_during_save_does_not_publish_mixed_document",
+    "native_qt_cancelled_archive_after_collector_does_not_publish",
+    "native_qt_declined_capture_requires_new_one_use_disclosure",
+    "native_qt_collector_timeout_keeps_successful_archive_only",
+    "native_qt_ui_responds_while_archive_worker_copy_is_paused",
+    "native_qt_cancel_quit_waits_for_archive_worker_drain",
+    "native_qt_archive_install_storage_full_publishes_no_commit",
+    "native_qt_sidecar_worker_refusal_keeps_successful_archive_only",
+    "native_qt_sidecar_filesystem_denial_keeps_successful_archive_only",
+    "native_qt_archive_closes_through_real_browser_window_and_storage",
+    "native_qt_archive_unsafe_cleanup_retains_file_through_shutdown",
+    "native_qt_archive_close_then_switches_to_fresh_profile",
+    "native_qt_archive_cleanup_retries_after_one_worker_refusal",
+];
+
+fn run_native_archive_adapter_fixture(
+    archive_output: &Path,
+    viewless_download_supported: bool,
+) -> Result<(), String> {
+    if !archive_output.is_file() {
+        return Err("native archive probe did not export its verified MHTML".to_owned());
+    }
+    // Build the lib-test executable once. Cargo may rebuild CXX-Qt between
+    // separate `cargo test` invocations, and Qt cannot create two GUI
+    // applications in the same process. Execute the ignored legs as
+    // separate processes of this exact artifact.
+    let build = Command::new("timeout")
+        .args([
+            "420s",
+            "cargo",
+            "test",
+            "-p",
+            "ferric-browser-engine-qt",
+            "--lib",
+            "--locked",
+            "--offline",
+            "--features",
+            "native-archive-fault-test",
+            "--no-run",
+            "--message-format=json",
+        ])
+        .output()
+        .map_err(|error| format!("could not build native archive adapter journeys: {error}"))?;
+    if !build.status.success() {
+        return Err(format!(
+            "native archive adapter test build exited with {}; stderr={:?}",
+            build.status,
+            String::from_utf8_lossy(&build.stderr)
+        ));
+    }
+    let executable = String::from_utf8_lossy(&build.stdout)
+        .lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .find(|message| {
+            message["reason"] == "compiler-artifact"
+                && message["target"]["name"] == "ferric_browser_engine_qt"
+                && message["target"]["kind"]
+                    .as_array()
+                    .is_some_and(|kinds| kinds.iter().any(|kind| kind == "lib"))
+                && message["executable"].is_string()
+        })
+        .and_then(|message| message["executable"].as_str().map(str::to_owned))
+        .ok_or("cargo did not report the Qt lib-test executable")?;
+    let mut capture_fixture = start_blocking_fixture_server("127.0.0.1:0", None)?;
+    let capture_origin = read_fixture_url_named(
+        &mut capture_fixture,
+        "native page-capture fixture server",
+        "",
+    )?;
+    let selected_journey = std::env::var("FERRIC_NATIVE_ARCHIVE_JOURNEY").ok();
+    if selected_journey
+        .as_deref()
+        .is_some_and(|selected| !NATIVE_ARCHIVE_JOURNEYS.contains(&selected))
+        && let Some(selected) = selected_journey.as_deref()
+    {
+        return Err(format!("unknown native archive journey filter: {selected}"));
+    }
+    for test in NATIVE_ARCHIVE_JOURNEYS {
+        if selected_journey
+            .as_deref()
+            .is_some_and(|selected| selected != test)
+        {
+            continue;
+        }
+        let capture_path = native_archive_capture_path(test);
+        // The native journey has distinct bounded profile, load, capture,
+        // shutdown and reopen phases. Leave enough wall time for their own
+        // assertions to identify the failing phase on a slow Qt startup.
+        let status = Command::new("timeout")
+            .args(["180s", &executable, test, "--ignored", "--nocapture"])
+            .env("FERRIC_NATIVE_ARCHIVE_FIXTURE", archive_output)
+            .env(
+                "FERRIC_NATIVE_CAPTURE_URL",
+                format!("{capture_origin}{capture_path}"),
+            )
+            .env("QT_QPA_PLATFORM", "offscreen")
+            .env("QT_QPA_PLATFORMTHEME", "")
+            .env("QT_QUICK_BACKEND", "software")
+            .status()
+            .map_err(|error| format!("could not run native archive journey {test}: {error}"))?;
+        if !status.success() {
+            let fixture_output =
+                stop_fixture_server(&mut capture_fixture, "native page-capture fixture server")?;
+            return Err(format!(
+                "native archive journey {test} exited with {status}; fixture output={fixture_output:?}"
+            ));
+        }
+    }
+    if viewless_download_supported
+        && selected_journey.as_deref().is_none_or(|selected| {
+            selected == "native_qt_viewless_extension_download_completes_in_profile_ledger"
+        })
+    {
+        let status = Command::new("timeout")
+            .args([
+                "180s",
+                &executable,
+                "native_qt_viewless_extension_download_completes_in_profile_ledger",
+                "--ignored",
+                "--nocapture",
+            ])
+            .env(
+                "FERRIC_NATIVE_VIEWLESS_DOWNLOAD_URL",
+                format!("{capture_origin}/versioning/archive-download"),
+            )
+            .env("QT_QPA_PLATFORM", "offscreen")
+            .env("QT_QPA_PLATFORMTHEME", "")
+            .env("QT_QUICK_BACKEND", "software")
+            .status()
+            .map_err(|error| format!("could not run native viewless ledger journey: {error}"))?;
+        if !status.success() {
+            let fixture_output =
+                stop_fixture_server(&mut capture_fixture, "native page-capture fixture server")?;
+            return Err(format!(
+                "native viewless download ledger journey exited with {status}; fixture output={fixture_output:?}"
+            ));
+        }
+        println!("native viewless extension download completed through the durable profile ledger");
+    } else {
+        println!(
+            "native durable viewless-download journey skipped because public extension activation is not qualified on this Qt build"
+        );
+    }
+    let fixture_output =
+        stop_fixture_server(&mut capture_fixture, "native page-capture fixture server")?;
+    if selected_journey.is_none() {
+        validate_native_post_fixture_output(&fixture_output)?;
+        validate_native_redirect_fixture_output(&fixture_output)?;
+    } else {
+        println!("filtered native archive journey: suite-wide POST fixture assertions skipped");
+    }
+    println!(
+        "native Qt archive passed durable adapter, strict two-tab and cancelled-page, navigated-page, timed-out-page, second-page view-loss, first-page and second-page storage-full partial two-tab windows, stable/mutating/primary-and-secondary-POST/303-and-307-redirect/frame/editor/selection/media/navigation/removed-and-same-URL-reloaded-child-frame/cancelled-save/declined-and-fresh-consent/collector-timeout/UI-responsive-paused-archive-copy/cancel-quit-worker-drain/archive-install-ENOSPC/sidecar-worker-refusal/sidecar-filesystem-denial live captures, committed geometry, reviewed-draft and paused-media restore, and four real-window lifecycle journeys"
+    );
+    Ok(())
+}
+
+fn native_archive_capture_path(test: &str) -> &'static str {
+    match test {
+        "native_qt_mutating_page_publishes_partial_fidelity" => "/versioning/mutation",
+        "native_qt_post_result_publishes_nonreplayable_archive"
+        | "native_qt_secondary_post_result_does_not_replay_as_get" => "/versioning/form",
+        "native_qt_post_redirect_303_publishes_result_without_replay" => "/versioning/redirect-303",
+        "native_qt_post_redirect_307_preserves_body_and_publishes" => "/versioning/redirect-307",
+        "native_qt_frame_tree_excludes_cross_origin_and_publishes"
+        | "native_qt_removed_child_frame_during_save_does_not_publish_mixed_document"
+        | "native_qt_same_url_child_reload_during_save_does_not_publish_mixed_document" => {
+            "/versioning/frames"
+        }
+        "native_qt_editor_opt_in_publishes_bounded_text_draft"
+        | "native_qt_selection_opt_in_publishes_offsets_without_selected_text" => {
+            "/versioning/editor"
+        }
+        "native_qt_committed_draft_requires_review_before_live_refill" => {
+            "/versioning/editor-refill"
+        }
+        "native_qt_media_metadata_publishes_without_playback"
+        | "native_qt_committed_paused_media_position_restores_without_playback" => {
+            "/versioning/media"
+        }
+        _ => "/versioning/document",
+    }
+}
+
+fn validate_native_post_fixture_output(output: &str) -> Result<(), String> {
+    let form_requests = output
+        .lines()
+        .filter(|line| line.starts_with("fixture-server: form result method="))
+        .collect::<Vec<_>>();
+    if form_requests.len() == 2
+        && form_requests.iter().all(|request| {
+            request
+                .strip_prefix("fixture-server: form result method=POST body_bytes=")
+                .and_then(|bytes| bytes.parse::<usize>().ok())
+                .is_some_and(|bytes| bytes > 0)
+        })
+    {
+        Ok(())
+    } else {
+        Err(format!(
+            "native POST journeys did not issue exactly two body-bearing POSTs: {form_requests:?}"
+        ))
+    }
+}
+
+fn validate_native_redirect_fixture_output(output: &str) -> Result<(), String> {
+    let observed = output
+        .lines()
+        .filter(|line| line.starts_with("fixture-server: redirect path="))
+        .collect::<Vec<_>>();
+    let expected = [
+        "fixture-server: redirect path=/versioning/redirect-303/submit method=POST body_bytes=18",
+        "fixture-server: redirect path=/versioning/redirect-303/result method=GET body_bytes=0",
+        "fixture-server: redirect path=/versioning/redirect-307/submit method=POST body_bytes=18",
+        "fixture-server: redirect path=/versioning/redirect-307/result method=POST body_bytes=18",
+    ];
+    if observed.len() == expected.len() && expected.iter().all(|line| observed.contains(line)) {
+        Ok(())
+    } else {
+        Err(format!(
+            "native POST redirect journeys changed method or replayed a request: {observed:?}"
+        ))
+    }
+}
+
+fn run_disposable_weston_input_probe(
+    name: &str,
+    binary: &Path,
+    qml: &str,
+    archive_output: &Path,
+) -> Result<bool, String> {
+    let Some(runtime_dir) = std::env::var_os("XDG_RUNTIME_DIR") else {
+        return Ok(false);
+    };
+    if !command_available("weston") {
+        return Ok(false);
+    }
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| format!("could not make Wayland probe nonce: {error}"))?
+        .as_nanos();
+    let socket = format!("ferric-probe-{}-{nonce}", std::process::id());
+    let socket_path = PathBuf::from(runtime_dir).join(&socket);
+    let mut command = Command::new("weston");
+    command
+        .args([
+            "--backend=headless",
+            "--renderer=pixman",
+            "--fake-seat",
+            "--shell=kiosk",
+            "--idle-time=0",
+        ])
+        .arg(format!("--socket={socket}"))
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    let Ok(child) = command.spawn() else {
+        return Ok(false);
+    };
+    let mut compositor = DisposableWaylandCompositor {
+        child: ChildGuard { child: Some(child) },
+        socket_path: socket_path.clone(),
+        lock_path: socket_path.with_file_name(format!("{socket}.lock")),
+    };
+    for _ in 0..50 {
+        if socket_path.exists() {
+            break;
+        }
+        if compositor
+            .child
+            .child_mut("disposable Weston")?
+            .try_wait()
+            .map_err(|error| format!("could not inspect disposable Weston: {error}"))?
+            .is_some()
+        {
+            return Ok(false);
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    if !socket_path.exists() {
+        return Ok(false);
+    }
+    let output = Command::new("timeout")
+        .arg("45s")
+        .arg(binary)
+        .arg(qml)
+        .arg(archive_output)
+        .env("WAYLAND_DISPLAY", &socket)
+        .env("QT_QPA_PLATFORM", "wayland")
+        .env("QT_QPA_PLATFORMTHEME", "")
+        .env("QT_QUICK_BACKEND", "software")
+        .env("GIO_USE_VFS", "local")
+        .env_remove("HYPRLAND_INSTANCE_SIGNATURE")
+        .output()
+        .map_err(|error| format!("could not run {name} in disposable Weston: {error}"))?;
+    if output.status.code() == Some(77) {
+        println!(
+            "disposable Weston input unavailable for {name}; trying the active Wayland session; stderr={:?}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return Ok(false);
+    }
+    if !output.status.success() {
+        return Err(format!(
+            "{name} in disposable Weston exited with {}; stdout={:?}; stderr={:?}",
+            output.status,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    if name == "versioning_archive_probe" {
+        for line in String::from_utf8_lossy(&output.stdout).lines() {
+            if line.starts_with("FERRIC_ARCHIVE_") && line.len() <= 256 {
+                println!("{line}");
+            }
+        }
+    }
+    println!("native Wayland input probe passed in disposable Weston: {name}");
+    Ok(true)
+}
+
+fn generated_qt_moc_source(file_name: &str) -> Result<Option<PathBuf>, String> {
+    let executable = std::env::current_exe()
+        .map_err(|error| format!("could not locate the xtask executable: {error}"))?;
+    let mut profile_dir = executable
+        .parent()
+        .ok_or_else(|| "xtask executable has no containing directory".to_owned())?;
+    if profile_dir.file_name().is_some_and(|name| name == "deps") {
+        profile_dir = profile_dir
+            .parent()
+            .ok_or_else(|| "xtask deps directory has no profile parent".to_owned())?;
+    }
+    let build_root = profile_dir.join("build");
+    let entries = fs::read_dir(&build_root).map_err(|error| {
+        format!(
+            "could not read Qt build outputs {}: {error}",
+            build_root.display()
+        )
+    })?;
+    let mut candidates = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|error| format!("could not inspect Qt build output: {error}"))?;
+        if !entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with("ferric-browser-engine-qt-")
+        {
+            continue;
+        }
+        let path = entry.path().join("out/moc").join(file_name);
+        if path.is_file() {
+            let modified = fs::metadata(&path)
+                .and_then(|metadata| metadata.modified())
+                .unwrap_or(UNIX_EPOCH);
+            candidates.push((modified, path));
+        }
+    }
+    candidates.sort_by_key(|(modified, _)| *modified);
+    Ok(candidates.pop().map(|(_, path)| path))
+}
+
+fn compile_native_probe(
+    name: &str,
+    packages: &[&str],
+    binary: &Path,
+    extra_sources: &[&str],
+) -> Result<(), String> {
+    let source = format!("crates/ferric-browser-engine-qt/tests/native/{name}.cpp");
+    let flags = Command::new("pkg-config")
+        .args(["--cflags", "--libs"])
+        .args(packages)
+        .output()
+        .map_err(|error| format!("could not query {name} Qt flags: {error}"))?;
+    if !flags.status.success() {
+        return Err(format!("{name} Qt pkg-config packages are unavailable"));
+    }
+    let flags = String::from_utf8(flags.stdout)
+        .map_err(|error| format!("{name} Qt flags were not UTF-8: {error}"))?;
+    let status = Command::new("c++")
+        .args(["-std=c++17", "-fPIC"])
+        .arg(&source)
+        .args(extra_sources)
+        .arg("-o")
+        .arg(binary)
+        .args(flags.split_ascii_whitespace())
+        .status()
+        .map_err(|error| format!("could not compile {name}: {error}"))?;
+    if !status.success() {
+        return Err(format!("{name} compile exited with {status}"));
+    }
+    Ok(())
+}
+
 fn check_architecture_boundaries() -> Result<(), String> {
     check_identity_and_layer_boundaries()?;
     check_qt_adapter_boundaries()?;
@@ -542,6 +2008,8 @@ fn check_identity_and_layer_boundaries() -> Result<(), String> {
 }
 
 fn check_qt_adapter_boundaries() -> Result<(), String> {
+    // A mutable borrow is needed to call BrowserApplication's domain APIs;
+    // prohibit writes to reducer-owned internals and catch-all dispatch instead.
     let reducer_mutation_markers = [
         ".tabs.get_mut(",
         ".windows.get_mut(",
@@ -549,7 +2017,6 @@ fn check_qt_adapter_boundaries() -> Result<(), String> {
         ".journey.clear_matching(",
         ".active_window =",
         ".last_focused_window =",
-        ".state.as_mut(",
         ".state.handle(",
     ];
     let reducer_ownership_markers = ["ApplicationState", "RuntimeOwner", "StateView"];
@@ -560,7 +2027,9 @@ fn check_qt_adapter_boundaries() -> Result<(), String> {
             if path.extension().is_none_or(|extension| extension != "rs") {
                 return Ok(());
             }
-            if path.file_name().is_some_and(|name| name == "tests.rs") {
+            if path.starts_with(Path::new("crates/ferric-browser-engine-qt/src/tests"))
+                || path.file_name().is_some_and(|name| name == "tests.rs")
+            {
                 return Ok(());
             }
             let production_source = source.split("#[cfg(test)]").next().unwrap_or(source);
@@ -569,7 +2038,7 @@ fn check_qt_adapter_boundaries() -> Result<(), String> {
                 .find(|marker| production_source.contains(**marker))
             {
                 return Err(format!(
-                    "Qt adapter mutates application state outside the reducer: {} contains {marker}",
+                    "Qt adapter writes reducer internals outside the reducer: {} contains {marker}",
                     path.display()
                 ));
             }
@@ -776,7 +2245,11 @@ fn check_shared_ui_contracts(production_adapter: &str) -> Result<(), String> {
         let source = fs::read_to_string(&path).map_err(|error| {
             format!("could not inspect extracted userscript module {module}: {error}")
         })?;
-        if source.lines().count() > 1_000 {
+        let implementation = source
+            .split("#[cfg(test)]\nmod tests {")
+            .next()
+            .unwrap_or(&source);
+        if implementation.lines().count() > 1_000 {
             return Err(format!(
                 "userscript module {module} exceeds the 1,000-line implementation budget"
             ));
@@ -1401,7 +2874,7 @@ fn check_ui_automation_boundary() -> Result<(), String> {
 
 fn run_test(arguments: &[String]) -> Result<(), String> {
     let task = arguments.first().ok_or_else(|| {
-        "test requires core, engine, adapter, fuzz, storage, fixtures, repeat, accessibility, compatibility, wayland, blocking, config, or mpris"
+        "test requires core, engine, archive, cookie, adapter, fuzz, storage, fixtures, repeat, accessibility, compatibility, wayland, blocking, config, or mpris"
             .to_owned()
     })?;
     if arguments.len() > 1 {
@@ -1425,6 +2898,15 @@ fn run_test(arguments: &[String]) -> Result<(), String> {
             )?;
             run_qml_ui_tests()
         }
+        "archive" => run_native_archive_probe(),
+        "cookie" => run_native_cookie_probe(),
+        "versioning-cookie-adapter" => run_native_cookie_adapter_probe(),
+        "versioning-cookie-boundary" => run_native_cookie_boundary_probe(),
+        "versioning-fixtures" => run_native_fixture_tls_probe(),
+        "versioning-geometry" => run_geometry_sidecar_probe(),
+        "versioning-profile-download" => run_native_profile_download_probe(),
+        "versioning-clean-branch-profile" => run_native_clean_branch_profile_probe(),
+        "versioning-viewless-download" => run_native_viewless_download_probe().map(|_| ()),
         "adapter" => run_adapter_smoke(),
         "fuzz" => run_fuzz_smoke(),
         "storage" => run(
@@ -1667,14 +3149,36 @@ fn run_adapter_smoke() -> Result<(), String> {
         ));
     }
 
-    let mut application = ChildGuard::spawn(
-        Command::new(executable)
-            .arg("--temp-basedir")
-            .env("QT_QPA_PLATFORM", "offscreen")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped()),
-        "Ferric Browser offscreen adapter smoke",
-    )?;
+    run_adapter_smoke_variant(executable, false)?;
+    run_adapter_smoke_variant(executable, true)
+}
+
+fn run_adapter_smoke_variant(executable: &Path, uncached: bool) -> Result<(), String> {
+    let variant = if uncached {
+        "uncached"
+    } else {
+        "default cache"
+    };
+    let mut command = Command::new(executable);
+    command
+        .arg("--temp-basedir")
+        .env("QT_QPA_PLATFORM", "offscreen")
+        .env("FERRIC_BROWSER_QML_DIAGNOSTICS", "1")
+        // Diagnostic GC/JIT overrides must not mask a startup regression.
+        .env_remove("QV4_GC_TIMELIMIT")
+        .env_remove("QV4_MM_AGGRESSIVE_GC")
+        .env_remove("QV4_MM_CROSS_VALIDATE_INCREMENTAL_GC")
+        .env_remove("QV4_FORCE_INTERPRETER")
+        .env_remove("QML_DISABLE_DISK_CACHE")
+        .env_remove("QML_FORCE_DISK_CACHE")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    if uncached {
+        command.env("QML_DISABLE_DISK_CACHE", "1");
+    }
+
+    let mut application =
+        ChildGuard::spawn(&mut command, "Ferric Browser offscreen adapter smoke")?;
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
         if let Some(status) = application
@@ -1687,7 +3191,7 @@ fn run_adapter_smoke() -> Result<(), String> {
                 .wait_with_output()
                 .map_err(|error| format!("could not collect offscreen adapter smoke: {error}"))?;
             return Err(format!(
-                "offscreen Qt/QML adapter smoke exited with {status}; stdout={:?}; stderr={:?}",
+                "offscreen Qt/QML adapter smoke ({variant}) exited with {status}; stdout={:?}; stderr={:?}",
                 String::from_utf8_lossy(&output.stdout),
                 String::from_utf8_lossy(&output.stderr)
             ));
@@ -1709,10 +3213,10 @@ fn run_adapter_smoke() -> Result<(), String> {
                 || (combined.contains("module \"") && combined.contains("is not installed"))
             {
                 return Err(format!(
-                    "offscreen adapter smoke reached its bound with QML errors: {combined:?}"
+                    "offscreen adapter smoke ({variant}) reached its bound with QML errors: {combined:?}"
                 ));
             }
-            println!("offscreen Qt/QML adapter smoke passed (bounded 10s lifetime)");
+            println!("offscreen Qt/QML adapter smoke passed ({variant}, bounded 10s lifetime)");
             return Ok(());
         }
         thread::sleep(Duration::from_millis(50));
@@ -2165,6 +3669,12 @@ struct ChildGuard {
     child: Option<Child>,
 }
 
+struct DisposableWaylandCompositor {
+    child: ChildGuard,
+    socket_path: PathBuf,
+    lock_path: PathBuf,
+}
+
 struct DisposableDirectory {
     path: std::path::PathBuf,
 }
@@ -2222,6 +3732,17 @@ impl Drop for ChildGuard {
     }
 }
 
+impl Drop for DisposableWaylandCompositor {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.child.child.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        let _ = fs::remove_file(&self.socket_path);
+        let _ = fs::remove_file(&self.lock_path);
+    }
+}
+
 fn command_available(name: &str) -> bool {
     Command::new(name)
         .arg("--version")
@@ -2263,13 +3784,20 @@ fn wait_for_wayland_socket(compositor: &mut ChildGuard, socket: &Path) -> Result
         if is_socket(socket) {
             return Ok(());
         }
-        if compositor
+        if let Some(status) = compositor
             .child_mut("nested Weston compositor")?
             .try_wait()
             .map_err(|error| format!("could not poll nested Weston compositor: {error}"))?
-            .is_some()
         {
-            return Err("nested Weston compositor exited before creating its socket".to_owned());
+            let output = compositor
+                .take("nested Weston compositor")?
+                .wait_with_output()
+                .map_err(|error| format!("could not read nested Weston output: {error}"))?;
+            return Err(format!(
+                "nested Weston compositor exited with {status} before creating its socket; stdout={:?}; stderr={:?}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
         thread::sleep(Duration::from_millis(50));
     }

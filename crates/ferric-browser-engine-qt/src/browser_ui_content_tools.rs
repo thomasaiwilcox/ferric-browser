@@ -49,7 +49,7 @@ impl qobject::BrowserUi {
                 );
                 true
             }
-            Err(error) => {
+            Err(_) => {
                 self.as_mut()
                     .set_page_userscript_names(QStringList::default());
                 self.as_mut()
@@ -58,9 +58,9 @@ impl qobject::BrowserUi {
                     .set_page_userscript_run_at(QStringList::default());
                 self.as_mut()
                     .set_page_userscript_runs_on_sub_frames(QStringList::default());
-                self.set_status_text(QString::from(format!(
-                    "Page userscripts unavailable: {error}"
-                )));
+                self.set_status_text(QString::from(
+                    "Page userscripts unavailable; details suppressed",
+                ));
                 false
             }
         }
@@ -93,12 +93,13 @@ impl qobject::BrowserUi {
             .as_mut()
             .ok_or_else(|| "userscript manager is unavailable".to_owned())
             .and_then(|worker| worker.request(UserscriptManagerRequest::Refresh { root }));
-        if let Err(error) = result {
-            self.as_mut()
-                .set_userscript_install_state(QString::from(format!("error:{error}")));
-            self.as_mut().set_status_text(QString::from(format!(
-                "Userscript inventory unavailable: {error}"
-            )));
+        if result.is_err() {
+            self.as_mut().set_userscript_install_state(QString::from(
+                "error:userscript inventory request failed; details suppressed",
+            ));
+            self.as_mut().set_status_text(QString::from(
+                "Userscript inventory request unavailable; details suppressed",
+            ));
             return false;
         }
         true
@@ -148,10 +149,10 @@ impl qobject::BrowserUi {
                     enabled,
                 })
             });
-        if let Err(error) = result {
-            self.as_mut().set_status_text(QString::from(format!(
-                "Userscript change rejected: {error}"
-            )));
+        if result.is_err() {
+            self.as_mut().set_status_text(QString::from(
+                "Userscript change rejected; details suppressed",
+            ));
             return false;
         }
         self.as_mut()
@@ -195,12 +196,13 @@ impl qobject::BrowserUi {
             .as_mut()
             .ok_or_else(|| "userscript manager is unavailable".to_owned())
             .and_then(|worker| worker.request(UserscriptManagerRequest::Remove { root, name }));
-        if let Err(error) = result {
-            self.as_mut()
-                .set_userscript_install_state(QString::from(format!("error:{error}")));
-            self.as_mut().set_status_text(QString::from(format!(
-                "Userscript removal rejected: {error}"
-            )));
+        if result.is_err() {
+            self.as_mut().set_userscript_install_state(QString::from(
+                "error:userscript removal failed; details suppressed",
+            ));
+            self.as_mut().set_status_text(QString::from(
+                "Userscript removal rejected; details suppressed",
+            ));
             return false;
         }
         self.as_mut()
@@ -213,8 +215,8 @@ impl qobject::BrowserUi {
     pub(super) fn prepare_print_pdf(self: Pin<&mut Self>, path: &QString) -> QString {
         match validate_print_pdf_path(&path.to_string()) {
             Ok(path) => QString::from(path.to_string_lossy().as_ref()),
-            Err(error) => {
-                self.set_status_text(QString::from(error));
+            Err(_) => {
+                self.set_status_text(QString::from("Print PDF path rejected; details suppressed"));
                 QString::default()
             }
         }
@@ -231,8 +233,8 @@ impl qobject::BrowserUi {
                     .pending_save_page = Some(path.clone());
                 QString::from(path_string)
             }
-            Err(error) => {
-                self.set_status_text(QString::from(error));
+            Err(_) => {
+                self.set_status_text(QString::from("Save Page path rejected; details suppressed"));
                 QString::default()
             }
         }
@@ -255,7 +257,7 @@ impl qobject::BrowserUi {
         let result = if succeeded {
             validate_pdf_output_path(&path_string).and_then(|path| {
                 let metadata = fs::symlink_metadata(&path)
-                    .map_err(|error| format!("generated PDF is unavailable: {error}"))?;
+                    .map_err(|_| "generated PDF is unavailable; details suppressed")?;
                 if metadata.file_type().is_symlink() || !metadata.is_file() {
                     return Err("generated PDF is not a regular file".into());
                 }
@@ -269,8 +271,10 @@ impl qobject::BrowserUi {
                 self.set_status_text(QString::from("PDF generated"));
                 true
             }
-            Err(error) => {
-                self.set_status_text(QString::from(error));
+            Err(_) => {
+                self.set_status_text(QString::from(
+                    "PDF output unavailable or invalid; details suppressed",
+                ));
                 false
             }
         }
@@ -294,20 +298,22 @@ impl qobject::BrowserUi {
                 },
                 |roots| (roots.runtime.join("print"), false),
             );
-        if let Err(error) = fs::create_dir_all(&directory) {
-            self.set_status_text(QString::from(format!(
-                "Print staging directory is unavailable: {error}"
-            )));
+        if fs::create_dir_all(&directory).is_err() {
+            self.set_status_text(QString::from(
+                "Print staging directory is unavailable; details suppressed",
+            ));
             return QString::default();
         }
         #[cfg(unix)]
-        if let Err(error) = fs::set_permissions(
+        if fs::set_permissions(
             &directory,
             std::os::unix::fs::PermissionsExt::from_mode(0o700),
-        ) {
-            self.set_status_text(QString::from(format!(
-                "Print staging directory permissions could not be secured: {error}"
-            )));
+        )
+        .is_err()
+        {
+            self.set_status_text(QString::from(
+                "Print staging directory permissions could not be secured; details suppressed",
+            ));
             return QString::default();
         }
         let path = directory.join(format!("{}.pdf", Uuid::new_v4()));
@@ -343,15 +349,15 @@ impl qobject::BrowserUi {
         if !succeeded {
             self.as_mut().rust_mut().as_mut().get_mut().pending_print = None;
             cleanup_print_artifact(&path, private_temporary);
-            self.set_status_text(QString::from("Print failed: PDF generation failed"));
+            self.set_status_text(QString::from("Print failed; details suppressed"));
             return false;
         }
         let path = match validate_pdf_output_path(path.to_string_lossy().as_ref()) {
             Ok(path) => path,
-            Err(error) => {
+            Err(_) => {
                 self.as_mut().rust_mut().as_mut().get_mut().pending_print = None;
                 cleanup_print_artifact(&path, private_temporary);
-                self.set_status_text(QString::from(format!("Print failed: {error}")));
+                self.set_status_text(QString::from("Print failed; details suppressed"));
                 return false;
             }
         };
@@ -364,10 +370,10 @@ impl qobject::BrowserUi {
             .as_mut()
             .ok_or_else(|| "print worker is unavailable".to_owned())
             .and_then(|worker| worker.request(path.clone()));
-        if let Err(error) = request {
+        if request.is_err() {
             self.as_mut().rust_mut().as_mut().get_mut().pending_print = None;
             cleanup_print_artifact(&path, private_temporary);
-            self.set_status_text(QString::from(format!("Print failed: {error}")));
+            self.set_status_text(QString::from("Print failed; details suppressed"));
             return false;
         }
         self.set_status_text(QString::from("Print job queued"));

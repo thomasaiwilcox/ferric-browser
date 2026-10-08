@@ -134,16 +134,15 @@ impl qobject::BrowserUi {
             .expand_chain(commands.clone())
             .ok();
         if !full_chrome
-            && let Some(command) = expanded.as_ref().and_then(|commands| {
+            && expanded.as_ref().is_some_and(|commands| {
                 commands
                     .iter()
-                    .find(|command| !secondary_command_supported(command))
+                    .any(|command| !secondary_command_supported(command))
             })
         {
-            self.set_status_text(QString::from(format!(
-                "{} requires full browser chrome and is unavailable in this window",
-                command.name
-            )));
+            self.set_status_text(QString::from(
+                "This command is unavailable in this window; use a full browser window",
+            ));
             return false;
         }
         let eligible = expanded.as_ref().is_some_and(|expanded| {
