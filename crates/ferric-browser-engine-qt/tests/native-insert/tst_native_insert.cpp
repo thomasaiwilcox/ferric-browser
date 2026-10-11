@@ -38,6 +38,25 @@ class NativeInsertTest : public QObject {
             qFatal("WebEngine JavaScript callback timed out");
         return view->property("probeResult");
     }
+    QVariant browserJs(const QString &source) {
+        view->setProperty("probeDone", false);
+        QMetaObject::invokeMethod(view, "probeBrowser", Q_ARG(QVariant, source));
+        QElapsedTimer elapsed;
+        elapsed.start();
+        while (!view->property("probeDone").toBool() && elapsed.elapsed() < 5000)
+            QTest::qWait(5);
+        if (!view->property("probeDone").toBool())
+            qFatal("ApplicationWorld callback timed out");
+        return view->property("probeResult");
+    }
+    QString browserScript(const QString &expression) {
+        QFile script(FERRIC_SCRIPT_PATH);
+        if (!script.open(QIODevice::ReadOnly))
+            qFatal("Production BrowserScripts resource unavailable");
+        QString source = QString::fromUtf8(script.readAll());
+        source.remove(".pragma library");
+        return js(source + ";" + expression).toString();
+    }
     void enter(bool persistent = false) {
         locked = persistent;
         view->setProperty("ferricMode", persistent ? "insert-locked" : "insert");
@@ -103,6 +122,9 @@ WebEngineView {
     onLoadingChanged: function(request) { if (request.status === WebEngineView.LoadSucceededStatus) loaded++ }
     property bool probeDone: false
     property var probeResult
+    function probeBrowser(source) {
+        runJavaScript(source, WebEngineScript.ApplicationWorld, function(value) { probeResult = value; probeDone = true })
+    }
     function probe(source) {
         runJavaScript(source, function(value) { probeResult = value; probeDone = true })
     }
@@ -562,6 +584,29 @@ WebEngineView {
         js("document.querySelector('form').remove();true");
         QTRY_VERIFY(view->property("focusNotifications").toInt() > ancestorNotices);
         QVERIFY(!js("window.__ferric_browserFocusState.editable").toBool());
+    }
+    // T002: focus through the production isolated-world Hint pipeline, then
+    // send original Qt input through the production key router.
+    void shadowHintFocusAcceptsOriginalText() {
+        browserJs("{const host=document.createElement('div');host.id='shadow-host';host.style='position:fixed;left:0;top:0;width:240px;height:80px;z-index:100';document.body.prepend(host);host.attachShadow({mode:'open'}).innerHTML='<input id=shadow-input aria-label=Shadow style=width:180px;height:32px>'; }true");
+        QVariantMap snapshot;
+        QTRY_VERIFY(!(snapshot=browserJs(browserScript("hintCollector('inputs')")).toMap()).value("candidates").toList().isEmpty());
+        int elementId=0;
+        for (const auto &value:snapshot.value("candidates").toList()) {
+            const auto candidate=value.toMap();
+            if (candidate.value("text").toString()=="Shadow")
+                elementId=candidate.value("element_id").toInt();
+        }
+        QVERIFY(elementId>0);
+        const QString fresh=browserScript(QString("hintFresh({element_id:%1,frame_path:'0',kind:'input'})").arg(elementId));
+        QVERIFY(browserJs(fresh).toMap().value("visible").toBool());
+        QVERIFY(browserJs(browserScript(QString("hintFocus(%1)").arg(elementId))).toBool());
+        enter();
+        view->forceActiveFocus();
+        QTest::keyClick(&window, Qt::Key_A);
+        QTRY_COMPARE(browserJs("document.getElementById('shadow-host').shadowRoot.getElementById('shadow-input').value").toString(),QString("a"));
+        QCOMPARE(exits,0);
+        browserJs(browserScript("hintStopTracking()"));
     }
     void ordinaryText() {
         for (bool persistent : {false, true}) {

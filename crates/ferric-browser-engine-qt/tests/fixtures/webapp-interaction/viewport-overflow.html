@@ -1,0 +1,6 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Synthetic viewport overflow propagation</title>
+<style>html,body{margin:0}body{overflow-x:hidden;overflow-y:scroll}#app{position:absolute;inset:0;width:600px;height:800px}a,button{display:block;width:160px;height:30px}</style>
+<div id="app"><a id="target" href="https://fixture.test/watch?v=fixture">Video</a><div style="overflow:hidden;width:180px;height:40px"><button style="margin-top:30px">Partial</button><a href="https://fixture.test/hidden" style="margin-top:60px">Clipped</a></div></div>
+<script>document.body.dataset.ready='true';</script>

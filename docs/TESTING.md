@@ -69,6 +69,27 @@ parent-item delivery cannot execute a Normal-mode browser command afterward.
 Chrome tests check both window types' mode labels, recovery hints, accessible
 descriptions, and existing status-bar visibility policy.
 
+The unified keyboard-interaction matrix lives in
+`docs/implementation/keyboard_interaction-v03/TEST_MATRIX.json`. Its synthetic
+HTML is under `crates/ferric-browser-engine-qt/tests/fixtures/webapp-interaction/`.
+`tst_webapp_interaction.qml` calls the production collector, fresh validator,
+and final actions in ApplicationWorld. The native suite also checks original
+Qt text entry after production shadow-root Hint focus. Baseline red logs and
+qualification gaps are retained in the implementation pack's evidence ledger.
+
+After the engine runner is built, run the opt-in renderer benchmark with:
+
+```sh
+QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME= QT_QUICK_BACKEND=software target/qml-tests/qml_tests -input crates/ferric-browser-engine-qt/tests/qml-perf
+```
+
+It records 10 warm-ups and 100 measured samples per scenario using the
+renderer monotonic clock. JSON output includes raw collection/fresh durations,
+zoom, viewport and engine user-agent. Run on an idle host and retain the full
+metadata before comparing results. These component timings omit Rust
+decoding/labels/ranking, payload transfer and overlay time-to-visible; they
+are explicitly incomplete T043 evidence until those stages are measured.
+
 CTest runs this suite offscreen with software rendering. Running the executable
 under a Wayland compositor additionally requires a keyboard seat and an active
 test window. A headless Weston instance without a keyboard seat cannot satisfy

@@ -1,0 +1,6 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Synthetic same-origin frame targets</title>
+<style>body{margin:0}iframe{position:absolute;left:30px;top:40px;width:300px;height:240px;border:7px solid black}</style>
+<iframe id="child" srcdoc="<!doctype html><style>body{margin:0}button{position:absolute;left:20px;top:25px;width:160px;height:32px}</style><button id='frame-button' onclick='this.dataset.clicks=String(Number(this.dataset.clicks||0)+1)'>Frame button</button>"></iframe>
+<script>document.body.dataset.ready='true';</script>
