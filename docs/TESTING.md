@@ -9,6 +9,10 @@ cargo test --workspace --locked
 cargo xtask check
 ```
 
+GitHub Actions follows the `stable` channel in `rust-toolchain.toml`, including
+Clippy. The cargo-deny container installs the same channel explicitly. The
+workspace's declared minimum Rust version is not a separate CI toolchain pin.
+
 Qt and QML qualification additionally uses `cargo xtask test engine`. The
 deterministic checks and engine task run browser-chrome interaction tests with
 Qt Quick Test's `qmltestrunner` in an offscreen software-rendered window.

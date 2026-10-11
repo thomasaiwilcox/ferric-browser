@@ -686,7 +686,7 @@ mod tests {
         let effects = application
             .dispatch_runtime(RuntimeInput::EngineFact(Event::RequestShutdown))
             .expect("shutdown request");
-        assert!(!effects.is_empty());
+        assert_ne!(effects, Vec::<RuntimeEffect>::new());
     }
 
     #[test]

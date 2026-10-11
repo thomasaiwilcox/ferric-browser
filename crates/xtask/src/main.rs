@@ -3172,10 +3172,10 @@ mod qml_lint_tests {
             }]
         }"#;
 
-        assert!(
+        assert_eq!(
             qml_lint_critical_diagnostics(report)
-                .expect("valid qmllint report")
-                .is_empty()
+                .expect("valid qmllint report"),
+            Vec::<String>::new()
         );
     }
 
