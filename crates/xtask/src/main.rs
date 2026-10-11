@@ -459,17 +459,17 @@ fn qt_qml_import_path() -> Result<PathBuf, String> {
 }
 
 fn run_qml_ui_tests() -> Result<(), String> {
-    let candidates = [
-        "qmltestrunner6",
-        "qmltestrunner",
-        "/usr/lib/qt6/bin/qmltestrunner",
-    ];
-    let executable = candidates
-        .into_iter()
-        .find(|candidate| command_available(candidate))
-        .ok_or_else(|| {
-            "qmltestrunner is required for browser chrome interaction tests".to_owned()
-        })?;
+    run(
+        "cmake",
+        &[
+            "-S",
+            "crates/ferric-browser-engine-qt/tests/qml-runner",
+            "-B",
+            "target/qml-tests",
+        ],
+    )?;
+    run("cmake", &["--build", "target/qml-tests", "--parallel", "2"])?;
+    let executable = "target/qml-tests/qml_tests";
     let status = Command::new(executable)
         .args(["-input", "crates/ferric-browser-engine-qt/tests/qml"])
         .env("QT_QPA_PLATFORM", "offscreen")
@@ -481,7 +481,7 @@ fn run_qml_ui_tests() -> Result<(), String> {
         Ok(())
     } else {
         Err(format!(
-            "{executable} chrome interaction tests exited with {status}"
+            "{executable} QML interaction tests exited with {status}"
         ))
     }
 }
