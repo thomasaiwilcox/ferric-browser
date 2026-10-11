@@ -1,0 +1,72 @@
+$ ctest --test-dir target/native-insert --output-on-failure
+Test project /home/tom/Projects/RustBrowser/target/native-insert
+    Start 1: native_insert
+1/1 Test #1: native_insert ....................***Failed    9.58 sec
+********* Start testing of NativeInsertTest *********
+Config: Using QtTest library 6.11.2, Qt 6.11.2 (x86_64-little_endian-lp64 shared (dynamic) release build; by GCC 16.2.1 20260810), omarchy 4.0.4
+QWARN  : NativeInsertTest::initTestCase() QRhiGles2: Failed to create temporary context
+QWARN  : NativeInsertTest::initTestCase() QRhiGles2: Failed to create context
+QWARN  : NativeInsertTest::initTestCase() Failed to create RHI for backend: OpenGL
+QWARN  : NativeInsertTest::initTestCase() GPUInfo not initialized on GpuInfoUpdate
+PASS   : NativeInsertTest::initTestCase()
+PASS   : NativeInsertTest::passNext(fullscreen-letter)
+PASS   : NativeInsertTest::passNext(escape)
+PASS   : NativeInsertTest::passNext(enter)
+PASS   : NativeInsertTest::passNext(shift-letter)
+PASS   : NativeInsertTest::passNext(ctrl-letter)
+PASS   : NativeInsertTest::passEntryOwnsItsRepeatsAndRelease(once)
+PASS   : NativeInsertTest::passEntryOwnsItsRepeatsAndRelease(persistent)
+PASS   : NativeInsertTest::passModifierDoesNotComplete()
+PASS   : NativeInsertTest::passEntryChainOwnsHeldPrefix()
+PASS   : NativeInsertTest::passHeldAndOverlappingKeys()
+PASS   : NativeInsertTest::passPersistentAndRecovery()
+PASS   : NativeInsertTest::passEpochInvalidationAndLostRelease()
+PASS   : NativeInsertTest::passNavigationInvalidatesCompletion()
+PASS   : NativeInsertTest::passDeactivation()
+PASS   : NativeInsertTest::nativeEnter(form)
+PASS   : NativeInsertTest::nativeEnter(textarea)
+PASS   : NativeInsertTest::nativeEnter(autocomplete)
+PASS   : NativeInsertTest::nativeEnter(contenteditable)
+PASS   : NativeInsertTest::nativeEnter(self-removal)
+PASS   : NativeInsertTest::modifiedEnter(33554432-transient)
+PASS   : NativeInsertTest::modifiedEnter(67108864-transient)
+PASS   : NativeInsertTest::modifiedEnter(134217728-transient)
+PASS   : NativeInsertTest::modifiedEnter(268435456-transient)
+PASS   : NativeInsertTest::modifiedEnter(33554432-locked)
+PASS   : NativeInsertTest::modifiedEnter(67108864-locked)
+PASS   : NativeInsertTest::modifiedEnter(134217728-locked)
+PASS   : NativeInsertTest::modifiedEnter(268435456-locked)
+PASS   : NativeInsertTest::modifiedEnter(locked-ordinary)
+PASS   : NativeInsertTest::composition()
+PASS   : NativeInsertTest::compositionAlreadyActiveOnEntry()
+PASS   : NativeInsertTest::destroyedCompositionReceiver()
+PASS   : NativeInsertTest::invalidatedGesture()
+PASS   : NativeInsertTest::completionAfterRouterDeactivation()
+PASS   : NativeInsertTest::completionAfterWindowFocusChange()
+PASS   : NativeInsertTest::escapeExitsBoth()
+PASS   : NativeInsertTest::repeatWaitsForFinalRelease()
+PASS   : NativeInsertTest::keypadEnter()
+PASS   : NativeInsertTest::focusObserver()
+FAIL!  : NativeInsertTest::shadowHintFocusAcceptsOriginalText() 'browserJs(browserScript(QString("hintFocus(%1)").arg(elementId))).toBool()' returned FALSE. ()
+   Loc: [/home/tom/Projects/RustBrowser/crates/ferric-browser-engine-qt/tests/native-insert/tst_native_insert.cpp(603)]
+PASS   : NativeInsertTest::ordinaryText()
+PASS   : NativeInsertTest::nativeReleaseAfterLostCommandRelease()
+PASS   : NativeInsertTest::freshGestureAfterLostRelease()
+PASS   : NativeInsertTest::modifiedGestureAfterLostRelease(33554432)
+PASS   : NativeInsertTest::modifiedGestureAfterLostRelease(67108864)
+PASS   : NativeInsertTest::modifiedGestureAfterLostRelease(134217728)
+PASS   : NativeInsertTest::modifiedGestureAfterLostRelease(268435456)
+PASS   : NativeInsertTest::compositionGestureAfterLostRelease()
+PASS   : NativeInsertTest::navigation()
+PASS   : NativeInsertTest::cleanupTestCase()
+Totals: 49 passed, 1 failed, 0 skipped, 0 blacklisted, 9436ms
+********* Finished testing of NativeInsertTest *********
+
+
+0% tests passed, 1 tests failed out of 1
+
+Total Test time (real) =   9.59 sec
+
+The following tests FAILED:
+	  1 - native_insert (Failed)
+Errors while running CTest

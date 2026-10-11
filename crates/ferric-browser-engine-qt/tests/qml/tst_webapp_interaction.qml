@@ -102,8 +102,8 @@ TestCase {
     function test_T004_frame_replaced() {
         load("frame-targets.html")
         var selected = candidate("buttons", "Frame button")
-        evaluate("document.getElementById('child').srcdoc='<button id=frame-button>Frame button</button>';true")
-        tryVerify(function() { return evaluate("document.getElementById('child').contentDocument.body.textContent.trim()==='Frame button'") }, 5000)
+        evaluate("document.getElementById('child').srcdoc='<body data-replaced=true><button id=frame-button>Frame button</button>';true")
+        tryVerify(function() { return evaluate("document.getElementById('child').contentDocument.body.dataset.replaced==='true'") }, 5000)
         verify(!evaluate(BrowserScripts.hintFresh(selected)).visible)
         verify(!evaluate(BrowserScripts.hintClick(selected.element_id)))
     }

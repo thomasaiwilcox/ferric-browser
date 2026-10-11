@@ -10,8 +10,8 @@
     },
     {
       "id": "S01",
-      "status": "in_progress",
-      "evidence": null,
+      "status": "implemented_unqualified",
+      "evidence": "evidence/S01.json",
       "capability_decision": null
     },
     {

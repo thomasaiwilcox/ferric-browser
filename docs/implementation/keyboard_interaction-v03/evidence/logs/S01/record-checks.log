@@ -1,0 +1,9 @@
+$ python3 docs/implementation/keyboard_interaction-v03/tools/validate_pack.py --integrity --evidence
+PASS: pack checks
+NOTE: Structural success is not implementation/test completion; Ferric correctness is not checked.
+{"contracts": 24, "invariants": 26, "planned_tests": 57, "slices": 28, "source_items": 55}
+exit=0
+$ cargo fmt --all -- --check
+exit=0
+$ git diff --check
+exit=0

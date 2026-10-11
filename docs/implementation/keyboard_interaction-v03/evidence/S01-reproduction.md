@@ -106,3 +106,25 @@ S02 must preserve the already passing cases while repairing the seven proved
 failures. Deeper-slot/clipping/depth, same-URL sibling, privacy payload and
 callback lifetime cases are still required in S02; this baseline harness
 does not claim exhaustive coverage of their broader contract.
+
+## Current-checkout integration
+
+The S01 harness was committed as `af154a2` without production edits. Running
+the full current QML directory records 95 passed and 11 failed: all 80 prior
+cases stay green and the eleven new failures match the pinned run. The full
+native CTest run records 49 passed and one new shadow-focus failure. Configure
+and build both succeed. Exact command/result records are in
+`logs/S01/current-results.json`.
+
+Self-review strengthened frame replacement readiness: wait for a marker in
+the new document instead of text shared with the old document. The focused
+replacement case passes on both current and pinned production source, in
+`current-frame-replacement.log` and `pinned-frame-replacement.log`. This is a
+test synchronisation repair, not a new production defect.
+
+S01 remains `implemented_unqualified`: the harness and initial sample set
+exist, while positive activation and full T043 qualification do not pass.
+S02 owns repair of the proved target defects. No dependent native capability
+is enabled by this handoff. The narrow post-action teardown case is passing,
+but it does not prove the complete T020 callback/lease contract; that remains
+open for S02 and later scope handoff work.

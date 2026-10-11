@@ -1,0 +1,30 @@
+[
+  {
+    "name": "current-qml",
+    "command": "target/qml-tests/qml_tests -input crates/ferric-browser-engine-qt/tests/qml",
+    "exit_code": 11,
+    "elapsed_seconds": 17.761,
+    "log": "evidence/logs/S01/current-qml.log"
+  },
+  {
+    "name": "current-native-configure",
+    "command": "cmake -S crates/ferric-browser-engine-qt/tests/native-insert -B target/native-insert",
+    "exit_code": 0,
+    "elapsed_seconds": 0.636,
+    "log": "evidence/logs/S01/current-native-configure.log"
+  },
+  {
+    "name": "current-native-build",
+    "command": "cmake --build target/native-insert --parallel 2",
+    "exit_code": 0,
+    "elapsed_seconds": 7.823,
+    "log": "evidence/logs/S01/current-native-build.log"
+  },
+  {
+    "name": "current-native",
+    "command": "ctest --test-dir target/native-insert --output-on-failure",
+    "exit_code": 8,
+    "elapsed_seconds": 9.626,
+    "log": "evidence/logs/S01/current-native.log"
+  }
+]
