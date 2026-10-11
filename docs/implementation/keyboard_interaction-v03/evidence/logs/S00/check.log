@@ -4,8 +4,8 @@ $ cargo xtask check --locked --offline
    Compiling xtask v0.1.0 (/home/tom/Projects/RustBrowser/crates/xtask)
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.91s
      Running `target/debug/xtask check --locked --offline`
--- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR) 
--- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR) 
+-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR)
+-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR)
 -- Configuring done (0.5s)
 -- Generating done (0.0s)
 -- Build files have been written to: /home/tom/Projects/RustBrowser/target/qml-tests
@@ -1113,4 +1113,3 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 running 0 tests
 
 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
-

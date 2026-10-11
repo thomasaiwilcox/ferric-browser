@@ -60,7 +60,7 @@ index 6100ba8..ec875cb 100644
 @@ -357,6 +359,11 @@ impl BindingResolver {
          }
      }
- 
+
 +    #[must_use]
 +    pub fn is_pending(&self) -> bool {
 +        !self.prefix.is_empty() || !self.count_digits.is_empty()
@@ -92,18 +92,18 @@ index 5d0271f..02323ef 100644
 --- a/crates/ferric-browser-engine-qt/qml/scripts/BrowserScripts.js
 +++ b/crates/ferric-browser-engine-qt/qml/scripts/BrowserScripts.js
 @@ -2,7 +2,7 @@
- 
+
  // Browser-owned page scripts are versioned resources. The build manifest hashes
  // this file with the QML module, so script changes are explicit and auditable.
 -var VERSION = "12"
 +var VERSION = "13"
- 
+
  // Page userscripts are trusted local content, but their failure boundary is
  // browser policy. Keeping the wrappers here prevents QML from assembling page
 @@ -212,10 +212,20 @@ function focusProbe() {
          + ":{sequence:0,editable:false,user_activated:false,kind:'unknown'};})()"
  }
- 
+
 +function historyTraversalProbe() {
 +    return "(function(){var state=window.__ferric_browserHistoryTraversal;"
 +        + "return state?{document:state.document,sequence:state.sequence,url:location.href}:null;})()"

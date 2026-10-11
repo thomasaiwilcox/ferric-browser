@@ -46,5 +46,37 @@
     "exit_code": 0,
     "elapsed_seconds": 300.659,
     "log": "evidence/logs/S00/check.log"
+  },
+  {
+    "name": "engine",
+    "command": "cargo xtask test engine",
+    "cwd": ".",
+    "exit_code": 0,
+    "elapsed_seconds": 227.009,
+    "log": "evidence/logs/S00/engine.log"
+  },
+  {
+    "name": "adapter",
+    "command": "cargo xtask test adapter",
+    "cwd": ".",
+    "exit_code": 0,
+    "elapsed_seconds": 247.939,
+    "log": "evidence/logs/S00/adapter.log"
+  },
+  {
+    "name": "wayland",
+    "command": "cargo xtask test wayland",
+    "cwd": ".",
+    "exit_code": 0,
+    "elapsed_seconds": 240.725,
+    "log": "evidence/logs/S00/wayland.log"
+  },
+  {
+    "name": "diff-check",
+    "command": "git diff --check",
+    "cwd": ".",
+    "exit_code": 2,
+    "elapsed_seconds": 0.008,
+    "log": "evidence/logs/S00/diff-check.log"
   }
 ]

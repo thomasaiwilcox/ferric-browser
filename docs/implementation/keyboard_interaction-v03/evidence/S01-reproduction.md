@@ -49,6 +49,16 @@ These are actual failing positive assertions, not passing implementation
 evidence. Fixes belong in S02. The retained red logs include exact assertion
 locations and Qt version.
 
+An extended baseline run (`logs/S01/pinned-extended-red.log`) retains those
+assertions and adds the S02 adversaries before production changes. It records
+15 passed and 11 failed. The four additional failures are assigned-slot
+clipping, excessive composed ancestry, a same-URL covering sibling admitted
+by fresh validation, and a fixed synthetic password value used as a label.
+Literal HTML-like label text and post-action map/listener/observer cleanup
+already pass. `logs/S01/fixture-sha256.json` identifies the exact fixture/test
+bytes used in the extended run; earlier red logs refer to their earlier test
+line numbers and are retained separately.
+
 ## Commands actually executed
 
 From the main checkout, with the newly added tests in the detached pinned worktree:

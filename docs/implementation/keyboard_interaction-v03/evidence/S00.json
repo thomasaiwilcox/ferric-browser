@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "slice_id": "S00",
-  "status": "in_progress",
-  "commit": "e9a576fd375927733b200f91a6387dea4698840d",
+  "status": "complete",
+  "commit": "eae588867a0a451f7c95ad602aee097e8f0a020b",
   "environment": {
     "os": "Linux x86_64",
     "rust": "1.98.0",
@@ -11,7 +11,9 @@
     "cmake": "4.4.3",
     "native_platforms": "offscreen + nested Weston Wayland; seat qualification pending",
     "chromium_user_agent": "140.0.0.0 (full engine patch version not yet obtained)",
-    "chromium": "140.0.7339.225 (installed qWebEngineChromiumVersion API probe)"
+    "chromium": "140.0.7339.225 (installed qWebEngineChromiumVersion API probe)",
+    "build": "Rust dev/test; Qt release; offscreen software; nested Weston startup only",
+    "native_wayland_input": "not_run: no compositor virtual-keyboard protocol"
   },
   "changed_files": [
     "docs/implementation/keyboard_interaction-v03/evidence/S00-baseline.md",
@@ -41,15 +43,23 @@
       "test_id": "T045",
       "level": "webengine-fixture",
       "result": "passed",
-      "command": "cargo xtask check --locked --offline (QML runner stage completed: 80 passed; enclosing check still running)",
-      "log": "evidence/logs/S00/check.log"
+      "command": "cargo xtask test engine",
+      "log": "evidence/logs/S00/engine.log"
     },
     {
       "test_id": "T045",
       "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "cargo xtask test engine (CMake/CTest native-insert stage)",
+      "log": "evidence/logs/S00/engine.log"
+    },
+    {
+      "test_id": "T045",
+      "level": "native-wayland",
       "result": "not_run",
-      "command": "cargo xtask test engine",
-      "reason": "Queued after the live check process."
+      "command": "cargo xtask test wayland",
+      "reason": "Startup passed; wtype cannot access the absent Weston virtual-keyboard protocol.",
+      "log": "evidence/logs/S00/wayland.log"
     }
   ],
   "capability_decision": null,
@@ -62,19 +72,16 @@
     }
   ],
   "remaining_risks": [
-    "Baseline runner is still live; no terminal gate result inferred.",
-    "Physical desktop keyboard, IME and live sites remain unqualified.",
-    "Import cached diff check reports pre-existing Markdown hard-break trailing spaces in the immutable supplied pack and raw command logs. Preserve delivery integrity; no whitespace-rule suppression or specification rewrite. Production worktree diff-check was green."
+    "Offscreen native evidence is not physical Wayland/IME qualification.",
+    "The supplied Markdown integrity pack retains its original hard-break whitespace; no normative files were rewritten."
   ],
   "not_run_reasons": [
-    "The native legacy suite, adapter smoke and nested Wayland task remain queued in the confirmed live baseline runner."
+    "Actual Wayland editable-page input not-run: Weston lacks the virtual-keyboard protocol; startup-only smoke passed.",
+    "Physical desktop keyboard, platform IMEs and live journeys have not been exercised."
   ],
-  "next_ready_slices": [],
-  "active_run": {
-    "tool_session_id": 3271,
-    "gate_results": "evidence/logs/S00/gate-results.json",
-    "do_not_restart": "Poll the same tool handle or inspect live process authority before treating the run as terminal."
-  },
+  "next_ready_slices": [
+    "S01"
+  ],
   "repository_gates": [
     {
       "name": "pack-integrity",
@@ -123,6 +130,39 @@
       "exit_code": 0,
       "elapsed_seconds": 300.659,
       "log": "evidence/logs/S00/check.log"
+    },
+    {
+      "name": "engine",
+      "command": "cargo xtask test engine",
+      "cwd": ".",
+      "exit_code": 0,
+      "elapsed_seconds": 227.009,
+      "log": "evidence/logs/S00/engine.log"
+    },
+    {
+      "name": "adapter",
+      "command": "cargo xtask test adapter",
+      "cwd": ".",
+      "exit_code": 0,
+      "elapsed_seconds": 247.939,
+      "log": "evidence/logs/S00/adapter.log"
+    },
+    {
+      "name": "wayland",
+      "command": "cargo xtask test wayland",
+      "cwd": ".",
+      "exit_code": 0,
+      "elapsed_seconds": 240.725,
+      "log": "evidence/logs/S00/wayland.log"
+    },
+    {
+      "name": "diff-check",
+      "command": "git diff --check",
+      "cwd": ".",
+      "exit_code": 2,
+      "elapsed_seconds": 0.008,
+      "log": "evidence/logs/S00/diff-check.log"
     }
-  ]
+  ],
+  "log_normalization": "Only trailing whitespace and terminal blank lines in command logs were normalized. All warnings, assertions and results remain."
 }

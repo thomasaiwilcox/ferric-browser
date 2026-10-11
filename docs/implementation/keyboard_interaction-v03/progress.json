@@ -4,13 +4,13 @@
   "slices": [
     {
       "id": "S00",
-      "status": "in_progress",
+      "status": "complete",
       "evidence": "evidence/S00.json",
       "capability_decision": null
     },
     {
       "id": "S01",
-      "status": "not_started",
+      "status": "in_progress",
       "evidence": null,
       "capability_decision": null
     },

@@ -1,0 +1,9 @@
+$ git diff --check
+docs/implementation/keyboard_interaction-v03/evidence/logs/S00/engine.log:518: trailing whitespace.
++-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR)
+docs/implementation/keyboard_interaction-v03/evidence/logs/S00/engine.log:519: trailing whitespace.
++-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR)
+docs/implementation/keyboard_interaction-v03/evidence/logs/S00/engine.log:620: trailing whitespace.
++-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR)
+docs/implementation/keyboard_interaction-v03/evidence/logs/S00/engine.log:621: trailing whitespace.
++-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR)

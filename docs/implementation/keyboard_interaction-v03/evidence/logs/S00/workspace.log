@@ -827,7 +827,7 @@ test tests::failure_response_redacts_sensitive_messages_and_details ... ok
 test tests::frames_are_bounded_and_big_endian ... ok
 test command_schema::tests::command_fields_are_closed ... ok
 test tests::instance_lock_crash_test_child ... ok
-test command_invocation::tests::every_registered_command_example_round_trips_through_the_public_envelope ... 
+test command_invocation::tests::every_registered_command_example_round_trips_through_the_public_envelope ...
 running 1 test
 ok
 test tests::instance_lock_reports_owner_metadata_while_busy ... ok
@@ -1011,4 +1011,3 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 running 0 tests
 
 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
-
