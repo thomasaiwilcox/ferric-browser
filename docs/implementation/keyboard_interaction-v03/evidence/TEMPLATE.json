@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "slice_id": "REPLACE_WITH_SLICE_ID",
+  "status": "not_started",
+  "commit": null,
+  "environment": {},
+  "changed_files": [],
+  "baseline_comparison": null,
+  "test_results": [],
+  "capability_decision": null,
+  "capability_report": null,
+  "review_kind": null,
+  "scope_amendments": [],
+  "remaining_risks": [],
+  "not_run_reasons": [],
+  "next_ready_slices": []
+}

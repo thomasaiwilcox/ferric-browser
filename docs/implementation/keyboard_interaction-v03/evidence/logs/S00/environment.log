@@ -1,0 +1,142 @@
+Linux-7.2.3-arch1-3-x86_64-with-glibc2.44
+$ rustc --version
+rustc 1.98.0 (88d9e12ae 2026-08-18)
+exit=0
+$ cargo --version
+cargo 1.98.0 (797e8a9bc 2026-08-05)
+exit=0
+$ cmake --version
+cmake version 4.4.3
+
+CMake suite maintained and supported by Kitware (kitware.com/cmake).
+exit=0
+$ pkg-config --modversion Qt6Core Qt6WebEngineCore Qt6Quick Qt6Test
+6.11.2
+6.11.2
+6.11.2
+6.11.2
+exit=0
+$ weston --version
+weston 15.0.1
+exit=0
+$ dbus-run-session --version
+dbus-run-session 1.16.2
+Copyright (C) 2003-2006 Red Hat, Inc.
+Copyright (C) 2006 Thiago Macieira
+Copyright © 2011-2012 Nokia Corporation
+Copyright © 2018, 2021 Ralf Habacker
+
+This is free software; see the source for copying conditions.
+There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+exit=0
+$ qmake6 -query QT_VERSION
+6.11.2
+exit=0
+$ git diff 4337056f632de0c710943fa6df76c67cf14b8b47 HEAD -- crates/ferric-browser-engine-qt/qml/scripts/BrowserScripts.js crates/ferric-browser-core/src/input.rs crates/ferric-browser-engine-qt/src/binding_policy.rs
+diff --git a/crates/ferric-browser-core/src/input.rs b/crates/ferric-browser-core/src/input.rs
+index 6100ba8..ec875cb 100644
+--- a/crates/ferric-browser-core/src/input.rs
++++ b/crates/ferric-browser-core/src/input.rs
+@@ -217,8 +217,8 @@ impl BindingTrie {
+                 binding(Mode::Normal, &["S", "h"], "history"),
+                 binding(Mode::Normal, &["S", "q"], "bookmark-list"),
+                 binding(Mode::Normal, &["T"], "switcher --scope tabs"),
+-                binding(Mode::Normal, &["g", "a"], "tab-open about:blank"),
+-                binding(Mode::Normal, &["Ctrl+t"], "tab-open about:blank"),
++                binding(Mode::Normal, &["g", "a"], "tab-new"),
++                binding(Mode::Normal, &["Ctrl+t"], "tab-new"),
+                 binding(Mode::Normal, &["J"], "tab-next"),
+                 binding(Mode::Normal, &["K"], "tab-prev"),
+                 binding(Mode::Normal, &["g", "t"], "switcher --scope tabs"),
+@@ -240,6 +240,8 @@ impl BindingTrie {
+                 binding(Mode::Normal, &["Alt+9"], "tab-select last"),
+                 binding(Mode::Normal, &["Alt+m"], "tab-mute"),
+                 binding(Mode::Normal, &["g", "?"], "binding-list"),
++                binding(Mode::Normal, &["g", "s"], "start-page"),
++                binding(Mode::Normal, &["Ctrl+Shift+Space"], "start-page-cycle"),
+                 binding(Mode::Normal, &["Ctrl+p"], "tab-pin"),
+                 binding(Mode::Normal, &["Ctrl+Space"], "switcher"),
+                 binding(Mode::Normal, &["Ctrl+v"], "mode-enter passthrough"),
+@@ -357,6 +359,11 @@ impl BindingResolver {
+         }
+     }
+ 
++    #[must_use]
++    pub fn is_pending(&self) -> bool {
++        !self.prefix.is_empty() || !self.count_digits.is_empty()
++    }
++
+     pub fn reset(&mut self) {
+         self.prefix.clear();
+         self.count_digits.clear();
+@@ -864,7 +871,7 @@ mod tests {
+                 vec!["g".to_owned(), "O".to_owned()],
+                 "open-current --target tab",
+             ),
+-            (vec!["g".to_owned(), "a".to_owned()], "tab-open about:blank"),
++            (vec!["g".to_owned(), "a".to_owned()], "tab-new"),
+             (vec!["g".to_owned(), "b".to_owned()], "bookmark-open"),
+             (vec!["g".to_owned(), "C".to_owned()], "tab-clone"),
+             (vec!["g".to_owned(), "f".to_owned()], "view-source"),
+@@ -877,7 +884,7 @@ mod tests {
+             (vec!["Alt+9".to_owned()], "tab-select last"),
+             (vec!["Alt+m".to_owned()], "tab-mute"),
+             (vec!["g".to_owned(), "$".to_owned()], "tab-select last"),
+-            (vec!["Ctrl+t".to_owned()], "tab-open about:blank"),
++            (vec!["Ctrl+t".to_owned()], "tab-new"),
+             (vec!["Ctrl+w".to_owned()], "tab-close"),
+             (vec!["Ctrl+Shift+t".to_owned()], "tab-undo"),
+             (vec!["Ctrl+n".to_owned()], "window-new"),
+diff --git a/crates/ferric-browser-engine-qt/qml/scripts/BrowserScripts.js b/crates/ferric-browser-engine-qt/qml/scripts/BrowserScripts.js
+index 5d0271f..02323ef 100644
+--- a/crates/ferric-browser-engine-qt/qml/scripts/BrowserScripts.js
++++ b/crates/ferric-browser-engine-qt/qml/scripts/BrowserScripts.js
+@@ -2,7 +2,7 @@
+ 
+ // Browser-owned page scripts are versioned resources. The build manifest hashes
+ // this file with the QML module, so script changes are explicit and auditable.
+-var VERSION = "12"
++var VERSION = "13"
+ 
+ // Page userscripts are trusted local content, but their failure boundary is
+ // browser policy. Keeping the wrappers here prevents QML from assembling page
+@@ -212,10 +212,20 @@ function focusProbe() {
+         + ":{sequence:0,editable:false,user_activated:false,kind:'unknown'};})()"
+ }
+ 
++function historyTraversalProbe() {
++    return "(function(){var state=window.__ferric_browserHistoryTraversal;"
++        + "return state?{document:state.document,sequence:state.sequence,url:location.href}:null;})()"
++}
++
+ function focusObserverSource() {
+     return "(function(){"
+         + "if(window.__ferric_browserFocusObserverInstalled)return;"
+         + "window.__ferric_browserFocusObserverInstalled=true;"
++        // This state lives in ApplicationWorld. Only real popstate events
++        // distinguish traversal from a new pushState with the same URL.
++        + "if(window===window.top){const historyState={document:String(performance.timeOrigin)+':'+String(Math.random()),sequence:0};"
++        + "window.__ferric_browserHistoryTraversal=historyState;"
++        + "window.addEventListener('popstate',function(event){if(event.isTrusted)historyState.sequence++;},true);}"
+         + "var sequence=0;var userGestureUntil=0;var identities=new WeakMap();var nextIdentity=0;var watchedElement=null;var watchedParent=null;"
+         + "var removalObserver=new MutationObserver(function(){window.__ferric_browserReadFocusState();});"
+         + "function watch(element){var parent=element&&element.parentNode;if(element===watchedElement&&parent===watchedParent)return;removalObserver.disconnect();watchedElement=element;watchedParent=parent;var node=parent;for(var depth=0;node&&depth<64;depth++,node=node.parentNode||node.host){removalObserver.observe(node,{childList:true});}}"
+diff --git a/crates/ferric-browser-engine-qt/src/binding_policy.rs b/crates/ferric-browser-engine-qt/src/binding_policy.rs
+index 062872e..0ac4c14 100644
+--- a/crates/ferric-browser-engine-qt/src/binding_policy.rs
++++ b/crates/ferric-browser-engine-qt/src/binding_policy.rs
+@@ -164,7 +164,12 @@ pub(super) fn binding_uses_full_command_executor(command: &ParsedCommand) -> boo
+     !command.arguments.is_empty()
+         || matches!(
+             command.name.as_str(),
+-            "repeat"
++            "tab-new"
++                | "start-page"
++                | "start-page-view"
++                | "start-page-cycle"
++                | "favourite-add"
++                | "repeat"
+                 | "cancel"
+                 | "macro-record"
+                 | "macro-stop"
+exit=0

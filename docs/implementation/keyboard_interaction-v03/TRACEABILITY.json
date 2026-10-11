@@ -1,0 +1,618 @@
+{
+  "schema_version": 1,
+  "note": "A-01..20 are Source A sections; F-01..08 are Source B recommendations; B-01/10..13 cover its purpose/guardrails/sequence/DoD/anchors. WEBAPP source invariants map to the unified normative contracts.",
+  "mappings": [
+    {
+      "source_item": "A-01",
+      "contracts": [
+        "C01",
+        "C02"
+      ],
+      "slices": [
+        "S00"
+      ]
+    },
+    {
+      "source_item": "A-02",
+      "contracts": [
+        "C02",
+        "C22"
+      ],
+      "slices": [
+        "S01"
+      ]
+    },
+    {
+      "source_item": "A-03",
+      "contracts": [
+        "C02",
+        "C03",
+        "C04",
+        "C05"
+      ],
+      "slices": [
+        "S00",
+        "S02",
+        "S03"
+      ]
+    },
+    {
+      "source_item": "A-04",
+      "contracts": [
+        "C03",
+        "C04",
+        "C05",
+        "C18"
+      ],
+      "slices": [
+        "S02",
+        "S03",
+        "S08"
+      ]
+    },
+    {
+      "source_item": "A-05",
+      "contracts": [
+        "C04",
+        "C05",
+        "C08",
+        "C23"
+      ],
+      "slices": [
+        "S03",
+        "S06"
+      ]
+    },
+    {
+      "source_item": "A-06",
+      "contracts": [
+        "C03",
+        "C10",
+        "C11"
+      ],
+      "slices": [
+        "S07",
+        "S08",
+        "S09"
+      ]
+    },
+    {
+      "source_item": "A-07",
+      "contracts": [
+        "C07",
+        "C11",
+        "C12"
+      ],
+      "slices": [
+        "S05",
+        "S09",
+        "S10"
+      ]
+    },
+    {
+      "source_item": "A-08",
+      "contracts": [
+        "C04",
+        "C13",
+        "C14"
+      ],
+      "slices": [
+        "S13",
+        "S14"
+      ]
+    },
+    {
+      "source_item": "A-09",
+      "contracts": [
+        "C05",
+        "C14",
+        "C15"
+      ],
+      "slices": [
+        "S14",
+        "S15"
+      ]
+    },
+    {
+      "source_item": "A-10",
+      "contracts": [
+        "C16",
+        "C21"
+      ],
+      "slices": [
+        "S16",
+        "S25"
+      ]
+    },
+    {
+      "source_item": "A-11",
+      "contracts": [
+        "C06",
+        "C19"
+      ],
+      "slices": [
+        "S04",
+        "S19",
+        "S20",
+        "S21",
+        "S26"
+      ]
+    },
+    {
+      "source_item": "A-12",
+      "contracts": [
+        "C07",
+        "C20"
+      ],
+      "slices": [
+        "S05",
+        "S22"
+      ]
+    },
+    {
+      "source_item": "A-13",
+      "contracts": [
+        "C13",
+        "C15",
+        "C20"
+      ],
+      "slices": [
+        "S13",
+        "S15",
+        "S23",
+        "S24"
+      ]
+    },
+    {
+      "source_item": "A-14",
+      "contracts": [
+        "C12",
+        "C18"
+      ],
+      "slices": [
+        "S10",
+        "S18"
+      ]
+    },
+    {
+      "source_item": "A-15",
+      "contracts": [
+        "C22"
+      ],
+      "slices": [
+        "S18",
+        "S27"
+      ]
+    },
+    {
+      "source_item": "A-16",
+      "contracts": [
+        "C17",
+        "C22"
+      ],
+      "slices": [
+        "S01",
+        "S17",
+        "S27"
+      ]
+    },
+    {
+      "source_item": "A-17",
+      "contracts": [
+        "C22",
+        "C23",
+        "C24"
+      ],
+      "slices": [
+        "S00",
+        "S27"
+      ]
+    },
+    {
+      "source_item": "A-18",
+      "contracts": [
+        "C03",
+        "C04",
+        "C05",
+        "C10",
+        "C15",
+        "C18",
+        "C24"
+      ],
+      "slices": [
+        "S02",
+        "S03",
+        "S08",
+        "S15",
+        "S27"
+      ]
+    },
+    {
+      "source_item": "A-19",
+      "contracts": [
+        "C20",
+        "C21",
+        "C24"
+      ],
+      "slices": [
+        "S22",
+        "S23",
+        "S24",
+        "S25",
+        "S27"
+      ]
+    },
+    {
+      "source_item": "A-20",
+      "contracts": [
+        "C01",
+        "C24"
+      ],
+      "slices": [
+        "S18",
+        "S27"
+      ]
+    },
+    {
+      "source_item": "F-01",
+      "contracts": [
+        "C04",
+        "C08"
+      ],
+      "slices": [
+        "S01",
+        "S02"
+      ]
+    },
+    {
+      "source_item": "F-02",
+      "contracts": [
+        "C05",
+        "C06"
+      ],
+      "slices": [
+        "S03",
+        "S04"
+      ]
+    },
+    {
+      "source_item": "F-03",
+      "contracts": [
+        "C07",
+        "C20"
+      ],
+      "slices": [
+        "S05",
+        "S22"
+      ]
+    },
+    {
+      "source_item": "F-04",
+      "contracts": [
+        "C22"
+      ],
+      "slices": [
+        "S01",
+        "S27"
+      ]
+    },
+    {
+      "source_item": "F-05",
+      "contracts": [
+        "C09"
+      ],
+      "slices": [
+        "S11",
+        "S12"
+      ]
+    },
+    {
+      "source_item": "F-06",
+      "contracts": [
+        "C17"
+      ],
+      "slices": [
+        "S01",
+        "S17"
+      ]
+    },
+    {
+      "source_item": "F-07",
+      "contracts": [
+        "C04",
+        "C08"
+      ],
+      "slices": [
+        "S02",
+        "S06",
+        "S17"
+      ]
+    },
+    {
+      "source_item": "F-08",
+      "contracts": [
+        "C16",
+        "C21"
+      ],
+      "slices": [
+        "S16",
+        "S25"
+      ]
+    },
+    {
+      "source_item": "WEBAPP-001",
+      "contracts": [
+        "C03"
+      ],
+      "slices": [
+        "S08"
+      ]
+    },
+    {
+      "source_item": "WEBAPP-002",
+      "contracts": [
+        "C03"
+      ],
+      "slices": [
+        "S08"
+      ]
+    },
+    {
+      "source_item": "WEBAPP-003",
+      "contracts": [
+        "C03",
+        "C10"
+      ],
+      "slices": [
+        "S08"
+      ]
+    },
+    {
+      "source_item": "WEBAPP-004",
+      "contracts": [
+        "C10"
+      ],
+      "slices": [
+        "S08"
+      ]
+    },
+    {
+      "source_item": "WEBAPP-005",
+      "contracts": [
+        "C05",
+        "C10"
+      ],
+      "slices": [
+        "S03",
+        "S08"
+      ]
+    },
+    {
+      "source_item": "WEBAPP-006",
+      "contracts": [
+        "C09",
+        "C10"
+      ],
+      "slices": [
+        "S08",
+        "S12"
+      ]
+    },
+    {
+      "source_item": "WEBAPP-007",
+      "contracts": [
+        "C03",
+        "C10"
+      ],
+      "slices": [
+        "S08"
+      ]
+    },
+    {
+      "source_item": "WEBAPP-008",
+      "contracts": [
+        "C11"
+      ],
+      "slices": [
+        "S09"
+      ]
+    },
+    {
+      "source_item": "WEBAPP-009",
+      "contracts": [
+        "C03",
+        "C07",
+        "C10"
+      ],
+      "slices": [
+        "S05",
+        "S08"
+      ]
+    },
+    {
+      "source_item": "WEBAPP-010",
+      "contracts": [
+        "C03",
+        "C14"
+      ],
+      "slices": [
+        "S14"
+      ]
+    },
+    {
+      "source_item": "WEBAPP-011",
+      "contracts": [
+        "C04",
+        "C13"
+      ],
+      "slices": [
+        "S13"
+      ]
+    },
+    {
+      "source_item": "WEBAPP-012",
+      "contracts": [
+        "C13",
+        "C20"
+      ],
+      "slices": [
+        "S13",
+        "S23",
+        "S24"
+      ]
+    },
+    {
+      "source_item": "WEBAPP-013",
+      "contracts": [
+        "C15"
+      ],
+      "slices": [
+        "S15"
+      ]
+    },
+    {
+      "source_item": "WEBAPP-014",
+      "contracts": [
+        "C04",
+        "C06",
+        "C15"
+      ],
+      "slices": [
+        "S02",
+        "S04",
+        "S15"
+      ]
+    },
+    {
+      "source_item": "WEBAPP-015",
+      "contracts": [
+        "C16"
+      ],
+      "slices": [
+        "S16"
+      ]
+    },
+    {
+      "source_item": "WEBAPP-016",
+      "contracts": [
+        "C12"
+      ],
+      "slices": [
+        "S10"
+      ]
+    },
+    {
+      "source_item": "WEBAPP-017",
+      "contracts": [
+        "C19"
+      ],
+      "slices": [
+        "S19",
+        "S20",
+        "S21"
+      ]
+    },
+    {
+      "source_item": "WEBAPP-018",
+      "contracts": [
+        "C20"
+      ],
+      "slices": [
+        "S22"
+      ]
+    },
+    {
+      "source_item": "WEBAPP-019",
+      "contracts": [
+        "C18"
+      ],
+      "slices": [
+        "S02",
+        "S18"
+      ]
+    },
+    {
+      "source_item": "WEBAPP-020",
+      "contracts": [
+        "C18",
+        "C22"
+      ],
+      "slices": [
+        "S18",
+        "S27"
+      ]
+    },
+    {
+      "source_item": "WEBAPP-021",
+      "contracts": [
+        "C17"
+      ],
+      "slices": [
+        "S17"
+      ]
+    },
+    {
+      "source_item": "WEBAPP-022",
+      "contracts": [
+        "C22"
+      ],
+      "slices": [
+        "S27"
+      ]
+    },
+    {
+      "source_item": "B-01",
+      "contracts": [
+        "C01",
+        "C02"
+      ],
+      "slices": [
+        "S00"
+      ]
+    },
+    {
+      "source_item": "B-10",
+      "contracts": [
+        "C03",
+        "C04",
+        "C05",
+        "C24"
+      ],
+      "slices": [
+        "S02",
+        "S03",
+        "S27"
+      ]
+    },
+    {
+      "source_item": "B-11",
+      "contracts": [
+        "C23"
+      ],
+      "slices": [
+        "S00",
+        "S27"
+      ]
+    },
+    {
+      "source_item": "B-12",
+      "contracts": [
+        "C22",
+        "C24"
+      ],
+      "slices": [
+        "S00",
+        "S27"
+      ]
+    },
+    {
+      "source_item": "B-13",
+      "contracts": [
+        "C02"
+      ],
+      "slices": [
+        "S00"
+      ]
+    }
+  ]
+}

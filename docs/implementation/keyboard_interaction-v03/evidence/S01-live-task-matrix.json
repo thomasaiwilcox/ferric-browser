@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "evidence_class": "live-site",
+  "policy": "Disposable authorised accounts/documents only; no sent messages, sharing, purchases or private state mutation. Synthetic fixture support is recorded separately.",
+  "tasks": [
+    {
+      "surface": "Docs/Sheets/Slides",
+      "task": "Focus editor, paragraphs/autocomplete and browser recovery",
+      "status": "not_run",
+      "reason": "No disposable live-site account/document has been authorised or exercised in this programme."
+    },
+    {
+      "surface": "Gmail",
+      "task": "Compose focus and autocomplete Enter without sending",
+      "status": "not_run",
+      "reason": "No disposable live-site account/document has been authorised or exercised in this programme."
+    },
+    {
+      "surface": "JupyterLab/advanced editor",
+      "task": "Input proxy, completion and multiline editing",
+      "status": "not_run",
+      "reason": "No disposable live-site account/document has been authorised or exercised in this programme."
+    },
+    {
+      "surface": "GitHub",
+      "task": "Roving widgets, links and menus",
+      "status": "not_run",
+      "reason": "No disposable live-site account/document has been authorised or exercised in this programme."
+    },
+    {
+      "surface": "Reddit",
+      "task": "Nested scrolling and rich editor focus",
+      "status": "not_run",
+      "reason": "No disposable live-site account/document has been authorised or exercised in this programme."
+    },
+    {
+      "surface": "Slack/Discord/WhatsApp",
+      "task": "Compose and page shortcuts without sending",
+      "status": "not_run",
+      "reason": "No disposable live-site account/document has been authorised or exercised in this programme."
+    },
+    {
+      "surface": "YouTube",
+      "task": "Player shortcut ownership, controls and viewport overflow",
+      "status": "not_run",
+      "reason": "No disposable live-site account/document has been authorised or exercised in this programme."
+    },
+    {
+      "surface": "Kanban",
+      "task": "Panels, cards and scoped navigation",
+      "status": "not_run",
+      "reason": "No disposable live-site account/document has been authorised or exercised in this programme."
+    },
+    {
+      "surface": "Maps/diagrams",
+      "task": "Canvas control discovery and manual Grid",
+      "status": "not_run",
+      "reason": "No disposable live-site account/document has been authorised or exercised in this programme."
+    },
+    {
+      "surface": "Embedded viewers",
+      "task": "Frame exterior, PDF UI capability and scrolling",
+      "status": "not_run",
+      "reason": "No disposable live-site account/document has been authorised or exercised in this programme."
+    }
+  ]
+}

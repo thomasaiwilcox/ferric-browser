@@ -1,0 +1,174 @@
+{
+  "schema_version": 1,
+  "note": "Active implementation ledger. Test results live in per-slice evidence; the matrix remains the immutable plan.",
+  "slices": [
+    {
+      "id": "S00",
+      "status": "in_progress",
+      "evidence": "evidence/S00.json",
+      "capability_decision": null
+    },
+    {
+      "id": "S01",
+      "status": "not_started",
+      "evidence": null,
+      "capability_decision": null
+    },
+    {
+      "id": "S02",
+      "status": "not_started",
+      "evidence": null,
+      "capability_decision": null
+    },
+    {
+      "id": "S03",
+      "status": "not_started",
+      "evidence": null,
+      "capability_decision": null
+    },
+    {
+      "id": "S04",
+      "status": "not_started",
+      "evidence": null,
+      "capability_decision": null
+    },
+    {
+      "id": "S05",
+      "status": "not_started",
+      "evidence": null,
+      "capability_decision": null
+    },
+    {
+      "id": "S06",
+      "status": "not_started",
+      "evidence": null,
+      "capability_decision": null
+    },
+    {
+      "id": "S07",
+      "status": "not_started",
+      "evidence": null,
+      "capability_decision": null
+    },
+    {
+      "id": "S08",
+      "status": "not_started",
+      "evidence": null,
+      "capability_decision": null
+    },
+    {
+      "id": "S09",
+      "status": "not_started",
+      "evidence": null,
+      "capability_decision": null
+    },
+    {
+      "id": "S10",
+      "status": "not_started",
+      "evidence": null,
+      "capability_decision": null
+    },
+    {
+      "id": "S11",
+      "status": "not_started",
+      "evidence": null,
+      "capability_decision": null
+    },
+    {
+      "id": "S12",
+      "status": "not_started",
+      "evidence": null,
+      "capability_decision": null
+    },
+    {
+      "id": "S13",
+      "status": "not_started",
+      "evidence": null,
+      "capability_decision": null
+    },
+    {
+      "id": "S14",
+      "status": "not_started",
+      "evidence": null,
+      "capability_decision": null
+    },
+    {
+      "id": "S15",
+      "status": "not_started",
+      "evidence": null,
+      "capability_decision": null
+    },
+    {
+      "id": "S16",
+      "status": "not_started",
+      "evidence": null,
+      "capability_decision": null
+    },
+    {
+      "id": "S17",
+      "status": "not_started",
+      "evidence": null,
+      "capability_decision": null
+    },
+    {
+      "id": "S18",
+      "status": "not_started",
+      "evidence": null,
+      "capability_decision": null
+    },
+    {
+      "id": "S19",
+      "status": "not_started",
+      "evidence": null,
+      "capability_decision": null
+    },
+    {
+      "id": "S20",
+      "status": "not_started",
+      "evidence": null,
+      "capability_decision": null
+    },
+    {
+      "id": "S21",
+      "status": "not_started",
+      "evidence": null,
+      "capability_decision": null
+    },
+    {
+      "id": "S22",
+      "status": "not_started",
+      "evidence": null,
+      "capability_decision": null
+    },
+    {
+      "id": "S23",
+      "status": "not_started",
+      "evidence": null,
+      "capability_decision": null
+    },
+    {
+      "id": "S24",
+      "status": "not_started",
+      "evidence": null,
+      "capability_decision": null
+    },
+    {
+      "id": "S25",
+      "status": "not_started",
+      "evidence": null,
+      "capability_decision": null
+    },
+    {
+      "id": "S26",
+      "status": "not_started",
+      "evidence": null,
+      "capability_decision": null
+    },
+    {
+      "id": "S27",
+      "status": "not_started",
+      "evidence": null,
+      "capability_decision": null
+    }
+  ]
+}

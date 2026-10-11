@@ -1,0 +1,5 @@
+$ g++ /tmp/ferric-keyboard-v03-engine-version.cpp -o /tmp/ferric-keyboard-v03-engine-version -I/usr/include/qt6/QtWebEngineCore -I/usr/include/qt6 -DQT_WEBENGINECORE_LIB -I/usr/include/qt6/QtQuick -DQT_QUICK_LIB -I/usr/include/qt6/QtOpenGL -DQT_OPENGL_LIB -I/usr/include/qt6/QtGui -DQT_GUI_LIB -I/usr/include/qt6/QtWebChannel -DQT_WEBCHANNEL_LIB -I/usr/include/qt6/QtQml -DQT_QML_LIB -I/usr/include/qt6/QtQmlIntegration -DQT_QMLINTEGRATION_LIB -I/usr/include/qt6/QtNetwork -DQT_NETWORK_LIB -I/usr/include/qt6/QtPositioning -DQT_POSITIONING_LIB -I/usr/include/qt6/QtCore -DQT_CORE_LIB -I/usr/lib/qt6/mkspecs/linux-g++ -lQt6WebEngineCore -lQt6Quick -lQt6OpenGL -lQt6Gui -lQt6WebChannel -lQt6Qml -lQt6Network -lQt6Positioning -lQt6Core
+compile_exit=0
+QtWebEngine=6.11.2
+Chromium=140.0.7339.225
+probe_exit=0

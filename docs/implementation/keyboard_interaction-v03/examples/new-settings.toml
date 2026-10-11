@@ -1,0 +1,18 @@
+# Proposed v0.3 settings. They require S05/S08/S12 implementation.
+# This file is valid TOML, not a claim that baseline Ferric accepts these keys.
+
+[[site_rules]]
+id = "test-app-shortcuts"
+pattern = "https://example.test/app/*"
+priority = 20
+
+[site_rules.set]
+"input.shortcut_policy" = "mixed"
+"input.page_keys" = ["/", "?", "f", "Ctrl+f"]
+"hints.proxy_targets" = "validated"
+"hints.selectors.all" = { mode = "extend", selectors = [".custom-action[data-ready='true']"] }
+"hints.selectors.buttons" = { mode = "replace", selectors = ["button", "[role='button']", ".custom-action"] }
+
+# ':' and browser recovery chords are intentionally absent and must be rejected
+# if assigned to input.page_keys. Hidden proxy and native pointer privileges are
+# not granted by CSS selectors. An empty replace list disables that family.
