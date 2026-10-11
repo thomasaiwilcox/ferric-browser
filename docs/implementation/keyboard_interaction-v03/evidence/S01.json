@@ -179,10 +179,13 @@
       "name": "frame replacement positive readiness",
       "current_log": "evidence/logs/S01/current-frame-replacement.log",
       "pinned_log": "evidence/logs/S01/pinned-frame-replacement.log",
-      "command": "QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME= QT_QUICK_BACKEND=software target/qml-tests/qml_tests -input <current-or-pinned>/tests/qml/tst_webapp_interaction.qml WebAppInteraction::test_T004_frame_replaced",
       "result": "passed",
       "test_source_sha256": "928f8ac070911e77920da6cfe4b2bb0fb7d88e3198832148b408d0b10ac5b6a9",
-      "note": "Worktree update after af154a2 strengthens only frame readiness; full original red runs stay tied to af154a2."
+      "note": "Worktree update after af154a2 strengthens only frame readiness; full original red runs stay tied to af154a2.",
+      "commands": [
+        "QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME= QT_QUICK_BACKEND=software target/qml-tests/qml_tests -input crates/ferric-browser-engine-qt/tests/qml/tst_webapp_interaction.qml WebAppInteraction::test_T004_frame_replaced",
+        "QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME= QT_QUICK_BACKEND=software target/qml-tests/qml_tests -input /tmp/ferric-keyboard-v03-pinned/crates/ferric-browser-engine-qt/tests/qml/tst_webapp_interaction.qml WebAppInteraction::test_T004_frame_replaced"
+      ]
     }
   ]
 }
