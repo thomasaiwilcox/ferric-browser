@@ -444,7 +444,7 @@ mod tests {
             "caret-yank",
         ] {
             let gestures = built_in_gestures(command);
-            assert!(!gestures.is_empty());
+            assert_ne!(gestures, []);
             for (invocation, _, mode) in gestures {
                 let chain = parse_chain(invocation, ParseInput::Interactive).unwrap();
                 assert_eq!(chain.len(), 1);
