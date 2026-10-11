@@ -1582,8 +1582,10 @@ function onContext_workspaceChanged() {
             if (!secondaryWindow.windowTransferMode) setContentUrl(viewUi.initial_url, false)
             refreshEffectiveSiteSettings()
         }
-        onNavigationRequested: function(request) { if (request.isMainFrame) secondaryNativeContent.beginNavigation() }
-                onUrlChanged: {
+        onNavigationRequested: function(request) {
+            if (request.isMainFrame) secondaryNativeContent.beginNavigation(request.navigationType === WebEngineView.BackForwardNavigation)
+        }
+        onUrlChanged: {
             if (nativeUrl.length > 0) return
             secondaryNativeContent.noteSameDocument()
             refreshEffectiveSiteSettings()

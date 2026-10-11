@@ -91,6 +91,10 @@ Ctrl+t, `g a`, and the New Tab controls use `navigation.new_tab`; an explicit
 startup address overrides `navigation.start_pages`. Back/Forward includes
 native pages, and saved sessions, cloning, closed-tab undo, lazy restoration,
 and discarded tabs preserve their native page descriptors.
+In Normal mode, `H` (Shift+h) goes back and `L` (Shift+l) goes forward;
+`:back` and `:forward` are also available. Pages that move through their own
+history keep these shortcuts aligned with the current entry, including
+different states that share a URL.
 
 Each normal profile owns its preference, bookmarks, favourite slots, dismissed
 sites, and cached icons. Windows in that profile read the shared metadata;

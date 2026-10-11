@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import "../scripts/BrowserScripts.js" as BrowserScripts
 
 Item {
     id: content
@@ -10,6 +11,13 @@ Item {
     property var tabsModel: null
     property string nativeUrl: ""
     property bool traversalPending: false
+    property bool engineTraversalPending: false
+    property bool sameDocumentTraversalPending: false
+    property int historyProbeEpoch: 0
+    property bool historyProbePending: false
+    property bool historyProbeAgain: false
+    property string historyDocument: ""
+    property int historySequence: 0
     property bool navigationPending: false
     property bool committedContent: false
     property int navigationBaseIndex: 0
@@ -61,13 +69,67 @@ Item {
     function synchronizeHistory() {
         if (nativeUrl.length > 0 || webView.loading) return
         if (navigationPending && browserUi.load_state !== "complete") return
+        if (typeof webView.runJavaScript !== "function" || typeof browserWindow.browserScriptWorld !== "number") {
+            reconcileHistory()
+            return
+        }
+        if (historyProbePending) { historyProbeAgain = true; return }
+        var epoch = historyProbeEpoch
+        var destination = webView.url.toString()
+        var position = engineHistoryIndex
+        historyProbePending = true
+        webView.runJavaScript(BrowserScripts.historyTraversalProbe(), browserWindow.browserScriptWorld, function(value) {
+            if (epoch !== historyProbeEpoch) return
+            historyProbePending = false
+            if (nativeUrl.length > 0 || webView.loading) return
+            if (destination !== webView.url.toString() || position !== engineHistoryIndex) {
+                Qt.callLater(synchronizeHistory)
+                return
+            }
+            if (value && value.url === destination && typeof value.document === "string"
+                    && typeof value.sequence === "number" && value.sequence >= 0) {
+                var baseline = historyDocument === value.document ? historySequence : 0
+                if (value.sequence > baseline) sameDocumentTraversalPending = true
+                historyDocument = value.document
+                historySequence = value.sequence
+            }
+            reconcileHistory()
+            if (historyProbeAgain) { historyProbeAgain = false; Qt.callLater(synchronizeHistory) }
+        })
+    }
+    function invalidateHistoryProbe() {
+        historyProbeEpoch += 1
+        historyProbePending = false
+        historyProbeAgain = false
+        sameDocumentTraversalPending = false
+    }
+    function reconcileHistory() {
         var snapshot
         try { snapshot = JSON.parse(browserUi.content_history_export(tabIndex)) } catch (error) { return }
         if (!snapshot || !snapshot.entries || !snapshot.entries[snapshot.cursor]) return
         var current = snapshot.entries[snapshot.cursor]
         var destination = webView.url.toString()
+        var nativeCurrent = current.url === "rb://start" || current.url === "rb://blank"
+        var observedBack = false
+        if (!nativeCurrent && current.engine_index > engineHistoryIndex) {
+            observedBack = current.url !== destination
+            for (var earlier = 0; !observedBack && earlier < snapshot.cursor; ++earlier) {
+                var entry = snapshot.entries[earlier]
+                observedBack = entry.url === destination && entry.engine_index === engineHistoryIndex
+            }
+        }
+        var observedTraversal = sameDocumentTraversalPending && current.engine_index !== engineHistoryIndex
+        sameDocumentTraversalPending = false
+        if (!nativeCurrent && (engineTraversalPending || observedBack || observedTraversal)) {
+            // A history request can commit before the history models move.
+            // Wait for their new position instead of recording a new visit.
+            if (engineTraversalPending && current.engine_index === engineHistoryIndex) return
+            if (browserUi.content_engine_traversed(tabIndex, destination, engineHistoryIndex)) {
+                engineTraversalPending = false; navigationPending = false; traversalPending = false
+                return
+            }
+        }
         if (current.url !== destination) {
-            var nativeCurrent = current.url === "rb://start" || current.url === "rb://blank"
             if (!nativeCurrent && current.engine_index === engineHistoryIndex) {
                 // replaceState changes this engine entry rather than adding one.
                 current.url = destination
@@ -98,6 +160,11 @@ Item {
         }
         var old = engineEntry(current.engine_index)
         var preserveCurrent = old && old.url === current.url && baseline < current.engine_index
+        if (preserveCurrent && engineHistoryIndex > current.engine_index) {
+            // A new pushState branches here, even if its URL matches an old
+            // forward entry. A trusted popstate was handled above instead.
+            snapshot.entries.length = snapshot.cursor + 1
+        }
         var segment = []
         for (var index = (preserveCurrent ? current.engine_index : baseline) + 1; index < engineHistoryIndex; ++index) {
             var missing = engineEntry(index)
@@ -115,6 +182,8 @@ Item {
     }
     function focusContent() { if (nativeUrl === "rb://start" && startPage) startPage.focusContent() }
     function setContentUrl(destination, traversal, engineMoves) {
+        invalidateHistoryProbe()
+        engineTraversalPending = false
         if (destination === "rb://start" || destination === "rb://blank") {
             webView.stop()
             nativeUrl = destination
@@ -154,7 +223,12 @@ Item {
             }
         }
     }
-    function beginNavigation() { if (nativeUrl.length === 0) navigationPending = true }
+    function beginNavigation(engineTraversal) {
+        if (nativeUrl.length > 0) return
+        invalidateHistoryProbe()
+        navigationPending = true
+        engineTraversalPending = !!engineTraversal && !traversalPending
+    }
     function noteSameDocument() {
         Qt.callLater(synchronizeHistory)
     }
@@ -162,7 +236,7 @@ Item {
         if (nativeUrl.length > 0) return
         navigationPending = false
         committedContent = true
-        browserUi.content_navigated(tabIndex, webView.url.toString(), engineHistoryIndex, traversalPending)
+        if (!engineTraversalPending) browserUi.content_navigated(tabIndex, webView.url.toString(), engineHistoryIndex, traversalPending)
         traversalPending = false
         Qt.callLater(synchronizeHistory)
     }

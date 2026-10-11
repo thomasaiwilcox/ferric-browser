@@ -83,6 +83,47 @@ impl ContentHistory {
         self.cursor = next;
         Some(entry)
     }
+
+    /// Align the logical cursor with a traversal initiated by the engine.
+    pub fn observe_engine_traversal(&mut self, url: String, engine_index: i32) -> bool {
+        if engine_index < 0 || InternalPage::from_url(&url).is_some() {
+            return false;
+        }
+        let existing = self
+            .entries
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| {
+                entry.engine_index == engine_index && InternalPage::from_url(&entry.url).is_none()
+            })
+            .min_by_key(|(index, entry)| (entry.url != url, index.abs_diff(self.cursor)))
+            .map(|(index, _)| index);
+        if let Some(index) = existing {
+            self.entries[index].url = url;
+            self.cursor = index;
+        } else {
+            let index = self
+                .entries
+                .iter()
+                .position(|entry| {
+                    InternalPage::from_url(&entry.url).is_none()
+                        && entry.engine_index > engine_index
+                })
+                .unwrap_or(self.entries.len());
+            self.entries
+                .insert(index, ContentEntry { url, engine_index });
+            self.cursor = index;
+            if self.entries.len() > 4096 {
+                if self.cursor == 0 {
+                    self.entries.pop();
+                } else {
+                    self.entries.remove(0);
+                    self.cursor -= 1;
+                }
+            }
+        }
+        true
+    }
 }
 
 #[cfg(test)]
@@ -129,5 +170,55 @@ mod tests {
         history.traverse(1);
         assert_eq!(history.traverse(-1).unwrap().engine_index, 0);
         assert_eq!(history.traverse(-1).unwrap().url, "https://a.test");
+    }
+
+    #[test]
+    fn engine_traversal_preserves_native_entries_and_the_forward_branch() {
+        let mut history = ContentHistory::default();
+        history.record("https://a.test".into(), 0, false);
+        history.record("rb://start".into(), 0, false);
+        history.record("https://b.test".into(), 1, false);
+        history.record("https://c.test".into(), 2, false);
+        assert!(history.observe_engine_traversal("https://b.test".into(), 1));
+        assert_eq!(history.snapshot().0.len(), 4);
+        assert_eq!(history.traverse(-1).unwrap().url, "rb://start");
+        assert_eq!(history.traverse(2).unwrap().url, "https://c.test");
+        assert!(history.observe_engine_traversal("https://a.test".into(), 0));
+        assert_eq!(history.traverse(3).unwrap().url, "https://c.test");
+    }
+
+    #[test]
+    fn engine_traversal_distinguishes_same_url_states_and_recovers_missing_entries() {
+        let mut history = ContentHistory::default();
+        history.record("https://a.test".into(), 0, false);
+        history.record("https://b.test".into(), 1, false);
+        history.record("https://b.test".into(), 2, false);
+        assert!(history.observe_engine_traversal("https://b.test".into(), 1));
+        assert_eq!(history.traverse(1).unwrap().engine_index, 2);
+        history.record("https://d.test".into(), 4, false);
+        assert!(history.observe_engine_traversal("https://c.test".into(), 3));
+        assert_eq!(history.traverse(-1).unwrap().engine_index, 2);
+        assert_eq!(history.traverse(2).unwrap().url, "https://d.test");
+        let previous = history.snapshot().1;
+        assert!(!history.observe_engine_traversal("rb://start".into(), 4));
+        assert!(!history.observe_engine_traversal("https://a.test".into(), -1));
+        assert_eq!(history.snapshot().1, previous);
+    }
+
+    #[test]
+    fn recovering_the_oldest_engine_entry_keeps_the_selected_entry_within_the_bound() {
+        let entries = (1..=4096)
+            .map(|engine_index| ContentEntry {
+                url: format!("https://a.test/{engine_index}"),
+                engine_index,
+            })
+            .collect();
+        let mut history = ContentHistory::from_snapshot(entries, 4095).unwrap();
+        assert!(history.observe_engine_traversal("https://a.test/0".into(), 0));
+        let (entries, cursor) = history.snapshot();
+        assert_eq!(entries.len(), 4096);
+        assert_eq!(cursor, 0);
+        assert_eq!(entries[cursor].url, "https://a.test/0");
+        assert_eq!(history.traverse(1).unwrap().engine_index, 1);
     }
 }

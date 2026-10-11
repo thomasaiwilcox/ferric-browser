@@ -991,7 +991,9 @@ GridLayout {
                     }
                 }
 
-                onNavigationRequested: function(request) { if (request.isMainFrame) nativeContent.beginNavigation() }
+                onNavigationRequested: function(request) {
+                    if (request.isMainFrame) nativeContent.beginNavigation(request.navigationType === WebEngineView.BackForwardNavigation)
+                }
                 onUrlChanged: {
                     if (nativeUrl.length > 0) return
                     nativeContent.noteSameDocument()

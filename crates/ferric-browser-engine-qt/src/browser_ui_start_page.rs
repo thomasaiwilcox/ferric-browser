@@ -771,6 +771,39 @@ impl qobject::BrowserUi {
         }
     }
 
+    pub(super) fn content_engine_traversed(
+        mut self: Pin<&mut Self>,
+        index: i32,
+        url: &QString,
+        engine_index: i32,
+    ) -> bool {
+        let Some(tab) = self.as_ref().tab_for_index(index) else {
+            return false;
+        };
+        let url = url.to_string();
+        if ValidatedUrl::parse(&url).is_err() {
+            return false;
+        }
+        let changed = self
+            .as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .content_histories
+            .entry(tab)
+            .or_default()
+            .observe_engine_traversal(url, engine_index);
+        if changed {
+            let revision = self
+                .as_ref()
+                .rust()
+                .content_history_revision
+                .wrapping_add(1);
+            self.as_mut().set_content_history_revision(revision);
+        }
+        changed
+    }
+
     pub(super) fn content_history_available(self: Pin<&mut Self>, index: i32, offset: i32) -> bool {
         self.as_ref()
             .tab_for_index(index)

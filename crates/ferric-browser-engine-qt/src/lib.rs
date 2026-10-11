@@ -722,6 +722,13 @@ mod qobject {
             traversal: bool,
         );
         #[qinvokable]
+        fn content_engine_traversed(
+            self: Pin<&mut BrowserUi>,
+            index: i32,
+            url: &QString,
+            engine_index: i32,
+        ) -> bool;
+        #[qinvokable]
         fn content_history_available(self: Pin<&mut BrowserUi>, index: i32, offset: i32) -> bool;
         #[qinvokable]
         fn content_history_export(self: Pin<&mut BrowserUi>, index: i32) -> QString;

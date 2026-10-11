@@ -17,6 +17,13 @@ TestCase {
         property string title: "Example"
         property bool loading: false
         property string icon: ""
+        property var historyObservation: null
+        property bool deferProbe: false
+        property var probeCallback: null
+        function runJavaScript(source, world, callback) {
+            if (deferProbe) probeCallback = callback
+            else callback(historyObservation)
+        }
         function stop() { loading = false }
     }
     QtObject {
@@ -36,8 +43,21 @@ TestCase {
         function navigation_completed_for(index) {}
         function content_history_export(index) { return JSON.stringify(snapshot) }
         function content_history_import(index, value) { snapshot = JSON.parse(value); return true }
+        function content_engine_traversed(index, url, anchor) {
+            for (var row = 0; row < snapshot.entries.length; ++row) {
+                if (snapshot.entries[row].url === url && snapshot.entries[row].engine_index === anchor) {
+                    snapshot.cursor = row
+                    return true
+                }
+            }
+            return false
+        }
     }
-    QtObject { id: theme; property color backgroundColor: "#181825" }
+    QtObject {
+        id: theme
+        property color backgroundColor: "#181825"
+        property int browserScriptWorld: 1
+    }
     Component {
         id: fixture
         FerricNativeTabContent {
@@ -48,6 +68,7 @@ TestCase {
     function init() {
         ui.entries = []; ui.snapshot = null; ui.committedCount = 0; web.loading = false; web.url = "https://a.test"
         backItems.clear(); backItems.append({url: "https://a.test", offset: -1})
+        web.historyObservation = null; web.deferProbe = false; web.probeCallback = null
     }
     function test_document_navigation_cannot_be_recorded_as_same_document() {
         var content = createTemporaryObject(fixture, host.contentItem)
@@ -152,5 +173,89 @@ TestCase {
         content.noteCommit()
         content.setContentUrl(web.url.toString(), false)
         compare(ui.committedCount, 1)
+    }
+    function test_engine_back_waits_for_the_history_model_and_preserves_forward() {
+        backItems.clear(); backItems.append({url: "https://a.test", offset: -2}); backItems.append({url: "https://b.test", offset: -1})
+        web.url = "https://c.test"
+        ui.snapshot = {entries: [{url: "https://a.test", engine_index: 0}, {url: "https://b.test", engine_index: 1}, {url: web.url.toString(), engine_index: 2}], cursor: 2}
+        var content = createTemporaryObject(fixture, host.contentItem)
+        content.beginNavigation(true)
+        web.url = "https://b.test"
+        content.noteCommit()
+        wait(0)
+        compare(ui.entries.length, 0)
+        compare(ui.snapshot.cursor, 2)
+        verify(content.engineTraversalPending)
+        backItems.clear(); backItems.append({url: "https://a.test", offset: -1})
+        wait(0)
+        compare(ui.snapshot.cursor, 1)
+        compare(ui.snapshot.entries.length, 3)
+        verify(!content.engineTraversalPending)
+        content.beginNavigation(true)
+        web.url = "https://c.test"
+        backItems.clear(); backItems.append({url: "https://a.test", offset: -2}); backItems.append({url: "https://b.test", offset: -1})
+        content.noteCommit()
+        wait(0)
+        compare(ui.snapshot.cursor, 2)
+        compare(ui.snapshot.entries.length, 3)
+        compare(ui.entries.length, 0)
+    }
+    function test_same_document_engine_back_selects_the_previous_same_url_state() {
+        ui.snapshot = {entries: [{url: "https://a.test", engine_index: 0}, {url: "https://b.test", engine_index: 1}, {url: "https://b.test", engine_index: 2}], cursor: 2}
+        web.url = "https://b.test"
+        var content = createTemporaryObject(fixture, host.contentItem)
+        content.synchronizeHistory()
+        compare(ui.snapshot.cursor, 1)
+        compare(ui.snapshot.entries.length, 3)
+        compare(ui.entries.length, 0)
+    }
+    function test_browser_back_corrects_a_stale_anchor_without_duplicating_its_target() {
+        ui.snapshot = {entries: [{url: "https://a.test", engine_index: 0}, {url: "https://b.test", engine_index: 2}, {url: "https://c.test", engine_index: 2}], cursor: 1}
+        web.url = "https://b.test"
+        var content = createTemporaryObject(fixture, host.contentItem)
+        content.synchronizeHistory()
+        compare(ui.snapshot.cursor, 1)
+        compare(ui.snapshot.entries.length, 3)
+        compare(ui.snapshot.entries[1].engine_index, 1)
+        compare(ui.snapshot.entries[2].url, "https://c.test")
+    }
+    function test_same_document_forward_preserves_the_remaining_forward_branch() {
+        ui.snapshot = {entries: [{url: "https://a.test", engine_index: 0}, {url: "https://b.test", engine_index: 1}, {url: "https://c.test", engine_index: 2}], cursor: 0}
+        web.url = "https://b.test"
+        web.historyObservation = {document: "document-one", sequence: 1, url: web.url.toString()}
+        var content = createTemporaryObject(fixture, host.contentItem)
+        content.synchronizeHistory()
+        compare(ui.snapshot.cursor, 1)
+        compare(ui.snapshot.entries.length, 3)
+        compare(ui.snapshot.entries[2].url, "https://c.test")
+    }
+    function test_same_url_forward_and_new_push_have_different_branch_behavior() {
+        backItems.clear(); backItems.append({url: "about:blank", offset: -2}); backItems.append({url: "https://a.test", offset: -1})
+        var original = {entries: [{url: "https://a.test", engine_index: 1}, {url: "https://a.test", engine_index: 2}, {url: "rb://start", engine_index: 2}], cursor: 0}
+        ui.snapshot = JSON.parse(JSON.stringify(original))
+        web.historyObservation = {document: "document-one", sequence: 1, url: web.url.toString()}
+        var content = createTemporaryObject(fixture, host.contentItem)
+        content.synchronizeHistory()
+        compare(ui.snapshot.cursor, 1)
+        compare(ui.snapshot.entries.length, 3)
+        // No further popstate: this identical URL was pushed as a new entry.
+        ui.snapshot = JSON.parse(JSON.stringify(original))
+        content.synchronizeHistory()
+        compare(ui.snapshot.cursor, 1)
+        compare(ui.snapshot.entries.length, 2)
+    }
+    function test_history_probe_cannot_overwrite_a_new_native_destination() {
+        ui.snapshot = {entries: [{url: "https://a.test", engine_index: 0}], cursor: 0}
+        web.deferProbe = true
+        var content = createTemporaryObject(fixture, host.contentItem)
+        content.synchronizeHistory()
+        var callback = web.probeCallback
+        verify(content.historyProbePending)
+        content.setContentUrl("rb://blank", false)
+        callback({document: "document-one", sequence: 1, url: web.url.toString()})
+        verify(!content.historyProbePending)
+        compare(content.nativeUrl, "rb://blank")
+        compare(ui.snapshot.cursor, 0)
+        compare(ui.snapshot.entries.length, 1)
     }
 }

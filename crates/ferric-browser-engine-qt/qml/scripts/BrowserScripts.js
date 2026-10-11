@@ -2,7 +2,7 @@
 
 // Browser-owned page scripts are versioned resources. The build manifest hashes
 // this file with the QML module, so script changes are explicit and auditable.
-var VERSION = "12"
+var VERSION = "13"
 
 // Page userscripts are trusted local content, but their failure boundary is
 // browser policy. Keeping the wrappers here prevents QML from assembling page
@@ -212,10 +212,20 @@ function focusProbe() {
         + ":{sequence:0,editable:false,user_activated:false,kind:'unknown'};})()"
 }
 
+function historyTraversalProbe() {
+    return "(function(){var state=window.__ferric_browserHistoryTraversal;"
+        + "return state?{document:state.document,sequence:state.sequence,url:location.href}:null;})()"
+}
+
 function focusObserverSource() {
     return "(function(){"
         + "if(window.__ferric_browserFocusObserverInstalled)return;"
         + "window.__ferric_browserFocusObserverInstalled=true;"
+        // This state lives in ApplicationWorld. Only real popstate events
+        // distinguish traversal from a new pushState with the same URL.
+        + "if(window===window.top){const historyState={document:String(performance.timeOrigin)+':'+String(Math.random()),sequence:0};"
+        + "window.__ferric_browserHistoryTraversal=historyState;"
+        + "window.addEventListener('popstate',function(event){if(event.isTrusted)historyState.sequence++;},true);}"
         + "var sequence=0;var userGestureUntil=0;var identities=new WeakMap();var nextIdentity=0;var watchedElement=null;var watchedParent=null;"
         + "var removalObserver=new MutationObserver(function(){window.__ferric_browserReadFocusState();});"
         + "function watch(element){var parent=element&&element.parentNode;if(element===watchedElement&&parent===watchedParent)return;removalObserver.disconnect();watchedElement=element;watchedParent=parent;var node=parent;for(var depth=0;node&&depth<64;depth++,node=node.parentNode||node.host){removalObserver.observe(node,{childList:true});}}"
