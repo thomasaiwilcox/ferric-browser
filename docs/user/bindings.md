@@ -47,6 +47,7 @@ See [Webpage shortcuts](webpage-shortcuts.md) for examples and the existing emer
 | `normal` | `Ctrl+F5` | `reload --bypass-cache` |
 | `normal` | `Ctrl+PgDown` | `tab-next` |
 | `normal` | `Ctrl+PgUp` | `tab-prev` |
+| `normal` | `Ctrl+Shift+Space` | `start-page-cycle` |
 | `normal` | `Ctrl+Shift+n` | `window-new --private` |
 | `normal` | `Ctrl+Shift+t` | `tab-undo` |
 | `normal` | `Ctrl+Shift+v` | `mode-enter passthrough-once` |
@@ -61,7 +62,7 @@ See [Webpage shortcuts](webpage-shortcuts.md) for examples and the existing emer
 | `normal` | `Ctrl+p` | `tab-pin` |
 | `normal` | `Ctrl+q` | `quit` |
 | `normal` | `Ctrl+s` | `stop` |
-| `normal` | `Ctrl+t` | `tab-open about:blank` |
+| `normal` | `Ctrl+t` | `tab-new` |
 | `normal` | `Ctrl+u` | `scroll-page up --half` |
 | `normal` | `Ctrl+v` | `mode-enter passthrough` |
 | `normal` | `Ctrl+w` | `tab-close` |
@@ -95,12 +96,13 @@ See [Webpage shortcuts](webpage-shortcuts.md) for examples and the existing emer
 | `normal` | `g K` | `tab-move left` |
 | `normal` | `g O` | `open-current --target tab` |
 | `normal` | `g ^` | `tab-select 1` |
-| `normal` | `g a` | `tab-open about:blank` |
+| `normal` | `g a` | `tab-new` |
 | `normal` | `g b` | `bookmark-open` |
 | `normal` | `g f` | `view-source` |
 | `normal` | `g g` | `scroll-to top` |
 | `normal` | `g i` | `hint --first inputs` |
 | `normal` | `g o` | `open-current` |
+| `normal` | `g s` | `start-page` |
 | `normal` | `g t` | `switcher --scope tabs` |
 | `normal` | `h` | `scroll left` |
 | `normal` | `i` | `mode-enter insert` |

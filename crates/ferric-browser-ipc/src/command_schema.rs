@@ -24,6 +24,7 @@ pub fn command_argument_names(command: &str) -> &'static [&'static str] {
         "config-edit" | "config-reload" | "config-check" | "theme-reload" => &[],
         "bind" => &["mode", "keychain", "command"],
         "unbind" => &["mode", "keychain"],
+        "start-page-view" => &["view"],
         "binding-list" => &["mode"],
         "binding-explain" => &["keychain", "mode"],
         "learning-mode" => &["state"],

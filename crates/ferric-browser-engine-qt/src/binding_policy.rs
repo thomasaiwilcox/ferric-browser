@@ -164,7 +164,12 @@ pub(super) fn binding_uses_full_command_executor(command: &ParsedCommand) -> boo
     !command.arguments.is_empty()
         || matches!(
             command.name.as_str(),
-            "repeat"
+            "tab-new"
+                | "start-page"
+                | "start-page-view"
+                | "start-page-cycle"
+                | "favourite-add"
+                | "repeat"
                 | "cancel"
                 | "macro-record"
                 | "macro-stop"

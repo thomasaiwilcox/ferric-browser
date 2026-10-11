@@ -618,7 +618,15 @@ not supply the expected decoration behavior.
 Ledger/Doctor, contexts, settings, tabs, history, downloads, permissions, and
 diagnostics—and in V1.1 the journey graph—are accessible native surfaces or strictly
 read-only internal documents. The blank/start page is local and issues no
-network requests. Browser management actions are routed through native models,
+network requests. `rb://start` has Top Sites, eight fixed bookmark-backed
+Favourites, and a searchable, expandable Guide generated from the effective
+command/binding registries and authored feature explanations. Remember the
+selected view per normal profile; private owners use temporary session state.
+Startup and new-tab destinations are configured independently. Grid number keys
+operate only on a focused grid in Normal mode, without stealing browser keychain
+counts, text entry, or Alt-number tab selection. Native entries participate in
+Back/Forward and safe tab/session descriptors without entering web history.
+See [the start-page guide](user/start-page.md). Browser management actions are routed through native models,
 not a privileged WebChannel shared with arbitrary web pages.
 
 ## 9. Input modes and keyboard handling
@@ -1121,7 +1129,8 @@ they may not switch profile through a hostname rule mid-authentication.
 **TAB-002 — Ordering.** New related tabs follow their opener's group in creation
 order; unrelated tabs append. Closing the active tab selects the next tab at
 the same position, then the previous tab if none remains. Closing the final
-tab creates a local blank tab by default. `window-close` closes the window.
+tab creates the native start page in the same profile, using its saved view.
+`window-close` closes the window.
 Pinned tabs remain before ordinary tabs and resist accidental bulk closure.
 Pin and mute actions preserve their typed state through Qt; tab mute also
 updates the native WebEngine audio-muted state. `tab-next` and `tab-prev`

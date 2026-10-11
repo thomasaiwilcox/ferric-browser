@@ -698,6 +698,25 @@ mod tests {
         assert!(matches!(error, StorageWorkerError::Stopped));
     }
 
+    fn wait_for_storage_effects(
+        application: &mut BrowserApplication,
+        count: usize,
+    ) -> Vec<StorageEffect> {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        let mut effects = Vec::new();
+        loop {
+            effects.extend(application.poll_storage_effects());
+            if effects.len() >= count {
+                return effects;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "expected {count} storage effects before the deadline, received {effects:?}"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
     #[test]
     fn storage_results_return_as_application_effects() {
         let root = std::env::temp_dir().join(format!("ferric-application-{}", Uuid::new_v4()));
@@ -709,20 +728,10 @@ mod tests {
             .submit_storage(StorageRequest::Library { limit: 1 })
             .expect("submit library request");
 
-        let mut completed = false;
-        for _ in 0..100 {
-            let effects = application.poll_storage_effects();
-            completed = effects
-                .iter()
-                .any(|effect| matches!(effect.completion, StorageCompletion::Library(Ok(_))));
-            if completed {
-                break;
-            }
-            thread::sleep(Duration::from_millis(5));
-        }
+        let effects = wait_for_storage_effects(&mut application, 1);
         assert!(
-            completed,
-            "storage completion was not emitted through application"
+            matches!(effects[0].completion, StorageCompletion::Library(Ok(_))),
+            "library request failed: {effects:?}"
         );
         drop(application);
         fs::remove_dir_all(root).expect("remove test storage directory");
@@ -741,19 +750,13 @@ mod tests {
                 .expect("admit library request");
         }
 
-        let mut completed = 0;
-        for _ in 0..100 {
-            for effect in application.poll_storage_effects() {
-                if matches!(effect.completion, StorageCompletion::Library(Ok(_))) {
-                    completed += 1;
-                }
-            }
-            if completed == 2 {
-                break;
-            }
-            thread::sleep(Duration::from_millis(5));
-        }
-        assert_eq!(completed, 2, "both application-scheduled requests complete");
+        let effects = wait_for_storage_effects(&mut application, 2);
+        assert!(
+            effects
+                .iter()
+                .all(|effect| matches!(effect.completion, StorageCompletion::Library(Ok(_)))),
+            "both application-scheduled requests must succeed: {effects:?}"
+        );
         drop(application);
         fs::remove_dir_all(root).expect("remove test storage directory");
     }
@@ -773,19 +776,18 @@ mod tests {
             .expect("queue second request");
         assert_ne!(first, second);
 
-        let mut completed = Vec::new();
-        for _ in 0..100 {
-            for effect in application.poll_storage_effects() {
-                if matches!(effect.completion, StorageCompletion::Library(Ok(_))) {
-                    completed.push(effect.ticket);
-                }
-            }
-            if completed.len() == 2 {
-                break;
-            }
-            thread::sleep(Duration::from_millis(5));
-        }
-        assert_eq!(completed, vec![first, second]);
+        let effects = wait_for_storage_effects(&mut application, 2);
+        let tickets = effects
+            .iter()
+            .map(|effect| effect.ticket)
+            .collect::<Vec<_>>();
+        assert_eq!(tickets, vec![first, second]);
+        assert!(
+            effects
+                .iter()
+                .all(|effect| matches!(effect.completion, StorageCompletion::Library(Ok(_)))),
+            "library requests failed: {effects:?}"
+        );
         drop(application);
         fs::remove_dir_all(root).expect("remove test storage directory");
     }
@@ -801,20 +803,10 @@ mod tests {
             .submit_storage(StorageRequest::Flush)
             .expect("submit flush request");
 
-        let mut completed = false;
-        for _ in 0..100 {
-            completed = application
-                .poll_storage_effects()
-                .iter()
-                .any(|effect| matches!(effect.completion, StorageCompletion::Flush(Ok(()))));
-            if completed {
-                break;
-            }
-            thread::sleep(Duration::from_millis(5));
-        }
+        let effects = wait_for_storage_effects(&mut application, 1);
         assert!(
-            completed,
-            "flush completion was not emitted through application"
+            matches!(effects[0].completion, StorageCompletion::Flush(Ok(()))),
+            "flush request failed: {effects:?}"
         );
         drop(application);
         fs::remove_dir_all(root).expect("remove test storage directory");

@@ -872,6 +872,9 @@ FerricBrowserRuntimePresentation {
                 }
             }
         }
+        if (window.safeContextUrl(ui.current_url || "").length > 0) {
+            items.push(window.contextMenuItem("Add page to Favourites", "favourite-add", "", "browser.tab.favourite"))
+        }
         items.push(window.contextMenuItem("Inspect element", "inspect"))
         window.pendingContextMenuRequest = request
         window.pendingContextMenuView = view
@@ -916,6 +919,8 @@ FerricBrowserRuntimePresentation {
             if (ui === browserUi) {
                 window.syncTabModel()
                 window.executePendingEngineAction()
+            } else if (action === "favourite-add" && host && host.executePendingEngineAction) {
+                host.executePendingEngineAction()
             } else if (action === "open-link" && view) {
                 var pending = ui.take_engine_action()
                 if (pending.indexOf("navigate\t") === 0) {

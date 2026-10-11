@@ -107,13 +107,7 @@ GridLayout {
             }
         }
         onNewRequested: {
-            var index = browserUi.new_tab()
-            if (index >= 0) {
-                tabs.append({ url: "about:blank", title: "New tab",
-                    loaded: true, pinned: false, muted: false, zoom: 1.0,
-                    suspended: false, discarded: false })
-                window.syncTabModel()
-            }
+            if (browserUi.execute_command(":tab-new")) window.executePendingEngineAction()
         }
     }
 
@@ -130,9 +124,9 @@ GridLayout {
             Accessible.name: "Back"
             onClicked: {
                 var historyView = window.activeWebView()
-                if (historyView && historyView.canGoBack) {
+                if (historyView && historyView.contentCanGoBack) {
                     browserUi.back()
-                    historyView.goBack()
+                    window.executePendingEngineAction()
                 } else {
                     browserUi.status_text = "History boundary reached"
                 }
@@ -143,9 +137,9 @@ GridLayout {
             Accessible.name: "Forward"
             onClicked: {
                 var historyView = window.activeWebView()
-                if (historyView && historyView.canGoForward) {
+                if (historyView && historyView.contentCanGoForward) {
                     browserUi.forward()
-                    historyView.goForward()
+                    window.executePendingEngineAction()
                 } else {
                     browserUi.status_text = "History boundary reached"
                 }
@@ -197,7 +191,7 @@ GridLayout {
             Accessible.name: "Reload"
             onClicked: {
                 browserUi.reload()
-                window.activeWebView()?.reload()
+                window.executePendingEngineAction()
             }
         }
         Label {
@@ -538,11 +532,7 @@ GridLayout {
             text: "+"
             Accessible.name: "New tab"
             onClicked: {
-                var index = browserUi.new_tab()
-                if (index >= 0) {
-                    tabs.append({ url: "about:blank", title: "New tab", loaded: true, pinned: false, muted: false, zoom: 1.0, suspended: false, discarded: false })
-                    window.syncTabModel()
-                }
+                if (browserUi.execute_command(":tab-new")) window.executePendingEngineAction()
             }
         }
     }
@@ -638,6 +628,7 @@ GridLayout {
     }
 
     FerricBindingHelp {
+        id: keyboardHelpSurface
         browserWindow: window
         onCloseRequested: window.closeBindingHelp()
         onRefreshRequested: window.refreshBindingHelp()
@@ -885,6 +876,29 @@ GridLayout {
 
             WebEngineView {
                 id: webView
+                property alias nativeUrl: nativeContent.nativeUrl
+                property alias contentTraversalPending: nativeContent.traversalPending
+                readonly property var startPage: nativeContent.startPage
+                readonly property int engineHistoryIndex: nativeContent.engineHistoryIndex
+                readonly property bool contentCanGoBack: nativeContent.canNavigateBack
+                readonly property bool contentCanGoForward: nativeContent.canNavigateForward
+                property bool contentInitialized: false
+                readonly property string modelContentUrl: viewModel.loaded ? viewModel.url : ""
+                function setContentUrl(destination, traversal, engineMoves) { contentInitialized = true; nativeContent.setContentUrl(destination, traversal, engineMoves) }
+                function contentEngineOffset(destination, expected, backwards) { return nativeContent.engineOffset(destination, expected, backwards) }
+                function synchronizeContentHistory() { nativeContent.synchronizeHistory() }
+                onModelContentUrlChanged: {
+                    if (modelContentUrl.length > 0 && (modelContentUrl === "rb://start" || modelContentUrl === "rb://blank" || nativeUrl.length > 0 || !contentInitialized)) setContentUrl(modelContentUrl, false)
+                }
+                FerricNativeTabContent {
+                    id: nativeContent
+                    anchors.fill: parent
+                    webView: webView
+                    browserUi: webView.viewUi
+                    browserWindow: window
+                    browserHost: webView.viewHost
+                    tabsModel: webView.viewTabs
+                }
                 property int tabIndex: -1
                 property string stableTabId: ""
                 property var viewUi: browserUi
@@ -939,7 +953,7 @@ GridLayout {
                     return host.length > 0 && counts[host] !== undefined ? Number(counts[host]) : 0
                 }
                 profile: viewProfile
-                url: viewModel.loaded ? viewModel.url : "about:blank"
+                url: "about:blank"
                 audioMuted: !!viewModel.muted
                 zoomFactor: Number(window.siteRuleValue(
                     effectiveSiteSettings, "content.zoom", viewModel.zoom))
@@ -954,13 +968,18 @@ GridLayout {
                     === "require-gesture"
                 Accessible.name: "Web content for tab " + (tabIndex + 1)
                 Component.onCompleted: {
+                    if (viewModel.loaded && !contentInitialized) setContentUrl(viewModel.url || "about:blank", false)
                     refreshEffectiveSiteSettings()
-                    window.installFocusObserver(webView)
+                    if (nativeUrl.length > 0) {
+                        viewUi.content_navigated(tabIndex, nativeUrl, engineHistoryIndex, false)
+                        if (nativeUrl === "rb://start") Qt.callLater(nativeContent.focusContent)
+                    } else if (viewModel.loaded) window.installFocusObserver(webView)
                 }
                 onJavaScriptConsoleMessage: function(level, message, lineNumber, sourceID) {
                     window.probeFocusNotification(viewUi, viewHost, webView, tabIndex, message)
                 }
                 onActiveFocusChanged: {
+                    if (activeFocus && nativeUrl === "rb://start") { Qt.callLater(nativeContent.focusContent); return }
                     if (activeFocus && viewUi === browserUi
                             && tabIndex === viewUi.active_tab_index) {
                         window.scheduleFocusProbe(2)
@@ -972,7 +991,12 @@ GridLayout {
                     }
                 }
 
+                onNavigationRequested: function(request) {
+                    if (request.isMainFrame) nativeContent.beginNavigation(request.navigationType === WebEngineView.BackForwardNavigation)
+                }
                 onUrlChanged: {
+                    if (nativeUrl.length > 0) return
+                    nativeContent.noteSameDocument()
                     refreshEffectiveSiteSettings()
                     if (!viewModel.loaded) {
                         return
@@ -995,6 +1019,7 @@ GridLayout {
                     }
                 }
                 onTitleChanged: {
+                    if (nativeUrl.length > 0) return
                     if (viewModel.loaded && viewTabs === tabs) {
                         tabs.setProperty(tabIndex, "title", title || "New tab")
                         if (tabIndex === viewUi.active_tab_index && viewUi === browserUi) {
@@ -1003,6 +1028,7 @@ GridLayout {
                     }
                 }
                 onLoadingChanged: function(loadRequest) {
+                    if (!viewModel.loaded || nativeUrl.length > 0) return
                     if (loadRequest.status === WebEngineView.LoadStartedStatus) {
                         webView.scrollPositionRestored = false
                         window.clearPageDialogForView(webView)
@@ -1035,6 +1061,7 @@ GridLayout {
                             viewUi.navigation_started(loadRequest.url.toString())
                         }
                     } else if (loadRequest.status === WebEngineView.LoadSucceededStatus) {
+                        nativeContent.noteCommit()
                         if (viewTabs === tabs) {
                             viewUi.navigation_committed_for(tabIndex, webView.url.toString(), webView.title)
                         } else {
@@ -1066,6 +1093,7 @@ GridLayout {
                             window.finishSiteDoctorAfterLoad(viewUi, true)
                         }
                     } else if (loadRequest.status === WebEngineView.LoadFailedStatus) {
+                        nativeContent.noteCommit()
                         if (viewTabs === tabs) {
                             viewUi.navigation_failed_with_details(
                                 tabIndex,
@@ -1155,6 +1183,7 @@ GridLayout {
                     }
                 }
                 onRenderProcessTerminated: function(terminationStatus, exitCode) {
+                    if (nativeUrl.length > 0) return
                     window.handleRendererProcessTerminated(
                         viewUi, webView, window, tabIndex,
                         terminationStatus, exitCode)

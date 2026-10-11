@@ -246,6 +246,7 @@ impl qobject::BrowserUi {
             else {
                 return false;
             };
+            self.as_mut().sync_tab_order_from_core();
             self.as_mut().set_pending_engine_action(&effects);
             {
                 let mut rust = self.as_mut().rust_mut();
@@ -254,7 +255,6 @@ impl qobject::BrowserUi {
                     .closed_tabs
                     .retain(|candidate| candidate.id != closed.id);
             }
-            self.as_mut().sync_tab_order_from_core();
             self.set_status_text(QString::from("Closed tab reopened"));
             return true;
         }

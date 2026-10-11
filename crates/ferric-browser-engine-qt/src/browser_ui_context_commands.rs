@@ -5,6 +5,24 @@ use super::{
 };
 
 impl qobject::BrowserUi {
+    pub(super) fn execute_session_save_command(
+        mut self: Pin<&mut Self>,
+        command: &ParsedCommand,
+    ) -> Result<Value, String> {
+        self.as_ref()
+            .rust()
+            .registry
+            .validate(command, self.as_ref().rust().core_mode)
+            .map_err(|error| error.to_string())?;
+        let [name] = command.arguments.as_slice() else {
+            return Err("session-save requires one name".into());
+        };
+        if !self.as_mut().save_named_session(&QString::from(name)) {
+            return Err(self.as_ref().rust().status_text.to_string());
+        }
+        Ok(serde_json::json!({"status": "accepted", "name": name}))
+    }
+
     pub(super) fn handle_session_command(
         mut self: Pin<&mut Self>,
         command: &ParsedCommand,

@@ -83,6 +83,15 @@ impl std::error::Error for StorageWorkerError {}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum StorageCommand {
+    StartPage {
+        now: i64,
+        retention_before: i64,
+        rank: bool,
+    },
+    StartPageWrite {
+        mutation: super::StartPageMutation,
+        timestamp: i64,
+    },
     Library {
         limit: usize,
     },
@@ -187,6 +196,8 @@ pub struct JourneyQuerySnapshot {
 /// The durable operation that produced a completion or failure.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum StorageOperation {
+    StartPage,
+    StartPageWrite,
     Library,
     SessionList,
     SessionRestore,
@@ -213,6 +224,8 @@ impl StorageCommand {
     #[must_use]
     pub const fn operation(&self) -> StorageOperation {
         match self {
+            Self::StartPage { .. } => StorageOperation::StartPage,
+            Self::StartPageWrite { .. } => StorageOperation::StartPageWrite,
             Self::Library { .. } => StorageOperation::Library,
             Self::SessionList { .. } => StorageOperation::SessionList,
             Self::SessionRestore { .. } | Self::SessionRecovery { .. } => {
@@ -300,6 +313,8 @@ impl std::error::Error for StorageOperationError {}
 
 #[derive(Debug)]
 pub enum StorageCompletion {
+    StartPage(Result<Box<super::StartPageSnapshot>, StorageOperationError>),
+    StartPageWrite(Result<(), StorageOperationError>),
     Library(Result<ProfileLibrarySnapshot, StorageOperationError>),
     SessionList(Result<Vec<String>, StorageOperationError>),
     SessionRestore(Result<SessionRestoreSnapshot, StorageOperationError>),
@@ -327,6 +342,8 @@ impl StorageCompletion {
     #[must_use]
     pub const fn operation(&self) -> StorageOperation {
         match self {
+            Self::StartPage(_) => StorageOperation::StartPage,
+            Self::StartPageWrite(_) => StorageOperation::StartPageWrite,
             Self::Library(_) => StorageOperation::Library,
             Self::SessionList(_) => StorageOperation::SessionList,
             Self::SessionRestore(_) => StorageOperation::SessionRestore,
@@ -359,6 +376,8 @@ impl StorageCompletion {
             message: message.into(),
         };
         match operation {
+            StorageOperation::StartPage => Self::StartPage(Err(error)),
+            StorageOperation::StartPageWrite => Self::StartPageWrite(Err(error)),
             StorageOperation::Library => Self::Library(Err(error)),
             StorageOperation::SessionList => Self::SessionList(Err(error)),
             StorageOperation::SessionRestore => Self::SessionRestore(Err(error)),
@@ -1091,6 +1110,41 @@ fn run_worker(
             break;
         };
         let completion = match *request {
+            StorageCommand::StartPage {
+                now,
+                retention_before,
+                rank,
+            } => {
+                let result = store.as_ref().map_or_else(
+                    |error| Err(error.clone()),
+                    |store| {
+                        store
+                            .start_page_snapshot_with_ranking(now, retention_before, rank)
+                            .map_err(|error| error.to_string())
+                    },
+                );
+                StorageCompletion::StartPage(storage_result(
+                    StorageOperation::StartPage,
+                    result.map(Box::new),
+                ))
+            }
+            StorageCommand::StartPageWrite {
+                mutation,
+                timestamp,
+            } => {
+                let result = store.as_ref().map_or_else(
+                    |error| Err(error.clone()),
+                    |store| {
+                        store
+                            .mutate_start_page(&mutation, timestamp)
+                            .map_err(|error| error.to_string())
+                    },
+                );
+                StorageCompletion::StartPageWrite(storage_result(
+                    StorageOperation::StartPageWrite,
+                    result,
+                ))
+            }
             StorageCommand::Library { limit } => StorageCompletion::Library(storage_result(
                 StorageOperation::Library,
                 store.as_ref().map_or_else(

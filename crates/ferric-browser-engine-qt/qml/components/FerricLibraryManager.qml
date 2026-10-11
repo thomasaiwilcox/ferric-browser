@@ -159,6 +159,12 @@ FerricModalSurface {
             entries: libraryManager.entries
             libraryKind: libraryManager.libraryKind
             pendingDelete: libraryManager.pendingDelete
+            onFavouriteRequested: function(id) {
+                if (libraryManager.browserWindow.primaryBrowserUi.start_page_pick_bookmark(id)) {
+                    libraryManager.closeRequested()
+                    libraryManager.browserWindow.completeBrowserKeyAction(libraryManager.browserWindow.primaryBrowserUi, libraryManager.browserWindow)
+                }
+            }
             onOpenRequested: function(entryKind, entryId) {
                 libraryManager.entryOpenRequested(entryKind, entryId)
             }

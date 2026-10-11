@@ -242,6 +242,15 @@ impl qobject::BrowserUi {
             this.storage_library = None;
             this.storage_library_revision = 0;
             this.storage_library_dirty.set(false);
+            this.private_start_state = std::sync::Arc::new(std::sync::Mutex::new(
+                super::browser_ui_start_page::PrivateStartState::default(),
+            ));
+            this.start_rank_requested = false;
+            this.start_snapshot = ferric_browser_storage::StartPageSnapshot::default();
+            this.start_read_pending = false;
+            this.start_write_pending = false;
+            this.start_refresh_requested = false;
+            this.content_histories.clear();
             this.private_history.clear();
             this.private_history_next_id = -1;
             this.session_names.clear();
@@ -419,6 +428,23 @@ impl qobject::BrowserUi {
             this.status_text = status.clone();
             status
         };
+        let revision = self
+            .as_ref()
+            .rust()
+            .start_page_profile_revision
+            .wrapping_add(1);
+        let history_revision = self
+            .as_ref()
+            .rust()
+            .content_history_revision
+            .wrapping_add(1);
+        self.as_mut().set_content_history_revision(history_revision);
+        self.as_mut().set_start_page_ready(false);
+        self.as_mut().set_start_page_profile_revision(revision);
+        self.as_mut().set_start_page_owner_token(QString::default());
+        self.as_mut().set_start_page_error(QString::default());
+        self.as_mut().set_start_page_busy(false);
+        self.as_mut().publish_start_page();
         self.as_mut()
             .set_config_json(QString::from(effective_config_json));
         self.as_mut().update_hint_preferences(&presentation_config);

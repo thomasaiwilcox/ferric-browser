@@ -418,6 +418,46 @@ impl CommandRegistry {
         let normal = vec![Mode::Normal, Mode::Command];
         let mut registry = Self::new(vec![
             definition(
+                "tab-new",
+                &[],
+                normal.clone(),
+                CountPolicy::NotSupported,
+                false,
+                "Open a new tab using navigation.new_tab.",
+            ),
+            definition(
+                "start-page",
+                &[],
+                normal.clone(),
+                CountPolicy::NotSupported,
+                false,
+                "Open the native start page in this tab.",
+            ),
+            definition(
+                "start-page-view",
+                &[],
+                normal.clone(),
+                CountPolicy::NotSupported,
+                false,
+                "Select and remember Top Sites, Favourites, or Guide.",
+            ),
+            definition(
+                "start-page-cycle",
+                &[],
+                normal.clone(),
+                CountPolicy::NotSupported,
+                false,
+                "Cycle the views of the active start page.",
+            ),
+            definition(
+                "favourite-add",
+                &[],
+                normal.clone(),
+                CountPolicy::NotSupported,
+                false,
+                "Add the current web page to a start-page favourite slot.",
+            ),
+            definition(
                 "open",
                 &[],
                 normal.clone(),
@@ -1800,6 +1840,32 @@ impl CommandRegistry {
                 required: false,
             }];
             open_current.examples = vec!["open-current".into(), "open-current --target tab".into()];
+        }
+        for name in ["tab-new", "start-page", "start-page-cycle", "favourite-add"] {
+            if let Some(command) = registry
+                .definitions
+                .iter_mut()
+                .find(|command| command.name == name)
+            {
+                command.examples = vec![name.into()];
+                command.effect = EffectClass::Navigation;
+            }
+        }
+        if let Some(command) = registry
+            .definitions
+            .iter_mut()
+            .find(|command| command.name == "start-page-view")
+        {
+            command.arguments = vec![ArgumentDefinition {
+                name: "view".into(),
+                kind: ArgumentKind::Enum,
+                required: true,
+            }];
+            command.examples = vec![
+                "start-page-view top-sites".into(),
+                "start-page-view favourites".into(),
+                "start-page-view guide".into(),
+            ];
         }
         if let Some(tab_open) = registry
             .definitions
@@ -3475,7 +3541,7 @@ fn definition(
             EffectClass::Mutating
         },
         completion: CompletionProvider::None,
-        examples: Vec::new(),
+        examples: vec![name.into()],
     }
 }
 
@@ -3564,7 +3630,7 @@ mod tests {
             .remove(0);
         assert_eq!(registry.resolve(&command.name).unwrap().name, "open");
         assert!(registry.validate(&command, Mode::Normal).is_ok());
-        assert_eq!(registry.definitions().len(), 138);
+        assert_eq!(registry.definitions().len(), 143);
         let open = registry.resolve("open").unwrap();
         assert_ne!(open.action, ActionId::from_raw(0));
         assert_eq!(open.effect, EffectClass::Navigation);

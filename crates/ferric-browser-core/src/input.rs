@@ -217,8 +217,8 @@ impl BindingTrie {
                 binding(Mode::Normal, &["S", "h"], "history"),
                 binding(Mode::Normal, &["S", "q"], "bookmark-list"),
                 binding(Mode::Normal, &["T"], "switcher --scope tabs"),
-                binding(Mode::Normal, &["g", "a"], "tab-open about:blank"),
-                binding(Mode::Normal, &["Ctrl+t"], "tab-open about:blank"),
+                binding(Mode::Normal, &["g", "a"], "tab-new"),
+                binding(Mode::Normal, &["Ctrl+t"], "tab-new"),
                 binding(Mode::Normal, &["J"], "tab-next"),
                 binding(Mode::Normal, &["K"], "tab-prev"),
                 binding(Mode::Normal, &["g", "t"], "switcher --scope tabs"),
@@ -240,6 +240,8 @@ impl BindingTrie {
                 binding(Mode::Normal, &["Alt+9"], "tab-select last"),
                 binding(Mode::Normal, &["Alt+m"], "tab-mute"),
                 binding(Mode::Normal, &["g", "?"], "binding-list"),
+                binding(Mode::Normal, &["g", "s"], "start-page"),
+                binding(Mode::Normal, &["Ctrl+Shift+Space"], "start-page-cycle"),
                 binding(Mode::Normal, &["Ctrl+p"], "tab-pin"),
                 binding(Mode::Normal, &["Ctrl+Space"], "switcher"),
                 binding(Mode::Normal, &["Ctrl+v"], "mode-enter passthrough"),
@@ -355,6 +357,11 @@ impl BindingResolver {
             self.reset();
             self.mode = mode;
         }
+    }
+
+    #[must_use]
+    pub fn is_pending(&self) -> bool {
+        !self.prefix.is_empty() || !self.count_digits.is_empty()
     }
 
     pub fn reset(&mut self) {
@@ -864,7 +871,7 @@ mod tests {
                 vec!["g".to_owned(), "O".to_owned()],
                 "open-current --target tab",
             ),
-            (vec!["g".to_owned(), "a".to_owned()], "tab-open about:blank"),
+            (vec!["g".to_owned(), "a".to_owned()], "tab-new"),
             (vec!["g".to_owned(), "b".to_owned()], "bookmark-open"),
             (vec!["g".to_owned(), "C".to_owned()], "tab-clone"),
             (vec!["g".to_owned(), "f".to_owned()], "view-source"),
@@ -877,7 +884,7 @@ mod tests {
             (vec!["Alt+9".to_owned()], "tab-select last"),
             (vec!["Alt+m".to_owned()], "tab-mute"),
             (vec!["g".to_owned(), "$".to_owned()], "tab-select last"),
-            (vec!["Ctrl+t".to_owned()], "tab-open about:blank"),
+            (vec!["Ctrl+t".to_owned()], "tab-new"),
             (vec!["Ctrl+w".to_owned()], "tab-close"),
             (vec!["Ctrl+Shift+t".to_owned()], "tab-undo"),
             (vec!["Ctrl+n".to_owned()], "window-new"),

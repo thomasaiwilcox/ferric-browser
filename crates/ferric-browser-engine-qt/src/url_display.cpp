@@ -24,6 +24,7 @@ QString ferric_browser_to_ascii_host(const QString &host)
 
 QString ferric_browser_canonicalize_url(const QString &value)
 {
+    if (value == QStringLiteral("rb://start") || value == QStringLiteral("rb://blank")) { return value; }
     QUrl url(value, QUrl::StrictMode);
     if (!url.isValid() || url.scheme().isEmpty()) {
         return {};

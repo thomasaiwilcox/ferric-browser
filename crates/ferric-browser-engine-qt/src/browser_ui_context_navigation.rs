@@ -196,6 +196,7 @@ impl qobject::BrowserUi {
         {
             return Err("Navigation ignored".into());
         }
+        self.as_mut().set_pending_engine_action(&effects);
         let resolved = QString::from(url.as_str());
         self.as_mut().set_initial_url(resolved.clone());
         self.as_mut().update_current_url(resolved);

@@ -627,6 +627,7 @@ impl qobject::BrowserUi {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
             this.tab_ids.retain(|candidate| *candidate != tab);
+            this.content_histories.remove(&tab);
             if let Some((_, _, original_closed, Some(temporary_tab))) = experiment_closing {
                 if original_closed {
                     if let Some(temporary_index) = this

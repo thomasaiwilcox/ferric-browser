@@ -292,6 +292,7 @@ impl qobject::BrowserUi {
 
     pub(super) fn poll_storage_library(mut self: Pin<&mut Self>) -> bool {
         self.as_mut().ensure_storage_worker();
+        self.as_mut().flush_start_page_refresh();
         let mut consumed = self.as_mut().poll_switcher_library_index();
         let effects = self.as_mut().poll_storage_effects();
         let mut journey_ticket = None;
@@ -317,6 +318,15 @@ impl qobject::BrowserUi {
         let mut flush_result = None;
         for effect in effects {
             match effect.completion {
+                StorageCompletion::StartPage(result) => {
+                    self.as_mut()
+                        .complete_start_page_read(result.map(|snapshot| *snapshot));
+                    consumed = true;
+                }
+                StorageCompletion::StartPageWrite(result) => {
+                    self.as_mut().complete_start_page_write(result);
+                    consumed = true;
+                }
                 StorageCompletion::Library(result) => {
                     library_result = Some(result.map_err(|error| error.message));
                 }
@@ -780,6 +790,7 @@ impl qobject::BrowserUi {
             match result {
                 Ok(_) => {
                     self.as_ref().rust().storage_library_dirty.set(true);
+                    self.as_mut().refresh_start_page_metadata();
                     self.as_mut()
                         .set_status_text(QString::from("Bookmark/quickmark write committed"));
                 }
@@ -801,6 +812,7 @@ impl qobject::BrowserUi {
                 .take();
             match result {
                 Ok(deleted) => {
+                    self.as_mut().refresh_start_page_metadata();
                     if let Some((since, origin)) = clear_filter {
                         let cutoff = since.and_then(|value| u64::try_from(value).ok());
                         if self

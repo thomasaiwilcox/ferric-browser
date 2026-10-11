@@ -1,8 +1,8 @@
 use super::{
     CommandRegistry, CxxQtType, Event, ExistenceState, JourneyEdgeKind, Mode, ParsedCommand, Pin,
     QString, ScrollTargetAction, SearchCase, TabId, ValidatedUrl, Value, current_target,
-    is_bounded_untrusted_text, is_safe_history_url, parse_scroll_options,
-    parse_scroll_target_options, parse_search_next_options, qobject, safe_ipc_url,
+    is_bounded_untrusted_text, parse_scroll_options, parse_scroll_target_options,
+    parse_search_next_options, qobject, safe_ipc_url,
 };
 
 #[derive(Debug, Eq, PartialEq)]
@@ -107,7 +107,7 @@ impl qobject::BrowserUi {
             })
             .and_then(|tab| tab.url.as_deref())
             .map_or_else(|| "about:blank".to_owned(), safe_ipc_url);
-        if !is_safe_history_url(&source_url) {
+        if !super::url_safety::is_safe_tab_descriptor(&source_url) {
             return Err("current tab has no safe URL descriptor to clone".into());
         }
         let url = ValidatedUrl::parse(source_url.clone())
@@ -167,7 +167,7 @@ impl qobject::BrowserUi {
             })
             .and_then(|tab| tab.url.as_deref())
             .map_or_else(|| "about:blank".to_owned(), safe_ipc_url);
-        if !is_safe_history_url(&source_url) {
+        if !super::url_safety::is_safe_tab_descriptor(&source_url) {
             return Err("current tab has no safe URL descriptor to reopen".into());
         }
         ValidatedUrl::parse(source_url.clone())

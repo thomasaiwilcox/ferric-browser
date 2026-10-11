@@ -1665,6 +1665,14 @@ impl ActionRegistry {
                     confirmation: ActionConfirmation::Never,
                     sensitive: false,
                 },
+                ActionDefinition {
+                    id: "browser.tab.favourite".into(), subject: ActionSubject::Tab,
+                    verb: "favourite".into(), label: "Add current page to Favourites".into(),
+                    description: "Choose a start-page slot for the current safe web page.".into(),
+                    command: "favourite-add".into(), arguments: vec![],
+                    examples: vec!["action tab favourite".into()], sources: vec![ActionSource::Ui, ActionSource::Ipc, ActionSource::Switcher],
+                    effect: EffectClass::Navigation, confirmation: ActionConfirmation::Never, sensitive: false,
+                },
             ],
         }
     }
@@ -1805,7 +1813,7 @@ mod tests {
     fn builtins_have_stable_namespaced_ids_and_commands() {
         let registry = ActionRegistry::default_v1();
         registry.validate().expect("valid action registry");
-        assert_eq!(registry.definitions().len(), 72);
+        assert_eq!(registry.definitions().len(), 73);
         assert_eq!(
             registry
                 .resolve("browser.url.clean")

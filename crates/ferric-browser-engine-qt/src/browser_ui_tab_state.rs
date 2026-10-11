@@ -62,6 +62,7 @@ impl qobject::BrowserUi {
             return QString::default();
         };
         let binding = self.as_ref();
+        let rust = binding.rust();
         let Some(tab_state) = binding
             .rust()
             .state
@@ -85,7 +86,13 @@ impl qobject::BrowserUi {
         let payload = serde_json::json!({
             "tab_id": tab.to_string(),
             "profile_name": self.as_ref().rust().profile_name,
-            "url": tab_state.url.as_deref().map(safe_ipc_url),
+            "url": tab_state.url.as_deref().or_else(|| {
+                let index = rust.tab_ids.iter().position(|candidate| *candidate == tab)?;
+                super::url_safety::pending_native_tab_url(
+                    rust.pending_engine_action.iter().chain(rust.pending_engine_actions.iter()).map(String::as_str),
+                    index,
+                )
+            }).map(safe_ipc_url),
             "title": tab_state.title,
             "loading": loading,
             "pinned": tab_state.pinned,

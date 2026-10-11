@@ -284,6 +284,9 @@ fn commit_navigation(
     tab.loading = LoadingState::Committed;
     tab.renderer = RendererState::Healthy;
     let profile = tab.profile;
+    if crate::InternalPage::from_url(url.as_str()).is_some() {
+        return;
+    }
     let traversed = state.journey.complete_traversal(target.tab).is_some();
     if !traversed || transition != JourneyEdgeKind::Navigate {
         state.journey.record_navigation_from(
@@ -1135,14 +1138,15 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
                 window.active_tab = window.tabs.iter().rev().copied().next();
             }
             if window.tabs.is_empty() {
-                let blank = add_tab(state, window_id, Some("about:blank".into()))?;
-                let blank_state = state.tabs.get_mut(&blank).expect("blank tab exists");
-                blank_state.loading = LoadingState::Complete;
+                let start = add_tab(state, window_id, Some("rb://start".into()))?;
+                let start_state = state.tabs.get_mut(&start).expect("start tab exists");
+                start_state.loading = LoadingState::Complete;
+                start_state.title = "Start page".into();
                 state
                     .windows
                     .get_mut(&window_id)
                     .expect("window invariant")
-                    .active_tab = Some(blank);
+                    .active_tab = Some(start);
             }
             persist(state, &mut effects);
         }
@@ -1709,8 +1713,8 @@ mod tests {
     }
 
     #[test]
-    fn close_freezes_tab_until_view_closed_and_stale_callbacks_do_nothing() {
-        let (mut state, _, window, tab, target) = setup();
+    fn closing_last_tab_returns_to_start_page_and_ignores_stale_callbacks() {
+        let (mut state, profile, window, tab, target) = setup();
         let effects = reduce(&mut state, Event::CloseTab { tab }).unwrap();
         assert!(matches!(
             effects.as_slice(),
@@ -1734,10 +1738,13 @@ mod tests {
         )
         .unwrap();
         assert!(!state.tabs.contains_key(&tab));
-        let blank = state.windows[&window].active_tab.expect("blank tab");
-        assert_ne!(blank, tab);
-        assert_eq!(state.tabs[&blank].url.as_deref(), Some("about:blank"));
-        assert_eq!(state.tabs[&blank].loading, LoadingState::Complete);
+        let start = state.windows[&window].active_tab.expect("start tab");
+        assert_ne!(start, tab);
+        assert_eq!(state.windows[&window].tabs, vec![start]);
+        assert_eq!(state.tabs[&start].url.as_deref(), Some("rb://start"));
+        assert_eq!(state.tabs[&start].title, "Start page");
+        assert_eq!(state.tabs[&start].loading, LoadingState::Complete);
+        assert_eq!(state.tabs[&start].profile, profile);
         assert!(state.validate().is_ok());
     }
 
