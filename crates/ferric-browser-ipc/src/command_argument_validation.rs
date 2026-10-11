@@ -52,6 +52,7 @@ pub(crate) fn valid_ipc_mode(mode: &str) -> bool {
             | "hint"
             | "caret"
             | "pass-through"
+            | "pass-through-once"
     )
 }
 

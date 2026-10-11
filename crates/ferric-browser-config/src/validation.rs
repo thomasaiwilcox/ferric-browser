@@ -406,6 +406,7 @@ pub fn validate(config: &Config) -> Result<(), ConfigError> {
                 | "hint"
                 | "caret"
                 | "pass-through"
+                | "pass-through-once"
         ) {
             return Err(ConfigError::Validation(format!(
                 "bindings mode {mode:?} is not supported"
@@ -1004,6 +1005,7 @@ pub(super) fn validate_runtime_binding(
             | "search"
             | "hint"
             | "pass-through"
+            | "pass-through-once"
     ) {
         return Err(ConfigError::Validation(format!(
             "runtime binding mode {mode:?} is not supported"

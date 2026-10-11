@@ -917,7 +917,7 @@ impl CommandRegistry {
                 ],
                 CountPolicy::NotSupported,
                 false,
-                "Enter an explicit browser input mode.",
+                "Enter Insert, Caret, Pass-through, or Pass Next Key. Pass-through sends webpage shortcuts; Ctrl+Escape returns to Normal.",
             ),
             definition(
                 "caret-move",

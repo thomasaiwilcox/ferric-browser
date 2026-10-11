@@ -243,6 +243,12 @@ impl BindingTrie {
                 binding(Mode::Normal, &["Ctrl+p"], "tab-pin"),
                 binding(Mode::Normal, &["Ctrl+Space"], "switcher"),
                 binding(Mode::Normal, &["Ctrl+v"], "mode-enter passthrough"),
+                binding(
+                    Mode::Normal,
+                    &["Ctrl+Shift+v"],
+                    "mode-enter passthrough-once",
+                ),
+                binding(Mode::Normal, &[";", "v"], "mode-enter passthrough-once"),
                 binding(Mode::Normal, &["d"], "tab-close"),
                 binding(Mode::Normal, &["u"], "tab-undo"),
                 binding(Mode::Normal, &["Ctrl+w"], "tab-close"),
@@ -495,6 +501,31 @@ fn binding(mode: Mode, keys: &[&str], command: &str) -> BindingDefinition {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn passthrough_entry_bindings_resolve_in_normal_mode() {
+        let registry = BindingRegistry::default_v1(CommandRegistry::default_v1()).unwrap();
+        for (keys, command) in [
+            (vec!["Ctrl+v"], "mode-enter passthrough"),
+            (vec!["Ctrl+Shift+v"], "mode-enter passthrough-once"),
+            (vec![";", "v"], "mode-enter passthrough-once"),
+        ] {
+            let mut resolver = registry.resolver(Mode::Normal);
+            for key in &keys[..keys.len() - 1] {
+                assert!(matches!(
+                    resolver.feed(key, 0),
+                    BindingOutcome::Pending { .. }
+                ));
+            }
+            assert_eq!(
+                resolver.feed(keys.last().unwrap(), 1),
+                BindingOutcome::Execute {
+                    command: command.into(),
+                    count: 1
+                }
+            );
+        }
+    }
 
     #[test]
     fn insert_commands_are_immediate_and_case_sensitive() {

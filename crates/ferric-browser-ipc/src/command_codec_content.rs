@@ -171,11 +171,13 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
                         | "insert-locked"
                         | "caret"
                         | "passthrough"
+                        | "passthrough-once"
                         | "pass-through"
+                        | "pass-through-once"
                 )
             {
                 return Err(
-                    "mode-enter requires one of normal, insert, insert-locked, caret, passthrough"
+                    "mode-enter requires one of normal, insert, insert-locked, caret, passthrough, passthrough-once"
                         .into(),
                 );
             }

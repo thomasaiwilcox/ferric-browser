@@ -98,6 +98,7 @@ fn mode_name(mode: Mode) -> &'static str {
         Mode::Grid => "grid",
         Mode::Caret => "caret",
         Mode::PassThrough => "pass-through",
+        Mode::PassThroughOnce => "pass-through-once",
     }
 }
 
@@ -114,6 +115,12 @@ fn render_binding_docs() -> Result<String, String> {
         "Escape exits either variant. For example, use `i`, type a search, Enter, then `j` to browse;\n",
         "use `I` for document editing with repeated paragraphs. Neither command focuses an arbitrary input.\n",
         "Both variants reset when changing tabs or navigating; Transient Insert also ends when its editable context loses focus.\n\n",
+        "For webpage shortcuts outside text fields, press `Ctrl+v` for `PASS THROUGH`.\n",
+        "Press `Ctrl+Shift+v` or `; v` for `PASS NEXT KEY`: the next key, its repeats, and release reach the page, then Normal resumes.\n",
+        "Modifier keys alone do not finish one-key forwarding. `Ctrl+Escape` returns either variant to Normal; ordinary Escape reaches the page.\n",
+        "Both reset when changing tabs or navigating; one-key forwarding also cancels when the window loses activation.\n",
+        "The entry shortcuts are configurable Normal-mode bindings; `Ctrl+Escape` is a reserved recovery shortcut.\n",
+        "See [Webpage shortcuts](webpage-shortcuts.md) for examples and the existing emergency/media-key exceptions.\n\n",
         "| Mode | Key chain | Command |\n",
         "| --- | --- | --- |\n",
     ));

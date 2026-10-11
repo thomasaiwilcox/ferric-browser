@@ -49,6 +49,8 @@ pub enum Mode {
     Grid,
     Caret,
     PassThrough,
+    /// Forward one native key gesture, then return to Normal.
+    PassThroughOnce,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

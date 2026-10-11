@@ -2035,7 +2035,15 @@ ApplicationWindow {
     BrowserKeyRouter {
         id: browserKeyRouter
         transientInsert: browserUi.mode === "insert"
+        passNextKey: browserUi.mode === "pass-through-once"
+        passThrough: browserUi.mode === "pass-through"
         inputEpoch: browserUi.input_epoch
+        onPassNextKeyDispatched: function(epoch) {
+            if (browserUi.mode === "pass-through-once" && browserUi.input_epoch === epoch) {
+                window.cancelFocusProbes()
+                browserUi.escape()
+            }
+        }
         onTransientEnterDispatched: function(epoch) {
             if (browserUi.mode === "insert" && browserUi.input_epoch === epoch) {
                 // Cancel pre-entry retries as well as invalidating in-flight queries.
@@ -2051,7 +2059,8 @@ ApplicationWindow {
                      || browserUi.mode === "caret"
                      || browserUi.mode === "insert"
                      || browserUi.mode === "insert-locked"
-                     || browserUi.mode === "pass-through")
+                     || browserUi.mode === "pass-through"
+                     || browserUi.mode === "pass-through-once")
         onKeyPressed: function(text, key, modifiers, isAutoRepeat) {
             var event = {
                 text: text,
@@ -2063,6 +2072,13 @@ ApplicationWindow {
             if (window.handleBrowserKey(browserUi, window, event)) {
                 browserKeyRouter.acceptCurrentEvent()
             }
+        }
+    }
+
+    onActiveChanged: {
+        if (!active && browserUi.mode === "pass-through-once") {
+            window.cancelFocusProbes()
+            browserUi.escape()
         }
     }
 

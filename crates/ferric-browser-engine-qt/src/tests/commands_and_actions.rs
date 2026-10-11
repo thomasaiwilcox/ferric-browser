@@ -44,6 +44,21 @@ fn ipc_copy_commands_use_safe_typed_url_arguments() {
 }
 
 #[test]
+fn ipc_passthrough_modes_keep_canonical_names_and_aliases() {
+    for mode in ["passthrough", "pass-through", "passthrough-once", "pass-through-once"] {
+        let (command, _) = typed_ipc_command(&serde_json::json!({
+            "command": "mode-enter",
+            "arguments": {"mode": mode}
+        })).expect("typed pass-through mode command");
+        assert_eq!(command.arguments, vec![mode]);
+    }
+    for mode in [Mode::PassThrough, Mode::PassThroughOnce] {
+        let name = crate::binding_policy::ipc_mode_name(mode);
+        assert_eq!(crate::binding_policy::parse_ipc_mode(name).unwrap(), mode);
+    }
+}
+
+#[test]
 fn ipc_caret_commands_use_typed_fields() {
     let (command, _) = typed_ipc_command(&serde_json::json!({
         "command": "mode-enter",

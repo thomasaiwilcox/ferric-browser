@@ -5,7 +5,7 @@ use super::{
     qobject,
 };
 
-const BINDING_HELP_MODES: [&str; 8] = [
+const BINDING_HELP_MODES: [&str; 9] = [
     "normal",
     "insert",
     "insert-locked",
@@ -14,6 +14,7 @@ const BINDING_HELP_MODES: [&str; 8] = [
     "hint",
     "caret",
     "pass-through",
+    "pass-through-once",
 ];
 
 struct BindingHelpRow {
@@ -131,6 +132,23 @@ impl qobject::BrowserUi {
                     source,
                     count,
                 });
+            }
+            if matches!(mode, "pass-through" | "pass-through-once") {
+                let description = "Return to Normal; ordinary Escape goes to the webpage.";
+                let search_text = format!("{mode} mode-enter normal Ctrl+Escape {description}")
+                    .to_ascii_lowercase();
+                if query.is_empty() || search_text.contains(&query) {
+                    mode_rows.push(BindingHelpRow {
+                        kind: "command",
+                        title: String::new(),
+                        mode: mode.to_owned(),
+                        command: "mode-enter normal".into(),
+                        description: description.into(),
+                        keys: "Ctrl+Escape".into(),
+                        source: "built-in (reserved)".into(),
+                        count: "no count".into(),
+                    });
+                }
             }
             if !mode_rows.is_empty() {
                 rows.push(BindingHelpRow::heading(format!("{mode} mode")));

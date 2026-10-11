@@ -134,10 +134,17 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
                     .ok_or_else(|| "bind --mode requires MODE".to_owned())?;
                 if !matches!(
                     mode.as_str(),
-                    "normal" | "insert" | "insert-locked" | "caret" | "passthrough" | "command"
+                    "normal"
+                        | "insert"
+                        | "insert-locked"
+                        | "caret"
+                        | "passthrough"
+                        | "pass-through"
+                        | "pass-through-once"
+                        | "command"
                 ) {
                     return Err(
-                        "bind --mode must be normal, insert, insert-locked, caret, passthrough, or command".into(),
+                        "bind --mode must be normal, insert, insert-locked, caret, passthrough, pass-through-once, or command".into(),
                     );
                 }
                 (Some(mode.clone()), 2)
@@ -166,10 +173,17 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
                     .ok_or_else(|| "unbind --mode requires MODE".to_owned())?;
                 if !matches!(
                     mode.as_str(),
-                    "normal" | "insert" | "insert-locked" | "caret" | "passthrough" | "command"
+                    "normal"
+                        | "insert"
+                        | "insert-locked"
+                        | "caret"
+                        | "passthrough"
+                        | "pass-through"
+                        | "pass-through-once"
+                        | "command"
                 ) {
                     return Err(
-                            "unbind --mode must be normal, insert, insert-locked, caret, passthrough, or command"
+                            "unbind --mode must be normal, insert, insert-locked, caret, passthrough, pass-through-once, or command"
                                 .into(),
                         );
                 }
@@ -208,6 +222,7 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
                         | "hint"
                         | "caret"
                         | "pass-through"
+                        | "pass-through-once"
                 ) {
                     return Err("binding-list --mode must be a valid input mode".into());
                 }
@@ -239,6 +254,7 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
                                 | "hint"
                                 | "caret"
                                 | "pass-through"
+                                | "pass-through-once"
                         ) {
                             return Err("binding-explain --mode must be a valid input mode".into());
                         }

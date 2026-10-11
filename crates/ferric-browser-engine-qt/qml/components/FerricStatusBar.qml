@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "../scripts/ChromePresentation.js" as ChromePresentation
 
 // Renders a bounded browser-status snapshot. Navigation, profile, and engine
 // policy remain at the composition root; this component only derives chrome.
@@ -35,13 +36,14 @@ Rectangle {
     visible: statusVisible
 
     Accessible.name: "Browser status bar. " + mode + ". " + displayUrl
-        + ". " + statusText + accessibleDetails
+        + ". " + statusText + accessibleDetails + ". " + ChromePresentation.inputModeDescription(mode)
     Accessible.role: Accessible.StatusBar
 
     function modeColor() {
         if (mode === "insert" || mode === "insert-locked") return browserWindow.modeInsertColor
         if (mode === "hint") return browserWindow.warningColor
         if (mode === "caret") return browserWindow.accentColor
+        if (ChromePresentation.passThroughMode(mode)) return browserWindow.accentColor
         return browserWindow.panelColor
     }
 
@@ -67,17 +69,30 @@ Rectangle {
             Layout.fillHeight: true
             Layout.preferredWidth: statusModeLabel.implicitWidth + 16
             color: statusBar.modeColor()
+            HoverHandler { id: modeHover }
+            ToolTip.visible: modeHover.hovered && ChromePresentation.passThroughMode(statusBar.mode)
+            ToolTip.text: ChromePresentation.inputModeDescription(statusBar.mode)
 
             Label {
                 id: statusModeLabel
+                objectName: "inputModeLabel"
                 anchors.centerIn: parent
-                text: statusBar.mode.replace("-", " ").toUpperCase()
+                text: ChromePresentation.inputModeLabel(statusBar.mode)
                 color: statusBar.mode === "normal"
                        ? statusBar.browserWindow.primaryTextColor
                        : statusBar.browserWindow.contrastText(parent.color)
                 font.bold: true
                 Accessible.ignored: true
             }
+        }
+
+        Label {
+            visible: ChromePresentation.passThroughMode(statusBar.mode)
+            objectName: "inputModeHint"
+            Layout.leftMargin: 8
+            text: ChromePresentation.inputModeHint(statusBar.mode)
+            color: statusBar.browserWindow.primaryTextColor
+            Accessible.ignored: true
         }
 
         Label {

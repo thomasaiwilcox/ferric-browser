@@ -20,6 +20,7 @@ pub(super) fn parse_ipc_mode(mode: &str) -> Result<Mode, String> {
         "grid" => Ok(Mode::Grid),
         "caret" => Ok(Mode::Caret),
         "pass-through" => Ok(Mode::PassThrough),
+        "pass-through-once" => Ok(Mode::PassThroughOnce),
         _ => Err(format!("unknown binding mode: {mode}")),
     }
 }
@@ -35,6 +36,7 @@ pub(super) fn ipc_mode_name(mode: Mode) -> &'static str {
         Mode::Grid => "grid",
         Mode::Caret => "caret",
         Mode::PassThrough => "pass-through",
+        Mode::PassThroughOnce => "pass-through-once",
     }
 }
 

@@ -119,7 +119,7 @@ impl qobject::BrowserUi {
     pub(super) fn reset_editing_session(mut self: Pin<&mut Self>) {
         if matches!(
             self.as_ref().rust().core_mode,
-            Mode::Insert | Mode::InsertLocked
+            Mode::Insert | Mode::InsertLocked | Mode::PassThrough | Mode::PassThroughOnce
         ) {
             self.as_mut().escape();
         } else {

@@ -60,6 +60,15 @@ exit. Completion regressions move keyboard ownership to chrome or another
 window before release and verify the owning session exits without redirecting
 the native release. It does not qualify real websites or platform IMEs.
 
+The suite also qualifies persistent and one-key Pass-through outside editable
+fields: original keydown/keyup delivery, Escape and modified keys, held-key
+repeats, overlapping keys, entry-shortcut isolation, Ctrl+Escape recovery,
+navigation/epoch invalidation, lost releases, and window deactivation. A page
+which leaves its shortcuts unhandled verifies that WebEngine's asynchronous
+parent-item delivery cannot execute a Normal-mode browser command afterward.
+Chrome tests check both window types' mode labels, recovery hints, accessible
+descriptions, and existing status-bar visibility policy.
+
 CTest runs this suite offscreen with software rendering. Running the executable
 under a Wayland compositor additionally requires a keyboard seat and an active
 test window. A headless Weston instance without a keyboard seat cannot satisfy

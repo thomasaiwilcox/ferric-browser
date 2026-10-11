@@ -201,6 +201,7 @@ const fn mode_name(mode: Mode) -> &'static str {
         Mode::Grid => "grid",
         Mode::Caret => "caret",
         Mode::PassThrough => "pass-through",
+        Mode::PassThroughOnce => "pass-through-once",
     }
 }
 
