@@ -2325,7 +2325,7 @@ mod tests {
             .expect("journey query read");
         assert_eq!(snapshot.nodes.len(), 1);
         assert_eq!(snapshot.nodes[0].id, "journey-query");
-        assert_eq!(snapshot.edges, Vec::<JourneyEdgeRecord>::new());
+        assert_eq!(snapshot.edges, Vec::<crate::JourneyEdgeRecord>::new());
         drop(worker);
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(format!("{}-wal", path.display()));

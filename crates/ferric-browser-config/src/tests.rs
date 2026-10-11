@@ -450,7 +450,7 @@ fn setting_registry_entries_are_unique_and_complete() {
     for metadata in SETTING_METADATA {
         assert!(keys.insert(metadata.key), "duplicate metadata key");
         assert_ne!(metadata.value_type, "");
-        assert_ne!(metadata.supported_scopes, []);
+        assert_ne!(metadata.supported_scopes, &[] as &[&str]);
         assert_ne!(metadata.apply_time, "");
         assert_ne!(metadata.prerequisite, "");
         assert_ne!(metadata.sensitivity, "");

@@ -284,7 +284,7 @@ mod tests {
         );
         assert_eq!(command_argument_names("context-route").len(), 7);
         assert_eq!(command_argument_names("scroll-target"), ["action"]);
-        assert_eq!(command_argument_names("not-a-command"), []);
+        assert_eq!(command_argument_names("not-a-command"), &[] as &[&str]);
     }
 
     #[test]

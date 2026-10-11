@@ -379,7 +379,7 @@ fn action_capabilities_are_declared_and_subjects_revalidate() {
             .resolve("browser.url.open")
             .expect("URL action")
             .required_capabilities(),
-        []
+        &[] as &[&str]
     );
     assert_eq!(
         registry

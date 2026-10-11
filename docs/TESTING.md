@@ -16,6 +16,11 @@ workspace's declared minimum Rust version is not a separate CI toolchain pin.
 Qt and QML qualification additionally uses `cargo xtask test engine`. The
 deterministic checks and engine task run browser-chrome interaction tests with
 Qt Quick Test's `qmltestrunner` in an offscreen software-rendered window.
+On Ubuntu, the runner also needs the `qml6-module-qttest` runtime module and
+the base `qml6-module-qtqml`, `qml6-module-qtqml-models`, and
+`qml6-module-qtqml-workerscript` imports; development libraries alone do not
+install these QML modules.
+
 Native-Wayland journeys use `cargo xtask test wayland`; they require the system
 QtWebEngine stack, Weston, D-Bus, and the relevant portal services. Packaging is
 checked with `cargo xtask package arch`.
