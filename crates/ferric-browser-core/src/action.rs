@@ -2036,8 +2036,8 @@ mod tests {
     fn builtins_declare_completion_and_availability_metadata() {
         let registry = ActionRegistry::default_v1();
         for action in registry.definitions() {
-            assert!(!action.completion_provider().is_empty());
-            assert!(!action.availability_predicate().is_empty());
+            assert_ne!(action.completion_provider(), "");
+            assert_ne!(action.availability_predicate(), "");
         }
         assert_eq!(
             registry

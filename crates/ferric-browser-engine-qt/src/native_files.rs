@@ -106,6 +106,6 @@ mod tests {
     #[test]
     fn headers_are_bounded_and_control_free() {
         assert_eq!(bounded_header(&QString::from("etag-1")), "etag-1");
-        assert!(bounded_header(&QString::from("bad\nheader")).is_empty());
+        assert_eq!(bounded_header(&QString::from("bad\nheader")), "");
     }
 }

@@ -324,7 +324,7 @@ fn ipc_link_commands_use_one_optional_typed_url() {
         "command": "url-clean"
     }))
     .expect("current URL cleaning command");
-    assert!(command.arguments.is_empty());
+    assert_eq!(command.arguments, Vec::<String>::new());
     assert!(
         typed_ipc_command(&serde_json::json!({
             "command": "url-clean",
@@ -521,7 +521,7 @@ fn action_command_maps_subject_and_verb_to_a_registered_executor() {
         .expect("navigation action mapping");
         assert_eq!(action_id, format!("browser.tab.{verb}"));
         assert_eq!(mapped.name, command_name);
-        assert!(mapped.arguments.is_empty());
+        assert_eq!(mapped.arguments, Vec::<String>::new());
         let (typed, _, typed_id) = typed_ipc_action(&serde_json::json!({
             "action": format!("browser.tab.{verb}"),
             "arguments": {}
@@ -529,7 +529,7 @@ fn action_command_maps_subject_and_verb_to_a_registered_executor() {
         .expect("typed navigation action");
         assert_eq!(typed_id, format!("browser.tab.{verb}"));
         assert_eq!(typed.name, command_name);
-        assert!(typed.arguments.is_empty());
+        assert_eq!(typed.arguments, Vec::<String>::new());
     }
     for (verb, command_name) in [("back", "back"), ("forward", "forward")] {
         let (mapped, action_id) = parse_action_invocation(&ParsedCommand {
@@ -624,7 +624,7 @@ fn action_command_maps_subject_and_verb_to_a_registered_executor() {
     .expect("tab clone action mapping");
     assert_eq!(action_id, "browser.tab.clone");
     assert_eq!(mapped.name, "tab-clone");
-    assert!(mapped.arguments.is_empty());
+    assert_eq!(mapped.arguments, Vec::<String>::new());
     let (command, _, action_id) = typed_ipc_action(&serde_json::json!({
         "action": "browser.window.fullscreen",
         "arguments": {"state": "on"}
@@ -940,7 +940,7 @@ fn action_command_maps_subject_and_verb_to_a_registered_executor() {
     .expect("typed tab undo action");
     assert_eq!(action_id, "browser.tab.undo");
     assert_eq!(command.name, "tab-undo");
-    assert!(command.arguments.is_empty());
+    assert_eq!(command.arguments, Vec::<String>::new());
     let (command, _, action_id) = typed_ipc_action(&serde_json::json!({
         "action": "browser.tab.move",
         "arguments": {"id": "tabid-42", "direction": "right"}
@@ -983,7 +983,7 @@ fn action_command_maps_subject_and_verb_to_a_registered_executor() {
         .expect("tab window action mapping");
         assert_eq!(action_id, format!("browser.tab.{verb}"));
         assert_eq!(mapped.name, command_name);
-        assert!(mapped.arguments.is_empty());
+        assert_eq!(mapped.arguments, Vec::<String>::new());
     }
     let (command, _, action_id) = typed_ipc_action(&serde_json::json!({
         "action": "browser.tab.reopen-window",
@@ -992,7 +992,7 @@ fn action_command_maps_subject_and_verb_to_a_registered_executor() {
     .expect("typed tab reopen action");
     assert_eq!(action_id, "browser.tab.reopen-window");
     assert_eq!(command.name, "reopen-in-window");
-    assert!(command.arguments.is_empty());
+    assert_eq!(command.arguments, Vec::<String>::new());
     let (command, _, action_id) = typed_ipc_action(&serde_json::json!({
         "action": "browser.tab.detach",
         "arguments": {}
@@ -1000,7 +1000,7 @@ fn action_command_maps_subject_and_verb_to_a_registered_executor() {
     .expect("typed tab detach action");
     assert_eq!(action_id, "browser.tab.detach");
     assert_eq!(command.name, "tab-detach");
-    assert!(command.arguments.is_empty());
+    assert_eq!(command.arguments, Vec::<String>::new());
     let (mapped, action_id) = parse_action_invocation(&ParsedCommand {
         name: "action".into(),
         arguments: vec!["tab".into(), "zoom".into(), "1.25".into()],
@@ -1219,7 +1219,7 @@ fn action_command_maps_subject_and_verb_to_a_registered_executor() {
     .expect("window close action mapping");
     assert_eq!(action_id, "browser.window.close");
     assert_eq!(mapped.name, "window-close");
-    assert!(mapped.arguments.is_empty());
+    assert_eq!(mapped.arguments, Vec::<String>::new());
     let (command, _, action_id) = typed_ipc_action(&serde_json::json!({
         "action": "browser.window.close",
         "arguments": {}
@@ -1227,7 +1227,7 @@ fn action_command_maps_subject_and_verb_to_a_registered_executor() {
     .expect("typed window close action");
     assert_eq!(action_id, "browser.window.close");
     assert_eq!(command.name, "window-close");
-    assert!(command.arguments.is_empty());
+    assert_eq!(command.arguments, Vec::<String>::new());
     let (mapped, action_id) = parse_action_invocation(&ParsedCommand {
         name: "action".into(),
         arguments: vec![

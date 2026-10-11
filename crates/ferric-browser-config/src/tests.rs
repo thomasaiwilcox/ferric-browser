@@ -250,7 +250,10 @@ fn site_rules_match_in_priority_and_source_order() {
             .and_then(toml::Value::as_float),
         Some(1.25)
     );
-    assert!(matching_site_rules(&config, "file:///tmp/page.html").is_empty());
+    assert_eq!(
+        matching_site_rules(&config, "file:///tmp/page.html"),
+        Vec::<&SiteRule>::new()
+    );
 }
 
 #[test]
@@ -287,7 +290,10 @@ fn site_patterns_normalize_scheme_host_port_and_path() {
             .collect::<Vec<_>>(),
         vec!["wildcard"]
     );
-    assert!(matching_site_rules(&config, "https://badexample.test/other").is_empty());
+    assert_eq!(
+        matching_site_rules(&config, "https://badexample.test/other"),
+        Vec::<&SiteRule>::new()
+    );
     assert_eq!(
         matching_site_rules(&config, "https://example.test:8443/docs/page")
             .iter()
@@ -295,7 +301,10 @@ fn site_patterns_normalize_scheme_host_port_and_path() {
             .collect::<Vec<_>>(),
         vec!["port"]
     );
-    assert!(matching_site_rules(&config, "https://example.test:9443/docs/page").is_empty());
+    assert_eq!(
+        matching_site_rules(&config, "https://example.test:9443/docs/page"),
+        Vec::<&SiteRule>::new()
+    );
     config.site_rules[0].pattern = "ftp://example.test/*".into();
     assert!(validate(&config).is_err());
 }
@@ -440,11 +449,11 @@ fn setting_registry_entries_are_unique_and_complete() {
     let mut keys = BTreeSet::new();
     for metadata in SETTING_METADATA {
         assert!(keys.insert(metadata.key), "duplicate metadata key");
-        assert!(!metadata.value_type.is_empty());
-        assert!(!metadata.supported_scopes.is_empty());
-        assert!(!metadata.apply_time.is_empty());
-        assert!(!metadata.prerequisite.is_empty());
-        assert!(!metadata.sensitivity.is_empty());
+        assert_ne!(metadata.value_type, "");
+        assert_ne!(metadata.supported_scopes, []);
+        assert_ne!(metadata.apply_time, "");
+        assert_ne!(metadata.prerequisite, "");
+        assert_ne!(metadata.sensitivity, "");
     }
     assert!(keys.len() >= 70);
 }
@@ -579,7 +588,7 @@ fn semantic_theme_tokens_use_spec_defaults_and_accept_alpha() {
 fn builtin_theme_meets_wcag_aa_for_assessed_chrome_pairs() {
     let report = theme_contrast_report(&ThemePalette::default());
     assert_eq!(report.status, "pass");
-    assert!(report.failing.is_empty());
+    assert_eq!(report.failing, Vec::<String>::new());
     assert!(report.checks.iter().all(|check| check.passes_aa));
     assert!(contrast_ratio("#ffffff", "#000000").is_some_and(|ratio| ratio > 21.0 - 0.01));
 }
@@ -642,9 +651,9 @@ fn auto_theme_prefers_current_omarchy_path_and_explicit_path_wins() {
     .expect("explicit palette");
     assert_eq!(explicit.accent, "#445566");
     assert_eq!(explicit.source, "file");
-    assert!(explicit.provider_layout.is_empty());
-    assert!(explicit.provider_version.is_empty());
-    assert!(explicit.provider_commit.is_empty());
+    assert_eq!(explicit.provider_layout, "");
+    assert_eq!(explicit.provider_version, "");
+    assert_eq!(explicit.provider_commit, "");
     let _ = fs::remove_dir_all(directory);
 }
 
@@ -913,7 +922,7 @@ fn runtime_site_rules_round_trip_override_and_unset() {
             .unset_site_setting("https://docs.example/*", "content.zoom")
             .expect("unset final site setting")
     );
-    assert!(overrides.site_rules.is_empty());
+    assert_eq!(overrides.site_rules, Vec::<SiteRule>::new());
     assert!(
         overrides
             .set_site_literal("https://docs.example/*", "ui.font_size_pt", "12")
@@ -1052,13 +1061,13 @@ fn context_routes_use_narrow_host_port_path_and_entry_point_matching() {
     );
     assert_eq!(matches.len(), 1);
     assert_eq!(matches[0].id, "specific");
-    assert!(
+    assert_eq!(
         matching_context_routes(
             &config,
             "https://badexample.test/docs/start",
             "explicit-open"
-        )
-        .is_empty()
+        ),
+        Vec::<&crate::routing::ContextRoute>::new()
     );
     assert!(
         matching_context_routes(
@@ -1078,7 +1087,10 @@ fn context_routes_use_narrow_host_port_path_and_entry_point_matching() {
         .iter()
         .any(|route| route.id == "higher-priority")
     );
-    assert!(matching_context_routes(&config, "file:///tmp/page.html", "explicit-open").is_empty());
+    assert_eq!(
+        matching_context_routes(&config, "file:///tmp/page.html", "explicit-open"),
+        Vec::<&crate::routing::ContextRoute>::new()
+    );
 }
 
 #[test]

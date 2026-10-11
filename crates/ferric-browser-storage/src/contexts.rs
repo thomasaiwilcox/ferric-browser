@@ -786,7 +786,7 @@ mod tests {
             .expect("create");
         let removed = registry.remove("research").expect("remove");
         assert_eq!(removed.profile, "default");
-        assert!(registry.contexts().is_empty());
+        assert_eq!(registry.contexts(), []);
         roots.cleanup().expect("cleanup");
     }
 

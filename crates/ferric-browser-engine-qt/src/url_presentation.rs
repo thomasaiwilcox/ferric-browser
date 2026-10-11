@@ -208,7 +208,10 @@ mod tests {
             query_parameter_names("https://example.test/?one=1&&two#fragment?ignored"),
             ["one", "two"]
         );
-        assert!(query_parameter_names("https://example.test/").is_empty());
+        assert_eq!(
+            query_parameter_names("https://example.test/"),
+            Vec::<String>::new()
+        );
     }
 
     #[test]

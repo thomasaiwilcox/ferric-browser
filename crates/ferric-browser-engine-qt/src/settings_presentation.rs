@@ -252,7 +252,10 @@ mod tests {
     fn rows_follow_the_authoritative_registry_and_effective_values() {
         let config = serde_json::to_value(Config::default()).expect("default config serializes");
         let rows = project(&config);
-        assert!(!rows.is_empty());
+        assert_ne!(
+            rows,
+            Vec::<crate::settings_presentation::SettingsRow>::new()
+        );
         assert_eq!(rows.len(), SETTINGS_SURFACE.len());
         let zoom = rows.iter().find(|row| row.key == "content.zoom").unwrap();
         assert_eq!(zoom.editor_type, "number");

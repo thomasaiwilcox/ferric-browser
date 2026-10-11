@@ -444,7 +444,10 @@ fn journey_storage_links_current_nodes_and_keeps_safe_fields() {
             .expect("missing current")
     );
     assert_eq!(store.clear_journey().expect("clear"), 2);
-    assert!(store.journey_nodes(10).expect("empty nodes").is_empty());
+    assert_eq!(
+        store.journey_nodes(10).expect("empty nodes"),
+        Vec::<JourneyNodeRecord>::new()
+    );
     drop(store);
     let _ = std::fs::remove_file(path);
 }
@@ -563,11 +566,9 @@ fn journey_search_and_neighborhood_queries_are_bounded() {
         .journey_edges_for_nodes(&["journey-view-1".into(), "journey-view-2".into()], 10)
         .expect("visible edges");
     assert_eq!(edges.len(), 1);
-    assert!(
-        store
-            .journey_nodes_search("%", 10)
-            .expect("literal search")
-            .is_empty()
+    assert_eq!(
+        store.journey_nodes_search("%", 10).expect("literal search"),
+        Vec::<JourneyNodeRecord>::new()
     );
     drop(store);
     let _ = std::fs::remove_file(path);
@@ -996,11 +997,9 @@ fn permission_rules_are_exact_origin_bounded_and_resettable() {
             .reset_permission_rule("https://example.test:443", "notifications")
             .expect("reset rule")
     );
-    assert!(
-        store
-            .permission_rules(None)
-            .expect("list after reset")
-            .is_empty()
+    assert_eq!(
+        store.permission_rules(None).expect("list after reset"),
+        Vec::<crate::permissions::PermissionRule>::new()
     );
 
     store

@@ -128,7 +128,7 @@ fn window_new_command_uses_typed_profile_and_private_options() {
         "arguments": {"private": false}
     }))
     .expect("typed normal window-new command");
-    assert!(command.arguments.is_empty());
+    assert_eq!(command.arguments, Vec::<String>::new());
     assert!(
         typed_ipc_command(&serde_json::json!({
             "command": "window-new",
@@ -308,7 +308,7 @@ fn reload_command_uses_typed_bypass_cache() {
         "arguments": {"bypass_cache": false}
     }))
     .expect("typed ordinary reload command");
-    assert!(command.arguments.is_empty());
+    assert_eq!(command.arguments, Vec::<String>::new());
     assert!(
         typed_ipc_command(&serde_json::json!({
             "command": "reload",
@@ -387,7 +387,7 @@ fn history_commands_use_typed_bounded_counts() {
         "arguments": {}
     }))
     .expect("typed default forward command");
-    assert!(command.arguments.is_empty());
+    assert_eq!(command.arguments, Vec::<String>::new());
     assert!(
         typed_ipc_command(&serde_json::json!({
             "command": "forward",
@@ -406,7 +406,7 @@ fn history_commands_use_typed_bounded_counts() {
         "arguments": {}
     }))
     .expect("typed default tab-prev command");
-    assert!(command.arguments.is_empty());
+    assert_eq!(command.arguments, Vec::<String>::new());
     assert!(
         typed_ipc_command(&serde_json::json!({
             "command": "tab-prev",
@@ -832,7 +832,7 @@ fn library_listing_actions_map_without_arguments() {
         .expect("library list action mapping");
         assert_eq!(action_id, expected_id);
         assert_eq!(mapped.name, expected_command);
-        assert!(mapped.arguments.is_empty());
+        assert_eq!(mapped.arguments, Vec::<String>::new());
     }
 
     let (typed, _, typed_id) = typed_ipc_action(&serde_json::json!({
@@ -842,7 +842,7 @@ fn library_listing_actions_map_without_arguments() {
     .expect("typed session list action");
     assert_eq!(typed_id, "browser.session.list");
     assert_eq!(typed.name, "session-list");
-    assert!(typed.arguments.is_empty());
+    assert_eq!(typed.arguments, Vec::<String>::new());
 }
 
 #[test]

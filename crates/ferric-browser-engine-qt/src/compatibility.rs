@@ -255,7 +255,10 @@ mod tests {
     fn shipped_registry_is_valid_reviewed_data() {
         let registry = load().expect("shipped compatibility registry validates");
         assert_eq!(registry.schema, 1);
-        assert!(registry.quirks.is_empty());
+        assert_eq!(
+            registry.quirks,
+            Vec::<crate::compatibility::CompatibilityQuirk>::new()
+        );
     }
 
     #[test]
@@ -281,9 +284,18 @@ mod tests {
             active_ids(&registry, Some("www.example.test"), Some("121.0.1.0")),
             ["fixture-quirk"]
         );
-        assert!(active_ids(&registry, Some("example.test"), Some("121.0.1.0")).is_empty());
-        assert!(active_ids(&registry, Some("www.example.test"), Some("123.0.0.0")).is_empty());
-        assert!(active_ids(&registry, Some("www.example.test"), None).is_empty());
+        assert_eq!(
+            active_ids(&registry, Some("example.test"), Some("121.0.1.0")),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            active_ids(&registry, Some("www.example.test"), Some("123.0.0.0")),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            active_ids(&registry, Some("www.example.test"), None),
+            Vec::<String>::new()
+        );
     }
 
     #[test]

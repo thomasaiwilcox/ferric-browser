@@ -799,10 +799,9 @@ source = "page.js"
         );
 
         set_enabled(&root, "page", false).expect("disable userscript");
-        assert!(
-            registered_actions(&root)
-                .expect("disabled actions are filtered")
-                .is_empty()
+        assert_eq!(
+            registered_actions(&root).expect("disabled actions are filtered"),
+            Vec::<crate::userscript_discovery::RegisteredAction>::new()
         );
         std::fs::remove_dir_all(root).expect("remove userscript enable directory");
     }
@@ -913,10 +912,9 @@ required_fields = ["url"]
         assert_eq!(actions[0].required_fields, vec!["url"]);
 
         std::fs::remove_file(directory.join("video.toml")).expect("remove manifest");
-        assert!(
-            registered_actions(&root)
-                .expect("requery after removal")
-                .is_empty()
+        assert_eq!(
+            registered_actions(&root).expect("requery after removal"),
+            Vec::<crate::userscript_discovery::RegisteredAction>::new()
         );
         std::fs::remove_dir_all(root).expect("remove userscript action directory");
     }
