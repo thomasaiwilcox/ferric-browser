@@ -1380,7 +1380,7 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(qml.contains("BrowserScripts.pageUserscriptRun(scriptSource)"));
     assert!(qml.contains("BrowserScripts.pageUserscriptInstall(script.source)"));
     assert!(!qml.contains("function hintSelector(linksOnly)"));
-    assert!(script.contains("var VERSION = \"11\""));
+    assert!(script.contains("var VERSION = \"12\""));
     assert!(qml.contains("function scrollTargetPolicyScript(policy)"));
     assert!(qml.contains("return BrowserScripts.scrollTargetPolicy(policy)"));
     assert!(qml.contains("function scrollTargetStatusScript()"));

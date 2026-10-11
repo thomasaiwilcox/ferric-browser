@@ -14,8 +14,10 @@ Clippy. The cargo-deny container installs the same channel explicitly. The
 workspace's declared minimum Rust version is not a separate CI toolchain pin.
 
 Qt and QML qualification additionally uses `cargo xtask test engine`. The
-deterministic checks and engine task run browser-chrome interaction tests with
-Qt Quick Test's `qmltestrunner` in an offscreen software-rendered window.
+deterministic checks and engine task build a Qt Quick Test runner with CMake and
+run browser-chrome and WebEngine hint tests in an offscreen software-rendered
+window. The runner initializes Qt WebEngine before Qt Quick Test constructs the
+application, as required for shared OpenGL contexts on Qt 6.4 and later.
 On Ubuntu, the runner also needs the `qml6-module-qttest` runtime module and
 the base `qml6-module-qtqml`, `qml6-module-qtqml-models`, and
 `qml6-module-qtqml-workerscript` imports; development libraries alone do not
