@@ -532,7 +532,8 @@ fn hint_payload_carries_unique_bounded_element_ids() {
     assert!(script.contains("element_id"));
     assert!(script.contains("frame.contentDocument"));
     assert!(qml.contains("function hintFocusScript"));
-    assert!(script.contains("record.element.isConnected"));
+    assert!(script.contains("record.ownerDocument!==el.ownerDocument"));
+    assert!(script.contains("ftReachableFromTopDocument(el,record.ownerDocument)"));
     assert!(script.contains("record.framePath!==path"));
     assert!(source.contains("candidate.element_id == fresh.element_id"));
 

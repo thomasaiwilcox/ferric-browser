@@ -56,7 +56,7 @@ TestCase {
                     + "<button style='margin-top:30px'>Partial</button>"
                     + "<a href='/hidden' style='margin-top:60px'>Clipped</a></div>"
                     + "<a href='/offscreen' style='position:absolute;top:700px'>Offscreen</a>"
-                    + "<div aria-label='Results' style='overflow:auto;width:180px;height:50px'>"
+                    + "<div id='results' aria-label='Results' style='overflow:auto;width:180px;height:50px'>"
                     + "<div style='height:200px'>Scrollable content</div></div>")
         compare(evaluate("document.body.getBoundingClientRect().height"), 0)
         var links = evaluate(BrowserScripts.hintCollector("links")).candidates
@@ -71,14 +71,17 @@ TestCase {
         compare(partial.geometry.height, 10)
         compare(evaluate(BrowserScripts.hintFresh(partial)).geometry.height, 10)
         var control = buttons.filter(function(candidate) { return candidate.text === "Menu" })[0]
-        verify(evaluate(BrowserScripts.hintClick(control.element_id)))
+        verify(evaluate(BrowserScripts.hintClick(control)))
         compare(evaluate("document.getElementById('control').dataset.clicked"), "1")
 
+        evaluate("document.getElementById('results').style.pointerEvents='none';true")
         var scrollables = evaluate(BrowserScripts.hintCollector("scrollables")).candidates
         var results = scrollables.filter(function(candidate) { return candidate.text === "Results" })[0]
         verify(results)
         verify(evaluate(BrowserScripts.hintFresh(results)).visible)
         verify(evaluate(BrowserScripts.hintSetScrollTarget(results.element_id, results.frame_path)).ok)
+        evaluate(BrowserScripts.scroll("scroll", "down", false, 1))
+        tryVerify(function() { return evaluate("document.getElementById('results').scrollTop") > 0 })
 
         var all = evaluate(BrowserScripts.hintCollector("all")).candidates
         verify(all.some(function(candidate) { return candidate.text === "Video" }))

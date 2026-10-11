@@ -740,7 +740,7 @@ fn all_hints_cover_qutebrowser_control_families_and_activate_controls() {
             "missing hint selector {selector}"
         );
     }
-    assert!(qml.contains("function hintClickScript(elementId)"));
+    assert!(qml.contains("function hintClickScript(candidate)"));
     assert!(qml.contains("result.action === \"click\""));
     assert!(script.contains("window.__ferric_browserHintElements=elements"));
     assert!(script.contains("record&&record.element"));

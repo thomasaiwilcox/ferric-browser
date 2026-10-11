@@ -4,7 +4,8 @@
 <style>body{margin:0}button,input{display:block;width:180px;height:32px;margin:8px}#cover{display:none;position:fixed;inset:0;background:white;z-index:100}#invisible{opacity:0}</style>
 <button id="target" onclick="this.dataset.clicks=String(Number(this.dataset.clicks||0)+1)">Target button</button>
 <input id="focus" aria-label="Focus target">
-<input id="redirect" aria-label="Redirecting input" onfocus="document.getElementById('other').focus()">
+<input id="pointerless" aria-label="Pointerless input" style="pointer-events:none">
+<input id="redirect" aria-label="Redirecting input">
 <input id="other" aria-label="Other input">
 <fieldset disabled><button id="fieldset" onclick="this.dataset.clicks='1'">Disabled fieldset</button></fieldset>
 <div id="invisible"><button id="opacity" onclick="this.dataset.clicks='1'">Invisible ancestor</button></div>

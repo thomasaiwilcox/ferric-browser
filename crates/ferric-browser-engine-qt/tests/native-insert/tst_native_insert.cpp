@@ -1,6 +1,7 @@
 #include "../../src/browser_key_router.h"
 #include <QtCore/QFile>
 #include <QtCore/QElapsedTimer>
+#include <QtCore/QJsonDocument>
 #include <QtCore/QTemporaryDir>
 #include <QtGui/QInputMethodEvent>
 #include <QtQml/QQmlEngine>
@@ -591,16 +592,18 @@ WebEngineView {
         browserJs("{const host=document.createElement('div');host.id='shadow-host';host.style='position:fixed;left:0;top:0;width:240px;height:80px;z-index:100';document.body.prepend(host);host.attachShadow({mode:'open'}).innerHTML='<input id=shadow-input aria-label=Shadow style=width:180px;height:32px>'; }true");
         QVariantMap snapshot;
         QTRY_VERIFY(!(snapshot=browserJs(browserScript("hintCollector('inputs')")).toMap()).value("candidates").toList().isEmpty());
-        int elementId=0;
+        QVariantMap selectedCandidate;
         for (const auto &value:snapshot.value("candidates").toList()) {
             const auto candidate=value.toMap();
             if (candidate.value("text").toString()=="Shadow")
-                elementId=candidate.value("element_id").toInt();
+                selectedCandidate=candidate;
         }
-        QVERIFY(elementId>0);
-        const QString fresh=browserScript(QString("hintFresh({element_id:%1,frame_path:'0',kind:'input'})").arg(elementId));
+        QVERIFY(selectedCandidate.value("element_id").toInt()>0);
+        const QString json=QString::fromUtf8(
+            QJsonDocument::fromVariant(selectedCandidate).toJson(QJsonDocument::Compact));
+        const QString fresh=browserScript("hintFresh("+json+")");
         QVERIFY(browserJs(fresh).toMap().value("visible").toBool());
-        QVERIFY(browserJs(browserScript(QString("hintFocus(%1)").arg(elementId))).toBool());
+        QVERIFY(browserJs(browserScript("hintFocus("+json+")")).toBool());
         enter();
         view->forceActiveFocus();
         QTest::keyClick(&window, Qt::Key_A);

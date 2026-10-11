@@ -1,0 +1,5 @@
+collector: parses
+fresh: parses
+click: parses
+focus: parses
+runner_exit_code=0

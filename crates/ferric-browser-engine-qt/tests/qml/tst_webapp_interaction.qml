@@ -55,14 +55,14 @@ TestCase {
         load("shadow-targets.html")
         var selected = candidate("buttons", "Shadow button")
         verify(evaluate(BrowserScripts.hintFresh(selected)).visible)
-        verify(evaluate(BrowserScripts.hintClick(selected.element_id)), "Final shadow click rejected")
+        verify(evaluate(BrowserScripts.hintClick(selected)), "Final shadow click rejected")
         compare(evaluate("document.getElementById('host').shadowRoot.getElementById('shadow-button').dataset.clicks"), "1")
     }
     function test_T002_shadow_focus() {
         load("shadow-targets.html")
         var selected = candidate("inputs", "Shadow input")
         verify(evaluate(BrowserScripts.hintFresh(selected)).visible)
-        verify(evaluate(BrowserScripts.hintFocus(selected.element_id)), "Final shadow focus rejected")
+        verify(evaluate(BrowserScripts.hintFocus(selected)), "Final shadow focus rejected")
         verify(evaluate("document.activeElement===document.getElementById('host') && document.activeElement.shadowRoot.activeElement.id==='shadow-input'"))
     }
     // T003: assigned-slot ancestry and ancestor inertness.
@@ -72,7 +72,7 @@ TestCase {
         verify(evaluate(BrowserScripts.hintFresh(selected)).visible)
         evaluate("document.getElementById('slot-host').shadowRoot.getElementById('nested').inert=true;true")
         verify(!evaluate(BrowserScripts.hintFresh(selected)).visible, "Assigned slot must inherit inert ancestor")
-        verify(!evaluate(BrowserScripts.hintClick(selected.element_id)))
+        verify(!evaluate(BrowserScripts.hintClick(selected)))
         compare(evaluate("document.getElementById('slotted').dataset.clicks||'0'"), "0")
     }
     function test_T003_slot_clipping() {
@@ -96,7 +96,7 @@ TestCase {
         compare(selected.geometry.x, 57, "Owner CSS x includes the frame border")
         compare(selected.geometry.y, 72, "Owner CSS y includes the frame border")
         verify(evaluate(BrowserScripts.hintFresh(selected)).visible)
-        verify(evaluate(BrowserScripts.hintClick(selected.element_id)))
+        verify(evaluate(BrowserScripts.hintClick(selected)))
         compare(evaluate("document.getElementById('child').contentDocument.getElementById('frame-button').dataset.clicks"), "1")
     }
     function test_T004_frame_replaced() {
@@ -105,14 +105,14 @@ TestCase {
         evaluate("document.getElementById('child').srcdoc='<body data-replaced=true><button id=frame-button>Frame button</button>';true")
         tryVerify(function() { return evaluate("document.getElementById('child').contentDocument.body.dataset.replaced==='true'") }, 5000)
         verify(!evaluate(BrowserScripts.hintFresh(selected)).visible)
-        verify(!evaluate(BrowserScripts.hintClick(selected.element_id)))
+        verify(!evaluate(BrowserScripts.hintClick(selected)))
     }
     function test_T004_adopted_element() {
         load("frame-targets.html")
         var selected = candidate("buttons", "Frame button")
         evaluate("document.body.appendChild(document.adoptNode(document.getElementById('child').contentDocument.getElementById('frame-button')));true")
         verify(!evaluate(BrowserScripts.hintFresh(selected)).visible, "A retained object adopted into a different document is stale")
-        verify(!evaluate(BrowserScripts.hintClick(selected.element_id)))
+        verify(!evaluate(BrowserScripts.hintClick(selected)))
     }
     function test_T005_ineligible_data() {
         return [
@@ -130,7 +130,7 @@ TestCase {
         var selected = candidate("buttons", "Target button")
         evaluate("{const target=document.getElementById('target');" + data.mutation + ";}true")
         verify(!evaluate(BrowserScripts.hintFresh(selected)).visible)
-        verify(!evaluate(BrowserScripts.hintClick(selected.element_id)))
+        verify(!evaluate(BrowserScripts.hintClick(selected)))
         compare(evaluate("document.getElementById('target')?.dataset.clicks||'0'"), "0")
     }
     function test_T005_disabled_fieldset() {
@@ -155,16 +155,25 @@ TestCase {
     }
     function test_T008_observed_focus() {
         load("adversarial-targets.html")
+        evaluate("document.getElementById('redirect').focus=function(){document.getElementById('other').focus()};true")
         var selected = candidate("inputs", "Redirecting input")
         verify(evaluate(BrowserScripts.hintFresh(selected)).visible)
-        verify(!evaluate(BrowserScripts.hintFocus(selected.element_id)), "Redirected focus must not report success")
+        var focusResult = evaluate(BrowserScripts.hintFocus(selected))
         compare(evaluate("document.activeElement.id"), "other")
+        verify(!focusResult, "Redirected focus must not report success")
     }
     function test_T008_normal_focus() {
         load("adversarial-targets.html")
         var selected = candidate("inputs", "Focus target")
-        verify(evaluate(BrowserScripts.hintFocus(selected.element_id)))
+        verify(evaluate(BrowserScripts.hintFocus(selected)))
         compare(evaluate("document.activeElement.id"), "focus")
+    }
+    function test_T008_focus_uses_focus_eligibility() {
+        load("adversarial-targets.html")
+        var selected = candidate("inputs", "Pointerless input")
+        verify(evaluate(BrowserScripts.hintFresh(selected)).visible)
+        verify(evaluate(BrowserScripts.hintFocus(selected)))
+        compare(evaluate("document.activeElement.id"), "pointerless")
     }
     function test_T007_same_url_cover() {
         load("adversarial-targets.html")
@@ -172,13 +181,14 @@ TestCase {
         var selected = candidate("links", "Exact link")
         evaluate("{const original=document.getElementById('exact-link'),rect=original.getBoundingClientRect(),cover=original.cloneNode(true);cover.id='same-url-cover';cover.style='position:fixed;left:'+rect.left+'px;top:'+rect.top+'px;width:'+rect.width+'px;height:'+rect.height+'px;z-index:100;background:white';document.body.appendChild(cover);}true")
         verify(!evaluate(BrowserScripts.hintFresh(selected)).visible, "Equivalent URL cannot authorise a covering sibling")
-        verify(!evaluate(BrowserScripts.hintClick(selected.element_id)))
+        verify(!evaluate(BrowserScripts.hintClick(selected)))
     }
     function test_T009_control_value_privacy() {
         load("adversarial-targets.html")
-        evaluate("{const input=document.createElement('input');input.id='secret';input.type='password';input.value='FIXTURE_PRIVATE_VALUE';document.body.prepend(input);}true")
+        evaluate("{const password=document.createElement('input');password.id='secret';password.type='password';password.value='FIXTURE_PRIVATE_VALUE';const text=document.createElement('input');text.id='field-buffer';text.type='text';text.value='FIXTURE_FIELD_BUFFER';document.body.prepend(password,text);}true")
         var values = evaluate(BrowserScripts.hintCollector("inputs")).candidates
         verify(!values.some(function(item) { return item.text.indexOf("FIXTURE_PRIVATE_VALUE") >= 0 }), "Control values must not become labels")
+        verify(!values.some(function(item) { return item.text.indexOf("FIXTURE_FIELD_BUFFER") >= 0 }), "Editable field buffers must not become labels")
     }
     function test_T009_label_is_literal() {
         load("adversarial-targets.html")
@@ -189,10 +199,10 @@ TestCase {
     function test_T020_map_teardown() {
         load("adversarial-targets.html")
         var selected = candidate("buttons", "Target button")
-        verify(evaluate(BrowserScripts.hintClick(selected.element_id)))
+        verify(evaluate(BrowserScripts.hintClick(selected)))
         compare(evaluate("document.getElementById('target').dataset.clicks"), "1")
         verify(evaluate(BrowserScripts.hintStopTracking()))
-        verify(!evaluate(BrowserScripts.hintClick(selected.element_id)))
+        verify(!evaluate(BrowserScripts.hintClick(selected)))
         compare(evaluate("document.getElementById('target').dataset.clicks"), "1")
         verify(evaluate("!window.__ferric_browserHintElements && window.__ferric_browserHintState.elements.size===0 && window.__ferric_browserHintState.observers.length===0 && window.__ferric_browserHintState.windows.length===0 && !window.__ferric_browserHintState.tracking"))
     }

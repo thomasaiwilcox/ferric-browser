@@ -1377,12 +1377,12 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(qml.contains("return BrowserScripts.hintDirtyRevision()"));
     assert!(qml.contains("return BrowserScripts.hintStopTracking()"));
     assert!(qml.contains("return BrowserScripts.hintFresh(candidate)"));
-    assert!(qml.contains("return BrowserScripts.hintFocus(elementId)"));
-    assert!(qml.contains("return BrowserScripts.hintClick(elementId)"));
+    assert!(qml.contains("return BrowserScripts.hintFocus(candidate)"));
+    assert!(qml.contains("return BrowserScripts.hintClick(candidate)"));
     assert!(qml.contains("BrowserScripts.pageUserscriptRun(scriptSource)"));
     assert!(qml.contains("BrowserScripts.pageUserscriptInstall(script.source)"));
     assert!(!qml.contains("function hintSelector(linksOnly)"));
-    assert!(script.contains("var VERSION = \"13\""));
+    assert!(script.contains("var VERSION = \"14\""));
     assert!(qml.contains("function scrollTargetPolicyScript(policy)"));
     assert!(qml.contains("return BrowserScripts.scrollTargetPolicy(policy)"));
     assert!(qml.contains("function scrollTargetStatusScript()"));
@@ -1409,10 +1409,12 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(script.contains("style.overflowX"));
     assert!(script.contains("style.overflowY"));
     assert!(script.contains("'overlay'"));
-    assert!(script.contains("function ftMeaningfullyVisible(element)"));
+    assert!(script.contains("function ftMeaningfullyVisible(element,policy)"));
+    assert!(script.contains("function ftFocusEligible(element)"));
+    assert!(script.contains("function ftHintPolicy(kind,family)"));
     assert!(script.contains("frame.contentWindow!==childView"));
-    assert!(script.contains("kind=family==='scrollables'?'scrollable':'aria'"));
-    assert!(script.contains("kind=candidateKind==='scrollable'?'scrollable':'aria'"));
+    assert!(script.contains("function ftHintDescription(el,family,linkSelector)"));
+    assert!(script.contains("description.kind!==record.kind"));
     assert!(script.contains("if(s.elements&&typeof s.elements.clear==='function')s.elements.clear()"));
     let target_start = script
         .find("function hintSetScrollTarget(elementId, framePath)")
@@ -1439,8 +1441,8 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(script.contains("elements.length > 128"));
     assert!(script.contains("function hintCollector(family)"));
     assert!(script.contains("function hintFresh(candidate)"));
-    assert!(script.contains("function hintFocus(elementId)"));
-    assert!(script.contains("function hintClick(elementId)"));
+    assert!(script.contains("function hintFocus(candidate)"));
+    assert!(script.contains("function hintClick(candidate)"));
     assert!(script.contains("function focusObserverSource()"));
     assert!(script.contains("function formStateProbe()"));
     assert!(script.contains("function siteDataClearResult()"));
@@ -1451,7 +1453,7 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(script.contains("depth>8"));
     assert!(script.contains("r.bottom<=0||r.right<=0||r.top>=vh||r.left>=vw"));
     assert!(script.contains("x>=window.innerWidth||y>=window.innerHeight"));
-    assert!(script.contains("r.top<window.innerHeight"));
+    assert!(script.contains("rect=ftIntersect(rect,{left:0,top:0,right:window.innerWidth,bottom:window.innerHeight})"));
     assert!(script.contains("state.resize.unobserve"));
     assert!(script.contains("function intersect(a,b)"));
     assert!(script.contains("trim().slice(0,512)"));
@@ -1461,7 +1463,7 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
         "family==='all'&&(kind==='image'||kind==='media')&&linkedSurface(el,r)"
     ));
     assert!(script.contains("function hasPreferredLink(el,r)"));
-    assert!(script.contains("String(current.href||current.getAttribute('href')||'')===href"));
+    assert!(script.contains("String(candidate.href||candidate.getAttribute('href')||'')!==href"));
 }
 
 #[test]
@@ -1508,7 +1510,7 @@ fn page_backed_hints_close_after_the_renderer_consumes_the_retained_record() {
         ("click", "rejection"),
     ] {
         let start = presentation
-            .find(&format!("result.action === \"{action}\""))
+            .find(&format!("}} else if (result.action === \"{action}\") {{"))
             .unwrap_or_else(|| panic!("missing {action} hint branch"));
         let end = if next_action == "rejection" {
             presentation[start..]

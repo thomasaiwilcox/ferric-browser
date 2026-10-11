@@ -1048,12 +1048,12 @@ FerricBrowserRuntimeServices {
         return BrowserScripts.hintFresh(candidate)
     }
 
-    function hintFocusScript(elementId) {
-        return BrowserScripts.hintFocus(elementId)
+    function hintFocusScript(candidate) {
+        return BrowserScripts.hintFocus(candidate)
     }
 
-    function hintClickScript(elementId) {
-        return BrowserScripts.hintClick(elementId)
+    function hintClickScript(candidate) {
+        return BrowserScripts.hintClick(candidate)
     }
 
     function hintSetScrollTargetScript(elementId, framePath) {
@@ -1659,11 +1659,29 @@ FerricBrowserRuntimeServices {
             }
         }
         var view = window.activeWebView()
-        if (!selected || !view) {
-            window.closeHints()
+        if (!selected || !view || window.hintRefreshPending) {
+            if (!selected || !view) {
+                window.closeHints()
+            }
             return
         }
-        window.runBrowserScript(view, window.hintFreshScript(selected), function(value) {
+        var activationEpoch = window.hintCollectionEpoch
+        window.hintRefreshPending = true
+        var activationStarted = window.runBrowserScript(
+                    view, window.hintFreshScript(selected), function(value) {
+            if (window.hintCollectionEpoch !== activationEpoch
+                    || window.activeWebView() !== view
+                    || window.hintTrackingView !== view
+                    || browserUi.mode !== "hint") {
+                if (window.hintCollectionEpoch === activationEpoch) {
+                    window.hintRefreshPending = false
+                }
+                return
+            }
+            // Consume this callback token before asking Rust to select the label.
+            // A duplicate completion from the same page operation cannot dispatch twice.
+            window.hintCollectionEpoch += 1
+            var actionEpoch = window.hintCollectionEpoch
             var result = {}
             try {
                 if (actionId && actionId.length > 0) {
@@ -1674,6 +1692,23 @@ FerricBrowserRuntimeServices {
                 }
             } catch (error) {
                 result = {}
+            }
+            var pageActionPending = result.action === "focus"
+                    || result.action === "click" || result.action === "scroll-target"
+            if (!pageActionPending) {
+                window.hintRefreshPending = false
+            }
+            if ((result.action === "focus" || result.action === "click"
+                 || result.action === "scroll-target")
+                    && (window.hintCollectionEpoch !== actionEpoch
+                        || window.activeWebView() !== view
+                        || window.hintTrackingView !== view
+                        || browserUi.mode !== "hint")) {
+                if (window.hintCollectionEpoch === actionEpoch
+                        && window.hintTrackingView === view) {
+                    window.closeHints()
+                }
+                return
             }
             if (result.action === "navigate") {
                 window.hintResults = []
@@ -1755,8 +1790,18 @@ FerricBrowserRuntimeServices {
                 window.hintInput = ""
                 window.rapidHintConfirmationVisible = true
             } else if (result.action === "focus") {
-                var focusScript = window.hintFocusScript(result.element_id)
+                var focusScript = window.hintFocusScript(value)
                 var focusStarted = window.runBrowserScript(view, focusScript, function(value) {
+                    if (window.hintCollectionEpoch !== actionEpoch
+                            || window.activeWebView() !== view
+                            || window.hintTrackingView !== view
+                            || browserUi.mode !== "hint") {
+                        if (window.hintCollectionEpoch === actionEpoch
+                                && window.hintTrackingView === view) {
+                            window.closeHints()
+                        }
+                        return
+                    }
                     window.closeHints()
                     if (value !== true) {
                         browserUi.status_text = "Hint focus target is no longer available"
@@ -1766,6 +1811,9 @@ FerricBrowserRuntimeServices {
                     browserUi.enter_insert()
                 })
                 if (!focusStarted) {
+                    if (window.hintCollectionEpoch !== actionEpoch) {
+                        return
+                    }
                     window.closeHints()
                     browserUi.status_text = "Hint focus target is no longer available"
                     window.showCommandNotice(browserUi.status_text, true)
@@ -1774,6 +1822,16 @@ FerricBrowserRuntimeServices {
                 var targetScript = window.hintSetScrollTargetScript(
                             result.element_id, result.frame_path)
                 var targetStarted = window.runBrowserScript(view, targetScript, function(value) {
+                    if (window.hintCollectionEpoch !== actionEpoch
+                            || window.activeWebView() !== view
+                            || window.hintTrackingView !== view
+                            || browserUi.mode !== "hint") {
+                        if (window.hintCollectionEpoch === actionEpoch
+                                && window.hintTrackingView === view) {
+                            window.closeHints()
+                        }
+                        return
+                    }
                     window.closeHints()
                     var targetSelected = value && typeof value === "object"
                             && value.ok === true && value.policy === "element"
@@ -1783,14 +1841,27 @@ FerricBrowserRuntimeServices {
                     window.showCommandNotice(browserUi.status_text, !targetSelected)
                 }, window.browserScriptWorld)
                 if (!targetStarted) {
+                    if (window.hintCollectionEpoch !== actionEpoch) {
+                        return
+                    }
                     window.closeHints()
                     browserUi.status_text =
                             "Scroll target selection failed: region is no longer available"
                     window.showCommandNotice(browserUi.status_text, true)
                 }
             } else if (result.action === "click") {
-                var clickScript = window.hintClickScript(result.element_id)
+                var clickScript = window.hintClickScript(value)
                 var clickStarted = window.runBrowserScript(view, clickScript, function(value) {
+                    if (window.hintCollectionEpoch !== actionEpoch
+                            || window.activeWebView() !== view
+                            || window.hintTrackingView !== view
+                            || browserUi.mode !== "hint") {
+                        if (window.hintCollectionEpoch === actionEpoch
+                                && window.hintTrackingView === view) {
+                            window.closeHints()
+                        }
+                        return
+                    }
                     window.closeHints()
                     browserUi.status_text = value === true
                             ? "Hint target activated"
@@ -1798,6 +1869,9 @@ FerricBrowserRuntimeServices {
                     window.showCommandNotice(browserUi.status_text, value !== true)
                 })
                 if (!clickStarted) {
+                    if (window.hintCollectionEpoch !== actionEpoch) {
+                        return
+                    }
                     window.closeHints()
                     browserUi.status_text = "Hint target is no longer clickable"
                     window.showCommandNotice(browserUi.status_text, true)
@@ -1810,6 +1884,10 @@ FerricBrowserRuntimeServices {
                 browserUi.status_text = rejectionStatus
             }
         })
+        if (!activationStarted && window.hintCollectionEpoch === activationEpoch) {
+            window.hintRefreshPending = false
+            window.closeHints()
+        }
     }
 
 }

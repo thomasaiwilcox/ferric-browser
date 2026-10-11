@@ -12,9 +12,32 @@ use std::collections::BTreeSet;
 const MAX_HINT_FRAME_DEPTH: usize = 8;
 
 pub(super) fn parse_hint_candidate(value: &Value) -> Result<HintCandidate, String> {
+    const CANDIDATE_KEYS: &[&str] = &[
+        "element_id",
+        "kind",
+        "frame_path",
+        "text",
+        "href",
+        "geometry",
+        "visible",
+    ];
+    const GEOMETRY_KEYS: &[&str] = &["x", "y", "width", "height"];
+
     let object = value
         .as_object()
         .ok_or_else(|| "hint candidate must be an object".to_owned())?;
+    if object
+        .keys()
+        .any(|key| !CANDIDATE_KEYS.contains(&key.as_str()))
+    {
+        return Err("hint candidate contains an unsupported field".into());
+    }
+    if object
+        .get("visible")
+        .is_some_and(|visible| !visible.is_boolean())
+    {
+        return Err("hint candidate visible must be a boolean".into());
+    }
     let kind = parse_hint_kind(
         object
             .get("kind")
@@ -39,6 +62,7 @@ pub(super) fn parse_hint_candidate(value: &Value) -> Result<HintCandidate, Strin
         || frame_path.len() > 256
         || !valid_hint_frame_path(frame_path)
         || text.chars().count() > 512
+        || text.len() > 2_048
         || frame_path.chars().any(char::is_control)
         || text.chars().any(char::is_control)
     {
@@ -57,24 +81,41 @@ pub(super) fn parse_hint_candidate(value: &Value) -> Result<HintCandidate, Strin
         .get("geometry")
         .and_then(Value::as_object)
         .ok_or_else(|| "hint candidate geometry must be an object".to_owned())?;
+    if geometry.len() != GEOMETRY_KEYS.len()
+        || geometry
+            .keys()
+            .any(|key| !GEOMETRY_KEYS.contains(&key.as_str()))
+    {
+        return Err("hint candidate geometry contains unsupported fields".into());
+    }
     let number = |name: &str| {
         geometry
             .get(name)
             .and_then(Value::as_f64)
             .ok_or_else(|| format!("hint candidate geometry {name} must be a number"))
     };
+    let geometry = HintGeometry {
+        x: number("x")?,
+        y: number("y")?,
+        width: number("width")?,
+        height: number("height")?,
+    };
+    if !geometry.x.is_finite()
+        || !geometry.y.is_finite()
+        || !geometry.width.is_finite()
+        || !geometry.height.is_finite()
+        || geometry.width <= 0.0
+        || geometry.height <= 0.0
+    {
+        return Err("hint candidate geometry is invalid".into());
+    }
     Ok(HintCandidate {
         element_id,
         kind,
         frame_path: frame_path.to_owned(),
         text: text.to_owned(),
         href,
-        geometry: HintGeometry {
-            x: number("x")?,
-            y: number("y")?,
-            width: number("width")?,
-            height: number("height")?,
-        },
+        geometry,
     })
 }
 
@@ -208,7 +249,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_bounded_unicode_text_by_character_count() {
+    fn accepts_bounded_unicode_text_by_byte_and_character_count() {
         let candidate = |text: String| {
             serde_json::json!({
                 "element_id": 1,
@@ -222,6 +263,39 @@ mod tests {
 
         assert!(parse_hint_candidate(&candidate("é".repeat(512))).is_ok());
         assert!(parse_hint_candidate(&candidate("é".repeat(513))).is_err());
+        assert!(parse_hint_candidate(&candidate("😀".repeat(512))).is_ok());
+        assert!(parse_hint_candidate(&candidate("😀".repeat(513))).is_err());
         assert!(parse_hint_candidate(&candidate("unsafe\u{0085}text".into())).is_err());
+    }
+
+    #[test]
+    fn rejects_extra_authority_fields_and_invalid_geometry() {
+        let mut value = serde_json::json!({
+            "element_id": 1,
+            "kind": "button",
+            "frame_path": "0",
+            "text": "Safe label",
+            "href": null,
+            "geometry": {"x": 1.0, "y": 2.0, "width": 10.0, "height": 10.0},
+            "visible": true
+        });
+        assert!(parse_hint_candidate(&value).is_ok());
+
+        value["native_action"] = serde_json::json!("click");
+        assert!(parse_hint_candidate(&value).is_err());
+        value.as_object_mut().unwrap().remove("native_action");
+
+        value["visible"] = serde_json::json!("yes");
+        assert!(parse_hint_candidate(&value).is_err());
+        value["visible"] = serde_json::json!(false);
+
+        value["geometry"]["native_action"] = serde_json::json!(true);
+        assert!(parse_hint_candidate(&value).is_err());
+        value["geometry"]
+            .as_object_mut()
+            .unwrap()
+            .remove("native_action");
+        value["geometry"]["width"] = serde_json::json!(0.0);
+        assert!(parse_hint_candidate(&value).is_err());
     }
 }
