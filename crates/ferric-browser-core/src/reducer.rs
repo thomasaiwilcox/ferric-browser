@@ -2088,6 +2088,25 @@ mod tests {
     }
 
     #[test]
+    fn escape_exits_both_insert_variants_without_sending_page_events() {
+        for mode in [Mode::Insert, Mode::InsertLocked] {
+            let (mut state, _, window, _, _) = setup();
+            assert!(
+                reduce(&mut state, Event::PushMode { window, mode })
+                    .unwrap()
+                    .is_empty()
+            );
+            assert_eq!(state.windows[&window].modes.last(), Some(&mode));
+            assert!(
+                reduce(&mut state, Event::Escape { window })
+                    .unwrap()
+                    .is_empty()
+            );
+            assert_eq!(state.windows[&window].modes, vec![Mode::Normal]);
+        }
+    }
+
+    #[test]
     fn same_document_navigation_updates_url_without_new_document() {
         let (mut state, _, _, tab, target) = setup();
         reduce(

@@ -134,10 +134,10 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
                     .ok_or_else(|| "bind --mode requires MODE".to_owned())?;
                 if !matches!(
                     mode.as_str(),
-                    "normal" | "insert" | "caret" | "passthrough" | "command"
+                    "normal" | "insert" | "insert-locked" | "caret" | "passthrough" | "command"
                 ) {
                     return Err(
-                        "bind --mode must be normal, insert, caret, passthrough, or command".into(),
+                        "bind --mode must be normal, insert, insert-locked, caret, passthrough, or command".into(),
                     );
                 }
                 (Some(mode.clone()), 2)
@@ -157,31 +157,32 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
             value
         }
         "unbind" => {
-            let (mode, keychain) =
-                if command.arguments.first().map(String::as_str) == Some("--mode") {
-                    let mode = command
-                        .arguments
-                        .get(1)
-                        .ok_or_else(|| "unbind --mode requires MODE".to_owned())?;
-                    if !matches!(
-                        mode.as_str(),
-                        "normal" | "insert" | "caret" | "passthrough" | "command"
-                    ) {
-                        return Err(
-                            "unbind --mode must be normal, insert, caret, passthrough, or command"
+            let (mode, keychain) = if command.arguments.first().map(String::as_str)
+                == Some("--mode")
+            {
+                let mode = command
+                    .arguments
+                    .get(1)
+                    .ok_or_else(|| "unbind --mode requires MODE".to_owned())?;
+                if !matches!(
+                    mode.as_str(),
+                    "normal" | "insert" | "insert-locked" | "caret" | "passthrough" | "command"
+                ) {
+                    return Err(
+                            "unbind --mode must be normal, insert, insert-locked, caret, passthrough, or command"
                                 .into(),
                         );
-                    }
-                    let keychain = command
-                        .arguments
-                        .get(2)
-                        .ok_or_else(|| "unbind requires KEYCHAIN".to_owned())?;
-                    (Some(mode.clone()), keychain.clone())
-                } else if command.arguments.len() == 1 {
-                    (None, command.arguments[0].clone())
-                } else {
-                    return Err("unbind accepts [--mode MODE] KEYCHAIN".into());
-                };
+                }
+                let keychain = command
+                    .arguments
+                    .get(2)
+                    .ok_or_else(|| "unbind requires KEYCHAIN".to_owned())?;
+                (Some(mode.clone()), keychain.clone())
+            } else if command.arguments.len() == 1 {
+                (None, command.arguments[0].clone())
+            } else {
+                return Err("unbind accepts [--mode MODE] KEYCHAIN".into());
+            };
             let mut value = serde_json::json!({"keychain": keychain});
             if let Some(mode) = mode {
                 value["mode"] = serde_json::Value::String(mode);
@@ -199,7 +200,14 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
             [flag, mode] if flag == "--mode" => {
                 if !matches!(
                     mode.as_str(),
-                    "normal" | "insert" | "command" | "search" | "hint" | "caret" | "pass-through"
+                    "normal"
+                        | "insert"
+                        | "insert-locked"
+                        | "command"
+                        | "search"
+                        | "hint"
+                        | "caret"
+                        | "pass-through"
                 ) {
                     return Err("binding-list --mode must be a valid input mode".into());
                 }
@@ -225,6 +233,7 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
                             value.as_str(),
                             "normal"
                                 | "insert"
+                                | "insert-locked"
                                 | "command"
                                 | "search"
                                 | "hint"

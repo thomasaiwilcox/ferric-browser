@@ -39,7 +39,7 @@ Rectangle {
     Accessible.role: Accessible.StatusBar
 
     function modeColor() {
-        if (mode === "insert") return browserWindow.modeInsertColor
+        if (mode === "insert" || mode === "insert-locked") return browserWindow.modeInsertColor
         if (mode === "hint") return browserWindow.warningColor
         if (mode === "caret") return browserWindow.accentColor
         return browserWindow.panelColor
@@ -71,7 +71,7 @@ Rectangle {
             Label {
                 id: statusModeLabel
                 anchors.centerIn: parent
-                text: statusBar.mode.toUpperCase()
+                text: statusBar.mode.replace("-", " ").toUpperCase()
                 color: statusBar.mode === "normal"
                        ? statusBar.browserWindow.primaryTextColor
                        : statusBar.browserWindow.contrastText(parent.color)

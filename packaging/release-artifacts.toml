@@ -66,6 +66,10 @@ name = "grid-navigation-guide"
 path = "docs/user/grid-navigation.md"
 
 [[artifact]]
+name = "text-entry-guide"
+path = "docs/user/insert-modes.md"
+
+[[artifact]]
 name = "installed-file-manifest"
 path = "packaging/installed-files.txt"
 

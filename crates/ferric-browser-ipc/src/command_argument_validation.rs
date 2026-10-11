@@ -44,7 +44,14 @@ pub(crate) fn normalize_history_clear_origin(value: &str) -> Result<String, Stri
 pub(crate) fn valid_ipc_mode(mode: &str) -> bool {
     matches!(
         mode,
-        "normal" | "insert" | "command" | "search" | "hint" | "caret" | "pass-through"
+        "normal"
+            | "insert"
+            | "insert-locked"
+            | "command"
+            | "search"
+            | "hint"
+            | "caret"
+            | "pass-through"
     )
 }
 

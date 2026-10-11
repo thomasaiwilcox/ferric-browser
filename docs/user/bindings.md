@@ -2,6 +2,13 @@
 
 This table is generated from the built-in binding registry. Configuration overrides are applied on top of these defaults at runtime.
 
+Press `i` for Transient Insert (`INSERT`): ordinary Enter reaches the page, then returns to Normal.
+Use Shift+Enter to continue composing; other modified Enter combinations also stay in Insert.
+Press `I` (Shift+i) for Locked Insert (`INSERT LOCKED`), where Enter keeps editing.
+Escape exits either variant. For example, use `i`, type a search, Enter, then `j` to browse;
+use `I` for document editing with repeated paragraphs. Neither command focuses an arbitrary input.
+Both variants reset when changing tabs or navigating; Transient Insert also ends when its editable context loses focus.
+
 | Mode | Key chain | Command |
 | --- | --- | --- |
 | `normal` | `+` | `zoom in` |
@@ -55,6 +62,7 @@ This table is generated from the built-in binding registry. Configuration overri
 | `normal` | `Forward` | `forward` |
 | `normal` | `G` | `scroll-to bottom` |
 | `normal` | `H` | `back` |
+| `normal` | `I` | `mode-enter insert-locked` |
 | `normal` | `J` | `tab-next` |
 | `normal` | `K` | `tab-prev` |
 | `normal` | `L` | `forward` |

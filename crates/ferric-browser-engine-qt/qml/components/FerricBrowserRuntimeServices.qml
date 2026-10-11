@@ -302,16 +302,31 @@ FerricBrowserRuntimeBase {
         if (!ui || !frame || !frame.isValid) {
             return
         }
+        var epoch = ui.input_epoch
         frame.runJavaScript(window.focusProbeScript(), window.browserScriptWorld, function(value) {
             var state = value || {sequence: 0, editable: false,
                                   user_activated: false, kind: "unknown"}
             ui.page_focus_observed_for(index, url, framePath,
-                Number(state.sequence) || 0, !!state.editable, !!state.user_activated)
+                Number(state.sequence) || 0, epoch, Number(state.context) || 0,
+                !!state.editable, !!state.user_activated)
         })
         var children = frame.children || []
         for (var i = 0; i < children.length; ++i) {
             window.probeFocusFrame(ui, index, children[i], framePath + "." + i, url)
         }
+    }
+
+    function probeFocusNotification(ui, host, view, index, message) {
+        if (message !== "__ferric_browser_focus_changed" || !ui || !host
+                || (ui.mode !== "insert" && ui.mode !== "insert-locked")) {
+            return
+        }
+        var active = host === window ? window.activeWebView() : host.activeView
+        if (active !== view) {
+            return
+        }
+        // Transferred views carry index -1; resolve against their current owner.
+        window.probeActiveFocus(ui, index < 0 ? ui.active_tab_index : index, view)
     }
 
     function probeActiveFocus(ui, index, view) {

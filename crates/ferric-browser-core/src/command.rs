@@ -908,7 +908,13 @@ impl CommandRegistry {
             definition(
                 "mode-enter",
                 &[],
-                vec![Mode::Normal, Mode::Command, Mode::Insert, Mode::Caret],
+                vec![
+                    Mode::Normal,
+                    Mode::Command,
+                    Mode::Insert,
+                    Mode::InsertLocked,
+                    Mode::Caret,
+                ],
                 CountPolicy::NotSupported,
                 false,
                 "Enter an explicit browser input mode.",
@@ -948,7 +954,13 @@ impl CommandRegistry {
             definition(
                 "edit-text",
                 &[],
-                vec![Mode::Normal, Mode::Command, Mode::Insert, Mode::Caret],
+                vec![
+                    Mode::Normal,
+                    Mode::Command,
+                    Mode::Insert,
+                    Mode::InsertLocked,
+                    Mode::Caret,
+                ],
                 CountPolicy::NotSupported,
                 true,
                 "Edit the focused plain-text control with a configured external editor.",

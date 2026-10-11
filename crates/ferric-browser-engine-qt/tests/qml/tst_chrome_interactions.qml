@@ -752,15 +752,18 @@ TestCase {
         compare(ChromePresentation.statusBarVisible("in-mode", "command"), false)
         compare(ChromePresentation.statusBarVisible("in-mode", "search"), false)
         compare(ChromePresentation.statusBarVisible("in-mode", "insert"), true)
+        compare(ChromePresentation.statusBarVisible("in-mode", "insert-locked"), true)
         compare(ChromePresentation.statusBarVisible("in-mode", "hint"), true)
         compare(ChromePresentation.statusBarVisible("in-mode", "caret"), true)
         compare(ChromePresentation.statusBarVisible("in-mode", "pass-through"), true)
 
         compare(ChromePresentation.statusBarVisible("always", "normal"), true)
         compare(ChromePresentation.statusBarVisible("always", "insert"), true)
+        compare(ChromePresentation.statusBarVisible("always", "insert-locked"), true)
         compare(ChromePresentation.statusBarVisible("always", "command"), false)
         compare(ChromePresentation.statusBarVisible("never", "normal"), false)
         compare(ChromePresentation.statusBarVisible("never", "insert"), false)
+        compare(ChromePresentation.statusBarVisible("never", "insert-locked"), false)
         compare(ChromePresentation.statusBarVisible("command", "hint"), true)
     }
 
@@ -773,6 +776,15 @@ TestCase {
                     "h", Qt.Key_H, false, Qt.Key_A, Qt.Key_Z), "h")
         compare(KeyboardPresentation.printableKey(
                     "λ", Qt.Key_unknown, false, Qt.Key_A, Qt.Key_Z), "λ")
+    }
+
+    function test_insert_entry_keys_remain_distinct_on_webengine_paths() {
+        compare(KeyboardPresentation.printableKey(
+                    "i", Qt.Key_I, false, Qt.Key_A, Qt.Key_Z), "i")
+        compare(KeyboardPresentation.printableKey(
+                    "i", Qt.Key_I, true, Qt.Key_A, Qt.Key_Z), "I")
+        compare(KeyboardPresentation.printableKey(
+                    "", Qt.Key_I, true, Qt.Key_A, Qt.Key_Z), "I")
     }
 
     function test_shutdown_decision_is_keyboard_operable() {

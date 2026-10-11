@@ -223,7 +223,12 @@ fn validate_command_argument_semantics(
             .is_some_and(|mode| {
                 !matches!(
                     mode,
-                    "normal" | "insert" | "caret" | "passthrough" | "pass-through"
+                    "normal"
+                        | "insert"
+                        | "insert-locked"
+                        | "caret"
+                        | "passthrough"
+                        | "pass-through"
                 )
             })
     {

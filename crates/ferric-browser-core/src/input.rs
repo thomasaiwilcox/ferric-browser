@@ -201,6 +201,7 @@ impl BindingTrie {
                 binding(Mode::Normal, &[";", "a"], "hint --target choose all"),
                 binding(Mode::Normal, &["g", "i"], "hint --first inputs"),
                 binding(Mode::Normal, &["i"], "mode-enter insert"),
+                binding(Mode::Normal, &["I"], "mode-enter insert-locked"),
                 binding(Mode::Normal, &["v"], "mode-enter caret"),
                 binding(Mode::Normal, &["y", "y"], "yank url"),
                 binding(Mode::Normal, &["y", "t"], "yank title"),
@@ -494,6 +495,29 @@ fn binding(mode: Mode, keys: &[&str], command: &str) -> BindingDefinition {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn insert_commands_are_immediate_and_case_sensitive() {
+        let registry = BindingRegistry::default_v1(CommandRegistry::default_v1()).unwrap();
+        for (key, command) in [
+            ("i", "mode-enter insert"),
+            ("I", "mode-enter insert-locked"),
+        ] {
+            let mut resolver = registry.resolver(Mode::Normal);
+            assert_eq!(
+                resolver.feed(key, 0),
+                BindingOutcome::Execute {
+                    command: command.into(),
+                    count: 1,
+                }
+            );
+        }
+        for mode in [Mode::Insert, Mode::InsertLocked] {
+            let mut resolver = registry.resolver(mode);
+            assert!(matches!(resolver.feed("i", 0), BindingOutcome::Consumed));
+            assert!(matches!(resolver.feed("I", 0), BindingOutcome::Consumed));
+        }
+    }
 
     #[test]
     fn binding_registry_exposes_default_definitions_and_resolvers() {

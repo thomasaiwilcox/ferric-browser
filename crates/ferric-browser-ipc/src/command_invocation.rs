@@ -51,6 +51,40 @@ mod tests {
     }
 
     #[test]
+    fn insert_variants_round_trip_through_the_public_envelope() {
+        for mode in ["insert", "insert-locked"] {
+            let command = ferric_browser_core::ParsedCommand {
+                name: "mode-enter".into(),
+                arguments: vec![mode.into()],
+            };
+            let envelope = encode_command(&command).expect("encode insert mode");
+            assert_eq!(envelope["arguments"], json!({"mode": mode}));
+            let invocation = decode_command_invocation(&envelope).expect("decode insert mode");
+            assert_eq!(invocation.command, command);
+        }
+    }
+
+    #[test]
+    fn locked_insert_binding_commands_round_trip_through_the_public_envelope() {
+        for text in [
+            "bind --mode insert-locked Escape mode-enter normal",
+            "unbind --mode insert-locked Escape",
+            "binding-list --mode insert-locked",
+            "binding-explain i --mode insert-locked",
+        ] {
+            let commands = parse_chain(text, ParseInput::Cli).expect("parse binding command");
+            let envelope = encode_command(&commands[0]).expect("encode locked binding command");
+            assert_eq!(envelope["arguments"]["mode"], "insert-locked");
+            let invocation =
+                decode_command_invocation(&envelope).expect("decode locked binding command");
+            assert_eq!(
+                encode_command(&invocation.command).expect("re-encode locked binding command"),
+                envelope
+            );
+        }
+    }
+
+    #[test]
     fn invocation_rejects_closed_argument_contracts() {
         assert!(
             decode_command_invocation(&json!({

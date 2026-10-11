@@ -115,6 +115,23 @@ impl qobject::BrowserUi {
         self.set_status_text(QString::from("Normal mode"));
     }
 
+    /// Invalidate pending native input and focus callbacks at a page/tab boundary.
+    pub(super) fn reset_editing_session(mut self: Pin<&mut Self>) {
+        if matches!(
+            self.as_ref().rust().core_mode,
+            Mode::Insert | Mode::InsertLocked
+        ) {
+            self.as_mut().escape();
+        } else {
+            let epoch = self.as_ref().rust().input_epoch.wrapping_add(1);
+            self.as_mut().set_input_epoch(epoch);
+        }
+        let mut rust = self.as_mut().rust_mut();
+        let this = rust.as_mut().get_mut();
+        this.focus_observations.clear();
+        this.focus_suppressions.clear();
+    }
+
     pub(super) fn enter_command(mut self: Pin<&mut Self>) {
         let window = self.as_ref().rust().window;
         if let Some(window) = window {
@@ -128,17 +145,33 @@ impl qobject::BrowserUi {
         self.set_status_text(QString::from("Command mode"));
     }
 
-    pub(super) fn enter_insert(mut self: Pin<&mut Self>) {
+    pub(super) fn enter_insert(self: Pin<&mut Self>) {
+        self.enter_insert_mode(Mode::Insert);
+    }
+
+    pub(super) fn enter_insert_mode(mut self: Pin<&mut Self>, mode: Mode) {
+        debug_assert!(matches!(mode, Mode::Insert | Mode::InsertLocked));
         let window = self.as_ref().rust().window;
         if let Some(window) = window {
-            let _ = self.as_mut().reduce_event(Event::PushMode {
-                window,
-                mode: Mode::Insert,
-            });
+            let _ = self.as_mut().reduce_event(Event::PushMode { window, mode });
         }
-        self.as_mut().set_core_mode(Mode::Insert);
-        self.as_mut().set_mode(QString::from("insert"));
-        self.set_status_text(QString::from("Insert mode"));
+        // Project the variant first so a live native preedit survives entry.
+        self.as_mut()
+            .set_mode(QString::from(super::ipc_mode_name(mode)));
+        self.as_mut().set_core_mode(mode);
+        // Explicit entry starts a new observation baseline, even in the same field.
+        let active = self.as_ref().rust().active_tab_index;
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .focus_suppressions
+            .retain(|(index, _), _| *index != active);
+        self.set_status_text(QString::from(if mode == Mode::InsertLocked {
+            "Insert locked mode"
+        } else {
+            "Insert mode"
+        }));
     }
 
     pub(super) fn enter_caret(mut self: Pin<&mut Self>) {

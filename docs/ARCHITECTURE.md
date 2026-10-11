@@ -62,3 +62,10 @@ active configuration.
 Architecture decisions live in `docs/architecture/`. New features must enter
 through a typed registry or runtime input, mutate application state through the
 reducer, and carry behavioral tests.
+
+Insert modes share native event routing and explicit core mode state. `i` selects
+Transient Insert; `I` selects Locked Insert. The router dispatches the physical
+Enter gesture through Qt before transient mode exit, and input epochs scope
+focus callbacks and gesture completion to the current editing session. See
+[ADR-0015](architecture/ADR-0015-transient-insert.md) for dispatch ordering,
+composition handling and focus lifecycle boundaries.

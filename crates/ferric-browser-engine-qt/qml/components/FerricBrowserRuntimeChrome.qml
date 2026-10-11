@@ -957,6 +957,9 @@ GridLayout {
                     refreshEffectiveSiteSettings()
                     window.installFocusObserver(webView)
                 }
+                onJavaScriptConsoleMessage: function(level, message, lineNumber, sourceID) {
+                    window.probeFocusNotification(viewUi, viewHost, webView, tabIndex, message)
+                }
                 onActiveFocusChanged: {
                     if (activeFocus && viewUi === browserUi
                             && tabIndex === viewUi.active_tab_index) {

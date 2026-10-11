@@ -911,7 +911,7 @@ fn default_chrome_is_compact_modal_and_content_first() {
     assert!(qml.contains("visible: window.tabStripVisible"));
     assert!(qml.contains("text: (tabIndex + 1) + \"  \""));
     assert!(qml.contains("positionViewAtIndex(activeTabIndex, ListView.Contain)"));
-    assert!(status_bar.contains("text: statusBar.mode.toUpperCase()"));
+    assert!(status_bar.contains("text: statusBar.mode.replace(\"-\", \" \").toUpperCase()"));
     assert!(status_bar.contains("id: statusUrl"));
     assert!(command_line.contains("id: commandPrefix"));
     assert!(command_line.contains("text: \":\""));
@@ -1380,7 +1380,7 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(qml.contains("BrowserScripts.pageUserscriptRun(scriptSource)"));
     assert!(qml.contains("BrowserScripts.pageUserscriptInstall(script.source)"));
     assert!(!qml.contains("function hintSelector(linksOnly)"));
-    assert!(script.contains("var VERSION = \"10\""));
+    assert!(script.contains("var VERSION = \"11\""));
     assert!(qml.contains("function scrollTargetPolicyScript(policy)"));
     assert!(qml.contains("return BrowserScripts.scrollTargetPolicy(policy)"));
     assert!(qml.contains("function scrollTargetStatusScript()"));

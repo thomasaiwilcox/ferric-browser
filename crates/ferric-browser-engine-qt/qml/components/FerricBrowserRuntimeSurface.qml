@@ -1071,6 +1071,11 @@ FerricBrowserRuntimeChrome {
         focusProbeTimer.restart()
     }
 
+    function cancelFocusProbes() {
+        window.focusProbeRetries = 0
+        focusProbeTimer.stop()
+    }
+
     Timer {
         id: focusProbeTimer
         interval: 40
@@ -1377,7 +1382,11 @@ FerricBrowserRuntimeChrome {
             event.accepted = true
             if (ui === browserUi) {
                 window.scheduleRuntimeWork(0)
-                window.scheduleFocusProbe(2)
+                if (event.key !== Qt.Key_Escape) {
+                    window.scheduleFocusProbe(2)
+                } else {
+                    window.cancelFocusProbes()
+                }
                 window.scheduleScrollCapture()
             }
         }

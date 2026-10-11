@@ -29,3 +29,28 @@ profile and context mutations enter through their typed methods, and every accep
 storage ticket reaches exactly one terminal effect even when a profile closes
 or is replaced. Architecture checks reject durable-resource ownership and
 storage implementation types in the Qt presentation state.
+
+The engine task also runs a native insert routing suite with Qt Quick WebEngine.
+It can be run independently:
+
+```sh
+cmake -S crates/ferric-browser-engine-qt/tests/native-insert -B /tmp/ferric-native-insert
+cmake --build /tmp/ferric-native-insert
+ctest --test-dir /tmp/ferric-native-insert --output-on-failure
+```
+
+It uses the production key router and local HTML, requiring Qt Quick,
+Qt WebEngine Quick, Qt Test and CMake. It exercises original Qt key events,
+DOM keydown/keyup counts, form submit, newline, autocomplete selection,
+contenteditable, input removal, modified Enter, input-method preedit, navigation,
+and invalidated gestures. Lost-release regressions check that a fresh modified
+Enter or IME confirmation cannot inherit an earlier ordinary Enter's mode
+exit. Completion regressions move keyboard ownership to chrome or another
+window before release and verify the owning session exits without redirecting
+the native release. It does not qualify real websites or platform IMEs.
+
+CTest runs this suite offscreen with software rendering. Running the executable
+under a Wayland compositor additionally requires a keyboard seat and an active
+test window. A headless Weston instance without a keyboard seat cannot satisfy
+the suite's focus prerequisite; that environment can still check installed
+application startup and page loading, but cannot qualify keyboard routing.

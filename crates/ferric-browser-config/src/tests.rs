@@ -154,6 +154,27 @@ fn action_targets_are_typed_bounded_and_placeholder_safe() {
 }
 
 #[test]
+fn locked_insert_bindings_validate_and_survive_runtime_overrides() {
+    let mut config = Config::default();
+    config
+        .bindings
+        .entry("insert-locked".into())
+        .or_default()
+        .insert("Escape".into(), "mode-enter normal".into());
+    validate(&config).expect("locked insert configuration");
+    let mut overrides = RuntimeOverrides::default();
+    overrides
+        .set_binding("insert-locked", "Escape", "mode-enter normal")
+        .expect("locked insert runtime binding");
+    let applied = apply_runtime_overrides(&Config::default(), &overrides)
+        .expect("apply locked insert runtime binding");
+    assert_eq!(
+        applied.bindings["insert-locked"]["Escape"],
+        "mode-enter normal"
+    );
+}
+
+#[test]
 fn validates_binding_layers_before_commit() {
     let mut config = Config::default();
     config

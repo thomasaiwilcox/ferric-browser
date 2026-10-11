@@ -5,9 +5,10 @@ use super::{
     qobject,
 };
 
-const BINDING_HELP_MODES: [&str; 7] = [
+const BINDING_HELP_MODES: [&str; 8] = [
     "normal",
     "insert",
+    "insert-locked",
     "command",
     "search",
     "hint",

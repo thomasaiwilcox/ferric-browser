@@ -114,7 +114,7 @@ impl qobject::BrowserUi {
                     "workspace": context.and_then(|context| context.workspace.clone()),
                     "tabs": window.tabs.iter().map(ToString::to_string).collect::<Vec<_>>(),
                     "active_tab": window.active_tab.map(|tab| tab.to_string()),
-                    "mode": window.modes.last().map(|mode| format!("{mode:?}").to_ascii_lowercase())
+                    "mode": window.modes.last().map(|mode| ipc_mode_name(*mode))
                 })
             })
             .collect::<Vec<_>>();

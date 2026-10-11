@@ -36,14 +36,14 @@ Rectangle {
         Rectangle {
             Layout.fillHeight: true
             Layout.preferredWidth: modeLabel.implicitWidth + 16
-            color: statusBar.mode === "insert"
+            color: (statusBar.mode === "insert" || statusBar.mode === "insert-locked")
                    ? statusBar.browserWindow.modeInsertColor
                    : statusBar.browserWindow.panelColor
 
             Label {
                 id: modeLabel
                 anchors.centerIn: parent
-                text: statusBar.mode.toUpperCase()
+                text: statusBar.mode.replace("-", " ").toUpperCase()
                 color: statusBar.mode === "normal"
                        ? statusBar.browserWindow.primaryTextColor
                        : statusBar.browserWindow.backgroundColor

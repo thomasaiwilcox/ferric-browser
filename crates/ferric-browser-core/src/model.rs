@@ -39,7 +39,10 @@ impl PrivacyKind {
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum Mode {
     Normal,
+    /// Temporary text entry; ordinary Enter completes the interaction.
     Insert,
+    /// Explicit persistent text entry within the active page session.
+    InsertLocked,
     Command,
     Search,
     Hint,
