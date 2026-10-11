@@ -36,6 +36,12 @@ impl qobject::BrowserUi {
                 CommandDispatchControl::Failed => return false,
                 CommandDispatchControl::Unhandled => {}
             }
+            if let Some(result) = self.as_mut().dispatch_start_page_command(&command) {
+                if !result {
+                    return false;
+                }
+                continue;
+            }
             if command.name == "blocking-status" {
                 let mode = self.as_ref().rust().core_mode;
                 if let Err(error) = registry.validate(&command, mode) {

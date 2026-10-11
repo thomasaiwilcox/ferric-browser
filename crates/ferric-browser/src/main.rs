@@ -696,14 +696,19 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), RunError
         RunError::config(format!("could not serialize profile overrides: {error}"))
     })?;
     if let CliAction::Open {
-        input,
-        additional_inputs,
+        mut input,
+        mut additional_inputs,
         target,
         clean_link,
         explicit_input,
         ..
     } = action
     {
+        if !explicit_input {
+            let mut pages = config.navigation.start_pages.iter();
+            input = pages.next().cloned().unwrap_or_else(|| "rb://start".into());
+            additional_inputs = pages.cloned().collect();
+        }
         let instance = match acquire_instance(storage_base.as_deref(), options.instance.as_deref())
             .map_err(RunError::storage)?
         {

@@ -9,6 +9,15 @@ use super::*;
 pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, String> {
     let mut context = crate::CommandContext::default();
     let arguments = match command.name.as_str() {
+        "start-page-view" => {
+            let [view] = command.arguments.as_slice() else {
+                return Err("start-page-view requires one view".into());
+            };
+            if !matches!(view.as_str(), "top-sites" | "favourites" | "guide") {
+                return Err("invalid start-page view".into());
+            }
+            serde_json::json!({"view": view})
+        }
         "open" => {
             let mut target = None;
             let mut clean_link = false;

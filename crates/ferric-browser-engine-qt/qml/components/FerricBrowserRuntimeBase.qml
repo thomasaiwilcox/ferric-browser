@@ -799,6 +799,10 @@ ApplicationWindow {
             ui.status_text = "Ephemeral profile owner token is already bound to another live profile"
             return false
         }
+        if (profile && profile.offTheRecord && ui && ui.set_private_start_owner) {
+            var owner = (window.browserWindowRegistry || []).find(function(entry) { return entry && entry.profile === profile && entry.ui && entry.ui.start_page_owner_token.length > 0 })
+            ui.set_private_start_owner(owner ? owner.ui.start_page_owner_token : ui.window_token)
+        }
         var entries = (window.browserWindowRegistry || []).filter(function(entry) {
             return entry && entry.ui && entry.ui !== ui
         })
@@ -1658,6 +1662,7 @@ ApplicationWindow {
     property bool copyNoticeVisible: false
     readonly property bool browserChromeInputActive:
         window.inputBarActive
+        || (window.activeWebView() && window.activeWebView().nativeUrl === "rb://start" && window.activeWebView().startPage && window.activeWebView().startPage.inputActive)
         || window.applicationShutdownForcePromptVisible
         || window.devToolsVisible
         || window.journeyExportPreviewVisible

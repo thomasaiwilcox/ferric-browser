@@ -94,6 +94,9 @@ pub fn canonicalize(value: &str) -> Result<String, UrlError> {
         return Err(UrlError::Malformed("scheme is invalid".into()));
     }
     let scheme = raw_scheme.to_ascii_lowercase();
+    if scheme == "rb" && matches!(remainder, "//start" | "//blank") {
+        return Ok(format!("rb:{remainder}"));
+    }
     if !matches!(scheme.as_str(), "http" | "https" | "file" | "about") {
         return Err(UrlError::UnsupportedScheme(scheme));
     }

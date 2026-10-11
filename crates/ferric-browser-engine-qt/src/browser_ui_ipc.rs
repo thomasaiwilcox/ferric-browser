@@ -33,6 +33,19 @@ impl qobject::BrowserUi {
             return Ok(result.unwrap_or_else(|| serde_json::json!({"status": "accepted"})));
         }
         let mut command = expanded.into_iter().next().expect("one expanded command");
+        if matches!(
+            command.name.as_str(),
+            "tab-new" | "start-page" | "start-page-view" | "start-page-cycle" | "favourite-add"
+        ) {
+            self.as_ref().validate_ipc_route(route)?;
+            if route.selector != DispatchTarget::Active {
+                return Err("start-page commands require the active tab".into());
+            }
+            return match self.as_mut().dispatch_start_page_command(&command) {
+                Some(true) => Ok(serde_json::json!({"status": "accepted"})),
+                _ => Err(self.as_ref().rust().status_text.to_string()),
+            };
+        }
         if command.name == "open-current" {
             if route.context.is_some() {
                 return Err("context routing is not valid for open-current".into());
@@ -224,11 +237,14 @@ impl qobject::BrowserUi {
             self.as_ref().validate_ipc_route(route)?;
             return self.execute_context_command(&command);
         }
-        if command.name == "session-load" {
+        if matches!(command.name.as_str(), "session-load" | "session-save") {
             if route.context.is_some() || route.profile.is_some() {
-                return Err("context or profile routing is not valid for session loading".into());
+                return Err("context/profile routing is not valid for sessions".into());
             }
             self.as_ref().validate_ipc_route(route)?;
+            if command.name == "session-save" {
+                return self.as_mut().execute_session_save_command(&command);
+            }
             return self.as_mut().execute_session_load_command(&command);
         }
         if command.name == "blocking-status" {

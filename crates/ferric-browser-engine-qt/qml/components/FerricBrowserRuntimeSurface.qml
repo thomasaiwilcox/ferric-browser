@@ -135,28 +135,26 @@ FerricBrowserRuntimeChrome {
     }
 
     function executeHistoryTraversal(view, backwards, requestedCount) {
-        var count = Number(requestedCount)
-        if (!Number.isFinite(count) || count < 1 || count > 100) {
-            count = 1
+        view.synchronizeContentHistory()
+        var originalHistory = view.viewUi.content_history_export(view.tabIndex >= 0 ? view.tabIndex : view.viewUi.active_tab_index)
+        var count = Math.max(1, Math.min(100, Number(requestedCount) || 1))
+        var destination = ""
+        for (var step = count; step >= 1; --step) {
+            destination = view.viewUi.content_traverse(view.tabIndex >= 0 ? view.tabIndex : view.viewUi.active_tab_index, backwards ? -step : step, view.engineHistoryIndex)
+            if (destination.length > 0) break
         }
-        var moved = 0
-        for (var index = 0; index < count; ++index) {
-            var canMove = backwards ? view.canGoBack : view.canGoForward
-            if (!canMove) {
-                break
-            }
-            if (backwards) {
-                view.goBack()
-            } else {
-                view.goForward()
-            }
-            moved += 1
+        if (destination.length === 0) { view.viewUi.status_text = "History boundary reached"; return }
+        var fields = destination.split("\t")
+        var offset = Number(fields[0])
+        var url = fields.slice(1).join("\t")
+        if (url !== "rb://start" && url !== "rb://blank") offset = view.contentEngineOffset(url, offset, backwards)
+        if (offset === null) {
+            view.viewUi.content_history_import(view.tabIndex >= 0 ? view.tabIndex : view.viewUi.active_tab_index, originalHistory)
+            view.viewUi.status_text = "That engine history entry is no longer available"
+            return
         }
-        if (moved === 0) {
-            browserUi.status_text = "History boundary reached"
-        } else if (moved < count) {
-            browserUi.status_text = "History boundary reached after " + moved + " step(s)"
-        }
+        view.setContentUrl(url, true, offset !== 0)
+        if (offset !== 0 && url !== "rb://start" && url !== "rb://blank") view.goBackOrForward(offset)
     }
 
     function executePendingEngineAction() {
@@ -165,6 +163,23 @@ FerricBrowserRuntimeChrome {
             commandSurface.commandText = action.slice("command-prefill\t".length)
             commandSurface.cursorPosition = commandSurface.commandText.length
             commandSurface.focusInput()
+            return
+        }
+        if (action === "start-page-cycle") {
+            var startView = window.activeWebView()
+            if (startView && startView.nativeUrl === "rb://start") startView.startPage.cycleView()
+            return
+        }
+        if (action.indexOf("start-page-view\t") === 0 || action.indexOf("start-page-add\t") === 0 || action.indexOf("start-page-bookmark\t") === 0) {
+            var startParts = action.split("\t")
+            var startView = window.activeWebView()
+            if (startView && startView.nativeUrl === "rb://start") {
+                if (startParts[0] === "start-page-view") startView.startPage.chooseView(startParts[1])
+                else if (startParts[0] === "start-page-bookmark") {
+                    startView.startPage.addCaptured(startParts[2], startParts.slice(3).join("\t"))
+                    startView.startPage.editBookmarkId = startParts[1]
+                } else startView.startPage.addCaptured(startParts[1], startParts.slice(2).join("\t"))
+            }
             return
         }
         if (action === "quit-request") {
@@ -706,7 +721,7 @@ FerricBrowserRuntimeChrome {
                 var navigationView = tabViewAt(navigationIndex)
                 if (navigationView) {
                     tabs.setProperty(navigationIndex, "loaded", true)
-                    navigationView.url = navigation.slice(2).join("\t")
+                    navigationView.setContentUrl(navigation.slice(2).join("\t"), false)
                 }
             }
             return
@@ -734,6 +749,8 @@ FerricBrowserRuntimeChrome {
             var forwardParts = action.split("\t")
             window.executeHistoryTraversal(webView, false,
                                            forwardParts.length >= 2 ? forwardParts[1] : 1)
+        } else if ((action === "reload" || action.indexOf("reload\t") === 0) && webView.nativeUrl.length > 0) {
+            if (webView.nativeUrl === "rb://start") webView.startPage.refresh()
         } else if (action === "reload" || action.indexOf("reload\t") === 0) {
             var reloadParts = action.split("\t")
             if (reloadParts[1] === "true") {
@@ -788,6 +805,7 @@ FerricBrowserRuntimeChrome {
         var active = browserUi.active_tab_index
         if (active >= 0 && active < tabs.count) {
             tabs.setProperty(active, "url", browserUi.initial_url)
+            window.executePendingEngineAction()
         }
     }
 
@@ -874,10 +892,16 @@ FerricBrowserRuntimeChrome {
                        && String(tabs.get(modelIndex).tabId || "").length === 0) {
                 tabs.setProperty(modelIndex, "tabId", wantedId)
             } else {
+                // Native descriptors must be present before constructing the
+                // view: committing a placeholder can overwrite a queued undo
+                // or clone destination through the active-tab callbacks.
+                var descriptor = {}
+                try { descriptor = JSON.parse(browserUi.tab_transfer_payload(wantedId)) } catch (error) {}
+                var nativeDescriptor = descriptor.url === "rb://start" || descriptor.url === "rb://blank"
                 tabs.insert(modelIndex, {
                     tabId: wantedId,
-                    url: "about:blank",
-                    title: "New tab",
+                    url: nativeDescriptor ? descriptor.url : "about:blank",
+                    title: nativeDescriptor ? (descriptor.url === "rb://start" ? "Start page" : "Blank") : "New tab",
                     loaded: true,
                     pinned: false,
                     muted: false,
@@ -1123,113 +1147,7 @@ FerricBrowserRuntimeChrome {
     }
 
     function logicalNormalKeyText(event) {
-        if (!event) {
-            return ""
-        }
-        var control = !!(event.modifiers & Qt.ControlModifier)
-        var shift = !!(event.modifiers & Qt.ShiftModifier)
-        var alt = !!(event.modifiers & Qt.AltModifier)
-        var meta = !!(event.modifiers & Qt.MetaModifier)
-        if (alt && !control && !shift && !meta) {
-            if (event.key >= Qt.Key_1 && event.key <= Qt.Key_9) {
-                return "Alt+" + String.fromCharCode(event.key)
-            }
-            if (event.key === Qt.Key_M) {
-                return "Alt+m"
-            }
-            return ""
-        }
-        if (control && alt && !shift && !meta && event.key === Qt.Key_P) {
-            return "Ctrl+Alt+p"
-        }
-        if (control && !alt && !meta) {
-            if (event.key === Qt.Key_6 || event.key === Qt.Key_AsciiCircum) {
-                return "Ctrl+^"
-            }
-            if (shift) {
-                if (event.key === Qt.Key_N) {
-                    return "Ctrl+Shift+n"
-                }
-                if (event.key === Qt.Key_T) {
-                    return "Ctrl+Shift+t"
-                }
-                if (event.key === Qt.Key_V) {
-                    return "Ctrl+Shift+v"
-                }
-                if (event.key === Qt.Key_W) {
-                    return "Ctrl+Shift+w"
-                }
-                return ""
-            }
-            if (event.key === Qt.Key_B) {
-                return "Ctrl+b"
-            }
-            if (event.key === Qt.Key_D) {
-                return "Ctrl+d"
-            }
-            if (event.key === Qt.Key_F) {
-                return "Ctrl+f"
-            }
-            if (event.key === Qt.Key_F5) {
-                return "Ctrl+F5"
-            }
-            if (event.key === Qt.Key_N) {
-                return "Ctrl+n"
-            }
-            if (event.key === Qt.Key_U) {
-                return "Ctrl+u"
-            }
-            if (event.key === Qt.Key_P) {
-                return "Ctrl+p"
-            }
-            if (event.key === Qt.Key_Q) {
-                return "Ctrl+q"
-            }
-            if (event.key === Qt.Key_S) {
-                return "Ctrl+s"
-            }
-            if (event.key === Qt.Key_Space) {
-                return "Ctrl+Space"
-            }
-            if (event.key === Qt.Key_Tab) {
-                return "Ctrl+Tab"
-            }
-            if (event.key === Qt.Key_T) {
-                return "Ctrl+t"
-            }
-            if (event.key === Qt.Key_V) {
-                return "Ctrl+v"
-            }
-            if (event.key === Qt.Key_W) {
-                return "Ctrl+w"
-            }
-            if (event.key === Qt.Key_PageDown) {
-                return "Ctrl+PgDown"
-            }
-            if (event.key === Qt.Key_PageUp) {
-                return "Ctrl+PgUp"
-            }
-            return ""
-        }
-        if (!control && !alt && !meta) {
-            if (event.key === Qt.Key_F5) {
-                return "F5"
-            }
-            if (event.key === Qt.Key_F11) {
-                return "F11"
-            }
-            if (event.key === Qt.Key_Back) {
-                return "Back"
-            }
-            if (event.key === Qt.Key_Forward) {
-                return "Forward"
-            }
-        }
-        if (alt || meta) {
-            return ""
-        }
-        return KeyboardPresentation.printableKey(
-                    event.text, event.key, shift, Qt.Key_A, Qt.Key_Z)
+        return KeyboardPresentation.logicalNormalKeyText(event)
     }
 
     function completeBrowserKeyAction(ui, host) {
@@ -1286,6 +1204,9 @@ FerricBrowserRuntimeChrome {
         if (!ui || !event) {
             return false
         }
+        var nativeView = host && host.activeView !== undefined ? host.activeView : (ui === browserUi ? window.activeWebView() : null)
+        if (ui.mode === "normal" && nativeView && nativeView.nativeUrl === "rb://start"
+                && nativeView.startPage && nativeView.startPage.handleNavigation(event)) return true
         var logicalText = window.logicalNormalKeyText(event)
         var handled = false
         var passing = ui.mode === "pass-through" || ui.mode === "pass-through-once"

@@ -105,6 +105,13 @@ pub(super) fn decode_command_arguments(
             Some("tab") => vec!["--target".into(), "tab".into()],
             Some(_) => return Err("command argument target must be tab".into()),
         },
+        "start-page-view" => {
+            let view = text_argument("view")?;
+            if !matches!(view.as_str(), "top-sites" | "favourites" | "guide") {
+                return Err("invalid start-page view".into());
+            }
+            vec![view]
+        }
         "open" => {
             let input = text_argument("input")?;
             if let Some(external) = arguments.and_then(|arguments| arguments.get("external"))

@@ -133,9 +133,43 @@ fn strip_url_userinfo(url: &str) -> String {
     )
 }
 
+/// Native start and blank documents are safe tab descriptors, but never visits.
+pub(super) fn is_safe_tab_descriptor(url: &str) -> bool {
+    ferric_browser_core::InternalPage::from_url(url).is_some()
+        || ferric_browser_storage::is_safe_history_url(url)
+}
+
+/// A new native tab has no committed URL until its view is constructed.
+pub(super) fn pending_native_tab_url<'a>(
+    actions: impl IntoIterator<Item = &'a str>,
+    index: usize,
+) -> Option<&'a str> {
+    actions.into_iter().find_map(|action| {
+        let mut fields = action.splitn(3, '\t');
+        if fields.next()? != "navigate" || fields.next()?.parse::<usize>().ok()? != index {
+            return None;
+        }
+        let url = fields.next()?;
+        ferric_browser_core::InternalPage::from_url(url).map(|_| url)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn new_native_tabs_use_only_their_exact_queued_descriptor() {
+        let actions = [
+            "navigate\t0\trb://blank",
+            "navigate\t1\trb://start?token=secret",
+            "navigate\t1\thttps://example.test",
+            "navigate\t1\trb://start",
+        ];
+        assert_eq!(pending_native_tab_url(actions, 0), Some("rb://blank"));
+        assert_eq!(pending_native_tab_url(actions, 1), Some("rb://start"));
+        assert_eq!(pending_native_tab_url(actions, 2), None);
+    }
 
     #[test]
     fn redacts_encoded_and_malformed_secret_keys() {

@@ -56,6 +56,7 @@ mod browser_ui_controls;
 mod browser_ui_downloads_permissions;
 mod browser_ui_edit_commands;
 mod browser_ui_external_actions;
+mod browser_ui_guide;
 mod browser_ui_input;
 #[allow(clippy::too_many_lines)]
 mod browser_ui_ipc;
@@ -89,6 +90,7 @@ mod browser_ui_runtime_config;
 mod browser_ui_sessions;
 mod browser_ui_site;
 mod browser_ui_spatial;
+mod browser_ui_start_page;
 mod browser_ui_state;
 mod browser_ui_storage_writes;
 mod browser_ui_tab_state;
@@ -445,6 +447,37 @@ mod qobject {
         #[qproperty(i32, completion_selected)]
         #[qproperty(bool, completion_visible)]
         #[qproperty(bool, command_retryable)]
+        #[qproperty(QString, start_page_owner_token)]
+        #[qproperty(QStringList, start_page_eligible_sites)]
+        #[qproperty(QStringList, start_page_eligible_urls)]
+        #[qproperty(u64, content_history_revision)]
+        #[qproperty(QString, start_page_view)]
+        #[qproperty(QString, start_page_error)]
+        #[qproperty(bool, start_page_busy)]
+        #[qproperty(u64, start_page_revision)]
+        #[qproperty(u64, start_page_rank_revision)]
+        #[qproperty(u64, start_page_profile_revision)]
+        #[qproperty(bool, start_page_ready)]
+        #[qproperty(QStringList, start_page_kinds)]
+        #[qproperty(QStringList, start_page_ids)]
+        #[qproperty(QStringList, start_page_urls)]
+        #[qproperty(QStringList, start_page_titles)]
+        #[qproperty(QStringList, start_page_sites)]
+        #[qproperty(QStringList, start_page_slots)]
+        #[qproperty(QStringList, guide_categories)]
+        #[qproperty(QStringList, guide_titles)]
+        #[qproperty(QStringList, guide_keys)]
+        #[qproperty(QStringList, guide_modes)]
+        #[qproperty(QStringList, guide_commands)]
+        #[qproperty(QStringList, guide_summaries)]
+        #[qproperty(QStringList, guide_ids)]
+        #[qproperty(QStringList, guide_explanations)]
+        #[qproperty(QStringList, guide_arguments)]
+        #[qproperty(QStringList, guide_examples)]
+        #[qproperty(QStringList, guide_recoveries)]
+        #[qproperty(QStringList, guide_counts)]
+        #[qproperty(QStringList, guide_binding_notes)]
+        #[qproperty(QStringList, guide_details)]
         #[qproperty(QString, binding_overlay)]
         #[qproperty(QStringList, binding_help_row_kinds)]
         #[qproperty(QStringList, binding_help_row_titles)]
@@ -664,6 +697,53 @@ mod qobject {
         #[qinvokable]
         fn maintenance_delay_ms(self: Pin<&mut BrowserUi>) -> i32;
 
+        #[qinvokable]
+        fn refresh_start_page(self: Pin<&mut BrowserUi>) -> bool;
+        #[qinvokable]
+        fn refresh_start_page_metadata(self: Pin<&mut BrowserUi>);
+        #[qinvokable]
+        fn set_private_start_owner(self: Pin<&mut BrowserUi>, token: &QString);
+        #[qinvokable]
+        fn start_page_action(
+            self: Pin<&mut BrowserUi>,
+            action: &QString,
+            slot: i32,
+            value: &QString,
+            title: &QString,
+        ) -> bool;
+        #[qinvokable]
+        fn refresh_guide(self: Pin<&mut BrowserUi>, search: &QString);
+        #[qinvokable]
+        fn content_navigated(
+            self: Pin<&mut BrowserUi>,
+            index: i32,
+            url: &QString,
+            engine_index: i32,
+            traversal: bool,
+        );
+        #[qinvokable]
+        fn content_history_available(self: Pin<&mut BrowserUi>, index: i32, offset: i32) -> bool;
+        #[qinvokable]
+        fn content_history_export(self: Pin<&mut BrowserUi>, index: i32) -> QString;
+        #[qinvokable]
+        fn content_history_import(
+            self: Pin<&mut BrowserUi>,
+            index: i32,
+            snapshot: &QString,
+        ) -> bool;
+        #[qinvokable]
+        fn content_traverse(
+            self: Pin<&mut BrowserUi>,
+            index: i32,
+            offset: i32,
+            engine_index: i32,
+        ) -> QString;
+        #[qinvokable]
+        fn start_page_icon_path(self: Pin<&mut BrowserUi>, url: &QString, create: bool) -> QString;
+        #[qinvokable]
+        fn start_page_key_available(self: Pin<&mut BrowserUi>) -> bool;
+        #[qinvokable]
+        fn start_page_pick_bookmark(self: Pin<&mut BrowserUi>, id: &QString) -> bool;
         #[qinvokable]
         fn navigate(self: Pin<&mut BrowserUi>, input: &QString);
 
@@ -1630,6 +1710,44 @@ pub struct BrowserUiRust {
     queued_command_history: Vec<(String, i64)>,
     command_history_write_pending: bool,
     command_history_write_error: Option<String>,
+    start_page_owner_token: QString,
+    start_page_eligible_sites: QStringList,
+    start_page_eligible_urls: QStringList,
+    content_history_revision: u64,
+    private_start_state: Arc<Mutex<browser_ui_start_page::PrivateStartState>>,
+    start_rank_requested: bool,
+    start_page_view: QString,
+    start_page_error: QString,
+    start_page_busy: bool,
+    start_page_revision: u64,
+    start_page_rank_revision: u64,
+    start_page_profile_revision: u64,
+    start_page_ready: bool,
+    start_page_kinds: QStringList,
+    start_page_ids: QStringList,
+    start_page_urls: QStringList,
+    start_page_titles: QStringList,
+    start_page_sites: QStringList,
+    start_page_slots: QStringList,
+    guide_categories: QStringList,
+    guide_titles: QStringList,
+    guide_keys: QStringList,
+    guide_modes: QStringList,
+    guide_commands: QStringList,
+    guide_summaries: QStringList,
+    guide_ids: QStringList,
+    guide_explanations: QStringList,
+    guide_arguments: QStringList,
+    guide_examples: QStringList,
+    guide_recoveries: QStringList,
+    guide_counts: QStringList,
+    guide_binding_notes: QStringList,
+    guide_details: QStringList,
+    start_snapshot: ferric_browser_storage::StartPageSnapshot,
+    start_read_pending: bool,
+    start_refresh_requested: bool,
+    start_write_pending: bool,
+    content_histories: BTreeMap<TabId, ferric_browser_core::ContentHistory>,
     binding_overlay: QString,
     binding_help_row_kinds: QStringList,
     binding_help_row_titles: QStringList,
@@ -2283,6 +2401,46 @@ impl Default for BrowserUiRust {
             queued_command_history: Vec::new(),
             command_history_write_pending: false,
             command_history_write_error: None,
+            start_page_owner_token: QString::default(),
+            start_page_eligible_sites: QStringList::default(),
+            start_page_eligible_urls: QStringList::default(),
+            content_history_revision: 0,
+            private_start_state: Arc::new(Mutex::new(
+                browser_ui_start_page::PrivateStartState::default(),
+            )),
+            start_rank_requested: false,
+            start_page_view: QString::from("guide"),
+            start_page_error: QString::default(),
+            start_page_busy: false,
+            start_page_revision: 0,
+            start_page_rank_revision: 0,
+            start_page_profile_revision: 0,
+            start_page_ready: false,
+            start_page_kinds: QStringList::default(),
+            start_page_ids: QStringList::default(),
+            start_page_urls: QStringList::default(),
+            start_page_titles: QStringList::default(),
+            start_page_sites: QStringList::default(),
+            start_page_slots: QStringList::default(),
+            guide_categories: QStringList::default(),
+            guide_titles: QStringList::default(),
+            guide_keys: QStringList::default(),
+            guide_modes: QStringList::default(),
+            guide_commands: QStringList::default(),
+            guide_summaries: QStringList::default(),
+            guide_ids: QStringList::default(),
+            guide_explanations: QStringList::default(),
+            guide_arguments: QStringList::default(),
+            guide_examples: QStringList::default(),
+            guide_recoveries: QStringList::default(),
+            guide_counts: QStringList::default(),
+            guide_binding_notes: QStringList::default(),
+            guide_details: QStringList::default(),
+            start_snapshot: ferric_browser_storage::StartPageSnapshot::default(),
+            start_read_pending: false,
+            start_refresh_requested: false,
+            start_write_pending: false,
+            content_histories: BTreeMap::new(),
             binding_overlay: QString::default(),
             binding_help_row_kinds: QStringList::default(),
             binding_help_row_titles: QStringList::default(),

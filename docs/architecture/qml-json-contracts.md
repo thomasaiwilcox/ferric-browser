@@ -23,6 +23,10 @@ is being migrated. This document is the review allowlist for those exceptions.
 - The site ledger and diagnostics snapshot are opaque diagnostic/export payloads.
 - Command-line journey arguments are one-shot process-start inputs, parsed
   before normal browsing begins.
+- Native-page navigation uses the existing tab-transfer descriptor and bounded
+  content-history export/import contract (at most 4,096 entries). These opaque
+  snapshots preserve native pages between engine history entries; the start-page
+  tiles, guide, and preferences still cross the bridge through typed properties.
 
 ## Prohibited presentation payloads
 
@@ -46,7 +50,7 @@ The following formerly JSON-encoded policy/presentation data must remain typed:
   status.
 
 `tests::qml_json_contract_allowlist_is_explicit` records the current number of
-JSON calls in `Main.qml`. Adding a new call requires a deliberate update to
+JSON calls in the window runtime and native-page components. Adding a new call requires a deliberate update to
 this document and a review that it is an opaque page-script, diagnostic, or
 export contract—not a presentation or policy model.
 

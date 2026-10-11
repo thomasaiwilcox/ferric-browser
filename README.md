@@ -47,9 +47,16 @@ ferric-browser reset-data --confirm
 ```
 
 The command rejects unsafe root symlinks and leaves root directories and their
-parents in place. See [the clean-break policy](packaging/MIGRATIONS.md).
+parents in place. Schema v3 profile databases receive a backed-up, transactional
+start-page upgrade; older data remains subject to the clean break. See
+[the data policy](packaging/MIGRATIONS.md).
 
 ## Using the browser
+
+Ferric opens a local start page with Top Sites, eight pinned Favourites, and a
+searchable keyboard Guide. Press `g s` to return to it and `Ctrl+Shift+Space` to
+switch views. A focused site grid supports `1–8`, arrows/hjkl, and Enter; Alt+1–8
+continues to select tabs. See [the start-page guide](docs/user/start-page.md).
 
 Press `i` for transient text entry: ordinary Enter reaches the webpage and
 returns to Normal mode, so `j` and `k` immediately navigate again. Shift+Enter

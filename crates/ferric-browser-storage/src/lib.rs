@@ -14,11 +14,15 @@ mod permissions;
 mod profiles;
 mod roots;
 mod sessions;
+mod start_page;
 mod store_catalog;
 mod store_commands;
 mod store_downloads;
 mod store_journeys;
 mod store_library;
+pub use start_page::{
+    StartPageMutation, StartPageSnapshot, StartPageTile, StartPageView, site_key,
+};
 mod worker;
 
 use std::{
@@ -59,8 +63,8 @@ pub use worker::{
     StorageCompletion, StorageOperation, StorageOperationError, StorageWorkerError,
 };
 
-const SCHEMA_VERSION: i64 = 3;
-const SCHEMA_MIGRATION_CHECKSUM: &str = "builtin-schema-3";
+const SCHEMA_VERSION: i64 = 4;
+const SCHEMA_MIGRATION_CHECKSUM: &str = "builtin-schema-4";
 const DEFAULT_HISTORY_RETENTION_SECONDS: i64 = 90 * 24 * 60 * 60;
 const MAX_COMMAND_HISTORY_ROWS: i64 = 1_000;
 const MAX_STORED_TITLE_BYTES: usize = 4 * 1024;
@@ -119,6 +123,7 @@ pub enum StoreError {
     DiskFull,
     CheckpointBusy,
     Sql(rusqlite::Error),
+    Io(std::io::Error),
     InvalidInput(&'static str),
     UnsafeHistoryUrl,
 }
@@ -148,6 +153,7 @@ impl std::fmt::Display for StoreError {
                 "profile storage could not be checkpointed because another connection is active",
             ),
             Self::Sql(error) => write!(formatter, "SQLite error: {error}"),
+            Self::Io(error) => write!(formatter, "profile storage I/O error: {error}"),
             Self::InvalidInput(message) => formatter.write_str(message),
             Self::UnsafeHistoryUrl => {
                 formatter.write_str("history URL contains credentials or an obvious secret")
@@ -371,8 +377,8 @@ impl ProfileStore {
     /// # Errors
     ///
     /// Returns an error if the mode is private, SQLite cannot be configured,
-    /// or existing data belongs to a different schema. Existing databases are
-    /// never migrated or rewritten by this release.
+    /// or existing data belongs to a different schema. Schema 3 databases receive a transactional, backed-up upgrade.
+    /// Earlier clean-break schemas remain unsupported.
     pub fn open(path: impl AsRef<Path>, mode: StoreMode) -> Result<Self, StoreError> {
         if mode == StoreMode::Private {
             return Err(StoreError::PrivateNoDurableState);
@@ -385,7 +391,7 @@ impl ProfileStore {
                 None
             };
         if let Some(version) = existing_version {
-            if version < SCHEMA_VERSION {
+            if version < 3 {
                 return Err(StoreError::LegacySchema(version));
             }
             if version > SCHEMA_VERSION {
@@ -397,6 +403,40 @@ impl ProfileStore {
         connection.execute_batch(
             "PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL;",
         )?;
+        if existing_version == Some(3) {
+            let backup_path = path.with_extension("sqlite.pre-start-page-v3");
+            if !backup_path.exists() {
+                let temporary =
+                    backup_path.with_extension(format!("backup-{}", uuid::Uuid::new_v4()));
+                let mut options = fs::OpenOptions::new();
+                options.write(true).create_new(true);
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::OpenOptionsExt;
+                    options.mode(0o600);
+                }
+                let file = options.open(&temporary).map_err(StoreError::Io)?;
+                drop(file);
+                if let Err(error) = connection.backup("main", &temporary, None) {
+                    let _ = fs::remove_file(&temporary);
+                    return Err(error.into());
+                }
+                fs::rename(&temporary, &backup_path).map_err(StoreError::Io)?;
+            } else if fs::symlink_metadata(&backup_path)
+                .map_err(StoreError::Io)?
+                .file_type()
+                .is_symlink()
+            {
+                return Err(StoreError::InvalidInput(
+                    "start-page backup must not be a symlink",
+                ));
+            } else if inspect_existing_database(&backup_path)? != Some(3) {
+                return Err(StoreError::Corrupt(
+                    "the existing pre-start-page backup is not a recognised schema v3 database"
+                        .into(),
+                ));
+            }
+        }
         migrate(&connection)?;
         Ok(Self { path, connection })
     }
@@ -699,7 +739,9 @@ fn inspect_existing_database(path: &Path) -> Result<Option<i64>, StoreError> {
     })?;
     for migration in rows {
         let (version, checksum) = migration?;
-        if version == SCHEMA_VERSION && checksum != SCHEMA_MIGRATION_CHECKSUM {
+        if (version == SCHEMA_VERSION && checksum != SCHEMA_MIGRATION_CHECKSUM)
+            || (version == 3 && checksum != "builtin-schema-3")
+        {
             return Err(StoreError::Corrupt(format!(
                 "migration checksum mismatch for version {version}"
             )));
@@ -949,6 +991,17 @@ fn migrate(connection: &Connection) -> Result<(), rusqlite::Error> {
          );
          INSERT OR IGNORE INTO schema_migrations(version, checksum, applied_at)
              VALUES (3, 'builtin-schema-3', strftime('%s','now'));
+         CREATE TABLE IF NOT EXISTS start_page_preferences (
+             id INTEGER PRIMARY KEY CHECK(id = 1), view TEXT NOT NULL
+                 CHECK(view IN ('guide', 'top-sites', 'favourites'))
+         );
+         CREATE TABLE IF NOT EXISTS start_page_favourites (
+             slot INTEGER PRIMARY KEY CHECK(slot BETWEEN 1 AND 8),
+             bookmark_id TEXT NOT NULL UNIQUE REFERENCES bookmarks(id) ON DELETE CASCADE
+         );
+         CREATE TABLE IF NOT EXISTS start_page_dismissed (site_key TEXT PRIMARY KEY);
+         INSERT OR IGNORE INTO schema_migrations(version, checksum, applied_at)
+             VALUES (4, 'builtin-schema-4', strftime('%s','now'));
          COMMIT;",
     )
 }

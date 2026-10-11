@@ -307,7 +307,12 @@ fn binding_help_component_renders_rows_and_emits_root_owned_intents() {
     let composition_root = QML_SOURCE;
     let projection = include_str!("../binding_presentation.rs");
     assert!(qml.contains("signal searchChanged(string text)"));
-    assert!(qml.contains("bindingHelp.browserWindow.bindingHelpRows"));
+    assert!(qml.contains("FerricGuide {"));
+    assert!(qml.contains("browserUi: bindingHelp.browserWindow.primaryBrowserUi"));
+    let guide = include_str!("../../qml/components/FerricGuide.qml");
+    assert!(guide.contains("guide_explanations") && guide.contains("guide_recoveries"));
+    assert!(guide.contains("readonly property var currentRow"));
+    assert!(!guide.contains("execute_command") && !guide.contains("execute_ui_action"));
     assert!(!qml.contains("browserUi."));
     assert!(composition_root.contains("FerricBindingHelp {"));
     assert!(!composition_root.contains("id: bindingHelpSurface"));

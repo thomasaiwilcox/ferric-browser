@@ -61,6 +61,7 @@ ApplicationWindow {
                                                : (windowFallbackView || secondaryView)
     readonly property bool browserKeyFocusActive:
         !rootWindow.browserChromeInputActive
+        && !(activeView && activeView.nativeUrl === "rb://start" && activeView.startPage && activeView.startPage.inputActive)
         && !windowCloseConfirmationVisible
         && !windowShutdownPromptVisible
         && !windowShutdownPagePromptVisible
@@ -974,10 +975,26 @@ function onContext_workspaceChanged() {
         if (action.indexOf("navigate\t") === 0) {
             var navigation = action.split("\t")
             if (navigation.length >= 3) {
-                secondaryWindow.activeView.url = navigation.slice(2).join("\t")
+                secondaryWindow.activeView.setContentUrl(navigation.slice(2).join("\t"), false)
                 secondaryWindow.activeView.forceActiveFocus()
                 return
             }
+        }
+        if (action === "start-page-cycle") {
+            if (activeView.nativeUrl === "rb://start" && activeView.startPage) activeView.startPage.cycleView()
+            return
+        }
+        if (action.indexOf("start-page-view\t") === 0 || action.indexOf("start-page-add\t") === 0) {
+            var startParts = action.split("\t")
+            if (activeView.nativeUrl === "rb://start" && activeView.startPage) {
+                if (startParts[0] === "start-page-view") activeView.startPage.chooseView(startParts[1])
+                else activeView.startPage.addCaptured(startParts[1], startParts.slice(2).join("\t"))
+            }
+            return
+        }
+        if (action.indexOf("reload\t") === 0 && activeView.nativeUrl.length > 0) {
+            if (activeView.startPage) activeView.startPage.refresh()
+            return
         }
         if (action.indexOf("reload\t") === 0) {
             var secondaryReloadParts = action.split("\t")
@@ -995,22 +1012,7 @@ function onContext_workspaceChanged() {
             var historyCount = Number(historyParts.length >= 2
                                       ? historyParts[1] : 1)
             var historyBack = historyParts[0] === "back"
-            var historyMoved = 0
-            while (historyMoved < historyCount
-                    && ((historyBack && secondaryWindow.activeView.canGoBack)
-                        || (!historyBack && secondaryWindow.activeView.canGoForward))) {
-                if (historyBack) {
-                    secondaryWindow.activeView.goBack()
-                } else {
-                    secondaryWindow.activeView.goForward()
-                }
-                historyMoved += 1
-            }
-            secondaryUi.status_text = historyMoved === 0
-                    ? "History boundary reached"
-                    : historyMoved < historyCount
-                      ? "History boundary reached after " + historyMoved + " step(s)"
-                      : (historyBack ? "Back requested" : "Forward requested")
+            rootWindow.executeHistoryTraversal(secondaryWindow.activeView, historyBack, historyCount)
             secondaryWindow.activeView.forceActiveFocus()
             return
         }
@@ -1377,9 +1379,9 @@ function onContext_workspaceChanged() {
                 text: "‹"
                 Accessible.name: "Back"
                 onClicked: {
-                    if (secondaryWindow.activeView.canGoBack) {
+                    if (secondaryWindow.activeView.contentCanGoBack) {
                         secondaryUi.back()
-                        secondaryWindow.activeView.goBack()
+                        secondaryWindow.executePendingEngineAction()
                     } else {
                         secondaryUi.status_text = "History boundary reached"
                     }
@@ -1389,9 +1391,9 @@ function onContext_workspaceChanged() {
                 text: "›"
                 Accessible.name: "Forward"
                 onClicked: {
-                    if (secondaryWindow.activeView.canGoForward) {
+                    if (secondaryWindow.activeView.contentCanGoForward) {
                         secondaryUi.forward()
-                        secondaryWindow.activeView.goForward()
+                        secondaryWindow.executePendingEngineAction()
                     } else {
                         secondaryUi.status_text = "History boundary reached"
                     }
@@ -1435,7 +1437,7 @@ function onContext_workspaceChanged() {
                 }
                 onAccepted: {
                     secondaryUi.navigate(text)
-                    secondaryWindow.activeView.url = secondaryUi.initial_url
+                    secondaryWindow.executePendingEngineAction()
                 }
             }
             Label {
@@ -1492,6 +1494,30 @@ function onContext_workspaceChanged() {
 
     WebEngineView {
         id: secondaryView
+        property alias nativeUrl: secondaryNativeContent.nativeUrl
+        property alias contentTraversalPending: secondaryNativeContent.traversalPending
+        readonly property var startPage: secondaryNativeContent.startPage
+        readonly property int engineHistoryIndex: secondaryNativeContent.engineHistoryIndex
+                readonly property bool contentCanGoBack: secondaryNativeContent.canNavigateBack
+                readonly property bool contentCanGoForward: secondaryNativeContent.canNavigateForward
+        function setContentUrl(destination, traversal, engineMoves) { secondaryNativeContent.setContentUrl(destination, traversal, engineMoves) }
+        function contentEngineOffset(destination, expected, backwards) { return secondaryNativeContent.engineOffset(destination, expected, backwards) }
+        function synchronizeContentHistory() { secondaryNativeContent.synchronizeHistory() }
+        FerricNativeTabContent {
+            id: secondaryNativeContent
+            anchors.fill: parent
+            webView: secondaryView
+            browserUi: secondaryView.viewUi
+            browserWindow: rootWindow
+            browserHost: secondaryView.viewHost
+            tabsModel: secondaryView.viewTabs
+        }
+        Connections {
+            target: secondaryView.viewUi
+            function onInitial_urlChanged() {
+                secondaryView.setContentUrl(secondaryView.viewUi.initial_url, false)
+            }
+        }
         onJavaScriptConsoleMessage: function(level, message, lineNumber, sourceID) {
             rootWindow.probeFocusNotification(viewUi, viewHost, secondaryView, -1, message)
         }
@@ -1541,7 +1567,7 @@ function onContext_workspaceChanged() {
         anchors.bottomMargin: secondaryWindow.bottomChromeHeight
         visible: !secondaryWindow.windowTransferMode
         profile: viewProfile
-        url: secondaryWindow.windowTransferMode ? "about:blank" : secondaryUi.initial_url
+        url: "about:blank"
         settings.javascriptEnabled: !!rootWindow.siteRuleValue(
             effectiveSiteSettings, "content.javascript", true)
         settings.autoLoadImages: !!rootWindow.siteRuleValue(
@@ -1553,9 +1579,13 @@ function onContext_workspaceChanged() {
             === "require-gesture"
         Accessible.name: "Web content"
         Component.onCompleted: {
+            if (!secondaryWindow.windowTransferMode) setContentUrl(viewUi.initial_url, false)
             refreshEffectiveSiteSettings()
         }
-        onUrlChanged: {
+        onNavigationRequested: function(request) { if (request.isMainFrame) secondaryNativeContent.beginNavigation() }
+                onUrlChanged: {
+            if (nativeUrl.length > 0) return
+            secondaryNativeContent.noteSameDocument()
             refreshEffectiveSiteSettings()
             if (viewTabs === tabs) {
                 viewUi.navigation_url_changed_for(tabIndex, url.toString())
@@ -1567,6 +1597,7 @@ function onContext_workspaceChanged() {
             }
         }
         onTitleChanged: {
+            if (nativeUrl.length > 0) return
             if (viewTabs === tabs && tabIndex >= 0 && tabIndex < tabs.count) {
                 tabs.setProperty(tabIndex, "title", title || "New tab")
             }
@@ -1584,6 +1615,7 @@ function onContext_workspaceChanged() {
             }
         }
         onLoadingChanged: function(loadRequest) {
+            if (nativeUrl.length > 0) return
             if (loadRequest.status === WebEngineView.LoadStartedStatus) {
                 rootWindow.clearPageDialogForView(secondaryView)
                 rootWindow.clearClientCertificateForView(secondaryView)
@@ -1611,6 +1643,7 @@ function onContext_workspaceChanged() {
                     viewUi.navigation_started(loadRequest.url.toString())
                 }
             } else if (loadRequest.status === WebEngineView.LoadSucceededStatus) {
+                secondaryNativeContent.noteCommit()
                 if (viewTabs === tabs) {
                     viewUi.navigation_committed_for(
                         tabIndex, secondaryView.url.toString(), secondaryView.title)
@@ -1632,6 +1665,7 @@ function onContext_workspaceChanged() {
                     viewUi.navigation_completed()
                 }
             } else if (loadRequest.status === WebEngineView.LoadFailedStatus) {
+                        secondaryNativeContent.noteCommit()
                 if (viewTabs === tabs) {
                     viewUi.navigation_failed_with_details(
                         tabIndex,
@@ -1695,6 +1729,7 @@ function onContext_workspaceChanged() {
             }
         }
         onRenderProcessTerminated: function(terminationStatus, exitCode) {
+                    if (nativeUrl.length > 0) return
             rootWindow.handleRendererProcessTerminated(
                 viewUi, secondaryView, viewHost, -1,
                 terminationStatus, exitCode)
@@ -2019,6 +2054,7 @@ function onContext_workspaceChanged() {
             return false
         }
         var sourceUrl = view.url ? view.url.toString() : "about:blank"
+        var contentHistory = sourceUi.content_history_export(view.tabIndex >= 0 ? view.tabIndex : sourceUi.active_tab_index)
         var transferData = null
         try {
             transferData = JSON.parse(payload)
@@ -2034,6 +2070,7 @@ function onContext_workspaceChanged() {
         secondaryWindow.windowTransferSourceUi = sourceUi
         secondaryWindow.windowTransferSourceHost = sourceHost
         secondaryWindow.windowTransferPayload = payload
+        if (contentHistory.length > 0) secondaryUi.content_history_import(secondaryUi.active_tab_index, contentHistory)
         view.viewUi = secondaryUi
         view.viewTabs = null
         view.viewModel = {

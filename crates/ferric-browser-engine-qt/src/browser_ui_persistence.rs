@@ -246,6 +246,24 @@ impl qobject::BrowserUi {
     ) {
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
+        if let Ok(mut state) = this.private_start_state.lock() {
+            let days = this
+                .config
+                .get("history")
+                .and_then(|history| history.get("retention_days"))
+                .and_then(Value::as_i64)
+                .unwrap_or(90);
+            state.visits.retain(|visit| {
+                visit.timestamp >= timestamp.saturating_sub(days.saturating_mul(86400))
+            });
+            state.visits.push(VisitInput {
+                url: url.to_owned(),
+                title: title.to_owned(),
+                transition: "navigate".into(),
+                timestamp,
+                retention_before: None,
+            });
+        }
         Self::upsert_private_history(
             &mut this.private_history,
             &mut this.private_history_next_id,
@@ -262,7 +280,7 @@ impl qobject::BrowserUi {
     ) -> usize {
         let before = records.len();
         records.retain(|record| {
-            let matches_since = since.is_none_or(|cutoff| record.last_visit < cutoff);
+            let matches_since = since.is_none_or(|cutoff| record.last_visit >= cutoff);
             let matches_origin = origin.is_none_or(|candidate| {
                 canonical_origin(&record.url).as_deref() == Some(candidate)
             });
@@ -279,6 +297,21 @@ impl qobject::BrowserUi {
         let deleted = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
+            if let Ok(mut state) = this.private_start_state.lock() {
+                state.visits.retain(|visit| {
+                    !(since.is_none_or(|cutoff| visit.timestamp >= cutoff)
+                        && origin.is_none_or(|candidate| {
+                            canonical_origin(&visit.url).as_deref() == Some(candidate)
+                        }))
+                });
+                state.snapshot.eligible_urls =
+                    state.visits.iter().map(|visit| visit.url.clone()).collect();
+                state.snapshot.eligible_sites = state
+                    .visits
+                    .iter()
+                    .filter_map(|visit| ferric_browser_storage::site_key(&visit.url))
+                    .collect();
+            }
             Self::clear_private_history_records(&mut this.private_history, since, origin)
         };
         let cutoff = since.and_then(|value| u64::try_from(value).ok());
@@ -292,6 +325,7 @@ impl qobject::BrowserUi {
             .get_mut()
             .journey_durable_ids
             .replace(BTreeMap::new());
+        self.as_mut().refresh_start_page_metadata();
         deleted
     }
 

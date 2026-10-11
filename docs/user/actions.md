@@ -76,3 +76,4 @@ This table is generated from the shared action registry. UI, hints, IPC, the uni
 | `browser.download.pause` | `download` | `pause` | `download-pause` | id:text (required) | `action download pause DOWNLOAD_ID` | ui, ipc, switcher | durable-download-index | `download` | `download-state` | `mutating` | `never` |
 | `browser.download.resume` | `download` | `resume` | `download-resume` | id:text (required) | `action download resume DOWNLOAD_ID` | ui, ipc, switcher | durable-download-index | `download` | `download-state` | `mutating` | `never` |
 | `browser.tab.pin` | `tab` | `pin` | `tab-pin` | id:text (required), state:enum | `action tab pin TAB_ID`<br>`action tab pin TAB_ID on`<br>`action tab pin TAB_ID off` | ui, ipc, switcher |  | `live-tab` | `live-tab` | `mutating` | `never` |
+| `browser.tab.favourite` | `tab` | `favourite` | `favourite-add` |  | `action tab favourite` | ui, ipc, switcher |  | `none` | `live-tab` | `navigation` | `never` |

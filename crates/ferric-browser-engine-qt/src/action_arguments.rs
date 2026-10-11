@@ -28,6 +28,7 @@ pub(super) fn decode_ui_action_arguments(action_id: &str, value: &str) -> Result
         "browser.window.new" => window_new_arguments(value),
         "browser.window.close"
         | "browser.tab.stop"
+        | "browser.tab.favourite"
         | "browser.tab.clone"
         | "browser.tab.undo"
         | "browser.tab.reopen-window"

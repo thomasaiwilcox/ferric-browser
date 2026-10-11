@@ -12,7 +12,7 @@ fn temp_path(label: &str) -> PathBuf {
 fn migration_configures_durable_profile_storage() {
     let path = temp_path("migration");
     let store = ProfileStore::open(&path, StoreMode::Normal).expect("open");
-    assert_eq!(store.schema_version(), 3);
+    assert_eq!(store.schema_version(), 4);
     let foreign_keys: i64 = store
         .connection
         .query_row("PRAGMA foreign_keys", [], |row| row.get(0))

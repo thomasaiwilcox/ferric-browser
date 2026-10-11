@@ -3,8 +3,8 @@ use super::{
     ExistenceState, JourneyEdgeKind, PathBuf, PendingExternalNavigation, Pin, QString, QStringList,
     RestoreSafety, SessionSnapshot, SnapshotTabInput, SnapshotWindowInput, StorageRequest, Uuid,
     ValidatedUrl, configured_undo_limit, current_target, elapsed_ms, is_bounded_untrusted_text,
-    is_safe_history_url, link_preview_presentation, named_session_path, qobject,
-    restore_entry_line, sanitize_untrusted_title, unix_timestamp,
+    link_preview_presentation, named_session_path, qobject, restore_entry_line,
+    sanitize_untrusted_title, unix_timestamp,
 };
 
 impl qobject::BrowserUi {
@@ -60,7 +60,7 @@ impl qobject::BrowserUi {
                 descriptor
                     .safe_restore_url
                     .as_deref()
-                    .is_none_or(is_safe_history_url)
+                    .is_none_or(super::url_safety::is_safe_tab_descriptor)
             })
             .cloned()
             .collect::<Vec<_>>();
@@ -212,7 +212,7 @@ impl qobject::BrowserUi {
     ) {
         let restored = closed_tabs
             .into_iter()
-            .filter(|closed| is_safe_history_url(&closed.url))
+            .filter(|closed| super::url_safety::is_safe_tab_descriptor(&closed.url))
             .map(|closed| ClosedTabDescriptor {
                 id: closed.id,
                 url: closed.url,
@@ -469,7 +469,9 @@ impl qobject::BrowserUi {
         snapshot.closed_tabs = rust
             .closed_tabs
             .iter()
-            .filter(|closed| !closed.private && is_safe_history_url(&closed.url))
+            .filter(|closed| {
+                !closed.private && super::url_safety::is_safe_tab_descriptor(&closed.url)
+            })
             .take(configured_undo_limit(&rust.config))
             .map(|closed| ClosedTabSnapshot {
                 id: closed.id,

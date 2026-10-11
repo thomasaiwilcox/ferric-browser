@@ -1,7 +1,7 @@
 use super::{
     BrowserApplication, ContextCommand, ContextMember, ContextSnapshot, ContextTabDescriptor,
-    CxxQtType, Event, ExistenceState, ParsedCommand, Pin, QString, Value, is_safe_history_url,
-    qobject, safe_ipc_url, sanitize_untrusted_title,
+    CxxQtType, Event, ExistenceState, ParsedCommand, Pin, QString, Value, qobject, safe_ipc_url,
+    sanitize_untrusted_title,
 };
 
 impl qobject::BrowserUi {
@@ -317,7 +317,10 @@ impl qobject::BrowserUi {
                     if tab.existence != ExistenceState::Live {
                         return None;
                     }
-                    let url = tab.url.as_deref().filter(|url| is_safe_history_url(url))?;
+                    let url = tab
+                        .url
+                        .as_deref()
+                        .filter(|url| super::url_safety::is_safe_tab_descriptor(url))?;
                     Some(ContextTabDescriptor {
                         tab_id: tab.id.to_string(),
                         safe_restore_url: Some(safe_ipc_url(url)),

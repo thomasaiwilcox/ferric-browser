@@ -1324,6 +1324,7 @@ FerricBrowserRuntimeServices {
             return false
         }
         var sourceUrl = view.url ? view.url.toString() : "about:blank"
+        var contentHistory = sourceUi.content_history_export(view.tabIndex >= 0 ? view.tabIndex : sourceUi.active_tab_index)
         var transferData = null
         try {
             transferData = JSON.parse(payload)
@@ -1356,6 +1357,7 @@ FerricBrowserRuntimeServices {
             return false
         }
         window.removeTabViewAt(index, null)
+        if (contentHistory.length > 0) browserUi.content_history_import(browserUi.active_tab_index, contentHistory)
         view.viewUi = browserUi
         view.viewTabs = tabs
         view.viewModel = tabs.get(index)

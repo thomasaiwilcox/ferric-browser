@@ -311,7 +311,7 @@ pub(super) const SETTING_METADATA: &[SettingMetadata] = &[
     setting_metadata!(
         "navigation.new_tab",
         "string",
-        "rb://blank",
+        "rb://start",
         GLOBAL_PROFILE_SCOPES,
         "live",
         "none",

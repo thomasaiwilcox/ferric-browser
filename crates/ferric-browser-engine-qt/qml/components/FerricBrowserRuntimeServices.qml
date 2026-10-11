@@ -46,7 +46,7 @@ FerricBrowserRuntimeBase {
     }
 
     function runBrowserScript(view, script, callback, world) {
-        if (!view || !script) {
+        if (!view || !script || (view.nativeUrl !== undefined && view.nativeUrl.length > 0)) {
             return false
         }
         var executionWorld = world === undefined ? window.browserScriptWorld : world
@@ -277,7 +277,7 @@ FerricBrowserRuntimeBase {
     }
 
     function installFocusObserver(view) {
-        if (!view || !view.userScripts) {
+        if (!view || !view.userScripts || (view.nativeUrl !== undefined && view.nativeUrl.length > 0)) {
             return false
         }
         var existing = view.userScripts.find("ferric-browser-focus-observer")
@@ -330,7 +330,7 @@ FerricBrowserRuntimeBase {
     }
 
     function probeActiveFocus(ui, index, view) {
-        if (!ui || !view || !view.mainFrame || !view.mainFrame.isValid) {
+        if (!ui || !view || !view.mainFrame || !view.mainFrame.isValid || (view.nativeUrl !== undefined && view.nativeUrl.length > 0)) {
             return
         }
         window.probeFocusFrame(ui, index, view.mainFrame, "0", view.url.toString())
@@ -449,7 +449,7 @@ FerricBrowserRuntimeBase {
     }
 
     function clearInstalledPageUserscripts(view) {
-        if (!view || !view.userScripts) {
+        if (!view || !view.userScripts || (view.nativeUrl !== undefined && view.nativeUrl.length > 0)) {
             return
         }
         var names = view.pageUserScriptNames || []
@@ -1256,7 +1256,7 @@ FerricBrowserRuntimeBase {
         }
         window.refreshBindingHelp()
         window.bindingHelpVisible = true
-        Qt.callLater(function() { helpSearchInput.forceActiveFocus() })
+        Qt.callLater(function() { keyboardHelpSurface.focusSearch() })
     }
 
     function closeBindingHelp() {

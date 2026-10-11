@@ -7,117 +7,25 @@ FerricModalSurface {
     signal closeRequested()
     signal refreshRequested()
     signal searchChanged(string text)
-
     visible: browserWindow.bindingHelpVisible
     commandText: ":bind"
-    title: "Keyboard help"
-    message: "Unbound commands remain available through the command line."
-    keyHelp: "type to filter  ·  tab/shift-tab controls  ·  esc close"
-    dialogWidth: 980 * scale
-    dialogHeight: 650 * scale
+    title: "Ferric Guide"
+    message: ""
+    keyHelp: manual.navigationHelp + " · Tab controls · Esc close"
+    dismissOnEscape: !manual.handlesEscape
+    dialogWidth: 1120 * scale
+    dialogHeight: Math.max(minimumDialogHeight, height - 64 * scale)
+    dialogBorderColor: browserWindow.borderColor
     stackingOrder: 74
-    initialFocusItem: helpSearchInput
+    initialFocusItem: manual.searchInput
     onDismissRequested: closeRequested()
-
-    ColumnLayout {
+    function focusSearch() { manual.searchInput.forceActiveFocus() }
+    FerricGuide {
+        id: manual
         anchors.fill: parent
-        anchors.margins: 0
-        spacing: 8
-        ColumnLayout {
-            Layout.fillWidth: true
-            RowLayout {
-                Layout.fillWidth: true
-                Button { text: "Refresh"; Accessible.name: "Refresh keyboard help"; onClicked: bindingHelp.refreshRequested() }
-                Button { text: "Close"; Accessible.name: "Close keyboard help"; onClicked: bindingHelp.closeRequested() }
-                Item { Layout.fillWidth: true }
-            }
-        }
-        TextField {
-            id: helpSearchInput
-            Layout.fillWidth: true
-            text: bindingHelp.browserWindow.bindingHelpSearch
-            placeholderText: "Search commands, keys, modes, or descriptions"
-            Accessible.name: "Search keyboard help"
-            Accessible.role: Accessible.EditableText
-            onTextChanged: bindingHelp.searchChanged(text)
-            Keys.onPressed: function(event) { if (event.key === Qt.Key_Escape) { bindingHelp.closeRequested(); event.accepted = true } }
-        }
-        ScrollView {
-            id: bindingHelpScroll
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            clip: true
-            ListView {
-                id: bindingHelpList
-                objectName: "bindingHelpList"
-                width: bindingHelpScroll.availableWidth
-                height: bindingHelpScroll.availableHeight
-                clip: true
-                model: bindingHelp.browserWindow.bindingHelpRows
-                spacing: 4
-                delegate: Rectangle {
-                    objectName: "bindingHelpRow"
-                    width: bindingHelpList.width
-                    height: modelData.kind === "heading"
-                            ? headingLabel.implicitHeight + 16
-                            : bindingDetails.implicitHeight + 16
-                    color: modelData.kind === "heading" ? bindingHelp.browserWindow.surfaceColor
-                         : modelData.kind === "conflict" ? Qt.darker(bindingHelp.browserWindow.errorColor, 2.0)
-                         : bindingHelp.browserWindow.surfaceColor
-                    radius: 3
-                    Accessible.name: modelData.kind === "heading" ? modelData.title : modelData.mode + " " + modelData.command + " " + modelData.keys
-                    Label {
-                        id: headingLabel
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.top: parent.top
-                        anchors.margins: 8
-                        visible: modelData.kind === "heading"
-                        text: modelData.kind === "heading" ? modelData.title : ""
-                        color: bindingHelp.browserWindow.accentColor
-                        font.bold: true
-                        wrapMode: Text.WordWrap
-                    }
-                    ColumnLayout {
-                        id: bindingDetails
-                        objectName: "bindingDetails"
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.top: parent.top
-                        anchors.margins: 8
-                        visible: modelData.kind !== "heading"
-                        spacing: 2
-                        Label {
-                            Layout.fillWidth: true
-                            text: modelData.command
-                            color: bindingHelp.browserWindow.primaryTextColor
-                            font.bold: true
-                            wrapMode: Text.WordWrap
-                        }
-                        Label {
-                            Layout.fillWidth: true
-                            text: modelData.keys
-                            color: modelData.kind === "conflict"
-                                   ? bindingHelp.browserWindow.warningColor
-                                   : bindingHelp.browserWindow.accentColor
-                            wrapMode: Text.WordWrap
-                        }
-                        Label {
-                            Layout.fillWidth: true
-                            text: modelData.description
-                            color: bindingHelp.browserWindow.secondaryTextColor
-                            wrapMode: Text.WordWrap
-                        }
-                        Label {
-                            Layout.fillWidth: true
-                            text: modelData.mode + " · " + modelData.source
-                                  + " · " + modelData.count
-                            color: bindingHelp.browserWindow.mutedTextColor
-                            wrapMode: Text.WordWrap
-                        }
-                    }
-                }
-            }
-        }
+        browserUi: bindingHelp.browserWindow.primaryBrowserUi
+        browserWindow: bindingHelp.browserWindow
+        searchText: bindingHelp.browserWindow.bindingHelpSearch
+        onSearchTextChanged: bindingHelp.searchChanged(searchText)
     }
 }

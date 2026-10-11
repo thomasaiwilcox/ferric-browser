@@ -202,16 +202,17 @@ fn scalar_feature_preferences_cross_the_qml_boundary_without_config_parsing() {
 
 #[test]
 fn normal_input_uses_logical_unmodified_text_and_preserves_unicode_fields() {
-    let qml = QML_SOURCE;
     let keyboard_presentation =
         include_str!("../../qml/scripts/KeyboardPresentation.js");
+    let qml = [QML_SOURCE, keyboard_presentation].concat();
     assert!(qml.contains("function logicalNormalKeyText(event)"));
     assert!(qml.contains("event.key === Qt.Key_D"));
     assert!(qml.contains("event.key === Qt.Key_U"));
     assert!(qml.contains("return \"Ctrl+d\""));
     assert!(qml.contains("return \"Ctrl+u\""));
     assert!(qml.contains("return \"Ctrl+p\""));
-    assert!(qml.contains("return \"Ctrl+Space\""));
+    assert!(keyboard_presentation.contains("\"Ctrl+Space\""));
+    assert!(keyboard_presentation.contains("\"Ctrl+Shift+Space\""));
     assert!(qml.contains("return \"Ctrl+v\""));
     assert!(qml.contains("return \"Ctrl+Shift+t\""));
     assert!(qml.contains("return \"Alt+m\""));
@@ -223,7 +224,8 @@ fn normal_input_uses_logical_unmodified_text_and_preserves_unicode_fields() {
     assert!(qml.contains("event.modifiers & Qt.AltModifier"));
     assert!(qml.contains("event.modifiers & Qt.MetaModifier"));
     assert!(keyboard_presentation.contains("text = text || \"\""));
-    assert!(qml.contains("KeyboardPresentation.printableKey("));
+    assert!(qml.contains("KeyboardPresentation.logicalNormalKeyText(event)"));
+    assert!(keyboard_presentation.contains("return printableKey("));
     assert!(qml.contains("event.text, event.key, shift, Qt.Key_A, Qt.Key_Z"));
     assert!(qml.contains("ui.handle_key(logicalText)"));
     assert!(qml.contains("function handleBrowserKey(ui, host, event)"));
@@ -550,8 +552,8 @@ fn qml_json_contract_allowlist_is_explicit() {
 
     assert!(allowlist.contains("Opaque page-script request/result contracts"));
     assert!(allowlist.contains("Prohibited presentation payloads"));
-    assert_eq!(qml.matches("JSON.parse(").count(), 12);
-    assert_eq!(qml.matches("JSON.stringify(").count(), 29);
+    assert_eq!(qml.matches("JSON.parse(").count(), 14);
+    assert_eq!(qml.matches("JSON.stringify(").count(), 31);
 }
 
 #[test]

@@ -187,7 +187,7 @@ fn default_start_pages() -> Vec<String> {
     vec!["rb://start".into()]
 }
 fn default_new_tab() -> String {
-    "rb://blank".into()
+    "rb://start".into()
 }
 fn default_builtin() -> String {
     "builtin".into()

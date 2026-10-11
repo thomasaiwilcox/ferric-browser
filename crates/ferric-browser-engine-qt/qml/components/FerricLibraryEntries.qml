@@ -10,6 +10,7 @@ FocusScope {
     required property string pendingDelete
     property int completedEditToken: 0
     property string completedEditKey: ""
+    signal favouriteRequested(string id)
     signal openRequested(string entryKind, string entryId)
     signal privateHistoryTransferRequested(string entryId, string title, string url)
     signal editRequested(string entryKind, string entryId, string value)
@@ -189,6 +190,12 @@ FocusScope {
                             libraryList.currentIndex = index
                             libraryEntries.openRequested(model.entryKind, model.entryId)
                         }
+                    }
+                    Button {
+                        visible: model.entryKind === "bookmark"
+                        text: "Add to Favourites"
+                        Accessible.name: "Choose a favourite slot for " + model.label
+                        onClicked: libraryEntries.favouriteRequested(model.entryId)
                     }
                     Button {
                         visible: libraryEntries.browserWindow.temporaryProfile

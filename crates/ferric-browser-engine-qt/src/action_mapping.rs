@@ -127,7 +127,7 @@ pub(super) fn map_basic(
             }
             _ => return Err("action tab move requires TAB_ID and left or right".into()),
         },
-        "window-close" | "reopen-in-window" | "tab-detach" | "tab-clone"
+        "window-close" | "reopen-in-window" | "tab-detach" | "tab-clone" | "favourite-add"
             if arguments.is_empty() =>
         {
             Vec::new()
@@ -137,6 +137,7 @@ pub(super) fn map_basic(
             return Err(format!("action {subject} {verb} takes no arguments"));
         }
         "tab-clone" => return Err("action tab clone takes no arguments".into()),
+        "favourite-add" => return Err("action tab favourite takes no arguments".into()),
         "back" | "forward" => match arguments {
             [] => Vec::new(),
             [count]

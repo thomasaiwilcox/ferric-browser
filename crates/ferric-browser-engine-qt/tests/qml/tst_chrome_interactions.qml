@@ -69,6 +69,7 @@ TestCase {
         property string switcherScope: "all"
         property var contextMenuItems: []
         property bool temporaryProfile: false
+        property var primaryBrowserUi: helpUi
         property bool bindingHelpVisible: true
         property bool recoveryAvailable: true
         property bool journeyExportPreviewVisible: false
@@ -87,6 +88,19 @@ TestCase {
             return ChromePresentation.contrastText(background)
         }
         function addressPresentation(value, count) { return value }
+    }
+
+    QtObject {
+        id: helpUi
+        property string config_json: "{}"
+        property var guide_categories: ["Opening Pages and Search"]
+        property var guide_titles: ["Open a page"]
+        property var guide_keys: ["o"]
+        property var guide_modes: ["normal"]
+        property var guide_commands: ["open"]
+        property var guide_summaries: ["Open a URL or search query"]
+        property var guide_details: ["Enter a URL and press Enter. Escape cancels."]
+        function refresh_guide(search) {}
     }
 
     ListModel { id: settingsModel }
@@ -352,6 +366,38 @@ TestCase {
                 }
             }
         }
+    }
+
+    Component {
+        id: guideHelpFixture
+        FerricBindingHelp {
+            property int closeRequests: 0
+            browserWindow: theme
+            onCloseRequested: closeRequests++
+        }
+    }
+
+    function test_guide_help_escape_returns_focus_before_closing() {
+        var help = createTemporaryObject(guideHelpFixture, testWindow.contentItem)
+        verify(help)
+        wait(0)
+        var guide = findChild(help, "ferricGuide")
+        guide.searchInput.text = "open"
+        guide.searchInput.forceActiveFocus()
+        verify(!help.dismissOnEscape)
+        keyClick(Qt.Key_Escape)
+        compare(help.closeRequests, 0)
+        compare(guide.searchText, "")
+        guide.focusReader()
+        wait(0)
+        verify(!help.dismissOnEscape)
+        keyClick(Qt.Key_Escape)
+        tryVerify(function() { return guide.entriesList.activeFocus })
+        verify(guide.articleOpen)
+        compare(help.closeRequests, 0)
+        verify(help.dismissOnEscape)
+        keyClick(Qt.Key_Escape)
+        tryCompare(help, "closeRequests", 1)
     }
 
     Component {
@@ -744,13 +790,13 @@ TestCase {
         var helpHost = createTemporaryObject(largeFontHelpFixture,
                                              testWindow.contentItem)
         verify(helpHost)
-        var helpList = findChild(helpHost, "bindingHelpList")
+        var helpList = findChild(helpHost, "ferricGuideEntries")
         verify(helpList)
-        tryVerify(function() { return helpList.itemAtIndex(0) !== null })
-        var helpRow = helpList.itemAtIndex(0)
+        tryVerify(function() { return helpList.itemAtIndex(1) !== null })
+        var helpRow = helpList.itemAtIndex(1)
         verify(helpRow)
         verify(helpRow.height > 76)
-        var details = findChild(helpRow, "bindingDetails")
+        var details = findChild(helpRow, "guideFeatureContent")
         verify(details)
         verify(details.y + details.implicitHeight <= helpRow.height)
 
@@ -849,6 +895,31 @@ TestCase {
                     "i", Qt.Key_I, true, Qt.Key_A, Qt.Key_Z), "I")
         compare(KeyboardPresentation.printableKey(
                     "", Qt.Key_I, true, Qt.Key_A, Qt.Key_Z), "I")
+    }
+
+    function test_start_page_cycle_key_keeps_both_modifiers() {
+        compare(KeyboardPresentation.logicalNormalKeyText({
+            key: Qt.Key_Space, text: " ",
+            modifiers: Qt.ControlModifier | Qt.ShiftModifier
+        }), "Ctrl+Shift+Space")
+        compare(KeyboardPresentation.logicalNormalKeyText({
+            key: Qt.Key_Space, text: "", modifiers: Qt.ControlModifier
+        }), "Ctrl+Space")
+        compare(KeyboardPresentation.logicalNormalKeyText({
+            key: Qt.Key_Space, text: " ", modifiers: Qt.NoModifier
+        }), " ")
+    }
+
+    function test_modified_space_does_not_claim_other_shortcuts() {
+        for (var extra of [Qt.AltModifier, Qt.MetaModifier]) {
+            compare(KeyboardPresentation.logicalNormalKeyText({
+                key: Qt.Key_Space, text: " ",
+                modifiers: Qt.ControlModifier | Qt.ShiftModifier | extra
+            }), "")
+        }
+        compare(KeyboardPresentation.logicalNormalKeyText({
+            key: Qt.Key_V, text: "", modifiers: Qt.ControlModifier | Qt.ShiftModifier
+        }), "Ctrl+Shift+v")
     }
 
     function test_shutdown_decision_is_keyboard_operable() {

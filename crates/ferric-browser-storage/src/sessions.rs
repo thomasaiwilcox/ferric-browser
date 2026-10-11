@@ -534,10 +534,8 @@ fn sanitize_tab(input: SnapshotTabInput) -> Result<SessionTab, SessionError> {
         } else {
             RestoreMethod::Placeholder
         },
-        placeholder_reason: safe
-            .then_some(String::new())
-            .filter(|reason| !reason.is_empty())
-            .or_else(|| Some("navigation was not proven safe to replay as GET".into())),
+        placeholder_reason: (!safe)
+            .then(|| "navigation was not proven safe to replay as GET".into()),
         pinned: input.pinned,
         muted: input.muted,
         zoom: input.zoom,
@@ -546,6 +544,9 @@ fn sanitize_tab(input: SnapshotTabInput) -> Result<SessionTab, SessionError> {
 }
 
 fn safe_get_url(url: &str) -> bool {
+    if matches!(url, "rb://start" | "rb://blank") {
+        return true;
+    }
     let Some((scheme, remainder)) = url.split_once(':') else {
         return false;
     };
@@ -711,6 +712,8 @@ mod tests {
             snapshot.windows[0].tabs[1].restore_method,
             RestoreMethod::Placeholder
         );
+        assert!(snapshot.windows[0].tabs[0].placeholder_reason.is_none());
+        assert!(snapshot.windows[0].tabs[1].placeholder_reason.is_some());
         let json = serde_json::to_string(&snapshot).expect("json");
         assert!(!json.contains("data:text/html"));
         assert!(!json.contains("secret"));
@@ -900,5 +903,16 @@ mod tests {
             vec!["personal"]
         );
         let _ = fs::remove_dir_all(directory);
+    }
+    #[test]
+    fn native_page_descriptors_are_restorable_without_admitting_other_internal_urls() {
+        assert!(super::safe_get_url("rb://start"));
+        assert!(super::safe_get_url("rb://blank"));
+        assert!(!super::safe_get_url("rb://start?token=secret"));
+        assert!(!super::safe_get_url("rb://settings"));
+        let native =
+            super::sanitize_tab(tab("rb://start", true, false)).expect("native descriptor");
+        assert_eq!(native.restore_method, RestoreMethod::SafeGet);
+        assert!(native.placeholder_reason.is_none());
     }
 }
