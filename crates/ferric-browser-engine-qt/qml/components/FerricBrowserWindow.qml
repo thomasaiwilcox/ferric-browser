@@ -122,7 +122,14 @@ ApplicationWindow {
     BrowserKeyRouter {
         id: secondaryKeyRouter
         transientInsert: secondaryUi.mode === "insert"
+        passNextKey: secondaryUi.mode === "pass-through-once"
+        passThrough: secondaryUi.mode === "pass-through"
         inputEpoch: secondaryUi.input_epoch
+        onPassNextKeyDispatched: function(epoch) {
+            if (secondaryUi.mode === "pass-through-once" && secondaryUi.input_epoch === epoch) {
+                secondaryUi.escape()
+            }
+        }
         onTransientEnterDispatched: function(epoch) {
             if (secondaryUi.mode === "insert" && secondaryUi.input_epoch === epoch) {
                 secondaryUi.escape()
@@ -137,7 +144,8 @@ ApplicationWindow {
                      || secondaryUi.mode === "caret"
                      || secondaryUi.mode === "insert"
                      || secondaryUi.mode === "insert-locked"
-                     || secondaryUi.mode === "pass-through")
+                     || secondaryUi.mode === "pass-through"
+                     || secondaryUi.mode === "pass-through-once")
         onKeyPressed: function(text, key, modifiers, isAutoRepeat) {
             var event = {
                 text: text,
@@ -154,6 +162,12 @@ ApplicationWindow {
                                                secondaryWindow.activeView)
                 }
             }
+        }
+    }
+
+    onActiveChanged: {
+        if (!active && secondaryUi.mode === "pass-through-once") {
+            secondaryUi.escape()
         }
     }
 

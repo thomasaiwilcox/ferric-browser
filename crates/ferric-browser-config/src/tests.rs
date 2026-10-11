@@ -1163,3 +1163,36 @@ fn context_route_validation_rejects_unknown_entry_points_and_conflicts() {
     };
     assert!(validate_contexts(&ambiguous).is_err());
 }
+
+#[test]
+fn one_key_mode_supports_bindings_but_not_automatic_entry() {
+    let mut config = Config::default();
+    config
+        .bindings
+        .entry("pass-through-once".into())
+        .or_default()
+        .insert("f".into(), "mode-enter normal".into());
+    validate(&config).expect("valid one-key binding mode");
+    let mut overrides = RuntimeOverrides::default();
+    overrides
+        .set_binding("pass-through-once", "f", "mode-enter normal")
+        .unwrap();
+    let applied = apply_runtime_overrides(&Config::default(), &overrides).unwrap();
+    assert_eq!(
+        applied.bindings["pass-through-once"]["f"],
+        "mode-enter normal"
+    );
+    overrides
+        .set_literal("input.entry_mode", "pass-through-once")
+        .unwrap();
+    assert!(apply_runtime_overrides(&Config::default(), &overrides).is_err());
+    assert!(
+        overrides
+            .set_site_literal(
+                "https://example.test/*",
+                "input.entry_mode",
+                "pass-through-once"
+            )
+            .is_err()
+    );
+}

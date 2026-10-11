@@ -9,6 +9,13 @@ Escape exits either variant. For example, use `i`, type a search, Enter, then `j
 use `I` for document editing with repeated paragraphs. Neither command focuses an arbitrary input.
 Both variants reset when changing tabs or navigating; Transient Insert also ends when its editable context loses focus.
 
+For webpage shortcuts outside text fields, press `Ctrl+v` for `PASS THROUGH`.
+Press `Ctrl+Shift+v` or `; v` for `PASS NEXT KEY`: the next key, its repeats, and release reach the page, then Normal resumes.
+Modifier keys alone do not finish one-key forwarding. `Ctrl+Escape` returns either variant to Normal; ordinary Escape reaches the page.
+Both reset when changing tabs or navigating; one-key forwarding also cancels when the window loses activation.
+The entry shortcuts are configurable Normal-mode bindings; `Ctrl+Escape` is a reserved recovery shortcut.
+See [Webpage shortcuts](webpage-shortcuts.md) for examples and the existing emergency/media-key exceptions.
+
 | Mode | Key chain | Command |
 | --- | --- | --- |
 | `normal` | `+` | `zoom in` |
@@ -22,6 +29,7 @@ Both variants reset when changing tabs or navigating; Transient Insert also ends
 | `normal` | `; g` | `grid` |
 | `normal` | `; r` | `hint --rapid --target tab-bg links` |
 | `normal` | `; s` | `scroll-target select` |
+| `normal` | `; v` | `mode-enter passthrough-once` |
 | `normal` | `; y` | `hint --target yank links` |
 | `normal` | `=` | `zoom reset` |
 | `normal` | `Alt+1` | `tab-select 1` |
@@ -41,6 +49,7 @@ Both variants reset when changing tabs or navigating; Transient Insert also ends
 | `normal` | `Ctrl+PgUp` | `tab-prev` |
 | `normal` | `Ctrl+Shift+n` | `window-new --private` |
 | `normal` | `Ctrl+Shift+t` | `tab-undo` |
+| `normal` | `Ctrl+Shift+v` | `mode-enter passthrough-once` |
 | `normal` | `Ctrl+Shift+w` | `window-close` |
 | `normal` | `Ctrl+Space` | `switcher` |
 | `normal` | `Ctrl+Tab` | `tab-select previous` |

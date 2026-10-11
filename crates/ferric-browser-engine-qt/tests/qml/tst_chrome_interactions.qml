@@ -49,6 +49,8 @@ TestCase {
         property int chromeRowHeight: 24
         property int tabBarHeight: 32
         property int inputBarHeight: 32
+        property int statusBarHeight: 32
+        property color modeInsertColor: "#a6e3a1"
         property real chromeOpacity: 1.0
         property font font: Qt.font({ family: "monospace", pointSize: 10 })
         property color backgroundColor: "#1e1e2e"
@@ -84,10 +86,72 @@ TestCase {
         function contrastText(background) {
             return ChromePresentation.contrastText(background)
         }
+        function addressPresentation(value, count) { return value }
     }
 
     ListModel { id: settingsModel }
     ListModel { id: tabsModel }
+
+    Component {
+        id: primaryStatusFixture
+        FerricStatusBar {
+            width: 900
+            browserWindow: theme
+            statusVisible: true
+            mode: "pass-through"
+            displayUrl: "https://example.test"
+            statusText: "Ready"
+            contextName: ""
+            contextColor: theme.primaryTextColor
+            profileName: "default"
+            temporaryProfile: false
+            ephemeralProfile: false
+            blockingSiteCount: 0
+            activeTabIndex: 0
+            tabCount: 1
+            engineUpdateNotice: ""
+            macroStatusText: ""
+            activeView: null
+            accessibleDetails: ""
+        }
+    }
+
+    Component {
+        id: secondaryStatusFixture
+        FerricWindowStatusBar {
+            width: 900
+            browserWindow: theme
+            statusVisible: true
+            mode: "pass-through"
+            displayUrl: "https://example.test"
+            statusText: "Ready"
+            profileLabel: "default"
+            statusColor: theme.primaryTextColor
+            profileColor: theme.primaryTextColor
+            accessibleDetails: ""
+        }
+    }
+
+    function test_passthrough_status_feedback_in_both_windows() {
+        for (var fixture of [primaryStatusFixture, secondaryStatusFixture]) {
+            var bar = createTemporaryObject(fixture, testWindow.contentItem)
+            verify(bar !== null)
+            var label = findChild(bar, "inputModeLabel")
+            var hint = findChild(bar, "inputModeHint")
+            compare(label.text, "PASS THROUGH")
+            compare(hint.text, "Ctrl+Esc: Normal")
+            compare(label.parent.color, theme.accentColor)
+            verify(bar.Accessible.name.indexOf("Escape") >= 0)
+            bar.mode = "pass-through-once"
+            compare(label.text, "PASS NEXT KEY")
+            verify(hint.visible)
+            verify(bar.Accessible.name.indexOf("Next key") >= 0)
+            bar.mode = "normal"
+            verify(!hint.visible)
+        }
+        compare(ChromePresentation.statusBarVisible("in-mode", "pass-through-once"), true)
+        compare(ChromePresentation.statusBarVisible("never", "pass-through-once"), false)
+    }
 
     Component {
         id: settingsFixture

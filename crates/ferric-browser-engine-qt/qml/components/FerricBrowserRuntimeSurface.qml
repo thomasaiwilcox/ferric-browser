@@ -1153,6 +1153,9 @@ FerricBrowserRuntimeChrome {
                 if (event.key === Qt.Key_T) {
                     return "Ctrl+Shift+t"
                 }
+                if (event.key === Qt.Key_V) {
+                    return "Ctrl+Shift+v"
+                }
                 if (event.key === Qt.Key_W) {
                     return "Ctrl+Shift+w"
                 }
@@ -1285,8 +1288,15 @@ FerricBrowserRuntimeChrome {
         }
         var logicalText = window.logicalNormalKeyText(event)
         var handled = false
-        if (window.handleMediaKey(event)) {
+        var passing = ui.mode === "pass-through" || ui.mode === "pass-through-once"
+        if (passing && event.key === Qt.Key_Escape
+                && event.modifiers === Qt.ControlModifier) {
+            ui.escape()
             handled = true
+        } else if (window.handleMediaKey(event)) {
+            handled = true
+        } else if (passing) {
+            return false
         } else if (event.key === Qt.Key_Escape) {
             if (ui.mode === "grid" && event.modifiers !== Qt.NoModifier) {
                 // Unsupported modified Escape is consumed while Grid owns the

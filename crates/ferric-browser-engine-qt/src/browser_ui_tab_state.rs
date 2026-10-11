@@ -605,6 +605,17 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn note_navigation_url_change(mut self: Pin<&mut Self>, target: Target, url: &str) {
+        // SPA navigation and fragment changes also end explicit page-shortcut
+        // ownership, without changing Insert's existing focus policy.
+        if self.as_ref().rust().tab == Some(target.tab)
+            && self.as_ref().rust().current_url.to_string() != url
+            && matches!(
+                self.as_ref().rust().core_mode,
+                Mode::PassThrough | Mode::PassThroughOnce
+            )
+        {
+            self.as_mut().reset_editing_session();
+        }
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
         let Some(started_url) = this.pending_navigation_urls.get(&target.tab) else {

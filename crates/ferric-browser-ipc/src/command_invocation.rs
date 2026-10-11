@@ -51,15 +51,22 @@ mod tests {
     }
 
     #[test]
-    fn insert_variants_round_trip_through_the_public_envelope() {
-        for mode in ["insert", "insert-locked"] {
+    fn editing_and_passthrough_variants_round_trip_through_the_public_envelope() {
+        for mode in [
+            "insert",
+            "insert-locked",
+            "passthrough",
+            "pass-through",
+            "passthrough-once",
+            "pass-through-once",
+        ] {
             let command = ferric_browser_core::ParsedCommand {
                 name: "mode-enter".into(),
                 arguments: vec![mode.into()],
             };
-            let envelope = encode_command(&command).expect("encode insert mode");
+            let envelope = encode_command(&command).expect("encode input mode");
             assert_eq!(envelope["arguments"], json!({"mode": mode}));
-            let invocation = decode_command_invocation(&envelope).expect("decode insert mode");
+            let invocation = decode_command_invocation(&envelope).expect("decode input mode");
             assert_eq!(invocation.command, command);
         }
     }
@@ -194,5 +201,26 @@ mod tests {
 
         let invocation = decode_command_invocation(&envelope).expect("decode open options");
         assert_eq!(invocation.command.arguments, ["https://example.test"]);
+    }
+}
+
+#[cfg(test)]
+mod passthrough_tests {
+    use crate::{decode_command_invocation, encode_command};
+    use ferric_browser_core::{ParseInput, parse_chain};
+    #[test]
+    fn one_key_mode_is_accepted_by_binding_commands() {
+        for text in [
+            "bind --mode pass-through-once f mode-enter normal",
+            "unbind --mode pass-through-once f",
+            "binding-list --mode pass-through-once",
+            "binding-explain f --mode pass-through-once",
+        ] {
+            let commands = parse_chain(text, ParseInput::Cli).unwrap();
+            let envelope = encode_command(&commands[0]).unwrap();
+            assert_eq!(envelope["arguments"]["mode"], "pass-through-once");
+            let invocation = decode_command_invocation(&envelope).unwrap();
+            assert_eq!(encode_command(&invocation.command).unwrap(), envelope);
+        }
     }
 }

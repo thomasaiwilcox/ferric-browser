@@ -228,7 +228,9 @@ fn validate_command_argument_semantics(
                         | "insert-locked"
                         | "caret"
                         | "passthrough"
+                        | "passthrough-once"
                         | "pass-through"
+                        | "pass-through-once"
                 )
             })
     {

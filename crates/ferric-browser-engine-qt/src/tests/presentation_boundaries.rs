@@ -911,7 +911,7 @@ fn default_chrome_is_compact_modal_and_content_first() {
     assert!(qml.contains("visible: window.tabStripVisible"));
     assert!(qml.contains("text: (tabIndex + 1) + \"  \""));
     assert!(qml.contains("positionViewAtIndex(activeTabIndex, ListView.Contain)"));
-    assert!(status_bar.contains("text: statusBar.mode.replace(\"-\", \" \").toUpperCase()"));
+    assert!(status_bar.contains("text: ChromePresentation.inputModeLabel(statusBar.mode)"));
     assert!(status_bar.contains("id: statusUrl"));
     assert!(command_line.contains("id: commandPrefix"));
     assert!(command_line.contains("text: \":\""));

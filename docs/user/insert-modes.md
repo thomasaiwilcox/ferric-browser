@@ -4,6 +4,10 @@ Normal mode is home. Focus the field you want to edit, then choose how long
 Ferric should keep sending your keys to the page. Neither entry command
 automatically chooses an input.
 
+Insert also forwards keys outside text fields. For video players, games, and
+other webpage shortcuts, use [Pass-through](webpage-shortcuts.md), where
+ordinary Escape reaches the page and Ctrl+Escape returns to Normal.
+
 | Key in Normal mode | Indicator | Behavior |
 | --- | --- | --- |
 | `i` | `INSERT` | Transient: ordinary Enter returns to Normal after reaching the page. |

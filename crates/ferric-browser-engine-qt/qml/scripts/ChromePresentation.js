@@ -65,6 +65,27 @@ function statusBarVisible(policy, mode) {
     return (policy === "in-mode" || policy === "command") && mode !== "normal"
 }
 
+function passThroughMode(mode) {
+    return mode === "pass-through" || mode === "pass-through-once"
+}
+
+function inputModeLabel(mode) {
+    if (mode === "pass-through-once") return "PASS NEXT KEY"
+    return mode.replace(/-/g, " ").toUpperCase()
+}
+
+function inputModeHint(mode) {
+    return passThroughMode(mode) ? "Ctrl+Esc: Normal" : ""
+}
+
+function inputModeDescription(mode) {
+    if (mode === "pass-through-once")
+        return "Next key goes to the webpage, then returns to Normal. Ctrl+Escape cancels."
+    if (mode === "pass-through")
+        return "Keys, including Escape, go to the webpage. Ctrl+Escape returns to Normal."
+    return ""
+}
+
 function contrastReport(colors) {
     var checks = [
         { name: "primary-on-background", ratio: contrastRatio(

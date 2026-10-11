@@ -54,8 +54,10 @@ parents in place. See [the clean-break policy](packaging/MIGRATIONS.md).
 Press `i` for transient text entry: ordinary Enter reaches the webpage and
 returns to Normal mode, so `j` and `k` immediately navigate again. Shift+Enter
 keeps composing. Press `I` (Shift+i) for locked editing with repeated Enter,
-such as document paragraphs. Escape exits either insert mode. See
-[text-entry guide](docs/user/insert-modes.md) and
+such as document paragraphs. Escape exits either insert mode. For webpage
+shortcuts, use Ctrl+v for Pass-through or Ctrl+Shift+v / `; v` to forward one
+key; Ctrl+Escape returns to Normal. See [Webpage shortcuts](docs/user/webpage-shortcuts.md),
+the [text-entry guide](docs/user/insert-modes.md), and
 [keyboard bindings](docs/user/bindings.md).
 
 Press `;g` from Normal mode to enter Grid mode, select the numbered region that

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Pass-through now forwards ordinary Escape to the webpage; use Ctrl+Escape
+  to return to Normal. Ctrl+v retains persistent Pass-through, while
+  Ctrl+Shift+v and `; v` forward one complete key gesture and return to Normal.
+  Both window types show the mode and recovery hint. Page/tab boundaries
+  reset both variants; window deactivation cancels one-key forwarding.
+
 - `i` now enters Transient Insert: ordinary Enter reaches the page before
   returning to Normal. `I` enters Locked Insert for extended editing.
   Shift+Enter and other modified Enter combinations keep editing; Escape

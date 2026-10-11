@@ -682,7 +682,7 @@ impl qobject::BrowserUi {
     ) -> Result<(), String> {
         let [mode] = command.arguments.as_slice() else {
             return Err(
-                "mode-enter requires normal, insert, insert-locked, caret, or passthrough".into(),
+                "mode-enter requires normal, insert, insert-locked, caret, passthrough, or passthrough-once".into(),
             );
         };
         match mode.as_str() {
@@ -690,18 +690,27 @@ impl qobject::BrowserUi {
             "insert" => self.enter_insert(),
             "insert-locked" => self.enter_insert_mode(Mode::InsertLocked),
             "caret" => self.enter_caret(),
-            "passthrough" | "pass-through" => {
+            "passthrough" | "pass-through" | "passthrough-once" | "pass-through-once" => {
                 let Some(window) = self.as_ref().rust().window else {
                     return Err("no active window".into());
                 };
+                let mode = if mode.ends_with("-once") {
+                    Mode::PassThroughOnce
+                } else {
+                    Mode::PassThrough
+                };
                 self.as_mut()
-                    .reduce_event(Event::PushMode {
-                        window,
-                        mode: Mode::PassThrough,
-                    })
+                    .reduce_event(Event::PushMode { window, mode })
                     .map_err(|error| error.clone())?;
-                self.as_mut().set_core_mode(Mode::PassThrough);
-                self.as_mut().set_mode(QString::from("pass-through"));
+                self.as_mut().set_core_mode(mode);
+                self.as_mut()
+                    .set_mode(QString::from(super::ipc_mode_name(mode)));
+                self.as_mut()
+                    .set_status_text(QString::from(if mode == Mode::PassThroughOnce {
+                        "Next key goes to the page · Ctrl+Esc: Normal"
+                    } else {
+                        "Keys go to the page · Ctrl+Esc: Normal"
+                    }));
             }
             _ => return Err(format!("unknown mode: {mode}")),
         }
