@@ -12,8 +12,8 @@ Item {
     Canvas {
         id: drawing
         anchors.fill: parent
-        onPaint: {
-            var ctx = getContext("2d")
+        onPaint: drawGlyph(getContext("2d"))
+        function drawGlyph(ctx) {
             ctx.clearRect(0, 0, width, height)
             ctx.save()
             ctx.scale(width / 24, height / 24)

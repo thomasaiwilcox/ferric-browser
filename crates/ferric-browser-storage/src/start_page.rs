@@ -505,12 +505,9 @@ mod tests {
             store.start_page_snapshot(now, 0).unwrap().top_sites.len(),
             2
         );
-        assert!(
-            store
-                .start_page_snapshot(now, now + 1)
-                .unwrap()
-                .top_sites
-                .is_empty()
+        assert_eq!(
+            store.start_page_snapshot(now, now + 1).unwrap().top_sites,
+            Vec::<StartPageTile>::new()
         );
         assert_eq!(
             site_key("https://www.a.test:443/x").as_deref(),
