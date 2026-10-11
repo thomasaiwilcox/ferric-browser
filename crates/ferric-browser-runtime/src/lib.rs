@@ -629,6 +629,6 @@ mod tests {
             .expect_err("unknown window");
         assert_eq!(error.code(), ErrorCode::NotFound);
         assert_eq!(error.code().as_str(), "E_NOT_FOUND");
-        assert!(!error.diagnostic_context().is_empty());
+        assert_ne!(error.diagnostic_context(), "");
     }
 }

@@ -128,7 +128,7 @@ mod tests {
         assert!(command_argument_names("open").contains(&"input"));
         assert!(command_argument_names("context-route").contains(&"entry_points"));
         assert_eq!(command_argument_names("scroll-target"), &["action"]);
-        assert!(command_argument_names("not-a-command").is_empty());
+        assert_eq!(command_argument_names("not-a-command"), &[] as &[&str]);
         assert!(validate_command_argument_fields("open", &Map::new()).is_ok());
         assert!(
             validate_command_argument_fields(

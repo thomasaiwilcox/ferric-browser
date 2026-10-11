@@ -223,7 +223,12 @@ fn validate_command_argument_semantics(
             .is_some_and(|mode| {
                 !matches!(
                     mode,
-                    "normal" | "insert" | "caret" | "passthrough" | "pass-through"
+                    "normal"
+                        | "insert"
+                        | "insert-locked"
+                        | "caret"
+                        | "passthrough"
+                        | "pass-through"
                 )
             })
     {
@@ -279,7 +284,7 @@ mod tests {
         );
         assert_eq!(command_argument_names("context-route").len(), 7);
         assert_eq!(command_argument_names("scroll-target"), ["action"]);
-        assert!(command_argument_names("not-a-command").is_empty());
+        assert_eq!(command_argument_names("not-a-command"), &[] as &[&str]);
     }
 
     #[test]

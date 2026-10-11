@@ -8,16 +8,23 @@ use super::{
 };
 
 impl qobject::BrowserUi {
+    // Scalar arguments preserve the existing QML bridge contract.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn page_focus_observed_for(
         mut self: Pin<&mut Self>,
         index: i32,
         url: &QString,
         frame_path: &QString,
         sequence: i32,
+        epoch: i32,
+        context: i32,
         editable: bool,
         user_activated: bool,
     ) {
-        if index != self.as_ref().rust().active_tab_index || !(1..=1_000_000).contains(&sequence) {
+        if epoch != self.as_ref().rust().input_epoch
+            || index != self.as_ref().rust().active_tab_index
+            || !(1..=1_000_000).contains(&sequence)
+        {
             return;
         }
         let frame_path = frame_path.to_string();
@@ -61,10 +68,22 @@ impl qobject::BrowserUi {
             .rust()
             .focus_observations
             .get(&key)
-            .is_some_and(|observation| observation.url == url && sequence <= observation.sequence)
+            .is_some_and(|observation| {
+                observation.epoch == epoch
+                    && observation.url == url
+                    && sequence <= observation.sequence
+            })
         {
             return;
         }
+        let context_ended = self
+            .as_ref()
+            .rust()
+            .focus_observations
+            .get(&key)
+            .is_some_and(|old| {
+                old.ends_transient_context(self.as_ref().rust().core_mode, epoch, context, editable)
+            });
         {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
@@ -74,17 +93,25 @@ impl qobject::BrowserUi {
                 FocusObservation {
                     url: url.clone(),
                     sequence,
+                    epoch,
+                    context,
                     editable,
                     user_activated,
                 },
             );
+        }
+        if context_ended {
+            self.as_mut().escape();
+            return;
         }
         let (focused_editable, user_activated) = self
             .as_ref()
             .rust()
             .focus_observations
             .iter()
-            .filter(|((candidate, _), observation)| *candidate == index && observation.url == url)
+            .filter(|((candidate, _), observation)| {
+                *candidate == index && observation.epoch == epoch && observation.url == url
+            })
             .fold((false, false), |(focused, activated), (_, observation)| {
                 (
                     focused || observation.editable,

@@ -2,7 +2,7 @@
 
 // Browser-owned page scripts are versioned resources. The build manifest hashes
 // this file with the QML module, so script changes are explicit and auditable.
-var VERSION = "10"
+var VERSION = "11"
 
 // Page userscripts are trusted local content, but their failure boundary is
 // browser policy. Keeping the wrappers here prevents QML from assembling page
@@ -201,8 +201,8 @@ function clearSiteData() {
 }
 
 function focusProbe() {
-    return "(function(){var state=window.__ferric_browserFocusState;"
-        + "return state?{sequence:Number(state.sequence)||0,editable:!!state.editable,"
+    return "(function(){var state=window.__ferric_browserReadFocusState?window.__ferric_browserReadFocusState():window.__ferric_browserFocusState;"
+        + "return state?{sequence:Number(state.sequence)||0,context:Number(state.context)||0,editable:!!state.editable,"
         + "user_activated:!!state.user_activated,kind:String(state.kind||'unknown')}"
         + ":{sequence:0,editable:false,user_activated:false,kind:'unknown'};})()"
 }
@@ -211,7 +211,9 @@ function focusObserverSource() {
     return "(function(){"
         + "if(window.__ferric_browserFocusObserverInstalled)return;"
         + "window.__ferric_browserFocusObserverInstalled=true;"
-        + "var sequence=0;var userGestureUntil=0;"
+        + "var sequence=0;var userGestureUntil=0;var identities=new WeakMap();var nextIdentity=0;var watchedElement=null;var watchedParent=null;"
+        + "var removalObserver=new MutationObserver(function(){window.__ferric_browserReadFocusState();});"
+        + "function watch(element){var parent=element&&element.parentNode;if(element===watchedElement&&parent===watchedParent)return;removalObserver.disconnect();watchedElement=element;watchedParent=parent;var node=parent;for(var depth=0;node&&depth<64;depth++,node=node.parentNode||node.host){removalObserver.observe(node,{childList:true});}}"
         + "function classify(){"
         + "var element=document.activeElement;var depth=0;"
         + "while(element&&element.shadowRoot&&depth<16&&element.shadowRoot.activeElement){"
@@ -223,15 +225,17 @@ function focusObserverSource() {
         + "(tag==='input'&&excluded.indexOf(type)<0));"
         + "var kind=editable?(tag==='textarea'?'textarea':element.isContentEditable?'contenteditable':"
         + "tag==='input'&&type==='password'?'password':'input'):tag==='iframe'?'frame':'other';"
-        + "return {editable:editable,kind:kind};}"
-        + "function publish(userActivated){var state=classify();"
-        + "window.__ferric_browserFocusState={sequence:++sequence,editable:state.editable,user_activated:!!userActivated,kind:state.kind};}"
+        + "var context=0;if(editable){if(!identities.has(element))identities.set(element,++nextIdentity);context=identities.get(element);}return {editable:editable,kind:kind,context:context,element:editable?element:null};}"
+        + "function publish(userActivated){var state=classify();watch(state.element);"
+        + "window.__ferric_browserFocusState={sequence:++sequence,context:state.context,editable:state.editable,user_activated:!!userActivated,kind:state.kind};console.debug('__ferric_browser_focus_changed');}"
+        + "window.__ferric_browserReadFocusState=function(){var current=classify();watch(current.element);var old=window.__ferric_browserFocusState;if(!old||old.context!==current.context||old.editable!==current.editable)publish(false);return window.__ferric_browserFocusState;};"
         + "window.__ferric_browserAuthorizeExplicitFocus=function(){userGestureUntil=performance.now()+1500;};"
         + "function noteGesture(event){if(event.isTrusted!==false){userGestureUntil=performance.now()+1500;publish(true);}}"
         + "document.addEventListener('pointerdown',noteGesture,true);"
         + "document.addEventListener('keydown',function(event){if(event.key==='Tab')noteGesture(event);},true);"
         + "document.addEventListener('focusin',function(){publish(performance.now()<=userGestureUntil);},true);"
-        + "document.addEventListener('focusout',function(){setTimeout(function(){publish(false);},0);},true);"
+        + "document.addEventListener('focusout',function(){queueMicrotask(function(){publish(false);});},true);"
+        + "document.addEventListener('input',function(){queueMicrotask(window.__ferric_browserReadFocusState);},true);"
         + "publish(false);})();"
 }
 

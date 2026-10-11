@@ -445,7 +445,7 @@ mod tests {
         let passed = verify_corpus(&bundle.rules, &bundle.manifest.corpus).expect("corpus");
         assert_eq!(passed, bundle.manifest.corpus.len());
         assert_eq!(bundle.checksum, CHECKSUM_SOURCE.trim());
-        assert!(!MANIFEST_SOURCE.is_empty());
+        assert_ne!(MANIFEST_SOURCE, "");
     }
 
     #[test]

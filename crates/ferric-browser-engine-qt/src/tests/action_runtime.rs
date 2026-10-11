@@ -204,10 +204,9 @@ fn switcher_external_actions_share_bounded_available_target_policy() {
     assert!(values.iter().all(|value| {
         value["availability"]["state"] == "available" && value["target"] == "player"
     }));
-    assert!(
-        configured_switcher_action_values(&config, true)
-            .expect("valid private target")
-            .is_empty()
+    assert_eq!(
+        configured_switcher_action_values(&config, true).expect("valid private target"),
+        Vec::<serde_json::Value>::new()
     );
 }
 
@@ -375,12 +374,12 @@ fn action_capabilities_are_declared_and_subjects_revalidate() {
             .required_capabilities(),
         &["durable-profile-storage"]
     );
-    assert!(
+    assert_eq!(
         registry
             .resolve("browser.url.open")
             .expect("URL action")
-            .required_capabilities()
-            .is_empty()
+            .required_capabilities(),
+        &[] as &[&str]
     );
     assert_eq!(
         registry

@@ -6,6 +6,9 @@
 
 #![allow(unsafe_code)]
 #![allow(clippy::unnecessary_box_returns)]
+// CXX-Qt scalar invokables carry scoped focus facts; its bridge parser does not
+// accept per-invokable lint attributes, including on the generated declarations.
+#![allow(clippy::too_many_arguments)]
 #![allow(
     clippy::assigning_clones,
     clippy::case_sensitive_file_extension_comparisons,
@@ -430,6 +433,7 @@ mod qobject {
         #[qproperty(QString, navigation_failure_detail)]
         #[qproperty(bool, navigation_failure_visible)]
         #[qproperty(QString, mode)]
+        #[qproperty(i32, input_epoch)]
         #[qproperty(bool, learning_mode)]
         #[qproperty(bool, view_alive)]
         #[qproperty(i32, active_tab_index)]
@@ -1309,6 +1313,8 @@ mod qobject {
             url: &QString,
             frame_path: &QString,
             sequence: i32,
+            epoch: i32,
+            context: i32,
             editable: bool,
             user_activated: bool,
         );
@@ -1580,6 +1586,7 @@ pub struct BrowserUiRust {
     navigation_failure_detail: QString,
     navigation_failure_visible: bool,
     mode: QString,
+    input_epoch: i32,
     learning_mode: bool,
     view_alive: bool,
     // The application boundary owns reducer state and durable resources; Qt
@@ -2233,6 +2240,7 @@ impl Default for BrowserUiRust {
             navigation_failure_detail: QString::default(),
             navigation_failure_visible: false,
             mode: QString::from("normal"),
+            input_epoch: 0,
             learning_mode: false,
             view_alive: true,
             state,

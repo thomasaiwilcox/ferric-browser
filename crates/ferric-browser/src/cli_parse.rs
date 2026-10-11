@@ -496,16 +496,21 @@ pub(super) fn query_from_values(
             if mode.is_some() || key.is_some() || explain || include_members {
                 return Err("tabs query accepts only --window and --format".into());
             }
-            ("tabs.query", serde_json::json!({"window": window}))
+            let mut params = serde_json::json!({});
+            if let Some(window) = window {
+                params["window"] = serde_json::Value::String(window);
+            }
+            ("tabs.query", params)
         }
         "active-tab" => {
             if mode.is_some() || key.is_some() || explain || include_members {
                 return Err("active-tab query accepts only --window and --format".into());
             }
-            (
-                "tabs.query",
-                serde_json::json!({"active_only": true, "window": window}),
-            )
+            let mut params = serde_json::json!({"active_only": true});
+            if let Some(window) = window {
+                params["window"] = serde_json::Value::String(window);
+            }
+            ("tabs.query", params)
         }
         "windows" => {
             if window.is_some()
@@ -549,7 +554,11 @@ pub(super) fn query_from_values(
             if window.is_some() || key.is_some() || explain || include_members {
                 return Err("bindings query accepts only --mode and --format".into());
             }
-            ("bindings.query", serde_json::json!({"mode": mode}))
+            let mut params = serde_json::json!({});
+            if let Some(mode) = mode {
+                params["mode"] = serde_json::json!(mode);
+            }
+            ("bindings.query", params)
         }
         "binding-explain" => {
             if window.is_some()
@@ -564,10 +573,11 @@ pub(super) fn query_from_values(
                 );
             }
             let keychain = key.ok_or_else(|| "binding-explain requires KEYCHAIN".to_owned())?;
-            (
-                "bindings.explain",
-                serde_json::json!({"keychain": keychain, "mode": mode}),
-            )
+            let mut params = serde_json::json!({"keychain": keychain});
+            if let Some(mode) = mode {
+                params["mode"] = serde_json::json!(mode);
+            }
+            ("bindings.explain", params)
         }
         "contexts" => {
             if window.is_some() || mode.is_some() || key.is_some() || explain {

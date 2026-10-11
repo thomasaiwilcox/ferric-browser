@@ -48,6 +48,8 @@ pub fn spawn_ipc_server(listener: UnixListener, instance_id: String) {
             let Ok(stream) = stream else {
                 break;
             };
+            // `try_update` requires Rust 1.95; retain the Rust 1.85-compatible alias.
+            #[allow(deprecated)]
             let accepted = connections
                 .fetch_update(Ordering::AcqRel, Ordering::Acquire, |count| {
                     (count < ferric_browser_ipc::MAX_IPC_CONNECTIONS).then_some(count + 1)
@@ -126,12 +128,14 @@ fn serve_connection(mut stream: UnixStream, instance_id: &str) {
             }
             CacheLookup::Miss => {}
         }
-        if outstanding
+        // `try_update` requires Rust 1.95; retain the Rust 1.85-compatible alias.
+        #[allow(deprecated)]
+        let at_limit = outstanding
             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |count| {
                 (count < ferric_browser_ipc::MAX_OUTSTANDING_REQUESTS).then_some(count + 1)
             })
-            .is_err()
-        {
+            .is_err();
+        if at_limit {
             let _ = write_failure(
                 &mut stream,
                 request.id,

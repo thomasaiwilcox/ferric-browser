@@ -113,7 +113,7 @@ fn enum_candidates(command_prefix: &str, prefix: &str) -> Option<Vec<CompletionC
                 "fullscreen" | "caret-select" | "tab-mute" | "tab-pin" | "blocking-toggle" => {
                     &["on", "off", "toggle"]
                 }
-                "mode-enter" => &["normal", "insert", "caret", "passthrough"],
+                "mode-enter" => &["normal", "insert", "insert-locked", "caret", "passthrough"],
                 "hint" => match tokens.last().copied() {
                     Some("--target") => &[
                         "current",

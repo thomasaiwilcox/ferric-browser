@@ -908,7 +908,13 @@ impl CommandRegistry {
             definition(
                 "mode-enter",
                 &[],
-                vec![Mode::Normal, Mode::Command, Mode::Insert, Mode::Caret],
+                vec![
+                    Mode::Normal,
+                    Mode::Command,
+                    Mode::Insert,
+                    Mode::InsertLocked,
+                    Mode::Caret,
+                ],
                 CountPolicy::NotSupported,
                 false,
                 "Enter an explicit browser input mode.",
@@ -948,7 +954,13 @@ impl CommandRegistry {
             definition(
                 "edit-text",
                 &[],
-                vec![Mode::Normal, Mode::Command, Mode::Insert, Mode::Caret],
+                vec![
+                    Mode::Normal,
+                    Mode::Command,
+                    Mode::Insert,
+                    Mode::InsertLocked,
+                    Mode::Caret,
+                ],
                 CountPolicy::NotSupported,
                 true,
                 "Edit the focused plain-text control with a configured external editor.",
@@ -3558,7 +3570,7 @@ mod tests {
         assert_eq!(open.effect, EffectClass::Navigation);
         assert_eq!(open.scope, CommandScope::Tab);
         let scroll_target = registry.resolve("scroll-target").unwrap();
-        assert!(scroll_target.aliases.is_empty());
+        assert_eq!(scroll_target.aliases, Vec::<String>::new());
         assert_eq!(scroll_target.modes, [Mode::Normal, Mode::Command]);
         assert_eq!(scroll_target.count, CountPolicy::NotSupported);
         assert!(!scroll_target.sensitive);
@@ -3695,7 +3707,10 @@ mod tests {
             "config-check",
             "theme-reload",
         ] {
-            assert!(registry.resolve(name).unwrap().arguments.is_empty());
+            assert_eq!(
+                registry.resolve(name).unwrap().arguments,
+                Vec::<crate::ArgumentDefinition>::new()
+            );
         }
         assert_eq!(
             registry.resolve("config-write-defaults").unwrap().arguments[0].name,

@@ -138,7 +138,7 @@ fn scroll_target_command_uses_the_shared_executor_and_owned_view_actions() {
         })
     );
     assert_eq!(mode, Mode::Hint);
-    assert!(queued_actions.is_empty());
+    assert_eq!(queued_actions, Vec::<String>::new());
 
     let mut mode = Mode::Normal;
     let mut queued_actions = Vec::new();
@@ -159,7 +159,7 @@ fn scroll_target_command_uses_the_shared_executor_and_owned_view_actions() {
         "scroll-target requires full browser chrome and is unavailable in this window"
     );
     assert_eq!(mode, Mode::Normal);
-    assert!(queued_actions.is_empty());
+    assert_eq!(queued_actions, Vec::<String>::new());
 
     for action in ["auto", "document", "status"] {
         let command = ParsedCommand {
@@ -922,7 +922,7 @@ fn ipc_commands_use_typed_arguments_without_shell_parsing() {
     }))
     .expect("typed tab-clone command");
     assert_eq!(command.name, "tab-clone");
-    assert!(command.arguments.is_empty());
+    assert_eq!(command.arguments, Vec::<String>::new());
     assert_eq!(route.open_target, IpcOpenTarget::Tab);
     assert!(
         typed_ipc_command(&serde_json::json!({
@@ -995,7 +995,7 @@ fn ipc_commands_use_typed_arguments_without_shell_parsing() {
     }))
     .expect("typed window-close command");
     assert_eq!(command.name, "window-close");
-    assert!(command.arguments.is_empty());
+    assert_eq!(command.arguments, Vec::<String>::new());
     assert_eq!(route.open_target, IpcOpenTarget::Tab);
     assert!(
         typed_ipc_command(&serde_json::json!({
@@ -1011,7 +1011,7 @@ fn ipc_commands_use_typed_arguments_without_shell_parsing() {
         }))
         .expect("typed window movement command");
         assert_eq!(command.name, command_name);
-        assert!(command.arguments.is_empty());
+        assert_eq!(command.arguments, Vec::<String>::new());
         assert_eq!(route.open_target, IpcOpenTarget::Tab);
         assert!(
             typed_ipc_command(&serde_json::json!({
@@ -1255,7 +1255,7 @@ fn ipc_blocking_toggle_uses_typed_site_flag() {
         "arguments": {}
     }))
     .expect("global toggle command");
-    assert!(command.arguments.is_empty());
+    assert_eq!(command.arguments, Vec::<String>::new());
     assert!(
         typed_ipc_command(&serde_json::json!({
             "command": "blocking-toggle",
@@ -1401,7 +1401,7 @@ fn ipc_view_source_command_is_typed_without_arguments() {
     }))
     .expect("typed view-source command");
     assert_eq!(command.name, "view-source");
-    assert!(command.arguments.is_empty());
+    assert_eq!(command.arguments, Vec::<String>::new());
     assert_eq!(route.open_target, IpcOpenTarget::Tab);
 }
 
@@ -1456,7 +1456,7 @@ fn ipc_support_commands_use_typed_help_and_empty_arguments() {
         }))
         .expect("typed support command");
         assert_eq!(command.name, name);
-        assert!(command.arguments.is_empty());
+        assert_eq!(command.arguments, Vec::<String>::new());
     }
     assert!(
         typed_ipc_command(&serde_json::json!({
@@ -1482,7 +1482,7 @@ fn ipc_print_command_is_typed_without_arguments() {
     }))
     .expect("typed print command");
     assert_eq!(command.name, "print");
-    assert!(command.arguments.is_empty());
+    assert_eq!(command.arguments, Vec::<String>::new());
     assert_eq!(route.open_target, IpcOpenTarget::Tab);
 }
 
@@ -1557,7 +1557,7 @@ fn ipc_configuration_lifecycle_commands_use_typed_paths_and_no_arguments() {
         }))
         .expect("typed configuration lifecycle command");
         assert_eq!(command.name, name);
-        assert!(command.arguments.is_empty());
+        assert_eq!(command.arguments, Vec::<String>::new());
         assert!(
             typed_ipc_command(&serde_json::json!({
                 "command": name,

@@ -9,6 +9,12 @@
 - Source archives, checksums, signatures, and installed-file manifests are
   generated and reviewed by release automation.
 - Cross-origin frame hint collection and activation remain incomplete.
+- Insert routing is covered by local Qt WebEngine fixtures, but live editor
+  and platform IME qualification remains incomplete. Closed shadow roots,
+  deep editable ancestry, editor focus proxies, and embedded-frame removal
+  without focus notifications limit transient context detection. IMEs which
+  clear preedit before forwarding confirmation Enter may trigger transient
+  exit; Locked Insert provides explicit persistent editing.
 - Grid mode is pre-alpha. Repeated native Wayland left-click and cleanup checks
   pass, but right-click, middle-click, canvas, cross-origin frame, scale/zoom,
   and prompt/fullscreen race coverage still need complete native qualification.

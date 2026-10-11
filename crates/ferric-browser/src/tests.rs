@@ -1274,6 +1274,39 @@ fn every_registered_command_example_has_a_typed_cli_envelope() {
 }
 
 #[test]
+fn cli_queries_omit_unspecified_optional_strings() {
+    for (arguments, method, expected) in [
+        (
+            vec!["query".into(), "tabs".into()],
+            "tabs.query",
+            serde_json::json!({}),
+        ),
+        (
+            vec!["query".into(), "active-tab".into()],
+            "tabs.query",
+            serde_json::json!({"active_only": true}),
+        ),
+        (
+            vec!["query".into(), "bindings".into()],
+            "bindings.query",
+            serde_json::json!({}),
+        ),
+        (
+            vec!["query".into(), "binding-explain".into(), "i".into()],
+            "bindings.explain",
+            serde_json::json!({"keychain": "i"}),
+        ),
+    ] {
+        let (_, action) = parse_cli(&arguments).expect("valid query");
+        assert!(matches!(
+            action,
+            CliAction::Query { method: actual, params, .. }
+                if actual == method && params == expected
+        ));
+    }
+}
+
+#[test]
 fn cli_query_supports_bindings_and_config_keys() {
     let (_, action) = parse_cli(&[
         "query".into(),

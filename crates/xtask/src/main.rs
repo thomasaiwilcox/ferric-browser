@@ -91,6 +91,7 @@ fn mode_name(mode: Mode) -> &'static str {
     match mode {
         Mode::Normal => "normal",
         Mode::Insert => "insert",
+        Mode::InsertLocked => "insert-locked",
         Mode::Command => "command",
         Mode::Search => "search",
         Mode::Hint => "hint",
@@ -107,6 +108,12 @@ fn render_binding_docs() -> Result<String, String> {
         "# Keyboard bindings\n\n",
         "This table is generated from the built-in binding registry. Configuration overrides ",
         "are applied on top of these defaults at runtime.\n\n",
+        "Press `i` for Transient Insert (`INSERT`): ordinary Enter reaches the page, then returns to Normal.\n",
+        "Use Shift+Enter to continue composing; other modified Enter combinations also stay in Insert.\n",
+        "Press `I` (Shift+i) for Locked Insert (`INSERT LOCKED`), where Enter keeps editing.\n",
+        "Escape exits either variant. For example, use `i`, type a search, Enter, then `j` to browse;\n",
+        "use `I` for document editing with repeated paragraphs. Neither command focuses an arbitrary input.\n",
+        "Both variants reset when changing tabs or navigating; Transient Insert also ends when its editable context loses focus.\n\n",
         "| Mode | Key chain | Command |\n",
         "| --- | --- | --- |\n",
     ));
@@ -192,7 +199,7 @@ fn render_user_docs() -> Result<(String, String, String, String), String> {
         let modes = definition
             .modes
             .iter()
-            .map(|mode| format!("{mode:?}").to_ascii_lowercase())
+            .map(|mode| mode_name(*mode))
             .collect::<Vec<_>>()
             .join(", ");
         let count = format!("{:?}", definition.count);
@@ -477,6 +484,26 @@ fn run_qml_ui_tests() -> Result<(), String> {
             "{executable} chrome interaction tests exited with {status}"
         ))
     }
+}
+
+fn run_native_insert_tests() -> Result<(), String> {
+    run(
+        "cmake",
+        &[
+            "-S",
+            "crates/ferric-browser-engine-qt/tests/native-insert",
+            "-B",
+            "target/native-insert",
+        ],
+    )?;
+    run(
+        "cmake",
+        &["--build", "target/native-insert", "--parallel", "2"],
+    )?;
+    run(
+        "ctest",
+        &["--test-dir", "target/native-insert", "--output-on-failure"],
+    )
 }
 
 fn check_architecture_boundaries() -> Result<(), String> {
@@ -1423,7 +1450,8 @@ fn run_test(arguments: &[String]) -> Result<(), String> {
                     "--offline",
                 ],
             )?;
-            run_qml_ui_tests()
+            run_qml_ui_tests()?;
+            run_native_insert_tests()
         }
         "adapter" => run_adapter_smoke(),
         "fuzz" => run_fuzz_smoke(),
@@ -3144,10 +3172,9 @@ mod qml_lint_tests {
             }]
         }"#;
 
-        assert!(
-            qml_lint_critical_diagnostics(report)
-                .expect("valid qmllint report")
-                .is_empty()
+        assert_eq!(
+            qml_lint_critical_diagnostics(report).expect("valid qmllint report"),
+            Vec::<String>::new()
         );
     }
 

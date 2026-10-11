@@ -398,7 +398,14 @@ pub fn validate(config: &Config) -> Result<(), ConfigError> {
     for (mode, bindings) in &config.bindings {
         if !matches!(
             mode.as_str(),
-            "normal" | "insert" | "command" | "search" | "hint" | "caret" | "pass-through"
+            "normal"
+                | "insert"
+                | "insert-locked"
+                | "command"
+                | "search"
+                | "hint"
+                | "caret"
+                | "pass-through"
         ) {
             return Err(ConfigError::Validation(format!(
                 "bindings mode {mode:?} is not supported"
@@ -989,7 +996,14 @@ pub(super) fn validate_runtime_binding(
 ) -> Result<(), ConfigError> {
     if !matches!(
         mode,
-        "normal" | "insert" | "command" | "caret" | "search" | "hint" | "pass-through"
+        "normal"
+            | "insert"
+            | "insert-locked"
+            | "command"
+            | "caret"
+            | "search"
+            | "hint"
+            | "pass-through"
     ) {
         return Err(ConfigError::Validation(format!(
             "runtime binding mode {mode:?} is not supported"

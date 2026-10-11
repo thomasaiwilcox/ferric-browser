@@ -681,11 +681,14 @@ impl qobject::BrowserUi {
         command: &ParsedCommand,
     ) -> Result<(), String> {
         let [mode] = command.arguments.as_slice() else {
-            return Err("mode-enter requires normal, insert, caret, or passthrough".into());
+            return Err(
+                "mode-enter requires normal, insert, insert-locked, caret, or passthrough".into(),
+            );
         };
         match mode.as_str() {
             "normal" => self.escape(),
             "insert" => self.enter_insert(),
+            "insert-locked" => self.enter_insert_mode(Mode::InsertLocked),
             "caret" => self.enter_caret(),
             "passthrough" | "pass-through" => {
                 let Some(window) = self.as_ref().rust().window else {

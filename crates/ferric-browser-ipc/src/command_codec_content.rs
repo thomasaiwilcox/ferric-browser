@@ -166,10 +166,18 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
             if command.arguments.len() != 1
                 || !matches!(
                     command.arguments[0].as_str(),
-                    "normal" | "insert" | "caret" | "passthrough" | "pass-through"
+                    "normal"
+                        | "insert"
+                        | "insert-locked"
+                        | "caret"
+                        | "passthrough"
+                        | "pass-through"
                 )
             {
-                return Err("mode-enter requires one of normal, insert, caret, passthrough".into());
+                return Err(
+                    "mode-enter requires one of normal, insert, insert-locked, caret, passthrough"
+                        .into(),
+                );
             }
             serde_json::json!({"mode": command.arguments[0]})
         }

@@ -681,7 +681,7 @@ mod tests {
         assert_eq!(graph.clear_matching(|node| node.id == old), 1);
         assert!(graph.node(old).is_none());
         assert_eq!(graph.current_node(tab), Some(current));
-        assert!(graph.edges().is_empty());
+        assert_eq!(graph.edges(), []);
         assert_eq!(graph.node_count(), 1);
 
         assert_eq!(graph.clear_matching(|node| node.id == current), 1);

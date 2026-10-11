@@ -1839,7 +1839,10 @@ mod tests {
         drop(worker);
 
         let store = ProfileStore::open(&path, StoreMode::Normal).expect("reopen");
-        assert!(store.permission_rules(None).expect("rules").is_empty());
+        assert_eq!(
+            store.permission_rules(None).expect("rules"),
+            Vec::<crate::permissions::PermissionRule>::new()
+        );
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(format!("{}-wal", path.display()));
         let _ = std::fs::remove_file(format!("{}-shm", path.display()));
@@ -1906,11 +1909,11 @@ mod tests {
         drop(worker);
 
         let store = ProfileStore::open(&path, StoreMode::Normal).expect("reopen");
-        assert!(
+        assert_eq!(
             store
                 .permission_rules(Some("https://example.test"))
-                .expect("rules")
-                .is_empty()
+                .expect("rules"),
+            Vec::<crate::permissions::PermissionRule>::new()
         );
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(format!("{}-wal", path.display()));
@@ -2202,7 +2205,10 @@ mod tests {
         drop(worker);
 
         let store = ProfileStore::open(&path, StoreMode::Normal).expect("reopen");
-        assert!(store.history(10).expect("history").is_empty());
+        assert_eq!(
+            store.history(10).expect("history"),
+            Vec::<HistoryRecord>::new()
+        );
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(format!("{}-wal", path.display()));
         let _ = std::fs::remove_file(format!("{}-shm", path.display()));
@@ -2319,7 +2325,7 @@ mod tests {
             .expect("journey query read");
         assert_eq!(snapshot.nodes.len(), 1);
         assert_eq!(snapshot.nodes[0].id, "journey-query");
-        assert!(snapshot.edges.is_empty());
+        assert_eq!(snapshot.edges, Vec::<crate::JourneyEdgeRecord>::new());
         drop(worker);
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(format!("{}-wal", path.display()));

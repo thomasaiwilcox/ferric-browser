@@ -116,7 +116,7 @@ fn ipc_site_status_accepts_an_optional_stable_tab_target() {
         "arguments": {}
     }))
     .expect("active site status command");
-    assert!(active.arguments.is_empty());
+    assert_eq!(active.arguments, Vec::<String>::new());
 
     let (targeted, _) = typed_ipc_command(&serde_json::json!({
         "command": "site-status",
@@ -1361,7 +1361,7 @@ fn private_history_is_bounded_deduplicated_and_origin_clearable() {
         BrowserUi::clear_private_history_records(&mut records, None, None),
         1
     );
-    assert!(records.is_empty());
+    assert_eq!(records, Vec::<ferric_browser_storage::HistoryRecord>::new());
 }
 
 #[test]
@@ -1388,8 +1388,8 @@ fn network_policy_worker_loads_cached_policy_off_thread() {
         value
     });
     let policy = result.expect("policy response").expect("policy load");
-    assert!(policy.blocked_hosts.is_empty());
-    assert!(policy.compile_failures.is_empty());
+    assert_eq!(policy.blocked_hosts, Vec::<String>::new());
+    assert_eq!(policy.compile_failures, Vec::<String>::new());
     drop(worker);
     roots.cleanup().expect("temporary cleanup");
 }

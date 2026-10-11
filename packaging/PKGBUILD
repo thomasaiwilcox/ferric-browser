@@ -71,6 +71,8 @@ package() {
     "${pkgdir}/usr/share/doc/${pkgname}/DEVELOPMENT_SPEC.md"
   install -Dm644 docs/user/grid-navigation.md \
     "${pkgdir}/usr/share/doc/${pkgname}/grid-navigation.md"
+  install -Dm644 docs/user/insert-modes.md \
+    "${pkgdir}/usr/share/doc/${pkgname}/insert-modes.md"
   install -Dm644 docs/user/commands.md \
     "${pkgdir}/usr/share/doc/${pkgname}/commands.md"
   install -Dm644 docs/user/configuration.md \

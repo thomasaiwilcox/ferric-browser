@@ -1941,7 +1941,7 @@ mod tests {
         let (mut state, _, window, tab, target) = setup();
         let effects = reduce(&mut state, Event::TransferTabOut { tab }).unwrap();
         assert_eq!(state.tabs.get(&tab), None);
-        assert!(state.windows[&window].tabs.is_empty());
+        assert_eq!(state.windows[&window].tabs, Vec::<crate::TabId>::new());
         assert_eq!(state.windows[&window].active_tab, None);
         assert!(
             !effects
@@ -2083,8 +2083,25 @@ mod tests {
         )
         .unwrap();
         let effects = reduce(&mut state, Event::Escape { window }).unwrap();
-        assert!(effects.is_empty());
+        assert_eq!(effects, Vec::<crate::Effect>::new());
         assert_eq!(state.windows[&window].modes, vec![Mode::Normal]);
+    }
+
+    #[test]
+    fn escape_exits_both_insert_variants_without_sending_page_events() {
+        for mode in [Mode::Insert, Mode::InsertLocked] {
+            let (mut state, _, window, _, _) = setup();
+            assert_eq!(
+                reduce(&mut state, Event::PushMode { window, mode }).unwrap(),
+                Vec::<crate::Effect>::new()
+            );
+            assert_eq!(state.windows[&window].modes.last(), Some(&mode));
+            assert_eq!(
+                reduce(&mut state, Event::Escape { window }).unwrap(),
+                Vec::<crate::Effect>::new()
+            );
+            assert_eq!(state.windows[&window].modes, vec![Mode::Normal]);
+        }
     }
 
     #[test]

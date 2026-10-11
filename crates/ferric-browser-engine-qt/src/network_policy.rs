@@ -974,7 +974,7 @@ mod tests {
             Some("Wed, 21 Oct 2015 07:28:00 GMT")
         );
         assert!(snapshot.list_metadata[0].etag_present);
-        assert!(snapshot.compile_failures.is_empty());
+        assert_eq!(snapshot.compile_failures, Vec::<String>::new());
         fs::remove_dir_all(base).expect("remove test root");
     }
 
@@ -991,7 +991,7 @@ mod tests {
             }),
         );
         assert_eq!(snapshot.security_deny_hosts, ["blocked.example"]);
-        assert!(snapshot.blocked_hosts.is_empty());
+        assert_eq!(snapshot.blocked_hosts, Vec::<String>::new());
     }
 
     #[test]
@@ -1060,7 +1060,7 @@ mod tests {
 
         assert_eq!(snapshot.skipped_lists, ["broken"]);
         assert_eq!(snapshot.compile_failures, ["broken"]);
-        assert!(snapshot.blocked_hosts.is_empty());
+        assert_eq!(snapshot.blocked_hosts, Vec::<String>::new());
         fs::remove_dir_all(base).expect("remove test root");
     }
 }

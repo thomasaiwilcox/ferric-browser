@@ -121,6 +121,13 @@ ApplicationWindow {
 
     BrowserKeyRouter {
         id: secondaryKeyRouter
+        transientInsert: secondaryUi.mode === "insert"
+        inputEpoch: secondaryUi.input_epoch
+        onTransientEnterDispatched: function(epoch) {
+            if (secondaryUi.mode === "insert" && secondaryUi.input_epoch === epoch) {
+                secondaryUi.escape()
+            }
+        }
         targetWindow: secondaryWindow
         enabled: secondaryWindow.active
                  && secondaryWindow.browserKeyFocusActive
@@ -129,6 +136,7 @@ ApplicationWindow {
                      || secondaryUi.mode === "grid"
                      || secondaryUi.mode === "caret"
                      || secondaryUi.mode === "insert"
+                     || secondaryUi.mode === "insert-locked"
                      || secondaryUi.mode === "pass-through")
         onKeyPressed: function(text, key, modifiers, isAutoRepeat) {
             var event = {
@@ -141,6 +149,10 @@ ApplicationWindow {
             if (rootWindow.handleBrowserKey(
                         secondaryUi, secondaryWindow, event)) {
                 secondaryKeyRouter.acceptCurrentEvent()
+                if (secondaryUi.mode === "insert" || secondaryUi.mode === "insert-locked") {
+                    rootWindow.probeActiveFocus(secondaryUi, secondaryUi.active_tab_index,
+                                               secondaryWindow.activeView)
+                }
             }
         }
     }
@@ -1466,6 +1478,9 @@ function onContext_workspaceChanged() {
 
     WebEngineView {
         id: secondaryView
+        onJavaScriptConsoleMessage: function(level, message, lineNumber, sourceID) {
+            rootWindow.probeFocusNotification(viewUi, viewHost, secondaryView, -1, message)
+        }
         property var viewUi: secondaryUi
         property var viewHost: secondaryWindow
         property var viewProfile: secondaryWindow.windowWebEngineProfile

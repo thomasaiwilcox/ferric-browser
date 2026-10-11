@@ -194,6 +194,7 @@ const fn mode_name(mode: Mode) -> &'static str {
     match mode {
         Mode::Normal => "normal",
         Mode::Insert => "insert",
+        Mode::InsertLocked => "insert-locked",
         Mode::Command => "command",
         Mode::Search => "search",
         Mode::Hint => "hint",
