@@ -1,0 +1,7 @@
+********* Start testing of ferric_qml_tests *********
+Config: Using QtTest library 6.11.2, Qt 6.11.2 (x86_64-little_endian-lp64 shared (dynamic) release build; by GCC 16.2.1 20260810), omarchy 4.0.4
+PASS   : ferric_qml_tests::WebAppInteraction::initTestCase()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T034_region_and_surface_classification()
+PASS   : ferric_qml_tests::WebAppInteraction::cleanupTestCase()
+Totals: 3 passed, 0 failed, 0 skipped, 0 blacklisted, 1049ms
+********* Finished testing of ferric_qml_tests *********

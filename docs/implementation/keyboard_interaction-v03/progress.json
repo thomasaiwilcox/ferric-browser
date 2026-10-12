@@ -82,8 +82,8 @@
     },
     {
       "id": "S13",
-      "status": "not_started",
-      "evidence": null,
+      "status": "implemented_unqualified",
+      "evidence": "evidence/S13.json",
       "capability_decision": null
     },
     {
