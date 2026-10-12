@@ -1658,7 +1658,8 @@ ApplicationWindow {
         safe_remediation_actions: [],
         facts: [],
         blocking: ({ active_site_decisions: [] }),
-        site_doctor: ({ active: ({ kind: "" }), experiments: [] })
+        site_doctor: ({ active: ({ kind: "" }), experiments: [] }),
+        interaction: ({})
     })
     property bool diagnosticsVisible: false
     property string diagnosticsText: ""

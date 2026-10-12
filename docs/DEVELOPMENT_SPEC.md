@@ -718,8 +718,11 @@ release qualification gate for supported environments.
 **DISC-003 — Explanation.** `binding-explain` reports tokenization, current and
 requested mode, count eligibility, exact/prefix resolution, timeout behavior,
 winning binding, shadowed layers, conflicts, and reserved-key constraints.
-For a site-specific input-mode conflict it also reports the matching rule and
-the page/editor focus facts available to the browser.
+For a site-specific input-mode conflict it also reports the effective first-key
+owner, route reason, matching rule and QML-special handling. The local command
+places these routing facts in status feedback without retaining the supplied
+keychain there; the Site Ledger shows the bounded current focus category
+separately.
 
 **DISC-004 — Learning mode.** Learning mode adds short post-command feedback
 and more eager continuation/help affordances. It is per-window, defaults off,
@@ -2313,11 +2316,16 @@ removes userinfo and recognized auth secrets; raw-query/fragment output, if
 added, requires an explicit sensitive-output flag and is not logged.
 
 `interaction.status` returns bounded mode, epoch and configuration/policy
-revisions; active window/tab identity; a focus category with at most 16 frame
-paths; shortcut policy provenance and page-key count; native-prompt category,
-depth and owner-known flags; and scroll-policy state. Scroll policy is reported
-as unknown when it is page-local and unavailable to the native projection. The
-response omits URL, title, page labels, DOM identifiers and raw key mappings.
+revisions; whether the current document identity is known; a focus category and
+bounded frame count; shortcut-policy provenance, page-key count and matching
+site-rule IDs; native-prompt category, depth, owner-known flags and last
+bounded outcome; scroll-policy state; and a bounded summary of recent
+action-error categories. Error categories are
+allowlisted and the response omits operation/action identifiers, URL, title,
+page labels, DOM identifiers, frame paths, input values and raw key streams.
+Scroll policy is reported as unknown when it is page-local and unavailable to
+the native projection. The local Site Ledger refreshes this snapshot only when
+opened or explicitly refreshed.
 
 **IPC-005 — Event ordering.** Events have instance ID, monotonically increasing
 sequence, event type, and sanitized payload. Types include window/tab changes,

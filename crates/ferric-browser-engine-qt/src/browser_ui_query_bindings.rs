@@ -3,6 +3,65 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
 
+pub(super) fn binding_explanation_status(value: &Value) -> String {
+    let routing = value.get("mixed_routing").unwrap_or(&Value::Null);
+    let owner = routing
+        .get("owner")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let reason = routing
+        .get("reason")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let resolution = value
+        .get("resolution")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let source = routing
+        .get("shortcut_policy_source")
+        .and_then(Value::as_str)
+        .unwrap_or("default");
+    let site_rule = routing
+        .get("shortcut_policy_site_rule")
+        .and_then(Value::as_str)
+        .or_else(|| routing.get("page_keys_site_rule").and_then(Value::as_str));
+    let qml_special = routing
+        .get("qml_special")
+        .and_then(Value::as_str)
+        .unwrap_or("none");
+    format!(
+        "Key routing: {owner} ({reason}); binding {resolution}; policy {source}{}; QML {qml_special}",
+        site_rule.map_or_else(String::new, |rule| format!("; site rule {rule}"))
+    )
+}
+
+pub(super) fn binding_command_status(command: &str) -> &'static str {
+    if command == "binding-list" {
+        "Binding list requested"
+    } else {
+        "Binding explanation requested"
+    }
+}
+
+impl qobject::BrowserUi {
+    pub(super) fn binding_explanation_feedback(
+        &self,
+        keychain: Option<&str>,
+        mode: Option<&str>,
+    ) -> Option<String> {
+        let keychain = keychain?;
+        let explanation = self
+            .ipc_bindings_explain(&serde_json::json!({"keychain": keychain, "mode": mode}))
+            .ok()?;
+        Some(binding_explanation_status(&explanation))
+    }
+
+    pub(super) fn set_binding_explanation_status(mut self: Pin<&mut Self>, explanation: &Value) {
+        self.as_mut()
+            .set_status_text(QString::from(binding_explanation_status(explanation)));
+    }
+}
+
 fn parse_explain_keychain(keychain: &str) -> Result<(u32, bool, Vec<String>), String> {
     let is_single_logical_key = ferric_browser_core::LogicalKeyToken::parse(keychain).is_ok();
     let (count_text, remaining) = if is_single_logical_key {
@@ -497,7 +556,7 @@ impl qobject::BrowserUi {
 
 #[cfg(test)]
 mod mixed_explain_keychain_tests {
-    use super::parse_explain_keychain;
+    use super::{binding_command_status, binding_explanation_status, parse_explain_keychain};
 
     #[test]
     fn keychain_explanation_accepts_logical_tokens_and_count_prefixes() {
@@ -516,6 +575,30 @@ mod mixed_explain_keychain_tests {
         assert_eq!(
             parse_explain_keychain("g,g").expect("comma-separated chain"),
             (1, false, vec!["g".to_owned(), "g".to_owned()])
+        );
+    }
+
+    #[test]
+    fn local_explanation_feedback_reports_routing_without_retaining_the_token() {
+        let explanation = serde_json::json!({
+            "keychain": "private-token",
+            "resolution": "exact-prefix",
+            "mixed_routing": {
+                "owner": "page",
+                "reason": "exact-page-key",
+                "shortcut_policy_source": "site-rule:docs-shortcuts",
+                "shortcut_policy_site_rule": "docs-shortcuts",
+                "qml_special": "none"
+            }
+        });
+        let status = binding_explanation_status(&explanation);
+        assert!(status.contains("page (exact-page-key)"));
+        assert!(status.contains("exact-prefix"));
+        assert!(status.contains("docs-shortcuts"));
+        assert!(!status.contains("private-token"));
+        assert_eq!(
+            binding_command_status("binding-list"),
+            "Binding list requested"
         );
     }
 }

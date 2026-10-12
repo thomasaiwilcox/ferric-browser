@@ -435,6 +435,12 @@ impl qobject::BrowserUi {
                         return false;
                     }
                 };
+                let explanation = if command.name == "binding-explain" {
+                    self.as_ref()
+                        .binding_explanation_feedback(keychain.as_deref(), mode.as_deref())
+                } else {
+                    None
+                };
                 let search = keychain.or(mode);
                 self.as_mut()
                     .rust_mut()
@@ -444,12 +450,10 @@ impl qobject::BrowserUi {
                     || "show-binding-help".into(),
                     |search| format!("show-binding-help\t{search}"),
                 ));
-                self.as_mut()
-                    .set_status_text(QString::from(if command.name == "binding-list" {
-                        "Binding list requested"
-                    } else {
-                        "Binding explanation requested"
-                    }));
+                let status = explanation.unwrap_or_else(|| {
+                    super::browser_ui_query_bindings::binding_command_status(&command.name).into()
+                });
+                self.as_mut().set_status_text(QString::from(status));
                 continue;
             }
             if is_library_command(&command.name) {

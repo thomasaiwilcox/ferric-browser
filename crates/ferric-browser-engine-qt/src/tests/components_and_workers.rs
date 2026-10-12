@@ -149,6 +149,23 @@ fn ipc_site_status_accepts_an_optional_stable_tab_target() {
 }
 
 #[test]
+fn site_ledger_uses_on_demand_redacted_interaction_status() {
+    let ledger = include_str!("../../qml/components/FerricSiteLedger.qml");
+    let runtime = include_str!("../../qml/components/FerricBrowserRuntimeServices.qml");
+    let projection = include_str!("../browser_ui_query_diagnostics.rs");
+    assert!(ledger.contains("On-demand interaction status"));
+    assert!(ledger.contains("recent_action_errors"));
+    assert!(ledger.contains("Text.PlainText"));
+    assert!(runtime.contains("browserUi.refresh_interaction_status()"));
+    assert!(projection.contains("SAFE_INTERACTION_ERROR_CATEGORIES"));
+    assert!(!projection.contains("frame_paths"));
+    assert!(!projection.contains("window_id\": rust.window"));
+    let binding_explanation = include_str!("../browser_ui_query_bindings.rs");
+    assert!(binding_explanation.contains("binding_explanation_status"));
+    assert!(binding_explanation.contains("shortcut_policy_site_rule"));
+}
+
+#[test]
 fn permission_session_key_is_scoped_to_profile_uuid_and_lifetime() {
     let first_profile = Uuid::from_u128(1);
     let second_profile = Uuid::from_u128(2);
@@ -235,9 +252,14 @@ fn hint_collection_accepts_qt_variant_candidate_lists() {
 fn site_ledger_component_renders_data_and_emits_bridge_intents() {
     let qml = include_str!("../../qml/components/FerricSiteLedger.qml");
     let composition_root = QML_SOURCE;
+    let site_report = include_str!("../browser_ui_query_site.rs");
     assert!(qml.contains("signal activeOriginDataClearRequested()"));
     assert!(qml.contains("signal siteDoctorExperimentRequested(string kind)"));
     assert!(qml.contains("signal sanitizedReportCopyRequested(bool includeHost)"));
+    assert!(qml.contains("id: siteReportHost\n                text: \"Include current site host\"\n                checked: false"));
+    assert!(site_report.contains("if include_host && !private"));
+    assert!(site_report.contains("private_session_data"));
+    assert!(!site_report.contains("page_label"));
     assert!(!qml.contains("browserUi."));
     assert!(!qml.contains("browserUi:"));
     assert!(composition_root.contains("FerricSiteLedger {"));

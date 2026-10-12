@@ -222,6 +222,7 @@ fn handshake_response(request: Request, instance_id: &str) -> (bool, Response) {
                             "blocking.status".into(),
                             "bindings.query".into(),
                             "bindings.explain".into(),
+                            "interaction.status".into(),
                             "operations.query".into(),
                             "operations.cancel".into(),
                             "config.get".into(),
@@ -363,6 +364,7 @@ mod tests {
             "switcher.activate",
             "bindings.query",
             "bindings.explain",
+            "interaction.status",
             "blocking.status",
         ] {
             assert!(

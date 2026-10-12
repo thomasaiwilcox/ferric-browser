@@ -3,12 +3,60 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
 
+const SAFE_INTERACTION_ERROR_CATEGORIES: &[&str] = &[
+    "stale-target",
+    "wrong-owner",
+    "wrong-frame",
+    "blocked-by-overlay",
+    "not-interactable",
+    "ambiguous-proxy",
+    "unsupported-geometry",
+    "unsupported-capability",
+    "invalid-selector",
+    "selector-validation-unavailable",
+    "config-revision-changed",
+    "native-prompt-active",
+    "dispatch-expired",
+    "dispatch-uncertain",
+    "traversal-limit",
+    "no-visible-targets",
+];
+
+fn interaction_error_summary(records: &[Value]) -> Value {
+    let mut summary = action_error_summary(records);
+    if let Some(categories) = summary.get("categories").and_then(Value::as_array) {
+        let mut counts = BTreeMap::<String, u64>::new();
+        for entry in categories {
+            let category = entry
+                .get("category")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown");
+            let safe_category = if SAFE_INTERACTION_ERROR_CATEGORIES.contains(&category) {
+                category
+            } else {
+                "other"
+            };
+            let count = entry.get("count").and_then(Value::as_u64).unwrap_or(0);
+            *counts.entry(safe_category.to_owned()).or_default() += count;
+        }
+        summary["categories"] = Value::Array(
+            counts
+                .into_iter()
+                .map(|(category, count)| serde_json::json!({"category": category, "count": count}))
+                .collect(),
+        );
+    }
+    summary["reason"] = Value::String(
+        "bounded in-memory failures are summarized by allowlisted redacted category".into(),
+    );
+    summary
+}
+
 impl qobject::BrowserUi {
     pub(super) fn ipc_interaction_status(&self, params: &Value) -> Result<Value, String> {
         query_empty_object_or_null(params, "interaction.status")?;
         let rust = self.rust();
         let active_index = rust.active_tab_index;
-        let active_tab = self.tab_for_index(active_index).map(|tab| tab.to_string());
         let current_url = rust
             .tab
             .and_then(|tab| rust.state.as_ref()?.tabs().get(&tab))
@@ -37,15 +85,9 @@ impl qobject::BrowserUi {
         } else {
             "mixed"
         };
-        let frame_paths = focus_rows
-            .iter()
-            .map(|((_, frame_path), _)| frame_path.as_str())
-            .collect::<Vec<_>>();
         let active_prompt = rust.native_prompt_leases.top();
         let prompt_owner = active_prompt.map(|lease| {
             serde_json::json!({
-                "window_id": lease.owner.window,
-                "tab_id": lease.owner.tab,
                 "view_bound": lease.owner.view.is_some(),
                 "document_known": lease.owner.document.is_some()
             })
@@ -60,6 +102,19 @@ impl qobject::BrowserUi {
                     ferric_browser_core::MixedPolicySource::Site => "site",
                     ferric_browser_core::MixedPolicySource::Runtime => "runtime",
                 });
+        let site_rule_config = serde_json::from_value::<Config>(rust.config.clone()).ok();
+        let site_rule_for =
+            |setting: &str, source: Option<ferric_browser_core::MixedPolicySource>| {
+                if source != Some(ferric_browser_core::MixedPolicySource::Site) {
+                    return None;
+                }
+                let config = site_rule_config.as_ref()?;
+                matching_site_rules(config, &rust.current_url.to_string())
+                    .into_iter()
+                    .rev()
+                    .find(|rule| rule.set.contains_key(setting))
+                    .map(|rule| rule.id.clone())
+            };
         Ok(serde_json::json!({
             "schema_version": 1,
             "mode": super::ipc_mode_name(rust.core_mode),
@@ -67,19 +122,24 @@ impl qobject::BrowserUi {
             "configuration_revision": rust.config_revision,
             "shortcut_policy_revision": rust.policy_revision,
             "target": {
-                "window_id": rust.window.map(|window| window.to_string()),
-                "tab_id": active_tab,
                 "document_known": rust.tab.and_then(|tab| rust.page_document_identities.get(tab)).is_some()
             },
             "focus": {
                 "category": focus_category,
-                "frame_count": focus_rows.len(),
-                "frame_paths": frame_paths
+                "frame_count": focus_rows.len()
             },
             "shortcut_policy": {
                 "value": shortcut_policy,
                 "source": shortcut_policy_source,
-                "page_key_count": rust.mixed_policy.page_keys.len().min(64)
+                "page_key_count": rust.mixed_policy.page_keys.len().min(64),
+                "policy_site_rule": site_rule_for(
+                    "input.shortcut_policy",
+                    rust.mixed_policy.shortcut_policy_source
+                ),
+                "page_keys_site_rule": site_rule_for(
+                    "input.page_keys",
+                    rust.mixed_policy.page_keys_source
+                )
             },
             "scroll_policy": {
                 "status": "unknown",
@@ -91,11 +151,19 @@ impl qobject::BrowserUi {
                 "category": rust.native_prompt_leases.active_category().unwrap_or("none"),
                 "depth": rust.native_prompt_leases.depth(),
                 "limit": super::native_prompt_lease::MAX_NATIVE_PROMPT_DEPTH,
+                "last_outcome": rust.native_prompt_leases.last_result(),
                 "owner": prompt_owner,
-                "last_result": rust.native_prompt_leases.last_result()
             },
-            "privacy": "no URL, title, page label, or raw key data"
+            "recent_action_errors": interaction_error_summary(&rust.action_audit),
+            "privacy": "on-demand bounded facts; no URL, title, page label, DOM data, key stream, or input values"
         }))
+    }
+
+    pub(super) fn refresh_interaction_status(self: Pin<&mut Self>) -> QString {
+        match self.as_ref().ipc_interaction_status(&Value::Null) {
+            Ok(value) => QString::from(value.to_string()),
+            Err(_) => QString::from("{}"),
+        }
     }
 
     pub(super) fn ipc_diagnostics(&self, params: &Value) -> Result<Value, String> {
@@ -268,5 +336,45 @@ impl qobject::BrowserUi {
             }));
         }
         Ok(None)
+    }
+}
+
+#[cfg(test)]
+mod interaction_status_tests {
+    use super::interaction_error_summary;
+    use serde_json::json;
+
+    #[test]
+    fn interaction_errors_are_bounded_allowlisted_and_drop_audit_identifiers() {
+        let records = vec![
+            json!({
+                "action_id": "action-private",
+                "operation_id": "operation-private",
+                "outcome": "failed",
+                "category": "https://example.test/path?token=private"
+            }),
+            json!({
+                "action_id": "another-private-action",
+                "operation_id": "another-private-operation",
+                "outcome": "rejected",
+                "category": "stale-target"
+            }),
+        ];
+
+        let summary = interaction_error_summary(&records);
+        assert_eq!(summary["total"], 2);
+        assert_eq!(summary["categories"].as_array().map(Vec::len), Some(2));
+        assert_eq!(summary["categories"][0]["category"], "other");
+        assert_eq!(summary["categories"][1]["category"], "stale-target");
+        let encoded = summary.to_string();
+        for private in [
+            "action-private",
+            "operation-private",
+            "example.test",
+            "token=private",
+        ] {
+            assert!(!encoded.contains(private));
+        }
+        assert!(summary["categories"].to_string().len() < 512);
     }
 }

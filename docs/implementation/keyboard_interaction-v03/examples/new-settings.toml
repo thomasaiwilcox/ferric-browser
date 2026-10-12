@@ -1,5 +1,10 @@
-# Proposed v0.3 settings. They require S05/S08/S12 implementation.
-# This file is valid TOML, not a claim that baseline Ferric accepts these keys.
+# Source: Ferric Browser keyboard-interaction v0.3 S18 example catalog; version 1.
+# Disabled by default: this file is not loaded or merged into user config.
+# Adapter IDs: none. Review date: 2026-10-12. Live-site qualification: not-run.
+# example.test is reserved for fixtures.
+# Remove this entire rule to disable it; unset individual values to inherit.
+
+schema_version = 3
 
 [[site_rules]]
 id = "test-app-shortcuts"

@@ -79,6 +79,16 @@ TestCase {
         property bool journeyExportPreviewVisible: false
         property string journeyExportPreviewText: ""
         property bool privateHistoryTransferVisible: false
+        property bool siteLedgerVisible: true
+        property bool siteDataClearPending: false
+        property var siteLedgerData: ({
+            private: true,
+            origin: "",
+            facts: [],
+            blocking: ({ active_site_decisions: [] }),
+            site_doctor: ({ active: ({ kind: "" }), experiments: [] }),
+            interaction: ({})
+        })
         property string bindingHelpSearch: ""
         property var bindingHelpRows: [
             { kind: "binding", mode: "normal", command: ":open",
@@ -147,6 +157,16 @@ TestCase {
             statusColor: theme.primaryTextColor
             profileColor: theme.primaryTextColor
             accessibleDetails: ""
+        }
+    }
+
+    Component {
+        id: siteLedgerFixture
+        FerricSiteLedger {
+            width: 900
+            height: 660
+            browserWindow: theme
+            siteExperimentAvailable: false
         }
     }
 
@@ -914,6 +934,47 @@ TestCase {
     function test_context_accent_matching_surface_is_readable() {
         var textColor = ChromePresentation.readableTextColor("#313244", "#313244")
         verify(ChromePresentation.contrastRatio(textColor, "#313244") >= 4.5)
+    }
+
+    function test_siteLedgerInteractionStatusIsOnDemandAndRedacted() {
+        theme.siteLedgerData = {
+            private: true,
+            origin: "",
+            facts: [],
+            blocking: ({ active_site_decisions: [] }),
+            site_doctor: ({ active: ({ kind: "" }), experiments: [] }),
+            interaction: {
+                mode: "normal",
+                focus: { category: "editable", frame_count: 2 },
+                shortcut_policy: {
+                    value: "mixed",
+                    source: "site",
+                    page_key_count: 4,
+                    policy_site_rule: "docs-shortcuts"
+                },
+                native_prompt: {
+                    active: false,
+                    category: "none",
+                    last_outcome: "awaiting-focus"
+                },
+                scroll_policy: { status: "unknown" },
+                recent_action_errors: {
+                    categories: [{ category: "stale-target", count: 2 }]
+                },
+                private_url_forbidden: "https://private.test/doc?token=secret"
+            }
+        }
+        var ledger = createTemporaryObject(siteLedgerFixture, testWindow.contentItem)
+        verify(ledger !== null)
+        var summary = findChild(ledger, "siteLedgerInteractionSummary")
+        verify(summary !== null)
+        verify(summary.text.indexOf("focus editable") >= 0)
+        verify(summary.text.indexOf("mixed (site)") >= 0)
+        verify(summary.text.indexOf("policy rule docs-shortcuts") >= 0)
+        verify(summary.text.indexOf("prompt outcome awaiting-focus") >= 0)
+        verify(summary.text.indexOf("stale-target ×2") >= 0)
+        verify(summary.text.indexOf("private.test") < 0)
+        verify(summary.text.indexOf("token=secret") < 0)
     }
 
     function test_statusbar_visibility_matches_in_mode_policy() {

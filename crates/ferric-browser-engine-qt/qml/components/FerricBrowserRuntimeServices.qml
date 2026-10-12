@@ -1202,10 +1202,13 @@ FerricBrowserRuntimeBase {
             return
         }
         try {
-            window.siteLedgerData = JSON.parse(payload)
-            var activeCapture = window.siteLedgerData.private
+            var siteLedgerData = JSON.parse(payload)
+            var interactionPayload = browserUi.refresh_interaction_status()
+            siteLedgerData.interaction = interactionPayload && interactionPayload.length > 0
+                    ? JSON.parse(interactionPayload) : ({})
+            var activeCapture = siteLedgerData.private
                     ? null : window.captureSessionForView(window.activeWebView())
-            var facts = window.siteLedgerData.facts || []
+            var facts = siteLedgerData.facts || []
             for (var factIndex = 0; factIndex < facts.length; factIndex++) {
                 if (facts[factIndex] && facts[factIndex].id === "capture") {
                     facts[factIndex].value = activeCapture
@@ -1220,7 +1223,8 @@ FerricBrowserRuntimeBase {
                     break
                 }
             }
-            window.siteLedgerData.facts = facts
+            siteLedgerData.facts = facts
+            window.siteLedgerData = siteLedgerData
             if (!window.siteLedgerVisible) {
                 window.openInternalSurface()
             }

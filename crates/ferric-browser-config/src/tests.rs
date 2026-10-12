@@ -14,6 +14,33 @@ fn defaults_are_the_starter_configuration() {
 }
 
 #[test]
+fn s18_opt_in_interaction_example_uses_only_supported_site_rule_settings() {
+    let source = include_str!(
+        "../../../docs/implementation/keyboard_interaction-v03/examples/new-settings.toml"
+    );
+    let config = toml::from_str::<Config>(source).expect("S18 interaction example parses");
+    validate(&config).expect("S18 interaction example uses supported settings");
+    assert_eq!(config.site_rules.len(), 1);
+    assert_eq!(config.site_rules[0].id, "test-app-shortcuts");
+    assert_eq!(
+        config.site_rules[0]
+            .set
+            .get("input.shortcut_policy")
+            .and_then(toml::Value::as_str),
+        Some("mixed")
+    );
+    assert_eq!(
+        config.site_rules[0].set["input.page_keys"],
+        toml::Value::Array(vec![
+            toml::Value::String("/".into()),
+            toml::Value::String("?".into()),
+            toml::Value::String("f".into()),
+            toml::Value::String("Ctrl+f".into()),
+        ])
+    );
+}
+
+#[test]
 fn hint_configuration_is_defaulted_and_bounded() {
     let parsed = toml::from_str::<Config>("schema_version = 3\n").expect("defaulted hints");
     assert_eq!(parsed.hints, HintsConfig::default());

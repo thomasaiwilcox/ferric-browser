@@ -83,6 +83,13 @@ and final actions in ApplicationWorld. The native suite also checks original
 Qt text entry after production shadow-root Hint focus. Baseline red logs and
 qualification gaps are retained in the implementation pack's evidence ledger.
 
+The Site Ledger also shows an on-demand interaction snapshot: mode, focus
+category, shortcut-policy source, native-prompt category, scroll-policy status,
+and allowlisted counts of recent action-error categories. It never records a
+keystroke stream or includes URLs, frame paths, input values, labels, or audit
+identifiers. S18's example site-rule bundle is documentation data only; it is
+not loaded by default and has no live-site qualification claim.
+
 S14 extends the WebEngine interaction fixture with scoped Hint lease transfer:
 the source candidate map remains available until its destination WeakRefs are
 validated, then scoped collection excludes the root and every target outside

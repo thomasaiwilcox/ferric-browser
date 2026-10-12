@@ -45,6 +45,52 @@ FerricModalSurface {
             }
         }
 
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: interactionSummary.implicitHeight + 16
+            color: browserWindow.surfaceColor
+            radius: 3
+            Accessible.name: "On-demand interaction status"
+
+            Label {
+                id: interactionSummary
+                objectName: "siteLedgerInteractionSummary"
+                anchors.fill: parent
+                anchors.margins: 8
+                text: {
+                    var status = browserWindow.siteLedgerData.interaction || ({})
+                    var focus = status.focus || ({})
+                    var policy = status.shortcut_policy || ({})
+                    var prompt = status.native_prompt || ({})
+                    var errors = status.recent_action_errors || ({})
+                    var categories = errors.categories || []
+                    var rejectionText = categories.length === 0
+                            ? "no recent action errors"
+                            : categories.map(function(entry) {
+                                return entry.category + " ×" + entry.count
+                            }).join(", ")
+                    return "Interaction status · " + (status.mode || "mode unknown")
+                            + " · focus " + (focus.category || "unknown")
+                            + " · shortcut policy " + (policy.value || "unknown")
+                            + " (" + (policy.source || "source unknown") + ")"
+                            + (policy.policy_site_rule
+                               ? " · policy rule " + policy.policy_site_rule : "")
+                            + (policy.page_keys_site_rule
+                               ? " · page-key rule " + policy.page_keys_site_rule : "")
+                            + " · page keys " + (policy.page_key_count || 0)
+                            + " · native prompt " + (prompt.active ? prompt.category : "inactive")
+                            + " · prompt outcome " + (prompt.last_outcome || "unknown")
+                            + " · scroll policy " + ((status.scroll_policy && status.scroll_policy.status) || "unknown")
+                            + " · recent action errors " + rejectionText
+                }
+                color: browserWindow.secondaryTextColor
+                wrapMode: Text.WordWrap
+                textFormat: Text.PlainText
+                Accessible.name: "On-demand interaction status"
+                Accessible.description: interactionSummary.text
+            }
+        }
+
         RowLayout {
             Layout.fillWidth: true
             visible: !!(!browserWindow.siteLedgerData.private && browserWindow.siteLedgerData.origin)

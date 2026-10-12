@@ -1434,6 +1434,9 @@ mod qobject {
         fn refresh_site_status(self: Pin<&mut BrowserUi>) -> QString;
 
         #[qinvokable]
+        fn refresh_interaction_status(self: Pin<&mut BrowserUi>) -> QString;
+
+        #[qinvokable]
         fn site_report(self: Pin<&mut BrowserUi>, include_host: bool) -> QString;
 
         #[qinvokable]
