@@ -64,8 +64,8 @@
     },
     {
       "id": "S10",
-      "status": "not_started",
-      "evidence": null,
+      "status": "implemented_unqualified",
+      "evidence": "evidence/S10.json",
       "capability_decision": null
     },
     {
