@@ -1,0 +1,208 @@
+{
+  "schema_version": 1,
+  "slice_id": "S03",
+  "status": "implemented_unqualified",
+  "commit": "2dbd3daba4bc3d0375354368ff99405a0901f91b",
+  "environment": {
+    "os": "Linux x86_64",
+    "qt": "6.11.2",
+    "chromium": "140.0.7339.225",
+    "renderer": "offscreen software",
+    "window": "640x480 CSS source viewport at zoom 1 for functional fixtures",
+    "build": "Qt release + Rust dev/test; synthetic local fixtures only"
+  },
+  "changed_files": [
+    "crates/ferric-browser-core/src/dispatcher.rs",
+    "crates/ferric-browser-core/src/hints.rs",
+    "crates/ferric-browser-core/src/lib.rs",
+    "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimePresentation.qml",
+    "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeRequests.qml",
+    "crates/ferric-browser-engine-qt/src/action_mapping.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_configuration.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_context_commands.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_hint_selection.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_navigation.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_profile_setup.rs",
+    "crates/ferric-browser-engine-qt/src/hint_policy.rs",
+    "crates/ferric-browser-engine-qt/src/ipc_route.rs",
+    "crates/ferric-browser-engine-qt/src/lib.rs",
+    "crates/ferric-browser-engine-qt/src/tests/command_protocol.rs",
+    "crates/ferric-browser-engine-qt/src/tests/components_and_workers.rs",
+    "crates/ferric-browser-engine-qt/src/tests/presentation_boundaries.rs",
+    "docs/architecture/ADR-0013-spatial-grid-navigation.md"
+  ],
+  "baseline_comparison": null,
+  "test_results": [
+    {
+      "test_id": "T009",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask check",
+      "commit": "2dbd3daba4bc3d0375354368ff99405a0901f91b",
+      "log": "evidence/logs/S03/xtask-check.log",
+      "observations": [
+        "The existing bounded candidate parser and payload allowlist tests pass with the new closed intent mapping."
+      ]
+    },
+    {
+      "test_id": "T009",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask check",
+      "commit": "2dbd3daba4bc3d0375354368ff99405a0901f91b",
+      "log": "evidence/logs/S03/xtask-check.log",
+      "observations": [
+        "The 107-test WebEngine suite passes, including control-value privacy and literal-label coverage."
+      ]
+    },
+    {
+      "test_id": "T010",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask check",
+      "commit": "2dbd3daba4bc3d0375354368ff99405a0901f91b",
+      "log": "evidence/logs/S03/xtask-check.log",
+      "observations": [
+        "Permit tests cover UI-only minting, owner/configuration binding, one-shot consumption, invalid-request burning and replay rejection; dispatcher and IPC tests reject local-source laundering, and the generic action executor has no palette or pointer mapping."
+      ]
+    },
+    {
+      "test_id": "T010",
+      "level": "native-qt-offscreen",
+      "result": "not_run",
+      "command": "Not attempted; S03 does not expose a native pointer action",
+      "commit": "2dbd3daba4bc3d0375354368ff99405a0901f91b",
+      "log": null,
+      "reason": "The local native pointer handoff becomes exercisable when S04 adds the explicit user-facing action.",
+      "observations": []
+    },
+    {
+      "test_id": "T020",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask check",
+      "commit": "2dbd3daba4bc3d0375354368ff99405a0901f91b",
+      "log": "evidence/logs/S03/xtask-check.log",
+      "observations": [
+        "Hint session configuration revisions and the window/session/tab/document owner are checked before a palette permit is consumed; invalid and replayed requests are rejected."
+      ]
+    },
+    {
+      "test_id": "T020",
+      "level": "webengine-fixture",
+      "result": "not_run",
+      "command": "cargo xtask check",
+      "commit": "2dbd3daba4bc3d0375354368ff99405a0901f91b",
+      "log": "evidence/logs/S03/xtask-check.log",
+      "reason": "S03 does not implement or exercise the complete callback-owner and destination-scope-lease transfer contract.",
+      "observations": [
+        "The direct test_T020_map_teardown fixture passes, but it does not prove the full destination lease handoff."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask check",
+      "commit": "2dbd3daba4bc3d0375354368ff99405a0901f91b",
+      "log": "evidence/logs/S03/xtask-check.log",
+      "observations": [
+        "Pointer grammar stays closed; IPC source spoofing and generic-executor entry are rejected. Command-registry and IPC tests pass, and release manifest validation checks 38 inputs."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask check",
+      "commit": "2dbd3daba4bc3d0375354368ff99405a0901f91b",
+      "log": "evidence/logs/S03/xtask-check.log",
+      "observations": [
+        "All workspace Rust tests and doc tests pass, including 399 ferric-browser-engine-qt tests."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask check",
+      "commit": "2dbd3daba4bc3d0375354368ff99405a0901f91b",
+      "log": "evidence/logs/S03/xtask-check.log",
+      "observations": [
+        "The Qt Quick/WebEngine suite passes 107/107; release manifest and locked-dependency license policy checks pass."
+      ]
+    }
+  ],
+  "capability_decision": null,
+  "capability_report": null,
+  "review_kind": "self-review",
+  "scope_amendments": [
+    {
+      "path": "crates/ferric-browser-engine-qt/src/browser_ui_configuration.rs",
+      "reason": "Runtime configuration changes must advance the Hint revision and revoke stale session authority."
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/src/browser_ui_profile_setup.rs",
+      "reason": "Startup/profile configuration updates must feed the same Hint revision invalidation hook."
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/src/browser_ui_context_commands.rs",
+      "reason": "Context configuration setters must feed the same Hint revision invalidation hook."
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/src/action_mapping.rs",
+      "reason": "Add a negative test at the generic action-executor boundary to ensure it cannot enter local palette or pointer paths."
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeRequests.qml",
+      "reason": "Dismissal revokes an outstanding local palette permit while item activation preserves it until Rust consumes it."
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/src/browser_ui_navigation.rs",
+      "reason": "Extract the long selection path and wire configuration invalidation while keeping the module below the repository line budget."
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/src/browser_ui_hint_selection.rs",
+      "reason": "Own the extracted hint selection, transport mapping and one-shot local palette handoff beside the selection path; keep the cohesive module below the repository line budget."
+    }
+  ],
+  "remaining_risks": [
+    "The native pointer handoff is intentionally not exposed or qualified until S04.",
+    "The complete T020 callback-owner and destination-scope-lease transfer remains for a dependent slice.",
+    "No live-site, Wayland editable-input, physical desktop or IME qualification was performed."
+  ],
+  "not_run_reasons": [
+    "T010 native-qt-offscreen handoff awaits the explicit action in S04.",
+    "T020 full callback-owner and destination-scope-lease handoff remains outside the exercised S03 contract."
+  ],
+  "next_ready_slices": [
+    "S04",
+    "S07"
+  ],
+  "additional_checks": [
+    {
+      "name": "workspace Clippy with warnings denied",
+      "command": "cargo clippy --workspace --all-targets --locked -- -D warnings",
+      "result": "passed",
+      "log": "evidence/logs/S03/clippy.log"
+    },
+    {
+      "name": "Rust formatting",
+      "command": "cargo fmt --all -- --check",
+      "result": "passed",
+      "log": "evidence/logs/S03/fmt.log"
+    },
+    {
+      "name": "patch whitespace validation",
+      "command": "git diff --check",
+      "result": "passed",
+      "log": "evidence/logs/S03/diff-check.log"
+    },
+    {
+      "name": "implementation pack integrity and evidence validation",
+      "command": "python3 docs/implementation/keyboard_interaction-v03/tools/validate_pack.py --root docs/implementation/keyboard_interaction-v03 --integrity --evidence",
+      "result": "passed",
+      "log": "evidence/logs/S03/pack-validation.log"
+    }
+  ]
+}

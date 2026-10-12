@@ -22,8 +22,8 @@
     },
     {
       "id": "S03",
-      "status": "not_started",
-      "evidence": null,
+      "status": "implemented_unqualified",
+      "evidence": "evidence/S03.json",
       "capability_decision": null
     },
     {
