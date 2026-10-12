@@ -1249,6 +1249,33 @@ fn every_registered_command_example_has_a_typed_cli_envelope() {
     let registry = CommandRegistry::default_v1();
     let mut checked = 0;
     for definition in registry.definitions() {
+        if definition.name == "target-search" {
+            for example in &definition.examples {
+                let commands = parse_chain(example, ParseInput::Cli).unwrap_or_else(|error| {
+                    panic!("target-search example does not parse: {error}")
+                });
+                let commands = registry.expand_chain(commands).unwrap_or_else(|error| {
+                    panic!("target-search example does not expand: {error}")
+                });
+                assert_eq!(commands.len(), 1);
+                assert_eq!(commands[0].name, "target-search");
+                assert!(
+                    registry
+                        .validate(&commands[0], ferric_browser_core::Mode::Normal)
+                        .is_ok()
+                );
+                if commands[0].arguments.is_empty() {
+                    command_params(&commands[0])
+                        .expect("bare local-only Target Search has a transport envelope");
+                } else {
+                    assert!(
+                        command_params(&commands[0]).is_err(),
+                        "scoped Target Search unexpectedly has a CLI envelope: {example}"
+                    );
+                }
+            }
+            continue;
+        }
         for example in &definition.examples {
             let commands = parse_chain(example, ParseInput::Cli).unwrap_or_else(|error| {
                 panic!("{} example does not parse: {error}", definition.name)

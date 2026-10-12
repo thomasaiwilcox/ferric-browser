@@ -1452,7 +1452,7 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(qml.contains("return BrowserScripts.focusProbe()"));
     assert!(qml.contains("return BrowserScripts.focusObserverSource()"));
     assert!(qml.contains("return BrowserScripts.shutdownPageProbe()"));
-    assert!(qml.contains("return BrowserScripts.hintCollector(\n                    family, browserUi.hint_proxy_targets_enabled, selectorSnapshot,\n                    scopeLeaseId)"));
+    assert!(qml.contains("return BrowserScripts.hintCollector(\n                    family, browserUi.hint_proxy_targets_enabled, selectorSnapshot,\n                    scopeLeaseId, includeFacets)"));
     assert!(qml.contains("return BrowserScripts.hintDirtyRevision()"));
     assert!(qml.contains("return BrowserScripts.hintStopTracking(scopeLeaseId)"));
     assert!(qml.contains("candidate, hintSelectorPolicySnapshot(browserUi.hint_family)"));
@@ -1461,7 +1461,7 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(qml.contains("BrowserScripts.pageUserscriptRun(scriptSource)"));
     assert!(qml.contains("BrowserScripts.pageUserscriptInstall(script.source)"));
     assert!(!qml.contains("function hintSelector(linksOnly)"));
-    assert!(BROWSER_SCRIPT_FACADE.contains("var VERSION = \"17\""));
+    assert!(BROWSER_SCRIPT_FACADE.contains("var VERSION = \"18\""));
     assert!(BROWSER_SCRIPT_FACADE.contains(".import \"PageInteractionScripts.js\" as PageInteractionScripts"));
     assert!(BROWSER_SCRIPT_FACADE.contains("asset.VERSION !== PAGE_INTERACTION_VERSION"));
     assert!(BROWSER_SCRIPT_FACADE.contains("script-version-mismatch"));
@@ -1479,6 +1479,14 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     )
     .unwrap();
     assert!(qrc.contains("alias=\"qml/scripts/PageInteractionScripts.js\""));
+    let target_search_resource = manifest["resources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["path"] == "qml/scripts/TargetSearchPresentation.js")
+        .expect("target search presentation helper manifest entry");
+    assert_eq!(target_search_resource["sha256"].as_str().unwrap().len(), 64);
+    assert!(qrc.contains("alias=\"qml/scripts/TargetSearchPresentation.js\""));
     assert!(qml.contains("function scrollTargetPolicyScript(policy)"));
     assert!(qml.contains("return BrowserScripts.scrollTargetPolicy(policy)"));
     assert!(qml.contains("function scrollTargetStatusScript()"));
@@ -1536,7 +1544,7 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(script.contains("service_workers:'unavailable'"));
     assert!(script.contains("window.__ferric_browserFocusState"));
     assert!(script.contains("elements.length > 128"));
-    assert!(script.contains("function hintCollector(family, proxyTargets, selectorSnapshot, scopeLeaseId)"));
+    assert!(script.contains("function hintCollector(family, proxyTargets, selectorSnapshot, scopeLeaseId, includeFacets)"));
     assert!(script.contains("function proxyPairValid(record,candidate,state)"));
     assert!(script.contains(".ace_editor[role="));
     assert!(script.contains("label.control!==control"));
@@ -1560,10 +1568,43 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(script.contains("kind==='link'&&href===null"));
     assert!(script.contains("function linkedSurface(el,r)"));
     assert!(script.contains(
-        "family==='all'&&(kind==='image'||kind==='media')&&linkedSurface(el,r)"
+        "candidateFamily==='all'&&(kind==='image'||kind==='media')&&linkedSurface(el,r)"
     ));
     assert!(script.contains("function hasPreferredLink(el,r)"));
     assert!(script.contains("String(candidate.href||candidate.getAttribute('href')||'')!==href"));
+}
+
+#[test]
+fn target_search_is_local_native_ranked_and_identity_bound() {
+    let target_search = include_str!("../browser_ui_target_search.rs");
+    let helper = include_str!("../../qml/scripts/TargetSearchPresentation.js");
+    let popup = QML_SOURCE
+        .split("objectName: \"targetSearchPopup\"")
+        .nth(1)
+        .and_then(|source| source.split("Connections {").next())
+        .expect("native target search popup");
+
+    assert!(ADAPTER_SOURCE.contains("command.name == \"target-search\""));
+    assert!(ADAPTER_SOURCE.contains("reject_external_hint_interaction_chain(&expanded)?"));
+    let local_only_source = include_str!("../browser_ui_hint_pointer.rs");
+    assert!(local_only_source.contains(
+        "target-search is available only from local keyboard or UI input"
+    ));
+    assert!(target_search.contains("at most one scope and no query text"));
+    assert!(target_search.contains("rust.macro_depth == 0"));
+    assert!(target_search.contains("current_target(rust.state.as_ref(), rust.tab).is_some()"));
+    assert!(popup.contains("visible: browserUi.target_search_active"));
+    assert!(popup.contains("maximumLength: 256"));
+    assert!(popup.contains("window.confirmTargetSearchSelection()"));
+    assert!(popup.contains("browserUi.cancel_target_search()"));
+    assert!(!popup.contains("modelData.href"));
+    assert!(!popup.contains(".value"));
+    assert!(helper.contains("function rows(hints, labels)"));
+    assert!(helper.contains("currentRows[index].identity === next.identity"));
+    assert!(helper.contains("currentRows[index].meaning === next.meaning"));
+    assert!(QML_SOURCE.contains("TargetSearchPresentation.rows("));
+    assert!(QML_SOURCE.contains("TargetSearchPresentation.reconcile("));
+    assert!(QML_SOURCE.contains("target-search-within"));
 }
 
 #[test]

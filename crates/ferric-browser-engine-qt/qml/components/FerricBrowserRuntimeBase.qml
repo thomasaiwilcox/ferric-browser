@@ -1736,6 +1736,9 @@ ApplicationWindow {
     property var hintViewport: ({ width: 0, height: 0 })
     property string hintInput: ""
     property var hintState: ({ mode: "label", prefix: "", query: "", matching_labels: [], active_label: "", remaining: 0, total: 0 })
+    property string targetSearchSelectedIdentity: ""
+    property string targetSearchSelectedMeaning: ""
+    property bool targetSearchSelectionInitialized: false
     property int hintDirtyRevision: 0
     property bool hintRefreshPending: false
     property int hintCollectionEpoch: 0

@@ -1,7 +1,5 @@
 use super::browser_ui_scope_handoff::{hint_capabilities_json, known_hint_capability_id};
-use super::hint_policy::{
-    HintScopeBinding, HintScopePurpose, LocalInteractionOperation, LocalInteractionOwner,
-};
+use super::hint_policy::{HintScopePurpose, LocalInteractionOperation, LocalInteractionOwner};
 use super::{
     CommandSource, CxxQtType, DispatchTarget, Effect, EngineEffect, Event, HintTarget,
     HintTransport, IpcOpenTarget, IpcRoute, JourneyEdgeKind, Mode, ParsedCommand, Pin, QString,
@@ -379,6 +377,22 @@ impl qobject::BrowserUi {
                 return QString::from(r#"{"error":"unsupported-capability"}"#);
             };
             match capability {
+                ferric_browser_core::HintCapability::SearchWithin
+                    if matches!(
+                        selected.kind,
+                        ferric_browser_core::HintKind::Region
+                            | ferric_browser_core::HintKind::ScrollableRegion
+                    ) =>
+                {
+                    match self.as_mut().begin_hint_scope_handoff(
+                        &selected,
+                        &fresh,
+                        HintScopePurpose::SearchWithin,
+                    ) {
+                        Ok(result) => result,
+                        Err(error) => return error,
+                    }
+                }
                 ferric_browser_core::HintCapability::HintWithin
                     if matches!(
                         selected.kind,
@@ -386,65 +400,14 @@ impl qobject::BrowserUi {
                             | ferric_browser_core::HintKind::ScrollableRegion
                     ) =>
                 {
-                    let binding = {
-                        let mut rust = self.as_mut().rust_mut();
-                        let this = rust.as_mut().get_mut();
-                        let Some(owner) = local_hint_owner(this) else {
-                            self.set_status_text(QString::from(
-                                "Scoped Hint rejected: local session is unavailable",
-                            ));
-                            return QString::from(r#"{"error":"local-session-unavailable"}"#);
-                        };
-                        let Some(session) = this.hint_session.as_ref() else {
-                            return QString::from(r#"{"error":"no-session"}"#);
-                        };
-                        let selector_policy_revision = session.selector_policy_revision;
-                        if this.active_hint_scope.as_ref().is_some_and(|parent| {
-                            parent.owner.target != owner.target
-                                || parent.owner.configuration_revision
-                                    != owner.configuration_revision
-                        }) {
-                            self.set_status_text(QString::from(
-                                "Scoped Hint rejected: parent scope is stale",
-                            ));
-                            return QString::from(r#"{"error":"stale-scope"}"#);
-                        }
-                        let Some(next_id) = this.next_hint_scope_lease_id.checked_add(1) else {
-                            self.set_status_text(QString::from(
-                                "Scoped Hint rejected: lease capacity exhausted",
-                            ));
-                            return QString::from(r#"{"error":"scope-lease-capacity"}"#);
-                        };
-                        this.next_hint_scope_lease_id = next_id;
-                        let binding = HintScopeBinding {
-                            purpose: HintScopePurpose::HintWithin,
-                            lease_id: format!("hint-scope-{next_id}"),
-                            owner,
-                            element_id: selected.element_id,
-                            frame_path: fresh.frame_path.clone(),
-                            kind: selected.kind,
-                            selector_policy_revision,
-                            parent_scope_lease_id: this
-                                .active_hint_scope
-                                .as_ref()
-                                .map(|scope| scope.lease_id.clone()),
-                        };
-                        this.pending_hint_scope_handoff = Some(binding.clone());
-                        binding
-                    };
-                    serde_json::json!({
-                        "action":"hint-within",
-                        "kind":hint_kind_name(selected.kind),
-                        "scope_lease":{
-                            "lease_id":binding.lease_id,
-                            "element_id":binding.element_id,
-                            "frame_path":binding.frame_path,
-                            "kind":hint_kind_name(binding.kind),
-                            "selector_revision":format!("{:016x}", binding.selector_policy_revision),
-                            "configuration_revision":binding.owner.configuration_revision,
-                            "parent_scope_lease_id":binding.parent_scope_lease_id,
-                        }
-                    })
+                    match self.as_mut().begin_hint_scope_handoff(
+                        &selected,
+                        &fresh,
+                        HintScopePurpose::HintWithin,
+                    ) {
+                        Ok(result) => result,
+                        Err(error) => return error,
+                    }
                 }
                 ferric_browser_core::HintCapability::GridWithin
                     if matches!(
@@ -906,7 +869,7 @@ impl qobject::BrowserUi {
         // asynchronous page script has consumed that record.
         let awaits_page_activation = matches!(
             result.get("action").and_then(Value::as_str),
-            Some("focus" | "scroll-target" | "click" | "hint-within")
+            Some("focus" | "scroll-target" | "click" | "hint-within" | "target-search-within")
         );
         let palette_open = result.get("action").and_then(Value::as_str) == Some("choose");
         if keeps_hint_mode {
@@ -1001,7 +964,7 @@ mod tests {
         assert_eq!(regions[0]["id"], "hint-within");
         assert_eq!(regions[0]["enabled"], true);
         assert_eq!(regions[1]["id"], "search-within");
-        assert_eq!(regions[1]["enabled"], false);
+        assert_eq!(regions[1]["enabled"], true);
         assert_eq!(regions[2]["id"], "grid-within");
         assert_eq!(regions[2]["enabled"], true);
         assert_eq!(regions[3]["id"], "set-scroll-target");

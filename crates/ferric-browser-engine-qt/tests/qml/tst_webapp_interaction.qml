@@ -2,6 +2,7 @@ import QtQuick
 import QtTest
 import QtWebEngine
 import "../../qml/scripts/BrowserScripts.js" as BrowserScripts
+import "../../qml/scripts/TargetSearchPresentation.js" as TargetSearchPresentation
 
 TestCase {
     id: tests
@@ -484,6 +485,66 @@ TestCase {
         var ordinary = evaluate(BrowserScripts.hintCollector("all")).candidates
         verify(!ordinary.some(function(item) { return ["region", "scrollable-region", "surface", "focusable-surface"].includes(item.kind) }),
                "The default all family does not gain Region or Surface kinds")
+        cleanup()
+    }
+
+    // T037/T040/T042: Search facets remain on-demand, viewport-bound, private,
+    // and do not move page focus, selection, or scroll position.
+    function test_target_search_all_facets_privacy_and_page_independence() {
+        load("regions-surfaces.html")
+        evaluate("{const main=document.getElementById('main');"
+                 + "const link=document.createElement('a');link.id='search-link';"
+                 + "link.href='https://private.test/docs?token=search-secret';"
+                 + "link.setAttribute('aria-label','Private documentation link');"
+                 + "link.textContent='Documentation';"
+                 + "link.style='position:fixed;left:12px;top:12px;width:140px;height:24px';"
+                 + "const field=document.createElement('input');field.id='search-field';"
+                 + "field.setAttribute('aria-label','Account name');field.value='field-secret-value';"
+                 + "field.style='position:fixed;left:12px;top:44px;width:140px;height:24px';"
+                 + "const hidden=document.createElement('section');hidden.id='offscreen-search-region';"
+                 + "hidden.setAttribute('aria-label','Offscreen search region');"
+                 + "hidden.style='position:fixed;left:-1000px;top:20px;width:80px;height:40px';"
+                 + "main.append(link,field,hidden);field.focus();window.scrollTo(0,80);true}")
+        tryVerify(function() { return evaluate("window.scrollY >= 0 && document.activeElement.id === 'search-field'") }, 5000)
+        var before = evaluate("({active:document.activeElement.id,scrollX:window.scrollX,scrollY:window.scrollY,selection:String(window.getSelection())})")
+
+        var ordinary = evaluate(BrowserScripts.hintCollector("all")).candidates
+        verify(!ordinary.some(function(item) {
+            return ["region", "scrollable-region", "surface", "focusable-surface"].includes(item.kind)
+        }), "legacy all Hint remains free of opt-in facets")
+
+        var collected = evaluate(BrowserScripts.hintCollector("all", false, undefined, "", true))
+        verify(collected.candidates.some(function(item) { return item.kind === "region" }),
+               "Target Search all includes visible regions")
+        verify(collected.candidates.some(function(item) {
+            return item.kind === "surface" || item.kind === "focusable-surface"
+        }), "Target Search all includes visible surfaces")
+        verify(!collected.candidates.some(function(item) {
+            return item.text === "Offscreen search region"
+        }), "offscreen page content is not claimed as searchable")
+        compare(new Set(collected.candidates.map(function(item) { return item.element_id })).size,
+                collected.candidates.length,
+                "each DOM identity has at most one result across facets")
+
+        var rankedInput = collected.candidates.map(function(item, index) {
+            return Object.assign({ label: String(index) }, item)
+        })
+        var labels = rankedInput.map(function(item) { return item.label })
+        var rows = TargetSearchPresentation.rows(rankedInput, labels)
+        var rowJson = JSON.stringify(rows)
+        verify(rowJson.indexOf("field-secret-value") < 0,
+               "form values never enter native target rows")
+        verify(rowJson.indexOf("search-secret") < 0,
+               "tokenised link URLs never enter native target rows")
+        verify(collected.candidates.some(function(item) {
+            return item.kind === "link" && item.text === "Private documentation link"
+        }), "result descriptions use accessible text rather than the URL")
+
+        var after = evaluate("({active:document.activeElement.id,scrollX:window.scrollX,scrollY:window.scrollY,selection:String(window.getSelection())})")
+        compare(after.active, before.active)
+        compare(after.scrollX, before.scrollX)
+        compare(after.scrollY, before.scrollY)
+        compare(after.selection, before.selection)
         cleanup()
     }
     function test_T034_region_and_surface_caps() {

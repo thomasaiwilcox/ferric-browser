@@ -132,6 +132,9 @@ impl qobject::BrowserUi {
         first: bool,
         index: usize,
     ) {
+        self.as_mut().set_target_search_active(false);
+        self.as_mut().set_target_search_scope(QString::from("all"));
+        self.as_mut().set_target_search_query(QString::default());
         self.as_mut().set_hint_pointer_pending(false);
         self.as_mut()
             .set_hint_pointer_state(QString::from("terminal"));
@@ -218,6 +221,9 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn clear_hint_session_state(mut self: Pin<&mut Self>) {
+        self.as_mut().set_target_search_active(false);
+        self.as_mut().set_target_search_scope(QString::from("all"));
+        self.as_mut().set_target_search_query(QString::default());
         {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
@@ -255,6 +261,13 @@ impl qobject::BrowserUi {
             self.as_mut().set_hint_mode();
         }
         let family = self.as_ref().rust().hint_family.to_string();
+        let target_search_scope = self.as_ref().rust().target_search_scope.to_string();
+        let target_search_active = self.as_ref().rust().target_search_active;
+        let preserved_query = if target_search_active {
+            self.as_ref().rust().target_search_query.to_string()
+        } else {
+            String::new()
+        };
         let configuration_revision = self.as_ref().rust().hint_configuration_revision;
         let requested_scope_lease_id = serde_json::from_str::<Value>(&candidates_json.to_string())
             .ok()
@@ -336,11 +349,64 @@ impl qobject::BrowserUi {
                 return QString::from(serde_json::json!({"error": error}).to_string());
             }
         };
-        if let Err(error) = validate_hint_candidates_for_family(&family, &candidates) {
+        let candidate_validation = if target_search_active && family == "all" {
+            let ordinary = candidates
+                .iter()
+                .filter(|candidate| {
+                    !ferric_browser_core::hint_kind_is_region_or_surface(candidate.kind)
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            let regions = candidates
+                .iter()
+                .filter(|candidate| {
+                    matches!(
+                        candidate.kind,
+                        ferric_browser_core::HintKind::Region
+                            | ferric_browser_core::HintKind::ScrollableRegion
+                    )
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            let surfaces = candidates
+                .iter()
+                .filter(|candidate| {
+                    matches!(
+                        candidate.kind,
+                        ferric_browser_core::HintKind::Surface
+                            | ferric_browser_core::HintKind::FocusableSurface
+                    )
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            validate_hint_candidates_for_family("all", &ordinary)
+                .and_then(|()| validate_hint_candidates_for_family("regions", &regions))
+                .and_then(|()| validate_hint_candidates_for_family("surfaces", &surfaces))
+        } else {
+            validate_hint_candidates_for_family(&family, &candidates)
+        };
+        if let Err(error) = candidate_validation {
             self.set_status_text(QString::from(format!("Hints rejected: {error}")));
             return QString::from(
                 serde_json::json!({"error":"invalid-facet-candidates"}).to_string(),
             );
+        }
+        if target_search_active {
+            if super::browser_ui_target_search::target_search_collection_family(
+                &target_search_scope,
+            ) != Some(family.as_str())
+            {
+                self.set_status_text(QString::from(
+                    "Target Search rejected: collector scope changed",
+                ));
+                return QString::from(r#"{"error":"stale-search-scope"}"#);
+            }
+            candidates.retain(|candidate| {
+                super::browser_ui_target_search::target_search_candidate_matches(
+                    &target_search_scope,
+                    candidate.kind,
+                )
+            });
         }
         if !self.as_ref().rust().hint_proxy_targets_enabled
             && candidates.iter().any(|candidate| {
@@ -415,7 +481,7 @@ impl qobject::BrowserUi {
                     .to_string(),
             );
         }
-        let auto_follow = if self.as_ref().rust().hint_pointer_mode {
+        let auto_follow = if self.as_ref().rust().hint_pointer_mode || target_search_active {
             CoreHintAutoFollow::Never
         } else {
             match config.hints.auto_follow {
@@ -427,8 +493,13 @@ impl qobject::BrowserUi {
                 ferric_browser_config::HintAutoFollow::Never => CoreHintAutoFollow::Never,
             }
         };
-        let interaction = HintInteraction::new(labeled.clone(), alphabet, auto_follow);
-        let first_label = if hint_first {
+        let mut interaction = HintInteraction::new(labeled.clone(), alphabet, auto_follow);
+        if target_search_active {
+            interaction.handle(HintInteractionInput::SetText(preserved_query));
+        }
+        let first_label = if target_search_active {
+            None
+        } else if hint_first {
             labeled.get(hint_index - 1).map(|hint| hint.label.clone())
         } else {
             interaction.initial_activation().map(ToOwned::to_owned)
@@ -518,10 +589,17 @@ impl qobject::BrowserUi {
                 .clear_session_requests();
         }
         self.as_mut().set_hint_visible(!hint_first);
-        self.set_status_text(QString::from(format!(
-            "{} hint(s) · type a label or click",
-            labeled.len()
-        )));
+        if target_search_active {
+            self.set_status_text(QString::from(format!(
+                "{} visible target(s) · Enter confirms",
+                labeled.len()
+            )));
+        } else {
+            self.set_status_text(QString::from(format!(
+                "{} hint(s) · type a label or click",
+                labeled.len()
+            )));
+        }
         QString::from(result.to_string())
     }
 
@@ -535,6 +613,9 @@ impl qobject::BrowserUi {
         let input = match action.as_str() {
             "character" => text.chars().next().map(HintInteractionInput::Character),
             "text-mode" => Some(HintInteractionInput::EnterTextMode),
+            "set-query" if self.as_ref().rust().target_search_active => {
+                Some(HintInteractionInput::SetText(text.clone()))
+            }
             "backspace" => Some(HintInteractionInput::Backspace),
             "clear" => Some(HintInteractionInput::Clear),
             "next" => Some(HintInteractionInput::Next),
@@ -557,6 +638,13 @@ impl qobject::BrowserUi {
             let outcome = interaction.handle(input);
             (outcome, hint_interaction_json(interaction))
         };
+        if self.as_ref().rust().target_search_active {
+            let query = state
+                .get("query")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            self.as_mut().set_target_search_query(QString::from(query));
+        }
         let update_status = matches!(
             &outcome,
             HintInteractionOutcome::Updated | HintInteractionOutcome::RotateCollision
@@ -590,6 +678,13 @@ impl qobject::BrowserUi {
         }
         if update_status {
             let state = &response["state"];
+            if self.as_ref().rust().target_search_active {
+                let remaining = state.get("remaining").and_then(Value::as_u64).unwrap_or(0);
+                self.as_mut().set_status_text(QString::from(format!(
+                    "{remaining} visible target(s) · Enter confirms"
+                )));
+                return QString::from(response.to_string());
+            }
             let typed = if state.get("mode").and_then(Value::as_str) == Some("text") {
                 format!(
                     "/{}",
@@ -733,6 +828,7 @@ mod tests {
         };
         let binding = super::super::hint_policy::HintScopeBinding {
             purpose: super::super::hint_policy::HintScopePurpose::HintWithin,
+            source_family: "regions".into(),
             lease_id: "hint-scope-current".into(),
             owner,
             element_id: 17,
@@ -973,6 +1069,7 @@ mod tests {
     fn grid_scope_handoff_is_limited_to_region_and_surface_families() {
         let (mut binding, session, mut receipt, owner) = scope_handoff_fixture();
         binding.purpose = HintScopePurpose::GridWithin;
+        binding.source_family = "surfaces".into();
         binding.kind = HintKind::Surface;
         binding.parent_scope_lease_id = None;
         receipt["kind"] = Value::String("surface".into());
@@ -999,6 +1096,38 @@ mod tests {
             &binding.lease_id,
             &receipt,
             surface_context,
+        ));
+    }
+
+    #[test]
+    fn search_within_handoff_accepts_target_search_all_and_rejects_family_drift() {
+        let (mut binding, session, receipt, owner) = scope_handoff_fixture();
+        binding.purpose = HintScopePurpose::SearchWithin;
+        binding.source_family = "all".into();
+        let context = HintScopeHandoffContext {
+            current_owner: Some(owner),
+            current_scope_lease_id: binding.parent_scope_lease_id.as_deref(),
+            current_selector_policy_revision: Some(binding.selector_policy_revision),
+            current_session: Some(&session),
+            current_family: "all",
+            current_mode: Mode::Hint,
+        };
+        assert!(hint_scope_handoff_is_valid(
+            &binding,
+            &binding.lease_id,
+            &receipt,
+            context,
+        ));
+
+        let wrong_family = HintScopeHandoffContext {
+            current_family: "regions",
+            ..context
+        };
+        assert!(!hint_scope_handoff_is_valid(
+            &binding,
+            &binding.lease_id,
+            &receipt,
+            wrong_family,
         ));
     }
 }

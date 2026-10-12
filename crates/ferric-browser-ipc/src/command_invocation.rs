@@ -201,6 +201,13 @@ mod tests {
                     1,
                     "example {example:?} must contain one command"
                 );
+                if definition.name == "target-search" && !parsed[0].arguments.is_empty() {
+                    assert!(
+                        encode_command(&parsed[0]).is_err(),
+                        "scoped Target Search unexpectedly has a public IPC envelope: {example}"
+                    );
+                    continue;
+                }
                 let envelope = encode_command(&parsed[0]).unwrap_or_else(|error| {
                     panic!("could not encode example {example:?}: {error}")
                 });

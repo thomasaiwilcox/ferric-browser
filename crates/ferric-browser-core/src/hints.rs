@@ -553,6 +553,7 @@ fn encode_label(mut index: usize, width: usize, alphabet: &[u8]) -> String {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HintInteractionInput {
     Character(char),
+    SetText(String),
     EnterTextMode,
     Backspace,
     Clear,
@@ -617,7 +618,9 @@ impl HintInteraction {
 
     #[must_use]
     pub fn initial_activation(&self) -> Option<&str> {
-        (self.auto_follow == HintAutoFollow::Always && self.matches.len() == 1)
+        (self.mode == HintInputMode::Label
+            && self.auto_follow == HintAutoFollow::Always
+            && self.matches.len() == 1)
             .then(|| self.active_label())
             .flatten()
     }
@@ -643,6 +646,10 @@ impl HintInteraction {
         match input {
             HintInteractionInput::Cancel => HintInteractionOutcome::Cancel,
             HintInteractionInput::RotateCollision => HintInteractionOutcome::RotateCollision,
+            HintInteractionInput::SetText(query) => {
+                self.set_text(&query);
+                HintInteractionOutcome::Updated
+            }
             HintInteractionInput::SelectLabel(label) => {
                 if let Some(index) = self
                     .matches
@@ -748,6 +755,17 @@ impl HintInteraction {
             self.query.push(character);
             self.rank_text_matches();
         }
+    }
+
+    fn set_text(&mut self, query: &str) {
+        self.mode = HintInputMode::Text;
+        self.prefix.clear();
+        self.query = query
+            .chars()
+            .filter(|character| !character.is_control())
+            .take(256)
+            .collect();
+        self.rank_text_matches();
     }
 
     fn filter_label_matches(&mut self) {
@@ -1151,6 +1169,39 @@ mod tests {
             HintInteractionOutcome::Updated
         );
         assert_eq!(model.snapshot().mode, HintInputMode::Label);
+    }
+
+    #[test]
+    fn target_search_sets_one_bounded_query_without_auto_activation() {
+        let mut match_candidate = candidate(0.0, 0.0, "Needle control");
+        match_candidate.element_id = 1;
+        let mut other_candidate = candidate(20.0, 0.0, "Other target");
+        other_candidate.element_id = 2;
+        let hints = assign_labels(vec![match_candidate, other_candidate]).unwrap();
+        let mut model =
+            HintInteraction::new(hints.clone(), "asdfghjkl".into(), HintAutoFollow::Always);
+        let mut existing_text_mode =
+            HintInteraction::new(hints, "asdfghjkl".into(), HintAutoFollow::Never);
+
+        assert_eq!(model.initial_activation(), None);
+        existing_text_mode.handle(HintInteractionInput::EnterTextMode);
+        for character in "needle".chars() {
+            existing_text_mode.handle(HintInteractionInput::Character(character));
+        }
+        assert_eq!(
+            model.handle(HintInteractionInput::SetText("needle\n".into())),
+            HintInteractionOutcome::Updated
+        );
+        let snapshot = model.snapshot();
+        assert_eq!(
+            snapshot.matching_labels,
+            existing_text_mode.snapshot().matching_labels
+        );
+        assert_eq!(snapshot.mode, HintInputMode::Text);
+        assert_eq!(snapshot.query, "needle");
+        assert_eq!(snapshot.remaining, 1);
+        assert!(snapshot.active_label.is_some());
+        assert_eq!(model.initial_activation(), None);
     }
 
     #[test]

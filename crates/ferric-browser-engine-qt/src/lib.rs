@@ -102,6 +102,7 @@ mod browser_ui_state;
 mod browser_ui_storage_writes;
 mod browser_ui_tab_state;
 mod browser_ui_tabs;
+mod browser_ui_target_search;
 mod browser_ui_ui_actions;
 mod browser_ui_web_actions;
 mod chrome_preferences;
@@ -572,6 +573,9 @@ mod qobject {
         #[qproperty(bool, external_navigation_visible)]
         #[qproperty(QString, hint_values)]
         #[qproperty(bool, hint_visible)]
+        #[qproperty(bool, target_search_active)]
+        #[qproperty(QString, target_search_scope)]
+        #[qproperty(QString, target_search_query)]
         #[qproperty(bool, hint_pointer_mode)]
         #[qproperty(bool, hint_pointer_pending)]
         #[qproperty(QString, hint_pointer_state)]
@@ -1024,6 +1028,9 @@ mod qobject {
 
         #[qinvokable]
         fn begin_hint_session(self: Pin<&mut BrowserUi>, candidates_json: &QString) -> QString;
+
+        #[qinvokable]
+        fn cancel_target_search(self: Pin<&mut BrowserUi>);
 
         #[qinvokable]
         fn complete_hint_scope_handoff(
@@ -2041,6 +2048,9 @@ pub struct BrowserUiRust {
     pending_external_navigation: Option<PendingExternalNavigation>,
     hint_values: QString,
     hint_visible: bool,
+    target_search_active: bool,
+    target_search_scope: QString,
+    target_search_query: QString,
     hint_pointer_mode: bool,
     hint_pointer_pending: bool,
     hint_pointer_state: QString,
@@ -2766,6 +2776,9 @@ impl Default for BrowserUiRust {
             pending_external_navigation: None,
             hint_values: QString::default(),
             hint_visible: false,
+            target_search_active: false,
+            target_search_scope: QString::from("all"),
+            target_search_query: QString::default(),
             hint_pointer_mode: false,
             hint_pointer_pending: false,
             hint_pointer_state: QString::from("terminal"),

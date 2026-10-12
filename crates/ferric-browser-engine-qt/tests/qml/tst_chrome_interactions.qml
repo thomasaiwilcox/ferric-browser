@@ -5,6 +5,7 @@ import QtTest
 import "../../qml/components"
 import "../../qml/scripts/ChromePresentation.js" as ChromePresentation
 import "../../qml/scripts/KeyboardPresentation.js" as KeyboardPresentation
+import "../../qml/scripts/TargetSearchPresentation.js" as TargetSearchPresentation
 
 TestCase {
     id: chromeTest
@@ -1074,5 +1075,58 @@ TestCase {
         verify(accept)
         mouseClick(accept, accept.width / 2, accept.height / 2)
         compare(acceptedCommandDialogs, 2)
+    }
+
+    function test_target_search_selection_tracks_identity_and_action_meaning() {
+        var hints = [
+            { label: "a", element_id: 11, related_element_id: null,
+              frame_path: "0", kind: "link", text: "Documentation",
+              href: "https://example.test/docs?token=private" },
+            { label: "b", element_id: 22, related_element_id: null,
+              frame_path: "0", kind: "button", text: "Open menu", href: null }
+        ]
+        var rows = TargetSearchPresentation.rows(hints, ["b", "a"])
+        compare(rows[0].label, "b", "the shared matcher ranking controls result order")
+        verify(rows[0].text === "Open menu")
+        verify(!("href" in rows[1]), "page URLs are not projected into result rows")
+
+        var selection = TargetSearchPresentation.reconcile(rows, {
+            identity: "", meaning: "", initialized: false
+        })
+        compare(selection.identity, rows[0].identity)
+        selection = TargetSearchPresentation.move(rows, selection, 1)
+        compare(selection.identity, rows[1].identity)
+        verify(!selection.meaning.includes("private"),
+               "the selection signature does not retain a tokenised URL")
+
+        var refreshed = TargetSearchPresentation.rows([
+            { label: "x", element_id: 22, related_element_id: null,
+              frame_path: "0", kind: "button", text: "Open menu", href: null },
+            { label: "y", element_id: 11, related_element_id: null,
+              frame_path: "0", kind: "link", text: "Documentation",
+              href: "https://example.test/docs?token=private" }
+        ], ["x", "y"])
+        var preserved = TargetSearchPresentation.reconcile(refreshed, selection)
+        compare(preserved.identity, selection.identity)
+        compare(TargetSearchPresentation.selectedRow(refreshed, preserved).label, "y")
+
+        var virtualReplacement = TargetSearchPresentation.rows([
+            { label: "y", element_id: 99, related_element_id: null,
+              frame_path: "0", kind: "link", text: "Documentation",
+              href: "https://example.test/docs?token=private" }
+        ], ["y"])
+        var cleared = TargetSearchPresentation.reconcile(virtualReplacement, preserved)
+        compare(cleared.identity, "", "a replacement at the same list position cannot inherit selection")
+        verify(TargetSearchPresentation.selectedRow(virtualReplacement, cleared) === null)
+
+        var changedMeaning = TargetSearchPresentation.rows([
+            { label: "y", element_id: 11, related_element_id: null,
+              frame_path: "0", kind: "link", text: "Documentation",
+              href: "https://example.test/other" }
+        ], ["y"])
+        cleared = TargetSearchPresentation.reconcile(changedMeaning, preserved)
+        compare(cleared.identity, "", "changed action meaning clears the selection")
+        cleared = TargetSearchPresentation.reconcile([], preserved)
+        compare(cleared.identity, "", "a filtered-out target cannot remain selected")
     }
 }

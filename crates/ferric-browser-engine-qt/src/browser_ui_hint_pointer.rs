@@ -30,8 +30,15 @@ const PREFLIGHT_KEYS: &[&str] = &[
     "view_height",
 ];
 
-pub(super) fn reject_external_pointer_hint_chain(commands: &[ParsedCommand]) -> Result<(), String> {
-    if commands.iter().any(hint_requests_pointer) {
+pub(super) fn reject_external_hint_interaction_chain(
+    commands: &[ParsedCommand],
+) -> Result<(), String> {
+    if commands
+        .iter()
+        .any(|command| command.name == "target-search")
+    {
+        Err("target-search is available only from local keyboard or UI input".into())
+    } else if commands.iter().any(hint_requests_pointer) {
         Err("Pointer click is available only from local UI or keyboard input".into())
     } else {
         Ok(())
@@ -700,7 +707,9 @@ fn canonical_nonzero_u64(value: &str) -> Option<u64> {
 mod tests {
     use super::*;
     use crate::hint_policy::{LocalInteractionAuthority, LocalInteractionOperation};
-    use ferric_browser_core::{DocumentId, HintSessionId, HintTarget, TabId, WindowId};
+    use ferric_browser_core::{
+        DocumentId, HintSessionId, HintTarget, ParsedCommand, TabId, WindowId,
+    };
 
     fn action() -> HintPointerAction {
         let owner = LocalInteractionOwner {
@@ -759,5 +768,26 @@ mod tests {
         );
         assert!(!action.preflight_is_live(&action.request_id));
         assert!(!action.mark_dispatch_pending());
+    }
+
+    #[test]
+    fn external_hint_interaction_guard_rejects_target_search_after_expansion() {
+        let search = ParsedCommand {
+            name: "target-search".into(),
+            arguments: vec!["links".into()],
+        };
+        assert_eq!(
+            reject_external_hint_interaction_chain(&[search]),
+            Err("target-search is available only from local keyboard or UI input".into())
+        );
+
+        let local_hint = ParsedCommand {
+            name: "hint".into(),
+            arguments: vec!["links".into()],
+        };
+        assert_eq!(
+            reject_external_hint_interaction_chain(&[local_hint]),
+            Ok(())
+        );
     }
 }

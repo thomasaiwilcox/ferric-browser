@@ -332,6 +332,15 @@ impl qobject::BrowserUi {
                 }
                 continue;
             }
+            if command.name == "target-search" {
+                if !self
+                    .as_mut()
+                    .dispatch_target_search_command(&command, &registry)
+                {
+                    return false;
+                }
+                continue;
+            }
             if command.name == "get" {
                 let mode = self.as_ref().rust().core_mode;
                 if let Err(error) = registry.validate(&command, mode) {

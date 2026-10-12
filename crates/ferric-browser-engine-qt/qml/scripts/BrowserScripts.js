@@ -3,7 +3,7 @@
 
 // Browser-owned page scripts are versioned resources. The build manifest hashes
 // this file with the QML module, so script changes are explicit and auditable.
-var VERSION = "17"
+var VERSION = "18"
 
 // Page userscripts are trusted local content, but their failure boundary is
 // browser policy. Keeping the wrappers here prevents QML from assembling page
@@ -261,8 +261,8 @@ function scrollTargetStatus() {
     return interactionScript("scrollTargetStatus", [])
 }
 
-function hintCollector(family, proxyTargets, selectorSnapshot, scopeLeaseId) {
-    return interactionScript("hintCollector", [family, proxyTargets, selectorSnapshot, scopeLeaseId])
+function hintCollector(family, proxyTargets, selectorSnapshot, scopeLeaseId, includeFacets) {
+    return interactionScript("hintCollector", [family, proxyTargets, selectorSnapshot, scopeLeaseId, includeFacets])
 }
 
 function hintDirtyRevision() {

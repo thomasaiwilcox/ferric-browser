@@ -26,6 +26,7 @@ pub(super) struct LocalInteractionOwner {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct HintScopeBinding {
     pub(super) purpose: HintScopePurpose,
+    pub(super) source_family: String,
     pub(super) lease_id: String,
     pub(super) owner: LocalInteractionOwner,
     pub(super) element_id: u32,
@@ -38,6 +39,7 @@ pub(super) struct HintScopeBinding {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum HintScopePurpose {
     HintWithin,
+    SearchWithin,
     GridWithin,
 }
 

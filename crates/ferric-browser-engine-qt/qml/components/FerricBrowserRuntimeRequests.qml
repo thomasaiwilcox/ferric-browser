@@ -57,7 +57,9 @@ FerricBrowserRuntimePresentation {
                 window.restoreModeFocus()
             }
             if (browserUi.mode === "hint") {
-                window.startHintCollection()
+                Qt.callLater(function() {
+                    if (browserUi.mode === "hint") window.startHintCollection()
+                })
             } else {
                 window.stopHintTracking()
                 if (browserUi.mode !== "caret") {

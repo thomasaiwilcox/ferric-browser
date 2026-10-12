@@ -5,6 +5,7 @@ import QtQuick.Dialogs
 import QtWebEngine
 import io.github.ferricbrowser 1.0
 import "../scripts/BrowserScripts.js" as BrowserScripts
+import "../scripts/TargetSearchPresentation.js" as TargetSearchPresentation
 import "../scripts/SpellcheckPresentation.js" as SpellcheckPresentation
 
 FerricBrowserRuntimeServices {
@@ -1020,10 +1021,72 @@ FerricBrowserRuntimeServices {
         return browserUi.hint_selector_policy(family)
     }
 
-    function hintCollectorScript(family, selectorSnapshot, scopeLeaseId) {
+    function hintCollectorScript(family, selectorSnapshot, scopeLeaseId, includeFacets) {
         return BrowserScripts.hintCollector(
                     family, browserUi.hint_proxy_targets_enabled, selectorSnapshot,
-                    scopeLeaseId)
+                    scopeLeaseId, includeFacets)
+    }
+
+    function targetSearchIdentity(candidate) {
+        return TargetSearchPresentation.identity(candidate)
+    }
+
+    function targetSearchMeaning(candidate) {
+        return TargetSearchPresentation.meaning(candidate)
+    }
+
+    function targetSearchRows() {
+        return TargetSearchPresentation.rows(
+                    window.hintResults,
+                    window.hintState && window.hintState.matching_labels || [])
+    }
+
+    function reconcileTargetSearchSelection() {
+        if (!browserUi.target_search_active) return
+        var next = TargetSearchPresentation.reconcile(window.targetSearchRows(), {
+            identity: window.targetSearchSelectedIdentity,
+            meaning: window.targetSearchSelectedMeaning,
+            initialized: window.targetSearchSelectionInitialized
+        })
+        window.targetSearchSelectedIdentity = next.identity
+        window.targetSearchSelectedMeaning = next.meaning
+        window.targetSearchSelectionInitialized = next.initialized
+    }
+
+    function applyTargetSearchQuery(query) {
+        window.applyHintInteraction("set-query", String(query || ""))
+        window.reconcileTargetSearchSelection()
+    }
+
+    function selectTargetSearchIdentity(identity) {
+        var next = TargetSearchPresentation.select(window.targetSearchRows(), identity)
+        if (!next) return
+        window.targetSearchSelectedIdentity = next.identity
+        window.targetSearchSelectedMeaning = next.meaning
+        window.targetSearchSelectionInitialized = next.initialized
+    }
+
+    function moveTargetSearchSelection(delta) {
+        var rows = window.targetSearchRows()
+        if (rows.length === 0) return
+        var next = TargetSearchPresentation.move(rows, {
+            identity: window.targetSearchSelectedIdentity,
+            meaning: window.targetSearchSelectedMeaning
+        }, delta)
+        if (!next) return
+        window.targetSearchSelectedIdentity = next.identity
+        window.targetSearchSelectedMeaning = next.meaning
+        window.targetSearchSelectionInitialized = next.initialized
+    }
+
+    function confirmTargetSearchSelection() {
+        var selected = TargetSearchPresentation.selectedRow(window.targetSearchRows(), {
+            identity: window.targetSearchSelectedIdentity,
+            meaning: window.targetSearchSelectedMeaning
+        })
+        if (!selected) return false
+        window.activateHint(selected.label)
+        return true
     }
 
     function hintDirtyRevisionScript() {
@@ -1302,7 +1365,9 @@ FerricBrowserRuntimeServices {
                     view,
                     window.hintCollectorScript(
                         browserUi.hint_family, selectorSnapshot,
-                        window.activeHintScopeLeaseId), function(value) {
+                        window.activeHintScopeLeaseId,
+                        browserUi.target_search_active
+                            && browserUi.target_search_scope === "all"), function(value) {
             if (window.hintCollectionEpoch !== collectionEpoch) {
                 return
             }
@@ -1340,6 +1405,18 @@ FerricBrowserRuntimeServices {
                 response = JSON.parse(browserUi.begin_hint_session(JSON.stringify(payload)))
             } catch (error) {
                 response = {}
+            }
+            if (browserUi.target_search_active && !response.error) {
+                window.hintState = response.state || window.hintState
+                window.hintInput = window.hintState.query || ""
+                window.hintResults = response.hints || []
+                window.reconcileTargetSearchSelection()
+                if (window.hintResults.length === 0) {
+                    browserUi.status_text = window.hintCollectionTruncated
+                            ? "Visible target collection reached its inspection limit"
+                            : "No visible targets"
+                }
+                return
             }
             if (!response.hints || response.hints.length === 0) {
                 var hintFailure = window.hintCollectionTruncated
@@ -1394,6 +1471,9 @@ FerricBrowserRuntimeServices {
             window.hintInput = response.state.mode === "text"
                     ? "/" + response.state.query : response.state.prefix
         }
+        if (browserUi.target_search_active && response.outcome !== "activate") {
+            window.reconcileTargetSearchSelection()
+        }
         if (response.outcome === "activate") {
             window.activateHint(String(response.label || ""))
         } else if (response.outcome === "cancel") {
@@ -1445,6 +1525,9 @@ FerricBrowserRuntimeServices {
         window.hintViewport = ({ width: 0, height: 0 })
         window.hintState = ({ mode: "label", prefix: "", query: "", matching_labels: [], active_label: "", remaining: 0, total: 0 })
         window.hintResults = []
+        window.targetSearchSelectedIdentity = ""
+        window.targetSearchSelectedMeaning = ""
+        window.targetSearchSelectionInitialized = false
         window.rapidHintConfirmationVisible = false
         browserUi.cancel_hints()
     }
@@ -1981,7 +2064,9 @@ FerricBrowserRuntimeServices {
             }
             var pageActionPending = result.action === "focus"
                     || result.action === "click" || result.action === "scroll-target"
-                    || result.action === "hint-within" || result.action === "grid-within"
+                    || result.action === "hint-within"
+                    || result.action === "target-search-within"
+                    || result.action === "grid-within"
             if (!pageActionPending && browserUi.mode !== "hint") {
                 window.activeHintScopeLeaseId = ""
                 window.stopHintTracking()
@@ -1991,6 +2076,7 @@ FerricBrowserRuntimeServices {
             }
             if ((result.action === "focus" || result.action === "click"
                  || result.action === "scroll-target" || result.action === "hint-within"
+                 || result.action === "target-search-within"
                  || result.action === "grid-within")
                     && (window.hintCollectionEpoch !== actionEpoch
                         || window.activeWebView() !== view
@@ -2002,7 +2088,8 @@ FerricBrowserRuntimeServices {
                 }
                 return
             }
-            if (result.action === "hint-within") {
+            if (result.action === "hint-within"
+                    || result.action === "target-search-within") {
                 window.completeHintScopeHandoff(
                             view, result.scope_lease, value, actionEpoch)
             } else if (result.action === "grid-within") {
