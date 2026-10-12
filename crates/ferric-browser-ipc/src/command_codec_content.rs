@@ -12,7 +12,8 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
             let mut index = 0;
             while index < command.arguments.len() {
                 match command.arguments[index].as_str() {
-                    "links" | "all" | "inputs" | "buttons" | "images" | "media" | "scrollables" => {
+                    "links" | "all" | "inputs" | "buttons" | "images" | "media" | "scrollables"
+                    | "regions" | "surfaces" => {
                         if object.contains_key("kind") {
                             return Err("hint kind was specified more than once".into());
                         }
@@ -159,6 +160,24 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
             }
             if object.contains_key("index") && !first {
                 return Err("hint --index requires --first".into());
+            }
+            let region_surface = object
+                .get("kind")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|kind| matches!(kind, "regions" | "surfaces"));
+            if region_surface
+                && (rapid
+                    || first
+                    || object.contains_key("index")
+                    || object.contains_key("script")
+                    || object
+                        .get("target")
+                        .and_then(serde_json::Value::as_str)
+                        .is_some_and(|target| target != "choose"))
+            {
+                return Err(
+                    "hint regions/surfaces require the local action palette and do not support rapid, first, index, script, or URL targets".into(),
+                );
             }
             serde_json::Value::Object(object)
         }

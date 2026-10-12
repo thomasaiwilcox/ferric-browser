@@ -782,9 +782,9 @@ FerricBrowserRuntimePresentation {
         }
     }
 
-    function contextMenuItem(label, action, value, actionId) {
+    function contextMenuItem(label, action, value, actionId, enabled) {
         return { label: label, action: action, value: value || "",
-                 actionId: actionId || "" }
+                 actionId: actionId || "", enabled: enabled !== false }
     }
 
     function appendExternalActions(items, ui, subject, value) {

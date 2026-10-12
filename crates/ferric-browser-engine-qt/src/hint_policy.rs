@@ -152,6 +152,7 @@ pub(super) fn parse_hint_options(command: &ParsedCommand) -> Result<HintOptions,
     let mut family_seen = false;
     let mut rapid = false;
     let mut target = "current".to_owned();
+    let mut target_seen = false;
     let mut script = None;
     let mut first = false;
     let mut requested_index = None;
@@ -159,7 +160,7 @@ pub(super) fn parse_hint_options(command: &ParsedCommand) -> Result<HintOptions,
     while index < command.arguments.len() {
         match command.arguments[index].as_str() {
             value @ ("links" | "all" | "inputs" | "buttons" | "images" | "media"
-            | "scrollables")
+            | "scrollables" | "regions" | "surfaces")
                 if !family_seen =>
             {
                 value.clone_into(&mut family);
@@ -189,6 +190,7 @@ pub(super) fn parse_hint_options(command: &ParsedCommand) -> Result<HintOptions,
                         "hint target must be current, tab, tab-bg, window, yank, clean-yank, download, userscript, ephemeral, choose, pointer, or external:NAME"
                             .to_owned()
                     })?;
+                target_seen = true;
             }
             "--script" => {
                 index += 1;
@@ -202,12 +204,13 @@ pub(super) fn parse_hint_options(command: &ParsedCommand) -> Result<HintOptions,
                     return Err("hint script was specified more than once".into());
                 }
             }
-            "links" | "all" | "inputs" | "buttons" | "images" | "media" | "scrollables" => {
+            "links" | "all" | "inputs" | "buttons" | "images" | "media" | "scrollables"
+            | "regions" | "surfaces" => {
                 return Err("hint family was specified more than once".into());
             }
             _ => {
                 return Err(
-                    "hint expects [--target TARGET] [--rapid] [--script NAME] [--first] [--index N] [links|all|inputs|buttons|images|media|scrollables]; pointer requires a direct local command and explicit family".into(),
+                    "hint expects [--target TARGET] [--rapid] [--script NAME] [--first] [--index N] [links|all|inputs|buttons|images|media|scrollables|regions|surfaces]; pointer requires a direct local command and explicit family".into(),
                 );
             }
         }
@@ -215,6 +218,15 @@ pub(super) fn parse_hint_options(command: &ParsedCommand) -> Result<HintOptions,
     }
     if rapid && target == "current" {
         target = "yank".into();
+    }
+    let region_surface_family = matches!(family.as_str(), "regions" | "surfaces");
+    if region_surface_family && !target_seen {
+        target = "choose".into();
+    }
+    if region_surface_family
+        && (rapid || first || requested_index.is_some() || script.is_some() || target != "choose")
+    {
+        return Err("hint regions/surfaces require the local action palette and do not support rapid, first, index, script, pointer, or URL targets".into());
     }
     if rapid && first {
         return Err("hint --rapid cannot be combined with --first".into());
@@ -564,6 +576,51 @@ mod tests {
                 "--index".into(),
                 "2".into(),
             ],
+        ] {
+            assert!(
+                parse_hint_options(&ParsedCommand {
+                    name: "hint".into(),
+                    arguments,
+                })
+                .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn region_surface_families_open_only_the_explicit_action_palette() {
+        for family in ["regions", "surfaces"] {
+            let options = parse_hint_options(&ParsedCommand {
+                name: "hint".into(),
+                arguments: vec![family.into()],
+            })
+            .expect("explicit facet family");
+            assert_eq!(options.family, family);
+            assert_eq!(options.target, "choose");
+            assert!(!options.rapid);
+            assert!(!options.first);
+            assert!(options.script.is_none());
+
+            let choose = parse_hint_options(&ParsedCommand {
+                name: "hint".into(),
+                arguments: vec!["--target".into(), "choose".into(), family.into()],
+            })
+            .expect("explicit action-palette target");
+            assert_eq!(choose.target, "choose");
+        }
+
+        for arguments in [
+            vec!["regions".into(), "--target".into(), "current".into()],
+            vec!["regions".into(), "--target".into(), "pointer".into()],
+            vec!["regions".into(), "--rapid".into()],
+            vec!["surfaces".into(), "--first".into()],
+            vec![
+                "surfaces".into(),
+                "--first".into(),
+                "--index".into(),
+                "2".into(),
+            ],
+            vec!["surfaces".into(), "--target".into(), "tab".into()],
         ] {
             assert!(
                 parse_hint_options(&ParsedCommand {

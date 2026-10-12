@@ -1,4 +1,5 @@
 use super::browser_ui_hint_pointer::HintPointerAction;
+use super::hint_payload::validate_hint_candidates_for_family;
 use super::hint_policy::{
     HintOptions, LocalInteractionOperation, LocalInteractionOwner, parse_hint_options,
 };
@@ -17,20 +18,26 @@ pub(super) fn effective_hint_selector_snapshot(
     configuration_revision: u64,
     family: &str,
 ) -> Result<Value, String> {
-    let family = HintSelectorFamily::parse(family)
-        .ok_or_else(|| format!("unsupported hint selector family: {family}"))?;
+    let selector_family = HintSelectorFamily::parse(family);
+    if selector_family.is_none() && !matches!(family, "regions" | "surfaces") {
+        return Err(format!("unsupported hint selector family: {family}"));
+    }
     let config = serde_json::from_str::<Config>(config_json)
         .map_err(|error| format!("effective configuration is unavailable: {error}"))?;
     let policies = resolve_hint_selector_policies(&config, url)?;
-    let revision_input = serde_json::to_vec(&(configuration_revision, url, family, &policies))
-        .map_err(|error| format!("selector policy could not be serialized: {error}"))?;
+    let revision_input = if let Some(selector_family) = selector_family {
+        serde_json::to_vec(&(configuration_revision, url, selector_family, &policies))
+    } else {
+        serde_json::to_vec(&(configuration_revision, url, family, &policies))
+    }
+    .map_err(|error| format!("selector policy could not be serialized: {error}"))?;
     let selector_policy_revision = revision_input
         .iter()
         .fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
             (hash ^ u64::from(*byte)).wrapping_mul(0x0100_0000_01b3)
         });
     Ok(serde_json::json!({
-        "family": family.as_str(),
+        "family": family,
         "configuration_revision": configuration_revision,
         "selector_revision": format!("{selector_policy_revision:016x}"),
         "policies": policies,
@@ -297,6 +304,12 @@ impl qobject::BrowserUi {
                 return QString::from(serde_json::json!({"error": error}).to_string());
             }
         };
+        if let Err(error) = validate_hint_candidates_for_family(&family, &candidates) {
+            self.set_status_text(QString::from(format!("Hints rejected: {error}")));
+            return QString::from(
+                serde_json::json!({"error":"invalid-facet-candidates"}).to_string(),
+            );
+        }
         if !self.as_ref().rust().hint_proxy_targets_enabled
             && candidates.iter().any(|candidate| {
                 matches!(

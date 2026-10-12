@@ -56,7 +56,8 @@ Item {
     function activateMnemonic(actionId) {
         var items = root.browserWindow.contextMenuItems || []
         for (var i = 0; i < items.length; ++i) {
-            if (String(items[i].actionId || "") === actionId) {
+            if (items[i].enabled !== false
+                    && String(items[i].actionId || "") === actionId) {
                 root.itemActivated(items[i])
                 return
             }
@@ -89,6 +90,7 @@ Item {
                 id: itemDelegate
                 required property var modelData
                 objectName: "contextMenuItem"
+                enabled: modelData.enabled !== false
                 width: popup.availableWidth
                 implicitWidth: Math.max(
                                    248 * root.browserWindow.chromeScale,

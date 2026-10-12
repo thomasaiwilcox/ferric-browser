@@ -7,6 +7,39 @@ use super::{
     parse_hint_candidate, qobject, rapid_hint_keeps_mode, safe_ipc_url,
 };
 
+const HINT_CAPABILITY_ACTION_PREFIX: &str = "hint.capability.";
+
+fn known_hint_capability_id(id: &str) -> bool {
+    use ferric_browser_core::HintKind::{FocusableSurface, Region, ScrollableRegion, Surface};
+
+    [Region, ScrollableRegion, Surface, FocusableSurface]
+        .into_iter()
+        .any(|kind| {
+            ferric_browser_core::hint_capabilities(kind)
+                .iter()
+                .any(|capability| capability.id() == id)
+        })
+}
+
+fn hint_capabilities_json(kind: ferric_browser_core::HintKind) -> Value {
+    Value::Array(
+        ferric_browser_core::hint_capabilities(kind)
+            .iter()
+            .map(|capability| {
+                serde_json::json!({
+                    "id": capability.id(),
+                    "label": capability.label(),
+                    "enabled": matches!(
+                        capability,
+                        ferric_browser_core::HintCapability::SetScrollTarget
+                            | ferric_browser_core::HintCapability::Focus
+                    )
+                })
+            })
+            .collect(),
+    )
+}
+
 impl qobject::BrowserUi {
     pub(super) fn select_hint_action(
         mut self: Pin<&mut Self>,
@@ -69,6 +102,24 @@ impl qobject::BrowserUi {
                 return QString::from(r#"{"error":"palette-permit-unavailable"}"#);
             }
             return response;
+        }
+        if let Some(capability_id) = action_id.strip_prefix(HINT_CAPABILITY_ACTION_PREFIX) {
+            if action_id.len() > 128 || !known_hint_capability_id(capability_id) {
+                self.set_status_text(QString::from("Hint capability rejected: invalid action ID"));
+                return QString::from(r#"{"error":"invalid-capability-id"}"#);
+            }
+            if !self.as_mut().consume_hint_palette_permit() {
+                self.set_status_text(QString::from(
+                    "Hint capability rejected: no local palette request",
+                ));
+                return QString::from(r#"{"error":"local-palette-permit-required"}"#);
+            }
+            self.as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .pending_hint_action = Some(action_id);
+            return self.select_hint(label, fresh_candidate_json);
         }
         if !action_id.starts_with("userscript.") || action_id.len() > 256 {
             self.set_status_text(QString::from("Hint action rejected: invalid action ID"));
@@ -331,26 +382,77 @@ impl qobject::BrowserUi {
             ));
             return QString::from(r#"{"error":"proxy-targets-disabled"}"#);
         }
-        let choose = self.as_ref().rust().hint_rapid_target == "choose" && pending_action.is_none();
+        let requested_capability = pending_action
+            .as_deref()
+            .and_then(|action| action.strip_prefix(HINT_CAPABILITY_ACTION_PREFIX));
+        let is_facet = ferric_browser_core::hint_kind_is_region_or_surface(selected.kind);
+        let choose = requested_capability.is_none()
+            && pending_action.is_none()
+            && (self.as_ref().rust().hint_rapid_target == "choose" || is_facet);
         let uses_url_action = hint_uses_url_action(
             selected.kind,
             self.as_ref().rust().hint_rapid,
             &self.as_ref().rust().hint_rapid_target,
             pending_action.is_some(),
         );
-        let result = if choose {
+        let result = if let Some(capability_id) = requested_capability {
+            let capability = ferric_browser_core::hint_capabilities(selected.kind)
+                .iter()
+                .copied()
+                .find(|capability| capability.id() == capability_id);
+            let Some(capability) = capability else {
+                self.set_status_text(QString::from(
+                    "Hint capability rejected: action is not valid for this target",
+                ));
+                return QString::from(r#"{"error":"unsupported-capability"}"#);
+            };
+            match capability {
+                ferric_browser_core::HintCapability::SetScrollTarget
+                    if selected.kind == ferric_browser_core::HintKind::ScrollableRegion =>
+                {
+                    serde_json::json!({
+                        "action":"scroll-target",
+                        "kind":hint_kind_name(selected.kind),
+                        "element_id":selected.element_id,
+                        "frame_path":fresh.frame_path,
+                    })
+                }
+                ferric_browser_core::HintCapability::Focus
+                    if selected.kind == ferric_browser_core::HintKind::FocusableSurface =>
+                {
+                    serde_json::json!({
+                        "action":"focus",
+                        "kind":hint_kind_name(selected.kind),
+                        "element_id":selected.element_id,
+                        "frame_path":fresh.frame_path,
+                        "x":fresh.geometry.x + (fresh.geometry.width / 2.0),
+                        "y":fresh.geometry.y + (fresh.geometry.height / 2.0)
+                    })
+                }
+                _ => {
+                    self.set_status_text(QString::from(
+                        "Hint capability is not available in this interaction mode",
+                    ));
+                    return QString::from(r#"{"error":"unsupported-capability"}"#);
+                }
+            }
+        } else if choose {
             if !allow_local_palette {
                 self.set_status_text(QString::from(
                     "Hint action rejected: palette requires a local UI entry",
                 ));
                 return QString::from(r#"{"error":"local-palette-required"}"#);
             }
-            serde_json::json!({
+            let mut result = serde_json::json!({
                 "action":"choose",
                 "kind":hint_kind_name(selected.kind),
                 "label":label.to_string(),
                 "has_url":selected.href.is_some(),
-            })
+            });
+            if is_facet {
+                result["capabilities"] = hint_capabilities_json(selected.kind);
+            }
+            result
         } else {
             let transport = hint_intent_for_candidate(selected.kind, uses_url_action).transport();
             if transport == HintTransport::ValidatedUrlAction {
@@ -829,4 +931,32 @@ fn local_hint_owner(rust: &super::BrowserUiRust) -> Option<LocalInteractionOwner
         target: session.target,
         configuration_revision: rust.hint_configuration_revision,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{hint_capabilities_json, known_hint_capability_id};
+    use ferric_browser_core::HintKind;
+
+    #[test]
+    fn region_surface_palette_actions_are_rust_derived_and_bounded() {
+        let regions = hint_capabilities_json(HintKind::ScrollableRegion);
+        let regions = regions.as_array().expect("capability array");
+        assert_eq!(regions.len(), 4);
+        assert_eq!(regions[0]["id"], "hint-within");
+        assert_eq!(regions[0]["enabled"], false);
+        assert_eq!(regions[3]["id"], "set-scroll-target");
+        assert_eq!(regions[3]["enabled"], true);
+
+        let surface = hint_capabilities_json(HintKind::FocusableSurface);
+        let surface = surface.as_array().expect("capability array");
+        assert_eq!(surface.len(), 2);
+        assert_eq!(surface[0]["id"], "grid-within");
+        assert_eq!(surface[0]["enabled"], false);
+        assert_eq!(surface[1]["id"], "focus");
+        assert_eq!(surface[1]["enabled"], true);
+
+        assert!(known_hint_capability_id("set-scroll-target"));
+        assert!(!known_hint_capability_id("click"));
+    }
 }

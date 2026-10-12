@@ -695,7 +695,7 @@ impl CommandRegistry {
                 vec![Mode::Normal, Mode::Command],
                 CountPolicy::Supported { maximum: 5_000 },
                 false,
-                "Label visible page links and controls for validated activation.",
+                "Label visible page targets for validated activation or explicit Region and Surface actions.",
             ),
             definition(
                 "grid",
@@ -2643,6 +2643,8 @@ impl CommandRegistry {
                 "hint --rapid --target tab-bg links".into(),
                 "hint --target choose all".into(),
                 "hint --first --index 3 inputs".into(),
+                "hint regions".into(),
+                "hint surfaces".into(),
             ];
         }
         if let Some(command) = registry

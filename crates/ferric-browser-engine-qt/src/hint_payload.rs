@@ -173,6 +173,35 @@ pub(super) fn parse_hint_payload(raw: &str) -> Result<Vec<HintCandidate>, String
     Ok(candidates)
 }
 
+pub(super) fn validate_hint_candidates_for_family(
+    family: &str,
+    candidates: &[HintCandidate],
+) -> Result<(), String> {
+    let (maximum, expected_kind): (Option<usize>, fn(HintKind) -> bool) = match family {
+        "regions" => (Some(ferric_browser_core::MAX_HINT_REGIONS), |kind| {
+            matches!(kind, HintKind::Region | HintKind::ScrollableRegion)
+        }),
+        "surfaces" => (Some(ferric_browser_core::MAX_HINT_SURFACES), |kind| {
+            matches!(kind, HintKind::Surface | HintKind::FocusableSurface)
+        }),
+        _ => (None, |kind| {
+            !ferric_browser_core::hint_kind_is_region_or_surface(kind)
+        }),
+    };
+    if maximum.is_some_and(|maximum| candidates.len() > maximum)
+        || candidates.iter().any(|candidate| {
+            !expected_kind(candidate.kind)
+                || maximum.is_some()
+                    && (candidate.href.is_some() || candidate.related_element_id.is_some())
+        })
+    {
+        return Err(format!(
+            "{family} candidates exceed their typed family contract"
+        ));
+    }
+    Ok(())
+}
+
 pub(super) fn hint_kind_name(kind: HintKind) -> &'static str {
     match kind {
         HintKind::Link => "link",
@@ -187,6 +216,10 @@ pub(super) fn hint_kind_name(kind: HintKind) -> &'static str {
         HintKind::Aria => "aria",
         HintKind::EditorFocus => "editor-focus",
         HintKind::LabelControl => "label-control",
+        HintKind::Region => "region",
+        HintKind::ScrollableRegion => "scrollable-region",
+        HintKind::Surface => "surface",
+        HintKind::FocusableSurface => "focusable-surface",
     }
 }
 
@@ -241,6 +274,10 @@ fn parse_hint_kind(value: &str) -> Result<HintKind, String> {
         "aria" => Ok(HintKind::Aria),
         "editor-focus" => Ok(HintKind::EditorFocus),
         "label-control" => Ok(HintKind::LabelControl),
+        "region" => Ok(HintKind::Region),
+        "scrollable-region" => Ok(HintKind::ScrollableRegion),
+        "surface" => Ok(HintKind::Surface),
+        "focusable-surface" => Ok(HintKind::FocusableSurface),
         _ => Err(format!("unknown hint kind: {value}")),
     }
 }
@@ -322,6 +359,78 @@ mod tests {
             .remove("native_action");
         value["geometry"]["width"] = serde_json::json!(0.0);
         assert!(parse_hint_candidate(&value).is_err());
+    }
+
+    #[test]
+    fn accepts_only_closed_typed_region_and_surface_kinds() {
+        let candidate = |kind: &str| {
+            serde_json::json!({
+                "element_id": 1,
+                "kind": kind,
+                "frame_path": "0",
+                "text": "Main region",
+                "href": null,
+                "geometry": {"x": 1.0, "y": 2.0, "width": 16.0, "height": 16.0}
+            })
+        };
+        for (name, expected) in [
+            ("region", HintKind::Region),
+            ("scrollable-region", HintKind::ScrollableRegion),
+            ("surface", HintKind::Surface),
+            ("focusable-surface", HintKind::FocusableSurface),
+        ] {
+            let parsed = parse_hint_candidate(&candidate(name)).expect("typed facet candidate");
+            assert_eq!(parsed.kind, expected);
+            assert_eq!(hint_kind_name(parsed.kind), name);
+        }
+        let mut candidate = candidate("surface");
+        candidate["capability"] = serde_json::json!("focus");
+        assert!(parse_hint_candidate(&candidate).is_err());
+    }
+
+    #[test]
+    fn enforces_family_caps_and_rejects_facet_authority_outside_explicit_families() {
+        let candidate = |element_id, kind| HintCandidate {
+            element_id,
+            related_element_id: None,
+            kind,
+            frame_path: "0".into(),
+            text: "Target".into(),
+            href: None,
+            geometry: HintGeometry {
+                x: 0.0,
+                y: 0.0,
+                width: 16.0,
+                height: 16.0,
+            },
+        };
+        assert!(
+            validate_hint_candidates_for_family("regions", &[candidate(1, HintKind::Region)])
+                .is_ok()
+        );
+        assert!(
+            validate_hint_candidates_for_family(
+                "surfaces",
+                &[candidate(1, HintKind::FocusableSurface)]
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_hint_candidates_for_family("all", &[candidate(1, HintKind::Surface)]).is_err()
+        );
+        assert!(
+            validate_hint_candidates_for_family("regions", &[candidate(1, HintKind::Surface)])
+                .is_err()
+        );
+
+        let too_many = (1..=257)
+            .map(|id| candidate(id, HintKind::Region))
+            .collect::<Vec<_>>();
+        assert!(validate_hint_candidates_for_family("regions", &too_many).is_err());
+
+        let mut with_href = candidate(1, HintKind::Surface);
+        with_href.href = Some("https://untrusted.example/".into());
+        assert!(validate_hint_candidates_for_family("surfaces", &[with_href]).is_err());
     }
 
     #[test]

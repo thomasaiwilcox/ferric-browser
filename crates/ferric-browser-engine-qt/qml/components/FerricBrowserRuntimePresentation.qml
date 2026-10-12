@@ -1655,7 +1655,7 @@ FerricBrowserRuntimeServices {
         window.activateHint(label, "hint.choose")
     }
 
-    function openHintActionPalette(label) {
+    function openHintActionPalette(label, capabilities) {
         var view = window.activeWebView()
         if (!view) {
             window.closeHints()
@@ -1669,9 +1669,24 @@ FerricBrowserRuntimeServices {
             }
         }
         if (!selected) return
-        var items = [window.contextMenuItem("Activate / open current", "hint-userscript-action", label, "hint.current")]
+        var items = []
         var hasUrl = selected.href !== null && String(selected.href || "").length > 0
-        if (hasUrl) {
+        if (Array.isArray(capabilities)) {
+            for (var capabilityIndex = 0; capabilityIndex < capabilities.length; ++capabilityIndex) {
+                var capability = capabilities[capabilityIndex]
+                if (!capability || typeof capability.id !== "string"
+                        || typeof capability.label !== "string") {
+                    continue
+                }
+                items.push(window.contextMenuItem(
+                               capability.label, "hint-userscript-action", label,
+                               "hint.capability." + capability.id,
+                               capability.enabled === true))
+            }
+        } else {
+            items.push(window.contextMenuItem("Activate / open current", "hint-userscript-action", label, "hint.current"))
+        }
+        if (hasUrl && !Array.isArray(capabilities)) {
             items.push(window.contextMenuItem("Open in foreground tab", "hint-userscript-action", label, "hint.tab"))
             items.push(window.contextMenuItem("Open in background tab", "hint-userscript-action", label, "hint.tab-bg"))
             items.push(window.contextMenuItem("Open in new window", "hint-userscript-action", label, "hint.window"))
@@ -1680,7 +1695,8 @@ FerricBrowserRuntimeServices {
             items.push(window.contextMenuItem("Download", "hint-userscript-action", label, "hint.download"))
             items.push(window.contextMenuItem("Open in ephemeral window", "hint-userscript-action", label, "hint.ephemeral"))
         }
-        if (hasUrl && browserUi.select_userscript_action_subject("link")) {
+        if (hasUrl && !Array.isArray(capabilities)
+                && browserUi.select_userscript_action_subject("link")) {
             var ids = browserUi.userscript_action_ids
             var labels = browserUi.userscript_action_labels
             var availability = browserUi.userscript_action_availability
@@ -1785,7 +1801,7 @@ FerricBrowserRuntimeServices {
                 window.hintInput = ""
                 window.executePendingEngineAction()
             } else if (result.action === "choose") {
-                window.openHintActionPalette(label)
+                window.openHintActionPalette(label, result.capabilities)
             } else if (result.action === "tab") {
                 window.hintResults = []
                 window.hintInput = ""

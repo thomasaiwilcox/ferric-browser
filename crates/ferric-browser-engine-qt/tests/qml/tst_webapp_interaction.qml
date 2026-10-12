@@ -435,4 +435,91 @@ TestCase {
             viewport: evaluate("({width:innerWidth,height:innerHeight,device_pixel_ratio:devicePixelRatio})")
         }))
     }
+    // T034: explicit facets share retained identities and exclude visual floods.
+    function test_T034_region_and_surface_classification() {
+        load("regions-surfaces.html")
+        var regions = evaluate(BrowserScripts.hintCollector("regions"))
+        compare(regions.candidates.length <= 256, true)
+        verify(regions.candidates.some(function(item) { return item.text === "Main content" && item.kind === "region" }))
+        verify(regions.candidates.some(function(item) { return item.text === "Named section" && item.kind === "region" }))
+        verify(regions.candidates.some(function(item) { return item.text === "Scrollable results" && item.kind === "scrollable-region" }))
+        verify(!regions.candidates.some(function(item) {
+            return ["Unnamed section", "Unnamed ARIA region", "Large generic div"].includes(item.text)
+        }), "Generic containers and unnamed sections do not become regions by size")
+        var namedRegion = regions.candidates.filter(function(item) { return item.text === "Main content" })[0]
+        verify(evaluate(BrowserScripts.hintFresh(namedRegion)).visible, "Region identity and visibility are rechecked")
+
+        var surfaces = evaluate(BrowserScripts.hintCollector("surfaces"))
+        verify(surfaces.candidates.length <= 256)
+        var drawingBoard = surfaces.candidates.filter(function(item) { return item.text === "Drawing board" })[0]
+        verify(drawingBoard, "Visible canvas missing from surfaces: " + JSON.stringify(surfaces.candidates))
+        verify(["surface", "focusable-surface"].includes(drawingBoard.kind),
+               "Canvas kind must be one of the closed surface types")
+        verify(surfaces.candidates.some(function(item) { return item.text === "Small named surface" }),
+               "A named visual surface may be smaller than 16 CSS pixels")
+        verify(surfaces.candidates.some(function(item) {
+            return item.text === "Canvas surface" && item.geometry.width >= 16 && item.geometry.height >= 16
+        }), "An unnamed 16-by-16 CSS-pixel surface is eligible")
+        verify(!evaluate("window.__ferric_browserHintState.weak.has(document.getElementById('below-minimum'))"),
+               "Unnamed visual surfaces below 16 by 16 CSS pixels are excluded")
+        verify(!evaluate("window.__ferric_browserHintState.weak.has(document.getElementById('hidden-canvas'))"),
+               "Display-none canvas buffers are excluded")
+        verify(!evaluate("window.__ferric_browserHintState.weak.has(document.getElementById('offscreen'))"),
+               "Offscreen visual surfaces are excluded")
+        var focusable = surfaces.candidates.filter(function(item) { return item.text === "Keyboard canvas" })[0]
+        verify(focusable && focusable.kind === "focusable-surface", "Focus capability requires actual focus eligibility")
+        verify(evaluate(BrowserScripts.hintFresh(focusable)).visible)
+        verify(!evaluate(BrowserScripts.hintClick(focusable)), "Surface selection never authorizes semantic click")
+        verify(evaluate(BrowserScripts.hintFocus(focusable)), "Explicit focus targets the exact focusable surface")
+        verify(evaluate("document.activeElement===document.getElementById('focusable-canvas')"))
+
+        regions = evaluate(BrowserScripts.hintCollector("regions"))
+        var scrollableRegion = regions.candidates.filter(function(item) { return item.kind === "scrollable-region" })[0]
+        verify(scrollableRegion)
+        var scrollResult = evaluate(BrowserScripts.hintSetScrollTarget(
+                                       scrollableRegion.element_id, scrollableRegion.frame_path))
+        verify(scrollResult && scrollResult.ok && scrollResult.policy === "element",
+               "Only an independently scrollable region can use the existing weak scroll target")
+        var ordinary = evaluate(BrowserScripts.hintCollector("all")).candidates
+        verify(!ordinary.some(function(item) { return ["region", "scrollable-region", "surface", "focusable-surface"].includes(item.kind) }),
+               "The default all family does not gain Region or Surface kinds")
+        cleanup()
+    }
+    function test_T034_region_and_surface_caps() {
+        load("regions-surfaces.html")
+        evaluate("{const fragment=document.createDocumentFragment();for(let i=0;i<300;i++){const region=document.createElement('section');region.setAttribute('aria-label','Cap region '+i);region.style='position:fixed;left:10px;top:10px;width:30px;height:20px';fragment.appendChild(region);const canvas=document.createElement('canvas');canvas.setAttribute('aria-label','Cap surface '+i);canvas.style='position:fixed;left:40px;top:10px;width:18px;height:18px';fragment.appendChild(canvas)}document.getElementById('main').appendChild(fragment);}true")
+        var regions = evaluate(BrowserScripts.hintCollector("regions"))
+        compare(regions.candidates.length, 256)
+        verify(regions.truncated, "Region cap reports truncation")
+        var surfaces = evaluate(BrowserScripts.hintCollector("surfaces"))
+        compare(surfaces.candidates.length, 256)
+        verify(surfaces.truncated, "Surface cap reports truncation")
+        verify(regions.inspected_nodes <= 50000 && surfaces.inspected_nodes <= 50000)
+        evaluate("{document.body.innerHTML='';const fragment=document.createDocumentFragment();for(let i=0;i<256;i++){const region=document.createElement('section');region.setAttribute('aria-label','Exact region '+i);region.style='position:fixed;left:2px;top:2px;width:20px;height:20px';fragment.appendChild(region);const canvas=document.createElement('canvas');canvas.setAttribute('aria-label','Exact surface '+i);canvas.style='position:fixed;left:2px;top:2px;width:20px;height:20px';fragment.appendChild(canvas)}document.body.appendChild(fragment);}true")
+        regions = evaluate(BrowserScripts.hintCollector("regions"))
+        compare(regions.candidates.length, 256)
+        compare(regions.truncated, false, "Exactly 256 regions do not imply omitted candidates")
+        surfaces = evaluate(BrowserScripts.hintCollector("surfaces"))
+        compare(surfaces.candidates.length, 256)
+        compare(surfaces.truncated, false, "Exactly 256 surfaces do not imply omitted candidates")
+        cleanup()
+    }
+    // T035: parent collection retains only the cross-origin exterior and open roots.
+    function test_T035_cross_origin_and_closed_root_boundaries() {
+        load("cross-origin-surface.html")
+        verify(evaluate("!Boolean(document.getElementById('cross-frame').contentDocument)"),
+               "The cross-origin child document is not readable from its parent")
+        var surfaces = evaluate(BrowserScripts.hintCollector("surfaces"))
+        var exterior = surfaces.candidates.filter(function(item) { return item.text === "Cross-origin frame surface" })[0]
+        verify(exterior && exterior.kind === "focusable-surface" && exterior.frame_path === "0",
+               "The visible iframe exterior is represented in the parent document")
+        verify(evaluate(BrowserScripts.hintFresh(exterior)).visible)
+        var regions = evaluate(BrowserScripts.hintCollector("regions")).candidates
+        verify(!regions.some(function(item) { return item.text === "Closed root secret" || item.text === "Unavailable child" }),
+               "Closed-root content and cross-origin child semantics stay unavailable")
+        var ordinary = evaluate(BrowserScripts.hintCollector("all")).candidates
+        verify(!ordinary.some(function(item) { return item.kind === "region" || item.kind === "surface" }),
+               "The default family remains unchanged for frame and closed-root content")
+        cleanup()
+    }
 }

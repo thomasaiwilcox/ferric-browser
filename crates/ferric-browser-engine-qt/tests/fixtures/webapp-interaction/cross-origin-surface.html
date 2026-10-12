@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Cross-origin surface fixture</title>
+<style>body { margin: 0 } iframe { display: block; width: 320px; height: 180px }</style>
+<body data-ready="true">
+  <iframe id="cross-frame" title="Cross-origin frame surface"
+          src="https://cross-origin.invalid/fixture"></iframe>
+  <div id="closed-host"></div>
+  <script>
+    const root = document.getElementById('closed-host').attachShadow({mode: 'closed'});
+    root.innerHTML = '<main aria-label="Closed root secret">Unavailable child</main>';
+  </script>
+</body>
+</html>

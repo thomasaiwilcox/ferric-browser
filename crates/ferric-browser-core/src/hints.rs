@@ -3,6 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 const DEFAULT_HINT_CHARS: &str = "asdfghjkl";
 pub const MAX_HINT_CANDIDATES: usize = 5_000;
+pub const MAX_HINT_REGIONS: usize = 256;
+pub const MAX_HINT_SURFACES: usize = 256;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HintKind {
@@ -18,6 +20,10 @@ pub enum HintKind {
     Aria,
     EditorFocus,
     LabelControl,
+    Region,
+    ScrollableRegion,
+    Surface,
+    FocusableSurface,
 }
 
 /// A semantic user intent selected after Ferric validates candidate facts.
@@ -32,6 +38,7 @@ pub enum HintIntent {
     HintWithin,
     SearchWithin,
     GridWithin,
+    ActionPalette,
 }
 
 /// The closed execution path allowed for a validated hint intent.
@@ -45,6 +52,7 @@ pub enum HintTransport {
     ScopedHintSession,
     ScopedSearchSession,
     SpatialSession,
+    LocalHintPalette,
 }
 
 impl HintIntent {
@@ -59,6 +67,7 @@ impl HintIntent {
             Self::HintWithin => HintTransport::ScopedHintSession,
             Self::SearchWithin => HintTransport::ScopedSearchSession,
             Self::GridWithin => HintTransport::SpatialSession,
+            Self::ActionPalette => HintTransport::LocalHintPalette,
         }
     }
 }
@@ -69,6 +78,9 @@ impl HintIntent {
 /// Hint target. It is never copied from page candidate JSON.
 #[must_use]
 pub const fn hint_intent_for_candidate(kind: HintKind, uses_url_action: bool) -> HintIntent {
+    if hint_kind_is_region_or_surface(kind) {
+        return HintIntent::ActionPalette;
+    }
     if uses_url_action || matches!(kind, HintKind::Link) {
         return HintIntent::OpenUrl;
     }
@@ -79,6 +91,10 @@ pub const fn hint_intent_for_candidate(kind: HintKind, uses_url_action: bool) ->
         | HintKind::ContentEditable
         | HintKind::EditorFocus => HintIntent::Focus,
         HintKind::Scrollable => HintIntent::SetScrollTarget,
+        HintKind::Region
+        | HintKind::ScrollableRegion
+        | HintKind::Surface
+        | HintKind::FocusableSurface => HintIntent::ActionPalette,
         HintKind::Link => HintIntent::OpenUrl,
         HintKind::Button
         | HintKind::Image
@@ -86,6 +102,66 @@ pub const fn hint_intent_for_candidate(kind: HintKind, uses_url_action: bool) ->
         | HintKind::Aria
         | HintKind::LabelControl => HintIntent::Activate,
     }
+}
+
+/// Actions that Rust may describe for an explicitly selected region or surface.
+/// The page candidate contains a typed kind only; it cannot name one of these.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HintCapability {
+    HintWithin,
+    SearchWithin,
+    GridWithin,
+    SetScrollTarget,
+    Focus,
+}
+
+impl HintCapability {
+    #[must_use]
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::HintWithin => "hint-within",
+            Self::SearchWithin => "search-within",
+            Self::GridWithin => "grid-within",
+            Self::SetScrollTarget => "set-scroll-target",
+            Self::Focus => "focus",
+        }
+    }
+
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::HintWithin => "Hint within",
+            Self::SearchWithin => "Search within",
+            Self::GridWithin => "Grid within",
+            Self::SetScrollTarget => "Set scroll target",
+            Self::Focus => "Focus",
+        }
+    }
+}
+
+/// Closed Rust-owned action table for the explicit Region and Surface facets.
+#[must_use]
+pub const fn hint_capabilities(kind: HintKind) -> &'static [HintCapability] {
+    use HintCapability::{Focus, GridWithin, HintWithin, SearchWithin, SetScrollTarget};
+
+    match kind {
+        HintKind::Region => &[HintWithin, SearchWithin, GridWithin],
+        HintKind::ScrollableRegion => &[HintWithin, SearchWithin, GridWithin, SetScrollTarget],
+        HintKind::Surface => &[GridWithin],
+        HintKind::FocusableSurface => &[GridWithin, Focus],
+        _ => &[],
+    }
+}
+
+#[must_use]
+pub const fn hint_kind_is_region_or_surface(kind: HintKind) -> bool {
+    matches!(
+        kind,
+        HintKind::Region
+            | HintKind::ScrollableRegion
+            | HintKind::Surface
+            | HintKind::FocusableSurface
+    )
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -772,6 +848,18 @@ mod tests {
             HintTransport::ScrollTargetPolicy
         );
         assert_eq!(
+            hint_intent_for_candidate(HintKind::Region, false).transport(),
+            HintTransport::LocalHintPalette
+        );
+        assert_eq!(
+            hint_intent_for_candidate(HintKind::Surface, false).transport(),
+            HintTransport::LocalHintPalette
+        );
+        assert_eq!(
+            hint_intent_for_candidate(HintKind::FocusableSurface, true),
+            HintIntent::ActionPalette
+        );
+        assert_eq!(
             HintIntent::PointerClick.transport(),
             HintTransport::NativePointerAdapter
         );
@@ -787,6 +875,31 @@ mod tests {
             HintIntent::GridWithin.transport(),
             HintTransport::SpatialSession
         );
+    }
+
+    #[test]
+    fn region_surface_capabilities_are_a_closed_rust_owned_table() {
+        use HintCapability::{Focus, GridWithin, HintWithin, SearchWithin, SetScrollTarget};
+
+        assert_eq!(
+            hint_capabilities(HintKind::Region),
+            &[HintWithin, SearchWithin, GridWithin]
+        );
+        assert_eq!(
+            hint_capabilities(HintKind::ScrollableRegion),
+            &[HintWithin, SearchWithin, GridWithin, SetScrollTarget]
+        );
+        assert_eq!(hint_capabilities(HintKind::Surface), &[GridWithin]);
+        assert_eq!(
+            hint_capabilities(HintKind::FocusableSurface),
+            &[GridWithin, Focus]
+        );
+        assert!(hint_capabilities(HintKind::Link).is_empty());
+        assert!(hint_kind_is_region_or_surface(HintKind::Region));
+        assert!(hint_kind_is_region_or_surface(HintKind::FocusableSurface));
+        assert!(!hint_kind_is_region_or_surface(HintKind::Button));
+        assert_eq!(MAX_HINT_REGIONS, 256);
+        assert_eq!(MAX_HINT_SURFACES, 256);
     }
 
     #[test]
