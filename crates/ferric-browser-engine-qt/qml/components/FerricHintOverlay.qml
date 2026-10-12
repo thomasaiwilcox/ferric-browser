@@ -20,10 +20,17 @@ Item {
     visible: hintsVisible && hintResults.length > 0
     focus: visible
 
-    function matching(label) {
+    property var matchingLabelLookup: {
+        var lookup = Object.create(null)
         var labels = hintState && hintState.matching_labels
                 ? hintState.matching_labels : []
-        return labels.indexOf(String(label)) >= 0
+        for (var index = 0; index < labels.length; ++index)
+            lookup[String(labels[index])] = true
+        return lookup
+    }
+
+    function matching(label) {
+        return matchingLabelLookup[String(label)] === true
     }
 
     function active(label) {

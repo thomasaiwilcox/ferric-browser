@@ -109,3 +109,6 @@ include!("tests/commands_and_actions.rs");
 include!("tests/presentation_boundaries.rs");
 include!("tests/context_and_library.rs");
 include!("tests/action_runtime.rs");
+
+#[path = "tests/performance.rs"]
+mod performance;

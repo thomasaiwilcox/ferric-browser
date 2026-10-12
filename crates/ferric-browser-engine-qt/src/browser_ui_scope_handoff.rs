@@ -45,12 +45,12 @@ pub(super) fn known_hint_capability_id(id: &str) -> bool {
 
 #[derive(Clone, Copy)]
 pub(super) struct HintScopeHandoffContext<'a> {
-    pub(super) current_owner: Option<LocalInteractionOwner>,
-    pub(super) current_scope_lease_id: Option<&'a str>,
-    pub(super) current_selector_policy_revision: Option<u64>,
-    pub(super) current_session: Option<&'a HintSession>,
-    pub(super) current_family: &'a str,
-    pub(super) current_mode: Mode,
+    pub(super) owner: Option<LocalInteractionOwner>,
+    pub(super) scope_lease_id: Option<&'a str>,
+    pub(super) selector_policy_revision: Option<u64>,
+    pub(super) session: Option<&'a HintSession>,
+    pub(super) family: &'a str,
+    pub(super) mode: Mode,
 }
 
 pub(super) fn hint_scope_handoff_is_valid(
@@ -60,16 +60,16 @@ pub(super) fn hint_scope_handoff_is_valid(
     context: HintScopeHandoffContext<'_>,
 ) -> bool {
     let source_family_allowed = match (binding.purpose, binding.kind) {
-        (HintScopePurpose::HintWithin, HintKind::Region | HintKind::ScrollableRegion) => {
+        (HintScopePurpose::Hint, HintKind::Region | HintKind::ScrollableRegion) => {
             binding.source_family == "regions"
         }
-        (HintScopePurpose::SearchWithin, HintKind::Region | HintKind::ScrollableRegion) => {
+        (HintScopePurpose::Search, HintKind::Region | HintKind::ScrollableRegion) => {
             matches!(binding.source_family.as_str(), "regions" | "all")
         }
-        (HintScopePurpose::GridWithin, HintKind::Region | HintKind::ScrollableRegion) => {
+        (HintScopePurpose::Grid, HintKind::Region | HintKind::ScrollableRegion) => {
             matches!(binding.source_family.as_str(), "regions" | "all")
         }
-        (HintScopePurpose::GridWithin, HintKind::Surface | HintKind::FocusableSurface) => {
+        (HintScopePurpose::Grid, HintKind::Surface | HintKind::FocusableSurface) => {
             matches!(binding.source_family.as_str(), "surfaces" | "all")
         }
         _ => false,
@@ -110,8 +110,8 @@ pub(super) fn hint_scope_handoff_is_valid(
                 == Some(binding.owner.configuration_revision)
             && receipt_parent_matches
     });
-    let current_scope_matches = context.current_scope_lease_id == parent_scope_id;
-    let source_session_matches = context.current_session.is_some_and(|session| {
+    let current_scope_matches = context.scope_lease_id == parent_scope_id;
+    let source_session_matches = context.session.is_some_and(|session| {
         session.id == binding.owner.session
             && session.target == binding.owner.target
             && session.configuration_revision == binding.owner.configuration_revision
@@ -120,12 +120,12 @@ pub(super) fn hint_scope_handoff_is_valid(
 
     source_family_allowed
         && receipt_fields_match
-        && context.current_owner == Some(binding.owner)
+        && context.owner == Some(binding.owner)
         && current_scope_matches
-        && context.current_selector_policy_revision == Some(binding.selector_policy_revision)
+        && context.selector_policy_revision == Some(binding.selector_policy_revision)
         && source_session_matches
-        && binding.source_family == context.current_family
-        && context.current_mode == Mode::Hint
+        && binding.source_family == context.family
+        && context.mode == Mode::Hint
         && lease_id == binding.lease_id
 }
 
@@ -139,10 +139,8 @@ impl qobject::BrowserUi {
         if !matches!(
             selected.kind,
             ferric_browser_core::HintKind::Region | ferric_browser_core::HintKind::ScrollableRegion
-        ) || !matches!(
-            purpose,
-            HintScopePurpose::HintWithin | HintScopePurpose::SearchWithin
-        ) {
+        ) || !matches!(purpose, HintScopePurpose::Hint | HintScopePurpose::Search)
+        {
             return Err(QString::from(r#"{"error":"unsupported-capability"}"#));
         }
         let binding = {
@@ -191,9 +189,9 @@ impl qobject::BrowserUi {
             binding
         };
         let action = match purpose {
-            HintScopePurpose::HintWithin => "hint-within",
-            HintScopePurpose::SearchWithin => "target-search-within",
-            HintScopePurpose::GridWithin => unreachable!("Grid uses its geometry handoff"),
+            HintScopePurpose::Hint => "hint-within",
+            HintScopePurpose::Search => "target-search-within",
+            HintScopePurpose::Grid => unreachable!("Grid uses its geometry handoff"),
         };
         Ok(serde_json::json!({
             "action":action,
@@ -254,7 +252,7 @@ impl qobject::BrowserUi {
             };
             this.pending_grid_scope_permit = Some(permit);
             let binding = super::hint_policy::HintScopeBinding {
-                purpose: HintScopePurpose::GridWithin,
+                purpose: HintScopePurpose::Grid,
                 source_family: this.hint_family.to_string(),
                 lease_id: format!("hint-scope-{next_id}"),
                 owner,
@@ -298,13 +296,7 @@ impl qobject::BrowserUi {
                 return false;
             }
         };
-        let Some(binding) = self
-            .as_ref()
-            .rust()
-            .pending_hint_scope_handoff
-            .as_ref()
-            .cloned()
-        else {
+        let Some(binding) = self.as_ref().rust().pending_hint_scope_handoff.clone() else {
             self.set_status_text(QString::from(
                 "Scoped Hint rejected: no pending local handoff",
             ));
@@ -335,16 +327,16 @@ impl qobject::BrowserUi {
             .map(|scope| scope.lease_id.as_str());
         let current_family = rust.hint_family.to_string();
         let context = HintScopeHandoffContext {
-            current_owner: local_hint_owner(rust),
-            current_scope_lease_id,
-            current_selector_policy_revision,
-            current_session: rust.hint_session.as_ref(),
-            current_family: &current_family,
-            current_mode: rust.core_mode,
+            owner: local_hint_owner(rust),
+            scope_lease_id: current_scope_lease_id,
+            selector_policy_revision: current_selector_policy_revision,
+            session: rust.hint_session.as_ref(),
+            family: &current_family,
+            mode: rust.core_mode,
         };
         if !matches!(
             binding.purpose,
-            HintScopePurpose::HintWithin | HintScopePurpose::SearchWithin
+            HintScopePurpose::Hint | HintScopePurpose::Search
         ) || !hint_scope_handoff_is_valid(&binding, &lease_id, &receipt, context)
         {
             self.set_status_text(QString::from("Scoped Hint rejected: lease became stale"));
@@ -369,7 +361,7 @@ impl qobject::BrowserUi {
         self.as_mut()
             .set_hint_options("all", false, "current", None, false, 1);
         self.as_mut().set_hint_visible(false);
-        if purpose == HintScopePurpose::SearchWithin {
+        if purpose == HintScopePurpose::Search {
             self.as_mut().set_target_search_scope(QString::from("all"));
             self.as_mut().set_target_search_active(true);
             self.as_mut()
@@ -407,13 +399,7 @@ impl qobject::BrowserUi {
                 return false;
             }
         };
-        let Some(binding) = self
-            .as_ref()
-            .rust()
-            .pending_hint_scope_handoff
-            .as_ref()
-            .cloned()
-        else {
+        let Some(binding) = self.as_ref().rust().pending_hint_scope_handoff.clone() else {
             self.set_status_text(QString::from("Scoped Grid rejected: no local handoff"));
             return false;
         };
@@ -442,14 +428,14 @@ impl qobject::BrowserUi {
             .map(|scope| scope.lease_id.as_str());
         let current_family = rust.hint_family.to_string();
         let context = HintScopeHandoffContext {
-            current_owner: local_hint_owner(rust),
-            current_scope_lease_id,
-            current_selector_policy_revision,
-            current_session: rust.hint_session.as_ref(),
-            current_family: &current_family,
-            current_mode: rust.core_mode,
+            owner: local_hint_owner(rust),
+            scope_lease_id: current_scope_lease_id,
+            selector_policy_revision: current_selector_policy_revision,
+            session: rust.hint_session.as_ref(),
+            family: &current_family,
+            mode: rust.core_mode,
         };
-        if binding.purpose != HintScopePurpose::GridWithin
+        if binding.purpose != HintScopePurpose::Grid
             || !hint_scope_handoff_is_valid(&binding, &lease_id, &receipt, context)
         {
             self.set_status_text(QString::from("Scoped Grid rejected: lease became stale"));
@@ -496,12 +482,12 @@ impl qobject::BrowserUi {
             return false;
         };
         let Some(css_rect) = field("geometry").and_then(|value| {
-            Some(LogicalRect::new(
+            LogicalRect::new(
                 value.get("x")?.as_f64()?,
                 value.get("y")?.as_f64()?,
                 value.get("width")?.as_f64()?,
                 value.get("height")?.as_f64()?,
-            )?)
+            )
         }) else {
             self.set_status_text(QString::from(
                 "Scoped Grid rejected: scope geometry is invalid",

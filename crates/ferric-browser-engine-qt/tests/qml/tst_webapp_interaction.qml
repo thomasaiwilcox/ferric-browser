@@ -437,6 +437,15 @@ TestCase {
             viewport: evaluate("({width:innerWidth,height:innerHeight,device_pixel_ratio:devicePixelRatio})")
         }))
     }
+    function test_T033_collection_style_cache_is_pass_local() {
+        load("performance-targets.html?count=1")
+        var collect = function() { return evaluate(BrowserScripts.hintCollector("buttons")).candidates }
+        compare(collect().length, 1)
+        evaluate("document.querySelector('button').style.display='none';true")
+        compare(collect().length, 0, "A later pass observes newly hidden targets")
+        evaluate("document.querySelector('button').style.display='';true")
+        compare(collect().length, 1, "A later pass observes newly restored targets")
+    }
     // T034: explicit facets share retained identities and exclude visual floods.
     function test_T034_region_and_surface_classification() {
         load("regions-surfaces.html")

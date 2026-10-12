@@ -334,7 +334,7 @@ impl qobject::BrowserUi {
             serial.to_string().parse::<u64>().unwrap_or_default(),
             revision.to_string().parse::<u64>().unwrap_or_default(),
         );
-        let valid = geometry.ok().is_some_and(|geometry| {
+        let valid = geometry.is_ok_and(|geometry| {
             let number = |name: &str| geometry.get(name).and_then(serde_json::Value::as_f64);
             let string = |name: &str| geometry.get(name).and_then(serde_json::Value::as_str);
             let integer = |name: &str| geometry.get(name).and_then(serde_json::Value::as_u64);

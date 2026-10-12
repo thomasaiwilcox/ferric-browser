@@ -93,18 +93,33 @@ The stress test requires a WebEngine process started with Chromium's
 `--js-flags=--expose-gc` flag so it can force collection and verify that a
 connected weak target remains usable.
 
-After the engine runner is built, run the opt-in renderer benchmark with:
+After the engine runner is built, run the opt-in interaction benchmark with:
 
 ```sh
 QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME= QT_QUICK_BACKEND=software target/qml-tests/qml_tests -input crates/ferric-browser-engine-qt/tests/qml-perf
 ```
 
-It records 10 warm-ups and 100 measured samples per scenario using the
-renderer monotonic clock. JSON output includes raw collection/fresh durations,
-zoom, viewport and engine user-agent. Run on an idle host and retain the full
-metadata before comparing results. These component timings omit Rust
-decoding/labels/ranking, payload transfer and overlay time-to-visible; they
-are explicitly incomplete T043 evidence until those stages are measured.
+It records 10 warm-ups and 100 measured samples for 500 targets at 80/100/125%
+zoom, 1,000/5,000 targets, a 1,000-target mutation case, and a 500-marker
+overlay at each zoom. The JSON retains raw collection, fresh-target,
+pointer-preflight, action, refresh, layout-compute, and time-to-visible samples
+with the viewport and engine user-agent. The collector phase clock is added by
+a test-only transform; it adds overhead, so use the matching unprofiled run for
+baseline regression comparisons. The host callback measurement includes the
+page-script return and QML callback/payload conversion, not just transport.
+
+The separate Rust decode, label assignment, interaction setup, ranking, and
+snapshot sample is opt-in:
+
+```sh
+CARGO_NET_OFFLINE=true cargo test -p ferric-browser-engine-qt --lib s17_rust_hint_pipeline_performance -- --ignored --nocapture
+```
+
+Keep the raw samples and workload/build/platform identity. The S17 evidence
+records p95 as the nearest-rank 95th value (sorted sample index 94 of 100),
+including full tails and the offscreen software-rendering limit. The
+instrumented renderer profile, unprofiled baseline comparison, Rust stages,
+and overlay visibility stages together form the T043 evidence.
 
 CTest runs this suite offscreen with software rendering. Running the executable
 under a Wayland compositor additionally requires a keyboard seat and an active

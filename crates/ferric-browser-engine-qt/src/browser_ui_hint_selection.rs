@@ -387,7 +387,7 @@ impl qobject::BrowserUi {
                     match self.as_mut().begin_hint_scope_handoff(
                         &selected,
                         &fresh,
-                        HintScopePurpose::SearchWithin,
+                        HintScopePurpose::Search,
                     ) {
                         Ok(result) => result,
                         Err(error) => return error,
@@ -403,7 +403,7 @@ impl qobject::BrowserUi {
                     match self.as_mut().begin_hint_scope_handoff(
                         &selected,
                         &fresh,
-                        HintScopePurpose::HintWithin,
+                        HintScopePurpose::Hint,
                     ) {
                         Ok(result) => result,
                         Err(error) => return error,

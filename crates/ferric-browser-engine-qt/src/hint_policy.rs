@@ -22,7 +22,7 @@ pub(super) struct LocalInteractionOwner {
 /// Rust-owned identity for one local region-to-Hint scope handoff.
 ///
 /// The page receives only the bounded lease ID and candidate facts. The
-/// actual DOM reference stays in the ApplicationWorld as a WeakRef.
+/// actual DOM reference stays in the `ApplicationWorld` as a `WeakRef`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct HintScopeBinding {
     pub(super) purpose: HintScopePurpose,
@@ -38,9 +38,9 @@ pub(super) struct HintScopeBinding {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum HintScopePurpose {
-    HintWithin,
-    SearchWithin,
-    GridWithin,
+    Hint,
+    Search,
+    Grid,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

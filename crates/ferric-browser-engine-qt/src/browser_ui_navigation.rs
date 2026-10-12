@@ -827,7 +827,7 @@ mod tests {
             configuration_revision,
         };
         let binding = super::super::hint_policy::HintScopeBinding {
-            purpose: super::super::hint_policy::HintScopePurpose::HintWithin,
+            purpose: super::super::hint_policy::HintScopePurpose::Hint,
             source_family: "regions".into(),
             lease_id: "hint-scope-current".into(),
             owner,
@@ -912,12 +912,12 @@ mod tests {
         let selector_revision = binding.selector_policy_revision;
         let parent_scope_id = binding.parent_scope_lease_id.as_deref();
         let context = HintScopeHandoffContext {
-            current_owner: Some(owner),
-            current_scope_lease_id: parent_scope_id,
-            current_selector_policy_revision: Some(selector_revision),
-            current_session: Some(&session),
-            current_family: "regions",
-            current_mode: Mode::Hint,
+            owner: Some(owner),
+            scope_lease_id: parent_scope_id,
+            selector_policy_revision: Some(selector_revision),
+            session: Some(&session),
+            family: "regions",
+            mode: Mode::Hint,
         };
         assert!(hint_scope_handoff_is_valid(
             &binding,
@@ -993,51 +993,51 @@ mod tests {
         other_session_config.configuration_revision += 1;
         let stale_contexts = [
             HintScopeHandoffContext {
-                current_owner: Some(other_document_owner),
+                owner: Some(other_document_owner),
                 ..context
             },
             HintScopeHandoffContext {
-                current_owner: Some(other_config_owner),
+                owner: Some(other_config_owner),
                 ..context
             },
             HintScopeHandoffContext {
-                current_owner: Some(other_window_owner),
+                owner: Some(other_window_owner),
                 ..context
             },
             HintScopeHandoffContext {
-                current_scope_lease_id: Some("hint-scope-replaced"),
+                scope_lease_id: Some("hint-scope-replaced"),
                 ..context
             },
             HintScopeHandoffContext {
-                current_selector_policy_revision: None,
+                selector_policy_revision: None,
                 ..context
             },
             HintScopeHandoffContext {
-                current_selector_policy_revision: Some(selector_revision + 1),
+                selector_policy_revision: Some(selector_revision + 1),
                 ..context
             },
             HintScopeHandoffContext {
-                current_session: None,
+                session: None,
                 ..context
             },
             HintScopeHandoffContext {
-                current_session: Some(&other_session_id),
+                session: Some(&other_session_id),
                 ..context
             },
             HintScopeHandoffContext {
-                current_session: Some(&other_session_target),
+                session: Some(&other_session_target),
                 ..context
             },
             HintScopeHandoffContext {
-                current_session: Some(&other_session_config),
+                session: Some(&other_session_config),
                 ..context
             },
             HintScopeHandoffContext {
-                current_family: "all",
+                family: "all",
                 ..context
             },
             HintScopeHandoffContext {
-                current_mode: Mode::Normal,
+                mode: Mode::Normal,
                 ..context
             },
         ];
@@ -1059,7 +1059,7 @@ mod tests {
             &binding.lease_id,
             &top_level_receipt,
             HintScopeHandoffContext {
-                current_scope_lease_id: None,
+                scope_lease_id: None,
                 ..context
             },
         ));
@@ -1068,19 +1068,19 @@ mod tests {
     #[test]
     fn grid_scope_handoff_is_limited_to_region_and_surface_families() {
         let (mut binding, session, mut receipt, owner) = scope_handoff_fixture();
-        binding.purpose = HintScopePurpose::GridWithin;
+        binding.purpose = HintScopePurpose::Grid;
         binding.source_family = "surfaces".into();
         binding.kind = HintKind::Surface;
         binding.parent_scope_lease_id = None;
         receipt["kind"] = Value::String("surface".into());
         receipt["parent_scope_lease_id"] = Value::Null;
         let surface_context = HintScopeHandoffContext {
-            current_owner: Some(owner),
-            current_scope_lease_id: None,
-            current_selector_policy_revision: Some(binding.selector_policy_revision),
-            current_session: Some(&session),
-            current_family: "surfaces",
-            current_mode: Mode::Hint,
+            owner: Some(owner),
+            scope_lease_id: None,
+            selector_policy_revision: Some(binding.selector_policy_revision),
+            session: Some(&session),
+            family: "surfaces",
+            mode: Mode::Hint,
         };
         assert!(hint_scope_handoff_is_valid(
             &binding,
@@ -1102,15 +1102,15 @@ mod tests {
     #[test]
     fn search_within_handoff_accepts_target_search_all_and_rejects_family_drift() {
         let (mut binding, session, receipt, owner) = scope_handoff_fixture();
-        binding.purpose = HintScopePurpose::SearchWithin;
+        binding.purpose = HintScopePurpose::Search;
         binding.source_family = "all".into();
         let context = HintScopeHandoffContext {
-            current_owner: Some(owner),
-            current_scope_lease_id: binding.parent_scope_lease_id.as_deref(),
-            current_selector_policy_revision: Some(binding.selector_policy_revision),
-            current_session: Some(&session),
-            current_family: "all",
-            current_mode: Mode::Hint,
+            owner: Some(owner),
+            scope_lease_id: binding.parent_scope_lease_id.as_deref(),
+            selector_policy_revision: Some(binding.selector_policy_revision),
+            session: Some(&session),
+            family: "all",
+            mode: Mode::Hint,
         };
         assert!(hint_scope_handoff_is_valid(
             &binding,
@@ -1120,7 +1120,7 @@ mod tests {
         ));
 
         let wrong_family = HintScopeHandoffContext {
-            current_family: "regions",
+            family: "regions",
             ..context
         };
         assert!(!hint_scope_handoff_is_valid(

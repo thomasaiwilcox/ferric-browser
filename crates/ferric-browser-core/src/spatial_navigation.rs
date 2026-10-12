@@ -300,7 +300,7 @@ pub struct SpatialProjection {
     pub session_id: SpatialSessionId,
     pub selection_revision: u64,
     pub lifecycle: SpatialLifecycle,
-    /// The full captured WebEngineView surface, always rooted at `(0, 0)`.
+    /// The full captured `WebEngineView` surface, always rooted at `(0, 0)`.
     pub viewport_rect: LogicalRect,
     /// The selected interaction area; equal to `viewport_rect` for legacy Grid.
     pub interaction_rect: LogicalRect,
@@ -576,6 +576,11 @@ impl SpatialSession {
 
     /// Installs a scoped interaction rectangle inside the full view viewport.
     /// The scope identity is fixed when the session is created.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SpatialError::InvalidScope`] if the session scope is invalid or the
+    /// interaction rectangle is outside the viewport.
     pub fn observe_scoped_surface(
         &mut self,
         owner: SpatialOwner,
