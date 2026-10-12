@@ -76,8 +76,8 @@
     },
     {
       "id": "S12",
-      "status": "not_started",
-      "evidence": null,
+      "status": "implemented_unqualified",
+      "evidence": "evidence/S12.json",
       "capability_decision": null
     },
     {

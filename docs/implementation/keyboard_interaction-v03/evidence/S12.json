@@ -1,0 +1,302 @@
+{
+  "schema_version": 1,
+  "slice_id": "S12",
+  "status": "implemented_unqualified",
+  "commit": "8dcce3e830ca6f5066c6eadb17f29a1a5978fbad",
+  "environment": {
+    "os": "Linux thinkpad 7.2.3-arch1-3 x86_64; Omarchy 4.0.4",
+    "qt": "6.11.2",
+    "chromium": "QtWebEngine 6.11.2 / Chrome 140.0.0.0",
+    "compiler": "GCC 16.2.1",
+    "rustc": "1.98.0 (88d9e12ae 2026-08-18)",
+    "cargo": "1.98.0 (797e8a9bc 2026-08-05)",
+    "build": "Rust dev/test, local Qt 6.11.2, offline workspace checks",
+    "native_test": "Qt Quick/WebEngine offscreen software fixtures; native_insert CTest 1/1",
+    "performance": "Offscreen software renderer; viewport 640x480 at 100% zoom; benchmark also ran 80% and 125%; devicePixelRatio reported by WebEngine",
+    "wayland": "No physical Wayland keyboard journey was run",
+    "scope": "Site-scoped selector discovery and action safeguards are implemented and fixture-tested. The real composed BrowserUi config lifecycle and comparable before/after performance remain unqualified."
+  },
+  "changed_files": [
+    "crates/ferric-browser-config/src/runtime_config.rs",
+    "crates/ferric-browser-config/src/selector_config.rs",
+    "crates/ferric-browser-config/src/tests.rs",
+    "crates/ferric-browser-config/src/validation.rs",
+    "crates/ferric-browser-core/src/hints.rs",
+    "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimePresentation.qml",
+    "crates/ferric-browser-engine-qt/qml/scripts/BrowserScripts.js",
+    "crates/ferric-browser-engine-qt/qml/scripts/PageInteractionScripts.js",
+    "crates/ferric-browser-engine-qt/src/browser_ui_hint_selection.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_navigation.rs",
+    "crates/ferric-browser-engine-qt/src/lib.rs",
+    "crates/ferric-browser-engine-qt/src/tests/presentation_boundaries.rs",
+    "crates/ferric-browser-engine-qt/tests/qml/tst_webapp_interaction.qml",
+    "crates/xtask/src/main.rs",
+    "docs/user/configuration.md",
+    "evidence/S12-plan.md",
+    "evidence/S12.json",
+    "evidence/logs/S12/clippy-initial-failure.log",
+    "evidence/logs/S12/clippy.log",
+    "evidence/logs/S12/config-tests.log",
+    "evidence/logs/S12/core-tests.log",
+    "evidence/logs/S12/docs-generation.log",
+    "evidence/logs/S12/engine-initial-failure.log",
+    "evidence/logs/S12/engine-intermediate-failure.log",
+    "evidence/logs/S12/engine-pre-stress.log",
+    "evidence/logs/S12/engine-tests.log",
+    "evidence/logs/S12/format.log",
+    "evidence/logs/S12/pack-integrity.log",
+    "evidence/logs/S12/performance-summary.json",
+    "evidence/logs/S12/performance.log",
+    "evidence/logs/S12/xtask-check-initial-failure.log",
+    "evidence/logs/S12/xtask-check-pre-helper.log",
+    "evidence/logs/S12/xtask-check.log",
+    "progress.json",
+    "evidence/logs/S12/pack-evidence.log"
+  ],
+  "baseline_comparison": {
+    "report": "evidence/logs/S12/performance-summary.json",
+    "result": "Current-build renderer samples and a bounded expensive-selector stress measurement were recorded. There is no same-build pre-S12 baseline; the full T043 transfer/Rust-label/QML-overlay/action comparison was not performed. Initial test and lint failures are retained in their named logs and were fixed before the final passing runs."
+  },
+  "test_results": [
+    {
+      "test_id": "T009",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask check --locked --offline",
+      "commit": "8dcce3e830ca6f5066c6eadb17f29a1a5978fbad",
+      "log": "evidence/logs/S12/xtask-check.log",
+      "observations": [
+        "Workspace engine tests passed (426 tests); bounded hint payload parsing and privacy contracts remained green."
+      ]
+    },
+    {
+      "test_id": "T009",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "8dcce3e830ca6f5066c6eadb17f29a1a5978fbad",
+      "log": "evidence/logs/S12/engine-tests.log",
+      "observations": [
+        "The production WebEngine fixtures passed T009 control-value privacy and literal label checks."
+      ]
+    },
+    {
+      "test_id": "T030",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo test -p ferric-browser-config --locked --offline",
+      "commit": "8dcce3e830ca6f5066c6eadb17f29a1a5978fbad",
+      "log": "evidence/logs/S12/config-tests.log",
+      "observations": [
+        "All 55 config tests passed, including selector layering, per-entry and resolved limits, site order, site-rule aggregate bytes, and empty replacement."
+      ]
+    },
+    {
+      "test_id": "T030",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask check --locked --offline",
+      "commit": "8dcce3e830ca6f5066c6eadb17f29a1a5978fbad",
+      "log": "evidence/logs/S12/xtask-check.log",
+      "observations": [
+        "The full workspace check passed; engine unit tests covered the BrowserUi snapshot revision binding, and existing selector callback/parser unit contracts remained green."
+      ]
+    },
+    {
+      "test_id": "T030",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "8dcce3e830ca6f5066c6eadb17f29a1a5978fbad",
+      "log": "evidence/logs/S12/engine-tests.log",
+      "observations": [
+        "The browser-owned WebEngine document accepted valid CSS and rejected malformed CSS through the existing selector syntax validation tests."
+      ]
+    },
+    {
+      "test_id": "T031",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo test -p ferric-browser-config --locked --offline",
+      "commit": "8dcce3e830ca6f5066c6eadb17f29a1a5978fbad",
+      "log": "evidence/logs/S12/config-tests.log",
+      "observations": [
+        "Global/profile/runtime and matching-site layers preserve stable extend/replace order; authored entries cap at 16 selectors while a resolved family allows 32; site rules share a 16 KiB selector-string budget."
+      ]
+    },
+    {
+      "test_id": "T031",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "8dcce3e830ca6f5066c6eadb17f29a1a5978fbad",
+      "log": "evidence/logs/S12/engine-tests.log",
+      "observations": [
+        "Custom discovery and empty replace behavior passed for all, scrollables, and proxy candidate families; the default all policy remained independent."
+      ]
+    },
+    {
+      "test_id": "T032",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "8dcce3e830ca6f5066c6eadb17f29a1a5978fbad",
+      "log": "evidence/logs/S12/engine-tests.log",
+      "observations": [
+        "A custom-selected semantic button survived fresh and final click checks. A revision mismatch rejected freshness. A generic custom match with a fake href remained aria-only and failed click, focus, and native-pointer preflight."
+      ]
+    },
+    {
+      "test_id": "T033",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "8dcce3e830ca6f5066c6eadb17f29a1a5978fbad",
+      "log": "evidence/logs/S12/engine-tests.log",
+      "observations": [
+        "The 32-selector stress case inspected exactly 50,000 nodes, returned 5,000 candidates, set truncated=true, and passed the production WebEngine fixture."
+      ]
+    },
+    {
+      "test_id": "T033",
+      "level": "performance",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "8dcce3e830ca6f5066c6eadb17f29a1a5978fbad",
+      "log": "evidence/logs/S12/engine-tests.log",
+      "observations": [
+        "One renderer pass using 32 selectors (31 relational :has selectors) took 772 ms at 50,000 inspected nodes and 5,000 output candidates; this is a single stress observation, not a p95."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask check --locked --offline",
+      "commit": "8dcce3e830ca6f5066c6eadb17f29a1a5978fbad",
+      "log": "evidence/logs/S12/xtask-check.log",
+      "observations": [
+        "The full workspace check passed, including the Rust workspace test suites and doctests."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "8dcce3e830ca6f5066c6eadb17f29a1a5978fbad",
+      "log": "evidence/logs/S12/engine-tests.log",
+      "observations": [
+        "All 126 QML/WebEngine tests passed, including the existing hint, rapid, proxy, geometry, and recovery regressions."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "8dcce3e830ca6f5066c6eadb17f29a1a5978fbad",
+      "log": "evidence/logs/S12/engine-tests.log",
+      "observations": [
+        "The native_insert CTest target passed 1/1 under the offscreen Qt test environment."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask check --locked --offline",
+      "commit": "8dcce3e830ca6f5066c6eadb17f29a1a5978fbad",
+      "log": "evidence/logs/S12/xtask-check.log",
+      "observations": [
+        "Generated-contract, architecture, release artifact, license, QML lint, formatting, workspace tests, and doctests passed."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask docs",
+      "commit": "8dcce3e830ca6f5066c6eadb17f29a1a5978fbad",
+      "log": "evidence/logs/S12/docs-generation.log",
+      "observations": [
+        "Generated configuration documentation from the xtask source; the selector policy text is in the generator and matches the generated output."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo fmt --all -- --check",
+      "commit": "8dcce3e830ca6f5066c6eadb17f29a1a5978fbad",
+      "log": "evidence/logs/S12/format.log",
+      "observations": [
+        "Rust formatting passed."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo clippy --workspace --all-targets --locked --offline -- -D warnings",
+      "commit": "8dcce3e830ca6f5066c6eadb17f29a1a5978fbad",
+      "log": "evidence/logs/S12/clippy.log",
+      "observations": [
+        "Strict workspace Clippy passed with warnings denied."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "python3 docs/implementation/keyboard_interaction-v03/tools/validate_pack.py --integrity",
+      "commit": "8dcce3e830ca6f5066c6eadb17f29a1a5978fbad",
+      "log": "evidence/logs/S12/pack-integrity.log",
+      "observations": [
+        "Pack structure and its 24 contracts, 26 invariants, 57 planned tests, 28 slices, and 55 source items validated."
+      ]
+    },
+    {
+      "test_id": "T043",
+      "level": "performance",
+      "result": "not_run",
+      "command": "QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME= QT_QUICK_BACKEND=software target/qml-tests/qml_tests -input crates/ferric-browser-engine-qt/tests/qml-perf",
+      "commit": "8dcce3e830ca6f5066c6eadb17f29a1a5978fbad",
+      "log": "evidence/logs/S12/performance.log",
+      "observations": [
+        "The renderer harness recorded 10 warm-ups and 100 samples for 500 candidates at 80%, 100%, and 125%, plus 1,000, 5,000, and 1,000-with-mutation cases. Current-build collection p95 values were 61.6, 54.2, 57.2, 112.6, 1066.4, and 108.3 ms respectively; fresh p95 values were 0.5, 0.7, 0.8, 0.6, 3.7, and 0.7 ms.",
+        "T043 is not qualified as a comparable performance pass: no same-build pre-S12 baseline or full transfer/Rust-label/QML-overlay/action stage timings were collected."
+      ],
+      "reason": "Current-build renderer samples exist, but the required before/after comparison and full interaction-stage measurements are absent; see the measurement limitations in performance-summary.json."
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "python3 docs/implementation/keyboard_interaction-v03/tools/validate_pack.py --integrity --evidence",
+      "commit": "8dcce3e830ca6f5066c6eadb17f29a1a5978fbad",
+      "log": "evidence/logs/S12/pack-evidence.log",
+      "observations": [
+        "Pack integrity and evidence/progress schema validation passed for the recorded S12 evidence."
+      ]
+    }
+  ],
+  "capability_decision": null,
+  "capability_report": null,
+  "review_kind": "self-review",
+  "scope_amendments": [],
+  "remaining_risks": [
+    "No composed offscreen BrowserUi journey exercises startup policy validation, matching-site resolution, commit/cancellation, stale callback handling, and final action through the complete configuration/session lifecycle.",
+    "The renderer benchmark is current-build evidence only. It omits Qt-to-Rust transfer, Rust labeling, QML overlay presentation, and final action delivery, and has no comparable pre-S12 sample set.",
+    "A synchronous CSS selector match cannot be interrupted. The traversal and candidate caps expose truncation, but a sufficiently expensive selector can still block the renderer during one match.",
+    "All Qt/WebEngine and native CTest evidence is offscreen; no physical Wayland keyboard qualification was performed."
+  ],
+  "not_run_reasons": [
+    "T043 comparable performance qualification: current renderer samples exist, but no same-build pre-S12 baseline or full end-to-end stage timings exist.",
+    "Composed BrowserUi selector lifecycle: no offscreen integration fixture drives startup, site rules, config commit/cancel, stale callbacks, and final activation as one journey.",
+    "Physical Wayland keyboard journey: not run; offscreen Qt tests do not establish physical desktop interaction."
+  ],
+  "next_ready_slices": [
+    "S13"
+  ]
+}
