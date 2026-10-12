@@ -1502,6 +1502,33 @@ function onContext_workspaceChanged() {
 
     WebEngineView {
         id: secondaryView
+        readonly property string promptLeaseIdentity: Qt.createUuid()
+        property var promptIdentityUi: null
+        property int promptIdentityTabIndex: -1
+        function refreshPromptViewIdentity() {
+            if (promptIdentityUi && promptIdentityTabIndex >= 0
+                    && promptIdentityUi.unregister_prompt_view_identity) {
+                promptIdentityUi.unregister_prompt_view_identity(
+                    promptIdentityTabIndex, promptLeaseIdentity)
+            }
+            promptIdentityUi = viewUi
+            promptIdentityTabIndex = tabIndex >= 0 ? tabIndex
+                                                   : Number(viewUi.active_tab_index)
+            if (promptIdentityUi && promptIdentityTabIndex >= 0
+                    && promptIdentityUi.register_prompt_view_identity) {
+                promptIdentityUi.register_prompt_view_identity(
+                    promptIdentityTabIndex, promptLeaseIdentity)
+            }
+        }
+        onTabIndexChanged: refreshPromptViewIdentity()
+        onViewUiChanged: refreshPromptViewIdentity()
+        Component.onDestruction: {
+            if (promptIdentityUi && promptIdentityTabIndex >= 0
+                    && promptIdentityUi.unregister_prompt_view_identity) {
+                promptIdentityUi.unregister_prompt_view_identity(
+                    promptIdentityTabIndex, promptLeaseIdentity)
+            }
+        }
         property alias nativeUrl: secondaryNativeContent.nativeUrl
         property alias contentTraversalPending: secondaryNativeContent.traversalPending
         readonly property var startPage: secondaryNativeContent.startPage
@@ -1587,6 +1614,7 @@ function onContext_workspaceChanged() {
             === "require-gesture"
         Accessible.name: "Web content"
         Component.onCompleted: {
+            refreshPromptViewIdentity()
             if (!secondaryWindow.windowTransferMode) setContentUrl(viewUi.initial_url, false)
             refreshEffectiveSiteSettings()
         }
@@ -1622,6 +1650,7 @@ function onContext_workspaceChanged() {
         onLoadingChanged: function(loadRequest) {
             if (nativeUrl.length > 0) return
             if (loadRequest.status === WebEngineView.LoadStartedStatus) {
+                viewUi.invalidate_native_prompt_leases()
                 rootWindow.clearPageDialogForView(secondaryView)
                 rootWindow.clearClientCertificateForView(secondaryView)
                 rootWindow.clearCertificateErrorForView(secondaryView)
@@ -1688,7 +1717,7 @@ function onContext_workspaceChanged() {
         }
         onPermissionRequested: function(permissionRequest) {
             rootWindow.handleImmediatePermissionRequested(
-                viewUi, permissionRequest, viewTransientProfile, viewHost)
+                viewUi, permissionRequest, viewTransientProfile, viewHost, secondaryView)
         }
         onJavaScriptDialogRequested: function(request) {
             rootWindow.handleJavaScriptDialogRequested(

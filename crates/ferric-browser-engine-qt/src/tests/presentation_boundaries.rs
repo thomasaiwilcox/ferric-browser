@@ -247,6 +247,23 @@ fn normal_input_uses_logical_unmodified_text_and_preserves_unicode_fields() {
 }
 
 #[test]
+fn native_prompt_ownership_precedes_media_and_mixed_key_routing() {
+    let qml = QML_SOURCE;
+    let guard = qml
+        .find("if (window.nativePromptActiveFor(ui))")
+        .expect("key handler checks native prompt ownership");
+    let media = qml
+        .find("window.handleMediaKey(event)")
+        .expect("media routing remains present");
+    let mixed = qml
+        .find("ui.mixed_key_route(logicalText)")
+        .expect("Mixed routing remains present");
+    assert!(guard < media && guard < mixed);
+    assert!(qml.contains("begin_native_prompt_lease"));
+    assert!(qml.contains("complete_native_prompt_lease"));
+}
+
+#[test]
 fn mixed_policy_tokens_match_the_existing_qml_logical_vocabulary() {
     use ferric_browser_core::LogicalKeyToken;
 

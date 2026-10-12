@@ -2294,7 +2294,8 @@ Error response:
 `action.execute`, `actions.query`, `windows.query`, `tabs.query`,
 `profiles.query`, `contexts.query`, `switcher.query`, `site.status`,
 `bindings.query`, `downloads.query`, `config.get`, `diagnostics.get`,
-`operations.query`, `operations.cancel`, and `events.subscribe`. Commands and
+`interaction.status`, `operations.query`, `operations.cancel`, and
+`events.subscribe`. Commands and
 actions use typed `arguments` objects derived from their registries. Clients
 cannot supply trusted source flags, consent assertions, or native event handles.
 JSON strings are not reparsed as shell or command chains. An optional
@@ -2310,6 +2311,13 @@ private queries and the request explicitly sets `include_private: true`.
 Private permission answers and secrets are never exposed. Default URL output
 removes userinfo and recognized auth secrets; raw-query/fragment output, if
 added, requires an explicit sensitive-output flag and is not logged.
+
+`interaction.status` returns bounded mode, epoch and configuration/policy
+revisions; active window/tab identity; a focus category with at most 16 frame
+paths; shortcut policy provenance and page-key count; native-prompt category,
+depth and owner-known flags; and scroll-policy state. Scroll policy is reported
+as unknown when it is page-local and unavailable to the native projection. The
+response omits URL, title, page labels, DOM identifiers and raw key mappings.
 
 **IPC-005 — Event ordering.** Events have instance ID, monotonically increasing
 sequence, event type, and sanitized payload. Types include window/tab changes,

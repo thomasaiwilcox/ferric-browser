@@ -29,6 +29,7 @@ class NativeInsertTest : public QObject {
     bool semicolonPending = false;
     bool mixedPageKey = false;
     bool mixedBrowserKey = false;
+    bool nativePromptActive = false;
     int mixedRouteCalls = 0;
     int browserOwnedRepeats = 0;
     int fixtureGeneration = 0;
@@ -201,6 +202,10 @@ WebEngineView {
                 router.acceptCurrentEvent();
                 return;
             }
+            // Mirrors FerricBrowserRuntimeSurface's early native-prompt
+            // ownership guard: leave the original Qt event unaccepted.
+            if (nativePromptActive)
+                return;
             if (mode == "normal" && (key == Qt::Key_F || key == Qt::Key_G) && mixedPageKey) {
                 ++mixedRouteCalls;
                 router.pageOwnsCurrentEvent();
@@ -247,6 +252,7 @@ WebEngineView {
         semicolonPending = false;
         mixedPageKey = false;
         mixedBrowserKey = false;
+        nativePromptActive = false;
         mixedRouteCalls = 0;
         browserOwnedRepeats = 0;
         const int loaded = view->property("loaded").toInt();
@@ -494,6 +500,20 @@ WebEngineView {
         QCOMPARE(browserOwnedRepeats, 1);
         QCOMPARE(mixedRouteCalls, 1);
         QCOMPARE(js("events.filter(e=>e.key==='f').length").toInt(), 0);
+    }
+    void nativePromptInputBypassesMixedRouting() {
+        focus("player");
+        normal();
+        mixedPageKey = true;
+        nativePromptActive = true;
+        const int before = mixedRouteCalls;
+
+        QTest::keyClick(&window, Qt::Key_F);
+
+        QCOMPARE(mixedRouteCalls, before);
+        QTRY_COMPARE(js("events.filter(e=>e.key==='f'&&e.type==='keydown').length").toInt(), 1);
+        QTRY_COMPARE(js("events.filter(e=>e.key==='f'&&e.type==='keyup').length").toInt(), 1);
+        nativePromptActive = false;
     }
     void passPersistentAndRecovery() {
         focus("player");

@@ -206,6 +206,8 @@ impl qobject::BrowserUi {
             let mut rust = self.as_mut().rust_mut();
             rust.as_mut().get_mut().bindings = bindings;
         }
+        self.as_mut()
+            .note_native_prompt_configuration_change(policy_changed);
         if policy_changed {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();

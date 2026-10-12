@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtTest
 import "../../qml/components"
 import "../../qml/scripts/ChromePresentation.js" as ChromePresentation
@@ -32,6 +33,8 @@ TestCase {
     property int dismissedRecoveries: 0
     property int acceptedCommandDialogs: 0
     property int cancelledCommandDialogs: 0
+    property int acceptedEngineFileDialogs: 0
+    property int rejectedEngineFileDialogs: 0
     property int closedLibraries: 0
     property int openedLibraryEntries: 0
     property string openedLibraryEntryId: ""
@@ -235,6 +238,14 @@ TestCase {
                 chromeTest.activatedContextAction = item.action
             }
             onDismissed: chromeTest.dismissedContextMenus += 1
+        }
+    }
+
+    Component {
+        id: fileDialogSurfacesFixture
+        FerricFileDialogSurfaces {
+            onEngineFileAccepted: chromeTest.acceptedEngineFileDialogs++
+            onEngineFileRejected: chromeTest.rejectedEngineFileDialogs++
         }
     }
 
@@ -784,6 +795,35 @@ TestCase {
         tryCompare(chromeTest, "activatedContextItems", 1)
         compare(activatedContextAction, "open-link-tab")
         tryCompare(popup, "visible", false)
+    }
+
+    function test_native_prompt_file_chooser_accept_and_cancel_by_keyboard() {
+        var accepted = createTemporaryObject(fileDialogSurfacesFixture,
+                                             testWindow.contentItem, {
+                                                 engineFileOptions: FileDialog.DontUseNativeDialog,
+                                                 engineFileMode: FileDialog.SaveFile,
+                                                 engineFileCurrentFolder: "file:///tmp/"
+                                             })
+        verify(accepted)
+        accepted.openEngineFile()
+        tryCompare(accepted, "engineFileVisible", true)
+        var acceptName = findChild(testWindow, "fileNameTextField")
+        verify(acceptName)
+        tryCompare(acceptName, "visible", true)
+        acceptName.forceActiveFocus()
+        tryCompare(acceptName, "activeFocus", true)
+        acceptName.text = "ferric-keyboard-accept.txt"
+        keyClick(Qt.Key_Tab)
+        keyClick(Qt.Key_Tab)
+        keyClick(Qt.Key_Space)
+        tryCompare(chromeTest, "acceptedEngineFileDialogs", 1, 3000)
+        tryCompare(accepted, "engineFileVisible", false)
+        accepted.openEngineFile()
+        tryCompare(accepted, "engineFileVisible", true)
+        acceptName.forceActiveFocus()
+        tryCompare(acceptName, "activeFocus", true)
+        keyClick(Qt.Key_Escape)
+        tryCompare(chromeTest, "rejectedEngineFileDialogs", 1, 3000)
     }
 
     function test_large_font_rows_expand_to_fit_content() {

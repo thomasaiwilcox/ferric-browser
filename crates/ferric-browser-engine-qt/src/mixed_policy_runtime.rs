@@ -242,6 +242,7 @@ impl qobject::BrowserUi {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
             this.mixed_policy = policy;
+            this.policy_revision = this.policy_revision.wrapping_add(1);
             if let Some(bindings) = this.bindings.as_mut() {
                 bindings.reset();
             }

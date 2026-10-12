@@ -276,6 +276,10 @@ impl qobject::BrowserUi {
                 Ok(result) => Response::success(request.id.clone(), result),
                 Err(error) => ipc_failure(&request.id, "E_INVALID_PARAMS", error),
             },
+            "interaction.status" => match self.as_ref().ipc_interaction_status(&request.params) {
+                Ok(result) => Response::success(request.id.clone(), result),
+                Err(error) => ipc_failure(&request.id, "E_INVALID_PARAMS", error),
+            },
             "config.get" => match self.as_ref().ipc_config_get(&request.params) {
                 Ok(result) => Response::success(request.id.clone(), result),
                 Err(error) => {

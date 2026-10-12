@@ -590,6 +590,7 @@ fn shutdown_gate_only_blocks_mutating_ipc_methods() {
     assert!(is_mutating_ipc_method("window.focus"));
     assert!(!is_mutating_ipc_method("tabs.query"));
     assert!(!is_mutating_ipc_method("diagnostics.get"));
+    assert!(!is_mutating_ipc_method("interaction.status"));
     assert!(!is_mutating_ipc_method("events.subscribe"));
 }
 

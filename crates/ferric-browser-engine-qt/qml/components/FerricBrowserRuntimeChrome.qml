@@ -876,6 +876,25 @@ GridLayout {
 
             WebEngineView {
                 id: webView
+                readonly property string promptLeaseIdentity: Qt.createUuid()
+                property var promptIdentityUi: null
+                property int promptIdentityTabIndex: -1
+                function refreshPromptViewIdentity() {
+                    if (promptIdentityUi && promptIdentityTabIndex >= 0
+                            && promptIdentityUi.unregister_prompt_view_identity) {
+                        promptIdentityUi.unregister_prompt_view_identity(
+                            promptIdentityTabIndex, promptLeaseIdentity)
+                    }
+                    promptIdentityUi = viewUi
+                    promptIdentityTabIndex = tabIndex
+                    if (promptIdentityUi && promptIdentityTabIndex >= 0
+                            && promptIdentityUi.register_prompt_view_identity) {
+                        promptIdentityUi.register_prompt_view_identity(
+                            promptIdentityTabIndex, promptLeaseIdentity)
+                    }
+                }
+                onTabIndexChanged: refreshPromptViewIdentity()
+                onViewUiChanged: refreshPromptViewIdentity()
                 property alias nativeUrl: nativeContent.nativeUrl
                 property alias contentTraversalPending: nativeContent.traversalPending
                 readonly property var startPage: nativeContent.startPage
@@ -968,6 +987,7 @@ GridLayout {
                     === "require-gesture"
                 Accessible.name: "Web content for tab " + (tabIndex + 1)
                 Component.onCompleted: {
+                    refreshPromptViewIdentity()
                     if (viewModel.loaded && !contentInitialized) setContentUrl(viewModel.url || "about:blank", false)
                     refreshEffectiveSiteSettings()
                     if (nativeUrl.length > 0) {
@@ -1025,6 +1045,7 @@ GridLayout {
                 onLoadingChanged: function(loadRequest) {
                     if (!viewModel.loaded || nativeUrl.length > 0) return
                     if (loadRequest.status === WebEngineView.LoadStartedStatus) {
+                        viewUi.invalidate_native_prompt_leases()
                         webView.scrollPositionRestored = false
                         window.clearPageDialogForView(webView)
                         window.clearClientCertificateForView(webView)
@@ -1115,7 +1136,9 @@ GridLayout {
                 }
                 onPermissionRequested: function(permissionRequest) {
                     if (viewTabs !== tabs || tabIndex === viewUi.active_tab_index) {
-                        window.handlePermissionRequested(permissionRequest, tabIndex)
+                        window.handlePermissionRequested(
+                            permissionRequest, tabIndex, viewUi, webView,
+                            viewTransientProfile)
                     } else {
                         window.resolveQtRequest(viewUi, permissionRequest, "permission", "deny", [])
                     }
@@ -1193,6 +1216,11 @@ GridLayout {
                     window.clearCaptureSessionForView(webView)
                     window.clearFileDialogForView(webView)
                     window.clearRendererFailureForView(webView)
+                    if (promptIdentityUi && promptIdentityTabIndex >= 0
+                            && promptIdentityUi.unregister_prompt_view_identity) {
+                        promptIdentityUi.unregister_prompt_view_identity(
+                            promptIdentityTabIndex, promptLeaseIdentity)
+                    }
                 }
                 onNewWindowRequested: function(request) {
                     var popupAllowed = viewTabs === tabs

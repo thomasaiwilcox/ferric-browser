@@ -337,6 +337,8 @@ impl qobject::BrowserUi {
             this.hint_session = None;
             this.hint_interaction = None;
             this.hint_consumed.clear();
+            this.config_revision = this.config_revision.wrapping_add(1);
+            this.policy_revision = this.policy_revision.wrapping_add(1);
             this.config = config;
             this.base_config = base_config;
             this.learning_mode = this

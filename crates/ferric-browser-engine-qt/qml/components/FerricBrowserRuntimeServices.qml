@@ -316,6 +316,50 @@ FerricBrowserRuntimeBase {
         }
     }
 
+    function probeNativePromptFocus(ui, view, leaseId) {
+        if (!ui || !view || !view.mainFrame || !view.mainFrame.isValid
+                || (view.nativeUrl !== undefined && view.nativeUrl.length > 0)) {
+            if (ui && ui.finish_native_prompt_focus_probe) {
+                ui.finish_native_prompt_focus_probe(leaseId)
+            }
+            return
+        }
+        var index = view.tabIndex >= 0 ? Number(view.tabIndex) : Number(ui.active_tab_index)
+        var url = view.url.toString()
+        var probeEpoch = Number(ui.input_epoch) || 0
+        var tracker = { pending: 0, started: false, finished: false }
+        function finishIfReady() {
+            if (!tracker.finished && tracker.started && tracker.pending === 0) {
+                tracker.finished = true
+                ui.finish_native_prompt_focus_probe(leaseId)
+            }
+        }
+        function probe(frame, framePath) {
+            if (!frame || !frame.isValid) {
+                return
+            }
+            tracker.pending += 1
+            frame.runJavaScript(window.focusProbeScript(), window.browserScriptWorld,
+                function(value) {
+                    var state = value || { sequence: 0, editable: false,
+                                            user_activated: false }
+                    ui.page_focus_observed_for(index, url, framePath,
+                        Number(state.sequence) || 0, probeEpoch,
+                        Number(state.context) || 0, !!state.editable,
+                        !!state.user_activated)
+                    tracker.pending -= 1
+                    finishIfReady()
+                })
+            var children = frame.children || []
+            for (var childIndex = 0; childIndex < children.length; ++childIndex) {
+                probe(children[childIndex], framePath + "." + childIndex)
+            }
+        }
+        probe(view.mainFrame, "0")
+        tracker.started = true
+        finishIfReady()
+    }
+
     function probeFocusNotification(ui, host, view, index, message) {
         if (message !== "__ferric_browser_focus_changed" || !ui || !host
                 || (ui.mode !== "insert" && ui.mode !== "insert-locked")) {
@@ -774,9 +818,12 @@ FerricBrowserRuntimeBase {
         var request = window.pendingFileDialogRequest
         var hadRequest = !!request
         var ui = window.pendingFileDialogUi || browserUi
+        var view = window.pendingFileDialogView
+        var leaseToken = window.pendingFileDialogLeaseToken
         window.pendingFileDialogRequest = null
         window.pendingFileDialogView = null
         window.pendingFileDialogUi = null
+        window.pendingFileDialogLeaseToken = ""
         window.pendingFileDialogWaitingForPortal = false
         window.pendingFileDialogPortalDeadlineMs = 0
         if (fileDialogSurfaces.engineFileVisible) {
@@ -788,6 +835,7 @@ FerricBrowserRuntimeBase {
         if (hadRequest) {
             window.restoreOverlayFocus()
         }
+        window.completeNativePromptLease(ui, leaseToken, view)
         if (cancelRequest && request) {
             window.resolveQtRequest(ui, request, "file-dialog", "dialogReject", [])
         }
@@ -799,10 +847,13 @@ FerricBrowserRuntimeBase {
     function acceptEngineFileDialog() {
         var request = window.pendingFileDialogRequest
         var ui = window.pendingFileDialogUi || browserUi
+        var view = window.pendingFileDialogView
+        var leaseToken = window.pendingFileDialogLeaseToken
         var paths = window.fileDialogPaths()
         window.pendingFileDialogRequest = null
         window.pendingFileDialogView = null
         window.pendingFileDialogUi = null
+        window.pendingFileDialogLeaseToken = ""
         if (!request || paths.length === 0) {
             if (request) {
                 window.resolveQtRequest(ui, request, "file-dialog", "dialogReject", [])
@@ -810,11 +861,13 @@ FerricBrowserRuntimeBase {
             if (request) {
                 window.restoreOverlayFocus()
             }
+            window.completeNativePromptLease(ui, leaseToken, view)
             ui.status_text = "File selection returned no local paths"
             return
         }
         window.resolveQtRequest(ui, request, "file-dialog", "dialogAccept", [paths])
         window.restoreOverlayFocus()
+        window.completeNativePromptLease(ui, leaseToken, view)
         ui.status_text = paths.length === 1
                 ? "File selected"
                 : paths.length + " files selected"
@@ -824,9 +877,12 @@ FerricBrowserRuntimeBase {
         var request = window.pendingFileDialogRequest
         var paths = window.folderDialogPaths()
         var ui = window.pendingFileDialogUi || browserUi
+        var view = window.pendingFileDialogView
+        var leaseToken = window.pendingFileDialogLeaseToken
         window.pendingFileDialogRequest = null
         window.pendingFileDialogView = null
         window.pendingFileDialogUi = null
+        window.pendingFileDialogLeaseToken = ""
         if (!request || paths.length === 0) {
             if (request) {
                 window.resolveQtRequest(ui, request, "file-dialog", "dialogReject", [])
@@ -834,26 +890,32 @@ FerricBrowserRuntimeBase {
             if (request) {
                 window.restoreOverlayFocus()
             }
+            window.completeNativePromptLease(ui, leaseToken, view)
             ui.status_text = "Folder selection returned no local path"
             return
         }
         window.resolveQtRequest(ui, request, "file-dialog", "dialogAccept", [paths])
         window.restoreOverlayFocus()
+        window.completeNativePromptLease(ui, leaseToken, view)
         ui.status_text = "Folder selected"
     }
 
     function rejectEngineFileDialog() {
         var request = window.pendingFileDialogRequest
         var ui = window.pendingFileDialogUi || browserUi
+        var view = window.pendingFileDialogView
+        var leaseToken = window.pendingFileDialogLeaseToken
         if (!request) {
             return
         }
         window.pendingFileDialogRequest = null
         window.pendingFileDialogView = null
         window.pendingFileDialogUi = null
+        window.pendingFileDialogLeaseToken = ""
         window.pendingFileDialogWaitingForPortal = false
         window.resolveQtRequest(ui, request, "file-dialog", "dialogReject", [])
         window.restoreOverlayFocus()
+        window.completeNativePromptLease(ui, leaseToken, view)
         ui.status_text = "File selection cancelled"
     }
 
@@ -869,6 +931,8 @@ FerricBrowserRuntimeBase {
         window.pendingFileDialogView = view || null
         window.pendingFileDialogUi = ui || browserUi
         var requestUi = window.pendingFileDialogUi
+        window.pendingFileDialogLeaseToken = window.beginNativePromptLease(
+                    requestUi, view, "file-chooser")
         if (window.desktopPortalMode(requestUi) === "required") {
             var status = window.desktopPortalCapabilityStatus(requestUi, "file_chooser")
             if (status === "not-probed") {

@@ -1204,6 +1204,11 @@ FerricBrowserRuntimeChrome {
         if (!ui || !event) {
             return false
         }
+        // Observable native prompts and Qt-owned menus receive the original
+        // event before media, Mixed policy, or browser bindings inspect it.
+        if (window.nativePromptActiveFor(ui)) {
+            return false
+        }
         var nativeView = host && host.activeView !== undefined ? host.activeView : (ui === browserUi ? window.activeWebView() : null)
         var logicalText = window.logicalNormalKeyText(event)
         var handled = false

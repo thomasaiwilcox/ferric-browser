@@ -650,6 +650,81 @@ ApplicationWindow {
         return focusOverlayController.focusTargetAvailable(target)
     }
 
+    function beginNativePromptLease(ui, view, category, tabIndex) {
+        if (!ui || !ui.begin_native_prompt_lease) {
+            return ""
+        }
+        var index = Number(tabIndex)
+        if (tabIndex === undefined || !Number.isInteger(index) || index < 0) {
+            var viewIndex = view && view.tabIndex !== undefined
+                    ? Number(view.tabIndex) : -1
+            index = Number.isInteger(viewIndex) && viewIndex >= 0
+                    ? viewIndex : Number(ui.active_tab_index)
+        }
+        if (!Number.isInteger(index) || index < 0) {
+            return ""
+        }
+        return String(ui.begin_native_prompt_lease(index, String(category)) || "")
+    }
+
+    function completeNativePromptLease(ui, token, view) {
+        if (!ui || !token || !ui.complete_native_prompt_lease) {
+            return false
+        }
+        var needsFocusProbe = ui.complete_native_prompt_lease(String(token))
+        if (needsFocusProbe) {
+            Qt.callLater(function() {
+                if (window.probeNativePromptFocus) {
+                    window.probeNativePromptFocus(ui, view, String(token))
+                } else {
+                    ui.finish_native_prompt_focus_probe(String(token))
+                }
+            })
+        }
+        return needsFocusProbe
+    }
+
+    function nativePromptActiveFor(ui) {
+        if (!ui) {
+            return false
+        }
+        if (ui.has_native_prompt_lease && ui.has_native_prompt_lease()) {
+            return true
+        }
+        if (ui === browserUi) {
+            var activeView = window.activeWebView()
+            if (activeView && activeView.startPage
+                    && activeView.startPage.inputActive) {
+                return true
+            }
+        }
+        return (window.pendingFileDialogUi === ui
+                    && (!!window.pendingFileDialogRequest
+                        || window.pendingFileDialogLeaseToken.length > 0))
+                || (window.pendingPermissionUi === ui
+                    && (!!window.permissionPromptVisible
+                        || window.pendingPermissionLeaseToken.length > 0))
+                || (window.pendingDesktopMediaUi === ui
+                    && (!!window.desktopMediaPromptVisible
+                        || window.pendingDesktopMediaLeaseToken.length > 0))
+                || (window.pendingPageDialogUi === ui
+                    && (!!window.pendingPageDialogRequest
+                        || !!window.pendingAuthenticationRequest
+                        || window.pendingPageDialogLeaseToken.length > 0))
+                || (window.pendingClientCertificateUi === ui
+                    && (!!window.pendingClientCertificateSelection
+                        || window.pendingClientCertificateLeaseToken.length > 0))
+                || (window.pendingCertificateErrorUi === ui
+                    && (!!window.pendingCertificateError
+                        || window.pendingCertificateErrorLeaseToken.length > 0))
+                || (window.pendingWebAuthUi === ui
+                    && (!!window.pendingWebAuthRequest
+                        || window.pendingWebAuthLeaseToken.length > 0))
+                || (window.pendingContextMenuUi === ui
+                    && (!!window.pendingContextMenuRequest
+                        || window.pendingContextMenuLeaseToken.length > 0))
+    }
+
     function captureOverlayFocus(hostWindow, fallbackTarget) {
         focusOverlayController.captureOverlayFocus(hostWindow, fallbackTarget)
     }
@@ -1490,10 +1565,15 @@ ApplicationWindow {
     property var pendingFileDialogRequest: null
     property var pendingFileDialogView: null
     property var pendingFileDialogUi: null
+    property string pendingFileDialogLeaseToken: ""
     property bool pendingFileDialogWaitingForPortal: false
     property double pendingFileDialogPortalDeadlineMs: 0
     property var pendingPermissionRequest: null
     property var pendingPermissionUi: null
+    property string pendingPermissionLeaseToken: ""
+    property var pendingPermissionView: null
+    property var permissionLeaseUi: null
+    property var permissionLeaseView: null
     property int pendingPermissionTabIndex: -1
     property string pendingPermissionOrigin: ""
     property string pendingPermissionName: ""
@@ -1511,6 +1591,7 @@ ApplicationWindow {
     property bool pendingDesktopMediaWaitingForPortal: false
     property double pendingDesktopMediaPortalDeadlineMs: 0
     property bool desktopMediaPromptVisible: false
+    property string pendingDesktopMediaLeaseToken: ""
     property string desktopMediaOrigin: ""
     property var desktopMediaSurface: null
     property var captureIndicatorSurface: null
@@ -1521,6 +1602,7 @@ ApplicationWindow {
     property var pendingAuthenticationRequest: null
     property var pendingPageDialogUi: null
     property var pendingPageDialogView: null
+    property string pendingPageDialogLeaseToken: ""
     property bool pageDialogIsAuthentication: false
     property string pageDialogMessage: ""
     property string pageDialogTitle: "Page dialog"
@@ -1531,16 +1613,19 @@ ApplicationWindow {
     property var pendingClientCertificateSelection: null
     property var pendingClientCertificateUi: null
     property var pendingClientCertificateView: null
+    property string pendingClientCertificateLeaseToken: ""
     property var pendingClientCertificateOptions: []
     property string pendingClientCertificateHost: ""
     property var pendingCertificateError: null
     property var pendingCertificateErrorUi: null
     property var pendingCertificateErrorView: null
+    property string pendingCertificateErrorLeaseToken: ""
     property string pendingCertificateErrorHost: ""
     property string pendingCertificateErrorDescription: ""
     property var pendingWebAuthRequest: null
     property var pendingWebAuthUi: null
     property var pendingWebAuthView: null
+    property string pendingWebAuthLeaseToken: ""
     property var pendingWebAuthUserNames: []
     property var pendingWebAuthState: null
     property string pendingWebAuthRelyingParty: ""
@@ -1548,6 +1633,7 @@ ApplicationWindow {
     property var pendingContextMenuRequest: null
     property var pendingContextMenuView: null
     property var pendingContextMenuUi: null
+    property string pendingContextMenuLeaseToken: ""
     property var pendingContextMenuHost: null
     property var contextMenuItems: []
     property bool shutdownConfirmationVisible: false

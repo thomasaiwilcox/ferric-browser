@@ -245,11 +245,14 @@ FerricBrowserRuntimePresentation {
         var request = window.pendingAuthenticationRequest || window.pendingPageDialogRequest
         var hadRequest = !!request
         var ui = window.pendingPageDialogUi || browserUi
+        var view = window.pendingPageDialogView
+        var leaseToken = window.pendingPageDialogLeaseToken
         var authentication = window.pageDialogIsAuthentication
         window.pendingPageDialogRequest = null
         window.pendingAuthenticationRequest = null
         window.pendingPageDialogUi = null
         window.pendingPageDialogView = null
+        window.pendingPageDialogLeaseToken = ""
         window.pageDialogIsAuthentication = false
         window.pageDialogMessage = ""
         window.pageDialogTitle = "Page dialog"
@@ -263,6 +266,7 @@ FerricBrowserRuntimePresentation {
         if (hadRequest) {
             window.restoreOverlayFocus()
         }
+        window.completeNativePromptLease(ui, leaseToken, view)
         if (rejectRequest && request) {
             window.resolveQtRequest(ui, request, authentication ? "authentication" : "page-dialog", "dialogReject", [])
             if (ui) {
@@ -323,6 +327,8 @@ FerricBrowserRuntimePresentation {
         window.pendingPageDialogRequest = request
         window.pendingPageDialogUi = ui
         window.pendingPageDialogView = view
+        window.pendingPageDialogLeaseToken = window.beginNativePromptLease(
+                    ui, view, "page-dialog")
         window.captureOverlayFocus(window, view)
         window.pageDialogMessage = window.boundedPageDialogText(request.message)
         var title = window.boundedPageDialogText(request.title)
@@ -360,6 +366,8 @@ FerricBrowserRuntimePresentation {
         window.pendingAuthenticationRequest = request
         window.pendingPageDialogUi = ui
         window.pendingPageDialogView = view
+        window.pendingPageDialogLeaseToken = window.beginNativePromptLease(
+                    ui, view, "authentication")
         window.captureOverlayFocus(window, view)
         window.pageDialogIsAuthentication = true
         window.pageDialogTitle = request.proxyHost
@@ -385,9 +393,12 @@ FerricBrowserRuntimePresentation {
         var selection = window.pendingClientCertificateSelection
         var hadSelection = !!selection
         var ui = window.pendingClientCertificateUi || browserUi
+        var view = window.pendingClientCertificateView
+        var leaseToken = window.pendingClientCertificateLeaseToken
         window.pendingClientCertificateSelection = null
         window.pendingClientCertificateUi = null
         window.pendingClientCertificateView = null
+        window.pendingClientCertificateLeaseToken = ""
         window.pendingClientCertificateOptions = []
         window.pendingClientCertificateHost = ""
         certificatePrompts.closeClientCertificate()
@@ -397,6 +408,7 @@ FerricBrowserRuntimePresentation {
         if (hadSelection) {
             window.restoreOverlayFocus()
         }
+        window.completeNativePromptLease(ui, leaseToken, view)
         return hadSelection ? ui : null
     }
 
@@ -440,6 +452,8 @@ FerricBrowserRuntimePresentation {
         window.pendingClientCertificateSelection = selection
         window.pendingClientCertificateUi = ui
         window.pendingClientCertificateView = view
+        window.pendingClientCertificateLeaseToken = window.beginNativePromptLease(
+                    ui, view, "client-certificate")
         window.pendingClientCertificateOptions = options
         window.pendingClientCertificateHost = selection.host && selection.host.host
                 ? window.boundedPageDialogText(selection.host.host)
@@ -485,9 +499,12 @@ FerricBrowserRuntimePresentation {
         var error = window.pendingCertificateError
         var hadError = !!error
         var ui = window.pendingCertificateErrorUi || browserUi
+        var view = window.pendingCertificateErrorView
+        var leaseToken = window.pendingCertificateErrorLeaseToken
         window.pendingCertificateError = null
         window.pendingCertificateErrorUi = null
         window.pendingCertificateErrorView = null
+        window.pendingCertificateErrorLeaseToken = ""
         window.pendingCertificateErrorHost = ""
         window.pendingCertificateErrorDescription = ""
         certificatePrompts.closeCertificateError()
@@ -497,6 +514,7 @@ FerricBrowserRuntimePresentation {
         if (hadError) {
             window.restoreOverlayFocus()
         }
+        window.completeNativePromptLease(ui, leaseToken, view)
         return hadError ? ui : null
     }
 
@@ -535,6 +553,8 @@ FerricBrowserRuntimePresentation {
         window.pendingCertificateError = error
         window.pendingCertificateErrorUi = ui
         window.pendingCertificateErrorView = view
+        window.pendingCertificateErrorLeaseToken = window.beginNativePromptLease(
+                    ui, view, "certificate-error")
         window.pendingCertificateErrorHost = window.boundedPageDialogText(
                     host || "opaque or unavailable host")
         window.pendingCertificateErrorDescription = window.boundedPageDialogText(
@@ -601,9 +621,12 @@ FerricBrowserRuntimePresentation {
         var request = window.pendingWebAuthRequest
         var hadRequest = !!request
         var ui = window.pendingWebAuthUi || browserUi
+        var view = window.pendingWebAuthView
+        var leaseToken = window.pendingWebAuthLeaseToken
         window.pendingWebAuthRequest = null
         window.pendingWebAuthUi = null
         window.pendingWebAuthView = null
+        window.pendingWebAuthLeaseToken = ""
         window.pendingWebAuthUserNames = []
         window.pendingWebAuthState = null
         window.pendingWebAuthRelyingParty = ""
@@ -618,6 +641,7 @@ FerricBrowserRuntimePresentation {
         if (hadRequest) {
             window.restoreOverlayFocus()
         }
+        window.completeNativePromptLease(ui, leaseToken, view)
         return hadRequest ? ui : null
     }
 
@@ -651,6 +675,8 @@ FerricBrowserRuntimePresentation {
         window.pendingWebAuthRequest = request
         window.pendingWebAuthUi = ui
         window.pendingWebAuthView = view
+        window.pendingWebAuthLeaseToken = window.beginNativePromptLease(
+                    ui, view, "webauthn")
         window.pendingWebAuthUserNames = names
         window.pendingWebAuthState = request.state
         window.pendingWebAuthRelyingParty = window.boundedPageDialogText(
@@ -731,19 +757,23 @@ FerricBrowserRuntimePresentation {
     function clearContextMenuRequest(preserveHintPalettePermit) {
         var request = window.pendingContextMenuRequest
         var hadRequest = !!request
+        var view = window.pendingContextMenuView
         var requestUi = window.pendingContextMenuUi
+        var leaseToken = window.pendingContextMenuLeaseToken
         if (request && request.hintAction && !preserveHintPalettePermit && requestUi) {
             requestUi.cancel_hint_palette()
         }
         window.pendingContextMenuRequest = null
         window.pendingContextMenuView = null
         window.pendingContextMenuUi = null
+        window.pendingContextMenuLeaseToken = ""
         window.pendingContextMenuHost = null
         window.contextMenuItems = []
         contextMenu.close()
         if (hadRequest) {
             window.restoreOverlayFocus()
         }
+        window.completeNativePromptLease(requestUi || browserUi, leaseToken, view)
     }
 
     function clearContextMenuForView(view) {
@@ -884,6 +914,8 @@ FerricBrowserRuntimePresentation {
         window.pendingContextMenuRequest = request
         window.pendingContextMenuView = view
         window.pendingContextMenuUi = ui
+        window.pendingContextMenuLeaseToken = window.beginNativePromptLease(
+                    ui, view, "context-menu")
         window.pendingContextMenuHost = hostWindow || window
         window.contextMenuItems = items
         request.accepted = true
@@ -1088,9 +1120,16 @@ FerricBrowserRuntimePresentation {
         var queue = window.permissionPromptQueue
         var wasVisible = window.permissionPromptVisible
         if (!queue || queue.length === 0) {
+            var leaseToken = window.pendingPermissionLeaseToken
+            var leaseUi = window.permissionLeaseUi || browserUi
+            var leaseView = window.permissionLeaseView
             window.permissionPromptVisible = false
             window.pendingPermissionRequest = null
             window.pendingPermissionUi = null
+            window.pendingPermissionLeaseToken = ""
+            window.pendingPermissionView = null
+            window.permissionLeaseUi = null
+            window.permissionLeaseView = null
             window.pendingPermissionTabIndex = -1
             window.pendingPermissionOrigin = ""
             window.pendingPermissionName = ""
@@ -1101,11 +1140,13 @@ FerricBrowserRuntimePresentation {
             if (wasVisible) {
                 window.restoreOverlayFocus()
             }
+            window.completeNativePromptLease(leaseUi, leaseToken, leaseView)
             return
         }
         var group = queue[0]
         window.pendingPermissionRequest = group.requests[0] || null
         window.pendingPermissionUi = group.ui
+        window.pendingPermissionView = group.view || null
         window.pendingPermissionTabIndex = group.tabIndex
         window.pendingPermissionOrigin = group.origin
         window.pendingPermissionName = group.name
@@ -1114,6 +1155,10 @@ FerricBrowserRuntimePresentation {
         window.pendingPermissionHost = group.host || window
         if (!wasVisible) {
             window.captureOverlayFocus(window.pendingPermissionHost)
+            window.permissionLeaseUi = group.ui
+            window.permissionLeaseView = group.view || null
+            window.pendingPermissionLeaseToken = window.beginNativePromptLease(
+                        group.ui, group.view || null, "permission", group.tabIndex)
         }
         window.permissionPromptVisible = true
         permissionPromptExpiry.restart()
@@ -1148,7 +1193,7 @@ FerricBrowserRuntimePresentation {
         }
     }
 
-    function queuePermissionPrompt(ui, request, tabIndex, privateProfile, hostWindow) {
+    function queuePermissionPrompt(ui, request, tabIndex, privateProfile, hostWindow, view) {
         var origin = request.origin.toString()
         var name = window.permissionTypeName(request.permissionType)
         var key = window.permissionQueueKey(origin, name, privateProfile)
@@ -1194,7 +1239,8 @@ FerricBrowserRuntimePresentation {
                 origin: origin,
                 name: name,
                 privateProfile: privateProfile,
-                host: hostWindow || window
+                host: hostWindow || window,
+                view: view || null
             })
         }
         window.permissionPromptQueue = queue
@@ -1205,23 +1251,24 @@ FerricBrowserRuntimePresentation {
         }
     }
 
-    function handlePermissionRequested(request, tabIndex) {
+    function handlePermissionRequested(request, tabIndex, ui, view, privateProfile) {
         if (!request || !request.isValid) {
             return
         }
+        var permissionUi = ui || browserUi
         var permissionName = window.permissionTypeName(request.permissionType)
         if (permissionName.length === 0) {
-            window.resolveQtRequest(browserUi, request, "permission", "deny", [])
-            browserUi.status_text = "Blocked unsupported permission request"
+            window.resolveQtRequest(permissionUi, request, "permission", "deny", [])
+            permissionUi.status_text = "Blocked unsupported permission request"
             return
         }
         var origin = request.origin.toString()
         var decision = permissionName === "camera-and-microphone"
                 ? "ask"
-                : browserUi.permission_decision(origin, permissionName)
+                : permissionUi.permission_decision(origin, permissionName)
         if (permissionName === "camera-and-microphone") {
-            var cameraDecision = browserUi.permission_decision(origin, "camera")
-            var microphoneDecision = browserUi.permission_decision(origin, "microphone")
+            var cameraDecision = permissionUi.permission_decision(origin, "camera")
+            var microphoneDecision = permissionUi.permission_decision(origin, "microphone")
             if (cameraDecision === "deny" || microphoneDecision === "deny") {
                 decision = "deny"
             } else if (cameraDecision === "allow" && microphoneDecision === "allow") {
@@ -1231,17 +1278,17 @@ FerricBrowserRuntimePresentation {
             }
         }
         if (decision === "allow") {
-            window.resolveQtRequest(browserUi, request, "permission", "grant", [])
-            browserUi.status_text = "Allowed " + window.permissionDisplayName(permissionName)
+            window.resolveQtRequest(permissionUi, request, "permission", "grant", [])
+            permissionUi.status_text = "Allowed " + window.permissionDisplayName(permissionName)
             return
         }
         if (decision === "deny") {
-            window.resolveQtRequest(browserUi, request, "permission", "deny", [])
-            browserUi.status_text = "Denied " + window.permissionDisplayName(permissionName)
+            window.resolveQtRequest(permissionUi, request, "permission", "deny", [])
+            permissionUi.status_text = "Denied " + window.permissionDisplayName(permissionName)
             return
         }
         window.queuePermissionPrompt(
-            browserUi, request, tabIndex, window.temporaryProfile, window)
+            permissionUi, request, tabIndex, !!privateProfile, window, view)
     }
 
     function decidePermission(allow, lifetime) {
@@ -1287,7 +1334,7 @@ FerricBrowserRuntimePresentation {
         window.clearPermissionPrompt(false)
     }
 
-    function handleImmediatePermissionRequested(ui, request, privateProfile, hostWindow) {
+    function handleImmediatePermissionRequested(ui, request, privateProfile, hostWindow, view) {
         if (!request || !request.isValid) {
             return
         }
@@ -1315,7 +1362,10 @@ FerricBrowserRuntimePresentation {
             ui.status_text = "Allowed " + window.permissionDisplayName(permissionName)
         } else {
             if (decision === "ask") {
-                window.queuePermissionPrompt(ui, request, -1, privateProfile, hostWindow)
+                window.queuePermissionPrompt(
+                    ui, request, view && view.tabIndex !== undefined
+                        ? Number(view.tabIndex) : -1,
+                    privateProfile, hostWindow, view)
             } else {
                 window.resolveQtRequest(ui, request, "permission", "deny", [])
                 ui.status_text = "Denied " + window.permissionDisplayName(permissionName)
@@ -1349,9 +1399,12 @@ FerricBrowserRuntimePresentation {
         var request = window.pendingDesktopMediaRequest
         var hadRequest = !!request
         var ui = window.pendingDesktopMediaUi || browserUi
+        var view = window.pendingDesktopMediaView
+        var leaseToken = window.pendingDesktopMediaLeaseToken
         window.pendingDesktopMediaRequest = null
         window.pendingDesktopMediaUi = null
         window.pendingDesktopMediaView = null
+        window.pendingDesktopMediaLeaseToken = ""
         window.pendingDesktopMediaHost = null
         window.pendingDesktopMediaWaitingForPortal = false
         window.pendingDesktopMediaPortalDeadlineMs = 0
@@ -1360,6 +1413,7 @@ FerricBrowserRuntimePresentation {
         if (hadRequest) {
             window.restoreOverlayFocus()
         }
+        window.completeNativePromptLease(ui, leaseToken, view)
         if (cancelRequest && request) {
             window.resolveQtRequest(ui, request, "desktop-media", "cancel", [])
             if (ui) {
@@ -1407,6 +1461,8 @@ FerricBrowserRuntimePresentation {
         window.pendingDesktopMediaRequest = request
         window.pendingDesktopMediaUi = ui
         window.pendingDesktopMediaView = view
+        window.pendingDesktopMediaLeaseToken = window.beginNativePromptLease(
+                    ui, view, "desktop-media")
         window.pendingDesktopMediaHost = hostWindow || window
         window.captureOverlayFocus(window.pendingDesktopMediaHost, view)
         window.desktopMediaOrigin = view && view.url && view.url.host

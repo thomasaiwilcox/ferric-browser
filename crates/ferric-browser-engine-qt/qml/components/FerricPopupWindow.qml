@@ -702,6 +702,9 @@ ApplicationWindow {
         }
         onLoadingChanged: function(loadRequest) {
             if (loadRequest.status === WebEngineView.LoadStartedStatus) {
+                if (popupWindow.popupPermissionUi) {
+                    popupWindow.popupPermissionUi.invalidate_native_prompt_leases()
+                }
                 rootWindow.clearPageDialogForView(popupView)
                 rootWindow.clearClientCertificateForView(popupView)
                 rootWindow.clearCertificateErrorForView(popupView)
@@ -758,7 +761,8 @@ ApplicationWindow {
                     popupWindow.popupPermissionUi,
                     permissionRequest,
                     popupWindow.popupPrivateProfile,
-                    popupWindow)
+                    popupWindow,
+                    popupView)
             } else {
                 rootWindow.resolveQtRequest(
                     popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi,

@@ -73,6 +73,7 @@ mod browser_ui_ipc_userscripts;
 mod browser_ui_journey_commands;
 mod browser_ui_library;
 mod browser_ui_maintenance;
+mod browser_ui_native_prompts;
 mod browser_ui_navigation;
 mod browser_ui_navigation_lifecycle;
 mod browser_ui_persistence;
@@ -138,6 +139,7 @@ mod macro_projection;
 mod maintenance;
 mod mixed_policy_runtime;
 mod native_files;
+mod native_prompt_lease;
 mod navigation_lifecycle;
 mod navigation_policy;
 mod network_policy;
@@ -262,6 +264,7 @@ use native_files::{
     atomic_write_private, bounded_header, resolve_browser_roots, scalar_cursor_to_utf16,
     set_private_directory_permissions, utf16_cursor_to_scalar,
 };
+use native_prompt_lease::NativePromptLeases;
 use navigation_policy::{
     configured_search_url, journey_transition_after_load,
     navigation_context as navigation_context_from_config_and_quickmarks,
@@ -1461,6 +1464,39 @@ mod qobject {
         );
 
         #[qinvokable]
+        fn register_prompt_view_identity(
+            self: Pin<&mut BrowserUi>,
+            index: i32,
+            view_identity: &QString,
+        );
+
+        #[qinvokable]
+        fn unregister_prompt_view_identity(
+            self: Pin<&mut BrowserUi>,
+            index: i32,
+            view_identity: &QString,
+        );
+
+        #[qinvokable]
+        fn begin_native_prompt_lease(
+            self: Pin<&mut BrowserUi>,
+            index: i32,
+            category: &QString,
+        ) -> QString;
+
+        #[qinvokable]
+        fn complete_native_prompt_lease(self: Pin<&mut BrowserUi>, lease_id: &QString) -> bool;
+
+        #[qinvokable]
+        fn finish_native_prompt_focus_probe(self: Pin<&mut BrowserUi>, lease_id: &QString) -> bool;
+
+        #[qinvokable]
+        fn has_native_prompt_lease(self: Pin<&mut BrowserUi>) -> bool;
+
+        #[qinvokable]
+        fn invalidate_native_prompt_leases(self: Pin<&mut BrowserUi>);
+
+        #[qinvokable]
         fn select_site_rule_settings(self: Pin<&mut BrowserUi>, url: &QString) -> bool;
 
         #[qinvokable]
@@ -2124,7 +2160,12 @@ pub struct BrowserUiRust {
     blocking_active_evidence: blocking_evidence::BlockingEvidence,
     focus_observations: BTreeMap<(i32, String), FocusObservation>,
     focus_suppressions: BTreeMap<(i32, String), i32>,
+    prompt_view_identities: BTreeMap<TabId, String>,
+    native_prompt_leases: NativePromptLeases,
+    native_prompt_transition: bool,
     config: Value,
+    config_revision: u64,
+    policy_revision: u64,
     portal_capabilities: PortalCapabilities,
     theme_palette: ThemePalette,
     base_config: Value,
@@ -2851,7 +2892,12 @@ impl Default for BrowserUiRust {
             blocking_active_evidence: blocking_evidence::BlockingEvidence::default(),
             focus_observations: BTreeMap::new(),
             focus_suppressions: BTreeMap::new(),
+            prompt_view_identities: BTreeMap::new(),
+            native_prompt_leases: NativePromptLeases::default(),
+            native_prompt_transition: false,
             config: serde_json::to_value(Config::default()).unwrap_or(Value::Null),
+            config_revision: 0,
+            policy_revision: 0,
             portal_capabilities: PortalCapabilities::pending(),
             theme_palette,
             base_config: serde_json::to_value(Config::default()).unwrap_or(Value::Null),

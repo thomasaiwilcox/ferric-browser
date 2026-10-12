@@ -17,6 +17,9 @@ impl qobject::BrowserUi {
         }
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
+        if !this.native_prompt_transition {
+            this.native_prompt_leases.clear("mode-change");
+        }
         this.core_mode = mode;
         this.pending_same_document_pass_through = None;
         if let Some(bindings) = this.bindings.as_mut() {
