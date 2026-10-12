@@ -1535,6 +1535,12 @@ FerricBrowserRuntimeChrome {
     }
 
     function completeProfileBootstrap() {
+        window.refreshSpellcheckInventory(browserUi)
+        browserProfile.spellCheckEnabled = window.spellcheckEnabled(browserUi)
+        browserProfile.spellCheckLanguages = window.spellcheckLanguages(browserUi)
+        browserProfile.isPushServiceEnabled = window.pushServiceEnabled(
+                    browserUi, window.temporaryProfile)
+        window.refreshChromeAppearance()
         engineUpdateNoticeTimer.start()
         if (!window.temporaryProfile && !window.recoveryAvailable) {
             browserUi.clear_current_session_checkpoints()
@@ -1602,6 +1608,10 @@ FerricBrowserRuntimeChrome {
                 window.completeProfileBootstrap()
             }
         }
+    }
+
+    FerricSelectorValidationSurface {
+        browserUi: window.primaryBrowserUi
     }
 
     Component.onCompleted: {

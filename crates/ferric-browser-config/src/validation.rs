@@ -1,11 +1,12 @@
 //! Configuration invariant validation.
 
 use super::{
-    BTreeSet, CURRENT_SCHEMA_VERSION, Config, ConfigError, ContextsConfig, MAX_RUNTIME_KEY_BYTES,
-    MAX_RUNTIME_SETTINGS, MAX_RUNTIME_VALUE_BYTES, PermissionDecision, ProfileDefinition,
-    ProfilesConfig, RUNTIME_SCHEMA_VERSION, RuntimeOverrides, apply_runtime_overrides,
-    parse_context_pattern, parse_site_pattern, setting_supports_site_scope,
-    valid_link_update_source, valid_sha256, validate_site_rule,
+    BTreeSet, CURRENT_SCHEMA_VERSION, Config, ConfigError, ContextsConfig, HintSelectorPolicy,
+    MAX_RUNTIME_KEY_BYTES, MAX_RUNTIME_SETTINGS, MAX_RUNTIME_VALUE_BYTES, PermissionDecision,
+    ProfileDefinition, ProfilesConfig, RUNTIME_SCHEMA_VERSION, RuntimeOverrides,
+    apply_runtime_overrides, parse_context_pattern, parse_site_pattern, selector_setting_family,
+    setting_supports_site_scope, valid_link_update_source, valid_sha256,
+    validate_selector_policy_map, validate_site_rule,
 };
 use ferric_browser_core::{MixedPolicyLayer, resolve_mixed_key_policy};
 
@@ -91,6 +92,7 @@ pub fn validate(config: &Config) -> Result<(), ConfigError> {
             "hints.marker_scale must be 0.75..=2.0".into(),
         ));
     }
+    validate_selector_policy_map(&config.hints.selectors).map_err(ConfigError::Validation)?;
     if !(100..=2_000).contains(&config.discovery.keychain_overlay_delay_ms) {
         return Err(ConfigError::Validation(
             "discovery.keychain_overlay_delay_ms must be 100..=2000".into(),
@@ -975,6 +977,19 @@ pub(super) fn validate_runtime_overrides(overrides: &RuntimeOverrides) -> Result
             return Err(ConfigError::Validation(format!(
                 "runtime override value for {key:?} is too large"
             )));
+        }
+        if selector_setting_family(key).is_some() {
+            let policy = value
+                .clone()
+                .try_into::<HintSelectorPolicy>()
+                .map_err(|error| {
+                    ConfigError::Validation(format!(
+                        "runtime selector policy for {key} has the wrong type: {error}"
+                    ))
+                })?;
+            policy.validate().map_err(|error| {
+                ConfigError::Validation(format!("runtime selector policy for {key}: {error}"))
+            })?;
         }
     }
     if overrides.bindings.len() > MAX_RUNTIME_SETTINGS {

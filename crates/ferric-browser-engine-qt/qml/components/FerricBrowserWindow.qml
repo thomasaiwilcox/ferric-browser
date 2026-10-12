@@ -2240,6 +2240,10 @@ function onContext_workspaceChanged() {
                         secondaryWindow.windowStartupUrl, "external-open", false)
         }
     }
+    FerricSelectorValidationSurface {
+        browserUi: secondaryUi
+    }
+
     Component.onDestruction: {
         if (secondaryWindow.devToolsWindow) {
             secondaryWindow.devToolsWindow.close()

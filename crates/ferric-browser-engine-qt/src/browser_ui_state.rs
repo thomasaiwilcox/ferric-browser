@@ -1,6 +1,10 @@
 //! Qt-owned transient state shapes shared by browser presentation modules.
 
-use super::{BrowserApplication, BrowserUiRust, TabId, Uuid, Value};
+use super::{
+    BrowserApplication, BrowserUiRust, ConfigurationLayers, ProfileOpenEffect, RuntimeOverrides,
+    TabId, Uuid, Value,
+};
+use std::{path::PathBuf, time::Instant};
 
 #[derive(Clone, Debug)]
 pub(super) struct PendingContextRoute {
@@ -79,6 +83,41 @@ pub(super) struct PendingProfileConfiguration {
     pub(super) state: BrowserApplication,
     pub(super) window: super::WindowId,
     pub(super) tab: TabId,
+}
+
+pub(super) struct PendingSelectorValidation {
+    pub(super) generation: u64,
+    pub(super) expected_revision: u64,
+    pub(super) started_at: Instant,
+    pub(super) fingerprint: String,
+    pub(super) action: PendingSelectorAction,
+}
+
+pub(super) enum PendingSelectorAction {
+    RuntimeConfig {
+        candidate: Value,
+        layers: ConfigurationLayers,
+        status: String,
+        persistent_overrides: RuntimeOverrides,
+        persist_path: Option<PathBuf>,
+    },
+    Reload {
+        candidate: Value,
+        layers: ConfigurationLayers,
+        status: String,
+        path: PathBuf,
+        base_json: String,
+        profile_overrides: RuntimeOverrides,
+        sources: Vec<PathBuf>,
+        profiles_path: Option<PathBuf>,
+    },
+    Profile {
+        pending: Box<PendingProfileConfiguration>,
+        effect: Box<ProfileOpenEffect>,
+    },
+    Check {
+        source_count: usize,
+    },
 }
 
 #[derive(Clone, Debug)]

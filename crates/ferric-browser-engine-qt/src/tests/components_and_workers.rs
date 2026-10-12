@@ -29,6 +29,20 @@ fn config_editor_captures_bounded_stderr() {
 }
 
 #[test]
+fn selector_validation_uses_a_browser_owned_webengine_document() {
+    let validator = include_str!("../../qml/components/FerricSelectorValidationSurface.qml");
+    let primary = include_str!("../../qml/components/FerricBrowserRuntimeSurface.qml");
+    let secondary = include_str!("../../qml/components/FerricBrowserWindow.qml");
+    assert!(validator.contains("document.querySelector(item.selector)"));
+    assert!(validator.contains("url: \"data:text/html;charset=utf-8,"));
+    assert!(validator.contains("complete_selector_validation(token, response)"));
+    assert!(primary.contains("FerricSelectorValidationSurface {"));
+    assert!(secondary.contains("browserUi: secondaryUi"));
+    assert!(!validator.contains("activeView()"));
+    assert!(!validator.contains("window.activeWebView"));
+}
+
+#[test]
 fn external_editor_rejects_rich_contenteditable_controls() {
     let qml = [
         QML_SOURCE,

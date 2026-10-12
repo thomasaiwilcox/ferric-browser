@@ -291,6 +291,69 @@ pub(super) const SETTING_METADATA: &[SettingMetadata] = &[
         "normal"
     ),
     setting_metadata!(
+        "hints.selectors.all",
+        "selector-policy",
+        "inherit",
+        GLOBAL_PROFILE_SITE_SCOPES,
+        "reload",
+        "webengine-css-parser",
+        "normal"
+    ),
+    setting_metadata!(
+        "hints.selectors.links",
+        "selector-policy",
+        "inherit",
+        GLOBAL_PROFILE_SITE_SCOPES,
+        "reload",
+        "webengine-css-parser",
+        "normal"
+    ),
+    setting_metadata!(
+        "hints.selectors.inputs",
+        "selector-policy",
+        "inherit",
+        GLOBAL_PROFILE_SITE_SCOPES,
+        "reload",
+        "webengine-css-parser",
+        "normal"
+    ),
+    setting_metadata!(
+        "hints.selectors.buttons",
+        "selector-policy",
+        "inherit",
+        GLOBAL_PROFILE_SITE_SCOPES,
+        "reload",
+        "webengine-css-parser",
+        "normal"
+    ),
+    setting_metadata!(
+        "hints.selectors.images",
+        "selector-policy",
+        "inherit",
+        GLOBAL_PROFILE_SITE_SCOPES,
+        "reload",
+        "webengine-css-parser",
+        "normal"
+    ),
+    setting_metadata!(
+        "hints.selectors.media",
+        "selector-policy",
+        "inherit",
+        GLOBAL_PROFILE_SITE_SCOPES,
+        "reload",
+        "webengine-css-parser",
+        "normal"
+    ),
+    setting_metadata!(
+        "hints.selectors.scrollables",
+        "selector-policy",
+        "inherit",
+        GLOBAL_PROFILE_SITE_SCOPES,
+        "reload",
+        "webengine-css-parser",
+        "normal"
+    ),
+    setting_metadata!(
         "discovery.keychain_overlay",
         "boolean",
         "true",

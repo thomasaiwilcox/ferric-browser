@@ -45,6 +45,7 @@ const ADAPTER_SOURCE: &str = concat!(
     include_str!("browser_ui_repeat_macros.rs"),
     include_str!("browser_ui_runtime.rs"),
     include_str!("browser_ui_runtime_config.rs"),
+    include_str!("browser_ui_runtime_settings.rs"),
     include_str!("browser_ui_sessions.rs"),
     include_str!("browser_ui_site.rs"),
     include_str!("browser_ui_spatial.rs"),

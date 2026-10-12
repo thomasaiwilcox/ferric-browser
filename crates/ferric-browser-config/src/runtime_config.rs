@@ -2,17 +2,17 @@
 
 use super::{
     ActionTargetConfig, BTreeMap, BTreeSet, BlockingConfig, CURRENT_SCHEMA_VERSION, ContentConfig,
-    ContextsConfig, Deserialize, DesktopConfig, DiscoveryConfig, DownloadsConfig, HintsConfig,
-    HistoryConfig, HyprlandConfig, InputConfig, IpcConfig, LinksConfig, LoggingConfig,
-    MAX_INCLUDE_DEPTH, MAX_RUNTIME_SETTINGS, MAX_RUNTIME_VALUE_BYTES, MAX_TOTAL_BYTES,
-    NavigationConfig, Path, PathBuf, PermissionRuleConfig, PermissionsConfig, PrivacyConfig,
-    ProfileDefinition, ProfilesConfig, RUNTIME_SCHEMA_VERSION, Serialize, SessionConfig,
-    SiteDoctorConfig, SiteRule, SpellcheckConfig, SwitcherConfig, SystemTime, TabsConfig,
-    ThemeConfig, ToolsConfig, UNIX_EPOCH, UiConfig, Write, default_search_engines, fs, io_error,
-    runtime_site_rule_id, set_private_file_mode, set_private_permissions,
-    setting_supports_site_scope, validate, validate_contexts, validate_profile_definition,
-    validate_profiles, validate_runtime_binding, validate_runtime_key, validate_runtime_overrides,
-    validate_runtime_site_pattern,
+    ContextsConfig, Deserialize, DesktopConfig, DiscoveryConfig, DownloadsConfig,
+    HintSelectorPolicy, HintsConfig, HistoryConfig, HyprlandConfig, InputConfig, IpcConfig,
+    LinksConfig, LoggingConfig, MAX_INCLUDE_DEPTH, MAX_RUNTIME_SETTINGS, MAX_RUNTIME_VALUE_BYTES,
+    MAX_TOTAL_BYTES, NavigationConfig, Path, PathBuf, PermissionRuleConfig, PermissionsConfig,
+    PrivacyConfig, ProfileDefinition, ProfilesConfig, RUNTIME_SCHEMA_VERSION, Serialize,
+    SessionConfig, SiteDoctorConfig, SiteRule, SpellcheckConfig, SwitcherConfig, SystemTime,
+    TabsConfig, ThemeConfig, ToolsConfig, UNIX_EPOCH, UiConfig, Write, default_search_engines, fs,
+    io_error, runtime_site_rule_id, selector_setting_family, set_private_file_mode,
+    set_private_permissions, setting_supports_site_scope, validate, validate_contexts,
+    validate_profile_definition, validate_profiles, validate_runtime_binding, validate_runtime_key,
+    validate_runtime_overrides, validate_runtime_site_pattern,
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -213,13 +213,17 @@ impl RuntimeOverrides {
             && !value.is_bool()
             && !value.is_str()
             && !value.is_array()
+            && !(value.is_table() && selector_setting_family(key).is_some())
         {
             return Err(ConfigError::Validation(
                 "runtime override value must be a TOML scalar or array".into(),
             ));
         }
-        self.settings.insert(key.to_owned(), value);
-        validate_runtime_overrides(self)
+        let mut candidate = self.clone();
+        candidate.settings.insert(key.to_owned(), value);
+        validate_runtime_overrides(&candidate)?;
+        *self = candidate;
+        Ok(())
     }
 
     /// Parses the value portion of a `KEY=VALUE` command argument. TOML
@@ -286,28 +290,33 @@ impl RuntimeOverrides {
                 "configuration key {key} does not support site scope"
             )));
         }
-        let index = if let Some(index) = self
+        let mut candidate = self.clone();
+        let index = if let Some(index) = candidate
             .site_rules
             .iter()
             .position(|rule| rule.pattern == pattern)
         {
             index
         } else {
-            if self.site_rules.len() >= MAX_RUNTIME_SETTINGS {
+            if candidate.site_rules.len() >= MAX_RUNTIME_SETTINGS {
                 return Err(ConfigError::Validation(
                     "at most 256 runtime site rules are supported".into(),
                 ));
             }
-            self.site_rules.push(SiteRule {
+            candidate.site_rules.push(SiteRule {
                 id: runtime_site_rule_id(pattern),
                 pattern: pattern.to_owned(),
                 priority: i32::MAX,
                 set: BTreeMap::new(),
             });
-            self.site_rules.len() - 1
+            candidate.site_rules.len() - 1
         };
-        self.site_rules[index].set.insert(key.to_owned(), value);
-        validate_runtime_overrides(self)
+        candidate.site_rules[index]
+            .set
+            .insert(key.to_owned(), value);
+        validate_runtime_overrides(&candidate)?;
+        *self = candidate;
+        Ok(())
     }
 
     /// Removes one generated setting and deletes an empty generated rule.
@@ -573,7 +582,36 @@ fn set_config_value(
                 "configuration key not found: {key}"
             )));
         }
-        table.insert(part.to_owned(), replacement.clone());
+        let value = if selector_setting_family(key).is_some() {
+            let incoming = replacement
+                .clone()
+                .try_into::<HintSelectorPolicy>()
+                .map_err(|error| {
+                    ConfigError::Validation(format!(
+                        "selector policy for {key} has the wrong type: {error}"
+                    ))
+                })?;
+            let inherited = table
+                .get(part)
+                .cloned()
+                .map(toml::Value::try_into::<HintSelectorPolicy>)
+                .transpose()
+                .map_err(|error| {
+                    ConfigError::Validation(format!(
+                        "inherited selector policy for {key} has the wrong type: {error}"
+                    ))
+                })?;
+            let merged = HintSelectorPolicy::overlay(inherited.as_ref(), incoming)
+                .map_err(ConfigError::Validation)?;
+            toml::Value::try_from(merged).map_err(|error| {
+                ConfigError::Validation(format!(
+                    "could not encode selector policy for {key}: {error}"
+                ))
+            })?
+        } else {
+            replacement.clone()
+        };
+        table.insert(part.to_owned(), value);
         return Ok(());
     }
     let child = table

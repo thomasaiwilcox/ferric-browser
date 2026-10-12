@@ -91,6 +91,8 @@ mod browser_ui_query_switcher;
 mod browser_ui_repeat_macros;
 mod browser_ui_runtime;
 mod browser_ui_runtime_config;
+mod browser_ui_runtime_settings;
+mod browser_ui_selector_config;
 mod browser_ui_sessions;
 mod browser_ui_site;
 mod browser_ui_spatial;
@@ -155,6 +157,7 @@ mod renderer_lifecycle;
 mod runtime_bridge;
 mod runtime_facts;
 mod runtime_guard;
+mod selector_validation;
 mod settings_presentation;
 mod shutdown_control;
 mod single_flight;
@@ -198,8 +201,9 @@ use binding_policy::{
 #[cfg(test)]
 use browser_ui_state::PermissionLifetimeKey;
 use browser_ui_state::{
-    ContextSnapshot, PendingContextRoute, PendingProfileConfiguration, PermissionDecisionKey,
-    ProfilePersistence, SessionCheckpoint, SwitcherQueryCache, permission_session_key,
+    ContextSnapshot, PendingContextRoute, PendingProfileConfiguration, PendingSelectorValidation,
+    PermissionDecisionKey, ProfilePersistence, SessionCheckpoint, SwitcherQueryCache,
+    permission_session_key,
 };
 use chrome_preferences::ChromePreferences;
 use command_options::{
@@ -610,6 +614,7 @@ mod qobject {
         #[qproperty(bool, clipboard_request_sensitive)]
         #[qproperty(bool, clipboard_request_primary)]
         #[qproperty(QString, config_json)]
+        #[qproperty(QString, selector_validation_request)]
         #[qproperty(QVariant, settings_rows)]
         #[qproperty(QString, runtime_setting_error)]
         #[qproperty(QString, chrome_font_family)]
@@ -813,6 +818,13 @@ mod qobject {
             profile_overrides: &QString,
             path: &QString,
             source: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn complete_selector_validation(
+            self: Pin<&mut BrowserUi>,
+            generation: &QString,
+            result: &QString,
         ) -> bool;
 
         #[qinvokable]
@@ -2066,6 +2078,7 @@ pub struct BrowserUiRust {
     hint_local_interaction_authority: LocalInteractionAuthority,
     hint_ids: IdSource,
     config_json: QString,
+    selector_validation_request: QString,
     settings_rows: QVariant,
     runtime_setting_error: QString,
     chrome_font_family: QString,
@@ -2187,6 +2200,10 @@ pub struct BrowserUiRust {
     font_scale_probe_worker: Option<SystemFontScaleProbeWorker>,
     network_policy_reload_pending: bool,
     pending_profile_configuration: Option<PendingProfileConfiguration>,
+    pending_selector_validation: Option<PendingSelectorValidation>,
+    selector_generation: u64,
+    selector_config_revision: u64,
+    active_selector_fingerprint: String,
     profile_list_worker: Option<ProfileListWorker>,
     profile_preview_worker: Option<ProfilePreviewWorker>,
     userscript_manager_worker: Option<UserscriptManagerWorker>,
@@ -2780,6 +2797,7 @@ impl Default for BrowserUiRust {
             config_json: QString::from(
                 serde_json::to_string(&Config::default()).unwrap_or_else(|_| "{}".into()),
             ),
+            selector_validation_request: QString::default(),
             settings_rows,
             runtime_setting_error: QString::default(),
             chrome_font_family: QString::from(chrome_preferences.font_family),
@@ -2919,6 +2937,10 @@ impl Default for BrowserUiRust {
             font_scale_probe_worker: None,
             network_policy_reload_pending: false,
             pending_profile_configuration: None,
+            pending_selector_validation: None,
+            selector_generation: 0,
+            selector_config_revision: 0,
+            active_selector_fingerprint: String::new(),
             profile_list_worker: None,
             profile_preview_worker: None,
             userscript_manager_worker: None,

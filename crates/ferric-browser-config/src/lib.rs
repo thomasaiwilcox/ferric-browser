@@ -22,6 +22,7 @@ mod browser_config;
 mod config_model;
 mod routing;
 mod runtime_config;
+mod selector_config;
 mod settings;
 mod validation;
 
@@ -36,6 +37,7 @@ pub use config_model::*;
 pub use routing::*;
 use routing::{parse_context_pattern, parse_site_pattern};
 pub use runtime_config::*;
+pub use selector_config::*;
 #[cfg(test)]
 use settings::SETTING_METADATA;
 pub use settings::*;
@@ -94,6 +96,7 @@ pub fn validate_site_rule(rule: &SiteRule) -> Result<(), ConfigError> {
             rule.id
         )));
     }
+    let mut selector_rule_bytes = 0_usize;
     for (key, value) in &rule.set {
         let valid = match key.as_str() {
             "input.entry_mode" => value
@@ -133,6 +136,10 @@ pub fn validate_site_rule(rule: &SiteRule) -> Result<(), ConfigError> {
                         .as_integer()
                         .is_some_and(|value| (1..=5).contains(&value))
             }
+            _ if selector_setting_family(key).is_some() => value
+                .clone()
+                .try_into::<HintSelectorPolicy>()
+                .is_ok_and(|policy| policy.validate().is_ok()),
             _ => false,
         };
         if !setting_supports_site_scope(key) || !valid {
@@ -140,6 +147,24 @@ pub fn validate_site_rule(rule: &SiteRule) -> Result<(), ConfigError> {
                 "site rule {} has an invalid or unsupported setting {key}",
                 rule.id
             )));
+        }
+        if selector_setting_family(key).is_some() {
+            let policy = value
+                .clone()
+                .try_into::<HintSelectorPolicy>()
+                .map_err(|error| {
+                    ConfigError::Validation(format!(
+                        "site rule {} has an invalid selector policy for {key}: {error}",
+                        rule.id
+                    ))
+                })?;
+            selector_rule_bytes = selector_rule_bytes.saturating_add(policy.selector_bytes());
+            if selector_rule_bytes > MAX_SELECTOR_RULE_BYTES {
+                return Err(ConfigError::Validation(format!(
+                    "site rule {} exceeds the 16 KiB selector string limit",
+                    rule.id
+                )));
+            }
         }
     }
     Ok(())
