@@ -136,6 +136,7 @@ mod logging;
 mod macro_policy;
 mod macro_projection;
 mod maintenance;
+mod mixed_policy_runtime;
 mod native_files;
 mod navigation_lifecycle;
 mod navigation_policy;
@@ -1523,6 +1524,9 @@ mod qobject {
         fn handle_key(self: Pin<&mut BrowserUi>, key: &QString) -> bool;
 
         #[qinvokable]
+        fn mixed_key_route(self: Pin<&mut BrowserUi>, key: &QString) -> QString;
+
+        #[qinvokable]
         fn begin_spatial_navigation(self: Pin<&mut BrowserUi>) -> bool;
 
         #[qinvokable]
@@ -1642,16 +1646,17 @@ use ferric_browser_core::ActionSubject;
 use ferric_browser_core::{
     ActionDefinition, ActionRegistry, ActionSource, BindingOutcome, BindingResolver, BindingTrie,
     CleanLinkResult, CommandInvocation, CommandRegistry, CommandSource, CompletionCandidate,
-    CompletionCategory, DEFAULT_COMPLETION_LIMIT, Diagnostic, DispatchTarget, Effect, EngineEffect,
-    Event, ExistenceState, GridCell, HintAutoFollow as CoreHintAutoFollow, HintInteraction,
-    HintInteractionInput, HintInteractionOutcome, HintSession, HintTarget, HintTransport, IdSource,
-    JourneyEdgeKind, JourneyNodeId, LoadingState, LogicalRect, Mode, NavigationContext,
-    NavigationError, NavigationSource, ParseInput, ParsedCommand, PointerButton, PrivacyKind,
-    ResourceLifecycle, SearchCase, SpatialAck, SpatialAction, SpatialCancelReason,
-    SpatialDispatchOutcome, SpatialError, SpatialLifecycle, SpatialOwner, SpatialSession,
-    SpatialTarget, SurfaceStamp, TabId, TabTransfer, Target, ValidatedUrl, WindowId,
-    assign_labels_with_options, canonical_origin, clean_link, complete, hint_intent_for_candidate,
-    parse_chain, refresh_labels, resolve_input, switcher_rank, tokenize_switcher_query,
+    CompletionCategory, DEFAULT_COMPLETION_LIMIT, Diagnostic, DispatchTarget, Effect,
+    EffectiveMixedKeyPolicy, EngineEffect, Event, ExistenceState, GridCell,
+    HintAutoFollow as CoreHintAutoFollow, HintInteraction, HintInteractionInput,
+    HintInteractionOutcome, HintSession, HintTarget, HintTransport, IdSource, JourneyEdgeKind,
+    JourneyNodeId, LoadingState, LogicalRect, Mode, NavigationContext, NavigationError,
+    NavigationSource, ParseInput, ParsedCommand, PointerButton, PrivacyKind, ResourceLifecycle,
+    SearchCase, SpatialAck, SpatialAction, SpatialCancelReason, SpatialDispatchOutcome,
+    SpatialError, SpatialLifecycle, SpatialOwner, SpatialSession, SpatialTarget, SurfaceStamp,
+    TabId, TabTransfer, Target, ValidatedUrl, WindowId, assign_labels_with_options,
+    canonical_origin, clean_link, complete, hint_intent_for_candidate, parse_chain, refresh_labels,
+    resolve_input, switcher_rank, tokenize_switcher_query,
 };
 use ferric_browser_ipc::{
     EventNotification, PublicError, Request, Response, has_pending_requests,
@@ -1734,6 +1739,7 @@ pub struct BrowserUiRust {
     tab: Option<TabId>,
     registry: CommandRegistry,
     bindings: Option<BindingResolver>,
+    mixed_policy: EffectiveMixedKeyPolicy,
     core_mode: Mode,
     binding_clock: Instant,
     pending_engine_action: Option<String>,
@@ -2434,6 +2440,7 @@ impl Default for BrowserUiRust {
             tab,
             registry,
             bindings,
+            mixed_policy: EffectiveMixedKeyPolicy::default(),
             core_mode: Mode::Normal,
             binding_clock: Instant::now(),
             pending_engine_action: None,

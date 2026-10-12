@@ -2066,12 +2066,13 @@ ApplicationWindow {
                      || browserUi.mode === "insert-locked"
                      || browserUi.mode === "pass-through"
                      || browserUi.mode === "pass-through-once")
-        onKeyPressed: function(text, key, modifiers, isAutoRepeat) {
+        onKeyPressed: function(text, key, modifiers, isAutoRepeat, browserOwnedRepeat) {
             var event = {
                 text: text,
                 key: key,
                 modifiers: modifiers,
                 isAutoRepeat: !!isAutoRepeat,
+                browserOwnedRepeat: !!browserOwnedRepeat,
                 accepted: false
             }
             if (window.handleBrowserKey(browserUi, window, event)) {

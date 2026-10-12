@@ -14,6 +14,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use ferric_browser_core::{MixedPolicyLayer, resolve_mixed_key_policy};
 use serde::{Deserialize, Serialize};
 
 mod appearance;
@@ -98,6 +99,23 @@ pub fn validate_site_rule(rule: &SiteRule) -> Result<(), ConfigError> {
             "input.entry_mode" => value
                 .as_str()
                 .is_some_and(|value| matches!(value, "normal" | "insert" | "pass-through")),
+            "input.shortcut_policy" => value
+                .as_str()
+                .is_some_and(|value| matches!(value, "browser-first" | "mixed")),
+            "input.page_keys" => value.as_array().is_some_and(|values| {
+                values.iter().all(toml::Value::is_str)
+                    && validate_mixed_policy_layer(
+                        None,
+                        Some(
+                            values
+                                .iter()
+                                .filter_map(toml::Value::as_str)
+                                .map(str::to_owned)
+                                .collect(),
+                        ),
+                    )
+                    .is_ok()
+            }),
             "hints.proxy_targets" => value
                 .as_str()
                 .is_some_and(|value| matches!(value, "off" | "validated")),
@@ -125,6 +143,16 @@ pub fn validate_site_rule(rule: &SiteRule) -> Result<(), ConfigError> {
         }
     }
     Ok(())
+}
+
+fn validate_mixed_policy_layer(
+    shortcut_policy: Option<&str>,
+    page_keys: Option<Vec<String>>,
+) -> Result<(), String> {
+    let layer = MixedPolicyLayer::new(shortcut_policy, page_keys);
+    resolve_mixed_key_policy(None, Some(&layer), None, None)
+        .map(|_| ())
+        .map_err(|error| error.to_string())
 }
 
 fn set_private_permissions(path: &Path) -> std::io::Result<()> {

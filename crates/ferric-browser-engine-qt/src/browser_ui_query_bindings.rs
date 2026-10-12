@@ -3,6 +3,47 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
 
+fn parse_explain_keychain(keychain: &str) -> Result<(u32, bool, Vec<String>), String> {
+    let is_single_logical_key = ferric_browser_core::LogicalKeyToken::parse(keychain).is_ok();
+    let (count_text, remaining) = if is_single_logical_key {
+        (String::new(), keychain.to_owned())
+    } else {
+        let mut characters = keychain.chars().peekable();
+        let mut count_text = String::new();
+        if characters
+            .peek()
+            .is_some_and(|key| ('1'..='9').contains(key))
+        {
+            while characters.peek().is_some_and(char::is_ascii_digit) {
+                count_text.push(characters.next().expect("peeked count digit"));
+            }
+        }
+        let remaining = characters.collect::<String>();
+        if remaining.is_empty() {
+            (String::new(), keychain.to_owned())
+        } else {
+            (count_text, remaining)
+        }
+    };
+
+    let tokens = if ferric_browser_core::LogicalKeyToken::parse(&remaining).is_ok() {
+        vec![remaining]
+    } else if remaining.contains(',') {
+        remaining.split(',').map(str::to_owned).collect()
+    } else {
+        remaining.chars().map(|key| key.to_string()).collect()
+    };
+    if tokens.is_empty() || tokens.iter().any(String::is_empty) {
+        return Err("bindings.explain keychain must contain a binding key".into());
+    }
+    let count = if count_text.is_empty() {
+        1
+    } else {
+        count_text.parse::<u32>().unwrap_or(9_999).clamp(1, 9_999)
+    };
+    Ok((count, !count_text.is_empty(), tokens))
+}
+
 impl qobject::BrowserUi {
     pub(super) fn binding_layer_provenance(&self, mode: &str, keychain: &str) -> Value {
         let mut layers = Vec::new();
@@ -228,21 +269,7 @@ impl qobject::BrowserUi {
         let current_mode = self.rust().core_mode;
         let mode = requested_mode.unwrap_or(current_mode);
 
-        let mut key_tokens = keychain.chars().peekable();
-        let mut count_text = String::new();
-        if key_tokens
-            .peek()
-            .is_some_and(|key| ('1'..='9').contains(key))
-        {
-            while key_tokens.peek().is_some_and(char::is_ascii_digit) {
-                count_text.push(key_tokens.next().expect("peeked count digit"));
-            }
-        }
-        let tokens = key_tokens.map(|key| key.to_string()).collect::<Vec<_>>();
-        if tokens.is_empty() {
-            return Err("bindings.explain keychain must contain a binding key".into());
-        }
-        let count = count_text.parse::<u32>().unwrap_or(9_999).clamp(1, 9_999);
+        let (count, explicit_count, tokens) = parse_explain_keychain(keychain)?;
 
         let definitions = self
             .rust()
@@ -320,6 +347,85 @@ impl qobject::BrowserUi {
             .ok()
             .and_then(|value| value.get("conflicts").cloned())
             .unwrap_or_else(|| Value::Array(Vec::new()));
+        let route_token = tokens
+            .first()
+            .and_then(|key| ferric_browser_core::LogicalKeyToken::parse(key).ok());
+        let routing_decision = route_token.as_ref().and_then(|token| {
+            super::mixed_policy_runtime::decision_for_key(self.rust(), mode, token.as_str())
+        });
+        let mixed_reason = routing_decision.map(|decision| match decision.reason {
+            ferric_browser_core::MixedKeyDecisionReason::ExplicitMode => "explicit-mode",
+            ferric_browser_core::MixedKeyDecisionReason::ReservedControl => "reserved-control",
+            ferric_browser_core::MixedKeyDecisionReason::ActiveBrowserCount => "active-count",
+            ferric_browser_core::MixedKeyDecisionReason::ActiveBrowserKeychain => "active-keychain",
+            ferric_browser_core::MixedKeyDecisionReason::BrowserFirstPolicy => "browser-first",
+            ferric_browser_core::MixedKeyDecisionReason::ExactPageKey => "exact-page-key",
+            ferric_browser_core::MixedKeyDecisionReason::NoPageKeyMapping => "unmapped-key",
+        });
+        let policy = &self.rust().mixed_policy;
+        let site_rule_config = serde_json::from_value::<Config>(self.rust().config.clone()).ok();
+        let site_rule_for =
+            |setting: &str, source: Option<ferric_browser_core::MixedPolicySource>| {
+                if source != Some(ferric_browser_core::MixedPolicySource::Site) {
+                    return None;
+                }
+                let config = site_rule_config.as_ref()?;
+                matching_site_rules(config, &self.rust().current_url.to_string())
+                    .into_iter()
+                    .rev()
+                    .find(|rule| rule.set.contains_key(setting))
+                    .map(|rule| rule.id.clone())
+            };
+        let source_for =
+            |setting: &str, source: Option<ferric_browser_core::MixedPolicySource>| match source {
+                Some(ferric_browser_core::MixedPolicySource::Global) => Some("global".into()),
+                Some(ferric_browser_core::MixedPolicySource::Profile) => Some("profile".into()),
+                Some(ferric_browser_core::MixedPolicySource::Site) => {
+                    site_rule_for(setting, source).map(|id| format!("site-rule:{id}"))
+                }
+                Some(ferric_browser_core::MixedPolicySource::Runtime) => {
+                    let rust = self.rust();
+                    [
+                        ("temporary", &rust.temporary_overrides),
+                        ("cli", &rust.cli_overrides),
+                        ("runtime", &rust.runtime_overrides),
+                    ]
+                    .into_iter()
+                    .find(|(_, overrides)| overrides.settings.contains_key(setting))
+                    .map(|(layer, _)| layer.into())
+                }
+                None => None,
+            };
+        let suppresses_bindings = if mode == Mode::Normal
+            && routing_decision
+                .is_some_and(|decision| decision.owner == ferric_browser_core::InputOwner::Page)
+        {
+            let first = route_token
+                .as_ref()
+                .map(ferric_browser_core::LogicalKeyToken::as_str);
+            definitions
+                .iter()
+                .filter(|binding| {
+                    binding.mode == Mode::Normal
+                        && binding.keys.first().map(String::as_str) == first
+                })
+                .map(|binding| serde_json::json!({
+                    "keychain": binding.keys.concat(),
+                    "command": binding.command,
+                    "reason": "the first key is routed to the page before this browser binding can start"
+                }))
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+        let qml_special = route_token
+            .as_ref()
+            .map_or("none", |token| match token.as_str() {
+                ":" => "command-entry",
+                "/" => "search-forward",
+                "?" => "search-backward",
+                _ => "none",
+            });
 
         Ok(serde_json::json!({
             "schema": 1,
@@ -329,7 +435,7 @@ impl qobject::BrowserUi {
             "current_mode": ipc_mode_name(current_mode),
             "mode": mode_name,
             "count": {
-                "explicit": !count_text.is_empty(),
+                "explicit": explicit_count,
                 "value": count,
                 "policy": count_policy
             },
@@ -355,11 +461,61 @@ impl qobject::BrowserUi {
                 serde_json::json!([])
             },
             "conflicts": conflicts,
+            "mixed_routing": {
+                "owner": routing_decision.map(|decision| match decision.owner {
+                    ferric_browser_core::InputOwner::Browser => "browser",
+                    ferric_browser_core::InputOwner::Page => "page",
+                }),
+                "reason": mixed_reason,
+                "shortcut_policy": policy.shortcut_policy.as_str(),
+                "shortcut_policy_source": source_for(
+                    "input.shortcut_policy",
+                    policy.shortcut_policy_source
+                ),
+                "shortcut_policy_source_layer": policy.shortcut_policy_source.map(|source| source.to_string()),
+                "shortcut_policy_site_rule": site_rule_for(
+                    "input.shortcut_policy",
+                    policy.shortcut_policy_source
+                ),
+                "page_keys_source": source_for("input.page_keys", policy.page_keys_source),
+                "page_keys_source_layer": policy.page_keys_source.map(|source| source.to_string()),
+                "page_keys_site_rule": site_rule_for("input.page_keys", policy.page_keys_source),
+                "reserved": routing_decision.is_some_and(|decision|
+                    decision.reason == ferric_browser_core::MixedKeyDecisionReason::ReservedControl
+                ),
+                "qml_special": qml_special,
+                "browser_bindings_suppressed_by_page_mapping": suppresses_bindings
+            },
             "reserved": {
                 "escape": true,
                 "chord": "Ctrl+Shift+Escape",
                 "note": "Escape handling remains browser-reserved and is not configurable through the binding trie"
             }
         }))
+    }
+}
+
+#[cfg(test)]
+mod mixed_explain_keychain_tests {
+    use super::parse_explain_keychain;
+
+    #[test]
+    fn keychain_explanation_accepts_logical_tokens_and_count_prefixes() {
+        assert_eq!(
+            parse_explain_keychain("Ctrl+f").expect("named key"),
+            (1, false, vec!["Ctrl+f".to_owned()])
+        );
+        assert_eq!(
+            parse_explain_keychain("3").expect("mapped count-like key"),
+            (1, false, vec!["3".to_owned()])
+        );
+        assert_eq!(
+            parse_explain_keychain("3gg").expect("counted chain"),
+            (3, true, vec!["g".to_owned(), "g".to_owned()])
+        );
+        assert_eq!(
+            parse_explain_keychain("g,g").expect("comma-separated chain"),
+            (1, false, vec!["g".to_owned(), "g".to_owned()])
+        );
     }
 }

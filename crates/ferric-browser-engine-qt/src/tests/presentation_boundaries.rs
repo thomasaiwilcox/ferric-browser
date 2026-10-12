@@ -229,6 +229,9 @@ fn normal_input_uses_logical_unmodified_text_and_preserves_unicode_fields() {
     assert!(qml.contains("event.text, event.key, shift, Qt.Key_A, Qt.Key_Z"));
     assert!(qml.contains("ui.handle_key(logicalText)"));
     assert!(qml.contains("function handleBrowserKey(ui, host, event)"));
+    assert!(qml.contains("ui.mixed_key_route(logicalText)"));
+    assert!(qml.contains("pageRouter.pageOwnsCurrentEvent()"));
+    assert!(qml.contains("event.browserOwnedRepeat"));
     assert!(qml.matches("BrowserKeyRouter {").count() >= 2);
     assert!(qml.contains("browserKeyRouter.acceptCurrentEvent()"));
     assert!(qml.contains("secondaryKeyRouter.acceptCurrentEvent()"));
@@ -295,17 +298,25 @@ fn mixed_policy_tokens_match_the_existing_qml_logical_vocabulary() {
 fn browser_key_router_filters_before_webengine_and_requires_explicit_acceptance() {
     let header = include_str!("../browser_key_router.h");
     let source = include_str!("../browser_key_router.cpp");
+    let binding_queries = include_str!("../browser_ui_query_bindings.rs");
     assert!(header.contains("QML_NAMED_ELEMENT(BrowserKeyRouter)"));
     assert!(header.contains("Q_PROPERTY(QWindow *targetWindow"));
     assert!(header.contains("Q_INVOKABLE void acceptCurrentEvent()"));
+    assert!(header.contains("Q_INVOKABLE void pageOwnsCurrentEvent()"));
+    assert!(header.contains("QSet<quint64> pageOwnedKeys_"));
     assert!(source.contains("application->installEventFilter(this)"));
     assert!(source.contains("event->type() == QEvent::KeyPress"));
     assert!(source.contains("event->type() == QEvent::ShortcutOverride"));
     assert!(source.contains("QGuiApplication::focusWindow() != targetWindow_"));
     assert!(source.contains("emit keyPressed("));
+    assert!(source.contains("pageOwnedCurrentEvent_"));
     assert!(source.contains("return handled;"));
     assert!(source.contains("nativeScanCode()"));
     assert!(!source.contains("| quint64(quint32(keyEvent->modifiers()))"));
+    assert!(binding_queries.contains("\"mixed_routing\": {"));
+    assert!(binding_queries.contains("shortcut_policy_source_layer"));
+    assert!(binding_queries.contains("page_keys_source_layer"));
+    assert!(binding_queries.contains("browser_bindings_suppressed_by_page_mapping"));
 }
 
 #[test]

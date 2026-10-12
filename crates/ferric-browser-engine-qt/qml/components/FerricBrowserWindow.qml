@@ -8,6 +8,7 @@ import io.github.ferricbrowser 1.0
 ApplicationWindow {
     required property var rootWindow
     id: secondaryWindow
+    readonly property alias browserKeyRouterObject: secondaryKeyRouter
     width: 1180
     height: 760
     visible: true
@@ -147,12 +148,13 @@ ApplicationWindow {
                      || secondaryUi.mode === "insert-locked"
                      || secondaryUi.mode === "pass-through"
                      || secondaryUi.mode === "pass-through-once")
-        onKeyPressed: function(text, key, modifiers, isAutoRepeat) {
+        onKeyPressed: function(text, key, modifiers, isAutoRepeat, browserOwnedRepeat) {
             var event = {
                 text: text,
                 key: key,
                 modifiers: modifiers,
                 isAutoRepeat: !!isAutoRepeat,
+                browserOwnedRepeat: !!browserOwnedRepeat,
                 accepted: false
             }
             if (rootWindow.handleBrowserKey(

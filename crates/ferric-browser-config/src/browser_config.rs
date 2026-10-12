@@ -49,6 +49,10 @@ impl Default for HintsConfig {
 pub struct InputConfig {
     #[serde(default)]
     pub entry_mode: EntryMode,
+    #[serde(default)]
+    pub shortcut_policy: InputShortcutPolicy,
+    #[serde(default)]
+    pub page_keys: Vec<String>,
     #[serde(default = "default_true")]
     pub auto_insert: bool,
     #[serde(default = "default_keychain_timeout")]
@@ -61,9 +65,32 @@ impl Default for InputConfig {
     fn default() -> Self {
         Self {
             entry_mode: EntryMode::default(),
+            shortcut_policy: InputShortcutPolicy::default(),
+            page_keys: Vec::new(),
             auto_insert: true,
             keychain_timeout_ms: default_keychain_timeout(),
             count_limit: default_count_limit(),
+        }
+    }
+}
+
+/// Persistent shortcut ownership policy for Normal-mode input.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum InputShortcutPolicy {
+    /// Preserve Ferric's existing Normal-mode bindings.
+    #[default]
+    BrowserFirst,
+    /// Route only the exact configured logical keys to the current page.
+    Mixed,
+}
+
+impl InputShortcutPolicy {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::BrowserFirst => "browser-first",
+            Self::Mixed => "mixed",
         }
     }
 }

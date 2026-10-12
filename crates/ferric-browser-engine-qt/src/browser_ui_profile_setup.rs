@@ -348,6 +348,26 @@ impl qobject::BrowserUi {
             this.temporary_overrides = RuntimeOverrides::default();
             this.cli_overrides = cli_overrides;
             this.profile_overrides = profile_overrides;
+            this.mixed_policy = serde_json::from_value::<Config>(this.config.clone())
+                .ok()
+                .and_then(|effective| {
+                    serde_json::from_value::<Config>(this.base_config.clone())
+                        .ok()
+                        .and_then(|base| {
+                            super::mixed_policy_runtime::resolve_for_layers(
+                                &base,
+                                &this.profile_overrides,
+                                &this.runtime_overrides,
+                                &this.cli_overrides,
+                                &this.temporary_overrides,
+                                &effective,
+                                &this.current_url.to_string(),
+                            )
+                            .ok()
+                        })
+                })
+                .unwrap_or_default();
+            this.binding_overlay = QString::default();
             this.config_watch = config_watch;
             this.config_reload_worker = ConfigReloadWorker::spawn().ok();
             this.config_write_worker = ConfigWriteWorker::spawn().ok();

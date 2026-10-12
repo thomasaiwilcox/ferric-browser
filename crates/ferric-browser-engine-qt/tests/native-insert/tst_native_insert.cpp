@@ -26,6 +26,10 @@ class NativeInsertTest : public QObject {
     int passExits = 0;
     bool locked = false;
     bool semicolonPending = false;
+    bool mixedPageKey = false;
+    bool mixedBrowserKey = false;
+    int mixedRouteCalls = 0;
+    int browserOwnedRepeats = 0;
     int fixtureGeneration = 0;
 
     QVariant js(const QString &source) {
@@ -172,8 +176,23 @@ WebEngineView {
                 normal();
         });
         connect(&router, &FerricBrowserKeyRouter::keyPressed, this,
-                [this](const QString &, int key, int modifiers, bool) {
+                [this](const QString &, int key, int modifiers, bool, bool browserOwnedRepeat) {
             const auto mode = view->property("ferricMode").toString();
+            if (key == Qt::Key_F && browserOwnedRepeat) {
+                ++browserOwnedRepeats;
+                router.acceptCurrentEvent();
+                return;
+            }
+            if (mode == "normal" && (key == Qt::Key_F || key == Qt::Key_G) && mixedPageKey) {
+                ++mixedRouteCalls;
+                router.pageOwnsCurrentEvent();
+                return;
+            }
+            if (mode == "normal" && key == Qt::Key_F && mixedBrowserKey) {
+                ++mixedRouteCalls;
+                router.acceptCurrentEvent();
+                return;
+            }
             if (mode == "pass-through" || mode == "pass-through-once") {
                 if (key == Qt::Key_Escape && modifiers == Qt::ControlModifier) {
                     normal();
@@ -208,6 +227,10 @@ WebEngineView {
         passExits = 0;
         locked = false;
         semicolonPending = false;
+        mixedPageKey = false;
+        mixedBrowserKey = false;
+        mixedRouteCalls = 0;
+        browserOwnedRepeats = 0;
         const int loaded = view->property("loaded").toInt();
         QUrl url = QUrl::fromLocalFile(files.filePath("fixture.html"));
         url.setQuery(QString::number(++fixtureGeneration));
@@ -390,6 +413,49 @@ WebEngineView {
         QTest::keyRelease(&window, Qt::Key_J);
         QCOMPARE(navigations, 1);
         QCOMPARE(js("events.filter(e=>e.key==='j').length").toInt(), 3);
+    }
+    void mixedPageOwnerSurvivesPolicyAndEpochChanges() {
+        focus("player");
+        normal();
+        mixedPageKey = true;
+        const int before = mixedRouteCalls;
+        QTest::keyPress(&window, Qt::Key_F);
+        QTest::keyPress(&window, Qt::Key_G);
+        QCOMPARE(mixedRouteCalls, before + 2);
+
+        mixedPageKey = false;
+        router.setInputEpoch(router.inputEpoch() + 1);
+        QKeyEvent repeatFRelease(QEvent::KeyRelease, Qt::Key_F, Qt::NoModifier, "f", true);
+        QKeyEvent repeatFPress(QEvent::KeyPress, Qt::Key_F, Qt::NoModifier, "f", true);
+        QKeyEvent repeatGRelease(QEvent::KeyRelease, Qt::Key_G, Qt::NoModifier, "g", true);
+        QKeyEvent repeatGPress(QEvent::KeyPress, Qt::Key_G, Qt::NoModifier, "g", true);
+        QCoreApplication::sendEvent(&window, &repeatFRelease);
+        QCoreApplication::sendEvent(&window, &repeatFPress);
+        QCoreApplication::sendEvent(&window, &repeatGRelease);
+        QCoreApplication::sendEvent(&window, &repeatGPress);
+        QTest::keyRelease(&window, Qt::Key_F);
+        QTest::keyRelease(&window, Qt::Key_G);
+        QCOMPARE(mixedRouteCalls, before + 2);
+        QTRY_COMPARE(js("events.filter(e=>e.key==='f'&&e.type==='keydown').length").toInt(), 2);
+        QTRY_COMPARE(js("events.filter(e=>e.key==='g'&&e.type==='keydown').length").toInt(), 2);
+        QTRY_COMPARE(js("events.filter(e=>(e.key==='f'||e.key==='g')&&e.type==='keyup').length").toInt(), 2);
+    }
+    void mixedBrowserOwnerSurvivesPageMappingChange() {
+        focus("player");
+        normal();
+        mixedBrowserKey = true;
+        QTest::keyPress(&window, Qt::Key_F);
+        QCOMPARE(mixedRouteCalls, 1);
+        mixedBrowserKey = false;
+        mixedPageKey = true;
+        QKeyEvent repeatRelease(QEvent::KeyRelease, Qt::Key_F, Qt::NoModifier, "f", true);
+        QKeyEvent repeatPress(QEvent::KeyPress, Qt::Key_F, Qt::NoModifier, "f", true);
+        QCoreApplication::sendEvent(&window, &repeatRelease);
+        QCoreApplication::sendEvent(&window, &repeatPress);
+        QTest::keyRelease(&window, Qt::Key_F);
+        QCOMPARE(browserOwnedRepeats, 1);
+        QCOMPARE(mixedRouteCalls, 1);
+        QCOMPARE(js("events.filter(e=>e.key==='f').length").toInt(), 0);
     }
     void passPersistentAndRecovery() {
         focus("player");

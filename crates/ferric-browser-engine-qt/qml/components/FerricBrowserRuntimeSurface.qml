@@ -1205,11 +1205,11 @@ FerricBrowserRuntimeChrome {
             return false
         }
         var nativeView = host && host.activeView !== undefined ? host.activeView : (ui === browserUi ? window.activeWebView() : null)
-        if (ui.mode === "normal" && nativeView && nativeView.nativeUrl === "rb://start"
-                && nativeView.startPage && nativeView.startPage.handleNavigation(event)) return true
         var logicalText = window.logicalNormalKeyText(event)
         var handled = false
         var passing = ui.mode === "pass-through" || ui.mode === "pass-through-once"
+        var mixedRoute = ui.mode === "normal"
+                ? ui.mixed_key_route(logicalText) : "browser"
         if (passing && event.key === Qt.Key_Escape
                 && event.modifiers === Qt.ControlModifier) {
             ui.escape()
@@ -1218,6 +1218,24 @@ FerricBrowserRuntimeChrome {
             handled = true
         } else if (passing) {
             return false
+        } else if (ui.mode === "normal"
+                   && !event.browserOwnedRepeat
+                   && mixedRoute === "page") {
+            var pageRouter = host && host.browserKeyRouterObject
+            if (pageRouter && pageRouter.pageOwnsCurrentEvent) {
+                pageRouter.pageOwnsCurrentEvent()
+            }
+            return false
+        } else if (ui.mode === "normal"
+                   && (mixedRoute === "active-count"
+                       || mixedRoute === "active-keychain")) {
+            ui.handle_key(logicalText)
+            window.completeBrowserKeyAction(ui, host)
+            handled = true
+        } else if (event.browserOwnedRepeat && ui.mode !== "normal") {
+            // A browser-owned press may change modes. Its held repeat cannot
+            // become a new page gesture in the new mode.
+            handled = true
         } else if (event.key === Qt.Key_Escape) {
             if (ui.mode === "grid" && event.modifiers !== Qt.NoModifier) {
                 // Unsupported modified Escape is consumed while Grid owns the
@@ -1227,6 +1245,11 @@ FerricBrowserRuntimeChrome {
             } else {
                 ui.escape()
             }
+            handled = true
+        } else if (ui.mode === "normal" && nativeView
+                   && nativeView.nativeUrl === "rb://start"
+                   && nativeView.startPage
+                   && nativeView.startPage.handleNavigation(event)) {
             handled = true
         } else if (ui.mode === "grid") {
             // Grid owns the whole triggering gesture. Auto-repeat is consumed

@@ -24,6 +24,12 @@ impl qobject::BrowserUi {
                 return false;
             }
         };
+        if !self
+            .as_mut()
+            .refresh_mixed_policy_for_url(&config, &url.to_string())
+        {
+            return false;
+        }
         let mut javascript = None;
         let mut images = None;
         let mut force_dark = None;
@@ -137,31 +143,16 @@ impl qobject::BrowserUi {
         )
     }
 
-    pub(super) fn runtime_config_candidate_from(
-        &self,
-        base_value: &Value,
-        profile_overrides: &RuntimeOverrides,
-        runtime_overrides: &RuntimeOverrides,
-        temporary_overrides: &RuntimeOverrides,
-    ) -> Result<Value, String> {
-        let layers = ConfigurationLayers {
-            base: serde_json::from_value(base_value.clone())
-                .map_err(|error| format!("base configuration is invalid: {error}"))?,
-            profile: profile_overrides.clone(),
-            runtime: runtime_overrides.clone(),
-            command_line: self.rust().cli_overrides.clone(),
-            temporary: temporary_overrides.clone(),
-        };
-        serde_json::to_value(layers.resolve().map_err(|error| error.to_string())?)
-            .map_err(|error| format!("could not serialize resolved configuration: {error}"))
-    }
-
     pub(super) fn commit_runtime_config(
         mut self: Pin<&mut Self>,
         candidate: Value,
         layers: ConfigurationLayers,
         status: &str,
     ) -> Result<Value, String> {
+        let (candidate_mixed_policy, policy_changed) = self
+            .as_ref()
+            .resolve_candidate_mixed_policy(&candidate, &layers)?;
+        let policy_layers = layers.clone();
         let previous_hints = serde_json::from_value::<Config>(self.as_ref().rust().config.clone())
             .ok()
             .map(|config| config.hints);
@@ -195,6 +186,13 @@ impl qobject::BrowserUi {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
             this.config = active_config.clone();
+            this.base_config = serde_json::to_value(&policy_layers.base)
+                .map_err(|error| format!("could not serialize base configuration: {error}"))?;
+            this.profile_overrides = policy_layers.profile.clone();
+            this.runtime_overrides = policy_layers.runtime.clone();
+            this.cli_overrides = policy_layers.command_line.clone();
+            this.temporary_overrides = policy_layers.temporary.clone();
+            this.mixed_policy = candidate_mixed_policy;
             this.pending_config = (!pending.is_empty()).then_some(candidate.clone());
             this.learning_mode = active_config
                 .get("discovery")
@@ -207,6 +205,17 @@ impl qobject::BrowserUi {
         {
             let mut rust = self.as_mut().rust_mut();
             rust.as_mut().get_mut().bindings = bindings;
+        }
+        if policy_changed {
+            let mut rust = self.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            if let Some(bindings) = this.bindings.as_mut() {
+                bindings.reset();
+            }
+            this.macro_key_prefix = None;
+            this.macro_key_started_ms = None;
+            drop(rust);
+            self.as_mut().set_binding_overlay(QString::default());
         }
         self.as_mut()
             .set_desktop_portal_mode(QString::from(desktop_portals::mode_name(

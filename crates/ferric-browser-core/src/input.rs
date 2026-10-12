@@ -364,6 +364,19 @@ impl BindingResolver {
         !self.prefix.is_empty() || !self.count_digits.is_empty()
     }
 
+    /// Returns whether a decimal count has started and still owns its next
+    /// Normal-mode continuation.
+    #[must_use]
+    pub fn has_pending_count(&self) -> bool {
+        !self.count_digits.is_empty()
+    }
+
+    /// Returns whether a binding keychain prefix still owns its continuation.
+    #[must_use]
+    pub fn has_pending_keychain(&self) -> bool {
+        !self.prefix.is_empty()
+    }
+
     pub fn reset(&mut self) {
         self.prefix.clear();
         self.count_digits.clear();
@@ -589,6 +602,8 @@ mod tests {
             resolver.feed("y", 0),
             BindingOutcome::Pending { .. }
         ));
+        assert!(resolver.has_pending_keychain());
+        assert!(!resolver.has_pending_count());
         assert_eq!(
             resolver.feed("y", 1),
             BindingOutcome::Execute {
@@ -600,6 +615,8 @@ mod tests {
             resolver.feed("3", 0),
             BindingOutcome::Pending { count: 3, .. }
         ));
+        assert!(resolver.has_pending_count());
+        assert!(!resolver.has_pending_keychain());
         assert_eq!(
             resolver.feed("H", 10),
             BindingOutcome::Execute {

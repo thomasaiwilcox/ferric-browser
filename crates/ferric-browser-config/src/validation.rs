@@ -7,6 +7,7 @@ use super::{
     parse_context_pattern, parse_site_pattern, setting_supports_site_scope,
     valid_link_update_source, valid_sha256, validate_site_rule,
 };
+use ferric_browser_core::{MixedPolicyLayer, resolve_mixed_key_policy};
 
 /// Validates an in-memory configuration candidate before it becomes effective.
 ///
@@ -63,6 +64,10 @@ pub fn validate(config: &Config) -> Result<(), ConfigError> {
             "input limits are outside their allowed range".into(),
         ));
     }
+    validate_mixed_input_policy(
+        Some(config.input.shortcut_policy.as_str()),
+        Some(config.input.page_keys.clone()),
+    )?;
     let mut hint_chars = BTreeSet::new();
     if !(2..=32).contains(&config.hints.chars.len())
         || !config.hints.chars.is_ascii()
@@ -371,6 +376,23 @@ pub fn validate(config: &Config) -> Result<(), ConfigError> {
                 "input.entry_mode" => value
                     .as_str()
                     .is_some_and(|value| matches!(value, "normal" | "insert" | "pass-through")),
+                "input.shortcut_policy" => value
+                    .as_str()
+                    .is_some_and(|value| matches!(value, "browser-first" | "mixed")),
+                "input.page_keys" => value.as_array().is_some_and(|values| {
+                    values.iter().all(toml::Value::is_str)
+                        && validate_mixed_input_policy(
+                            None,
+                            Some(
+                                values
+                                    .iter()
+                                    .filter_map(toml::Value::as_str)
+                                    .map(str::to_owned)
+                                    .collect(),
+                            ),
+                        )
+                        .is_ok()
+                }),
                 "hints.proxy_targets" => value
                     .as_str()
                     .is_some_and(|value| matches!(value, "off" | "validated")),
@@ -430,6 +452,16 @@ pub fn validate(config: &Config) -> Result<(), ConfigError> {
         }
     }
     Ok(())
+}
+
+fn validate_mixed_input_policy(
+    shortcut_policy: Option<&str>,
+    page_keys: Option<Vec<String>>,
+) -> Result<(), ConfigError> {
+    let layer = MixedPolicyLayer::new(shortcut_policy, page_keys);
+    resolve_mixed_key_policy(None, Some(&layer), None, None)
+        .map(|_| ())
+        .map_err(|error| ConfigError::Validation(error.to_string()))
 }
 
 pub(crate) fn validate_profile_definition(profile: &ProfileDefinition) -> Result<(), ConfigError> {

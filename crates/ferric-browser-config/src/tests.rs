@@ -326,6 +326,62 @@ fn site_rules_reject_unsafe_or_unknown_settings() {
 }
 
 #[test]
+fn mixed_input_settings_validate_atomically_at_global_and_site_scopes() {
+    let mut config = Config::default();
+    config.input.shortcut_policy = InputShortcutPolicy::Mixed;
+    config.input.page_keys = vec!["g".into(), "Ctrl+f".into()];
+    validate(&config).expect("valid Mixed input policy");
+
+    config.input.page_keys.push("gg".into());
+    assert!(validate(&config).is_err(), "keychains are not single keys");
+    config.input.page_keys = vec!["g".into(), "g".into()];
+    assert!(validate(&config).is_err(), "duplicates are rejected");
+    config.input.page_keys = vec![":".into()];
+    assert!(validate(&config).is_err(), "reserved keys are rejected");
+    config.input.page_keys = (0x0100..0x0100 + 65)
+        .filter_map(char::from_u32)
+        .map(|key| key.to_string())
+        .collect();
+    assert!(validate(&config).is_err(), "the 64-key bound is enforced");
+
+    let mut rule = SiteRule {
+        id: "docs".into(),
+        pattern: "https://docs.example.test/*".into(),
+        priority: 0,
+        set: BTreeMap::from([
+            (
+                "input.shortcut_policy".into(),
+                toml::Value::String("mixed".into()),
+            ),
+            (
+                "input.page_keys".into(),
+                toml::Value::Array(vec![toml::Value::String("/".into())]),
+            ),
+        ]),
+    };
+    validate_site_rule(&rule).expect("valid site-scoped Mixed settings");
+    rule.set.insert(
+        "input.page_keys".into(),
+        toml::Value::Array(vec![toml::Value::String("Ctrl+Shift+v".into())]),
+    );
+    assert!(
+        validate_site_rule(&rule).is_err(),
+        "reserved recovery key rejected"
+    );
+
+    let policy = setting_metadata("input.shortcut_policy").expect("policy registry row");
+    assert_eq!(policy.default_value, "browser-first");
+    assert_eq!(policy.supported_scopes, ["global", "profile", "site"]);
+    assert_eq!(policy.apply_time, "live");
+    assert_eq!(
+        setting_metadata("input.page_keys")
+            .expect("page key registry row")
+            .value_type,
+        "list<logical-key>"
+    );
+}
+
+#[test]
 fn setting_registry_resolves_static_and_dynamic_settings() {
     let registry = SettingRegistry::default_v1();
     assert!(

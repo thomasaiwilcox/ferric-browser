@@ -183,6 +183,24 @@ pub(super) const SETTING_METADATA: &[SettingMetadata] = &[
         "normal"
     ),
     setting_metadata!(
+        "input.shortcut_policy",
+        "enum",
+        "browser-first",
+        GLOBAL_PROFILE_SITE_SCOPES,
+        "live",
+        "none",
+        "normal"
+    ),
+    setting_metadata!(
+        "input.page_keys",
+        "list<logical-key>",
+        "[]",
+        GLOBAL_PROFILE_SITE_SCOPES,
+        "live",
+        "none",
+        "normal"
+    ),
+    setting_metadata!(
         "input.auto_insert",
         "boolean",
         "true",

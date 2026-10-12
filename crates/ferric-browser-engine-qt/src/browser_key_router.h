@@ -38,6 +38,7 @@ public:
     void setTargetWindow(QWindow *window);
 
     Q_INVOKABLE void acceptCurrentEvent();
+    Q_INVOKABLE void pageOwnsCurrentEvent();
 
 signals:
     void transientInsertChanged();
@@ -48,7 +49,12 @@ signals:
     void passThroughChanged();
     void enabledChanged();
     void targetWindowChanged();
-    void keyPressed(const QString &text, int key, int modifiers, bool isAutoRepeat);
+    void keyPressed(
+        const QString &text,
+        int key,
+        int modifiers,
+        bool isAutoRepeat,
+        bool browserOwnedRepeat);
     void keyReleased(int key, int modifiers);
 
 protected:
@@ -75,8 +81,10 @@ private:
     bool enabled_ = false;
     bool dispatching_ = false;
     bool accepted_ = false;
+    bool pageOwnedCurrentEvent_ = false;
     QPointer<QWindow> targetWindow_;
     QSet<quint64> acceptedKeys_;
+    QSet<quint64> pageOwnedKeys_;
 };
 
 #endif

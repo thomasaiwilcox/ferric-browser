@@ -379,6 +379,7 @@ dependencies = [
 name = "ferric-browser-config"
 version = "0.1.0"
 dependencies = [
+ "ferric-browser-core",
  "serde",
  "toml",
 ]
