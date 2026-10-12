@@ -17,6 +17,7 @@ mod internal_page;
 pub use internal_page::{ContentEntry, ContentHistory, InternalPage};
 mod journey;
 mod link_cleaning;
+mod mixed_policy;
 mod model;
 mod navigation;
 mod spatial_navigation;
@@ -59,6 +60,12 @@ pub use journey::{
 pub use link_cleaning::{
     CleanLinkResult, CleaningRule, CleaningRules, HostPattern, LinkCleanError, builtin_rules,
     clean_link,
+};
+pub use mixed_policy::{
+    BrowserKeySequenceState, EffectiveMixedKeyPolicy, InputOwner, LogicalKeyToken,
+    LogicalKeyTokenError, MAX_MIXED_PAGE_KEYS, MixedKeyDecision, MixedKeyDecisionReason,
+    MixedPolicyError, MixedPolicyLayer, MixedPolicySource, ShortcutPolicy,
+    resolve_mixed_key_policy,
 };
 pub use model::reducer::{
     Diagnostic, Effect, EngineEffect, Event, PersistEffect, ReduceError, TabTransfer, Target,

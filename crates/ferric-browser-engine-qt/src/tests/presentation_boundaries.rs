@@ -244,6 +244,54 @@ fn normal_input_uses_logical_unmodified_text_and_preserves_unicode_fields() {
 }
 
 #[test]
+fn mixed_policy_tokens_match_the_existing_qml_logical_vocabulary() {
+    use ferric_browser_core::LogicalKeyToken;
+
+    let keyboard_presentation = include_str!("../../qml/scripts/KeyboardPresentation.js");
+    for token in [
+        "Alt+m",
+        "Ctrl+Alt+p",
+        "Ctrl+Space",
+        "Ctrl+Shift+Space",
+        "Ctrl+^",
+        "Ctrl+Shift+n",
+        "Ctrl+Shift+t",
+        "Ctrl+Shift+v",
+        "Ctrl+Shift+w",
+        "Ctrl+b",
+        "Ctrl+d",
+        "Ctrl+f",
+        "Ctrl+F5",
+        "Ctrl+n",
+        "Ctrl+u",
+        "Ctrl+p",
+        "Ctrl+q",
+        "Ctrl+s",
+        "Ctrl+Tab",
+        "Ctrl+t",
+        "Ctrl+v",
+        "Ctrl+w",
+        "Ctrl+PgDown",
+        "Ctrl+PgUp",
+        "F5",
+        "F11",
+        "Back",
+        "Forward",
+    ] {
+        assert!(
+            keyboard_presentation.contains(&format!("\"{token}\"")),
+            "QML no longer emits the named logical token {token:?}"
+        );
+        assert_eq!(LogicalKeyToken::parse(token).unwrap().as_str(), token);
+    }
+    for digit in '1'..='9' {
+        let token = format!("Alt+{digit}");
+        assert!(LogicalKeyToken::parse(&token).is_ok());
+    }
+    assert!(LogicalKeyToken::parse("AltGr+p").is_err());
+}
+
+#[test]
 fn browser_key_router_filters_before_webengine_and_requires_explicit_acceptance() {
     let header = include_str!("../browser_key_router.h");
     let source = include_str!("../browser_key_router.cpp");

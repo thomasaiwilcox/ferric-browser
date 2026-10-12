@@ -386,6 +386,9 @@ dependencies = [
 [[package]]
 name = "ferric-browser-core"
 version = "0.1.0"
+dependencies = [
+ "unicode-segmentation",
+]
 
 [[package]]
 name = "ferric-browser-engine-qt"
