@@ -118,7 +118,7 @@
     },
     {
       "id": "S19",
-      "status": "in_progress",
+      "status": "implemented_unqualified",
       "evidence": "evidence/S19.json",
       "capability_decision": null
     },
