@@ -124,8 +124,8 @@
     },
     {
       "id": "S20",
-      "status": "not_started",
-      "evidence": null,
+      "status": "in_progress",
+      "evidence": "evidence/S20.json",
       "capability_decision": null
     },
     {

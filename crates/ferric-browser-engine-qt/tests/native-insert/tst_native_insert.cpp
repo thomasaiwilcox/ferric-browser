@@ -4,7 +4,11 @@
 #include <QtCore/QFileInfo>
 #include <QtCore/QElapsedTimer>
 #include <QtCore/QJsonDocument>
+#include <QtCore/QPointer>
 #include <QtCore/QTemporaryDir>
+#include <QtCore/QTimer>
+#include <QtGui/QKeyEvent>
+#include <QtGui/QMouseEvent>
 #include <QtGui/QInputMethodEvent>
 #include <QtQml/QQmlEngine>
 #include <QtQml/QQmlContext>
@@ -13,6 +17,160 @@
 #include <QtTest/QSignalSpy>
 #include <QtTest/QTest>
 #include <QtWebEngineQuick/qtwebenginequickglobal.h>
+#include <algorithm>
+#include <memory>
+
+// Test-only held-pointer experiment. Production Ferric currently exposes only
+// discrete pointer actions; this helper deliberately stays inside the native
+// fixture and exercises QQuickWindow's public hit-testing path.
+class DragProbeTransaction final : public QObject {
+public:
+    DragProbeTransaction(FerricPagePointerAdapter *adapter, QQuickItem *item,
+                         QWindow *window, QObject *parent = nullptr)
+        : QObject(parent), adapter_(adapter), item_(item), window_(window)
+    {
+        if (window_)
+            window_->installEventFilter(this);
+        if (QCoreApplication::instance())
+            QCoreApplication::instance()->installEventFilter(this);
+        watchdog_.setSingleShot(true);
+        watchdog_.setInterval(1000);
+        connect(&watchdog_, &QTimer::timeout, this, [this] { cancel(QStringLiteral("watchdog")); });
+        if (adapter_) {
+            connect(adapter_, &FerricPagePointerAdapter::surfaceChanged, this, [this] {
+                if (active_ && (adapter_->surfaceSerial() != serial_
+                                || adapter_->surfaceRevision() != revision_
+                                || adapter_->inputBlocked()
+                                || adapter_->targetItem() != item_
+                                || adapter_->targetWindow() != window_))
+                    cancel(QStringLiteral("surface-changed"));
+            });
+        }
+    }
+
+    ~DragProbeTransaction() override
+    {
+        if (window_)
+            window_->removeEventFilter(this);
+        if (QCoreApplication::instance())
+            QCoreApplication::instance()->removeEventFilter(this);
+    }
+
+    bool begin(const QPointF &startItemPosition, const QPointF &destinationItemPosition)
+    {
+        if (active_ || !adapter_ || !item_ || !window_
+            || adapter_->targetItem() != item_ || adapter_->targetWindow() != window_
+            || item_->window() != window_ || !item_->isVisible() || !window_->isVisible())
+            return false;
+        const QRectF itemBounds(QPointF(0, 0), QSizeF(item_->width(), item_->height()));
+        if (!itemBounds.contains(startItemPosition) || !itemBounds.contains(destinationItemPosition))
+            return false;
+        serial_ = adapter_->surfaceSerial();
+        revision_ = adapter_->surfaceRevision();
+        lastPosition_ = item_->mapToScene(startItemPosition);
+        destination_ = item_->mapToScene(destinationItemPosition);
+        if (!sendMouse(QEvent::MouseMove, lastPosition_, Qt::NoButton, Qt::NoButton))
+            return false;
+        lastPositionAtStart_ = lastPosition_;
+        active_ = true;
+        held_ = sendMouse(QEvent::MouseButtonPress, lastPosition_, Qt::LeftButton,
+                          Qt::LeftButton);
+        if (!held_) {
+            active_ = false;
+            return false;
+        }
+        watchdog_.start();
+        return true;
+    }
+
+    bool moveStraight(int durationMs = 200)
+    {
+        if (!active_ || !item_)
+            return false;
+        for (int step = 1; step <= 12 && active_; ++step) {
+            const qreal fraction = qreal(step) / 12.0;
+            lastPosition_ = lastPositionAtStart_ + (destination_ - lastPositionAtStart_) * fraction;
+            if (!sendMouse(QEvent::MouseMove, lastPosition_, Qt::NoButton, Qt::LeftButton))
+                return false;
+            QTest::qWait(durationMs / 12);
+        }
+        return active_;
+    }
+
+    bool finish()
+    {
+        if (!active_ || !held_)
+            return false;
+        watchdog_.stop();
+        const bool sent = sameReceiver()
+            && sendMouse(QEvent::MouseButtonRelease, lastPosition_, Qt::LeftButton, Qt::NoButton);
+        held_ = false;
+        active_ = false;
+        return sent;
+    }
+
+    void cancel(const QString &reason)
+    {
+        if (!active_)
+            return;
+        cancelReason_ = reason;
+        watchdog_.stop();
+        if (held_ && sameReceiver()) {
+            cleanupReleaseSent_ = sendMouse(QEvent::MouseButtonRelease, lastPosition_,
+                                             Qt::LeftButton, Qt::NoButton);
+        }
+        held_ = false;
+        active_ = false;
+    }
+
+    bool active() const { return active_; }
+    bool held() const { return held_; }
+    bool cleanupReleaseSent() const { return cleanupReleaseSent_; }
+    QString cancelReason() const { return cancelReason_; }
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if ((watched == window_ || watched == QCoreApplication::instance())
+            && event->type() == QEvent::KeyPress
+            && QGuiApplication::focusWindow() == window_
+            && static_cast<QKeyEvent *>(event)->key() == Qt::Key_Escape)
+            cancel(QStringLiteral("escape"));
+        return false;
+    }
+
+private:
+    bool sameReceiver() const
+    {
+        return adapter_ && item_ && window_ && adapter_->targetItem() == item_
+            && adapter_->targetWindow() == window_ && item_->window() == window_;
+    }
+
+    bool sendMouse(QEvent::Type type, const QPointF &position, Qt::MouseButton button,
+                   Qt::MouseButtons buttons)
+    {
+        if (!window_)
+            return false;
+        const QPoint global = window_->mapToGlobal(position.toPoint());
+        QMouseEvent event(type, position, position, global, button, buttons, Qt::NoModifier,
+                          Qt::MouseEventSynthesizedByApplication);
+        return QCoreApplication::sendEvent(window_.data(), &event);
+    }
+
+    QPointer<FerricPagePointerAdapter> adapter_;
+    QPointer<QQuickItem> item_;
+    QPointer<QWindow> window_;
+    QTimer watchdog_;
+    QPointF lastPosition_;
+    QPointF lastPositionAtStart_;
+    QPointF destination_;
+    QString serial_;
+    QString revision_;
+    QString cancelReason_;
+    bool active_ = false;
+    bool held_ = false;
+    bool cleanupReleaseSent_ = false;
+};
 
 // Exercise the production application event filter on WebEngine's actual
 // Quick focus proxy. No synthetic JS keyboard events or browser automation.
@@ -1020,6 +1178,224 @@ WebEngineView {
         view->setProperty("ferricEpoch", router.inputEpoch() + 1);
         QTest::keyRelease(&window, Qt::Key_Return);
         QCOMPARE(exits, 0);
+    }
+
+    void boundedDragProbeAndCleanup() {
+        normal();
+        const int loaded = view->property("loaded").toInt();
+        QUrl probeUrl = QUrl::fromLocalFile(FERRIC_DRAG_FIXTURE_PATH);
+        probeUrl.setQuery(QString::number(++fixtureGeneration));
+        view->setProperty("url", probeUrl);
+        QTRY_VERIFY(view->property("loaded").toInt() > loaded);
+        QTRY_VERIFY(js("!!window.dragProbe").toBool());
+
+        FerricPagePointerAdapter adapter;
+        adapter.setTargetWindow(&window);
+        adapter.setTargetItem(view);
+        QSignalSpy surfaceChanges(&adapter, &FerricPagePointerAdapter::surfaceChanged);
+
+        const auto resetTrace = [this] {
+            js("dragProbe.events=[];dragProbe.draws=0;dragProbe.dropCommits=0;"
+               "document.getElementById('range').value='10';true");
+        };
+        const auto trace = [this] { return js("dragProbe.events").toList(); };
+        const auto reportTrace = [this, &trace](const char *label) {
+            qInfo().noquote() << label << QJsonDocument::fromVariant(trace()).toJson(
+                                      QJsonDocument::Compact);
+        };
+
+        // Plain pointer-driven in-view widget: endpoints are fixed before the
+        // press; the only path is 12 straight-line moves over 200 ms.
+        resetTrace();
+        DragProbeTransaction widget(&adapter, view, &window);
+        QVERIFY(widget.begin(QPointF(60, 60), QPointF(205, 90)));
+        QVERIFY(widget.moveStraight());
+        QVERIFY(widget.finish());
+        QTRY_VERIFY(js("dragProbe.events.some(e=>e.type==='pointerup')").toBool());
+        const QVariantList widgetTrace = trace();
+        reportTrace("T047 pointer-driven widget trace:");
+        QVERIFY(std::any_of(widgetTrace.cbegin(), widgetTrace.cend(), [](const QVariant &entry) {
+            const QVariantMap event = entry.toMap();
+            return event.value("type").toString() == "pointerdown"
+                && event.value("target").toString() == "pointer-pad"
+                && event.value("trusted").toBool();
+        }));
+        QVERIFY(std::any_of(widgetTrace.cbegin(), widgetTrace.cend(), [](const QVariant &entry) {
+            const QVariantMap event = entry.toMap();
+            return event.value("type").toString() == "pointerup"
+                && event.value("target").toString() == "pointer-pad"
+                && event.value("trusted").toBool();
+        }));
+        QVERIFY(std::any_of(widgetTrace.cbegin(), widgetTrace.cend(), [](const QVariant &entry) {
+            return entry.toMap().value("type").toString() == "pointermove";
+        }));
+
+        // Pointer capture is observed independently of ordinary hit-tested
+        // widgets. A captured pointer remains on the capture pad off-element.
+        resetTrace();
+        DragProbeTransaction captured(&adapter, view, &window);
+        QVERIFY(captured.begin(QPointF(60, 160), QPointF(500, 400)));
+        QVERIFY(captured.moveStraight());
+        QVERIFY(captured.finish());
+        QTRY_VERIFY(js("dragProbe.events.some(e=>e.type==='lostpointercapture')").toBool());
+        const QVariantList captureTrace = trace();
+        reportTrace("T047 captured pointer trace:");
+        QVERIFY(std::any_of(captureTrace.cbegin(), captureTrace.cend(), [](const QVariant &entry) {
+            return entry.toMap().value("type").toString() == "gotpointercapture";
+        }));
+        QVERIFY(std::any_of(captureTrace.cbegin(), captureTrace.cend(), [](const QVariant &entry) {
+            const QVariantMap event = entry.toMap();
+            return event.value("type").toString() == "pointermove"
+                && event.value("target").toString() == "capture-pad"
+                && event.value("captureTarget").toBool();
+        }));
+
+        // The canvas-like surface and native range input retain their own
+        // observable behaviour; neither result is generalized to all sites.
+        resetTrace();
+        DragProbeTransaction canvas(&adapter, view, &window);
+        QVERIFY(canvas.begin(QPointF(300, 40), QPointF(500, 160)));
+        QVERIFY(canvas.moveStraight());
+        QVERIFY(canvas.finish());
+        QTRY_VERIFY(js("dragProbe.draws>0").toBool());
+        qInfo() << "T047 canvas-like pointermove count:" << js("dragProbe.draws").toInt();
+
+        resetTrace();
+        DragProbeTransaction slider(&adapter, view, &window);
+        QVERIFY(slider.begin(QPointF(48, 255), QPointF(244, 255)));
+        QVERIFY(slider.moveStraight());
+        QVERIFY(slider.finish());
+        QTRY_VERIFY(js("dragProbe.events.some(e=>e.type==='pointerup')").toBool());
+        reportTrace("T047 range input trace:");
+        const int rangeValue = js("Number(document.getElementById('range').value)").toInt();
+        QVERIFY(rangeValue >= 90);
+        qInfo() << "T047 range value after drag:" << rangeValue;
+
+        // Native HTML drag/drop is a separate category with a visible commit
+        // counter; the test records whether release caused a local side effect.
+        resetTrace();
+        DragProbeTransaction htmlDrag(&adapter, view, &window);
+        QVERIFY(htmlDrag.begin(QPointF(80, 350), QPointF(450, 360)));
+        QVERIFY(htmlDrag.moveStraight());
+        QVERIFY(htmlDrag.finish());
+        QTest::qWait(100);
+        const int dropCommits = js("dragProbe.dropCommits").toInt();
+        QVERIFY(dropCommits >= 0 && dropCommits <= 1);
+        QVERIFY(js("dragProbe.events.some(e=>e.type==='dragstart')").toBool());
+        QCOMPARE(js("dragProbe.events.filter(e=>e.type==='pointercancel').length").toInt(), 1);
+        QCOMPARE(js("dragProbe.events.filter(e=>e.type==='drop').length").toInt(), 0);
+        QCOMPARE(dropCommits, 0);
+        reportTrace("T049 native HTML drag/drop trace:");
+        qInfo() << "T049 local drop commits after release:" << dropCommits;
+
+        const auto verifyOneCleanupRelease = [this](const char *label) {
+            QTRY_COMPARE(js("dragProbe.events.filter(e=>e.type==='pointerup').length").toInt(), 1);
+            QTRY_COMPARE(js("dragProbe.events.filter(e=>e.type==='mouseup').length").toInt(), 1);
+            QVERIFY(js("dragProbe.events.filter(e=>e.type==='pointerdown').length===1").toBool());
+            QVERIFY(js("dragProbe.events.filter(e=>e.type==='pointerup'||e.type==='mouseup')"
+                       ".every(e=>e.trusted&&e.buttons===0)").toBool());
+            qInfo() << label << "pointerdown=1 pointerup=1 mouseup=1; no drop was retried";
+        };
+
+        // Escape, prompt ownership, deactivation and watchdog expiry each
+        // clear the test-only held state and release only to the live owner.
+        resetTrace();
+        DragProbeTransaction escape(&adapter, view, &window);
+        QVERIFY(escape.begin(QPointF(48, 255), QPointF(244, 255)));
+        QVERIFY(escape.moveStraight());
+        QVERIFY(js("Number(document.getElementById('range').value)").toInt() >= 90);
+        QTest::keyClick(&window, Qt::Key_Escape);
+        QCOMPARE(escape.cancelReason(), QStringLiteral("escape"));
+        QVERIFY(!escape.active());
+        QVERIFY(!escape.held());
+        QVERIFY(escape.cleanupReleaseSent());
+        verifyOneCleanupRelease("T049 Escape cleanup:");
+        const int escapedRangeValue = js("Number(document.getElementById('range').value)").toInt();
+        QVERIFY(escapedRangeValue >= 90);
+        QVERIFY(js("dragProbe.events.some(e=>e.type==='change')").toBool());
+        qInfo() << "T049 cancellation kept the already changed range value; no rollback:"
+                << escapedRangeValue;
+
+        resetTrace();
+        DragProbeTransaction prompt(&adapter, view, &window);
+        QVERIFY(prompt.begin(QPointF(60, 60), QPointF(205, 90)));
+        adapter.setInputBlocked(true);
+        QCOMPARE(prompt.cancelReason(), QStringLiteral("surface-changed"));
+        QVERIFY(!prompt.held());
+        QVERIFY(prompt.cleanupReleaseSent());
+        verifyOneCleanupRelease("T049 prompt cleanup:");
+        adapter.setInputBlocked(false);
+
+        resetTrace();
+        DragProbeTransaction deactivated(&adapter, view, &window);
+        QVERIFY(deactivated.begin(QPointF(60, 60), QPointF(205, 90)));
+        QEvent deactivate(QEvent::WindowDeactivate);
+        QCoreApplication::sendEvent(&window, &deactivate);
+        QCOMPARE(deactivated.cancelReason(), QStringLiteral("surface-changed"));
+        QVERIFY(!deactivated.held());
+        QVERIFY(deactivated.cleanupReleaseSent());
+        verifyOneCleanupRelease("T049 deactivation cleanup:");
+        window.requestActivate();
+        QTRY_COMPARE(QGuiApplication::focusWindow(), &window);
+
+        resetTrace();
+        DragProbeTransaction timedOut(&adapter, view, &window);
+        QVERIFY(timedOut.begin(QPointF(60, 60), QPointF(205, 90)));
+        QTRY_VERIFY_WITH_TIMEOUT(!timedOut.active(), 1500);
+        QCOMPARE(timedOut.cancelReason(), QStringLiteral("watchdog"));
+        QVERIFY(!timedOut.held());
+        QVERIFY(timedOut.cleanupReleaseSent());
+        verifyOneCleanupRelease("T049 watchdog cleanup:");
+        qInfo() << "T047 surface-change signals during probe:" << surfaceChanges.size();
+
+        // Destroying the original QQuickView invalidates both QPointers. The
+        // transaction clears its held bit without sending into the replacement
+        // view; this also verifies the replacement document stays untouched.
+        auto original = std::make_unique<QQuickView>();
+        original->engine()->rootContext()->setContextProperty("nativeRouter", &router);
+        original->setSource(QUrl::fromLocalFile(files.filePath("view.qml")));
+        QCOMPARE(original->status(), QQuickView::Ready);
+        QQuickItem *originalPage = original->rootObject();
+        originalPage->setProperty("url", probeUrl);
+        original->show();
+        original->requestActivate();
+        QTRY_VERIFY(originalPage->property("loaded").toInt() > 0);
+        originalPage->setProperty("probeDone", false);
+        QMetaObject::invokeMethod(originalPage, "probe", Q_ARG(QVariant, QString("!!window.dragProbe")));
+        QTRY_VERIFY(originalPage->property("probeDone").toBool());
+        QVERIFY(originalPage->property("probeResult").toBool());
+        FerricPagePointerAdapter teardownAdapter;
+        teardownAdapter.setTargetWindow(original.get());
+        teardownAdapter.setTargetItem(originalPage);
+        auto teardown = std::make_unique<DragProbeTransaction>(
+            &teardownAdapter, originalPage, original.get());
+        QVERIFY(teardown->begin(QPointF(60, 60), QPointF(205, 90)));
+        QTest::qWait(50);
+        original.reset();
+        QVERIFY(!teardown->active());
+        QVERIFY(!teardown->held());
+        QVERIFY(!teardown->cleanupReleaseSent());
+        QVERIFY(teardown->cancelReason() == QStringLiteral("surface-changed"));
+
+        auto replacement = std::make_unique<QQuickView>();
+        replacement->engine()->rootContext()->setContextProperty("nativeRouter", &router);
+        replacement->setSource(QUrl::fromLocalFile(files.filePath("view.qml")));
+        QCOMPARE(replacement->status(), QQuickView::Ready);
+        QQuickItem *replacementPage = replacement->rootObject();
+        replacementPage->setProperty("url", probeUrl);
+        replacement->show();
+        replacement->requestActivate();
+        QTRY_VERIFY(replacementPage->property("loaded").toInt() > 0);
+        replacementPage->setProperty("probeDone", false);
+        QMetaObject::invokeMethod(replacementPage, "probe",
+                                  Q_ARG(QVariant, QString("dragProbe.events.length")));
+        QTRY_VERIFY(replacementPage->property("probeDone").toBool());
+        QCOMPARE(replacementPage->property("probeResult").toInt(), 0);
+        teardownAdapter.setTargetWindow(replacement.get());
+        teardownAdapter.setTargetItem(replacementPage);
+        qInfo() << "T049 destroyed receiver cleanup: release sent ="
+                << teardown->cleanupReleaseSent() << "; replacement DOM events ="
+                << replacementPage->property("probeResult").toInt();
     }
 };
 int main(int argc, char **argv) {
