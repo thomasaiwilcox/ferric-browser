@@ -83,11 +83,22 @@
       "test_id": "T055",
       "level": "pure-unit",
       "result": "passed",
-      "command": "cargo xtask docs; cargo xtask check --locked --offline",
+      "command": "cargo xtask docs",
       "commit": "df7e9ec24be36e8640e43cd2b73da9a02e22763e",
-      "log": "evidence/logs/S11/docs-generation.log; evidence/logs/S11/xtask-check-final.log",
+      "log": "evidence/logs/S11/docs-generation.log",
       "observations": [
-        "Generated commands, configuration, bindings, and actions documentation; the final generated-contract and release artifact manifest checks passed."
+        "Generated commands, configuration, bindings, and actions documentation."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask check --locked --offline",
+      "commit": "df7e9ec24be36e8640e43cd2b73da9a02e22763e",
+      "log": "evidence/logs/S11/xtask-check-final.log",
+      "observations": [
+        "The final generated-contract and release artifact manifest checks passed."
       ]
     },
     {
