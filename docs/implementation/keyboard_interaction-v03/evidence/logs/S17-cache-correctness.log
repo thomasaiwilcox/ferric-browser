@@ -1,0 +1,100 @@
+********* Start testing of ferric_qml_tests *********
+Config: Using QtTest library 6.11.2, Qt 6.11.2 (x86_64-little_endian-lp64 shared (dynamic) release build; by GCC 16.2.1 20260810), omarchy 4.0.4
+INFO   : ferric_qml_tests::WebAppInteraction::initTestCase() entering
+PASS   : ferric_qml_tests::WebAppInteraction::initTestCase()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T002_shadow_click() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T002_shadow_click()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T002_shadow_focus() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T002_shadow_focus()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T003_excessive_ancestry() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T003_excessive_ancestry()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T003_slot_and_inert() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T003_slot_and_inert()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T003_slot_clipping() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T003_slot_clipping()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T004_adopted_element() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T004_adopted_element()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T004_frame_border_projection() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T004_frame_border_projection()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T004_frame_replaced() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T004_frame_replaced()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T005_disabled_fieldset() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T005_disabled_fieldset()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T005_ineligible() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T005_ineligible(hidden)
+PASS   : ferric_qml_tests::WebAppInteraction::test_T005_ineligible(opacity)
+PASS   : ferric_qml_tests::WebAppInteraction::test_T005_ineligible(disabled)
+PASS   : ferric_qml_tests::WebAppInteraction::test_T005_ineligible(inert)
+PASS   : ferric_qml_tests::WebAppInteraction::test_T005_ineligible(detached)
+PASS   : ferric_qml_tests::WebAppInteraction::test_T005_ineligible(covered)
+PASS   : ferric_qml_tests::WebAppInteraction::test_T005_ineligible(replacement)
+INFO   : ferric_qml_tests::WebAppInteraction::test_T005_transparent_ancestor() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T005_transparent_ancestor()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T006_viewport_overflow() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T006_viewport_overflow()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T007_same_url_cover() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T007_same_url_cover()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T008_focus_uses_focus_eligibility() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T008_focus_uses_focus_eligibility()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T008_normal_focus() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T008_normal_focus()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T008_observed_focus() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T008_observed_focus()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T009_control_value_privacy() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T009_control_value_privacy()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T009_label_is_literal() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T009_label_is_literal()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T015_editor_focus_pair() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T015_editor_focus_pair()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T016_label_control_pair() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T016_label_control_pair()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T017_proxy_exclusions_and_identity() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T017_proxy_exclusions_and_identity()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T019_extracted_script_world_isolation() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T019_extracted_script_world_isolation()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T020_map_teardown() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T020_map_teardown()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T020_proxy_pair_teardown() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T020_proxy_pair_teardown()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T026_document_identity_survives_spa_urls_and_changes_on_replacement() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T026_document_identity_survives_spa_urls_and_changes_on_replacement()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T031_T032_custom_selector_and_action_boundary() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T031_T032_custom_selector_and_action_boundary()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T031_empty_replace_disables_secondary_discovery() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T031_empty_replace_disables_secondary_discovery()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T033_collection_style_cache_is_pass_local() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T033_collection_style_cache_is_pass_local()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T033_selector_collection_resource_caps() entering
+QINFO  : ferric_qml_tests::WebAppInteraction::test_T033_selector_collection_resource_caps() qml: FERRIC_SELECTOR_STRESS_JSON {"selector_count":32,"inspected_nodes":50000,"candidates":5000,"truncated":true,"collection_ms":850.1999999880791,"user_agent":"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) QtWebEngine/6.11.2 Chrome/140.0.0.0 Safari/537.36","viewport":{"device_pixel_ratio":1,"height":480,"width":640}}
+PASS   : ferric_qml_tests::WebAppInteraction::test_T033_selector_collection_resource_caps()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T034_region_and_surface_caps() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T034_region_and_surface_caps()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T034_region_and_surface_classification() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T034_region_and_surface_classification()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T035_cross_origin_and_closed_root_boundaries() entering
+Fontconfig error: Cannot load default config file: File not found
+PASS   : ferric_qml_tests::WebAppInteraction::test_T035_cross_origin_and_closed_root_boundaries()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T035_cross_origin_frame_scopes_only_its_outer_surface() entering
+Fontconfig error: Cannot load default config file: File not found
+PASS   : ferric_qml_tests::WebAppInteraction::test_T035_cross_origin_frame_scopes_only_its_outer_surface()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T036_scoped_lease_transfer_collects_only_descendants() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T036_scoped_lease_transfer_collects_only_descendants()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T037_empty_and_replaced_scopes_never_fall_back() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T037_empty_and_replaced_scopes_never_fall_back()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T037_scroll_target_keeps_existing_weak_setter() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T037_scroll_target_keeps_existing_weak_setter()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T038_nested_frame_scope_geometry_uses_measured_spaces() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T038_nested_frame_scope_geometry_uses_measured_spaces()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T038_transformed_scope_is_rejected() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T038_transformed_scope_is_rejected()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T039_scope_scroll_revision_and_reflow_are_observable() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_T039_scope_scroll_revision_and_reflow_are_observable()
+INFO   : ferric_qml_tests::WebAppInteraction::test_T044_scope_start_cancel_stress_and_forced_gc() entering
+QDEBUG : ferric_qml_tests::WebAppInteraction::test_T044_scope_start_cancel_stress_and_forced_gc() qml: S14 T044 scope stress: {"cycles":1000,"elapsed_ms":3171,"elements":0,"gc_available":true,"observers":0,"ok":true,"windows":0}
+PASS   : ferric_qml_tests::WebAppInteraction::test_T044_scope_start_cancel_stress_and_forced_gc()
+INFO   : ferric_qml_tests::WebAppInteraction::test_target_search_all_facets_privacy_and_page_independence() entering
+PASS   : ferric_qml_tests::WebAppInteraction::test_target_search_all_facets_privacy_and_page_independence()
+INFO   : ferric_qml_tests::WebAppInteraction::cleanupTestCase() entering
+PASS   : ferric_qml_tests::WebAppInteraction::cleanupTestCase()
+Totals: 49 passed, 0 failed, 0 skipped, 0 blacklisted, 34845ms
+********* Finished testing of ferric_qml_tests *********

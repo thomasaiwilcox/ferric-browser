@@ -1,0 +1,14 @@
+********* Start testing of ferric_qml_tests *********
+Config: Using QtTest library 6.11.2, Qt 6.11.2 (x86_64-little_endian-lp64 shared (dynamic) release build; by GCC 16.2.1 20260810), omarchy 4.0.4
+INFO   : ferric_qml_tests::HintPerformance::initTestCase() entering
+PASS   : ferric_qml_tests::HintPerformance::initTestCase()
+INFO   : ferric_qml_tests::HintPerformance::test_T043_overlay_time_to_visible() entering
+WARNING: ferric_qml_tests::HintPerformance::test_T043_overlay_time_to_visible() no data supplied for test_T043_overlay_time_to_visible() by test_T043_overlay_time_to_visible_data()
+   Loc: [qrc:/qt-project.org/imports/QtTest/TestSchedule.qml(24)]
+INFO   : ferric_qml_tests::HintPerformance::test_T043_samples() entering
+QINFO  : ferric_qml_tests::HintPerformance::test_T043_samples(500-100-profile-smoke) qml: FERRIC_PERFORMANCE_JSON {"scenario":"500-100-profile-smoke","count":500,"zoom":1,"warmups":10,"samples":[{"browser_round_trip_ms":79.712198,"collector":{"candidate_evaluation_ms":57.39999994635582,"clip_rect_ms":9.700000137090683,"description_ms":1.7000000774860382,"hit_test_ms":0,"local_hit_test_ms":13.60000005364418,"local_visibility_ms":43.1000000834465,"preferred_link_ms":0.7999999523162842,"projection_ms":2.199999988079071,"root_traversal_ms":1,"selector_match_ms":0.7999999523162842,"style_cache_hits":2997,"style_cache_misses":503,"total_ms":62.19999998807907},"fresh_round_trip_ms":10.359404,"preflight_round_trip_ms":10.541877,"action_round_trip_ms":11.684588,"refresh_round_trip_ms":null,"payload_bytes":67027,"count":500}],"user_agent":"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) QtWebEngine/6.11.2 Chrome/140.0.0.0 Safari/537.36","viewport":{"device_pixel_ratio":1,"height":480,"width":640}}
+PASS   : ferric_qml_tests::HintPerformance::test_T043_samples(500-100-profile-smoke)
+INFO   : ferric_qml_tests::HintPerformance::cleanupTestCase() entering
+PASS   : ferric_qml_tests::HintPerformance::cleanupTestCase()
+Totals: 3 passed, 0 failed, 0 skipped, 0 blacklisted, 999ms
+********* Finished testing of ferric_qml_tests *********
