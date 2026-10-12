@@ -16,6 +16,8 @@ pub enum HintKind {
     Media,
     Scrollable,
     Aria,
+    EditorFocus,
+    LabelControl,
 }
 
 /// A semantic user intent selected after Ferric validates candidate facts.
@@ -71,14 +73,18 @@ pub const fn hint_intent_for_candidate(kind: HintKind, uses_url_action: bool) ->
         return HintIntent::OpenUrl;
     }
     match kind {
-        HintKind::Input | HintKind::Select | HintKind::Textarea | HintKind::ContentEditable => {
-            HintIntent::Focus
-        }
+        HintKind::Input
+        | HintKind::Select
+        | HintKind::Textarea
+        | HintKind::ContentEditable
+        | HintKind::EditorFocus => HintIntent::Focus,
         HintKind::Scrollable => HintIntent::SetScrollTarget,
         HintKind::Link => HintIntent::OpenUrl,
-        HintKind::Button | HintKind::Image | HintKind::Media | HintKind::Aria => {
-            HintIntent::Activate
-        }
+        HintKind::Button
+        | HintKind::Image
+        | HintKind::Media
+        | HintKind::Aria
+        | HintKind::LabelControl => HintIntent::Activate,
     }
 }
 
@@ -135,6 +141,9 @@ pub struct HintTarget {
 #[derive(Clone, Debug, PartialEq)]
 pub struct HintCandidate {
     pub element_id: u32,
+    /// Exact retained receiver/control for `EditorFocus` and `LabelControl` pairs.
+    /// Ordinary hints must keep this absent.
+    pub related_element_id: Option<u32>,
     pub kind: HintKind,
     pub frame_path: String,
     pub text: String,
@@ -354,6 +363,7 @@ pub fn refresh_labels(
                 (
                     hint.candidate.frame_path.as_str(),
                     hint.candidate.element_id,
+                    hint.candidate.related_element_id,
                 ),
                 hint.label.as_str(),
             )
@@ -362,9 +372,11 @@ pub fn refresh_labels(
     let mut used = BTreeSet::new();
     let mut labels = vec![String::new(); candidates.len()];
     for (index, candidate) in candidates.iter().enumerate() {
-        if let Some(label) =
-            previous_labels.get(&(candidate.frame_path.as_str(), candidate.element_id))
-            && used.insert((*label).to_owned())
+        if let Some(label) = previous_labels.get(&(
+            candidate.frame_path.as_str(),
+            candidate.element_id,
+            candidate.related_element_id,
+        )) && used.insert((*label).to_owned())
         {
             (*label).clone_into(&mut labels[index]);
         }
@@ -414,6 +426,7 @@ fn sort_candidates(candidates: &mut [HintCandidate]) {
             .then_with(|| left.geometry.x.total_cmp(&right.geometry.x))
             .then_with(|| left.frame_path.cmp(&right.frame_path))
             .then_with(|| left.element_id.cmp(&right.element_id))
+            .then_with(|| left.related_element_id.cmp(&right.related_element_id))
             .then_with(|| left.text.cmp(&right.text))
     });
 }
@@ -687,6 +700,7 @@ mod tests {
     fn candidate(x: f64, y: f64, text: &str) -> HintCandidate {
         HintCandidate {
             element_id: 1,
+            related_element_id: None,
             kind: HintKind::Link,
             frame_path: "0".into(),
             text: text.into(),
@@ -717,6 +731,14 @@ mod tests {
         assert_eq!(
             hint_intent_for_candidate(HintKind::Input, false).transport(),
             HintTransport::ExactDomFocus
+        );
+        assert_eq!(
+            hint_intent_for_candidate(HintKind::EditorFocus, false).transport(),
+            HintTransport::ExactDomFocus
+        );
+        assert_eq!(
+            hint_intent_for_candidate(HintKind::LabelControl, false).transport(),
+            HintTransport::SemanticDomClick
         );
         assert_eq!(
             hint_intent_for_candidate(HintKind::Button, false).transport(),

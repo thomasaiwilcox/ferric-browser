@@ -58,6 +58,7 @@ mod browser_ui_edit_commands;
 mod browser_ui_external_actions;
 mod browser_ui_guide;
 mod browser_ui_hint_pointer;
+mod browser_ui_hint_proxy_configuration;
 mod browser_ui_hint_selection;
 mod browser_ui_input;
 #[allow(clippy::too_many_lines)]
@@ -567,6 +568,7 @@ mod qobject {
         #[qproperty(bool, hint_links_only)]
         #[qproperty(bool, hint_rapid)]
         #[qproperty(QString, hint_family)]
+        #[qproperty(bool, hint_proxy_targets_enabled)]
         #[qproperty(QString, hint_unmatched_policy)]
         #[qproperty(bool, hint_chrome_available)]
         #[qproperty(f64, hint_marker_scale)]
@@ -1918,6 +1920,7 @@ pub struct BrowserUiRust {
     hint_links_only: bool,
     hint_rapid: bool,
     hint_family: QString,
+    hint_proxy_targets_enabled: bool,
     hint_unmatched_policy: QString,
     hint_chrome_available: bool,
     hint_marker_scale: f64,
@@ -2620,6 +2623,7 @@ impl Default for BrowserUiRust {
             hint_links_only: false,
             hint_rapid: false,
             hint_family: QString::from("all"),
+            hint_proxy_targets_enabled: false,
             hint_unmatched_policy: QString::from("hide"),
             hint_chrome_available: true,
             hint_marker_scale: 1.0,

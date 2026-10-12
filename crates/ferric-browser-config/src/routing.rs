@@ -1,6 +1,6 @@
 use super::{
-    BTreeMap, CURRENT_SCHEMA_VERSION, Config, Deserialize, PermissionDecision, Serialize, SiteRule,
-    default_context_behavior, default_context_target,
+    BTreeMap, CURRENT_SCHEMA_VERSION, Config, Deserialize, HintProxyTargets, PermissionDecision,
+    Serialize, SiteRule, default_context_behavior, default_context_target,
 };
 
 /// A user-maintained declarative profile definition.
@@ -70,6 +70,27 @@ pub fn matching_site_rules<'a>(config: &'a Config, url: &str) -> Vec<&'a SiteRul
         .collect::<Vec<_>>();
     rules.sort_by_key(|(index, rule)| (rule.priority, *index));
     rules.into_iter().map(|(_, rule)| rule).collect()
+}
+
+/// Resolves the validated editor/control proxy policy through site-rule
+/// precedence. The global/profile/runtime value is supplied by `config`; the
+/// last matching site rule wins, matching all other site-scoped settings.
+#[must_use]
+pub fn hint_proxy_targets_for_url(config: &Config, url: &str) -> HintProxyTargets {
+    let mut setting = config.hints.proxy_targets.clone();
+    for rule in matching_site_rules(config, url) {
+        if let Some(value) = rule
+            .set
+            .get("hints.proxy_targets")
+            .and_then(toml::Value::as_str)
+        {
+            setting = match value {
+                "validated" => HintProxyTargets::Validated,
+                _ => HintProxyTargets::Off,
+            };
+        }
+    }
+    setting
 }
 
 fn is_http_url(url: &str) -> bool {

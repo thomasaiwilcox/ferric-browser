@@ -264,6 +264,15 @@ pub(super) const SETTING_METADATA: &[SettingMetadata] = &[
         "normal"
     ),
     setting_metadata!(
+        "hints.proxy_targets",
+        "enum",
+        "off",
+        GLOBAL_PROFILE_SITE_SCOPES,
+        "live",
+        "none",
+        "normal"
+    ),
+    setting_metadata!(
         "discovery.keychain_overlay",
         "boolean",
         "true",

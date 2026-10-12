@@ -14,6 +14,7 @@ const MAX_HINT_FRAME_DEPTH: usize = 8;
 pub(super) fn parse_hint_candidate(value: &Value) -> Result<HintCandidate, String> {
     const CANDIDATE_KEYS: &[&str] = &[
         "element_id",
+        "related_element_id",
         "kind",
         "frame_path",
         "text",
@@ -50,6 +51,24 @@ pub(super) fn parse_hint_candidate(value: &Value) -> Result<HintCandidate, Strin
         .and_then(|value| u32::try_from(value).ok())
         .filter(|value| *value > 0)
         .ok_or_else(|| "hint candidate element_id must be a positive 32-bit integer".to_owned())?;
+    let related_element_id = match object.get("related_element_id") {
+        None | Some(Value::Null) => None,
+        Some(value) => Some(
+            value
+                .as_u64()
+                .and_then(|value| u32::try_from(value).ok())
+                .filter(|value| *value > 0)
+                .ok_or_else(|| {
+                    "hint candidate related_element_id must be a positive 32-bit integer".to_owned()
+                })?,
+        ),
+    };
+    let is_pair = matches!(kind, HintKind::EditorFocus | HintKind::LabelControl);
+    if is_pair != related_element_id.is_some()
+        || related_element_id.is_some_and(|related| related == element_id)
+    {
+        return Err("hint candidate has an invalid related element identity".into());
+    }
     let frame_path = object
         .get("frame_path")
         .and_then(Value::as_str)
@@ -111,6 +130,7 @@ pub(super) fn parse_hint_candidate(value: &Value) -> Result<HintCandidate, Strin
     }
     Ok(HintCandidate {
         element_id,
+        related_element_id,
         kind,
         frame_path: frame_path.to_owned(),
         text: text.to_owned(),
@@ -165,6 +185,8 @@ pub(super) fn hint_kind_name(kind: HintKind) -> &'static str {
         HintKind::Media => "media",
         HintKind::Scrollable => "scrollable",
         HintKind::Aria => "aria",
+        HintKind::EditorFocus => "editor-focus",
+        HintKind::LabelControl => "label-control",
     }
 }
 
@@ -176,6 +198,7 @@ pub(super) fn hint_json(hints: &[LabeledHint]) -> Value {
                 serde_json::json!({
                     "label": hint.label,
                     "element_id": hint.candidate.element_id,
+                    "related_element_id": hint.candidate.related_element_id,
                     "kind": hint_kind_name(hint.candidate.kind),
                     "frame_path": hint.candidate.frame_path,
                     "text": hint.candidate.text,
@@ -216,6 +239,8 @@ fn parse_hint_kind(value: &str) -> Result<HintKind, String> {
         "media" => Ok(HintKind::Media),
         "scrollable" => Ok(HintKind::Scrollable),
         "aria" => Ok(HintKind::Aria),
+        "editor-focus" => Ok(HintKind::EditorFocus),
+        "label-control" => Ok(HintKind::LabelControl),
         _ => Err(format!("unknown hint kind: {value}")),
     }
 }
@@ -296,6 +321,32 @@ mod tests {
             .unwrap()
             .remove("native_action");
         value["geometry"]["width"] = serde_json::json!(0.0);
+        assert!(parse_hint_candidate(&value).is_err());
+    }
+
+    #[test]
+    fn pair_candidates_require_a_distinct_retained_related_element() {
+        let mut value = serde_json::json!({
+            "element_id": 4,
+            "related_element_id": 9,
+            "kind": "editor-focus",
+            "frame_path": "0",
+            "text": "Editor",
+            "href": null,
+            "geometry": {"x": 1.0, "y": 2.0, "width": 10.0, "height": 10.0}
+        });
+        assert_eq!(
+            parse_hint_candidate(&value)
+                .expect("well-formed exact pair")
+                .related_element_id,
+            Some(9)
+        );
+        value["related_element_id"] = serde_json::json!(4);
+        assert!(parse_hint_candidate(&value).is_err());
+        value["related_element_id"] = serde_json::json!(null);
+        assert!(parse_hint_candidate(&value).is_err());
+        value["kind"] = serde_json::json!("input");
+        value["related_element_id"] = serde_json::json!(9);
         assert!(parse_hint_candidate(&value).is_err());
     }
 }

@@ -155,6 +155,9 @@ impl qobject::BrowserUi {
         self.as_mut()
             .update_feature_preferences(&presentation_config);
         self.as_mut().update_hint_preferences(&presentation_config);
+        let current_url = self.as_ref().rust().current_url.to_string();
+        self.as_mut()
+            .update_hint_proxy_targets(&presentation_config, &current_url);
         self.as_mut().update_settings_presentation(&config);
         let hyprland_config = serde_json::from_value::<ferric_browser_config::HyprlandConfig>(
             config.get("hyprland").cloned().unwrap_or(Value::Null),
@@ -449,6 +452,9 @@ impl qobject::BrowserUi {
             .set_config_json(QString::from(effective_config_json));
         self.as_mut().note_hint_configuration_change();
         self.as_mut().update_hint_preferences(&presentation_config);
+        let current_url = self.as_ref().rust().current_url.to_string();
+        self.as_mut()
+            .update_hint_proxy_targets(&presentation_config, &current_url);
         self.as_mut()
             .set_desktop_portal_mode(QString::from(desktop_portal_mode));
         let learning_mode = self.as_ref().rust().learning_mode;

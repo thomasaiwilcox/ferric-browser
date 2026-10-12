@@ -2,7 +2,7 @@
 
 // Browser-owned page scripts are versioned resources. The build manifest hashes
 // this file with the QML module, so script changes are explicit and auditable.
-var VERSION = "14"
+var VERSION = "15"
 
 // Page userscripts are trusted local content, but their failure boundary is
 // browser policy. Keeping the wrappers here prevents QML from assembling page
@@ -321,7 +321,16 @@ function hintSelector(family) {
         + "[data-ng-click],[x-ng-click],[tabindex]:not([tabindex='-1'])"
 }
 
-function hintCollector(family) {
+function hintProxyRuntime() {
+    return "function proxyIdentity(element,state){let id=state.weak.get(element);if(!id){id=state.next++;state.weak.set(element,id);}return id;}"
+        + "function proxyReceiverEligible(element,container){if(!element||!container||!element.isConnected||!container.isConnected||element.ownerDocument!==container.ownerDocument||!container.contains(element)||ftDisabled(element)||ftInert(element)||element.readOnly)return false;const tag=String(element.tagName||'').toLowerCase(),type=String(element.type||'text').toLowerCase();if(tag==='textarea'){if(type!=='textarea')return false;}else if(tag==='input'){if(['text','search','email','url','tel'].indexOf(type)<0)return false;}else return false;let node=element,depth=0;for(;node&&depth<256;node=ftParent(node),depth++){const view=node.ownerDocument&&node.ownerDocument.defaultView;if(!view)return false;const style=view.getComputedStyle(node);if(style.display==='none'||style.visibility==='hidden'||style.visibility==='collapse')return false;}return !node;}"
+        + "function proxyEditorValid(container,receiver){if(!container||!receiver||!container.matches('.ace_editor[role=\"textbox\"]'))return false;const receivers=container.querySelectorAll('textarea.ace_text-input,input.ace_text-input');return receivers.length===1&&receivers[0]===receiver&&proxyReceiverEligible(receiver,container);}"
+        + "function proxyLabelValid(label,control){if(!label||!control||label.tagName!=='LABEL'||!label.isConnected||!control.isConnected||label.ownerDocument!==control.ownerDocument||label.control!==control||ftInert(label)||ftInert(control)||ftDisabled(control))return false;const type=String(control.type||'').toLowerCase();return control.matches('input')&&(type==='checkbox'||type==='radio');}"
+        + "function proxyPairValid(record,candidate,state){if(!record||!candidate||!record.relatedElement||!state||candidate.related_element_id!==record.relatedElementId)return false;const el=record.element,related=record.relatedElement;if(!el||!related||!el.isConnected||!related.isConnected||el.ownerDocument!==related.ownerDocument||record.ownerDocument!==el.ownerDocument||!ftReachableFromTopDocument(related,record.ownerDocument))return false;if(record.kind==='editor-focus')return proxyEditorValid(el,related);if(record.kind==='label-control')return proxyLabelValid(el,related);return false;}"
+        + "function proxyText(element,kind){if(kind==='editor-focus')return String(element.getAttribute('aria-label')||element.getAttribute('title')||'Text editor').replace(/[\\u0000-\\u001f\\u007f-\\u009f]+/g,' ').replace(/\\s+/g,' ').trim().slice(0,512);return ftHintDescription(element,'all',linkSelector).text;}"
+}
+
+function hintCollector(family, proxyTargets) {
     var selector = hintSelector(family)
     var linkSelector = hintSelector(true)
     return "(function(){"
@@ -329,7 +338,9 @@ function hintCollector(family) {
         + "const out=[];const seen=new Set();const activeIds=new Set();const selector=" + JSON.stringify(selector) + ";"
         + "const linkSelector=" + JSON.stringify(linkSelector) + ";"
         + "const family=" + JSON.stringify(family || "all") + ";"
+        + "const proxyEnabled=" + (proxyTargets === true || proxyTargets === "validated" ? "true" : "false") + ";"
         + "let state=window.__ferric_browserHintState;if(!state){state={weak:new WeakMap(),elements:new Map(),next:1,revision:1,dirty:true,roots:new WeakSet(),observers:[],windows:[],resize:null};window.__ferric_browserHintState=state;}if(!state.windows)state.windows=[];const elements=state.elements;window.__ferric_browserHintElements=elements;"
+        + hintProxyRuntime()
         + "function dirty(){state.dirty=true;state.revision=Math.min(Number.MAX_SAFE_INTEGER,state.revision+1);}if(!state.tracking){state.tracking=true;state.dirtyHandler=dirty;if(typeof ResizeObserver==='function')state.resize=new ResizeObserver(dirty);}"
         + "function track(root){if(state.roots.has(root))return;state.roots.add(root);try{const observer=new MutationObserver(dirty);observer.observe(root,{subtree:true,childList:true,attributes:true,characterData:true});state.observers.push(observer);}catch(error){}const doc=root.nodeType===9?root:root.ownerDocument,view=doc&&doc.defaultView;if(view&&state.windows.indexOf(view)<0){try{view.addEventListener('scroll',dirty,true);view.addEventListener('resize',dirty,true);state.windows.push(view);}catch(error){}}}"
         + "function parentOf(node){return ftParent(node);}"
@@ -340,16 +351,17 @@ function hintCollector(family) {
         + "function hasPreferredLink(el,r){if(!el.matches(linkSelector))return false;const scope=parentOf(el);if(!scope||!scope.querySelectorAll)return false;const href=String(el.href||el.getAttribute('href')||''),area=r.width*r.height;for(const candidate of scope.querySelectorAll(linkSelector)){if(candidate===el||String(candidate.href||candidate.getAttribute('href')||'')!==href)continue;const q=candidate.getBoundingClientRect(),view=candidate.ownerDocument&&candidate.ownerDocument.defaultView,s=view&&view.getComputedStyle(candidate);if(q.width>0&&q.height>0&&q.width*q.height+1<area&&s&&s.display!=='none'&&s.visibility!=='hidden'&&s.pointerEvents!=='none'&&Number(s.opacity)!==0&&hit(candidate,q))return true;}return false;}"
         + "const clipped=ftClippedRect;"
         + "function intersect(a,b){const left=Math.max(a.left,b.left),top=Math.max(a.top,b.top),right=Math.min(a.right,b.right),bottom=Math.min(a.bottom,b.bottom);return {left:left,top:top,right:right,bottom:bottom,width:Math.max(0,right-left),height:Math.max(0,bottom-top)};}"
-        + "function add(el,ox,oy,framePath,topClip){if(out.length>=5000||seen.has(el))return;seen.add(el);"
-        + "const ownerView=el.ownerDocument&&el.ownerDocument.defaultView;if(!ownerView)return;const description=ftHintDescription(el,family,linkSelector),kind=description.kind,policy=ftHintPolicy(kind,family),local=ftLocalVisible(el,ownerView,policy);if(!local)return;const r=local.clipped,projected=ftProjectedRect(el,local,policy);if(!projected)return;const vw=ownerView.innerWidth,vh=ownerView.innerHeight,topRect=intersect(projected,topClip),x=topRect.left,y=topRect.top;"
+        + "function add(el,ox,oy,framePath,topClip,pairKind,related){if(out.length>=5000||seen.has(el))return;seen.add(el);"
+        + "const ownerView=el.ownerDocument&&el.ownerDocument.defaultView;if(!ownerView)return;const description=pairKind?{kind:pairKind,text:proxyText(el,pairKind),href:null}:ftHintDescription(el,family,linkSelector),kind=description.kind,policy=ftHintPolicy(kind,family),local=ftLocalVisible(el,ownerView,policy);if(!local)return;const r=local.clipped,projected=ftProjectedRect(el,local,policy);if(!projected)return;const vw=ownerView.innerWidth,vh=ownerView.innerHeight,topRect=intersect(projected,topClip),x=topRect.left,y=topRect.top;"
         + "const scrollable=ftAxisScrollable(el,'x')||ftAxisScrollable(el,'y');if(family==='scrollables'&&!scrollable)return;"
         + "if(r.width<=0||r.height<=0||topRect.width<=0||topRect.height<=0||hasPreferredLink(el,r))return;"
         + "if(r.bottom<=0||r.right<=0||r.top>=vh||r.left>=vw||topRect.right<=0||topRect.bottom<=0||x>=window.innerWidth||y>=window.innerHeight)return;"
         + "if(family==='all'&&(kind==='image'||kind==='media')&&linkedSurface(el,r))return;"
-        + "const text=description.text,href=description.href;let elementId=state.weak.get(el);if(!elementId){elementId=state.next++;state.weak.set(el,elementId);}elements.set(elementId,{element:el,ownerDocument:el.ownerDocument,framePath:framePath,family:family,kind:kind,text:text,href:href});activeIds.add(elementId);if(state.resize)try{state.resize.observe(el);}catch(error){}"
-        + "out.push({element_id:elementId,kind:kind,frame_path:framePath,text:text,href:href,geometry:{x:x,y:y,width:topRect.width,height:topRect.height}});}"
+        + "const text=description.text,href=description.href,elementId=proxyIdentity(el,state),relatedElementId=related?proxyIdentity(related,state):null;elements.set(elementId,{element:el,relatedElement:related||null,relatedElementId:relatedElementId,ownerDocument:el.ownerDocument,framePath:framePath,family:family,kind:kind,text:text,href:href});activeIds.add(elementId);if(state.resize)try{state.resize.observe(el);}catch(error){}"
+        + "out.push({element_id:elementId,related_element_id:relatedElementId,kind:kind,frame_path:framePath,text:text,href:href,geometry:{x:x,y:y,width:topRect.width,height:topRect.height}});}"
         + "function visit(root,framePath,ox,oy,depth,topClip){if(out.length>=5000||depth>8)return;track(root);"
         + "root.querySelectorAll(selector).forEach(function(el){add(el,ox,oy,framePath,topClip);});if(out.length>=5000)return;"
+        + "if(proxyEnabled&&(family==='inputs'||family==='all')){root.querySelectorAll('.ace_editor[role=\"textbox\"]').forEach(function(editor){const receivers=editor.querySelectorAll('textarea.ace_text-input,input.ace_text-input');if(receivers.length===1&&proxyEditorValid(editor,receivers[0]))add(editor,ox,oy,framePath,topClip,'editor-focus',receivers[0]);});root.querySelectorAll('label').forEach(function(label){const control=label.control;if(!proxyLabelValid(label,control))return;const controlId=proxyIdentity(control,state);if(activeIds.has(controlId))return;if(seen.has(label)){const oldId=state.weak.get(label);for(let index=out.length-1;index>=0;index--)if(out[index].element_id===oldId)out.splice(index,1);elements.delete(oldId);activeIds.delete(oldId);seen.delete(label);}add(label,ox,oy,framePath,topClip,'label-control',control);});}if(out.length>=5000)return;"
         + "root.querySelectorAll('*').forEach(function(el){if(family==='all'&&(ftAxisScrollable(el,'x')||ftAxisScrollable(el,'y')))add(el,ox,oy,framePath,topClip);if(el.shadowRoot)visit(el.shadowRoot,framePath,ox,oy,depth+1,topClip);});"
         + "if(root.nodeType!==9)return;root.querySelectorAll('iframe,frame').forEach(function(frame,index){if(out.length>=5000||depth>=8)return;"
         + "const ownerView=frame.ownerDocument&&frame.ownerDocument.defaultView,frameLocal=ftLocalVisible(frame,ownerView,'visible');if(!frameLocal)return;const raw=frameLocal.raw,fr=frameLocal.clipped;"
@@ -369,16 +381,19 @@ function hintStopTracking() {
 
 function hintFresh(candidate) {
     var linkSelector = hintSelector(true)
+    var relatedElementId = typeof candidate.related_element_id === "number" ? candidate.related_element_id : null
     return "(function(){try{" + scrollTargetRuntime()
         + "const elementId=" + Number(candidate.element_id) + ",path=" + JSON.stringify(candidate.frame_path || "0")
-        + ",candidateKind=" + JSON.stringify(candidate.kind || "") + ",linkSelector=" + JSON.stringify(linkSelector) + ";"
+        + ",candidateKind=" + JSON.stringify(candidate.kind || "") + ",candidateRelatedId=" + JSON.stringify(relatedElementId) + ",linkSelector=" + JSON.stringify(linkSelector) + ";"
+        + hintProxyRuntime()
         + "const state=window.__ferric_browserHintState,elements=state&&state.elements,record=elements&&elements.get(elementId),el=record&&record.element;"
         + "if(!record||!el||record.framePath!==path||record.ownerDocument!==el.ownerDocument||!ftReachableFromTopDocument(el,record.ownerDocument)||ftCurrentFramePath(el.ownerDocument)!==path)return {visible:false,element_id:elementId};"
-        + "const maybeScrollable=ftAxisScrollable(el,'x')||ftAxisScrollable(el,'y');if(!el.matches(" + JSON.stringify(hintSelector("all")) + ")&&!(record.kind==='scrollable'&&maybeScrollable))return {visible:false,element_id:elementId};"
+        + "const pairKind=record.kind==='editor-focus'||record.kind==='label-control';if(pairKind&&!proxyPairValid(record,{related_element_id:candidateRelatedId},state))return {visible:false,element_id:elementId};"
+        + "const maybeScrollable=ftAxisScrollable(el,'x')||ftAxisScrollable(el,'y');if(!pairKind&&!el.matches(" + JSON.stringify(hintSelector("all")) + ")&&!(record.kind==='scrollable'&&maybeScrollable))return {visible:false,element_id:elementId};"
         + "if(record.family==='scrollables'&&!maybeScrollable)return {visible:false,element_id:elementId};"
-        + "const description=ftHintDescription(el,record.family,linkSelector);if(description.kind!==record.kind||description.text!==record.text||description.href!==record.href||candidateKind&&candidateKind!==description.kind)return {visible:false,element_id:elementId};"
+        + "const description=pairKind?{kind:record.kind,text:proxyText(el,record.kind),href:null}:ftHintDescription(el,record.family,linkSelector);if(description.kind!==record.kind||description.text!==record.text||description.href!==record.href||candidateKind&&candidateKind!==description.kind)return {visible:false,element_id:elementId};"
         + "const policy=ftHintPolicy(description.kind,record.family),ownerView=el.ownerDocument&&el.ownerDocument.defaultView,local=ftLocalVisible(el,ownerView,policy),geometry=ftProjectedRect(el,local,policy);if(!geometry)return {visible:false,element_id:elementId};"
-        + "return {visible:true,element_id:elementId,kind:description.kind,frame_path:path,text:description.text,href:description.href,geometry:{x:geometry.left,y:geometry.top,width:geometry.width,height:geometry.height}};"
+        + "return {visible:true,element_id:elementId,related_element_id:record.relatedElementId,kind:description.kind,frame_path:path,text:description.text,href:description.href,geometry:{x:geometry.left,y:geometry.top,width:geometry.width,height:geometry.height}};"
         + "}catch(error){return {visible:false,element_id:" + Number(candidate.element_id) + "};}})()"
 }
 
@@ -386,6 +401,8 @@ function hintPointerPreflight(candidate, viewWidth, viewHeight) {
     var actionCandidate = Object.assign({}, candidate || {})
     if (typeof actionCandidate.href === "undefined")
         actionCandidate.href = null
+    if (typeof actionCandidate.related_element_id === "undefined")
+        actionCandidate.related_element_id = null
     var elementId = Number(actionCandidate.element_id)
     var width = Number(viewWidth)
     var height = Number(viewHeight)
@@ -394,15 +411,16 @@ function hintPointerPreflight(candidate, viewWidth, viewHeight) {
         + "const candidate=" + JSON.stringify(actionCandidate) + ",elementId=" + elementId
         + ",viewWidth=" + width + ",viewHeight=" + height
         + ",linkSelector=" + JSON.stringify(linkSelector) + ";"
+        + hintProxyRuntime()
         + "if(!Number.isFinite(viewWidth)||!Number.isFinite(viewHeight)||viewWidth<=0||viewHeight<=0||!candidate||!Number.isInteger(candidate.element_id)||candidate.element_id!==elementId)return {ok:false};"
         + "const state=window.__ferric_browserHintState,elements=state&&state.elements,record=elements&&elements.get(elementId),el=record&&record.element;"
         + "if(!record||!el||!el.isConnected||record.framePath!==candidate.frame_path||record.ownerDocument!==el.ownerDocument||!ftReachableFromTopDocument(el,record.ownerDocument)||ftCurrentFramePath(el.ownerDocument)!==candidate.frame_path)return {ok:false};"
-        + "const description=ftHintDescription(el,record.family,linkSelector);if(description.kind!==record.kind||description.text!==record.text||description.href!==record.href||candidate.kind!==description.kind||candidate.text!==description.text||candidate.href!==description.href)return {ok:false};"
+        + "const pairKind=record.kind==='editor-focus'||record.kind==='label-control';if(pairKind&&!proxyPairValid(record,candidate,state))return {ok:false};const description=pairKind?{kind:record.kind,text:proxyText(el,record.kind),href:null}:ftHintDescription(el,record.family,linkSelector);if(description.kind!==record.kind||description.text!==record.text||description.href!==record.href||candidate.kind!==description.kind||candidate.text!==description.text||candidate.href!==description.href||candidate.related_element_id!==record.relatedElementId)return {ok:false};"
         + "const ownerView=el.ownerDocument&&el.ownerDocument.defaultView,local=ftLocalVisible(el,ownerView,'pointer'),geometry=ftProjectedRect(el,local,'pointer');if(!geometry||!(window.innerWidth>0&&window.innerHeight>0))return {ok:false};"
         + "const insetX=Math.min(12,geometry.width*0.2),insetY=Math.min(12,geometry.height*0.2),points=[[geometry.left+geometry.width/2,geometry.top+geometry.height/2],[geometry.left+insetX,geometry.top+insetY],[geometry.right-insetX,geometry.top+insetY],[geometry.left+insetX,geometry.bottom-insetY],[geometry.right-insetX,geometry.bottom-insetY]];"
         + "let point=null;for(const sample of points){const hit=ftPointerDeepHit(document,sample[0],sample[1]);if(hit&&ftContains(el,hit)){point=sample;break;}}if(!point)return {ok:false};"
         + "const scaleX=viewWidth/window.innerWidth,scaleY=viewHeight/window.innerHeight;if(!Number.isFinite(scaleX)||!Number.isFinite(scaleY)||scaleX<0.2||scaleX>5||scaleY<0.2||scaleY>5)return {ok:false};"
-        + "return {ok:true,candidate:{visible:true,element_id:elementId,kind:description.kind,frame_path:candidate.frame_path,text:description.text,href:description.href,geometry:{x:geometry.left,y:geometry.top,width:geometry.width,height:geometry.height}},css_x:point[0],css_y:point[1],x:point[0]*scaleX,y:point[1]*scaleY,viewport_width:window.innerWidth,viewport_height:window.innerHeight,view_width:viewWidth,view_height:viewHeight};"
+        + "return {ok:true,candidate:{visible:true,element_id:elementId,related_element_id:record.relatedElementId,kind:description.kind,frame_path:candidate.frame_path,text:description.text,href:description.href,geometry:{x:geometry.left,y:geometry.top,width:geometry.width,height:geometry.height}},css_x:point[0],css_y:point[1],x:point[0]*scaleX,y:point[1]*scaleY,viewport_width:window.innerWidth,viewport_height:window.innerHeight,view_width:viewWidth,view_height:viewHeight};"
         + "}catch(error){return {ok:false};}})()"
 }
 
@@ -410,11 +428,16 @@ function hintFocus(candidate) {
     var actionCandidate = Object.assign({}, candidate || {})
     if (typeof actionCandidate.href === "undefined")
         actionCandidate.href = null
+    if (typeof actionCandidate.related_element_id === "undefined")
+        actionCandidate.related_element_id = null
     var elementId = Number(actionCandidate.element_id)
     var freshness = hintFresh(actionCandidate)
     return "(function(){try{const fresh=" + freshness + ",candidate=" + JSON.stringify(actionCandidate) + ";"
-        + "if(!fresh.visible||fresh.element_id!==candidate.element_id||fresh.kind!==candidate.kind||fresh.frame_path!==candidate.frame_path||fresh.text!==candidate.text||fresh.href!==candidate.href)return false;"
+        + "if(!fresh.visible||fresh.element_id!==candidate.element_id||fresh.related_element_id!==candidate.related_element_id||fresh.kind!==candidate.kind||fresh.frame_path!==candidate.frame_path||fresh.text!==candidate.text||fresh.href!==candidate.href)return false;"
         + "const state=window.__ferric_browserHintState,record=state&&state.elements&&state.elements.get(" + elementId + "),el=record&&record.element;"
+        + scrollTargetRuntime()
+        + hintProxyRuntime()
+        + "if(candidate.kind==='editor-focus'){if(!proxyPairValid(record,candidate,state))return false;const receiver=record.relatedElement,ownerView=receiver.ownerDocument&&receiver.ownerDocument.defaultView;if(!ownerView)return false;if(typeof ownerView.__ferric_browserAuthorizeExplicitFocus==='function')ownerView.__ferric_browserAuthorizeExplicitFocus();receiver.focus();let active=receiver.ownerDocument.activeElement;for(let depth=0;active&&active.shadowRoot&&depth<32;depth++){const inner=active.shadowRoot.activeElement;if(!inner||inner===active)break;active=inner;}return active===receiver;}"
         + "if(!el||!el.matches('input,select,textarea,[contenteditable]:not([contenteditable=false])'))return false;"
         + "const ownerView=el.ownerDocument&&el.ownerDocument.defaultView;if(!ownerView)return false;"
         + "if(typeof ownerView.__ferric_browserAuthorizeExplicitFocus==='function')ownerView.__ferric_browserAuthorizeExplicitFocus();el.focus();"
@@ -426,12 +449,17 @@ function hintClick(candidate) {
     var actionCandidate = Object.assign({}, candidate || {})
     if (typeof actionCandidate.href === "undefined")
         actionCandidate.href = null
+    if (typeof actionCandidate.related_element_id === "undefined")
+        actionCandidate.related_element_id = null
     var elementId = Number(actionCandidate.element_id)
     var selector = hintSelector(false)
     var freshness = hintFresh(actionCandidate)
     return "(function(){try{const fresh=" + freshness + ",candidate=" + JSON.stringify(actionCandidate) + ";"
-        + "if(!fresh.visible||fresh.element_id!==candidate.element_id||fresh.kind!==candidate.kind||fresh.frame_path!==candidate.frame_path||fresh.text!==candidate.text||fresh.href!==candidate.href)return false;"
+        + "if(!fresh.visible||fresh.element_id!==candidate.element_id||fresh.related_element_id!==candidate.related_element_id||fresh.kind!==candidate.kind||fresh.frame_path!==candidate.frame_path||fresh.text!==candidate.text||fresh.href!==candidate.href)return false;"
         + "const state=window.__ferric_browserHintState,record=state&&state.elements&&state.elements.get(" + elementId + "),el=record&&record.element;"
+        + scrollTargetRuntime()
+        + hintProxyRuntime()
+        + "if(candidate.kind==='label-control'){if(!proxyPairValid(record,candidate,state)||typeof el.click!=='function')return false;const control=record.relatedElement,before=!!control.checked,radio=String(control.type).toLowerCase()==='radio';el.click();return !!control.checked===(radio||!before);}"
         + "if(!el||!el.matches(" + JSON.stringify(selector) + ")||typeof el.click!=='function')return false;el.click();return true;"
         + "}catch(error){return false;}})()"
 }

@@ -272,6 +272,10 @@ fn render_user_docs() -> Result<(String, String, String, String), String> {
         )
         .map_err(|_| "could not format configuration metadata".to_owned())?;
     }
+    configuration.push_str(concat!(
+        "\n## Validated hint proxies\n\n",
+        "`hints.proxy_targets` accepts `off` (the default) or `validated` and can be set globally, in a profile, or with a site rule. `validated` enables only the browser's checked editor-container and native label/control pairings; it does not let selectors nominate hidden receivers or grant a general visibility exception. Editor proxies must remain connected, enabled, editable, non-inert, and visible through their editor container. The feature does not read editor contents or change page focusability styles. Structural fixtures do not establish compatibility with a particular editor framework build.\n",
+    ));
     configuration.push_str("\n## Starter configuration\n\n```toml\n");
     let starter = toml::to_string_pretty(&Config::default())
         .map_err(|error| format!("could not serialize default configuration: {error}"))?;

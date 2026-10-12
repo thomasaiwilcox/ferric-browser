@@ -59,6 +59,14 @@ class NativeInsertTest : public QObject {
         source.remove(".pragma library");
         return js(source + ";" + expression).toString();
     }
+    QVariant browserValueScript(const QString &expression) {
+        QFile script(FERRIC_SCRIPT_PATH);
+        if (!script.open(QIODevice::ReadOnly))
+            qFatal("Production BrowserScripts resource unavailable");
+        QString source = QString::fromUtf8(script.readAll());
+        source.remove(".pragma library");
+        return browserJs(source + ";eval(" + expression + ")");
+    }
     void enter(bool persistent = false) {
         locked = persistent;
         view->setProperty("ferricMode", persistent ? "insert-locked" : "insert");
@@ -83,12 +91,19 @@ private slots:
         QVERIFY(files.isValid());
         QFile html(files.filePath("fixture.html"));
         QVERIFY(html.open(QIODevice::WriteOnly));
-        html.write(R"(<body tabindex="0" id="player"><form onsubmit="event.preventDefault();window.submits++">
+        html.write(R"(<body tabindex="0" id="player"><div id="native-editor" class="ace_editor" role="textbox" aria-label="Native editor">
+<div class="ace_gutter">1</div><textarea id="native-editor-receiver" class="ace_text-input">FIXTURE_PRIVATE_NATIVE_BUFFER</textarea></div>
+<label id="native-label" for="native-check">Native checkbox</label><input id="native-check" type="checkbox" style="position:absolute;opacity:0;width:0;height:0;pointer-events:none">
+<form onsubmit="event.preventDefault();window.submits++">
 <input id="single"><button>submit</button></form><textarea id="multi"></textarea>
 <input id="complete"><div id="rich" contenteditable="true"></div>
 <input id="remove"><input id="navigate">
 <script>
 window.down=0;window.up=0;window.submits=0;window.shift=false;window.keyups=[];
+window.nativeLabelClicks=0;window.nativeControlClicks=0;window.nativeControlChanges=0;
+document.getElementById('native-label').addEventListener('click',()=>nativeLabelClicks++);
+document.getElementById('native-check').addEventListener('click',()=>nativeControlClicks++);
+document.getElementById('native-check').addEventListener('change',()=>nativeControlChanges++);
 window.events=[];
 for (const type of ['keydown','keyup']) document.addEventListener(type,e=>{
 events.push({type,key:e.key,ctrl:e.ctrlKey,shift:e.shiftKey,repeat:e.repeat});});
@@ -201,6 +216,62 @@ WebEngineView {
         QTRY_VERIFY(js("typeof window.down !== 'undefined'").toBool());
         js("down=0;up=0;submits=0;true");
         enter();
+    }
+    void nativeEditorProxyFocusKeepsInsertAndComposition() {
+        const QVariant payload = browserValueScript("hintCollector('inputs',true)");
+        const QVariantList candidates = payload.toMap().value("candidates").toList();
+        QVariantMap selected;
+        for (const QVariant &candidate : candidates) {
+            const QVariantMap row = candidate.toMap();
+            if (row.value("kind").toString() == "editor-focus"
+                && row.value("text").toString() == "Native editor")
+                selected = row;
+        }
+        QVERIFY(!selected.isEmpty());
+        QVERIFY(selected.value("related_element_id").toUInt() > 0);
+        QVERIFY(!QJsonDocument::fromVariant(payload).toJson().contains("FIXTURE_PRIVATE_NATIVE_BUFFER"));
+        const QString selectedJson = QString::fromUtf8(
+            QJsonDocument::fromVariant(selected).toJson(QJsonDocument::Compact));
+        QVERIFY(browserValueScript("hintFocus(" + selectedJson + ")").toBool());
+        QCOMPARE(js("document.activeElement.id").toString(), QString("native-editor-receiver"));
+
+        QTest::keyClick(&window, Qt::Key_I);
+        QTest::keyClick(&window, Qt::Key_I, Qt::ShiftModifier);
+        auto *receiver = window.activeFocusItem();
+        QVERIFY(receiver);
+        QInputMethodEvent preedit("composing", {});
+        QCoreApplication::sendEvent(receiver, &preedit);
+        QInputMethodEvent commit;
+        commit.setCommitString("confirmed");
+        QCoreApplication::sendEvent(receiver, &commit);
+        QTest::keyClick(&window, Qt::Key_Return, Qt::ShiftModifier);
+        QTRY_VERIFY(js("document.getElementById('native-editor-receiver').value.includes('i')").toBool());
+        QTRY_VERIFY(js("window.down===1 && window.shift===true").toBool());
+        QCOMPARE(exits, 0);
+        QVERIFY(router.transientInsert());
+        QTest::keyClick(&window, Qt::Key_Return);
+        QTRY_VERIFY(js("window.down===2 && window.shift===false").toBool());
+        QCOMPARE(exits, 1);
+        QVERIFY(!router.transientInsert());
+    }
+    void nativeLabelControlProxyUsesOneNativeActivation() {
+        const QVariant payload = browserValueScript("hintCollector('inputs',true)");
+        const QVariantList candidates = payload.toMap().value("candidates").toList();
+        QVariantMap selected;
+        for (const QVariant &candidate : candidates) {
+            const QVariantMap row = candidate.toMap();
+            if (row.value("kind").toString() == "label-control"
+                && row.value("text").toString() == "Native checkbox")
+                selected = row;
+        }
+        QVERIFY(!selected.isEmpty());
+        const QString selectedJson = QString::fromUtf8(
+            QJsonDocument::fromVariant(selected).toJson(QJsonDocument::Compact));
+        QVERIFY(browserValueScript("hintClick(" + selectedJson + ")").toBool());
+        QVERIFY(js("document.getElementById('native-check').checked").toBool());
+        QCOMPARE(js("window.nativeLabelClicks").toInt(), 1);
+        QCOMPARE(js("window.nativeControlClicks").toInt(), 1);
+        QCOMPARE(js("window.nativeControlChanges").toInt(), 1);
     }
     void cleanup() {
         window.requestActivate();

@@ -1376,7 +1376,7 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(qml.contains("return BrowserScripts.focusProbe()"));
     assert!(qml.contains("return BrowserScripts.focusObserverSource()"));
     assert!(qml.contains("return BrowserScripts.shutdownPageProbe()"));
-    assert!(qml.contains("return BrowserScripts.hintCollector(family)"));
+    assert!(qml.contains("return BrowserScripts.hintCollector(family, browserUi.hint_proxy_targets_enabled)"));
     assert!(qml.contains("return BrowserScripts.hintDirtyRevision()"));
     assert!(qml.contains("return BrowserScripts.hintStopTracking()"));
     assert!(qml.contains("return BrowserScripts.hintFresh(candidate)"));
@@ -1385,7 +1385,7 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(qml.contains("BrowserScripts.pageUserscriptRun(scriptSource)"));
     assert!(qml.contains("BrowserScripts.pageUserscriptInstall(script.source)"));
     assert!(!qml.contains("function hintSelector(linksOnly)"));
-    assert!(script.contains("var VERSION = \"14\""));
+    assert!(script.contains("var VERSION = \"15\""));
     assert!(qml.contains("function scrollTargetPolicyScript(policy)"));
     assert!(qml.contains("return BrowserScripts.scrollTargetPolicy(policy)"));
     assert!(qml.contains("function scrollTargetStatusScript()"));
@@ -1442,7 +1442,10 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(script.contains("service_workers:'unavailable'"));
     assert!(script.contains("window.__ferric_browserFocusState"));
     assert!(script.contains("elements.length > 128"));
-    assert!(script.contains("function hintCollector(family)"));
+    assert!(script.contains("function hintCollector(family, proxyTargets)"));
+    assert!(script.contains("function proxyPairValid(record,candidate,state)"));
+    assert!(script.contains(".ace_editor[role="));
+    assert!(script.contains("label.control!==control"));
     assert!(script.contains("function hintFresh(candidate)"));
     assert!(script.contains("function hintFocus(candidate)"));
     assert!(script.contains("function hintClick(candidate)"));

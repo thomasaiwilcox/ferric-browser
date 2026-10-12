@@ -1,10 +1,10 @@
 //! Browser behavior configuration records.
 
 use super::{
-    CollisionPolicy, Deserialize, EntryMode, ExternalLinks, HintAutoFollow, HintUnmatchedPolicy,
-    LastClose, LogLevel, PermissionDecision, PortalMode, Serialize, SessionRestore,
-    default_builtin, default_checkpoint, default_command_limit, default_count_limit,
-    default_hint_chars, default_hint_marker_scale, default_hint_min_chars,
+    CollisionPolicy, Deserialize, EntryMode, ExternalLinks, HintAutoFollow, HintProxyTargets,
+    HintUnmatchedPolicy, LastClose, LogLevel, PermissionDecision, PortalMode, Serialize,
+    SessionRestore, default_builtin, default_checkpoint, default_command_limit,
+    default_count_limit, default_hint_chars, default_hint_marker_scale, default_hint_min_chars,
     default_keychain_timeout, default_languages, default_lists, default_log_size, default_new_tab,
     default_overlay_delay, default_related_position, default_retained_files, default_retention,
     default_search_engine, default_start_pages, default_true, default_undo_limit,
@@ -26,6 +26,8 @@ pub struct HintsConfig {
     pub rapid_unmatched: HintUnmatchedPolicy,
     #[serde(default = "default_hint_marker_scale")]
     pub marker_scale: f64,
+    #[serde(default)]
+    pub proxy_targets: HintProxyTargets,
 }
 
 impl Default for HintsConfig {
@@ -37,6 +39,7 @@ impl Default for HintsConfig {
             unmatched: HintUnmatchedPolicy::default(),
             rapid_unmatched: HintUnmatchedPolicy::default(),
             marker_scale: default_hint_marker_scale(),
+            proxy_targets: HintProxyTargets::default(),
         }
     }
 }

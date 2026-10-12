@@ -1013,7 +1013,7 @@ FerricBrowserRuntimeServices {
     }
 
     function hintCollectorScript(family) {
-        return BrowserScripts.hintCollector(family)
+        return BrowserScripts.hintCollector(family, browserUi.hint_proxy_targets_enabled)
     }
 
     function hintDirtyRevisionScript() {

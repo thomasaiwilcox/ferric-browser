@@ -226,6 +226,31 @@ impl qobject::BrowserUi {
                 return QString::from(serde_json::json!({"error": error}).to_string());
             }
         };
+        if !self.as_ref().rust().hint_proxy_targets_enabled
+            && candidates.iter().any(|candidate| {
+                matches!(
+                    candidate.kind,
+                    ferric_browser_core::HintKind::EditorFocus
+                        | ferric_browser_core::HintKind::LabelControl
+                )
+            })
+        {
+            self.set_status_text(QString::from(
+                "Hints rejected: validated proxy targets are disabled",
+            ));
+            return QString::from(r#"{"error":"proxy-targets-disabled"}"#);
+        }
+        let normally_usable_control_ids = candidates
+            .iter()
+            .filter(|candidate| candidate.kind != ferric_browser_core::HintKind::LabelControl)
+            .map(|candidate| candidate.element_id)
+            .collect::<std::collections::BTreeSet<_>>();
+        candidates.retain(|candidate| {
+            candidate.kind != ferric_browser_core::HintKind::LabelControl
+                || !candidate
+                    .related_element_id
+                    .is_some_and(|control_id| normally_usable_control_ids.contains(&control_id))
+        });
         candidates.retain(|candidate| {
             !self
                 .as_ref()

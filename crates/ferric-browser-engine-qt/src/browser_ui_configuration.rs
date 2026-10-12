@@ -13,6 +13,12 @@ impl qobject::BrowserUi {
         let config = match serde_json::from_value::<Config>(self.as_ref().rust().config.clone()) {
             Ok(config) => config,
             Err(error) => {
+                if self
+                    .as_mut()
+                    .update_hint_proxy_targets(&Config::default(), "")
+                {
+                    self.as_mut().note_hint_configuration_change();
+                }
                 self.as_mut()
                     .set_status_text(QString::from(format!("Site rules unavailable: {error}")));
                 return false;
@@ -58,6 +64,12 @@ impl qobject::BrowserUi {
             .set_site_rule_autoplay(QString::from(autoplay.unwrap_or_default()));
         self.as_mut().set_site_rule_zoom_set(zoom.is_some());
         self.as_mut().set_site_rule_zoom(zoom.unwrap_or_default());
+        let proxy_targets_changed = self
+            .as_mut()
+            .update_hint_proxy_targets(&config, &url.to_string());
+        if proxy_targets_changed {
+            self.as_mut().note_hint_configuration_change();
+        }
         true
     }
 
@@ -203,6 +215,9 @@ impl qobject::BrowserUi {
         self.as_mut().update_chrome_preferences(&active_settings);
         self.as_mut().update_feature_preferences(&active_settings);
         self.as_mut().update_hint_preferences(&active_settings);
+        let current_url = self.as_ref().rust().current_url.to_string();
+        self.as_mut()
+            .update_hint_proxy_targets(&active_settings, &current_url);
         self.as_mut().update_settings_presentation(&active_config);
         self.as_mut().set_config_json(QString::from(config_json));
         self.as_mut().note_hint_configuration_change();

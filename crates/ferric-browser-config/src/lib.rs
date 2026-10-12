@@ -98,6 +98,9 @@ pub fn validate_site_rule(rule: &SiteRule) -> Result<(), ConfigError> {
             "input.entry_mode" => value
                 .as_str()
                 .is_some_and(|value| matches!(value, "normal" | "insert" | "pass-through")),
+            "hints.proxy_targets" => value
+                .as_str()
+                .is_some_and(|value| matches!(value, "off" | "validated")),
             "content.javascript" | "content.images" | "content.force_dark" => {
                 value.as_bool().is_some()
             }

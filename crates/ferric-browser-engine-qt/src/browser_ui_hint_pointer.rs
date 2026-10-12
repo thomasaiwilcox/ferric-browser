@@ -495,6 +495,7 @@ impl qobject::BrowserUi {
                 })
                 .is_some_and(|candidate| {
                     candidate.element_id == fresh.element_id
+                        && candidate.related_element_id == fresh.related_element_id
                         && candidate.kind == fresh.kind
                         && candidate.frame_path == fresh.frame_path
                         && candidate.text == fresh.text

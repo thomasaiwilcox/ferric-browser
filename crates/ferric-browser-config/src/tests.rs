@@ -9,6 +9,7 @@ fn defaults_are_the_starter_configuration() {
     assert_eq!(config.tabs.undo_limit, 100);
     assert_eq!(config.hints.chars, "asdfghjkl");
     assert_eq!(config.hints.min_chars, 1);
+    assert_eq!(config.hints.proxy_targets, HintProxyTargets::Off);
     assert!((config.hints.marker_scale - 1.0).abs() < f64::EPSILON);
 }
 
@@ -358,6 +359,15 @@ fn setting_registry_resolves_static_and_dynamic_settings() {
         assert_eq!(setting.supported_scopes, ["global", "profile"]);
         assert_eq!(setting.apply_time, "live");
     }
+    let proxy_setting = registry
+        .resolve("hints.proxy_targets")
+        .expect("proxy-target hint setting metadata");
+    assert_eq!(proxy_setting.default_value, "off");
+    assert_eq!(
+        proxy_setting.supported_scopes,
+        ["global", "profile", "site"]
+    );
+    assert_eq!(proxy_setting.apply_time, "live");
 }
 
 #[test]
@@ -374,9 +384,77 @@ fn site_scope_capability_is_explicit_and_bounded() {
     assert!(setting_supports_site_scope("content.javascript"));
     assert!(setting_supports_site_scope("content.zoom"));
     assert!(setting_supports_site_scope("input.entry_mode"));
+    assert!(setting_supports_site_scope("hints.proxy_targets"));
     assert!(!setting_supports_site_scope("blocking.enabled"));
     assert!(!setting_supports_site_scope("ui.font_family"));
     assert!(!setting_supports_site_scope("proxy.global"));
+}
+
+#[test]
+fn proxy_target_policy_is_typed_opt_in_and_uses_site_precedence() {
+    let parsed =
+        toml::from_str::<Config>("schema_version = 3\n[hints]\nproxy_targets = 'validated'\n")
+            .expect("typed proxy target policy");
+    validate(&parsed).expect("typed proxy target policy validates");
+    assert_eq!(parsed.hints.proxy_targets, HintProxyTargets::Validated);
+    assert!(
+        toml::from_str::<Config>("schema_version = 3\n[hints]\nproxy_targets = 'anything'\n")
+            .is_err()
+    );
+
+    let mut runtime = RuntimeOverrides::default();
+    runtime
+        .set_literal("hints.proxy_targets", "validated")
+        .expect("runtime proxy-target policy");
+    let effective = apply_runtime_overrides(&Config::default(), &runtime)
+        .expect("runtime proxy-target override applies");
+    assert_eq!(effective.hints.proxy_targets, HintProxyTargets::Validated);
+
+    let mut config = Config {
+        hints: HintsConfig {
+            proxy_targets: HintProxyTargets::Validated,
+            ..HintsConfig::default()
+        },
+        site_rules: vec![
+            SiteRule {
+                id: "docs-default".into(),
+                pattern: "https://example.test/*".into(),
+                priority: 1,
+                set: BTreeMap::from([(
+                    "hints.proxy_targets".into(),
+                    toml::Value::String("off".into()),
+                )]),
+            },
+            SiteRule {
+                id: "docs-enabled".into(),
+                pattern: "https://example.test/editor/*".into(),
+                priority: 2,
+                set: BTreeMap::from([(
+                    "hints.proxy_targets".into(),
+                    toml::Value::String("validated".into()),
+                )]),
+            },
+        ],
+        ..Config::default()
+    };
+    assert!(setting_supports_site_scope("hints.proxy_targets"));
+    for rule in &config.site_rules {
+        validate_site_rule(rule).expect("individual proxy-target site rule validates");
+    }
+    validate(&config).expect("site-scoped proxy target policy validates");
+    assert_eq!(
+        hint_proxy_targets_for_url(&config, "https://example.test/editor/one"),
+        HintProxyTargets::Validated
+    );
+    assert_eq!(
+        hint_proxy_targets_for_url(&config, "https://example.test/ordinary"),
+        HintProxyTargets::Off
+    );
+    config.site_rules[1].set.insert(
+        "hints.proxy_targets".into(),
+        toml::Value::String("invalid".into()),
+    );
+    assert!(validate(&config).is_err());
 }
 
 #[test]

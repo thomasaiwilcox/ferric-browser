@@ -271,6 +271,7 @@ impl qobject::BrowserUi {
         let selected = match selected {
             Ok(candidate)
                 if candidate.element_id == fresh.element_id
+                    && candidate.related_element_id == fresh.related_element_id
                     && candidate.kind == fresh.kind
                     && candidate.frame_path == fresh.frame_path
                     && candidate.text == fresh.text
@@ -287,6 +288,17 @@ impl qobject::BrowserUi {
                 return QString::from(serde_json::json!({"error": error.to_string()}).to_string());
             }
         };
+        if matches!(
+            selected.kind,
+            ferric_browser_core::HintKind::EditorFocus
+                | ferric_browser_core::HintKind::LabelControl
+        ) && !self.as_ref().rust().hint_proxy_targets_enabled
+        {
+            self.set_status_text(QString::from(
+                "Hint selection rejected: validated proxy targets are disabled",
+            ));
+            return QString::from(r#"{"error":"proxy-targets-disabled"}"#);
+        }
         let choose = self.as_ref().rust().hint_rapid_target == "choose" && pending_action.is_none();
         let uses_url_action = hint_uses_url_action(
             selected.kind,

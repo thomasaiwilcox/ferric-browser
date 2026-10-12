@@ -1,0 +1,59 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+body { font: 16px sans-serif; margin: 24px; }
+.ace_editor { width: 300px; height: 24px; border: 1px solid #777; margin: 4px; }
+#editor { height: 120px; }
+.ace_gutter { float: left; width: 24px; height: 100%; background: #eee; }
+.ace_text-input { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
+label { display: inline-block; padding: 8px; margin: 8px; border: 1px solid #444; }
+.visually-hidden { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
+</style>
+<div id="editor" class="ace_editor" role="textbox" aria-label="Source editor">
+  <div class="ace_gutter">1</div>
+  <textarea id="editor-receiver" class="ace_text-input">FIXTURE_PRIVATE_EDITOR_BUFFER</textarea>
+</div>
+<div id="ambiguous" class="ace_editor" role="textbox" aria-label="Ambiguous editor">
+  <textarea class="ace_text-input"></textarea><textarea class="ace_text-input"></textarea>
+</div>
+<div id="class-only" class="ace_editor" aria-label="Class only editor">
+  <textarea class="ace_text-input"></textarea>
+</div>
+<div id="password-editor" class="ace_editor" role="textbox" aria-label="Password editor">
+  <input class="ace_text-input" type="password" value="FIXTURE_PRIVATE_PASSWORD">
+</div>
+<div id="file-editor" class="ace_editor" role="textbox" aria-label="File editor">
+  <input class="ace_text-input" type="file">
+</div>
+<div id="readonly-editor" class="ace_editor" role="textbox" aria-label="Read only editor">
+  <textarea class="ace_text-input" readonly></textarea>
+</div>
+<div id="hidden-editor" class="ace_editor" role="textbox" aria-label="Hidden editor" style="display:none">
+  <textarea class="ace_text-input"></textarea>
+</div>
+<div id="inert-editor" class="ace_editor" role="textbox" aria-label="Inert editor" inert>
+  <textarea class="ace_text-input"></textarea>
+</div>
+<label id="check-label" for="check-control">Enable feature</label>
+<input id="check-control" class="visually-hidden" type="checkbox">
+<label id="visible-label" for="visible-control">Visible option</label>
+<input id="visible-control" type="checkbox">
+<label id="radio-label" for="radio-control">Choose option</label>
+<input id="radio-control" class="visually-hidden" type="radio" name="choice">
+<label id="disabled-label" for="disabled-control">Disabled option</label>
+<input id="disabled-control" class="visually-hidden" type="checkbox" disabled>
+<div inert><label id="inert-label" for="inert-control">Inert option</label></div>
+<input id="inert-control" class="visually-hidden" type="checkbox">
+<script>
+document.documentElement.dataset.labelClicks = '0';
+document.documentElement.dataset.controlClicks = '0';
+document.documentElement.dataset.controlChanges = '0';
+document.documentElement.dataset.radioClicks = '0';
+document.documentElement.dataset.radioChanges = '0';
+document.getElementById('check-label').addEventListener('click', () => document.documentElement.dataset.labelClicks = String(Number(document.documentElement.dataset.labelClicks) + 1));
+document.getElementById('check-control').addEventListener('click', () => document.documentElement.dataset.controlClicks = String(Number(document.documentElement.dataset.controlClicks) + 1));
+document.getElementById('check-control').addEventListener('change', () => document.documentElement.dataset.controlChanges = String(Number(document.documentElement.dataset.controlChanges) + 1));
+document.getElementById('radio-control').addEventListener('click', () => document.documentElement.dataset.radioClicks = String(Number(document.documentElement.dataset.radioClicks) + 1));
+document.getElementById('radio-control').addEventListener('change', () => document.documentElement.dataset.radioChanges = String(Number(document.documentElement.dataset.radioChanges) + 1));
+document.body.dataset.ready = 'true';
+</script>

@@ -196,6 +196,69 @@ TestCase {
         var selected = candidate("inputs", "<img src=x onerror=alert(1)>")
         compare(selected.text, "<img src=x onerror=alert(1)>")
     }
+    // T015: structural ACE-like pairing is opt-in and focuses only the retained receiver.
+    function test_T015_editor_focus_pair() {
+        load("proxy-targets.html")
+        var disabled = evaluate(BrowserScripts.hintCollector("inputs", false)).candidates
+        verify(!disabled.some(function(item) { return item.kind === "editor-focus" }))
+        var values = evaluate(BrowserScripts.hintCollector("inputs", true)).candidates
+        var selected = values.filter(function(item) { return item.kind === "editor-focus" && item.text === "Source editor" })[0]
+        verify(selected, "Validated setting admits the visible structural editor pair")
+        verify(selected.related_element_id > 0)
+        verify(!JSON.stringify(values).includes("FIXTURE_PRIVATE_EDITOR_BUFFER"))
+        verify(!JSON.stringify(values).includes("FIXTURE_PRIVATE_PASSWORD"))
+        verify(evaluate(BrowserScripts.hintFresh(selected)).visible)
+        verify(evaluate(BrowserScripts.hintFocus(selected)), "Exact retained editor receiver receives focus")
+        verify(evaluate("document.activeElement.id==='editor-receiver'"))
+        var allValues = evaluate(BrowserScripts.hintCollector("all", true)).candidates
+        verify(allValues.some(function(item) { return item.kind === "editor-focus" && item.text === "Source editor" }), "The all family includes validated editor pairs")
+    }
+    // T016: native label activation remains a single label click with checked state.
+    function test_T016_label_control_pair() {
+        load("proxy-targets.html")
+        var disabled = evaluate(BrowserScripts.hintCollector("inputs", false)).candidates
+        verify(!disabled.some(function(item) { return item.kind === "label-control" }))
+        var values = evaluate(BrowserScripts.hintCollector("inputs", true)).candidates
+        var selected = values.filter(function(item) { return item.kind === "label-control" && item.text === "Enable feature" })[0]
+        verify(selected, "Exact native label.control pair is collected")
+        verify(evaluate(BrowserScripts.hintFresh(selected)).visible)
+        verify(evaluate(BrowserScripts.hintClick(selected)), "Native label action succeeds")
+        verify(evaluate("document.getElementById('check-control').checked"))
+        compare(evaluate("document.documentElement.dataset.labelClicks"), "1")
+        compare(evaluate("document.documentElement.dataset.controlClicks"), "1")
+        compare(evaluate("document.documentElement.dataset.controlChanges"), "1")
+        var radio = values.filter(function(item) { return item.kind === "label-control" && item.text === "Choose option" })[0]
+        verify(radio, "Radio labels use the same exact native association contract")
+        verify(evaluate(BrowserScripts.hintClick(radio)))
+        verify(evaluate("document.getElementById('radio-control').checked"))
+        compare(evaluate("document.documentElement.dataset.radioClicks"), "1")
+        compare(evaluate("document.documentElement.dataset.radioChanges"), "1")
+        var visibleControl = values.filter(function(item) { return item.text === "Visible option" })
+        compare(visibleControl.length, 1)
+        compare(visibleControl[0].kind, "input")
+        verify(!values.some(function(item) { return item.kind === "label-control" && item.text === "Visible option" }), "Normally visible checkbox is deduplicated")
+        var allValues = evaluate(BrowserScripts.hintCollector("all", true)).candidates
+        verify(allValues.some(function(item) { return item.kind === "label-control" && item.text === "Enable feature" }), "The all family includes validated label pairs")
+    }
+    // T017: structural, receiver, label, and retained-object exclusions fail closed.
+    function test_T017_proxy_exclusions_and_identity() {
+        load("proxy-targets.html")
+        var values = evaluate(BrowserScripts.hintCollector("inputs", true)).candidates
+        for (var excluded of ["Ambiguous editor", "Class only editor", "Password editor", "File editor", "Read only editor", "Hidden editor", "Inert editor", "Disabled option", "Inert option"]) {
+            verify(!values.some(function(item) { return item.text === excluded || item.text.indexOf(excluded) === 0 }), excluded + " stays excluded")
+        }
+        var selected = values.filter(function(item) { return item.kind === "editor-focus" && item.text === "Source editor" })[0]
+        evaluate("document.getElementById('editor-receiver').replaceWith(document.getElementById('editor-receiver').cloneNode(true));true")
+        verify(!evaluate(BrowserScripts.hintFresh(selected)).visible, "Replacement receiver cannot inherit retained identity")
+        verify(!evaluate(BrowserScripts.hintFocus(selected)))
+        verify(evaluate("document.activeElement.id!=='editor-receiver'"))
+
+        var label = values.filter(function(item) { return item.kind === "label-control" && item.text === "Enable feature" })[0]
+        evaluate("document.getElementById('check-label').htmlFor='visible-control';true")
+        verify(!evaluate(BrowserScripts.hintFresh(label)).visible, "Retargeted label.control invalidates the original pair")
+        verify(!evaluate(BrowserScripts.hintClick(label)))
+        verify(!evaluate("document.getElementById('check-control').checked"))
+    }
     function test_T020_map_teardown() {
         load("adversarial-targets.html")
         var selected = candidate("buttons", "Target button")
@@ -205,5 +268,15 @@ TestCase {
         verify(!evaluate(BrowserScripts.hintClick(selected)))
         compare(evaluate("document.getElementById('target').dataset.clicks"), "1")
         verify(evaluate("!window.__ferric_browserHintElements && window.__ferric_browserHintState.elements.size===0 && window.__ferric_browserHintState.observers.length===0 && window.__ferric_browserHintState.windows.length===0 && !window.__ferric_browserHintState.tracking"))
+    }
+    function test_T020_proxy_pair_teardown() {
+        load("proxy-targets.html")
+        var values = evaluate(BrowserScripts.hintCollector("inputs", true)).candidates
+        var selected = values.filter(function(item) { return item.kind === "editor-focus" && item.text === "Source editor" })[0]
+        verify(selected)
+        verify(evaluate(BrowserScripts.hintFresh(selected)).visible)
+        verify(evaluate(BrowserScripts.hintStopTracking()))
+        verify(!evaluate(BrowserScripts.hintFresh(selected)).visible, "Teardown drops the representative and related receiver records")
+        verify(evaluate("window.__ferric_browserHintState.elements.size===0 && window.__ferric_browserHintState.observers.length===0 && window.__ferric_browserHintState.windows.length===0 && !window.__ferric_browserHintState.tracking"))
     }
 }
