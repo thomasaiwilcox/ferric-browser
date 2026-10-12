@@ -1,0 +1,269 @@
+{
+  "schema_version": 1,
+  "slice_id": "S16",
+  "status": "implemented_unqualified",
+  "commit": "ec425d4ed3fe38ef0fee92729754ded1c493c8ad",
+  "environment": {
+    "os": "Linux 7.2.3-arch1-3 x86_64",
+    "qt": "6.11.2",
+    "chromium": "QtWebEngine 6.11.2 / Chrome 140.0.0.0",
+    "compiler": "GCC 16.2.1 20260810",
+    "rustc": "1.98.0 (88d9e12ae 2026-08-18)",
+    "cargo": "1.98.0 (797e8a9bc 2026-08-05)",
+    "build": "Locked offline Rust workspace with the existing Qt 6.11.2 toolchain; no dependency or toolchain changes.",
+    "webengine_fixture": "Qt Quick/WebEngine offscreen software runner, 640x480 CSS viewport, devicePixelRatio 1, Chromium forced-GC hook enabled.",
+    "native_test": "Qt offscreen QML suite and native_insert CTest passed 1/1 in the engine task; no composed Target Search BrowserUi journey was available.",
+    "scope": "Direct local Target Search over visible Hint candidates, with links/controls/regions/surfaces/all scopes, ephemeral query, explicit confirmation, and SearchWithin lease reuse."
+  },
+  "changed_files": [
+    "crates/ferric-browser-core/src/command.rs",
+    "crates/ferric-browser-core/src/guide.rs",
+    "crates/ferric-browser-core/src/hints.rs",
+    "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeBase.qml",
+    "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeChrome.qml",
+    "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimePresentation.qml",
+    "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeRequests.qml",
+    "crates/ferric-browser-engine-qt/qml/scripts/BrowserScripts.js",
+    "crates/ferric-browser-engine-qt/qml/scripts/PageInteractionScripts.js",
+    "crates/ferric-browser-engine-qt/qml/scripts/TargetSearchPresentation.js",
+    "crates/ferric-browser-engine-qt/src/browser_ui_command_dispatch.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_hint_pointer.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_hint_selection.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_ipc.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_navigation.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_scope_handoff.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_target_search.rs",
+    "crates/ferric-browser-engine-qt/src/hint_policy.rs",
+    "crates/ferric-browser-engine-qt/src/lib.rs",
+    "crates/ferric-browser-engine-qt/src/tests/components_and_workers.rs",
+    "crates/ferric-browser-engine-qt/src/tests/presentation_boundaries.rs",
+    "crates/ferric-browser-engine-qt/tests/qml/tst_chrome_interactions.qml",
+    "crates/ferric-browser-engine-qt/tests/qml/tst_webapp_interaction.qml",
+    "crates/ferric-browser-ipc/src/command_invocation.rs",
+    "crates/ferric-browser/src/tests.rs",
+    "docs/implementation/keyboard_interaction-v03/evidence/S16-plan.md",
+    "docs/implementation/keyboard_interaction-v03/evidence/S16.json",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S16-check.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S16-docs.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S16-engine.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S16-pack-validation.log",
+    "docs/implementation/keyboard_interaction-v03/progress.json",
+    "docs/user/commands.md"
+  ],
+  "baseline_comparison": "Implementation started from f732ba30c4b13d010dc042a41f252477512d0188 on implementation/keyboard-interaction-v03. No dependency or toolchain changes.",
+  "test_results": [
+    {
+      "test_id": "T010",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask check",
+      "commit": "ec425d4ed3fe38ef0fee92729754ded1c493c8ad",
+      "log": "evidence/logs/S16-check.log",
+      "observations": [
+        "The expanded-command guard rejects target-search from IPC after aliases are expanded; the CLI codec and scoped local grammar tests passed.",
+        "The Target Search command cannot enter repeat or macro recording, and the generic action executor has no Target Search operation."
+      ]
+    },
+    {
+      "test_id": "T010",
+      "level": "native-qt-offscreen",
+      "result": "not_run",
+      "command": "No composed BrowserUi local Target Search palette-to-page action journey is available.",
+      "commit": "ec425d4ed3fe38ef0fee92729754ded1c493c8ad",
+      "log": null,
+      "reason": "The offscreen Qt/QML and native-insert suites do not compose the actual BrowserUi palette, SearchWithin handoff, explicit result confirmation, and final page action in one native journey."
+    },
+    {
+      "test_id": "T020",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "ec425d4ed3fe38ef0fee92729754ded1c493c8ad",
+      "log": "evidence/logs/S16-engine.log",
+      "observations": [
+        "The existing weak-lease teardown and scoped-lease transfer fixtures passed; destination collection remains descendant-only and scope maps/listeners are released."
+      ]
+    },
+    {
+      "test_id": "T037",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "ec425d4ed3fe38ef0fee92729754ded1c493c8ad",
+      "log": "evidence/logs/S16-engine.log",
+      "observations": [
+        "Empty and replaced scopes did not fall back to the full page; scoped collection preserved focus and scroll, and the existing weak scroll-target setter tests passed.",
+        "SearchWithin routes through the same validated lease and collector path; a composed native SearchWithin menu journey remains unqualified under T010."
+      ]
+    },
+    {
+      "test_id": "T040",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask check",
+      "commit": "ec425d4ed3fe38ef0fee92729754ded1c493c8ad",
+      "log": "evidence/logs/S16-check.log",
+      "observations": [
+        "HintInteraction SetText uses the existing text ranker, bounds and sanitizes the query, and never auto-activates a single result."
+      ]
+    },
+    {
+      "test_id": "T040",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "ec425d4ed3fe38ef0fee92729754ded1c493c8ad",
+      "log": "evidence/logs/S16-engine.log",
+      "observations": [
+        "The WebEngine fixture collected visible all-facet candidates on demand, preserved legacy all-family behavior, excluded offscreen content, and left page focus/selection/scroll unchanged."
+      ]
+    },
+    {
+      "test_id": "T040",
+      "level": "qml-component",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "ec425d4ed3fe38ef0fee92729754ded1c493c8ad",
+      "log": "evidence/logs/S16-engine.log",
+      "observations": [
+        "The Target Search result projection follows shared matcher order and the native palette requires explicit Enter or Confirm; Cancel and Escape close it."
+      ]
+    },
+    {
+      "test_id": "T041",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "ec425d4ed3fe38ef0fee92729754ded1c493c8ad",
+      "log": "evidence/logs/S16-engine.log",
+      "observations": [
+        "Visible-candidate collection excludes offscreen content and exact identity deduplication is exercised in the WebEngine fixture; virtualized selection reconciliation is covered by the QML component test."
+      ]
+    },
+    {
+      "test_id": "T041",
+      "level": "qml-component",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "ec425d4ed3fe38ef0fee92729754ded1c493c8ad",
+      "log": "evidence/logs/S16-engine.log",
+      "observations": [
+        "A removed/recycled candidate or changed action meaning clears selection even when the next row reuses its former position or label."
+      ]
+    },
+    {
+      "test_id": "T042",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask check",
+      "commit": "ec425d4ed3fe38ef0fee92729754ded1c493c8ad",
+      "log": "evidence/logs/S16-check.log",
+      "observations": [
+        "The query is held in transient HintInteraction/BrowserUi state and cleared at session teardown; the source-boundary tests confirm Target Search is not routed through IPC execution."
+      ]
+    },
+    {
+      "test_id": "T042",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "ec425d4ed3fe38ef0fee92729754ded1c493c8ad",
+      "log": "evidence/logs/S16-engine.log",
+      "observations": [
+        "Form field values and tokenized link URLs did not appear in candidate descriptions or projected native result rows."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask check",
+      "commit": "ec425d4ed3fe38ef0fee92729754ded1c493c8ad",
+      "log": "evidence/logs/S16-check.log",
+      "observations": [
+        "All workspace Rust test suites passed, including Hint, repeat/macro, command, query, and IPC regressions."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "ec425d4ed3fe38ef0fee92729754ded1c493c8ad",
+      "log": "evidence/logs/S16-engine.log",
+      "observations": [
+        "All 140 Qt Quick/WebEngine tests passed, including existing hint, rapid, count, caret, search, scroll, Grid, and Insert coverage."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "ec425d4ed3fe38ef0fee92729754ded1c493c8ad",
+      "log": "evidence/logs/S16-engine.log",
+      "observations": [
+        "The Qt offscreen suite and native_insert CTest passed 1/1; this preserves tested legacy routing and does not qualify the missing Target Search palette-to-page journey."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask check",
+      "commit": "ec425d4ed3fe38ef0fee92729754ded1c493c8ad",
+      "log": "evidence/logs/S16-check.log",
+      "observations": [
+        "Registry grammar, CLI envelope behavior, expanded IPC rejection, generated resources, user documentation, release-artifact manifest, and license policy passed."
+      ]
+    }
+  ],
+  "capability_decision": null,
+  "capability_report": null,
+  "review_kind": "self-review",
+  "scope_amendments": [
+    {
+      "path": "crates/ferric-browser-engine-qt/src/browser_ui_target_search.rs",
+      "reason": "A small module beside the existing Hint/navigation owner holds the closed local grammar, scope-to-collector mapping, candidate-kind filters, and direct Target Search dispatcher."
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/src/browser_ui_command_dispatch.rs, crates/ferric-browser-engine-qt/src/browser_ui_ipc.rs, crates/ferric-browser-engine-qt/src/browser_ui_hint_pointer.rs",
+      "reason": "The command must enter only through local command dispatch and be rejected from expanded IPC command chains; the existing shared external Hint-interaction guard keeps browser_ui_ipc.rs within its 1,000-line module budget."
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/src/browser_ui_scope_handoff.rs, crates/ferric-browser-engine-qt/src/browser_ui_hint_selection.rs, crates/ferric-browser-engine-qt/src/browser_ui_navigation.rs, crates/ferric-browser-engine-qt/src/hint_policy.rs",
+      "reason": "SearchWithin must reuse the existing region lease receipt, owner/session/revision validation, descendant collector, and Hint session lifecycle while recording the original source family."
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/src/lib.rs",
+      "reason": "The Qt/QML boundary needs bounded ephemeral Target Search state and a cancellation invokable; the query and selection remain presentation state."
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeBase.qml, crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeChrome.qml, crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimePresentation.qml, crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeRequests.qml",
+      "reason": "The native palette, explicit confirmation, focus capture/restoration, visible-only refresh, and stale-session invalidation span the runtime component call chain."
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/qml/scripts/BrowserScripts.js, crates/ferric-browser-engine-qt/qml/scripts/PageInteractionScripts.js, crates/ferric-browser-engine-qt/qml/scripts/TargetSearchPresentation.js",
+      "reason": "The collector needs opt-in region/surface facets without changing legacy all behavior, and the native result projection needs exact identity/action-meaning reconciliation without retaining raw URLs."
+    },
+    {
+      "path": "crates/ferric-browser-core/src/guide.rs, docs/user/commands.md",
+      "reason": "The Target Search behavior and local-only command scope must be documented in the Guide and regenerated command reference."
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/src/tests/components_and_workers.rs, crates/ferric-browser-engine-qt/src/tests/presentation_boundaries.rs, crates/ferric-browser-engine-qt/tests/qml/tst_chrome_interactions.qml, crates/ferric-browser-engine-qt/tests/qml/tst_webapp_interaction.qml, crates/ferric-browser-ipc/src/command_invocation.rs, crates/ferric-browser/src/tests.rs",
+      "reason": "Existing Rust, IPC codec, Qt Quick, and WebEngine suites need assertions for ranking reuse, local/remote provenance, privacy, scoped collection, explicit confirmation, and virtualized selection behavior."
+    }
+  ],
+  "remaining_risks": [
+    "No composed native BrowserUi journey exercises Target Search entry, SearchWithin palette handoff, result confirmation, and the final page action; native UI qualification remains outstanding.",
+    "SearchWithin reuses the tested weak lease/descendant collector, but the complete SearchWithin action-to-page journey is not exercised through a live native BrowserUi session.",
+    "Collection remains bounded and viewport-only; pages beyond the existing inspection and candidate caps can report truncation rather than promise complete discovery."
+  ],
+  "not_run_reasons": [
+    "T010 native-qt-offscreen: no composed BrowserUi local Target Search palette-to-page action journey is available. The Qt offscreen component and native-insert suites do not compose the palette, SearchWithin lease handoff, explicit result confirmation, and final page action."
+  ],
+  "next_ready_slices": [
+    "S17"
+  ]
+}
