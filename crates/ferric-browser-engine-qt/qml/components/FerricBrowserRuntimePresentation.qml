@@ -11,6 +11,8 @@ FerricBrowserRuntimeServices {
     id: window
 
     property string activeHintScopeLeaseId: ""
+    property string activeSpatialScopeLeaseId: ""
+    property var activeSpatialScopeView: null
 
     readonly property var clipboardBridge: window.clipboardBridgeObject
     readonly property var activationOutcomeTimer: window.activationOutcomeTimerObject
@@ -1032,6 +1034,10 @@ FerricBrowserRuntimeServices {
         return BrowserScripts.hintStopTracking(scopeLeaseId)
     }
 
+    function spatialScopeGeometryScript(scopeLeaseId) {
+        return BrowserScripts.spatialScopeGeometry(scopeLeaseId)
+    }
+
     function selectionScript() {
         return BrowserScripts.selection()
     }
@@ -1127,6 +1133,117 @@ FerricBrowserRuntimeServices {
         if (!acquireStarted && window.hintCollectionEpoch === actionEpoch) {
             window.closeHints()
             browserUi.status_text = "Scoped Hint lease could not be acquired"
+            window.showCommandNotice(browserUi.status_text, true)
+        }
+    }
+
+    function completeGridScopeHandoff(view, request, candidate, actionEpoch) {
+        if (!request || typeof request.lease_id !== "string"
+                || window.activeWebView() !== view
+                || window.hintTrackingView !== view
+                || browserUi.mode !== "hint") {
+            window.closeHints()
+            return
+        }
+        var selectorSnapshot = window.hintSelectorPolicySnapshot(browserUi.hint_family)
+        var acquireStarted = window.runBrowserScript(
+                    view,
+                    BrowserScripts.hintAcquireScopeLease(
+                        request, candidate, selectorSnapshot), function(receipt) {
+            var clearLease = function() {
+                window.runBrowserScript(
+                            view, BrowserScripts.hintClearScopeLease(request.lease_id),
+                            function(value) {})
+            }
+            if (window.hintCollectionEpoch !== actionEpoch
+                    || window.activeWebView() !== view
+                    || window.hintTrackingView !== view
+                    || browserUi.mode !== "hint") {
+                if (receipt && receipt.ok === true) clearLease()
+                return
+            }
+            if (!receipt || receipt.ok !== true) {
+                window.closeHints()
+                browserUi.status_text = receipt && receipt.error === "weak-reference-unavailable"
+                        ? "Scoped Grid needs weak references; use full-page Grid instead"
+                        : "Scoped Grid failed closed: the selected surface is stale"
+                window.showCommandNotice(browserUi.status_text, true)
+                return
+            }
+            var stopStarted = window.runBrowserScript(
+                        view, window.hintStopTrackingScript(request.lease_id), function(stopped) {
+                if (window.hintCollectionEpoch !== actionEpoch
+                        || window.activeWebView() !== view
+                        || window.hintTrackingView !== view
+                        || browserUi.mode !== "hint") {
+                    clearLease()
+                    return
+                }
+                if (stopped !== true || !window.spatialAdapterEnabled
+                        || window.spatialAdapterTargetItem !== view
+                        || view.width <= 0 || view.height <= 0) {
+                    clearLease()
+                    window.closeHints()
+                    browserUi.status_text = "Scoped Grid failed closed: page surface changed"
+                    window.showCommandNotice(browserUi.status_text, true)
+                    return
+                }
+                var zoomFactor = Number(view.zoomFactor)
+                var started = window.runBrowserScript(
+                            view, window.spatialScopeGeometryScript(request.lease_id), function(value) {
+                    if (window.hintCollectionEpoch !== actionEpoch
+                            || window.activeWebView() !== view
+                            || window.hintTrackingView !== view
+                            || browserUi.mode !== "hint"
+                            || window.spatialAdapterTargetItem !== view
+                            || Number(view.zoomFactor) !== zoomFactor) {
+                        clearLease()
+                        return
+                    }
+                    var accepted = false
+                    try {
+                        accepted = browserUi.complete_grid_scope_handoff(
+                                    request.lease_id, JSON.stringify(receipt),
+                                    JSON.stringify(value || {}),
+                                    window.spatialAdapterSurfaceSerial,
+                                    window.spatialAdapterSurfaceRevision,
+                                    view.width, view.height, zoomFactor)
+                    } catch (error) {
+                        accepted = false
+                    }
+                    if (!accepted) {
+                        clearLease()
+                        window.closeHints()
+                        browserUi.status_text = "Scoped Grid failed closed: scope geometry was stale"
+                        window.showCommandNotice(browserUi.status_text, true)
+                        return
+                    }
+                    window.activeSpatialScopeLeaseId = request.lease_id
+                    window.activeSpatialScopeView = view
+                    window.activeHintScopeLeaseId = ""
+                    window.hintTrackingView = null
+                    window.hintCollectionEpoch += 1
+                    window.hintResults = []
+                    window.hintInput = ""
+                    window.hintRefreshPending = false
+                })
+                if (!started) {
+                    clearLease()
+                    window.closeHints()
+                    browserUi.status_text = "Scoped Grid failed closed: renderer unavailable"
+                    window.showCommandNotice(browserUi.status_text, true)
+                }
+            })
+            if (!stopStarted && window.hintCollectionEpoch === actionEpoch) {
+                clearLease()
+                window.closeHints()
+                browserUi.status_text = "Scoped Grid could not release the source Hint registry"
+                window.showCommandNotice(browserUi.status_text, true)
+            }
+        })
+        if (!acquireStarted && window.hintCollectionEpoch === actionEpoch) {
+            window.closeHints()
+            browserUi.status_text = "Scoped Grid lease could not be acquired"
             window.showCommandNotice(browserUi.status_text, true)
         }
     }
@@ -1864,7 +1981,7 @@ FerricBrowserRuntimeServices {
             }
             var pageActionPending = result.action === "focus"
                     || result.action === "click" || result.action === "scroll-target"
-                    || result.action === "hint-within"
+                    || result.action === "hint-within" || result.action === "grid-within"
             if (!pageActionPending && browserUi.mode !== "hint") {
                 window.activeHintScopeLeaseId = ""
                 window.stopHintTracking()
@@ -1873,7 +1990,8 @@ FerricBrowserRuntimeServices {
                 window.hintRefreshPending = false
             }
             if ((result.action === "focus" || result.action === "click"
-                 || result.action === "scroll-target" || result.action === "hint-within")
+                 || result.action === "scroll-target" || result.action === "hint-within"
+                 || result.action === "grid-within")
                     && (window.hintCollectionEpoch !== actionEpoch
                         || window.activeWebView() !== view
                         || window.hintTrackingView !== view
@@ -1886,6 +2004,9 @@ FerricBrowserRuntimeServices {
             }
             if (result.action === "hint-within") {
                 window.completeHintScopeHandoff(
+                            view, result.scope_lease, value, actionEpoch)
+            } else if (result.action === "grid-within") {
+                window.completeGridScopeHandoff(
                             view, result.scope_lease, value, actionEpoch)
             } else if (result.action === "navigate") {
                 window.hintResults = []

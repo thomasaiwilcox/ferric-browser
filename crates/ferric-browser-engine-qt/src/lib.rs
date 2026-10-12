@@ -92,6 +92,7 @@ mod browser_ui_repeat_macros;
 mod browser_ui_runtime;
 mod browser_ui_runtime_config;
 mod browser_ui_runtime_settings;
+mod browser_ui_scope_handoff;
 mod browser_ui_selector_config;
 mod browser_ui_sessions;
 mod browser_ui_site;
@@ -585,8 +586,13 @@ mod qobject {
         #[qproperty(bool, spatial_visible)]
         #[qproperty(bool, spatial_selecting)]
         #[qproperty(QString, spatial_session_id)]
+        #[qproperty(QString, spatial_scope_lease_id)]
         #[qproperty(QString, spatial_dispatch_request)]
         #[qproperty(QStringList, spatial_labels)]
+        #[qproperty(f64, spatial_viewport_x)]
+        #[qproperty(f64, spatial_viewport_y)]
+        #[qproperty(f64, spatial_viewport_width)]
+        #[qproperty(f64, spatial_viewport_height)]
         #[qproperty(f64, spatial_root_x)]
         #[qproperty(f64, spatial_root_y)]
         #[qproperty(f64, spatial_root_width)]
@@ -1024,6 +1030,19 @@ mod qobject {
             self: Pin<&mut BrowserUi>,
             lease_id: &QString,
             receipt_json: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn complete_grid_scope_handoff(
+            self: Pin<&mut BrowserUi>,
+            lease_id: &QString,
+            receipt_json: &QString,
+            geometry_json: &QString,
+            serial: &QString,
+            revision: &QString,
+            view_width: f64,
+            view_height: f64,
+            zoom_factor: f64,
         ) -> bool;
 
         #[qinvokable]
@@ -1628,6 +1647,18 @@ mod qobject {
         ) -> bool;
 
         #[qinvokable]
+        fn spatial_scope_geometry_validated(
+            self: Pin<&mut BrowserUi>,
+            request_id: &QString,
+            geometry_json: &QString,
+            serial: &QString,
+            revision: &QString,
+            view_width: f64,
+            view_height: f64,
+            zoom_factor: f64,
+        ) -> bool;
+
+        #[qinvokable]
         fn spatial_dispatch_ack(
             self: Pin<&mut BrowserUi>,
             request_id: &QString,
@@ -1742,10 +1773,10 @@ use ferric_browser_core::{
     JourneyNodeId, LoadingState, LogicalRect, Mode, NavigationContext, NavigationError,
     NavigationSource, ParseInput, ParsedCommand, PointerButton, PrivacyKind, ResourceLifecycle,
     SearchCase, SpatialAck, SpatialAction, SpatialCancelReason, SpatialDispatchOutcome,
-    SpatialError, SpatialLifecycle, SpatialOwner, SpatialSession, SpatialTarget, SurfaceStamp,
-    TabId, TabTransfer, Target, ValidatedUrl, WindowId, assign_labels_with_options,
-    canonical_origin, clean_link, complete, hint_intent_for_candidate, parse_chain, refresh_labels,
-    resolve_input, switcher_rank, tokenize_switcher_query,
+    SpatialError, SpatialLifecycle, SpatialOwner, SpatialScope, SpatialSession, SpatialTarget,
+    SurfaceStamp, TabId, TabTransfer, Target, ValidatedUrl, WindowId, assign_labels_with_options,
+    canonical_origin, clean_link, complete, hint_intent_for_candidate, map_css_rect_to_view_local,
+    parse_chain, refresh_labels, resolve_input, switcher_rank, tokenize_switcher_query,
 };
 use ferric_browser_ipc::{
     EventNotification, PublicError, Request, Response, has_pending_requests,
@@ -2030,8 +2061,13 @@ pub struct BrowserUiRust {
     spatial_visible: bool,
     spatial_selecting: bool,
     spatial_session_id: QString,
+    spatial_scope_lease_id: QString,
     spatial_dispatch_request: QString,
     spatial_labels: QStringList,
+    spatial_viewport_x: f64,
+    spatial_viewport_y: f64,
+    spatial_viewport_width: f64,
+    spatial_viewport_height: f64,
     spatial_root_x: f64,
     spatial_root_y: f64,
     spatial_root_width: f64,
@@ -2086,6 +2122,7 @@ pub struct BrowserUiRust {
     hint_consumed: BTreeSet<(String, u32)>,
     hint_configuration_revision: u64,
     pending_hint_palette_permit: Option<LocalInteractionPermit>,
+    pending_grid_scope_permit: Option<LocalInteractionPermit>,
     hint_pointer_source: Option<CommandSource>,
     hint_pointer_action: Option<browser_ui_hint_pointer::HintPointerAction>,
     hint_local_interaction_authority: LocalInteractionAuthority,
@@ -2749,10 +2786,15 @@ impl Default for BrowserUiRust {
             spatial_visible: false,
             spatial_selecting: false,
             spatial_session_id: QString::default(),
+            spatial_scope_lease_id: QString::default(),
             spatial_dispatch_request: QString::default(),
             spatial_labels: (1..=9)
                 .map(|cell| QString::from(cell.to_string()))
                 .collect(),
+            spatial_viewport_x: 0.0,
+            spatial_viewport_y: 0.0,
+            spatial_viewport_width: 0.0,
+            spatial_viewport_height: 0.0,
             spatial_root_x: 0.0,
             spatial_root_y: 0.0,
             spatial_root_width: 0.0,
@@ -2806,6 +2848,7 @@ impl Default for BrowserUiRust {
             hint_consumed: BTreeSet::new(),
             hint_configuration_revision: 0,
             pending_hint_palette_permit: None,
+            pending_grid_scope_permit: None,
             hint_pointer_source: None,
             hint_pointer_action: None,
             hint_local_interaction_authority: LocalInteractionAuthority::default(),

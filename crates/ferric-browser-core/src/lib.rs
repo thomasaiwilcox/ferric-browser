@@ -82,9 +82,10 @@ pub use navigation::{
 };
 pub use spatial_navigation::{
     GridCell, LogicalPoint, LogicalRect, MAX_SPATIAL_DEPTH, PointerButton, SPATIAL_PRECISION_LIMIT,
-    SpatialAck, SpatialAction, SpatialCancelReason, SpatialDispatchOutcome, SpatialDispatchRequest,
-    SpatialError, SpatialLifecycle, SpatialOwner, SpatialProjection, SpatialSession, SpatialTarget,
-    SurfaceStamp,
+    SPATIAL_SCOPE_GEOMETRY_TOLERANCE, SpatialAck, SpatialAction, SpatialCancelReason,
+    SpatialDispatchOutcome, SpatialDispatchRequest, SpatialError, SpatialLifecycle, SpatialOwner,
+    SpatialProjection, SpatialScope, SpatialSession, SpatialTarget, SurfaceStamp,
+    map_css_rect_to_view_local,
 };
 pub use switcher::{
     MAX_SWITCHER_QUERY_TERMS, MAX_SWITCHER_TERM_BYTES, rank as switcher_rank,

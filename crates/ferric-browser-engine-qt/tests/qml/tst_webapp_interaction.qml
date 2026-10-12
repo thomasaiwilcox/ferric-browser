@@ -78,6 +78,7 @@ TestCase {
     }
     function cleanup() {
         evaluate(BrowserScripts.hintStopTracking())
+        page.zoomFactor = 1
     }
 
     // T019: extracted resources execute through the browser-owned ApplicationWorld.
@@ -677,6 +678,171 @@ TestCase {
         verify(evaluate("window.__ferric_browserScrollTargetState.elementRef instanceof WeakRef"))
         verify(evaluate("window.__ferric_browserScrollTargetState.elementRef.deref()===document.getElementById('scope')"),
                "Set scroll target keeps the exact selected element in its existing weak policy")
+        cleanup()
+    }
+
+    // T038: the Grid scope is projected through frame borders, CSS zoom, and
+    // browser zoom once, then Rust maps the top CSS viewport to ViewLocal.
+    function test_T038_nested_frame_scope_geometry_uses_measured_spaces() {
+        load("geometry-spaces.html")
+        page.zoomFactor = 1.25
+        tryVerify(function() {
+            return evaluate("document.getElementById('outer-frame').contentDocument"
+                            + "?.getElementById('inner-frame').contentDocument"
+                            + "?.getElementById('scope')?.isConnected") === true
+        }, 5000)
+        var regions = selectorSnapshot("regions", "merge", [], "0123456789abcdef")
+        var values = evaluate(BrowserScripts.hintCollector("regions", false, regions))
+        var scope = values.candidates.filter(function(item) {
+            return item.text === "Nested scoped region"
+        })[0]
+        verify(scope, "Nested region should be discoverable in the frame tree")
+        compare(scope.frame_path, "0.0.0")
+        var request = {
+            lease_id: "geometry-space-scope",
+            element_id: scope.element_id,
+            frame_path: scope.frame_path,
+            kind: scope.kind,
+            selector_revision: regions.selector_revision,
+            configuration_revision: 0,
+            parent_scope_lease_id: null
+        }
+        var receipt = evaluate(BrowserScripts.hintAcquireScopeLease(request, scope, regions))
+        verify(receipt && receipt.ok, "Exact scoped target should grant a weak lease")
+        verify(evaluate(BrowserScripts.hintStopTracking(request.lease_id)))
+        var geometry = evaluate(BrowserScripts.spatialScopeGeometry(request.lease_id))
+        verify(geometry && geometry.ok, "Fresh nested frame geometry should validate: "
+               + JSON.stringify(geometry))
+        verify(geometry.geometry.x > 0 && geometry.geometry.y > 0,
+               "The scoped root keeps its nonzero origin in the page viewport")
+
+        var expected = evaluate("(function(){const scope=document.getElementById('outer-frame')"
+                + ".contentDocument.getElementById('inner-frame').contentDocument.getElementById('scope');"
+                + "let r=scope.getBoundingClientRect(),left=r.left,top=r.top,right=r.right,bottom=r.bottom;"
+                + "let view=scope.ownerDocument.defaultView;while(view!==window){const frame=view.frameElement;"
+                + "const parent=frame.ownerDocument.defaultView,box=frame.getBoundingClientRect();"
+                + "const bx=box.width/frame.offsetWidth,by=box.height/frame.offsetHeight;"
+                + "const sx=frame.clientWidth*bx/view.innerWidth,sy=frame.clientHeight*by/view.innerHeight;"
+                + "left=box.left+frame.clientLeft*bx+left*sx;right=box.left+frame.clientLeft*bx+right*sx;"
+                + "top=box.top+frame.clientTop*by+top*sy;bottom=box.top+frame.clientTop*by+bottom*sy;view=parent;}"
+                + "return {x:left,y:top,width:right-left,height:bottom-top};})()")
+        compare(Math.abs(geometry.geometry.x - expected.x) < 0.75, true,
+                "Nested frame borders and zoom use measured origins once")
+        compare(Math.abs(geometry.geometry.y - expected.y) < 0.75, true)
+        compare(Math.abs(geometry.geometry.width - expected.width) < 0.75, true)
+        compare(Math.abs(geometry.geometry.height - expected.height) < 0.75, true)
+        verify(Math.abs(geometry.viewport_width - evaluate("window.innerWidth")) < 0.01)
+        cleanup()
+        page.zoomFactor = 1
+    }
+
+    function test_T038_transformed_scope_is_rejected() {
+        load("geometry-spaces.html")
+        var regions = selectorSnapshot("regions", "merge", [], "0123456789abcdef")
+        var scope = evaluate(BrowserScripts.hintCollector("regions", false, regions))
+                      .candidates.filter(function(item) {
+                          return item.text === "Nested scoped region"
+                      })[0]
+        verify(scope)
+        var request = {
+            lease_id: "transformed-geometry-scope",
+            element_id: scope.element_id,
+            frame_path: scope.frame_path,
+            kind: scope.kind,
+            selector_revision: regions.selector_revision,
+            configuration_revision: 0,
+            parent_scope_lease_id: null
+        }
+        verify(evaluate(BrowserScripts.hintAcquireScopeLease(request, scope, regions)).ok)
+        verify(evaluate(BrowserScripts.hintStopTracking(request.lease_id)))
+        evaluate("document.getElementById('outer-frame').contentDocument"
+                 + ".getElementById('inner-frame').contentDocument.getElementById('scope')"
+                 + ".style.transform='translateX(2px)';true")
+        var geometry = evaluate(BrowserScripts.spatialScopeGeometry(request.lease_id))
+        verify(!geometry.ok, "Unsupported transforms must be rejected instead of guessed")
+        cleanup()
+    }
+
+    function test_T035_cross_origin_frame_scopes_only_its_outer_surface() {
+        load("cross-origin-surface.html")
+        var surfaces = selectorSnapshot("surfaces", "merge", [], "89abcdef01234567")
+        var candidates = evaluate(BrowserScripts.hintCollector("surfaces", false, surfaces))
+        var frameSurface = candidates.candidates.filter(function(item) {
+            return item.frame_path === "0"
+                    && (item.kind === "surface" || item.kind === "focusable-surface")
+        })[0]
+        verify(frameSurface, "The parent can identify the outer iframe surface")
+        verify(frameSurface.kind === "surface" || frameSurface.kind === "focusable-surface")
+        compare(frameSurface.frame_path, "0")
+        verify(!candidates.candidates.some(function(item) {
+            return item.frame_path !== "0"
+        }), "Cross-origin child contents are not collected semantically")
+        var request = {
+            lease_id: "cross-origin-surface-grid",
+            element_id: frameSurface.element_id,
+            frame_path: frameSurface.frame_path,
+            kind: frameSurface.kind,
+            selector_revision: surfaces.selector_revision,
+            configuration_revision: 0,
+            parent_scope_lease_id: null
+        }
+        var receipt = evaluate(BrowserScripts.hintAcquireScopeLease(
+                                  request, frameSurface, surfaces))
+        verify(receipt && receipt.ok,
+               "Grid may scope raw navigation to the parent-owned iframe surface")
+        verify(evaluate(BrowserScripts.hintStopTracking(request.lease_id)))
+        var geometry = evaluate(BrowserScripts.spatialScopeGeometry(request.lease_id))
+        verify(geometry && geometry.ok,
+               "Outer iframe content geometry does not require cross-origin access: "
+               + JSON.stringify(geometry))
+        var expected = evaluate("(function(){const frame=document.getElementById('cross-frame'),r=frame.getBoundingClientRect();return {x:r.left+frame.clientLeft,y:r.top+frame.clientTop,width:frame.clientWidth,height:frame.clientHeight};})()")
+        compare(Math.abs(geometry.geometry.x - expected.x) < 0.75, true)
+        compare(Math.abs(geometry.geometry.y - expected.y) < 0.75, true)
+        compare(Math.abs(geometry.geometry.width - expected.width) < 0.75, true)
+        compare(Math.abs(geometry.geometry.height - expected.height) < 0.75, true)
+        cleanup()
+    }
+
+    function test_T039_scope_scroll_revision_and_reflow_are_observable() {
+        load("geometry-spaces.html")
+        var regions = selectorSnapshot("regions", "merge", [], "0123456789abcdef")
+        var scope = evaluate(BrowserScripts.hintCollector("regions", false, regions))
+                      .candidates.filter(function(item) {
+                          return item.text === "Nested scoped region"
+                      })[0]
+        verify(scope)
+        var request = {
+            lease_id: "scope-lifecycle-geometry",
+            element_id: scope.element_id,
+            frame_path: scope.frame_path,
+            kind: scope.kind,
+            selector_revision: regions.selector_revision,
+            configuration_revision: 0,
+            parent_scope_lease_id: null
+        }
+        verify(evaluate(BrowserScripts.hintAcquireScopeLease(request, scope, regions)).ok)
+        verify(evaluate(BrowserScripts.hintStopTracking(request.lease_id)))
+        var before = evaluate(BrowserScripts.spatialScopeGeometry(request.lease_id))
+        verify(before.ok, "Initial scope geometry should be available: "
+               + JSON.stringify(before))
+        var scrollSetup = evaluate("(function(){const scope=document.getElementById('outer-frame').contentDocument"
+                 + ".getElementById('inner-frame').contentDocument.getElementById('scope');"
+                 + "scope.scrollTop=24;return {scrollTop:scope.scrollTop,max:scope.scrollHeight-scope.clientHeight};})()")
+        verify(scrollSetup.scrollTop > 0 && scrollSetup.max > 0,
+               "The fixture scope has a real scrollable range")
+        var scrollEvent = evaluate("(function(){const scope=document.getElementById('outer-frame').contentDocument"
+                 + ".getElementById('inner-frame').contentDocument.getElementById('scope');"
+                 + "scope.dispatchEvent(new Event('scroll'));return window.__ferric_browserHintState.scopeLease.scrollRevision;})()")
+        verify(scrollEvent > before.scroll_revision,
+               "Scroll events on the exact scope advance its revision")
+        var scrolled = evaluate(BrowserScripts.spatialScopeGeometry(request.lease_id))
+        evaluate("document.getElementById('outer-frame').contentDocument"
+                 + ".getElementById('inner-frame').contentDocument.getElementById('scope')"
+                 + ".style.left='48px';true")
+        var reflowed = evaluate(BrowserScripts.spatialScopeGeometry(request.lease_id))
+        verify(reflowed.ok)
+        verify(Math.abs(reflowed.geometry.x - scrolled.geometry.x) > 1,
+               "A reflow changes the fresh scope projection")
         cleanup()
     }
 

@@ -18,6 +18,10 @@ FerricBrowserRuntimeRequests {
     readonly property alias commandSurfaceObject: commandSurface
     readonly property alias searchSurfaceObject: searchSurface
     readonly property alias attachedDevToolsLoaderObject: attachedDevToolsLoader
+    property alias spatialAdapterEnabled: spatialPointerAdapter.enabled
+    property alias spatialAdapterTargetItem: spatialPointerAdapter.targetItem
+    property alias spatialAdapterSurfaceSerial: spatialPointerAdapter.surfaceSerial
+    property alias spatialAdapterSurfaceRevision: spatialPointerAdapter.surfaceRevision
 
     Component {
         id: popupWindowComponent
@@ -1299,10 +1303,74 @@ GridLayout {
         }
     }
 
+    property bool spatialScopeGeometryPending: false
+
+    function releaseSpatialScopeLease() {
+        spatialScopeGeometryTimer.stop()
+        spatialScopeDispatchTimer.stop()
+        spatialScopeGeometryPending = false
+        var leaseId = String(window.activeSpatialScopeLeaseId || "")
+        var view = window.activeSpatialScopeView
+        window.activeSpatialScopeLeaseId = ""
+        window.activeSpatialScopeView = null
+        if (leaseId.length > 0 && view) {
+            window.runBrowserScript(
+                        view, BrowserScripts.hintClearScopeLease(leaseId), function(value) {})
+        }
+    }
+
+    Timer {
+        id: spatialScopeGeometryTimer
+        interval: 100
+        repeat: true
+        running: browserUi.spatial_visible
+                 && browserUi.spatial_selecting
+                 && browserUi.spatial_scope_lease_id.length > 0
+        onTriggered: {
+            if (window.spatialScopeGeometryPending) return
+            var view = window.activeSpatialScopeView
+            var leaseId = String(browserUi.spatial_scope_lease_id || "")
+            var sessionId = String(browserUi.spatial_session_id || "")
+            if (!view || leaseId.length === 0 || view !== window.activeWebView()
+                    || spatialPointerAdapter.targetItem !== view) {
+                browserUi.spatial_invalidated("target-changed")
+                return
+            }
+            window.spatialScopeGeometryPending = true
+            var started = window.runBrowserScript(
+                        view, BrowserScripts.spatialScopeGeometry(leaseId), function(value) {
+                window.spatialScopeGeometryPending = false
+                if (!browserUi.spatial_visible
+                        || String(browserUi.spatial_session_id || "") !== sessionId
+                        || String(browserUi.spatial_scope_lease_id || "") !== leaseId
+                        || window.activeSpatialScopeView !== view) {
+                    return
+                }
+                browserUi.spatial_scope_geometry_validated(
+                            "", JSON.stringify(value || {}),
+                            spatialPointerAdapter.surfaceSerial,
+                            spatialPointerAdapter.surfaceRevision,
+                            view.width, view.height, Number(view.zoomFactor))
+            })
+            if (!started) {
+                window.spatialScopeGeometryPending = false
+                browserUi.spatial_invalidated("renderer-unavailable")
+            }
+        }
+    }
+
+    Timer {
+        id: spatialScopeDispatchTimer
+        interval: 250
+        repeat: false
+        onTriggered: browserUi.spatial_invalidated("renderer-unavailable")
+    }
+
     Connections {
         target: browserUi
         function onSpatial_visibleChanged() {
             if (!browserUi.spatial_visible) {
+                window.releaseSpatialScopeLease()
                 return
             }
             var sessionId = browserUi.spatial_session_id
@@ -1339,6 +1407,50 @@ GridLayout {
             // assign here: that would replace the QML binding.
             if (!spatialPointerAdapter.enabled) {
                 browserUi.spatial_invalidated("dispatch-rejected")
+                return
+            }
+            var scopeLeaseId = String(request.scope_lease_id || "")
+            if (scopeLeaseId.length > 0) {
+                var view = window.activeSpatialScopeView
+                var sessionId = String(request.session_id || "")
+                var zoomFactor = view ? Number(view.zoomFactor) : NaN
+                if (!view || view !== window.activeWebView()
+                        || spatialPointerAdapter.targetItem !== view
+                        || scopeLeaseId !== String(browserUi.spatial_scope_lease_id || "")) {
+                    browserUi.spatial_invalidated("target-changed")
+                    return
+                }
+                spatialScopeDispatchTimer.restart()
+                var started = window.runBrowserScript(
+                            view, BrowserScripts.spatialScopeGeometry(scopeLeaseId), function(value) {
+                    spatialScopeDispatchTimer.stop()
+                    if (!browserUi.spatial_visible
+                            || String(browserUi.spatial_session_id || "") !== sessionId
+                            || String(browserUi.spatial_scope_lease_id || "") !== scopeLeaseId
+                            || window.activeWebView() !== view
+                            || window.activeSpatialScopeView !== view
+                            || spatialPointerAdapter.targetItem !== view
+                            || browserUi.mode !== "grid"
+                            || Number(view.zoomFactor) !== zoomFactor) {
+                        browserUi.spatial_invalidated("target-changed")
+                        return
+                    }
+                    if (!browserUi.spatial_scope_geometry_validated(
+                                request.request_id, JSON.stringify(value || {}),
+                                spatialPointerAdapter.surfaceSerial,
+                                spatialPointerAdapter.surfaceRevision,
+                                view.width, view.height, Number(view.zoomFactor))) {
+                        return
+                    }
+                    spatialPointerAdapter.dispatch(
+                                request.request_id, request.session_id,
+                                request.serial, request.revision,
+                                Number(request.x), Number(request.y), request.action)
+                })
+                if (!started) {
+                    spatialScopeDispatchTimer.stop()
+                    browserUi.spatial_invalidated("renderer-unavailable")
+                }
                 return
             }
             spatialPointerAdapter.dispatch(

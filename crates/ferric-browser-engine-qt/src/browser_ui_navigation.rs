@@ -1,5 +1,4 @@
 use super::browser_ui_hint_pointer::HintPointerAction;
-use super::browser_ui_hint_selection::local_hint_owner;
 use super::hint_payload::validate_hint_candidates_for_family;
 use super::hint_policy::{
     HintOptions, LocalInteractionOperation, LocalInteractionOwner, parse_hint_options,
@@ -7,81 +6,11 @@ use super::hint_policy::{
 use super::{
     CommandRegistry, CoreHintAutoFollow, CxxQtType, Event, HintInteraction, HintInteractionInput,
     HintInteractionOutcome, HintSession, HintTarget, Mode, ParsedCommand, Pin, QString, Value,
-    assign_labels_with_options, current_target, hint_json, hint_kind_name, parse_hint_payload,
-    qobject, refresh_labels,
+    assign_labels_with_options, current_target, hint_json, parse_hint_payload, qobject,
+    refresh_labels,
 };
 
 use ferric_browser_config::{Config, HintSelectorFamily, resolve_hint_selector_policies};
-
-#[derive(Clone, Copy)]
-struct HintScopeHandoffContext<'a> {
-    current_owner: Option<LocalInteractionOwner>,
-    current_scope_lease_id: Option<&'a str>,
-    current_selector_policy_revision: Option<u64>,
-    current_session: Option<&'a HintSession>,
-    current_family: &'a str,
-    current_mode: Mode,
-}
-
-fn hint_scope_handoff_is_valid(
-    binding: &super::hint_policy::HintScopeBinding,
-    lease_id: &str,
-    receipt: &Value,
-    context: HintScopeHandoffContext<'_>,
-) -> bool {
-    let parent_scope_id = binding.parent_scope_lease_id.as_deref();
-    let receipt_parent_matches = match (parent_scope_id, receipt.get("parent_scope_lease_id")) {
-        (None, Some(Value::Null)) => true,
-        (Some(expected), Some(Value::String(actual))) => expected == actual,
-        _ => false,
-    };
-    let receipt_fields_match = receipt.as_object().is_some_and(|object| {
-        const RECEIPT_FIELDS: &[&str] = &[
-            "ok",
-            "lease_id",
-            "element_id",
-            "frame_path",
-            "kind",
-            "selector_revision",
-            "configuration_revision",
-            "parent_scope_lease_id",
-        ];
-        object.len() == RECEIPT_FIELDS.len()
-            && object
-                .keys()
-                .all(|key| RECEIPT_FIELDS.contains(&key.as_str()))
-            && receipt.get("ok") == Some(&Value::Bool(true))
-            && receipt.get("lease_id").and_then(Value::as_str) == Some(lease_id)
-            && receipt.get("element_id").and_then(Value::as_u64)
-                == Some(u64::from(binding.element_id))
-            && receipt.get("frame_path").and_then(Value::as_str)
-                == Some(binding.frame_path.as_str())
-            && receipt.get("kind").and_then(Value::as_str) == Some(hint_kind_name(binding.kind))
-            && receipt.get("selector_revision").and_then(Value::as_str)
-                == Some(format!("{:016x}", binding.selector_policy_revision).as_str())
-            && receipt
-                .get("configuration_revision")
-                .and_then(Value::as_u64)
-                == Some(binding.owner.configuration_revision)
-            && receipt_parent_matches
-    });
-    let current_scope_matches = context.current_scope_lease_id == parent_scope_id;
-    let source_session_matches = context.current_session.is_some_and(|session| {
-        session.id == binding.owner.session
-            && session.target == binding.owner.target
-            && session.configuration_revision == binding.owner.configuration_revision
-            && session.selector_policy_revision == binding.selector_policy_revision
-    });
-
-    receipt_fields_match
-        && context.current_owner == Some(binding.owner)
-        && current_scope_matches
-        && context.current_selector_policy_revision == Some(binding.selector_policy_revision)
-        && source_session_matches
-        && context.current_family == "regions"
-        && context.current_mode == Mode::Hint
-        && lease_id == binding.lease_id
-}
 
 pub(super) fn effective_hint_selector_snapshot(
     config_json: &str,
@@ -161,6 +90,7 @@ impl qobject::BrowserUi {
             this.hint_pointer_action = None;
             this.hint_pointer_source = None;
             this.pending_hint_palette_permit = None;
+            this.pending_grid_scope_permit = None;
             this.hint_local_interaction_authority
                 .clear_session_requests();
         }
@@ -236,6 +166,7 @@ impl qobject::BrowserUi {
             this.hint_consumed.clear();
             this.hint_interaction = None;
             this.pending_hint_palette_permit = None;
+            this.pending_grid_scope_permit = None;
             this.hint_local_interaction_authority
                 .clear_session_requests();
         }
@@ -303,6 +234,7 @@ impl qobject::BrowserUi {
             this.hint_pointer_action = None;
             this.hint_pointer_source = None;
             this.pending_hint_palette_permit = None;
+            this.pending_grid_scope_permit = None;
             this.hint_local_interaction_authority
                 .clear_session_requests();
         }
@@ -581,6 +513,7 @@ impl qobject::BrowserUi {
             this.hint_interaction = Some(interaction);
             this.hint_values = QString::from(result["hints"].to_string());
             this.pending_hint_palette_permit = None;
+            this.pending_grid_scope_permit = None;
             this.hint_local_interaction_authority
                 .clear_session_requests();
         }
@@ -590,89 +523,6 @@ impl qobject::BrowserUi {
             labeled.len()
         )));
         QString::from(result.to_string())
-    }
-
-    pub(super) fn complete_hint_scope_handoff(
-        mut self: Pin<&mut Self>,
-        lease_id: &QString,
-        receipt_json: &QString,
-    ) -> bool {
-        let lease_id = lease_id.to_string();
-        let receipt = match serde_json::from_str::<Value>(&receipt_json.to_string()) {
-            Ok(Value::Object(receipt)) => Value::Object(receipt),
-            _ => {
-                self.set_status_text(QString::from("Scoped Hint rejected: invalid lease receipt"));
-                return false;
-            }
-        };
-        let Some(binding) = self
-            .as_ref()
-            .rust()
-            .pending_hint_scope_handoff
-            .as_ref()
-            .cloned()
-        else {
-            self.set_status_text(QString::from(
-                "Scoped Hint rejected: no pending local handoff",
-            ));
-            return false;
-        };
-        let browser_binding = self.as_ref();
-        let rust = browser_binding.rust();
-        let current_selector_policy_revision = {
-            let browser_binding = self.as_ref();
-            let rust = browser_binding.rust();
-            super::browser_ui_navigation::effective_hint_selector_snapshot(
-                &rust.config_json.to_string(),
-                &rust.current_url.to_string(),
-                rust.hint_configuration_revision,
-                &rust.hint_family.to_string(),
-            )
-            .ok()
-            .and_then(|snapshot| {
-                snapshot
-                    .get("selector_revision")
-                    .and_then(Value::as_str)
-                    .and_then(|revision| u64::from_str_radix(revision, 16).ok())
-            })
-        };
-        let current_scope_lease_id = rust
-            .active_hint_scope
-            .as_ref()
-            .map(|scope| scope.lease_id.as_str());
-        let current_family = rust.hint_family.to_string();
-        let context = HintScopeHandoffContext {
-            current_owner: local_hint_owner(rust),
-            current_scope_lease_id,
-            current_selector_policy_revision,
-            current_session: rust.hint_session.as_ref(),
-            current_family: &current_family,
-            current_mode: rust.core_mode,
-        };
-        if !hint_scope_handoff_is_valid(&binding, &lease_id, &receipt, context) {
-            self.set_status_text(QString::from("Scoped Hint rejected: lease became stale"));
-            return false;
-        }
-        {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.pending_hint_scope_handoff = None;
-            this.active_hint_scope = Some(binding);
-            this.hint_session = None;
-            this.hint_interaction = None;
-            this.hint_consumed.clear();
-            this.hint_values = QString::default();
-            this.pending_hint_action = None;
-            this.pending_hint_palette_permit = None;
-            this.hint_local_interaction_authority
-                .clear_session_requests();
-        }
-        self.as_mut()
-            .set_hint_options("all", false, "current", None, false, 1);
-        self.as_mut().set_hint_visible(false);
-        self.as_mut()
-            .set_status_text(QString::from("Select a target within the region"));
-        true
     }
 
     pub(super) fn update_hint_interaction(
@@ -846,6 +696,11 @@ mod tests {
     use ferric_browser_config::{HintSelectorMode, HintSelectorPolicy, SiteRule};
     use ferric_browser_core::{DocumentId, HintKind, HintSessionId, IdSource, TabId, WindowId};
 
+    use super::super::browser_ui_scope_handoff::{
+        HintScopeHandoffContext, hint_scope_handoff_is_valid,
+    };
+    use super::super::hint_kind_name;
+    use super::super::hint_policy::HintScopePurpose;
     use super::*;
 
     fn scope_handoff_fixture() -> (
@@ -877,6 +732,7 @@ mod tests {
             configuration_revision,
         };
         let binding = super::super::hint_policy::HintScopeBinding {
+            purpose: super::super::hint_policy::HintScopePurpose::HintWithin,
             lease_id: "hint-scope-current".into(),
             owner,
             element_id: 17,
@@ -1110,6 +966,39 @@ mod tests {
                 current_scope_lease_id: None,
                 ..context
             },
+        ));
+    }
+
+    #[test]
+    fn grid_scope_handoff_is_limited_to_region_and_surface_families() {
+        let (mut binding, session, mut receipt, owner) = scope_handoff_fixture();
+        binding.purpose = HintScopePurpose::GridWithin;
+        binding.kind = HintKind::Surface;
+        binding.parent_scope_lease_id = None;
+        receipt["kind"] = Value::String("surface".into());
+        receipt["parent_scope_lease_id"] = Value::Null;
+        let surface_context = HintScopeHandoffContext {
+            current_owner: Some(owner),
+            current_scope_lease_id: None,
+            current_selector_policy_revision: Some(binding.selector_policy_revision),
+            current_session: Some(&session),
+            current_family: "surfaces",
+            current_mode: Mode::Hint,
+        };
+        assert!(hint_scope_handoff_is_valid(
+            &binding,
+            &binding.lease_id,
+            &receipt,
+            surface_context,
+        ));
+
+        binding.kind = HintKind::Button;
+        receipt["kind"] = Value::String(hint_kind_name(binding.kind).into());
+        assert!(!hint_scope_handoff_is_valid(
+            &binding,
+            &binding.lease_id,
+            &receipt,
+            surface_context,
         ));
     }
 }

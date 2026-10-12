@@ -25,6 +25,7 @@ pub(super) struct LocalInteractionOwner {
 /// actual DOM reference stays in the ApplicationWorld as a WeakRef.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct HintScopeBinding {
+    pub(super) purpose: HintScopePurpose,
     pub(super) lease_id: String,
     pub(super) owner: LocalInteractionOwner,
     pub(super) element_id: u32,
@@ -35,9 +36,16 @@ pub(super) struct HintScopeBinding {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum HintScopePurpose {
+    HintWithin,
+    GridWithin,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum LocalInteractionOperation {
     HintPaletteSelection,
     HintPointerDispatch,
+    GridWithinHandoff,
     #[allow(dead_code)] // Reserved for the scoped Search palette contract.
     SearchPaletteSelection,
 }
@@ -105,6 +113,7 @@ impl LocalInteractionAuthority {
 fn operation_allows_source(operation: LocalInteractionOperation, source: CommandSource) -> bool {
     match operation {
         LocalInteractionOperation::HintPaletteSelection
+        | LocalInteractionOperation::GridWithinHandoff
         | LocalInteractionOperation::SearchPaletteSelection => source == CommandSource::Ui,
         LocalInteractionOperation::HintPointerDispatch => {
             matches!(source, CommandSource::Ui | CommandSource::Keyboard)

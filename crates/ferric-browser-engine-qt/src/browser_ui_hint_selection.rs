@@ -1,4 +1,7 @@
-use super::hint_policy::{HintScopeBinding, LocalInteractionOperation, LocalInteractionOwner};
+use super::browser_ui_scope_handoff::{hint_capabilities_json, known_hint_capability_id};
+use super::hint_policy::{
+    HintScopeBinding, HintScopePurpose, LocalInteractionOperation, LocalInteractionOwner,
+};
 use super::{
     CommandSource, CxxQtType, DispatchTarget, Effect, EngineEffect, Event, HintTarget,
     HintTransport, IpcOpenTarget, IpcRoute, JourneyEdgeKind, Mode, ParsedCommand, Pin, QString,
@@ -8,38 +11,6 @@ use super::{
 };
 
 const HINT_CAPABILITY_ACTION_PREFIX: &str = "hint.capability.";
-
-fn known_hint_capability_id(id: &str) -> bool {
-    use ferric_browser_core::HintKind::{FocusableSurface, Region, ScrollableRegion, Surface};
-
-    [Region, ScrollableRegion, Surface, FocusableSurface]
-        .into_iter()
-        .any(|kind| {
-            ferric_browser_core::hint_capabilities(kind)
-                .iter()
-                .any(|capability| capability.id() == id)
-        })
-}
-
-fn hint_capabilities_json(kind: ferric_browser_core::HintKind) -> Value {
-    Value::Array(
-        ferric_browser_core::hint_capabilities(kind)
-            .iter()
-            .map(|capability| {
-                serde_json::json!({
-                    "id": capability.id(),
-                    "label": capability.label(),
-                    "enabled": matches!(
-                        capability,
-                        ferric_browser_core::HintCapability::SetScrollTarget
-                            | ferric_browser_core::HintCapability::Focus
-                            | ferric_browser_core::HintCapability::HintWithin
-                    )
-                })
-            })
-            .collect(),
-    )
-}
 
 impl qobject::BrowserUi {
     pub(super) fn select_hint_action(
@@ -427,6 +398,7 @@ impl qobject::BrowserUi {
                         let Some(session) = this.hint_session.as_ref() else {
                             return QString::from(r#"{"error":"no-session"}"#);
                         };
+                        let selector_policy_revision = session.selector_policy_revision;
                         if this.active_hint_scope.as_ref().is_some_and(|parent| {
                             parent.owner.target != owner.target
                                 || parent.owner.configuration_revision
@@ -445,12 +417,13 @@ impl qobject::BrowserUi {
                         };
                         this.next_hint_scope_lease_id = next_id;
                         let binding = HintScopeBinding {
+                            purpose: HintScopePurpose::HintWithin,
                             lease_id: format!("hint-scope-{next_id}"),
                             owner,
                             element_id: selected.element_id,
                             frame_path: fresh.frame_path.clone(),
                             kind: selected.kind,
-                            selector_policy_revision: session.selector_policy_revision,
+                            selector_policy_revision,
                             parent_scope_lease_id: this
                                 .active_hint_scope
                                 .as_ref()
@@ -472,6 +445,20 @@ impl qobject::BrowserUi {
                             "parent_scope_lease_id":binding.parent_scope_lease_id,
                         }
                     })
+                }
+                ferric_browser_core::HintCapability::GridWithin
+                    if matches!(
+                        selected.kind,
+                        ferric_browser_core::HintKind::Region
+                            | ferric_browser_core::HintKind::ScrollableRegion
+                            | ferric_browser_core::HintKind::Surface
+                            | ferric_browser_core::HintKind::FocusableSurface
+                    ) =>
+                {
+                    match self.as_mut().begin_grid_scope_handoff(&selected, &fresh) {
+                        Ok(result) => result,
+                        Err(error) => return error,
+                    }
                 }
                 ferric_browser_core::HintCapability::SetScrollTarget
                     if selected.kind == ferric_browser_core::HintKind::ScrollableRegion =>
@@ -1001,7 +988,9 @@ pub(super) fn local_hint_owner(rust: &super::BrowserUiRust) -> Option<LocalInter
 
 #[cfg(test)]
 mod tests {
-    use super::{hint_capabilities_json, known_hint_capability_id};
+    use super::super::browser_ui_scope_handoff::{
+        hint_capabilities_json, known_hint_capability_id,
+    };
     use ferric_browser_core::HintKind;
 
     #[test]
@@ -1014,7 +1003,7 @@ mod tests {
         assert_eq!(regions[1]["id"], "search-within");
         assert_eq!(regions[1]["enabled"], false);
         assert_eq!(regions[2]["id"], "grid-within");
-        assert_eq!(regions[2]["enabled"], false);
+        assert_eq!(regions[2]["enabled"], true);
         assert_eq!(regions[3]["id"], "set-scroll-target");
         assert_eq!(regions[3]["enabled"], true);
 
@@ -1022,7 +1011,7 @@ mod tests {
         let surface = surface.as_array().expect("capability array");
         assert_eq!(surface.len(), 2);
         assert_eq!(surface[0]["id"], "grid-within");
-        assert_eq!(surface[0]["enabled"], false);
+        assert_eq!(surface[0]["enabled"], true);
         assert_eq!(surface[1]["id"], "focus");
         assert_eq!(surface[1]["enabled"], true);
 
@@ -1031,7 +1020,7 @@ mod tests {
     }
 
     #[test]
-    fn hint_within_is_available_only_for_region_kinds() {
+    fn scoped_actions_are_available_only_for_region_and_surface_kinds() {
         let region = hint_capabilities_json(HintKind::Region);
         assert_eq!(region[0]["id"], "hint-within");
         assert_eq!(region[0]["enabled"], true);

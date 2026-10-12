@@ -281,6 +281,10 @@ function hintClearScopeLease(scopeLeaseId) {
     return interactionScript("hintClearScopeLease", [scopeLeaseId])
 }
 
+function spatialScopeGeometry(scopeLeaseId) {
+    return interactionScript("spatialScopeGeometry", [scopeLeaseId])
+}
+
 function hintFresh(candidate, selectorSnapshot) {
     return interactionScript("hintFresh", [candidate, selectorSnapshot])
 }

@@ -472,6 +472,8 @@ TestCase {
                 id: spatialGridModel
                 property bool spatial_visible: true
                 property bool spatial_selecting: true
+                property real spatial_viewport_width: 300
+                property real spatial_viewport_height: 240
                 property real spatial_root_width: 300
                 property real spatial_root_height: 240
                 property real spatial_current_x: 0
@@ -890,6 +892,22 @@ TestCase {
 
         fixture.gridModel.spatial_selecting = false
         tryCompare(fixture.gridItem, "visible", false)
+    }
+
+    function test_spatial_grid_maps_nonzero_scope_into_full_view() {
+        var fixture = createTemporaryObject(spatialGridFixture,
+                                            testWindow.contentItem)
+        verify(fixture)
+        fixture.gridModel.spatial_viewport_width = 600
+        fixture.gridModel.spatial_viewport_height = 480
+        fixture.gridModel.spatial_current_x = 120
+        fixture.gridModel.spatial_current_y = 72
+        fixture.gridModel.spatial_current_width = 240
+        fixture.gridModel.spatial_current_height = 192
+        compare(fixture.gridItem.cx, 60)
+        compare(fixture.gridItem.cy, 36)
+        compare(fixture.gridItem.cw, 120)
+        compare(fixture.gridItem.ch, 96)
     }
 
     function test_context_accent_matching_surface_is_readable() {

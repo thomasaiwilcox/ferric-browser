@@ -21,10 +21,10 @@ Item {
                             : "Keyboard-controlled spatial navigation. Press question mark for help or Escape to cancel."
     Accessible.ignored: !visible
 
-    readonly property real sx: browserUi && browserUi.spatial_root_width > 0
-                               ? width / browserUi.spatial_root_width : 1
-    readonly property real sy: browserUi && browserUi.spatial_root_height > 0
-                               ? height / browserUi.spatial_root_height : 1
+    readonly property real sx: browserUi && browserUi.spatial_viewport_width > 0
+                               ? width / browserUi.spatial_viewport_width : 1
+    readonly property real sy: browserUi && browserUi.spatial_viewport_height > 0
+                               ? height / browserUi.spatial_viewport_height : 1
     readonly property real cx: browserUi ? browserUi.spatial_current_x * sx : 0
     readonly property real cy: browserUi ? browserUi.spatial_current_y * sy : 0
     readonly property real cw: browserUi ? browserUi.spatial_current_width * sx : 0
