@@ -28,8 +28,8 @@
     },
     {
       "id": "S04",
-      "status": "not_started",
-      "evidence": null,
+      "status": "implemented_unqualified",
+      "evidence": "evidence/S04.json",
       "capability_decision": null
     },
     {
