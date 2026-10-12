@@ -1,0 +1,58 @@
+   Compiling ferric-browser-config v0.1.0 (/home/tom/Projects/RustBrowser/crates/ferric-browser-config)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.58s
+     Running unittests src/lib.rs (target/debug/deps/ferric_browser_config-c56defb1320271db)
+
+running 44 tests
+test tests::builtin_theme_meets_wcag_aa_for_assessed_chrome_pairs ... ok
+test tests::action_targets_are_typed_bounded_and_placeholder_safe ... ok
+test tests::auto_theme_prefers_current_omarchy_path_and_explicit_path_wins ... ok
+test tests::context_route_validation_rejects_ambiguous_patterns ... ok
+test tests::context_route_validation_rejects_unknown_entry_points_and_conflicts ... ok
+test tests::context_document_validates_metadata_and_route_references ... ok
+test tests::blocking_bypass_sites_are_validated_and_runtime_overridable ... ok
+test tests::context_routes_use_narrow_host_port_path_and_entry_point_matching ... ok
+test tests::defaults_are_the_starter_configuration ... ok
+test tests::imperfect_user_theme_is_reported_without_being_rejected ... ok
+test tests::link_cleaning_updates_require_explicit_https_source_and_pinned_checksum ... ok
+test tests::contexts_save_round_trips_validated_routes_atomically ... ok
+test tests::includes_merge_in_order_and_reject_cycles ... ok
+test tests::locked_insert_bindings_validate_and_survive_runtime_overrides ... ok
+test tests::hint_configuration_is_defaulted_and_bounded ... ok
+test tests::omarchy_commit_metadata_accepts_only_bounded_git_refs ... ok
+test tests::one_key_mode_supports_bindings_but_not_automatic_entry ... ok
+test tests::proxy_target_policy_is_typed_opt_in_and_uses_site_precedence ... ok
+test tests::profiles_reject_duplicate_defaults_unknown_keys_and_site_rules ... ok
+test tests::rejects_unknown_keys_and_unsafe_search_templates ... ok
+test tests::reload_keeps_last_good_candidate_on_failure ... ok
+test tests::remote_suggestions_are_rejected_without_a_provider ... ok
+test tests::reload_transaction_applies_immediate_values_and_reports_pending_values ... ok
+test tests::profiles_load_selects_one_default_and_applies_typed_overrides ... ok
+test tests::runtime_override_unset_preserves_lower_layer_and_rejects_bad_types ... ok
+test tests::semantic_theme_tokens_use_spec_defaults_and_accept_alpha ... ok
+test tests::setting_registry_declares_metadata_for_static_and_dynamic_keys ... ok
+test tests::runtime_site_rules_round_trip_override_and_unset ... ok
+test tests::setting_registry_resolves_static_and_dynamic_settings ... ok
+test tests::setting_registry_entries_are_unique_and_complete ... ok
+test tests::runtime_override_layers_apply_in_documented_precedence_order ... ok
+test tests::site_rules_match_in_priority_and_source_order ... ok
+test tests::runtime_overrides_round_trip_atomically_and_apply_by_key ... ok
+test tests::site_patterns_normalize_scheme_host_port_and_path ... ok
+test tests::site_rules_reject_unsafe_or_unknown_settings ... ok
+test tests::site_scope_capability_is_explicit_and_bounded ... ok
+test tests::statusbar_visibility_accepts_qutebrowser_policies_and_legacy_command_alias ... ok
+test tests::spellcheck_languages_are_bounded_bcp47_tags ... ok
+test tests::tools_editor_requires_one_complete_file_argument ... ok
+test tests::theme_palette_rejects_invalid_colors ... ok
+test tests::validates_binding_layers_before_commit ... ok
+test tests::v3_documents_require_an_explicit_schema_marker ... ok
+test tests::theme_palette_import_is_data_only_and_uses_deterministic_fallbacks ... ok
+test tests::validates_exact_profile_permission_rules ... ok
+
+test result: ok. 44 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+   Doc-tests ferric_browser_config
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
