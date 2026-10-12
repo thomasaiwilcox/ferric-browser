@@ -1,0 +1,241 @@
+{
+  "schema_version": 1,
+  "slice_id": "S08",
+  "status": "implemented_unqualified",
+  "commit": "063479624550e788b8a04297742d1f3672b71eae",
+  "environment": {
+    "os": "Linux 7.2.3-arch1-3 x86_64",
+    "qt": "6.11.2",
+    "build": "Rust dev/test with local Qt 6.11.2 and GCC 16; offline workspace checks",
+    "native_test": "Qt Quick/WebEngine offscreen fixture; CTest native_insert executable",
+    "wayland": "WAYLAND_DISPLAY=wayland-1 was present; no Mixed-specific Wayland routing test was run",
+    "scope": "Local config, policy, QML dispatch and native gesture ownership; no physical keyboard or IME qualification"
+  },
+  "changed_files": [
+    "Cargo.lock",
+    "crates/ferric-browser-config/Cargo.toml",
+    "crates/ferric-browser-config/src/browser_config.rs",
+    "crates/ferric-browser-config/src/lib.rs",
+    "crates/ferric-browser-config/src/settings.rs",
+    "crates/ferric-browser-config/src/tests.rs",
+    "crates/ferric-browser-config/src/validation.rs",
+    "crates/ferric-browser-core/src/input.rs",
+    "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeBase.qml",
+    "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeSurface.qml",
+    "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml",
+    "crates/ferric-browser-engine-qt/src/browser_key_router.cpp",
+    "crates/ferric-browser-engine-qt/src/browser_key_router.h",
+    "crates/ferric-browser-engine-qt/src/browser_ui_configuration.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_profile_setup.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_query_bindings.rs",
+    "crates/ferric-browser-engine-qt/src/lib.rs",
+    "crates/ferric-browser-engine-qt/src/mixed_policy_runtime.rs",
+    "crates/ferric-browser-engine-qt/src/tests/presentation_boundaries.rs",
+    "crates/ferric-browser-engine-qt/tests/native-insert/tst_native_insert.cpp",
+    "docs/implementation/keyboard_interaction-v03/evidence/S08-plan.md",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S08/config-core-tests.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S08/docs-generation.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S08/mixed-policy-engine-tests.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S08/xtask-check.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S08/xtask-engine.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S08/clippy.log",
+    "docs/user/configuration.md"
+  ],
+  "baseline_comparison": null,
+  "test_results": [
+    {
+      "test_id": "T021",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo test -p ferric-browser-config -p ferric-browser-core --locked --offline",
+      "commit": "063479624550e788b8a04297742d1f3672b71eae",
+      "log": "evidence/logs/S08/config-core-tests.log",
+      "observations": [
+        "45 config tests and 130 core tests passed.",
+        "The config tests reject invalid, duplicate, reserved, sequenced and 65-distinct-key lists at global/site scope; the core suite covers logical token parity, precedence, list replacement, pending count/keychain ownership and atomic policy errors."
+      ]
+    },
+    {
+      "test_id": "T021",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo test -p ferric-browser-engine-qt --locked --offline mixed_explain_keychain_tests",
+      "commit": "063479624550e788b8a04297742d1f3672b71eae",
+      "log": "evidence/logs/S08/mixed-policy-engine-tests.log",
+      "observations": [
+        "binding-explain parsing preserves named Ctrl+f and a standalone mapped digit, and still parses count-prefixed and comma-separated keychains."
+      ]
+    },
+    {
+      "test_id": "T022",
+      "level": "native-qt-offscreen",
+      "result": "not_run",
+      "command": "cargo xtask test engine was run; its native fixture tests gesture ownership but does not exercise the real BrowserUi/QML Mixed route for /, ?, f, Ctrl+f, reserved controls and the unmapped baseline as one end-to-end case.",
+      "commit": "063479624550e788b8a04297742d1f3672b71eae",
+      "log": null,
+      "reason": "The available offscreen fixture supplies a test callback for owner decisions. QML route ordering and primary/secondary wiring have source-boundary coverage, but the full special-key ownership criterion is not proven end to end."
+    },
+    {
+      "test_id": "T022",
+      "level": "native-wayland",
+      "result": "not_run",
+      "command": "No Mixed-specific Wayland routing test was run.",
+      "commit": "063479624550e788b8a04297742d1f3672b71eae",
+      "log": null,
+      "reason": "A Wayland session was present, but there was no tested end-to-end Mixed route with physical key delivery or IME qualification."
+    },
+    {
+      "test_id": "T023",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask check --locked --offline",
+      "commit": "063479624550e788b8a04297742d1f3672b71eae",
+      "log": "evidence/logs/S08/xtask-check.log",
+      "observations": [
+        "All workspace tests passed, including the pure first-key decision tests and the engine test that feeds the real BindingResolver and confirms an active g keychain or count keeps a page-mapped i browser-owned.",
+        "A policy revision resets the pending resolver and does not emit buffered text to the page; a later fresh decision uses the effective policy."
+      ]
+    },
+    {
+      "test_id": "T023",
+      "level": "native-qt-offscreen",
+      "result": "not_run",
+      "command": "cargo xtask test engine was run; no native fixture combines the live Rust count/keychain resolver with the QML Mixed route.",
+      "commit": "063479624550e788b8a04297742d1f3672b71eae",
+      "log": null,
+      "reason": "Pending-sequence semantics are covered in pure policy/resolver tests, while the native fixture tests physical gesture ownership independently."
+    },
+    {
+      "test_id": "T024",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "063479624550e788b8a04297742d1f3672b71eae",
+      "log": "evidence/logs/S08/xtask-engine.log",
+      "observations": [
+        "The native_insert CTest executable passed. Its production event-filter regressions cover page-owned presses/repeats/releases across policy and epoch changes, overlapping keys, fresh-press replacement, and browser-owned repeats after a page mapping change.",
+        "CTest reports one executable; the test cases inside it passed with no failure output."
+      ]
+    },
+    {
+      "test_id": "T025",
+      "level": "qml-component",
+      "result": "passed",
+      "command": "cargo xtask check --locked --offline",
+      "commit": "063479624550e788b8a04297742d1f3672b71eae",
+      "log": "evidence/logs/S08/xtask-check.log",
+      "observations": [
+        "All 113 QML/WebEngine tests passed. Source-boundary tests assert the shared Mixed route precedes QML special handling and both windows pass their own native router into the common handler."
+      ]
+    },
+    {
+      "test_id": "T025",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "063479624550e788b8a04297742d1f3672b71eae",
+      "log": "evidence/logs/S08/xtask-engine.log",
+      "observations": [
+        "The existing native Insert/pass-through/recovery and gesture-owner regression suite passed in the offscreen native_insert fixture."
+      ]
+    },
+    {
+      "test_id": "T027",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "063479624550e788b8a04297742d1f3672b71eae",
+      "log": "evidence/logs/S08/xtask-engine.log",
+      "observations": [
+        "The held page-owner and browser-owner cases retain their initial route through policy/epoch changes. The fixture does not verify a fresh physical gesture after changing focus to a different WebEngine target."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask check --locked --offline",
+      "commit": "063479624550e788b8a04297742d1f3672b71eae",
+      "log": "evidence/logs/S08/xtask-check.log",
+      "observations": [
+        "The complete workspace Rust test set passed, including 410 engine unit tests and all config/core tests."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask check --locked --offline",
+      "commit": "063479624550e788b8a04297742d1f3672b71eae",
+      "log": "evidence/logs/S08/xtask-check.log",
+      "observations": [
+        "All 113 QML/WebEngine tests passed."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "063479624550e788b8a04297742d1f3672b71eae",
+      "log": "evidence/logs/S08/xtask-engine.log",
+      "observations": [
+        "The native_insert CTest executable passed with 100% of reported tests passing."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask docs and cargo xtask check --locked --offline",
+      "commit": "063479624550e788b8a04297742d1f3672b71eae",
+      "log": "evidence/logs/S08/xtask-check.log",
+      "observations": [
+        "The setting registry exposes input.shortcut_policy and input.page_keys at global/profile/site scope, and generated configuration documentation includes both rows.",
+        "Workspace contract, release artifact manifest (38 inputs), and license policy (11 locked dependencies) checks passed."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo clippy --workspace --all-targets --locked --offline -- -D warnings",
+      "commit": "063479624550e788b8a04297742d1f3672b71eae",
+      "log": "evidence/logs/S08/clippy.log",
+      "observations": [
+        "Strict workspace Clippy completed successfully with warnings denied."
+      ]
+    }
+  ],
+  "capability_decision": null,
+  "capability_report": null,
+  "review_kind": "self-review",
+  "scope_amendments": [
+    {
+      "path": "crates/ferric-browser-config/Cargo.toml and crates/ferric-browser-config/src/settings.rs",
+      "reason": "Reuse S07's validated policy model in config validation and publish the two typed settings through the existing registry required by the S08 configuration contract."
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/src/lib.rs, browser_ui_configuration.rs, and browser_ui_profile_setup.rs",
+      "reason": "Register the synchronous route on BrowserUi, resolve the policy at the atomic configuration/profile boundaries, and cancel only incomplete browser sequences when the effective policy changes."
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/src/browser_ui_query_bindings.rs",
+      "reason": "Extend the existing binding-explain query with the same effective owner, site-rule/source provenance, reservations, QML-special reason, and suppressed binding prefixes required by C10."
+    }
+  ],
+  "remaining_risks": [
+    "The end-to-end QML-special routing test for /, ?, f, Ctrl+f, reserved controls and the unconfigured baseline is not proven by the available offscreen fixture.",
+    "No Mixed-specific Wayland routing, physical-keyboard or IME qualification was run.",
+    "Native tests verify held gesture ownership across policy/epoch changes but do not switch focus to a different WebEngine target and test the next fresh physical gesture.",
+    "binding-explain token parsing and source boundaries are unit/source tested; the final JSON provenance response is not exercised through a live BrowserUi IPC call."
+  ],
+  "not_run_reasons": [
+    "T022 native-qt-offscreen: no current fixture composes the real BrowserUi policy invokable, shared QML special-key handler and native page delivery for all required tokens.",
+    "T022 native-wayland: no Mixed-specific Wayland test was run even though the compositor session was available; no physical keyboard or IME claim is made.",
+    "T023 native-qt-offscreen: no current fixture feeds an active Rust count/keychain through the integrated QML Mixed route and checks non-replay natively."
+  ],
+  "next_ready_slices": [
+    "S06"
+  ]
+}
