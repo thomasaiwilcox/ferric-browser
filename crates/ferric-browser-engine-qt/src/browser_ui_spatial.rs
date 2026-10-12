@@ -454,6 +454,7 @@ impl qobject::BrowserUi {
             SpatialAction::Click(PointerButton::Left) => "left",
             SpatialAction::Click(PointerButton::Right) => "right",
             SpatialAction::Click(PointerButton::Middle) => "middle",
+            SpatialAction::DoubleClick => "double",
         };
         let payload = json!({
             "request_id": request.request_id.to_string(),
@@ -594,6 +595,18 @@ impl qobject::BrowserUi {
                 Some(
                     self.as_mut()
                         .spatial_dispatch_action(SpatialAction::Click(button)),
+                )
+            }
+            "grid-double-click" => {
+                if !arguments.is_empty() {
+                    self.set_status_text(QString::from(
+                        "grid-double-click does not accept arguments",
+                    ));
+                    return Some(false);
+                }
+                Some(
+                    self.as_mut()
+                        .spatial_dispatch_action(SpatialAction::DoubleClick),
                 )
             }
             "grid-hover" => {

@@ -931,6 +931,15 @@ TestCase {
         compare(fixture.gridItem.ch, 96)
     }
 
+    function test_spatial_grid_discloses_unqualified_double_click_gate() {
+        var fixture = createTemporaryObject(spatialGridFixture,
+                                           testWindow.contentItem)
+        verify(fixture)
+        fixture.gridModel.spatial_help_visible = true
+        compare(fixture.gridItem.doubleClickEnabled, false)
+        verify(fixture.gridItem.Accessible.description.indexOf("unavailable") >= 0)
+    }
+
     function test_context_accent_matching_surface_is_readable() {
         var textColor = ChromePresentation.readableTextColor("#313244", "#313244")
         verify(ChromePresentation.contrastRatio(textColor, "#313244") >= 4.5)
@@ -1040,6 +1049,28 @@ TestCase {
         compare(KeyboardPresentation.logicalNormalKeyText({
             key: Qt.Key_V, text: "", modifiers: Qt.ControlModifier | Qt.ShiftModifier
         }), "Ctrl+Shift+v")
+    }
+
+    function test_grid_double_click_shortcut_is_explicit_and_mode_local() {
+        compare(KeyboardPresentation.logicalGridKeyText({
+            key: Qt.Key_Enter, text: "\r", modifiers: Qt.AltModifier
+        }), "Alt+Enter")
+        compare(KeyboardPresentation.logicalGridKeyText({
+            key: Qt.Key_Enter, text: "\r", modifiers: Qt.NoModifier
+        }), "Enter")
+        compare(KeyboardPresentation.logicalGridKeyText({
+            key: Qt.Key_Enter, text: "\r", modifiers: Qt.ShiftModifier
+        }), "Shift+Enter")
+        compare(KeyboardPresentation.logicalGridKeyText({
+            key: Qt.Key_Enter, text: "\r", modifiers: Qt.ControlModifier
+        }), "Ctrl+Enter")
+        compare(KeyboardPresentation.logicalGridKeyText({
+            key: Qt.Key_Enter, text: "\r",
+            modifiers: Qt.AltModifier | Qt.ShiftModifier
+        }), "")
+        compare(KeyboardPresentation.logicalGridKeyText({
+            key: Qt.Key_A, text: "a", modifiers: Qt.NoModifier
+        }), "")
     }
 
     function test_shutdown_decision_is_keyboard_operable() {

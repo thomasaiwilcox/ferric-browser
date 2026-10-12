@@ -14,7 +14,9 @@ active `WebEngineView`'s logical local rectangle into a row-major 3×3 grid.
 Rust owns the history, freshness checks, dispatch transaction, and lifecycle.
 QML receives only a projection and displays a passive overlay. A registered
 `FerricPagePointerAdapter` is the sole pointer-delivery boundary and accepts
-only bounded hover/left/right/middle requests from the owning UI instance.
+bounded hover/left/right/middle requests from the owning UI instance. Its
+double-click sequence is a separate qualification-gated action and defaults
+disabled; see [ADR-0016](ADR-0016-qualification-gated-double-click.md).
 
 Grid commands are local-interactive commands. Keyboard bindings and the direct
 visible command bar may enter or operate the mode; IPC, CLI, userscripts,

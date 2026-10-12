@@ -861,6 +861,86 @@ WebEngineView {
         adapter.setEnabled(false);
         browserJs(browserScript("hintStopTracking()"));
     }
+    // T046: one production-adapter request mirrors Qt's public
+    // Press-Release-Press-DoubleClick-Release sequence and exposes the actual
+    // WebEngine DOM order rather than a two-click JS substitute.
+    void pointerAdapterDoubleClickSequence() {
+        normal();
+        const QString documentUrl = browserJs("location.href").toString();
+        browserJs("window.pointerTrace=[];window.pointerClicks=0;window.pointerDoubles=0;"
+                  "const target=document.createElement('button');target.id='double-target';"
+                  "target.setAttribute('aria-label','Double target');"
+                  // Keep this away from T011's click location so Qt's window-wide
+                  // click counter starts a fresh native sequence in the full suite.
+                  "target.style='position:fixed;left:400px;top:350px;width:180px;height:50px;z-index:100';"
+                  "for(const type of ['pointerdown','mousedown','pointerup','mouseup','click','dblclick'])"
+                  "target.addEventListener(type,event=>{pointerTrace.push({type,detail:event.detail,"
+                  "trusted:event.isTrusted,activation:navigator.userActivation.isActive});"
+                  "if(type==='click')pointerClicks++;if(type==='dblclick')pointerDoubles++;});"
+                  "document.body.append(target);true");
+        QVariantMap snapshot;
+        QTRY_VERIFY(!(snapshot=browserJs(browserScript("hintCollector('buttons')")).toMap())
+                         .value("candidates").toList().isEmpty());
+        QVariantMap candidate;
+        for (const auto &value : snapshot.value("candidates").toList()) {
+            const auto item = value.toMap();
+            if (item.value("text").toString() == "Double target") candidate = item;
+        }
+        QVERIFY(candidate.value("element_id").toInt() > 0);
+        const QString candidateJson = QString::fromUtf8(
+            QJsonDocument::fromVariant(candidate).toJson(QJsonDocument::Compact));
+        const QVariantMap preflight = browserJs(browserScript(
+            "hintPointerPreflight(" + candidateJson + ",640,480)")).toMap();
+        QVERIFY2(preflight.value("ok").toBool(), "retained double-click target should pass preflight");
+
+        FerricPagePointerAdapter adapter;
+        adapter.setTargetWindow(&window);
+        adapter.setTargetItem(view);
+        adapter.setEnabled(true);
+        QVERIFY(!adapter.doubleClickEnabled());
+        QSignalSpy acknowledgements(&adapter, &FerricPagePointerAdapter::dispatchAcknowledged);
+        const QString serial = adapter.surfaceSerial();
+        const QString revision = adapter.surfaceRevision();
+        adapter.dispatch("double-request-unqualified", "double-session-1", serial, revision,
+                         preflight.value("x").toDouble(), preflight.value("y").toDouble(),
+                         "double");
+        QCOMPARE(acknowledgements.size(), 1);
+        QCOMPARE(acknowledgements.first().at(4).toString(), QString("unavailable"));
+        QCOMPARE(browserJs("pointerTrace.length").toInt(), 0);
+
+        adapter.setDoubleClickEnabled(true);
+        adapter.dispatch("double-request-1", "double-session-1", serial, revision,
+                         preflight.value("x").toDouble(), preflight.value("y").toDouble(),
+                         "double");
+        QCOMPARE(acknowledgements.size(), 2);
+        QCOMPARE(acknowledgements.at(1).at(4).toString(), QString("delivered"));
+        QTRY_VERIFY(browserJs("pointerTrace.some(event=>event.type==='dblclick')").toBool());
+        const QVariantList trace = browserJs("pointerTrace").toList();
+        qInfo().noquote() << "T046 Qt/WebEngine double-click event evidence:"
+                          << QJsonDocument::fromVariant(trace).toJson(QJsonDocument::Compact);
+        QStringList types;
+        for (const auto &value : trace) {
+            const QVariantMap event = value.toMap();
+            types.append(event.value("type").toString());
+            QVERIFY(event.value("trusted").toBool());
+            QVERIFY(event.value("activation").toBool());
+        }
+        QCOMPARE(types, QStringList({"pointerdown", "mousedown", "pointerup", "mouseup",
+                                     "click", "pointerdown", "mousedown", "pointerup",
+                                     "mouseup", "click", "dblclick"}));
+        QCOMPARE(browserJs("pointerClicks").toInt(), 2);
+        QCOMPARE(browserJs("pointerDoubles").toInt(), 1);
+        QCOMPARE(browserJs("location.href").toString(), documentUrl);
+
+        adapter.dispatch("double-request-1", "double-session-1", serial, revision,
+                         preflight.value("x").toDouble(), preflight.value("y").toDouble(),
+                         "double");
+        QCOMPARE(acknowledgements.size(), 3);
+        QCOMPARE(acknowledgements.last().at(4).toString(), QString("rejected"));
+        QCOMPARE(browserJs("pointerTrace.length").toInt(), trace.size());
+        adapter.setEnabled(false);
+        browserJs(browserScript("hintStopTracking()"));
+    }
     void ordinaryText() {
         for (bool persistent : {false, true}) {
             enter(persistent);

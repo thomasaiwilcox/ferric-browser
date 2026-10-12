@@ -278,6 +278,7 @@ impl BindingTrie {
                 binding(Mode::Grid, &["Enter"], "grid-click left"),
                 binding(Mode::Grid, &["Shift+Enter"], "grid-click right"),
                 binding(Mode::Grid, &["Ctrl+Enter"], "grid-click middle"),
+                binding(Mode::Grid, &["Alt+Enter"], "grid-double-click"),
                 binding(Mode::Grid, &["Space"], "grid-hover"),
                 binding(Mode::Grid, &["Backspace"], "grid-back"),
                 binding(Mode::Grid, &["0"], "grid-reset"),
@@ -924,5 +925,21 @@ mod tests {
                 "missing qutebrowser-compatible binding {keys:?}"
             );
         }
+    }
+
+    #[test]
+    fn double_click_binding_is_an_explicit_grid_only_chord() {
+        let trie = BindingTrie::default_v1(CommandRegistry::default_v1()).unwrap();
+        let definitions = trie.definitions();
+        let binding = definitions
+            .iter()
+            .find(|binding| binding.mode == Mode::Grid && binding.keys == ["Alt+Enter"])
+            .expect("Grid double-click chord");
+        assert_eq!(binding.command, "grid-double-click");
+        assert!(
+            !definitions
+                .iter()
+                .any(|binding| { binding.mode == Mode::Normal && binding.keys == ["Alt+Enter"] })
+        );
     }
 }

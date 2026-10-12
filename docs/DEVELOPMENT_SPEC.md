@@ -640,7 +640,7 @@ not a privileged WebChannel shared with arbitrary web pages.
 | Command | `:` | Native editable command line and completion | Enter executes; Escape cancels |
 | Search | `/` or `?` | Incremental engine text search | Enter retains match; Escape restores prior state |
 | Hint | `f` or hint command | Label selection/filtering, no text into page | Selection/cancel/navigation |
-| Grid | `:grid` or `;g` | Keyboard-only 3×3 point selection; native click/hover only on explicit commit | Click acknowledgement, Escape, or invalidated page view; hover resets to root and remains in Grid |
+| Grid | `:grid` or `;g` | Keyboard-only 3×3 point selection; explicit native click/hover; qualified double-click request is currently disabled | Click acknowledgement, Escape, or invalidated page view; hover resets to root and remains in Grid |
 | Caret | `v` | Text movement/selection commands | Escape returns normal |
 | Pass-through | `Ctrl-v` from normal | Every key goes to page except reserved escape chord | `Ctrl-Shift-Escape` |
 | Prompt | Browser request | Prompt-specific keys; no page key forwarding | Answer/cancel/invalidated request |
@@ -657,7 +657,10 @@ stuck. Handle autorepeat, dead keys, AltGr, keyboard layout changes, and IME
 composition. IME preedit text is never interpreted as normal-mode commands.
 Physical/scancode bindings are optional; logical key bindings are the default.
 Grid mode additionally consumes auto-repeat and its matching key release, and
-does not forward unsupported modifier combinations to the page.
+does not forward unsupported modifier combinations to the page. `Alt+Enter` is
+reserved in Grid for the explicit, qualification-gated double-click request;
+it is not bound in Normal mode and currently returns unavailable without
+dispatching pointer events.
 
 **INPUT-003 — Editable focus.** User-initiated focus of input, textarea, or
 contenteditable normally enters insert mode. Page autofocus and script-driven
@@ -715,6 +718,13 @@ retarget the session.
 debugging, or desktop-wide injection. Native desktop evidence remains the
 release qualification gate for supported environments.
 
+**GRID-003 — Double-click gate.** `Alt+Enter` creates one local
+`grid-double-click` request. The adapter mirrors Qt's
+press-release-press-double-click-release sequence and does not issue a DOM
+fallback or retry. The runtime gate remains disabled until native Wayland
+qualification passes; offscreen Qt/WebEngine evidence alone does not enable
+the action. See [ADR-0016](architecture/ADR-0016-qualification-gated-double-click.md).
+
 **DISC-003 — Explanation.** `binding-explain` reports tokenization, current and
 requested mode, count eligibility, exact/prefix resolution, timeout behavior,
 winning binding, shadowed layers, conflicts, and reserved-key constraints.
@@ -751,7 +761,7 @@ specified in section 10. Each help entry must show applicable modes and counts.
 | `d` / `u` | Close/undo tab | `r` / `R` | Reload/reload bypass cache |
 | `f` / `F` | Hint current/new foreground tab | `;b` / `;f` / `;r` | Hint background/foreground/rapid background tab |
 | `;g` | Enter Grid mode | `;s` / `;S` | Select a scroll target / return to automatic targeting |
-| Grid controls | `1`–`9` refine, `Enter`/`Shift+Enter`/`Ctrl+Enter` click, `Space` hover |  |  |
+| Grid controls | `1`–`9` refine, `Enter`/`Shift+Enter`/`Ctrl+Enter` click, `Alt+Enter` requests a currently unavailable qualified double-click, `Space` hover |  |  |
 | `yy` / `yt` | Copy URL/title | `pp` / `Pp` | Open clipboard current/new tab (`pP` / `PP` use primary selection) |
 | `/` / `?` | Search forward/backward | `n` / `N` | Next/previous match |
 | `+` / `-` / `=` | Zoom in/out/reset | `m` / `b` | Save/open quickmark prompt |
@@ -878,6 +888,7 @@ commands may be added, but these names and semantics form the target contract.
 | `grid` | Enter keyboard-controlled Grid mode for the active WebEngine view; default Normal binding is `;g` |
 | `grid-refine <1\|2\|3\|4\|5\|6\|7\|8\|9>`, `grid-back`, `grid-reset` | Refine or restore a bounded 3×3 view-local logical rectangle; no automatic click |
 | `grid-click <left\|right\|middle>`, `grid-hover` | Deliver one native pointer action at the current crosshair; hover returns to root selection after acknowledgement |
+| `grid-double-click` | Explicit local Grid action; disabled until native Wayland qualification passes |
 | `grid-help`, `grid-cancel` | Toggle concise help or cancel Grid mode |
 | `mode-enter <normal\|insert\|caret\|passthrough>` | Explicit mode transition |
 | `caret-move <left\|right\|up\|down\|word-next\|word-prev\|line-start\|line-end> [--count N]` | Move/extend caret according to selection state |

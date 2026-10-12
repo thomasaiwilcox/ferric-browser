@@ -129,3 +129,53 @@ function logicalNormalKeyText(event) {
     return printableKey(
                 event.text, event.key, shift, Qt.Key_A, Qt.Key_Z)
 }
+
+// Grid owns its chord set. Alt+Enter is an explicit, qualification-gated
+// double-click request; other Alt/Meta combinations remain unavailable.
+function logicalGridKeyText(event) {
+    if (!event) {
+        return ""
+    }
+    var control = !!(event.modifiers & Qt.ControlModifier)
+    var shift = !!(event.modifiers & Qt.ShiftModifier)
+    var alt = !!(event.modifiers & Qt.AltModifier)
+    var meta = !!(event.modifiers & Qt.MetaModifier)
+    if (meta) {
+        return ""
+    }
+    if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+        if (alt && !control && !shift) {
+            return "Alt+Enter"
+        }
+        if (alt) {
+            return ""
+        }
+        if (control && !shift) {
+            return "Ctrl+Enter"
+        }
+        if (shift && !control) {
+            return "Shift+Enter"
+        }
+        return !control && !shift ? "Enter" : ""
+    }
+    if (alt || control || shift) {
+        if (!alt && !control && shift
+                && event.key === Qt.Key_Slash && event.text === "?") {
+            return "?"
+        }
+        return ""
+    }
+    if (event.key >= Qt.Key_0 && event.key <= Qt.Key_9) {
+        return String.fromCharCode(event.key)
+    }
+    if (event.key === Qt.Key_Space) {
+        return "Space"
+    }
+    if (event.key === Qt.Key_Backspace) {
+        return "Backspace"
+    }
+    if (event.key === Qt.Key_Escape) {
+        return "Escape"
+    }
+    return event.text === "?" ? "?" : ""
+}

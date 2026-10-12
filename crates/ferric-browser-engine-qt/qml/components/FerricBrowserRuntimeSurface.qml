@@ -1160,44 +1160,7 @@ FerricBrowserRuntimeChrome {
     }
 
     function logicalGridKeyText(event) {
-        if (!event) {
-            return ""
-        }
-        var control = !!(event.modifiers & Qt.ControlModifier)
-        var shift = !!(event.modifiers & Qt.ShiftModifier)
-        var alt = !!(event.modifiers & Qt.AltModifier)
-        var meta = !!(event.modifiers & Qt.MetaModifier)
-        if (alt || meta) {
-            return ""
-        }
-        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-            if (control && !shift) {
-                return "Ctrl+Enter"
-            }
-            if (shift && !control) {
-                return "Shift+Enter"
-            }
-            return !control && !shift ? "Enter" : ""
-        }
-        if (control || shift) {
-            if (shift && event.key === Qt.Key_Slash && event.text === "?") {
-                return "?"
-            }
-            return ""
-        }
-        if (event.key >= Qt.Key_0 && event.key <= Qt.Key_9) {
-            return String.fromCharCode(event.key)
-        }
-        if (event.key === Qt.Key_Space) {
-            return "Space"
-        }
-        if (event.key === Qt.Key_Backspace) {
-            return "Backspace"
-        }
-        if (event.key === Qt.Key_Escape) {
-            return "Escape"
-        }
-        return event.text === "?" ? "?" : ""
+        return KeyboardPresentation.logicalGridKeyText(event)
     }
 
     function handleBrowserKey(ui, host, event) {

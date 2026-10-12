@@ -76,10 +76,10 @@ pub fn guide_article(command: &str) -> Option<GuideArticle> {
             "`target-search` opens a native palette over the current page's visible, bounded targets. Enter the query in the palette; optional scopes are links, controls, regions, surfaces, or all. Text ranking uses the same Hint matcher, and a result must be explicitly confirmed with Enter or Confirm before its existing Hint action path runs. Query and selection stay transient. Refresh keeps selection only while the same frame and element identity still has the same action meaning; a removed or virtualised replacement row cannot inherit it. The collector does not scroll the page or claim offscreen content. Search within reuses the same local, weakly retained Region lease and only searches descendants of the selected region.",
             "Escape cancels the palette without changing page selection, focus, or scroll. Run the command from local keyboard or UI input; remote IPC and CLI command execution are rejected.",
         ),
-        "grid" | "grid-refine" | "grid-click" | "grid-hover" | "grid-back" | "grid-reset"
-        | "grid-help" | "grid-cancel" => (
+        "grid" | "grid-refine" | "grid-click" | "grid-double-click" | "grid-hover"
+        | "grid-back" | "grid-reset" | "grid-help" | "grid-cancel" => (
             "Hints and Grid",
-            "Grid navigation targets a visual position when element hints are unsuitable. Enter with ;g, press the number of the region containing your target, and repeat to refine the crosshair. Enter left-clicks, Shift+Enter right-clicks, Ctrl+Enter middle-clicks, and Space hovers. Backspace undoes one refinement; 0 resets the grid. ? shows the grid advisory. A changed document, geometry, or physical-pointer interaction can invalidate the session to prevent clicking a stale position.",
+            "Grid navigation targets a visual position when element hints are unsuitable. Enter with ;g, press the number of the region containing your target, and repeat to refine the crosshair. Enter left-clicks, Shift+Enter right-clicks, Ctrl+Enter middle-clicks, and Space hovers. Alt+Enter requests a qualification-gated native double-click; it remains unavailable until native Wayland qualification passes. Backspace undoes one refinement; 0 resets the grid. ? shows the grid advisory. A changed document, geometry, or physical-pointer interaction can invalidate the session to prevent clicking a stale position.",
             "Escape cancels Grid. A held key does not repeatedly refine or click; release it before another action.",
         ),
         "caret-move" | "caret-select" | "caret-yank" | "yank" | "edit-text" => (

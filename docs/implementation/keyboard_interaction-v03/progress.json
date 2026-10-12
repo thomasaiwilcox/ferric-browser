@@ -118,8 +118,8 @@
     },
     {
       "id": "S19",
-      "status": "not_started",
-      "evidence": null,
+      "status": "in_progress",
+      "evidence": "evidence/S19.json",
       "capability_decision": null
     },
     {

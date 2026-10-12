@@ -75,6 +75,15 @@ production `FerricPagePointerAdapter`. It records the pointer/mouse sequence,
 offscreen Qt event evidence; it does not qualify physical Wayland delivery or
 application-level activation, and those limits remain in the slice evidence.
 
+S19's `pointerAdapterDoubleClickSequence` fixture uses one production-adapter
+request and records the native DOM sequence, details, trust flags, transient
+activation, URL stability, acknowledgement count, duplicate-request rejection,
+and the disabled-by-default gate. The sequence is Qt/WebEngine offscreen
+evidence only. The runtime remains disabled until the required native Wayland
+qualification passes; the observed trust/activation values do not qualify
+permission-gated APIs. See
+[`ADR-0016`](architecture/ADR-0016-qualification-gated-double-click.md).
+
 The unified keyboard-interaction matrix lives in
 `docs/implementation/keyboard_interaction-v03/TEST_MATRIX.json`. Its synthetic
 HTML is under `crates/ferric-browser-engine-qt/tests/fixtures/webapp-interaction/`.

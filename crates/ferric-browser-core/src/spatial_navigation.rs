@@ -222,6 +222,7 @@ pub enum PointerButton {
 pub enum SpatialAction {
     Hover,
     Click(PointerButton),
+    DoubleClick,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -1229,6 +1230,29 @@ mod tests {
     }
 
     #[test]
+    fn double_click_is_one_pending_spatial_request_and_one_terminal_action() {
+        let mut ids = IdSource::new();
+        let mut session = ready(&mut ids);
+        let SessionState::Selecting { owner, .. } = session.state else {
+            unreachable!();
+        };
+        let request = session
+            .request(&mut ids, SpatialAction::DoubleClick)
+            .expect("double-click request");
+        assert_eq!(request.action, SpatialAction::DoubleClick);
+        assert_eq!(session.pending_request(), Some(request));
+        assert_eq!(
+            session.request(&mut ids, SpatialAction::DoubleClick),
+            Err(SpatialError::DispatchPending)
+        );
+        assert_eq!(
+            session.acknowledge(request.request_id, owner, SpatialDispatchOutcome::Delivered),
+            SpatialAck::Inactive(SpatialCancelReason::ActionDelivered)
+        );
+        assert!(!session.is_active());
+    }
+
+    #[test]
     fn pending_dispatch_blocks_selection_and_duplicate_commits() {
         let mut ids = IdSource::new();
         let mut session = ready(&mut ids);
@@ -1293,8 +1317,8 @@ mod tests {
         let mut ids = IdSource::new();
         let mut session = ready(&mut ids);
         let request = session
-            .request(&mut ids, SpatialAction::Click(PointerButton::Middle))
-            .expect("click request");
+            .request(&mut ids, SpatialAction::DoubleClick)
+            .expect("double-click request");
         session.expire_dispatch();
         assert_eq!(
             session.cancel_reason(),

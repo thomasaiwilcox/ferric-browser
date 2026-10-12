@@ -730,6 +730,14 @@ impl CommandRegistry {
                 "Request one native pointer click at the spatial crosshair.",
             ),
             definition(
+                "grid-double-click",
+                &[],
+                vec![Mode::Grid],
+                CountPolicy::NotSupported,
+                false,
+                "Request one qualification-gated native double-click at the spatial crosshair.",
+            ),
+            definition(
                 "grid-hover",
                 &[],
                 vec![Mode::Grid],
@@ -3405,6 +3413,13 @@ impl CommandRegistry {
                 "grid-click middle".into(),
             ];
         }
+        if let Some(command) = registry
+            .definitions
+            .iter_mut()
+            .find(|definition| definition.name == "grid-double-click")
+        {
+            command.examples = vec!["grid-double-click".into()];
+        }
         registry.expansions = [
             ("o", "open"),
             ("t", "tab-open"),
@@ -3660,7 +3675,7 @@ mod tests {
             .remove(0);
         assert_eq!(registry.resolve(&command.name).unwrap().name, "open");
         assert!(registry.validate(&command, Mode::Normal).is_ok());
-        assert_eq!(registry.definitions().len(), 144);
+        assert_eq!(registry.definitions().len(), 145);
         let target_search = registry.resolve("target-search").unwrap();
         assert_eq!(target_search.effect, EffectClass::Query);
         assert_eq!(target_search.count, CountPolicy::NotSupported);

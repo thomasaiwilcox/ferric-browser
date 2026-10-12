@@ -1266,13 +1266,20 @@ GridLayout {
                     ? window.activeWebView() : null
         targetWindow: window
         inputBlocked: window.browserChromeInputActive
+        // S19 stays fail-closed until the native Wayland gesture gate passes.
+        doubleClickEnabled: false
         onDispatchAcknowledged: function(requestId, sessionId, serial, revision, outcome) {
             if (browserUi.hint_pointer_pending) {
                 browserUi.hint_pointer_dispatch_ack(
                             requestId, sessionId, serial, revision, outcome)
             } else {
                 browserUi.spatial_dispatch_ack(
-                            requestId, sessionId, serial, revision, outcome)
+                            requestId, sessionId, serial, revision,
+                            outcome === "unavailable" ? "rejected" : outcome)
+                if (outcome === "unavailable") {
+                    browserUi.status_text =
+                            "Native double-click remains unavailable pending Wayland qualification"
+                }
             }
         }
         onInvalidated: function(reason) {
@@ -1588,6 +1595,7 @@ GridLayout {
         labelColor: window.selectionTextColor
         labelBackground: window.selectionColor
         crosshairColor: window.accentColor
+        doubleClickEnabled: spatialPointerAdapter.doubleClickEnabled
     }
 
     Loader {

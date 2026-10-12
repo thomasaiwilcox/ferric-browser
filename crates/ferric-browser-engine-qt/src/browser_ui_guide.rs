@@ -72,6 +72,7 @@ fn feature_title(command: &str, description: &str) -> String {
         "grid" => "Spatial Grid mode",
         "grid-refine" => "Refine the Grid region",
         "grid-click" => "Click with Grid",
+        "grid-double-click" => "Double-click with Grid (unavailable pending qualification)",
         "grid-hover" => "Hover with Grid",
         "grid-back" => "Go back a Grid step",
         "grid-reset" => "Reset the Grid region",

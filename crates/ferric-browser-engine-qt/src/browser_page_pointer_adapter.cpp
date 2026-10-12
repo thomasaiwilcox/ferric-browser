@@ -113,6 +113,14 @@ void FerricPagePointerAdapter::setInputBlocked(bool blocked)
         advanceSurface(false, QStringLiteral("prompt-owned-input"));
 }
 
+void FerricPagePointerAdapter::setDoubleClickEnabled(bool enabled)
+{
+    if (doubleClickEnabled_ == enabled)
+        return;
+    doubleClickEnabled_ = enabled;
+    emit doubleClickEnabledChanged();
+}
+
 void FerricPagePointerAdapter::advanceSurface(bool targetChanged, const QString &reason)
 {
     dispatchWatchdog_.stop();
@@ -191,14 +199,21 @@ void FerricPagePointerAdapter::dispatch(const QString &requestId,
         || !std::isfinite(x) || !std::isfinite(y) || x < 0.0 || y < 0.0
         || x >= targetItem_->width() || y >= targetItem_->height()
         || (action != QStringLiteral("hover") && action != QStringLiteral("left")
-            && action != QStringLiteral("right") && action != QStringLiteral("middle"))) {
+            && action != QStringLiteral("right") && action != QStringLiteral("middle")
+            && action != QStringLiteral("double"))) {
         acknowledge(requestId, sessionId, serialText, revisionText, QStringLiteral("rejected"));
+        return;
+    }
+    if (action == QStringLiteral("double") && !doubleClickEnabled_) {
+        acknowledge(requestId, sessionId, serialText, revisionText,
+                    QStringLiteral("unavailable"));
         return;
     }
 
     const QPointF targetLocal(x, y);
     const QPointF windowPosition = targetItem_->mapToScene(targetLocal);
     const QPoint global = targetWindow_->mapToGlobal(windowPosition.toPoint());
+    const bool doubleClick = action == QStringLiteral("double");
     const Qt::MouseButton button = action == QStringLiteral("right")
         ? Qt::RightButton
         : action == QStringLiteral("middle") ? Qt::MiddleButton : Qt::LeftButton;
@@ -221,6 +236,16 @@ void FerricPagePointerAdapter::dispatch(const QString &requestId,
         && QCoreApplication::sendEvent(dispatchWindow.data(), &move);
     bool delivered = moved;
     if (click && moved && dispatchTarget && dispatchWindow) {
+        const auto sameTarget = [&] {
+            return dispatchTarget && dispatchWindow && targetItem_ == dispatchTarget
+                && targetWindow_ == dispatchWindow
+                && dispatchTarget->window() == dispatchWindow.data();
+        };
+        const auto currentSurface = [&] {
+            return sameTarget() && enabled_ && !inputBlocked_ && validTarget()
+                && surfaceSerial_ == serial && surfaceRevision_ == revision
+                && pendingRequestId_ == requestId && pendingSessionId_ == sessionId;
+        };
         QMouseEvent press(QEvent::MouseButtonPress, windowPosition, windowPosition, global,
                           button, button,
                           Qt::NoModifier, Qt::MouseEventSynthesizedByApplication);
@@ -228,12 +253,35 @@ void FerricPagePointerAdapter::dispatch(const QString &requestId,
                             global, button, Qt::NoButton, Qt::NoModifier,
                             Qt::MouseEventSynthesizedByApplication);
         const bool pressed = QCoreApplication::sendEvent(dispatchWindow.data(), &press);
-        const bool targetUnchanged = dispatchTarget && dispatchWindow
-            && targetItem_ == dispatchTarget && targetWindow_ == dispatchWindow
-            && dispatchTarget->window() == dispatchWindow.data();
-        const bool released = targetUnchanged
+        const bool released = sameTarget()
             && QCoreApplication::sendEvent(dispatchWindow.data(), &release);
         delivered = pressed && released;
+        if (delivered && doubleClick) {
+            if (!currentSurface()) {
+                delivered = false;
+            } else {
+                QMouseEvent secondPress(QEvent::MouseButtonPress, windowPosition,
+                                        windowPosition, global, button, button,
+                                        Qt::NoModifier,
+                                        Qt::MouseEventSynthesizedByApplication);
+                const bool secondPressed = currentSurface()
+                    && QCoreApplication::sendEvent(dispatchWindow.data(), &secondPress);
+                QMouseEvent doubleClickEvent(QEvent::MouseButtonDblClick, windowPosition,
+                                             windowPosition, global, button, button,
+                                             Qt::NoModifier,
+                                             Qt::MouseEventSynthesizedByApplication);
+                const bool doubleClicked = secondPressed && currentSurface()
+                    && QCoreApplication::sendEvent(dispatchWindow.data(), &doubleClickEvent);
+                QMouseEvent secondRelease(QEvent::MouseButtonRelease, windowPosition,
+                                          windowPosition, global, button, Qt::NoButton,
+                                          Qt::NoModifier,
+                                          Qt::MouseEventSynthesizedByApplication);
+                const bool secondReleased = sameTarget()
+                    && QCoreApplication::sendEvent(dispatchWindow.data(), &secondRelease);
+                delivered = secondPressed && doubleClicked && secondReleased
+                    && currentSurface();
+            }
+        }
     }
     dispatching_ = false;
     acknowledge(requestId, sessionId, serialText, revisionText,

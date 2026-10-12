@@ -17,6 +17,8 @@ class FerricPagePointerAdapter : public QObject {
     Q_PROPERTY(QQuickItem *targetItem READ targetItem WRITE setTargetItem NOTIFY targetItemChanged)
     Q_PROPERTY(QWindow *targetWindow READ targetWindow WRITE setTargetWindow NOTIFY targetWindowChanged)
     Q_PROPERTY(bool inputBlocked READ inputBlocked WRITE setInputBlocked NOTIFY inputBlockedChanged)
+    Q_PROPERTY(bool doubleClickEnabled READ doubleClickEnabled WRITE setDoubleClickEnabled
+               NOTIFY doubleClickEnabledChanged)
     Q_PROPERTY(QString surfaceSerial READ surfaceSerial NOTIFY surfaceChanged)
     Q_PROPERTY(QString surfaceRevision READ surfaceRevision NOTIFY surfaceChanged)
 
@@ -32,6 +34,8 @@ public:
     void setTargetWindow(QWindow *window);
     bool inputBlocked() const { return inputBlocked_; }
     void setInputBlocked(bool blocked);
+    bool doubleClickEnabled() const { return doubleClickEnabled_; }
+    void setDoubleClickEnabled(bool enabled);
     QString surfaceSerial() const { return QString::number(surfaceSerial_); }
     QString surfaceRevision() const { return QString::number(surfaceRevision_); }
 
@@ -48,6 +52,7 @@ signals:
     void targetItemChanged();
     void targetWindowChanged();
     void inputBlockedChanged();
+    void doubleClickEnabledChanged();
     void surfaceChanged();
     void dispatchAcknowledged(const QString &requestId,
                               const QString &sessionId,
@@ -71,6 +76,7 @@ private:
 
     bool enabled_ = false;
     bool inputBlocked_ = false;
+    bool doubleClickEnabled_ = false;
     bool dispatching_ = false;
     bool surfaceExhausted_ = false;
     quint64 surfaceSerial_ = 1;
