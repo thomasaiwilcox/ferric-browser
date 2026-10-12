@@ -1421,7 +1421,7 @@ fn context_menus_use_engine_actions_and_bound_spellcheck_data() {
 #[test]
 fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     let qml = QML_SOURCE;
-    let script = include_str!("../../qml/scripts/BrowserScripts.js");
+    let script = BROWSER_SCRIPT_SOURCE;
     assert!(qml.contains("import \"../scripts/BrowserScripts.js\" as BrowserScripts"));
     assert!(qml.contains("return BrowserScripts.scroll(kind, direction, half, count)"));
     assert!(qml.contains("BrowserScripts.scrollPosition()"));
@@ -1444,7 +1444,24 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(qml.contains("BrowserScripts.pageUserscriptRun(scriptSource)"));
     assert!(qml.contains("BrowserScripts.pageUserscriptInstall(script.source)"));
     assert!(!qml.contains("function hintSelector(linksOnly)"));
-    assert!(script.contains("var VERSION = \"15\""));
+    assert!(BROWSER_SCRIPT_FACADE.contains("var VERSION = \"16\""));
+    assert!(BROWSER_SCRIPT_FACADE.contains(".import \"PageInteractionScripts.js\" as PageInteractionScripts"));
+    assert!(BROWSER_SCRIPT_FACADE.contains("asset.VERSION !== PAGE_INTERACTION_VERSION"));
+    assert!(BROWSER_SCRIPT_FACADE.contains("script-version-mismatch"));
+    assert!(PAGE_INTERACTION_SCRIPT.contains("var VERSION = \"1\""));
+    let manifest: serde_json::Value = serde_json::from_str(BROWSER_SCRIPT_MANIFEST).unwrap();
+    let entry = manifest["resources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["path"] == "qml/scripts/PageInteractionScripts.js")
+        .expect("extracted script manifest entry");
+    assert_eq!(entry["sha256"].as_str().unwrap().len(), 64);
+    let qrc = std::fs::read_to_string(
+        std::path::Path::new(env!("OUT_DIR")).join("browser_script_manifest.qrc"),
+    )
+    .unwrap();
+    assert!(qrc.contains("alias=\"qml/scripts/PageInteractionScripts.js\""));
     assert!(qml.contains("function scrollTargetPolicyScript(policy)"));
     assert!(qml.contains("return BrowserScripts.scrollTargetPolicy(policy)"));
     assert!(qml.contains("function scrollTargetStatusScript()"));
@@ -1478,15 +1495,16 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(script.contains("function ftHintDescription(el,family,linkSelector)"));
     assert!(script.contains("description.kind!==record.kind"));
     assert!(script.contains("if(s.elements&&typeof s.elements.clear==='function')s.elements.clear()"));
-    let target_start = script
+    let target_start = PAGE_INTERACTION_SCRIPT
         .find("function hintSetScrollTarget(elementId, framePath)")
         .expect("target assignment builder");
-    let target_end = script[target_start..]
+    let target_end = PAGE_INTERACTION_SCRIPT[target_start..]
         .find("\n}")
         .map(|offset| target_start + offset)
         .expect("target assignment builder end");
-    assert!(!script[target_start..target_end].contains(".focus("));
-    assert!(script[target_start..target_end].contains("ftSetPolicy('element',element)"));
+    assert!(!PAGE_INTERACTION_SCRIPT[target_start..target_end].contains(".focus("));
+    assert!(PAGE_INTERACTION_SCRIPT[target_start..target_end]
+        .contains("ftSetPolicy('element',element)"));
     assert!(script.contains("function pageUserscriptRun(source)"));
     assert!(script.contains("function pageUserscriptInstall(source)"));
     assert!(!qml.contains("var source = \"(function(){try{\" + scriptSource"));
@@ -1569,7 +1587,7 @@ fn native_pointer_hint_waits_for_enter_release_and_uses_the_existing_adapter_onc
     let surface = include_str!("../../qml/components/FerricBrowserRuntimeSurface.qml");
     let chrome = include_str!("../../qml/components/FerricBrowserRuntimeChrome.qml");
     let presentation = include_str!("../../qml/components/FerricBrowserRuntimePresentation.qml");
-    let scripts = include_str!("../../qml/scripts/BrowserScripts.js");
+    let scripts = BROWSER_SCRIPT_SOURCE;
     let base = include_str!("../../qml/components/FerricBrowserRuntimeBase.qml");
     let pointer = include_str!("../browser_ui_hint_pointer.rs");
 

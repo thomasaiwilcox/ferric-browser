@@ -527,7 +527,7 @@ fn hint_payload_carries_unique_bounded_element_ids() {
 
     let source = include_str!("../browser_ui_hint_selection.rs");
     let qml = QML_SOURCE;
-    let script = include_str!("../../qml/scripts/BrowserScripts.js");
+    let script = BROWSER_SCRIPT_SOURCE;
     assert!(script.contains("__ferric_browserHintElements"));
     assert!(script.contains("element_id"));
     assert!(script.contains("frame.contentDocument"));

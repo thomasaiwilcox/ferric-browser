@@ -1,6 +1,7 @@
 #include "../../src/browser_key_router.h"
 #include "../../src/browser_page_pointer_adapter.h"
 #include <QtCore/QFile>
+#include <QtCore/QFileInfo>
 #include <QtCore/QElapsedTimer>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QTemporaryDir>
@@ -55,21 +56,38 @@ class NativeInsertTest : public QObject {
             qFatal("ApplicationWorld callback timed out");
         return view->property("probeResult");
     }
-    QString browserScript(const QString &expression) {
+    QString productionBrowserScript() {
         QFile script(FERRIC_SCRIPT_PATH);
         if (!script.open(QIODevice::ReadOnly))
             qFatal("Production BrowserScripts resource unavailable");
-        QString source = QString::fromUtf8(script.readAll());
-        source.remove(".pragma library");
-        return js(source + ";" + expression).toString();
+        QFile interaction(QFileInfo(QStringLiteral(FERRIC_SCRIPT_PATH))
+                              .absoluteDir()
+                              .filePath(QStringLiteral("PageInteractionScripts.js")));
+        if (!interaction.open(QIODevice::ReadOnly))
+            qFatal("Production PageInteractionScripts resource unavailable");
+        QString module = QString::fromUtf8(interaction.readAll());
+        module.remove(".pragma library");
+        QString facade = QString::fromUtf8(script.readAll());
+        facade.remove(".pragma library");
+        facade.remove(".import \"PageInteractionScripts.js\" as PageInteractionScripts");
+        const QString namespaceSource =
+            QStringLiteral("var PageInteractionScripts=(function(){") + module
+            + QStringLiteral(
+                ";return {VERSION:VERSION,boundedCount:boundedCount,"
+                "scrollTargetRuntime:scrollTargetRuntime,scroll:scroll,"
+                "scrollTargetPolicy:scrollTargetPolicy,scrollTargetStatus:scrollTargetStatus,"
+                "hintSelector:hintSelector,hintProxyRuntime:hintProxyRuntime,"
+                "hintCollector:hintCollector,hintDirtyRevision:hintDirtyRevision,"
+                "hintStopTracking:hintStopTracking,hintFresh:hintFresh,"
+                "hintPointerPreflight:hintPointerPreflight,hintFocus:hintFocus,"
+                "hintClick:hintClick,hintSetScrollTarget:hintSetScrollTarget};})() ;");
+        return namespaceSource + facade;
+    }
+    QString browserScript(const QString &expression) {
+        return js(productionBrowserScript() + ";" + expression).toString();
     }
     QVariant browserValueScript(const QString &expression) {
-        QFile script(FERRIC_SCRIPT_PATH);
-        if (!script.open(QIODevice::ReadOnly))
-            qFatal("Production BrowserScripts resource unavailable");
-        QString source = QString::fromUtf8(script.readAll());
-        source.remove(".pragma library");
-        return browserJs(source + ";eval(" + expression + ")");
+        return browserJs(productionBrowserScript() + ";eval(" + expression + ")");
     }
     void enter(bool persistent = false) {
         locked = persistent;
@@ -240,6 +258,26 @@ WebEngineView {
         js("down=0;up=0;submits=0;true");
         enter();
     }
+    void extractedInteractionResourceFailsClosed() {
+        const QString source = productionBrowserScript();
+        const QVariantMap mismatch = browserJs(
+            source + ";PageInteractionScripts.VERSION='0';eval(hintCollector('buttons'))")
+                                         .toMap();
+        QCOMPARE(mismatch.value("error").toString(), QString("script-version-mismatch"));
+
+        const QVariantMap missing = browserJs(
+            source + ";delete PageInteractionScripts.hintCollector;eval(hintCollector('buttons'))")
+                                        .toMap();
+        QCOMPARE(missing.value("error").toString(), QString("script-resource-unavailable"));
+
+        const QVariantMap exception = browserJs(
+            source
+            + ";PageInteractionScripts.hintCollector=function(){throw new Error('fixture');};"
+              "eval(hintCollector('buttons'))")
+                                          .toMap();
+        QCOMPARE(exception.value("error").toString(), QString("script-error"));
+    }
+
     void nativeEditorProxyFocusKeepsInsertAndComposition() {
         const QVariant payload = browserValueScript("hintCollector('inputs',true)");
         const QVariantList candidates = payload.toMap().value("candidates").toList();
@@ -692,10 +730,7 @@ WebEngineView {
         QTRY_COMPARE(js("up").toInt(), 1);
     }
     void focusObserver() {
-        QFile script(FERRIC_SCRIPT_PATH);
-        QVERIFY(script.open(QIODevice::ReadOnly));
-        QString source = QString::fromUtf8(script.readAll());
-        source.remove(".pragma library");
+        const QString source = productionBrowserScript();
         // The same observer/probe resource used in Ferric's isolated world.
         const QString observer = js(source + ";focusObserverSource()").toString();
         const QString probe = js("focusProbe()").toString();

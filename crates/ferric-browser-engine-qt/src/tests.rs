@@ -57,6 +57,15 @@ const ADAPTER_SOURCE: &str = concat!(
     include_str!("browser_ui_ipc_switcher_actions.rs"),
 );
 
+const BROWSER_SCRIPT_FACADE: &str = include_str!("../qml/scripts/BrowserScripts.js");
+const PAGE_INTERACTION_SCRIPT: &str = include_str!("../qml/scripts/PageInteractionScripts.js");
+const BROWSER_SCRIPT_SOURCE: &str = concat!(
+    include_str!("../qml/scripts/BrowserScripts.js"),
+    include_str!("../qml/scripts/PageInteractionScripts.js"),
+);
+const BROWSER_SCRIPT_MANIFEST: &str =
+    include_str!(concat!(env!("OUT_DIR"), "/browser-script-manifest.json"));
+
 const QML_SOURCE: &str = concat!(
     include_str!("../qml/Main.qml"),
     include_str!("../qml/components/FerricPrimaryBrowserWindow.qml"),

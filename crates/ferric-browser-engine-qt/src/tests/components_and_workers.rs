@@ -32,7 +32,7 @@ fn config_editor_captures_bounded_stderr() {
 fn external_editor_rejects_rich_contenteditable_controls() {
     let qml = [
         QML_SOURCE,
-        include_str!("../../qml/scripts/BrowserScripts.js"),
+        BROWSER_SCRIPT_SOURCE,
     ]
     .concat();
     assert!(qml.contains("e.contentEditable==='plaintext-only'"));
@@ -202,7 +202,7 @@ fn ipc_site_doctor_commands_use_typed_experiment_fields() {
 #[test]
 fn page_focus_requires_a_recent_user_gesture_before_insert_mode() {
     let qml = QML_SOURCE;
-    let script = include_str!("../../qml/scripts/BrowserScripts.js");
+    let script = BROWSER_SCRIPT_SOURCE;
     assert!(script.contains("userGestureUntil=performance.now()+1500"));
     assert!(script.contains("__ferric_browserAuthorizeExplicitFocus"));
     assert!(script.contains("user_activated:!!userActivated"));
@@ -725,7 +725,7 @@ fn library_manager_composes_presentation_and_forwards_every_operation_to_the_roo
 #[test]
 fn all_hints_cover_qutebrowser_control_families_and_activate_controls() {
     let qml = QML_SOURCE;
-    let script = include_str!("../../qml/scripts/BrowserScripts.js");
+    let script = BROWSER_SCRIPT_SOURCE;
     for selector in [
         "input:not([type='hidden'])",
         "summary",

@@ -30,6 +30,15 @@ TestCase {
         tryVerify(function() { return done }, 5000)
         return result
     }
+    function evaluateMain(source) {
+        done = false
+        page.runJavaScript(source, WebEngineScript.MainWorld, function(value) {
+            result = value
+            done = true
+        })
+        tryVerify(function() { return done }, 5000)
+        return result
+    }
     function load(name) {
         page.loaded = false
         page.url = Qt.resolvedUrl("../fixtures/webapp-interaction/" + name)
@@ -48,6 +57,15 @@ TestCase {
     }
     function cleanup() {
         evaluate(BrowserScripts.hintStopTracking())
+    }
+
+    // T019: extracted resources execute through the browser-owned ApplicationWorld.
+    function test_T019_extracted_script_world_isolation() {
+        load("shadow-targets.html")
+        candidate("buttons", "Shadow button")
+        verify(evaluate("!!window.__ferric_browserHintState"))
+        compare(evaluateMain("typeof window.__ferric_browserHintState"), "undefined")
+        compare(evaluateMain("typeof window.__ferric_browserHintElements"), "undefined")
     }
 
     // T002: production collection -> fresh -> final click, exact counter.
