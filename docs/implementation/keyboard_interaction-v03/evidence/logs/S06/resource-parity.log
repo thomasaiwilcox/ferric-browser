@@ -1,0 +1,5 @@
+manifest: target/debug/build/ferric-browser-engine-qt-58c741805e605e21/out/browser-script-manifest.json
+asset_sha256: 36f0db3b6f36eab0dea4ba7aefda04faaf2969969ac09dc5d81951fb906cc4f8
+manifest_sha256: 36f0db3b6f36eab0dea4ba7aefda04faaf2969969ac09dc5d81951fb906cc4f8
+hash_match: True
+qrc_packaged: True
