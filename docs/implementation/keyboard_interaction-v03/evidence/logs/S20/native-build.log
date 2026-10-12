@@ -1,0 +1,6 @@
+[  0%] Built target native_insert_autogen_timestamp_deps
+[ 16%] Automatic MOC for target native_insert
+[ 16%] Built target native_insert_autogen
+[ 33%] Building CXX object CMakeFiles/native_insert.dir/tst_native_insert.cpp.o
+[ 50%] Linking CXX executable native_insert
+[100%] Built target native_insert

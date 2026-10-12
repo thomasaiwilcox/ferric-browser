@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "slice_id": "S20",
+  "gate_state": "blocked_environment",
+  "production_decision": null,
+  "technical_observation": "feasible_for_limited_in_view_pointer_driven_categories_on_qt_offscreen",
+  "offscreen_categories": [
+    "ordinary_pointer_driven_widget",
+    "explicit_pointer_capture",
+    "canvas_like_pointer_surface",
+    "native_range_slider"
+  ],
+  "excluded_categories": [
+    "native_html_drag_and_drop",
+    "cross_window_drag",
+    "desktop_or_file_drag",
+    "modifier_drag",
+    "edge_scroll"
+  ],
+  "required_missing_evidence": [
+    "T047/native-wayland",
+    "T049/native-wayland"
+  ],
+  "blocking_reason": "Nested Weston startup passed, but wtype could not access the compositor virtual-keyboard protocol; native pointer input was not sent.",
+  "next_step": "Keep S21 gated; repeat T047 and T049 on a Wayland environment that supports the native pointer-input path."
+}

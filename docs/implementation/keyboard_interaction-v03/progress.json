@@ -124,13 +124,13 @@
     },
     {
       "id": "S20",
-      "status": "in_progress",
+      "status": "blocked_environment",
       "evidence": "evidence/S20.json",
       "capability_decision": null
     },
     {
       "id": "S21",
-      "status": "not_started",
+      "status": "blocked_environment",
       "evidence": null,
       "capability_decision": null
     },
