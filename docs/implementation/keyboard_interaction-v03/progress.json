@@ -94,8 +94,8 @@
     },
     {
       "id": "S15",
-      "status": "not_started",
-      "evidence": null,
+      "status": "implemented_unqualified",
+      "evidence": "evidence/S15.json",
       "capability_decision": null
     },
     {
