@@ -1,0 +1,44 @@
+    Checking unicode-segmentation v1.13.3
+    Checking ferric-browser-core v0.1.0 (/home/tom/Projects/RustBrowser/crates/ferric-browser-core)
+error: docs for function returning `Result` missing `# Errors` section
+  --> crates/ferric-browser-core/src/mixed_policy.rs:86:5
+   |
+86 |     pub fn parse(value: &str) -> Result<Self, LogicalKeyTokenError> {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#missing_errors_doc
+   = note: `-D clippy::missing-errors-doc` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(clippy::missing_errors_doc)]`
+
+error: docs for function returning `Result` missing `# Errors` section
+   --> crates/ferric-browser-core/src/mixed_policy.rs:176:1
+    |
+176 | / pub fn resolve_mixed_key_policy(
+177 | |     global: Option<&MixedPolicyLayer>,
+178 | |     profile: Option<&MixedPolicyLayer>,
+179 | |     site: Option<&MixedPolicyLayer>,
+180 | |     runtime: Option<&MixedPolicyLayer>,
+181 | | ) -> Result<EffectiveMixedKeyPolicy, MixedPolicyError> {
+    | |______________________________________________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#missing_errors_doc
+
+error: could not compile `ferric-browser-core` (lib) due to 2 previous errors
+warning: build failed, waiting for other jobs to finish...
+error: casting `usize` to `u32` may truncate the value on targets with 64-bit wide pointers
+   --> crates/ferric-browser-core/src/mixed_policy.rs:608:49
+    |
+608 |             .map(|index| char::from_u32(0x100 + index as u32).unwrap().to_string())
+    |                                                 ^^^^^^^^^^^^
+    |
+    = help: if this is intentional allow the lint with `#[allow(clippy::cast_possible_truncation)]` ...
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#cast_possible_truncation
+    = note: `-D clippy::cast-possible-truncation` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::cast_possible_truncation)]`
+help: ... or use `try_from` and handle the error accordingly
+    |
+608 -             .map(|index| char::from_u32(0x100 + index as u32).unwrap().to_string())
+608 +             .map(|index| char::from_u32(0x100 + u32::try_from(index)).unwrap().to_string())
+    |
+
+error: could not compile `ferric-browser-core` (lib test) due to 3 previous errors
