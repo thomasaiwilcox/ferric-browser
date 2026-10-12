@@ -525,7 +525,7 @@ fn hint_payload_carries_unique_bounded_element_ids() {
     assert!(!hint_payload::valid_hint_frame_path("1.0"));
     assert!(!hint_payload::valid_hint_frame_path("0.1.2.3.4.5.6.7.8.9"));
 
-    let source = ADAPTER_SOURCE;
+    let source = include_str!("../browser_ui_hint_selection.rs");
     let qml = QML_SOURCE;
     let script = include_str!("../../qml/scripts/BrowserScripts.js");
     assert!(script.contains("__ferric_browserHintElements"));

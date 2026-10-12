@@ -57,6 +57,7 @@ mod browser_ui_downloads_permissions;
 mod browser_ui_edit_commands;
 mod browser_ui_external_actions;
 mod browser_ui_guide;
+mod browser_ui_hint_selection;
 mod browser_ui_input;
 #[allow(clippy::too_many_lines)]
 mod browser_ui_ipc;
@@ -231,7 +232,8 @@ use feature_preferences::FeaturePreferences;
 use focus_policy::{FocusObservation, focus_mode_transition};
 use hint_payload::{hint_json, hint_kind_name, parse_hint_candidate, parse_hint_payload};
 use hint_policy::{
-    external_hint_target, hint_uses_url_action, parse_hint_options, rapid_hint_keeps_mode,
+    LocalInteractionAuthority, LocalInteractionPermit, external_hint_target, hint_uses_url_action,
+    parse_hint_options, rapid_hint_keeps_mode,
 };
 use input_validation::{
     is_bounded_journey_query, is_bounded_untrusted_text, validate_jseval_script,
@@ -1015,6 +1017,9 @@ mod qobject {
         ) -> QString;
 
         #[qinvokable]
+        fn cancel_hint_palette(self: Pin<&mut BrowserUi>);
+
+        #[qinvokable]
         fn confirm_rapid_hint_tabs(self: Pin<&mut BrowserUi>) -> bool;
 
         #[qinvokable]
@@ -1593,14 +1598,14 @@ use ferric_browser_core::{
     CleanLinkResult, CommandInvocation, CommandRegistry, CommandSource, CompletionCandidate,
     CompletionCategory, DEFAULT_COMPLETION_LIMIT, Diagnostic, DispatchTarget, Effect, EngineEffect,
     Event, ExistenceState, GridCell, HintAutoFollow as CoreHintAutoFollow, HintInteraction,
-    HintInteractionInput, HintInteractionOutcome, HintKind, HintSession, HintTarget, IdSource,
+    HintInteractionInput, HintInteractionOutcome, HintSession, HintTarget, HintTransport, IdSource,
     JourneyEdgeKind, JourneyNodeId, LoadingState, LogicalRect, Mode, NavigationContext,
     NavigationError, NavigationSource, ParseInput, ParsedCommand, PointerButton, PrivacyKind,
     ResourceLifecycle, SearchCase, SpatialAck, SpatialAction, SpatialCancelReason,
     SpatialDispatchOutcome, SpatialError, SpatialLifecycle, SpatialOwner, SpatialSession,
     SpatialTarget, SurfaceStamp, TabId, TabTransfer, Target, ValidatedUrl, WindowId,
-    assign_labels_with_options, canonical_origin, clean_link, complete, parse_chain,
-    refresh_labels, resolve_input, switcher_rank, tokenize_switcher_query,
+    assign_labels_with_options, canonical_origin, clean_link, complete, hint_intent_for_candidate,
+    parse_chain, refresh_labels, resolve_input, switcher_rank, tokenize_switcher_query,
 };
 use ferric_browser_ipc::{
     EventNotification, PublicError, Request, Response, has_pending_requests,
@@ -1928,6 +1933,9 @@ pub struct BrowserUiRust {
     hint_session: Option<HintSession>,
     hint_interaction: Option<HintInteraction>,
     hint_consumed: BTreeSet<(String, u32)>,
+    hint_configuration_revision: u64,
+    pending_hint_palette_permit: Option<LocalInteractionPermit>,
+    hint_local_interaction_authority: LocalInteractionAuthority,
     hint_ids: IdSource,
     config_json: QString,
     settings_rows: QVariant,
@@ -2622,6 +2630,9 @@ impl Default for BrowserUiRust {
             hint_session: None,
             hint_interaction: None,
             hint_consumed: BTreeSet::new(),
+            hint_configuration_revision: 0,
+            pending_hint_palette_permit: None,
+            hint_local_interaction_authority: LocalInteractionAuthority::default(),
             hint_ids: IdSource::new(),
             config_json: QString::from(
                 serde_json::to_string(&Config::default()).unwrap_or_else(|_| "{}".into()),

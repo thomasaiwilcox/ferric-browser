@@ -728,8 +728,13 @@ FerricBrowserRuntimePresentation {
         return kept.length > 0 ? base + "?" + kept.join("&") : base
     }
 
-    function clearContextMenuRequest() {
-        var hadRequest = !!window.pendingContextMenuRequest
+    function clearContextMenuRequest(preserveHintPalettePermit) {
+        var request = window.pendingContextMenuRequest
+        var hadRequest = !!request
+        var requestUi = window.pendingContextMenuUi
+        if (request && request.hintAction && !preserveHintPalettePermit && requestUi) {
+            requestUi.cancel_hint_palette()
+        }
         window.pendingContextMenuRequest = null
         window.pendingContextMenuView = null
         window.pendingContextMenuUi = null
@@ -907,8 +912,11 @@ FerricBrowserRuntimePresentation {
         }
         var action = item.action
         var value = item.value
-        window.clearContextMenuRequest()
-        if (action === "hint-userscript-action") {
+        var isHintAction = action === "hint-userscript-action"
+                && !!window.pendingContextMenuRequest
+                && !!window.pendingContextMenuRequest.hintAction
+        window.clearContextMenuRequest(isHintAction)
+        if (isHintAction) {
             window.activateHint(value, item.actionId || "")
             return
         }

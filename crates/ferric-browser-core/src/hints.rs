@@ -18,6 +18,70 @@ pub enum HintKind {
     Aria,
 }
 
+/// A semantic user intent selected after Ferric validates candidate facts.
+/// The page payload cannot name an intent or a transport directly.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HintIntent {
+    OpenUrl,
+    Focus,
+    Activate,
+    SetScrollTarget,
+    PointerClick,
+    HintWithin,
+    SearchWithin,
+    GridWithin,
+}
+
+/// The closed execution path allowed for a validated hint intent.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HintTransport {
+    ValidatedUrlAction,
+    ExactDomFocus,
+    SemanticDomClick,
+    ScrollTargetPolicy,
+    NativePointerAdapter,
+    ScopedHintSession,
+    ScopedSearchSession,
+    SpatialSession,
+}
+
+impl HintIntent {
+    #[must_use]
+    pub const fn transport(self) -> HintTransport {
+        match self {
+            Self::OpenUrl => HintTransport::ValidatedUrlAction,
+            Self::Focus => HintTransport::ExactDomFocus,
+            Self::Activate => HintTransport::SemanticDomClick,
+            Self::SetScrollTarget => HintTransport::ScrollTargetPolicy,
+            Self::PointerClick => HintTransport::NativePointerAdapter,
+            Self::HintWithin => HintTransport::ScopedHintSession,
+            Self::SearchWithin => HintTransport::ScopedSearchSession,
+            Self::GridWithin => HintTransport::SpatialSession,
+        }
+    }
+}
+
+/// Resolves ordinary hint activation from Rust-validated facts and policy.
+///
+/// The caller computes `uses_url_action` from the selected kind and configured
+/// Hint target. It is never copied from page candidate JSON.
+#[must_use]
+pub const fn hint_intent_for_candidate(kind: HintKind, uses_url_action: bool) -> HintIntent {
+    if uses_url_action || matches!(kind, HintKind::Link) {
+        return HintIntent::OpenUrl;
+    }
+    match kind {
+        HintKind::Input | HintKind::Select | HintKind::Textarea | HintKind::ContentEditable => {
+            HintIntent::Focus
+        }
+        HintKind::Scrollable => HintIntent::SetScrollTarget,
+        HintKind::Link => HintIntent::OpenUrl,
+        HintKind::Button | HintKind::Image | HintKind::Media | HintKind::Aria => {
+            HintIntent::Activate
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum HintAutoFollow {
     Always,
@@ -123,15 +187,27 @@ impl std::error::Error for HintError {}
 pub struct HintSession {
     pub id: HintSessionId,
     pub target: HintTarget,
+    pub configuration_revision: u64,
     pub hints: Vec<LabeledHint>,
 }
 
 impl HintSession {
     #[must_use]
     pub fn new(ids: &mut IdSource, target: HintTarget, hints: Vec<LabeledHint>) -> Self {
+        Self::new_with_configuration_revision(ids, target, hints, 0)
+    }
+
+    #[must_use]
+    pub fn new_with_configuration_revision(
+        ids: &mut IdSource,
+        target: HintTarget,
+        hints: Vec<LabeledHint>,
+        configuration_revision: u64,
+    ) -> Self {
         Self {
             id: ids.hint_session(),
             target,
+            configuration_revision,
             hints,
         }
     }
@@ -625,6 +701,50 @@ mod tests {
     }
 
     #[test]
+    fn hint_intents_resolve_through_the_closed_transport_table() {
+        assert_eq!(
+            hint_intent_for_candidate(HintKind::Link, false),
+            HintIntent::OpenUrl
+        );
+        assert_eq!(
+            hint_intent_for_candidate(HintKind::Image, false),
+            HintIntent::Activate
+        );
+        assert_eq!(
+            hint_intent_for_candidate(HintKind::Image, true),
+            HintIntent::OpenUrl
+        );
+        assert_eq!(
+            hint_intent_for_candidate(HintKind::Input, false).transport(),
+            HintTransport::ExactDomFocus
+        );
+        assert_eq!(
+            hint_intent_for_candidate(HintKind::Button, false).transport(),
+            HintTransport::SemanticDomClick
+        );
+        assert_eq!(
+            hint_intent_for_candidate(HintKind::Scrollable, false).transport(),
+            HintTransport::ScrollTargetPolicy
+        );
+        assert_eq!(
+            HintIntent::PointerClick.transport(),
+            HintTransport::NativePointerAdapter
+        );
+        assert_eq!(
+            HintIntent::HintWithin.transport(),
+            HintTransport::ScopedHintSession
+        );
+        assert_eq!(
+            HintIntent::SearchWithin.transport(),
+            HintTransport::ScopedSearchSession
+        );
+        assert_eq!(
+            HintIntent::GridWithin.transport(),
+            HintTransport::SpatialSession
+        );
+    }
+
+    #[test]
     fn labels_are_reading_order_and_prefix_free() {
         let hints = assign_labels(vec![
             candidate(20.0, 0.0, "second"),
@@ -950,5 +1070,18 @@ mod tests {
             ),
             Err(HintError::CandidateNotVisible)
         ));
+    }
+
+    #[test]
+    fn hint_session_captures_configuration_revision() {
+        let mut ids = IdSource::new();
+        let target = HintTarget {
+            tab: ids.tab(),
+            generation: 1,
+            document: ids.document(),
+        };
+        let hints = assign_labels(vec![candidate(0.0, 0.0, "link")]).expect("labels");
+        let session = HintSession::new_with_configuration_revision(&mut ids, target, hints, 9);
+        assert_eq!(session.configuration_revision, 9);
     }
 }

@@ -26,6 +26,9 @@ pub(super) fn typed_ipc_route(envelope: &CommandEnvelope) -> Result<IpcRoute, St
         })
         .transpose()?
         .unwrap_or(CommandSource::Ipc);
+    if matches!(source, CommandSource::Ui | CommandSource::Keyboard) {
+        return Err("IPC command context cannot claim a local UI or keyboard source".into());
+    }
     let external_open = arguments
         .and_then(|arguments| arguments.get("external"))
         .map(|value| {
@@ -111,5 +114,24 @@ mod tests {
         let object = json!({"command": "open", "arguments": {"target": "invalid"}});
         let envelope = ferric_browser_ipc::decode_command_envelope(&object).expect("envelope");
         assert!(typed_ipc_route(&envelope).is_err());
+    }
+
+    #[test]
+    fn rejects_ipc_spoofing_local_interaction_sources_and_preserves_cli() {
+        for source in ["ui", "keyboard"] {
+            let object = json!({
+                "command": "back",
+                "context": {"source": source}
+            });
+            let envelope = ferric_browser_ipc::decode_command_envelope(&object).expect("envelope");
+            assert!(typed_ipc_route(&envelope).is_err());
+        }
+
+        let object = json!({"command": "back", "context": {"source": "cli"}});
+        let envelope = ferric_browser_ipc::decode_command_envelope(&object).expect("envelope");
+        assert_eq!(
+            typed_ipc_route(&envelope).unwrap().source,
+            CommandSource::Cli
+        );
     }
 }

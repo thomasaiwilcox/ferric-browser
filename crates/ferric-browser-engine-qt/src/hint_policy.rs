@@ -4,7 +4,79 @@
 //! targets are valid or which rapid actions retain Hint mode.
 
 use crate::input_validation::is_bounded_untrusted_text;
-use ferric_browser_core::{HintKind, ParsedCommand};
+use ferric_browser_core::{
+    CommandSource, HintKind, HintSessionId, HintTarget, ParsedCommand, WindowId,
+};
+use std::collections::BTreeSet;
+
+const MAX_LOCAL_HINT_ACTIONS_PER_SESSION: usize = 128;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct LocalInteractionOwner {
+    pub(super) window: WindowId,
+    pub(super) session: HintSessionId,
+    pub(super) target: HintTarget,
+    pub(super) configuration_revision: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum LocalInteractionOperation {
+    HintPaletteSelection,
+    #[allow(dead_code)] // Reserved for the scoped Search palette contract.
+    SearchPaletteSelection,
+}
+
+/// Local-only authority. It intentionally has no serialization or Clone impl.
+pub(super) struct LocalInteractionPermit {
+    owner: LocalInteractionOwner,
+    operation: LocalInteractionOperation,
+    request_id: u64,
+}
+
+#[derive(Default)]
+pub(super) struct LocalInteractionAuthority {
+    next_request_id: u64,
+    consumed_request_ids: BTreeSet<u64>,
+}
+
+impl LocalInteractionAuthority {
+    pub(super) fn mint(
+        &mut self,
+        source: CommandSource,
+        owner: LocalInteractionOwner,
+        operation: LocalInteractionOperation,
+    ) -> Option<LocalInteractionPermit> {
+        if source != CommandSource::Ui {
+            return None;
+        }
+        let request_id = self.next_request_id.checked_add(1)?;
+        self.next_request_id = request_id;
+        Some(LocalInteractionPermit {
+            owner,
+            operation,
+            request_id,
+        })
+    }
+
+    pub(super) fn consume(
+        &mut self,
+        permit: LocalInteractionPermit,
+        source: CommandSource,
+        owner: LocalInteractionOwner,
+        operation: LocalInteractionOperation,
+    ) -> bool {
+        if self.consumed_request_ids.len() >= MAX_LOCAL_HINT_ACTIONS_PER_SESSION
+            || !self.consumed_request_ids.insert(permit.request_id)
+        {
+            return false;
+        }
+        source == CommandSource::Ui && permit.owner == owner && permit.operation == operation
+    }
+
+    pub(super) fn clear_session_requests(&mut self) {
+        self.consumed_request_ids.clear();
+    }
+}
 
 /// Fully validated options for a hint command.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -183,6 +255,112 @@ fn is_hint_target(value: &str) -> bool {
 mod tests {
     use super::*;
 
+    fn local_owner() -> LocalInteractionOwner {
+        LocalInteractionOwner {
+            window: WindowId::from_display("windowid-1").expect("window ID"),
+            session: HintSessionId::from_display("hintsessionid-2").expect("Hint session ID"),
+            target: HintTarget {
+                tab: ferric_browser_core::TabId::from_display("tabid-3").expect("tab ID"),
+                generation: 4,
+                document: ferric_browser_core::DocumentId::from_display("documentid-4")
+                    .expect("document ID"),
+            },
+            configuration_revision: 9,
+        }
+    }
+
+    fn another_local_owner() -> LocalInteractionOwner {
+        LocalInteractionOwner {
+            window: WindowId::from_display("windowid-11").expect("window ID"),
+            session: HintSessionId::from_display("hintsessionid-12").expect("Hint session ID"),
+            target: HintTarget {
+                tab: ferric_browser_core::TabId::from_display("tabid-13").expect("tab ID"),
+                generation: 4,
+                document: ferric_browser_core::DocumentId::from_display("documentid-14")
+                    .expect("document ID"),
+            },
+            configuration_revision: 9,
+        }
+    }
+
+    #[test]
+    fn local_hint_palette_permit_is_ui_only_owner_bound_and_one_shot() {
+        let owner = local_owner();
+        let operation = LocalInteractionOperation::HintPaletteSelection;
+        let mut authority = LocalInteractionAuthority::default();
+        for source in [
+            CommandSource::Keyboard,
+            CommandSource::Cli,
+            CommandSource::Ipc,
+            CommandSource::Switcher,
+            CommandSource::Userscript,
+            CommandSource::Macro,
+        ] {
+            assert!(authority.mint(source, owner, operation).is_none());
+        }
+
+        let other_owner = another_local_owner();
+        for changed_owner in [
+            LocalInteractionOwner {
+                window: other_owner.window,
+                ..owner
+            },
+            LocalInteractionOwner {
+                session: other_owner.session,
+                ..owner
+            },
+            LocalInteractionOwner {
+                target: other_owner.target,
+                ..owner
+            },
+            LocalInteractionOwner {
+                configuration_revision: owner.configuration_revision + 1,
+                ..owner
+            },
+        ] {
+            let permit = authority
+                .mint(CommandSource::Ui, owner, operation)
+                .expect("direct local UI can mint a palette permit");
+            assert!(!authority.consume(permit, CommandSource::Ui, changed_owner, operation));
+        }
+
+        let permit = authority
+            .mint(CommandSource::Ui, owner, operation)
+            .expect("direct local UI can mint a palette permit");
+        let replay = LocalInteractionPermit {
+            owner: permit.owner,
+            operation: permit.operation,
+            request_id: permit.request_id,
+        };
+        assert!(!authority.consume(permit, CommandSource::Cli, owner, operation));
+        assert!(!authority.consume(replay, CommandSource::Ui, owner, operation));
+
+        let permit = authority
+            .mint(CommandSource::Ui, owner, operation)
+            .expect("direct local UI can mint a fresh palette permit");
+        let replay = LocalInteractionPermit {
+            owner: permit.owner,
+            operation: permit.operation,
+            request_id: permit.request_id,
+        };
+        assert!(authority.consume(permit, CommandSource::Ui, owner, operation));
+        assert!(!authority.consume(replay, CommandSource::Ui, owner, operation));
+
+        let permit = authority
+            .mint(
+                CommandSource::Ui,
+                owner,
+                LocalInteractionOperation::SearchPaletteSelection,
+            )
+            .expect("the local authority supports a distinct Search operation");
+        assert!(!authority.consume(
+            permit,
+            CommandSource::Ui,
+            owner,
+            LocalInteractionOperation::HintPaletteSelection,
+        ));
+    }
+
     #[test]
     fn parses_named_options_and_rejects_invalid_combinations() {
         let options = parse_hint_options(&ParsedCommand {
@@ -281,6 +459,27 @@ mod tests {
             vec!["--index".into(), "2".into()],
             vec!["--first".into(), "--rapid".into()],
             vec!["--first".into(), "--index".into(), "5001".into()],
+        ] {
+            assert!(
+                parse_hint_options(&ParsedCommand {
+                    name: "hint".into(),
+                    arguments,
+                })
+                .is_err()
+            );
+        }
+
+        for arguments in [
+            vec!["--target".into(), "pointer".into(), "links".into()],
+            vec!["--target".into(), "pointer".into(), "--rapid".into()],
+            vec!["--target".into(), "pointer".into(), "--first".into()],
+            vec![
+                "--target".into(),
+                "pointer".into(),
+                "--first".into(),
+                "--index".into(),
+                "2".into(),
+            ],
         ] {
             assert!(
                 parse_hint_options(&ParsedCommand {

@@ -749,7 +749,7 @@ fn all_hints_cover_qutebrowser_control_families_and_activate_controls() {
 
 #[test]
 fn one_shot_background_hints_use_the_background_route_and_exit_hint_mode() {
-    let source = include_str!("../browser_ui_navigation.rs");
+    let source = include_str!("../browser_ui_hint_selection.rs");
     let ipc = include_str!("../browser_ui_ipc.rs");
     let ipc_preparation = include_str!("../browser_ui_ipc_preparation.rs");
     let qml = include_str!("../../qml/components/FerricBrowserRuntimePresentation.qml");
@@ -809,7 +809,7 @@ fn one_shot_background_hints_use_the_background_route_and_exit_hint_mode() {
 
 #[test]
 fn rapid_download_hints_queue_the_validated_download_and_keep_hint_mode() {
-    let source = include_str!("../browser_ui_navigation.rs");
+    let source = include_str!("../browser_ui_hint_selection.rs");
     let policy = include_str!("../hint_policy.rs");
     let rapid_dispatch = source
         .split("if self.as_ref().rust().hint_rapid {")
@@ -836,7 +836,7 @@ fn rapid_download_hints_queue_the_validated_download_and_keep_hint_mode() {
 
 #[test]
 fn foreground_hints_complete_directly_without_redispatching_a_normal_mode_command() {
-    let source = include_str!("../browser_ui_navigation.rs");
+    let source = include_str!("../browser_ui_hint_selection.rs");
     let foreground = source
         .split("fn open_hint_in_foreground_tab(")
         .nth(1)
@@ -868,12 +868,12 @@ fn foreground_hints_complete_directly_without_redispatching_a_normal_mode_comman
 
 #[test]
 fn completed_hints_pop_the_core_mode_stack_after_page_independent_actions() {
-    let source = include_str!("../browser_ui_navigation.rs");
+    let source = include_str!("../browser_ui_hint_selection.rs");
     let completion = source
         .split("let keeps_hint_mode = rapid_hint_keeps_mode(")
         .nth(1)
         .expect("hint completion policy")
-        .split("pub(super) fn confirm_rapid_hint_tabs")
+        .split("QString::from(result.to_string())")
         .next()
         .expect("hint completion boundary");
 

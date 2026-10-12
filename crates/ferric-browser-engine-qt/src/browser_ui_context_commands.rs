@@ -458,6 +458,7 @@ impl qobject::BrowserUi {
             return false;
         }
         self.as_mut().set_config_json(QString::from(config_text));
+        self.as_mut().note_hint_configuration_change();
         self.as_mut()
             .set_config_base_json(QString::from(base_config_text));
         self.as_mut()

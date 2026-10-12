@@ -947,6 +947,61 @@ mod tests {
     }
 
     #[test]
+    fn aliases_cannot_elevate_remote_sources_into_local_grid_commands() {
+        let state = state();
+        let base = CommandRegistry::default_v1();
+        let registry = CommandRegistry::new_with_aliases(
+            base.definitions().to_vec(),
+            vec![crate::CommandAlias::from_text("local-grid", "grid").unwrap()],
+        )
+        .unwrap();
+
+        for source in [
+            CommandSource::Cli,
+            CommandSource::Ipc,
+            CommandSource::Switcher,
+            CommandSource::Userscript,
+            CommandSource::Macro,
+        ] {
+            let command = crate::parse_chain("local-grid", ParseInput::Cli)
+                .unwrap()
+                .remove(0);
+            let invocation = CommandInvocation::new(command).with_context(CommandContext {
+                source,
+                ..CommandContext::default()
+            });
+            assert!(matches!(
+                dispatch_command(
+                    &state,
+                    &registry,
+                    invocation,
+                    &NavigationContext::default(),
+                ),
+                Err(DispatchError::UnsupportedCommand(name)) if name == "grid"
+            ));
+        }
+
+        for source in [CommandSource::Keyboard, CommandSource::Ui] {
+            let command = crate::parse_chain("local-grid", ParseInput::Cli)
+                .unwrap()
+                .remove(0);
+            let invocation = CommandInvocation::new(command).with_context(CommandContext {
+                source,
+                ..CommandContext::default()
+            });
+            assert!(matches!(
+                dispatch_command(
+                    &state,
+                    &registry,
+                    invocation,
+                    &NavigationContext::default(),
+                ),
+                Ok(events) if matches!(events.as_slice(), [Event::PushMode { mode: Mode::Grid, .. }])
+            ));
+        }
+    }
+
+    #[test]
     fn history_and_counts_are_typed_and_arguments_are_checked() {
         let state = state();
         let registry = CommandRegistry::default_v1();

@@ -447,6 +447,7 @@ impl qobject::BrowserUi {
         self.as_mut().publish_start_page();
         self.as_mut()
             .set_config_json(QString::from(effective_config_json));
+        self.as_mut().note_hint_configuration_change();
         self.as_mut().update_hint_preferences(&presentation_config);
         self.as_mut()
             .set_desktop_portal_mode(QString::from(desktop_portal_mode));

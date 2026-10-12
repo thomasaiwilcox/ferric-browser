@@ -1662,6 +1662,8 @@ FerricBrowserRuntimeServices {
         if (!selected || !view || window.hintRefreshPending) {
             if (!selected || !view) {
                 window.closeHints()
+            } else if (actionId && actionId !== "hint.choose") {
+                browserUi.cancel_hint_palette()
             }
             return
         }

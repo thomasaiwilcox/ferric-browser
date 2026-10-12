@@ -205,6 +205,7 @@ impl qobject::BrowserUi {
         self.as_mut().update_hint_preferences(&active_settings);
         self.as_mut().update_settings_presentation(&active_config);
         self.as_mut().set_config_json(QString::from(config_json));
+        self.as_mut().note_hint_configuration_change();
         let learning_mode = self.as_ref().rust().learning_mode;
         self.as_mut().set_learning_mode(learning_mode);
         self.as_mut().update_theme_palette(&candidate);

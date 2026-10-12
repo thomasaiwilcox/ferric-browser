@@ -39,10 +39,11 @@ pub use dispatcher::{
     dispatch_command, dispatch_command_for,
 };
 pub use hints::{
-    HintAutoFollow, HintCandidate, HintError, HintGeometry, HintInputMode, HintInteraction,
-    HintInteractionInput, HintInteractionOutcome, HintInteractionSnapshot, HintKind, HintSession,
-    HintTarget, HintUnmatchedPolicy, LabeledHint, MAX_HINT_CANDIDATES, assign_labels,
-    assign_labels_with_options, refresh_labels,
+    HintAutoFollow, HintCandidate, HintError, HintGeometry, HintInputMode, HintIntent,
+    HintInteraction, HintInteractionInput, HintInteractionOutcome, HintInteractionSnapshot,
+    HintKind, HintSession, HintTarget, HintTransport, HintUnmatchedPolicy, LabeledHint,
+    MAX_HINT_CANDIDATES, assign_labels, assign_labels_with_options, hint_intent_for_candidate,
+    refresh_labels,
 };
 pub use id::{
     ActionId, ContextId, DocumentId, DownloadId, HintSessionId, IdSource, JourneyNodeId, ProfileId,

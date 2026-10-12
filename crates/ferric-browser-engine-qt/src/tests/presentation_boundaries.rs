@@ -1209,7 +1209,7 @@ fn ephemeral_profile_uses_off_the_record_memory_only_setup() {
 
 #[test]
 fn ephemeral_hint_target_creates_a_typed_new_window_action() {
-    let source = ADAPTER_SOURCE;
+    let source = include_str!("../browser_ui_hint_selection.rs");
     let qml = QML_SOURCE;
     assert!(source.contains("target == \"ephemeral\""));
     assert!(source.contains("ephemeral-window\\t{}"));
@@ -1295,6 +1295,7 @@ fn webauthn_uses_engine_state_and_clears_pin_input() {
 
 #[test]
 fn context_menus_use_engine_actions_and_bound_spellcheck_data() {
+    let requests = include_str!("../../qml/components/FerricBrowserRuntimeRequests.qml");
     let source = ADAPTER_SOURCE;
     let qml = [
         QML_SOURCE,
@@ -1311,6 +1312,8 @@ fn context_menus_use_engine_actions_and_bound_spellcheck_data() {
     assert!(qml.contains("function showHintActions(label)"));
     assert!(qml.contains("hint-userscript-action"));
     assert!(qml.contains("select_hint_action"));
+    assert!(requests.contains("requestUi.cancel_hint_palette()"));
+    assert!(requests.contains("window.clearContextMenuRequest(isHintAction)"));
     assert!(qml.contains("Qt.RightButton"));
     assert!(source.contains("execute_registered_userscript_action_for_hint"));
     assert!(source.contains("if hint_activation"));
