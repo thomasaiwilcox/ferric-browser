@@ -107,54 +107,88 @@ function hintSelector(family) {
         + "[data-ng-click],[x-ng-click],[tabindex]:not([tabindex='-1'])"
 }
 
+function normalizedHintPolicySnapshot(snapshot) {
+    if (typeof snapshot === "string") {
+        try { return JSON.parse(snapshot) } catch (error) { return {error:"invalid-snapshot"} }
+    }
+    return snapshot && typeof snapshot === "object" ? snapshot : ({})
+}
+
+function hintPolicyRuntime() {
+    var defaults = {
+        all: hintSelector("all"),
+        links: hintSelector("links"),
+        inputs: hintSelector("inputs"),
+        buttons: hintSelector("buttons"),
+        images: hintSelector("images"),
+        media: hintSelector("media"),
+        scrollables: hintSelector("scrollables")
+    }
+    return "const ftHintDefaults=" + JSON.stringify(defaults) + ";"
+        + "function ftHintSelectors(family,policies){const policy=policies&&policies[family];if(!policy)return [ftHintDefaults[family]];const custom=Array.isArray(policy.selectors)?policy.selectors:[];return (policy.mode==='replace'?[]:[ftHintDefaults[family]]).concat(custom); }"
+        + "function ftHintMatchesAny(element,selectors){if(!element||!Array.isArray(selectors))return false;for(const selector of selectors){try{if(element.matches(selector))return true;}catch(error){}}return false;}"
+        + "function ftHintRecordMatchesPolicy(record,element){if(!record||!element)return false;const policies=record.selectorPolicies||{},families=Array.isArray(record.discoveryFamilies)&&record.discoveryFamilies.length?record.discoveryFamilies:[record.family];if(record.kind==='editor-focus'||record.kind==='label-control'){const policy=policies[record.family];return !policy||policy.mode!=='replace'||ftHintMatchesAny(element,ftHintSelectors(record.family,policies));}return families.some(function(family){return ftHintMatchesAny(element,ftHintSelectors(family,policies));});}"
+        + "function ftHintRevisionMatches(record,revision){return revision===null||typeof revision==='undefined'||String(record&&record.selectorRevision||'')===String(revision);}"
+}
+
 function hintProxyRuntime() {
     return "function proxyIdentity(element,state){let id=state.weak.get(element);if(!id){id=state.next++;state.weak.set(element,id);}return id;}"
         + "function proxyReceiverEligible(element,container){if(!element||!container||!element.isConnected||!container.isConnected||element.ownerDocument!==container.ownerDocument||!container.contains(element)||ftDisabled(element)||ftInert(element)||element.readOnly)return false;const tag=String(element.tagName||'').toLowerCase(),type=String(element.type||'text').toLowerCase();if(tag==='textarea'){if(type!=='textarea')return false;}else if(tag==='input'){if(['text','search','email','url','tel'].indexOf(type)<0)return false;}else return false;let node=element,depth=0;for(;node&&depth<256;node=ftParent(node),depth++){const view=node.ownerDocument&&node.ownerDocument.defaultView;if(!view)return false;const style=view.getComputedStyle(node);if(style.display==='none'||style.visibility==='hidden'||style.visibility==='collapse')return false;}return !node;}"
-        + "function proxyEditorValid(container,receiver){if(!container||!receiver||!container.matches('.ace_editor[role=\"textbox\"]'))return false;const receivers=container.querySelectorAll('textarea.ace_text-input,input.ace_text-input');return receivers.length===1&&receivers[0]===receiver&&proxyReceiverEligible(receiver,container);}"
+        + "function proxyEditorReceivers(container){const doc=container&&container.ownerDocument;if(!doc||!doc.createTreeWalker)return null;const walker=doc.createTreeWalker(container,0xffffffff);let node,receiver=null,visited=0;while((node=walker.nextNode())){if(typeof inspect==='function'){if(!inspect())return null;}else if(++visited>50000)return null;if(node.nodeType!==1||!node.matches('textarea.ace_text-input,input.ace_text-input'))continue;if(receiver)return null;receiver=node;}return receiver?[receiver]:[];}"
+        + "function proxyEditorValid(container,receiver){if(!container||!receiver||!container.matches('.ace_editor[role=\"textbox\"]'))return false;const receivers=proxyEditorReceivers(container);return !!receivers&&receivers.length===1&&receivers[0]===receiver&&proxyReceiverEligible(receiver,container);}"
         + "function proxyLabelValid(label,control){if(!label||!control||label.tagName!=='LABEL'||!label.isConnected||!control.isConnected||label.ownerDocument!==control.ownerDocument||label.control!==control||ftInert(label)||ftInert(control)||ftDisabled(control))return false;const type=String(control.type||'').toLowerCase();return control.matches('input')&&(type==='checkbox'||type==='radio');}"
         + "function proxyPairValid(record,candidate,state){if(!record||!candidate||!record.relatedElement||!state||candidate.related_element_id!==record.relatedElementId)return false;const el=record.element,related=record.relatedElement;if(!el||!related||!el.isConnected||!related.isConnected||el.ownerDocument!==related.ownerDocument||record.ownerDocument!==el.ownerDocument||!ftReachableFromTopDocument(related,record.ownerDocument))return false;if(record.kind==='editor-focus')return proxyEditorValid(el,related);if(record.kind==='label-control')return proxyLabelValid(el,related);return false;}"
         + "function proxyText(element,kind){if(kind==='editor-focus')return String(element.getAttribute('aria-label')||element.getAttribute('title')||'Text editor').replace(/[\\u0000-\\u001f\\u007f-\\u009f]+/g,' ').replace(/\\s+/g,' ').trim().slice(0,512);return ftHintDescription(element,'all',linkSelector).text;}"
 }
 
-function hintCollector(family, proxyTargets) {
-    var selector = hintSelector(family)
+function hintCollector(family, proxyTargets, selectorSnapshot) {
     var linkSelector = hintSelector(true)
+    var snapshot = normalizedHintPolicySnapshot(selectorSnapshot)
+    if (snapshot.error)
+        return "(function(){return {error:" + JSON.stringify(String(snapshot.error)) + "};})()"
+    var selectorRevision = typeof snapshot.selector_revision === "string"
+            ? snapshot.selector_revision : ""
+    var selectorPolicies = snapshot.policies && typeof snapshot.policies === "object"
+            ? snapshot.policies : ({})
     return "(function(){"
         + scrollTargetRuntime()
-        + "const out=[];const seen=new Set();const activeIds=new Set();const selector=" + JSON.stringify(selector) + ";"
+        + hintPolicyRuntime()
+        + "const out=[];const seen=new Set();const activeIds=new Set();const selectorPolicies=" + JSON.stringify(selectorPolicies) + ";"
+        + "const selectors=ftHintSelectors(" + JSON.stringify(family || "all") + ",selectorPolicies),scrollSelectors=ftHintSelectors('scrollables',selectorPolicies);"
         + "const linkSelector=" + JSON.stringify(linkSelector) + ";"
         + "const family=" + JSON.stringify(family || "all") + ";"
+        + "const selectorRevision=" + JSON.stringify(selectorRevision) + ";"
         + "const proxyEnabled=" + (proxyTargets === true || proxyTargets === "validated" ? "true" : "false") + ";"
+        + "const inspectionLimit=50000;let inspectedNodes=0,truncated=false;function inspect(){if(inspectedNodes>=inspectionLimit){truncated=true;return false;}inspectedNodes++;return true;}"
         + "let state=window.__ferric_browserHintState;if(!state){state={weak:new WeakMap(),elements:new Map(),next:1,revision:1,dirty:true,roots:new WeakSet(),observers:[],windows:[],resize:null};window.__ferric_browserHintState=state;}if(!state.windows)state.windows=[];const elements=state.elements;window.__ferric_browserHintElements=elements;"
         + hintProxyRuntime()
         + "function dirty(){state.dirty=true;state.revision=Math.min(Number.MAX_SAFE_INTEGER,state.revision+1);}if(!state.tracking){state.tracking=true;state.dirtyHandler=dirty;if(typeof ResizeObserver==='function')state.resize=new ResizeObserver(dirty);}"
         + "function track(root){if(state.roots.has(root))return;state.roots.add(root);try{const observer=new MutationObserver(dirty);observer.observe(root,{subtree:true,childList:true,attributes:true,characterData:true});state.observers.push(observer);}catch(error){}const doc=root.nodeType===9?root:root.ownerDocument,view=doc&&doc.defaultView;if(view&&state.windows.indexOf(view)<0){try{view.addEventListener('scroll',dirty,true);view.addEventListener('resize',dirty,true);state.windows.push(view);}catch(error){}}}"
         + "function parentOf(node){return ftParent(node);}"
         + "function linkedSurface(el,r){for(let node=parentOf(el);node;node=parentOf(node))if(node.matches&&node.matches(linkSelector))return node;const doc=el.ownerDocument,points=[[r.left+r.width/2,r.top+r.height/2],[r.left+Math.min(4,r.width/2),r.top+Math.min(4,r.height/2)],[r.right-Math.min(4,r.width/2),r.bottom-Math.min(4,r.height/2)]];for(const point of points)for(const hit of doc.elementsFromPoint(point[0],point[1]))for(let node=hit;node;node=parentOf(node))if(node.matches&&node.matches(linkSelector)){const q=node.getBoundingClientRect();if(q.left<=r.left+1&&q.top<=r.top+1&&q.right>=r.right-1&&q.bottom>=r.bottom-1)return node;}return null;}"
-        + "function inert(el){return ftInert(el);}"
-        + "function composedContains(parent,node){return ftContains(parent,node);}"
         + "function hit(el,r){return ftHit(el,r);}"
-        + "function hasPreferredLink(el,r){if(!el.matches(linkSelector))return false;const scope=parentOf(el);if(!scope||!scope.querySelectorAll)return false;const href=String(el.href||el.getAttribute('href')||''),area=r.width*r.height;for(const candidate of scope.querySelectorAll(linkSelector)){if(candidate===el||String(candidate.href||candidate.getAttribute('href')||'')!==href)continue;const q=candidate.getBoundingClientRect(),view=candidate.ownerDocument&&candidate.ownerDocument.defaultView,s=view&&view.getComputedStyle(candidate);if(q.width>0&&q.height>0&&q.width*q.height+1<area&&s&&s.display!=='none'&&s.visibility!=='hidden'&&s.pointerEvents!=='none'&&Number(s.opacity)!==0&&hit(candidate,q))return true;}return false;}"
-        + "const clipped=ftClippedRect;"
+        + "function hasPreferredLink(el,r){if(!el.matches(linkSelector))return false;const scope=parentOf(el),doc=el.ownerDocument;if(!scope||!doc||!doc.createTreeWalker)return false;const walker=doc.createTreeWalker(scope,0xffffffff),href=String(el.href||el.getAttribute('href')||''),area=r.width*r.height;let candidate;while((candidate=walker.nextNode())){if(!inspect())return false;if(candidate.nodeType!==1||candidate===el||!candidate.matches(linkSelector)||String(candidate.href||candidate.getAttribute('href')||'')!==href)continue;const q=candidate.getBoundingClientRect(),view=candidate.ownerDocument&&candidate.ownerDocument.defaultView,s=view&&view.getComputedStyle(candidate);if(q.width>0&&q.height>0&&q.width*q.height+1<area&&s&&s.display!=='none'&&s.visibility!=='hidden'&&s.pointerEvents!=='none'&&Number(s.opacity)!==0&&hit(candidate,q))return true;}return false;}"
         + "function intersect(a,b){const left=Math.max(a.left,b.left),top=Math.max(a.top,b.top),right=Math.min(a.right,b.right),bottom=Math.min(a.bottom,b.bottom);return {left:left,top:top,right:right,bottom:bottom,width:Math.max(0,right-left),height:Math.max(0,bottom-top)};}"
-        + "function add(el,ox,oy,framePath,topClip,pairKind,related){if(out.length>=5000||seen.has(el))return;seen.add(el);"
+        + "function add(el,ox,oy,framePath,topClip,pairKind,related,discoveryFamily){if(out.length>=5000){truncated=true;return;}if(seen.has(el)){const id=state.weak.get(el),old=elements.get(id),source=discoveryFamily||family;if(old&&old.discoveryFamilies.indexOf(source)<0)old.discoveryFamilies.push(source);return;}seen.add(el);"
         + "const ownerView=el.ownerDocument&&el.ownerDocument.defaultView;if(!ownerView)return;const description=pairKind?{kind:pairKind,text:proxyText(el,pairKind),href:null}:ftHintDescription(el,family,linkSelector),kind=description.kind,policy=ftHintPolicy(kind,family),local=ftLocalVisible(el,ownerView,policy);if(!local)return;const r=local.clipped,projected=ftProjectedRect(el,local,policy);if(!projected)return;const vw=ownerView.innerWidth,vh=ownerView.innerHeight,topRect=intersect(projected,topClip),x=topRect.left,y=topRect.top;"
         + "const scrollable=ftAxisScrollable(el,'x')||ftAxisScrollable(el,'y');if(family==='scrollables'&&!scrollable)return;"
         + "if(r.width<=0||r.height<=0||topRect.width<=0||topRect.height<=0||hasPreferredLink(el,r))return;"
         + "if(r.bottom<=0||r.right<=0||r.top>=vh||r.left>=vw||topRect.right<=0||topRect.bottom<=0||x>=window.innerWidth||y>=window.innerHeight)return;"
         + "if(family==='all'&&(kind==='image'||kind==='media')&&linkedSurface(el,r))return;"
-        + "const text=description.text,href=description.href,elementId=proxyIdentity(el,state),relatedElementId=related?proxyIdentity(related,state):null;elements.set(elementId,{element:el,relatedElement:related||null,relatedElementId:relatedElementId,ownerDocument:el.ownerDocument,framePath:framePath,family:family,kind:kind,text:text,href:href});activeIds.add(elementId);if(state.resize)try{state.resize.observe(el);}catch(error){}"
+        + "const text=description.text,href=description.href,elementId=proxyIdentity(el,state),relatedElementId=related?proxyIdentity(related,state):null,source=discoveryFamily||family,policyEntry=selectorPolicies[family];elements.set(elementId,{element:el,relatedElement:related||null,relatedElementId:relatedElementId,ownerDocument:el.ownerDocument,framePath:framePath,family:family,kind:kind,text:text,href:href,selectorPolicies:selectorPolicies,selectorRevision:selectorRevision,discoveryFamilies:[source],provenance:policyEntry&&policyEntry.provenance||['built-in']});activeIds.add(elementId);if(state.resize)try{state.resize.observe(el);}catch(error){}"
         + "out.push({element_id:elementId,related_element_id:relatedElementId,kind:kind,frame_path:framePath,text:text,href:href,geometry:{x:x,y:y,width:topRect.width,height:topRect.height}});}"
-        + "function visit(root,framePath,ox,oy,depth,topClip){if(out.length>=5000||depth>8)return;track(root);"
-        + "root.querySelectorAll(selector).forEach(function(el){add(el,ox,oy,framePath,topClip);});if(out.length>=5000)return;"
-        + "if(proxyEnabled&&(family==='inputs'||family==='all')){root.querySelectorAll('.ace_editor[role=\"textbox\"]').forEach(function(editor){const receivers=editor.querySelectorAll('textarea.ace_text-input,input.ace_text-input');if(receivers.length===1&&proxyEditorValid(editor,receivers[0]))add(editor,ox,oy,framePath,topClip,'editor-focus',receivers[0]);});root.querySelectorAll('label').forEach(function(label){const control=label.control;if(!proxyLabelValid(label,control))return;const controlId=proxyIdentity(control,state);if(activeIds.has(controlId))return;if(seen.has(label)){const oldId=state.weak.get(label);for(let index=out.length-1;index>=0;index--)if(out[index].element_id===oldId)out.splice(index,1);elements.delete(oldId);activeIds.delete(oldId);seen.delete(label);}add(label,ox,oy,framePath,topClip,'label-control',control);});}if(out.length>=5000)return;"
-        + "root.querySelectorAll('*').forEach(function(el){if(family==='all'&&(ftAxisScrollable(el,'x')||ftAxisScrollable(el,'y')))add(el,ox,oy,framePath,topClip);if(el.shadowRoot)visit(el.shadowRoot,framePath,ox,oy,depth+1,topClip);});"
-        + "if(root.nodeType!==9)return;root.querySelectorAll('iframe,frame').forEach(function(frame,index){if(out.length>=5000||depth>=8)return;"
-        + "const ownerView=frame.ownerDocument&&frame.ownerDocument.defaultView,frameLocal=ftLocalVisible(frame,ownerView,'visible');if(!frameLocal)return;const raw=frameLocal.raw,fr=frameLocal.clipped;"
+        + "function visit(root,framePath,ox,oy,depth,topClip){if(out.length>=5000){truncated=true;return;}if(depth>8)return;track(root);const doc=root.nodeType===9?root:root.ownerDocument;if(!doc||!doc.createTreeWalker)return;const walker=doc.createTreeWalker(root,0xffffffff),normal=[],scrollableNodes=[],editors=[],editorReceivers=new Map(),labels=[],shadows=[],frames=[];let node,el;"
+        + "while((node=walker.nextNode())){if(!inspect())break;if(node.nodeType!==1)continue;el=node;if(ftHintMatchesAny(el,selectors))normal.push(el);const allPolicy=selectorPolicies.all,allPolicyAllowsSecondary=!allPolicy||allPolicy.mode!=='replace'||ftHintMatchesAny(el,selectors);if(family==='all'&&allPolicyAllowsSecondary&&ftHintMatchesAny(el,scrollSelectors)&&(ftAxisScrollable(el,'x')||ftAxisScrollable(el,'y')))scrollableNodes.push(el);if(proxyEnabled&&(family==='inputs'||family==='all')){if(el.matches('.ace_editor[role=\"textbox\"]'))editors.push(el);if(el.matches('textarea.ace_text-input,input.ace_text-input')){for(let parent=ftParent(el),guard=0;parent&&guard<256;parent=ftParent(parent),guard++)if(parent.matches&&parent.matches('.ace_editor[role=\"textbox\"]')){let pair=editorReceivers.get(parent);if(!pair){pair={count:0,receiver:null};editorReceivers.set(parent,pair);}pair.count++;pair.receiver=el;}}if(el.tagName==='LABEL')labels.push(el);}if(el.shadowRoot)shadows.push(el.shadowRoot);if(root.nodeType===9&&el.matches('iframe,frame'))frames.push(el);}"
+        + "for(const target of normal){if(out.length>=5000){truncated=true;break;}add(target,ox,oy,framePath,topClip,null,null,family);}"
+        + "if(proxyEnabled&&(family==='inputs'||family==='all')&&out.length<5000){const familyPolicy=selectorPolicies[family],replacePolicy=familyPolicy&&familyPolicy.mode==='replace';for(const editor of editors){if(out.length>=5000){truncated=true;break;}const pair=editorReceivers.get(editor);if(pair&&pair.count===1&&proxyReceiverEligible(pair.receiver,editor)&&(!replacePolicy||ftHintMatchesAny(editor,selectors)))add(editor,ox,oy,framePath,topClip,'editor-focus',pair.receiver,family);}for(const label of labels){if(out.length>=5000){truncated=true;break;}const control=label.control;if(!proxyLabelValid(label,control)||replacePolicy&&!ftHintMatchesAny(label,selectors))continue;const controlId=proxyIdentity(control,state);if(activeIds.has(controlId))continue;if(seen.has(label)){const oldId=state.weak.get(label);for(let index=out.length-1;index>=0;index--)if(out[index].element_id===oldId)out.splice(index,1);elements.delete(oldId);activeIds.delete(oldId);seen.delete(label);}add(label,ox,oy,framePath,topClip,'label-control',control,family);}}"
+        + "if(family==='all')for(const target of scrollableNodes){if(out.length>=5000){truncated=true;break;}add(target,ox,oy,framePath,topClip,null,null,'scrollables');}"
+        + "for(const shadow of shadows){if(out.length>=5000||inspectedNodes>=inspectionLimit){if(inspectedNodes>=inspectionLimit)truncated=true;break;}visit(shadow,framePath,ox,oy,depth+1,topClip);}"
+        + "if(root.nodeType!==9)return;for(let index=0;index<frames.length;index++){const frame=frames[index];if(out.length>=5000||inspectedNodes>=inspectionLimit||depth>=8){if(inspectedNodes>=inspectionLimit)truncated=true;break;}"
+        + "const ownerView=frame.ownerDocument&&frame.ownerDocument.defaultView,frameLocal=ftLocalVisible(frame,ownerView,'visible');if(!frameLocal)continue;const raw=frameLocal.raw,fr=frameLocal.clipped;"
         + "const vw=ownerView?ownerView.innerWidth:window.innerWidth,vh=ownerView?ownerView.innerHeight:window.innerHeight,content={left:raw.left+frame.clientLeft,top:raw.top+frame.clientTop,right:raw.left+frame.clientLeft+frame.clientWidth,bottom:raw.top+frame.clientTop+frame.clientHeight},frameClip=intersect(intersect({left:content.left+ox,top:content.top+oy,right:content.right+ox,bottom:content.bottom+oy},{left:fr.left+ox,top:fr.top+oy,right:fr.right+ox,bottom:fr.bottom+oy}),topClip);"
-        + "if(fr.width<=0||fr.height<=0||frameClip.width<=0||frameClip.height<=0||fr.bottom<=0||fr.right<=0||fr.top>=vh||fr.left>=vw)return;"
-        + "try{if(frame.contentDocument)visit(frame.contentDocument,framePath+'.'+index,ox+raw.left+frame.clientLeft,oy+raw.top+frame.clientTop,depth+1,frameClip);}catch(error){}});}"
-        + "visit(document,'0',0,0,0,{left:0,top:0,right:innerWidth,bottom:innerHeight});for(const id of Array.from(elements.keys()))if(!activeIds.has(id)){const record=elements.get(id);if(state.resize&&record)try{state.resize.unobserve(record.element);}catch(error){}elements.delete(id);}state.dirty=false;return {candidates:out,revision:state.revision,viewport:{width:innerWidth,height:innerHeight}};})()"
+        + "if(fr.width<=0||fr.height<=0||frameClip.width<=0||frameClip.height<=0||fr.bottom<=0||fr.right<=0||fr.top>=vh||fr.left>=vw)continue;"
+        + "try{if(frame.contentDocument)visit(frame.contentDocument,framePath+'.'+index,ox+raw.left+frame.clientLeft,oy+raw.top+frame.clientTop,depth+1,frameClip);}catch(error){}}}"
+        + "visit(document,'0',0,0,0,{left:0,top:0,right:innerWidth,bottom:innerHeight});if(out.length>=5000)truncated=true;for(const id of Array.from(elements.keys()))if(!activeIds.has(id)){const record=elements.get(id);if(state.resize&&record)try{state.resize.unobserve(record.element);}catch(error){}elements.delete(id);}state.dirty=false;return {candidates:out,revision:state.revision,selector_revision:selectorRevision,inspected_nodes:inspectedNodes,truncated:truncated,viewport:{width:innerWidth,height:innerHeight}};})()"
 }
 
 function hintDirtyRevision() {
@@ -165,17 +199,25 @@ function hintStopTracking() {
     return "(function(){const s=window.__ferric_browserHintState;if(!s)return true;if(s.dirtyHandler)for(const view of s.windows||[])try{view.removeEventListener('scroll',s.dirtyHandler,true);view.removeEventListener('resize',s.dirtyHandler,true);}catch(error){}for(const o of s.observers)o.disconnect();if(s.resize)s.resize.disconnect();if(s.elements&&typeof s.elements.clear==='function')s.elements.clear();try{delete window.__ferric_browserHintElements;}catch(error){window.__ferric_browserHintElements=null;}s.observers=[];s.windows=[];s.roots=new WeakSet();s.tracking=false;s.dirty=false;return true;})()"
 }
 
-function hintFresh(candidate) {
+function hintFresh(candidate, selectorSnapshot) {
     var linkSelector = hintSelector(true)
     var relatedElementId = typeof candidate.related_element_id === "number" ? candidate.related_element_id : null
+    var snapshot = normalizedHintPolicySnapshot(selectorSnapshot)
+    if (snapshot.error)
+        return "(function(){return {visible:false};})()"
+    var activeSelectorRevision = typeof snapshot.selector_revision === "string"
+            ? snapshot.selector_revision : null
     return "(function(){try{" + scrollTargetRuntime()
         + "const elementId=" + Number(candidate.element_id) + ",path=" + JSON.stringify(candidate.frame_path || "0")
-        + ",candidateKind=" + JSON.stringify(candidate.kind || "") + ",candidateRelatedId=" + JSON.stringify(relatedElementId) + ",linkSelector=" + JSON.stringify(linkSelector) + ";"
+        + ",candidateKind=" + JSON.stringify(candidate.kind || "") + ",candidateRelatedId=" + JSON.stringify(relatedElementId) + ",linkSelector=" + JSON.stringify(linkSelector)
+        + ",activeSelectorRevision=" + JSON.stringify(activeSelectorRevision) + ";"
+        + hintPolicyRuntime()
         + hintProxyRuntime()
         + "const state=window.__ferric_browserHintState,elements=state&&state.elements,record=elements&&elements.get(elementId),el=record&&record.element;"
         + "if(!record||!el||record.framePath!==path||record.ownerDocument!==el.ownerDocument||!ftReachableFromTopDocument(el,record.ownerDocument)||ftCurrentFramePath(el.ownerDocument)!==path)return {visible:false,element_id:elementId};"
+        + "if(!ftHintRevisionMatches(record,activeSelectorRevision)||!ftHintRecordMatchesPolicy(record,el))return {visible:false,element_id:elementId};"
         + "const pairKind=record.kind==='editor-focus'||record.kind==='label-control';if(pairKind&&!proxyPairValid(record,{related_element_id:candidateRelatedId},state))return {visible:false,element_id:elementId};"
-        + "const maybeScrollable=ftAxisScrollable(el,'x')||ftAxisScrollable(el,'y');if(!pairKind&&!el.matches(" + JSON.stringify(hintSelector("all")) + ")&&!(record.kind==='scrollable'&&maybeScrollable))return {visible:false,element_id:elementId};"
+        + "const maybeScrollable=ftAxisScrollable(el,'x')||ftAxisScrollable(el,'y');if(record.kind==='scrollable'&&!maybeScrollable)return {visible:false,element_id:elementId};"
         + "if(record.family==='scrollables'&&!maybeScrollable)return {visible:false,element_id:elementId};"
         + "const description=pairKind?{kind:record.kind,text:proxyText(el,record.kind),href:null}:ftHintDescription(el,record.family,linkSelector);if(description.kind!==record.kind||description.text!==record.text||description.href!==record.href||candidateKind&&candidateKind!==description.kind)return {visible:false,element_id:elementId};"
         + "const policy=ftHintPolicy(description.kind,record.family),ownerView=el.ownerDocument&&el.ownerDocument.defaultView,local=ftLocalVisible(el,ownerView,policy),geometry=ftProjectedRect(el,local,policy);if(!geometry)return {visible:false,element_id:elementId};"
@@ -183,7 +225,7 @@ function hintFresh(candidate) {
         + "}catch(error){return {visible:false,element_id:" + Number(candidate.element_id) + "};}})()"
 }
 
-function hintPointerPreflight(candidate, viewWidth, viewHeight) {
+function hintPointerPreflight(candidate, viewWidth, viewHeight, selectorSnapshot) {
     var actionCandidate = Object.assign({}, candidate || {})
     if (typeof actionCandidate.href === "undefined")
         actionCandidate.href = null
@@ -193,15 +235,26 @@ function hintPointerPreflight(candidate, viewWidth, viewHeight) {
     var width = Number(viewWidth)
     var height = Number(viewHeight)
     var linkSelector = hintSelector(true)
+    var actionSelector = hintSelector(false)
+    var snapshot = normalizedHintPolicySnapshot(selectorSnapshot)
+    if (snapshot.error)
+        return "(function(){return {ok:false};})()"
+    var activeSelectorRevision = typeof snapshot.selector_revision === "string"
+            ? snapshot.selector_revision : null
     return "(function(){try{" + scrollTargetRuntime()
         + "const candidate=" + JSON.stringify(actionCandidate) + ",elementId=" + elementId
         + ",viewWidth=" + width + ",viewHeight=" + height
-        + ",linkSelector=" + JSON.stringify(linkSelector) + ";"
+        + ",linkSelector=" + JSON.stringify(linkSelector)
+        + ",actionSelector=" + JSON.stringify(actionSelector)
+        + ",activeSelectorRevision=" + JSON.stringify(activeSelectorRevision) + ";"
+        + hintPolicyRuntime()
         + hintProxyRuntime()
         + "if(!Number.isFinite(viewWidth)||!Number.isFinite(viewHeight)||viewWidth<=0||viewHeight<=0||!candidate||!Number.isInteger(candidate.element_id)||candidate.element_id!==elementId)return {ok:false};"
         + "const state=window.__ferric_browserHintState,elements=state&&state.elements,record=elements&&elements.get(elementId),el=record&&record.element;"
         + "if(!record||!el||!el.isConnected||record.framePath!==candidate.frame_path||record.ownerDocument!==el.ownerDocument||!ftReachableFromTopDocument(el,record.ownerDocument)||ftCurrentFramePath(el.ownerDocument)!==candidate.frame_path)return {ok:false};"
+        + "if(!ftHintRevisionMatches(record,activeSelectorRevision)||!ftHintRecordMatchesPolicy(record,el))return {ok:false};"
         + "const pairKind=record.kind==='editor-focus'||record.kind==='label-control';if(pairKind&&!proxyPairValid(record,candidate,state))return {ok:false};const description=pairKind?{kind:record.kind,text:proxyText(el,record.kind),href:null}:ftHintDescription(el,record.family,linkSelector);if(description.kind!==record.kind||description.text!==record.text||description.href!==record.href||candidate.kind!==description.kind||candidate.text!==description.text||candidate.href!==description.href||candidate.related_element_id!==record.relatedElementId)return {ok:false};"
+        + "if(!pairKind&&!el.matches(actionSelector))return {ok:false};"
         + "const ownerView=el.ownerDocument&&el.ownerDocument.defaultView,local=ftLocalVisible(el,ownerView,'pointer'),geometry=ftProjectedRect(el,local,'pointer');if(!geometry||!(window.innerWidth>0&&window.innerHeight>0))return {ok:false};"
         + "const insetX=Math.min(12,geometry.width*0.2),insetY=Math.min(12,geometry.height*0.2),points=[[geometry.left+geometry.width/2,geometry.top+geometry.height/2],[geometry.left+insetX,geometry.top+insetY],[geometry.right-insetX,geometry.top+insetY],[geometry.left+insetX,geometry.bottom-insetY],[geometry.right-insetX,geometry.bottom-insetY]];"
         + "let point=null;for(const sample of points){const hit=ftPointerDeepHit(document,sample[0],sample[1]);if(hit&&ftContains(el,hit)){point=sample;break;}}if(!point)return {ok:false};"
@@ -210,14 +263,14 @@ function hintPointerPreflight(candidate, viewWidth, viewHeight) {
         + "}catch(error){return {ok:false};}})()"
 }
 
-function hintFocus(candidate) {
+function hintFocus(candidate, selectorSnapshot) {
     var actionCandidate = Object.assign({}, candidate || {})
     if (typeof actionCandidate.href === "undefined")
         actionCandidate.href = null
     if (typeof actionCandidate.related_element_id === "undefined")
         actionCandidate.related_element_id = null
     var elementId = Number(actionCandidate.element_id)
-    var freshness = hintFresh(actionCandidate)
+    var freshness = hintFresh(actionCandidate, selectorSnapshot)
     return "(function(){try{const fresh=" + freshness + ",candidate=" + JSON.stringify(actionCandidate) + ";"
         + "if(!fresh.visible||fresh.element_id!==candidate.element_id||fresh.related_element_id!==candidate.related_element_id||fresh.kind!==candidate.kind||fresh.frame_path!==candidate.frame_path||fresh.text!==candidate.text||fresh.href!==candidate.href)return false;"
         + "const state=window.__ferric_browserHintState,record=state&&state.elements&&state.elements.get(" + elementId + "),el=record&&record.element;"
@@ -231,7 +284,7 @@ function hintFocus(candidate) {
         + "}catch(error){return false;}})()"
 }
 
-function hintClick(candidate) {
+function hintClick(candidate, selectorSnapshot) {
     var actionCandidate = Object.assign({}, candidate || {})
     if (typeof actionCandidate.href === "undefined")
         actionCandidate.href = null
@@ -239,7 +292,7 @@ function hintClick(candidate) {
         actionCandidate.related_element_id = null
     var elementId = Number(actionCandidate.element_id)
     var selector = hintSelector(false)
-    var freshness = hintFresh(actionCandidate)
+    var freshness = hintFresh(actionCandidate, selectorSnapshot)
     return "(function(){try{const fresh=" + freshness + ",candidate=" + JSON.stringify(actionCandidate) + ";"
         + "if(!fresh.visible||fresh.element_id!==candidate.element_id||fresh.related_element_id!==candidate.related_element_id||fresh.kind!==candidate.kind||fresh.frame_path!==candidate.frame_path||fresh.text!==candidate.text||fresh.href!==candidate.href)return false;"
         + "const state=window.__ferric_browserHintState,record=state&&state.elements&&state.elements.get(" + elementId + "),el=record&&record.element;"

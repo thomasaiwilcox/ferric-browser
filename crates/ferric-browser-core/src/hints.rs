@@ -197,6 +197,8 @@ pub struct HintSession {
     pub id: HintSessionId,
     pub target: HintTarget,
     pub configuration_revision: u64,
+    pub selector_policy_revision: u64,
+    pub discovery_provenance: Vec<String>,
     pub hints: Vec<LabeledHint>,
 }
 
@@ -213,10 +215,31 @@ impl HintSession {
         hints: Vec<LabeledHint>,
         configuration_revision: u64,
     ) -> Self {
+        Self::new_with_selector_policy(
+            ids,
+            target,
+            hints,
+            configuration_revision,
+            configuration_revision,
+            Vec::new(),
+        )
+    }
+
+    #[must_use]
+    pub fn new_with_selector_policy(
+        ids: &mut IdSource,
+        target: HintTarget,
+        hints: Vec<LabeledHint>,
+        configuration_revision: u64,
+        selector_policy_revision: u64,
+        discovery_provenance: Vec<String>,
+    ) -> Self {
         Self {
             id: ids.hint_session(),
             target,
             configuration_revision,
+            selector_policy_revision,
+            discovery_provenance,
             hints,
         }
     }
@@ -1092,6 +1115,33 @@ mod tests {
             ),
             Err(HintError::CandidateNotVisible)
         ));
+    }
+
+    #[test]
+    fn hint_session_captures_selector_revision_and_provenance() {
+        let mut ids = IdSource::new();
+        let target = HintTarget {
+            tab: ids.tab(),
+            generation: 1,
+            document: ids.document(),
+        };
+        let hints =
+            assign_labels(vec![candidate(0.0, 0.0, "custom button")]).expect("valid custom hint");
+        let session = HintSession::new_with_selector_policy(
+            &mut ids,
+            target,
+            hints,
+            12,
+            0x1234,
+            vec!["effective-config".into(), "site-rule:docs".into()],
+        );
+
+        assert_eq!(session.configuration_revision, 12);
+        assert_eq!(session.selector_policy_revision, 0x1234);
+        assert_eq!(
+            session.discovery_provenance,
+            ["effective-config", "site-rule:docs"]
+        );
     }
 
     #[test]

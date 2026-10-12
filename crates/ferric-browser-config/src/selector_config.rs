@@ -4,7 +4,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
+use super::{Config, matching_site_rules};
+
 pub const MAX_SELECTORS_PER_FAMILY: usize = 16;
+pub const MAX_RESOLVED_SELECTORS_PER_FAMILY: usize = 32;
 pub const MAX_SELECTOR_BYTES: usize = 1_024;
 pub const MAX_SELECTOR_RULE_BYTES: usize = 16 * 1024;
 pub const MAX_RESOLVED_SELECTOR_BYTES: usize = 32 * 1024;
@@ -75,9 +78,32 @@ impl HintSelectorPolicy {
     /// Checks the count, encoded byte bounds, control characters, duplicates,
     /// and per-family serialized string budget.
     pub fn validate(&self) -> Result<(), String> {
-        if self.selectors.len() > MAX_SELECTORS_PER_FAMILY {
+        self.validate_with_limits(
+            MAX_SELECTORS_PER_FAMILY,
+            MAX_SELECTOR_RULE_BYTES,
+            "16 KiB family rule",
+        )
+    }
+
+    /// Checks a policy after it has been resolved across configuration layers.
+    /// Each incoming layer still uses [`Self::validate`].
+    pub fn validate_resolved(&self) -> Result<(), String> {
+        self.validate_with_limits(
+            MAX_RESOLVED_SELECTORS_PER_FAMILY,
+            MAX_RESOLVED_SELECTOR_BYTES,
+            "32 KiB resolved family",
+        )
+    }
+
+    fn validate_with_limits(
+        &self,
+        maximum_count: usize,
+        maximum_bytes: usize,
+        budget_name: &str,
+    ) -> Result<(), String> {
+        if self.selectors.len() > maximum_count {
             return Err(format!(
-                "at most {MAX_SELECTORS_PER_FAMILY} selectors are supported per family"
+                "at most {maximum_count} selectors are supported per family"
             ));
         }
         let mut seen = BTreeSet::new();
@@ -97,8 +123,8 @@ impl HintSelectorPolicy {
             }
             total = total.saturating_add(bytes);
         }
-        if total > MAX_SELECTOR_RULE_BYTES {
-            return Err("selector strings exceed the 16 KiB family rule limit".into());
+        if total > maximum_bytes {
+            return Err(format!("selector strings exceed the {budget_name} limit"));
         }
         Ok(())
     }
@@ -126,9 +152,83 @@ impl HintSelectorPolicy {
             }
         }
         let merged = Self { mode, selectors };
-        merged.validate()?;
+        merged.validate_resolved()?;
         Ok(merged)
     }
+}
+
+/// Effective selectors for one family, with the configuration sources that
+/// contributed policy entries. An absent policy means use the built-in list.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct EffectiveHintSelectorFamily {
+    pub policy: Option<HintSelectorPolicy>,
+    pub provenance: Vec<String>,
+}
+
+/// Resolves configured selector entries through the existing site-rule order.
+/// Built-in selectors remain the caller's fallback and are not duplicated here.
+pub fn resolve_hint_selector_policies(
+    config: &Config,
+    url: &str,
+) -> Result<BTreeMap<HintSelectorFamily, EffectiveHintSelectorFamily>, String> {
+    let site_rules = matching_site_rules(config, url);
+    let mut resolved = BTreeMap::new();
+    for family in HintSelectorFamily::ALL {
+        let mut policy = config.hints.selectors.get(&family).cloned();
+        let mut provenance = if policy.is_some() {
+            vec!["effective-config".to_owned()]
+        } else {
+            Vec::new()
+        };
+        for rule in &site_rules {
+            let key = format!("hints.selectors.{}", family.as_str());
+            let Some(value) = rule.set.get(&key) else {
+                continue;
+            };
+            let incoming = value
+                .clone()
+                .try_into::<HintSelectorPolicy>()
+                .map_err(|error| {
+                    format!(
+                        "site rule {} has an invalid selector policy for {key}: {error}",
+                        rule.id
+                    )
+                })?;
+            policy = Some(
+                HintSelectorPolicy::overlay(policy.as_ref(), incoming)
+                    .map_err(|error| format!("site rule {}: {error}", rule.id))?,
+            );
+            provenance.push(format!("site-rule:{}", rule.id));
+        }
+        if let Some(policy) = &policy {
+            policy
+                .validate_resolved()
+                .map_err(|error| format!("hints.selectors.{}: {error}", family.as_str()))?;
+        }
+        resolved.insert(
+            family,
+            EffectiveHintSelectorFamily {
+                policy,
+                provenance: if provenance.is_empty() {
+                    vec!["built-in".to_owned()]
+                } else {
+                    provenance
+                },
+            },
+        );
+    }
+    validate_resolved_selector_policy_map(
+        &resolved
+            .iter()
+            .filter_map(|(family, entry)| {
+                entry
+                    .policy
+                    .as_ref()
+                    .map(|policy| (*family, policy.clone()))
+            })
+            .collect(),
+    )?;
+    Ok(resolved)
 }
 
 #[must_use]
@@ -143,11 +243,27 @@ pub fn selector_setting_family(key: &str) -> Option<HintSelectorFamily> {
 pub fn validate_selector_policy_map(
     policies: &BTreeMap<HintSelectorFamily, HintSelectorPolicy>,
 ) -> Result<(), String> {
+    validate_selector_policy_map_with_limits(policies, false)
+}
+
+pub fn validate_resolved_selector_policy_map(
+    policies: &BTreeMap<HintSelectorFamily, HintSelectorPolicy>,
+) -> Result<(), String> {
+    validate_selector_policy_map_with_limits(policies, true)
+}
+
+fn validate_selector_policy_map_with_limits(
+    policies: &BTreeMap<HintSelectorFamily, HintSelectorPolicy>,
+    resolved: bool,
+) -> Result<(), String> {
     let mut total = 0_usize;
     for (family, policy) in policies {
-        policy
-            .validate()
-            .map_err(|error| format!("hints.selectors.{}: {error}", family.as_str()))?;
+        let validation = if resolved {
+            policy.validate_resolved()
+        } else {
+            policy.validate()
+        };
+        validation.map_err(|error| format!("hints.selectors.{}: {error}", family.as_str()))?;
         total = total.saturating_add(policy.selector_bytes());
     }
     if total > MAX_RESOLVED_SELECTOR_BYTES {

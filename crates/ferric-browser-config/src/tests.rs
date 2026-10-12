@@ -151,6 +151,172 @@ fn resolved_selector_bytes_are_bounded_across_families() {
 }
 
 #[test]
+fn selector_layers_allow_32_resolved_strings_but_keep_16_per_entry() {
+    let base_selectors = (0..MAX_SELECTORS_PER_FAMILY)
+        .map(|index| format!("[data-base-{index}]"))
+        .collect::<Vec<_>>();
+    let runtime_selectors = (0..MAX_SELECTORS_PER_FAMILY)
+        .map(|index| format!("[data-runtime-{index}]"))
+        .collect::<Vec<_>>();
+    let base_policy = HintSelectorPolicy {
+        mode: HintSelectorMode::Extend,
+        selectors: base_selectors,
+    };
+    let runtime_policy = HintSelectorPolicy {
+        mode: HintSelectorMode::Extend,
+        selectors: runtime_selectors,
+    };
+    base_policy.validate().expect("base entry has 16 selectors");
+    runtime_policy
+        .validate()
+        .expect("runtime entry has 16 selectors");
+
+    let mut config = Config::default();
+    config
+        .hints
+        .selectors
+        .insert(HintSelectorFamily::Buttons, base_policy);
+    let mut overrides = RuntimeOverrides::default();
+    overrides
+        .set_setting(
+            "hints.selectors.buttons",
+            toml::Value::try_from(runtime_policy).expect("serialize runtime entry"),
+        )
+        .expect("set runtime selector entry");
+    let effective = apply_runtime_overrides(&config, &overrides)
+        .expect("two valid entries may resolve to 32 selectors");
+    assert_eq!(
+        effective.hints.selectors[&HintSelectorFamily::Buttons]
+            .selectors
+            .len(),
+        MAX_RESOLVED_SELECTORS_PER_FAMILY
+    );
+    let mut overflow = RuntimeOverrides::default();
+    overflow
+        .set_setting(
+            "hints.selectors.buttons",
+            toml::Value::try_from(selector_policy(
+                HintSelectorMode::Extend,
+                &["[data-overflow]"],
+            ))
+            .expect("serialize overflow selector"),
+        )
+        .expect("set overflow selector");
+    assert!(
+        apply_runtime_overrides(&effective, &overflow).is_err(),
+        "a resolved family exceeded 32 selectors"
+    );
+
+    let too_many = HintSelectorPolicy {
+        mode: HintSelectorMode::Extend,
+        selectors: (0..=MAX_SELECTORS_PER_FAMILY)
+            .map(|index| format!("[data-entry-{index}]"))
+            .collect(),
+    };
+    assert!(too_many.validate().is_err(), "a single entry exceeded 16");
+}
+
+#[test]
+fn effective_selector_resolution_obeys_site_order_and_family_independence() {
+    let site_policy = |mode, selector: &str| {
+        toml::Value::try_from(selector_policy(mode, &[selector])).expect("encode site policy")
+    };
+    let mut config = Config::default();
+    config.hints.selectors.insert(
+        HintSelectorFamily::All,
+        selector_policy(HintSelectorMode::Extend, &[".global"]),
+    );
+    config.site_rules = vec![
+        SiteRule {
+            id: "first-layer".into(),
+            pattern: "https://example.test/*".into(),
+            priority: 1,
+            set: BTreeMap::from([(
+                "hints.selectors.all".into(),
+                site_policy(HintSelectorMode::Extend, ".first"),
+            )]),
+        },
+        SiteRule {
+            id: "replace-layer".into(),
+            pattern: "https://example.test/*".into(),
+            priority: 2,
+            set: BTreeMap::from([(
+                "hints.selectors.all".into(),
+                site_policy(HintSelectorMode::Replace, ".replacement"),
+            )]),
+        },
+        SiteRule {
+            id: "last-layer".into(),
+            pattern: "https://example.test/*".into(),
+            priority: 3,
+            set: BTreeMap::from([(
+                "hints.selectors.all".into(),
+                site_policy(HintSelectorMode::Extend, ".last"),
+            )]),
+        },
+    ];
+    for rule in &config.site_rules {
+        for (key, value) in &rule.set {
+            assert!(setting_supports_site_scope(key), "{key} lacks site scope");
+            assert!(selector_setting_family(key).is_some(), "{key} lacks family");
+            let _: HintSelectorPolicy = value
+                .clone()
+                .try_into()
+                .expect("site selector policy decodes");
+        }
+        validate_site_rule(rule).expect("individual selector site rule validates");
+    }
+    validate(&config).expect("site selector rules validate");
+
+    let resolved = resolve_hint_selector_policies(&config, "https://example.test/page")
+        .expect("effective selector policies resolve");
+    let all = &resolved[&HintSelectorFamily::All];
+    assert_eq!(
+        all.policy,
+        Some(selector_policy(
+            HintSelectorMode::Replace,
+            &[".replacement", ".last"]
+        ))
+    );
+    assert_eq!(
+        all.provenance,
+        [
+            "effective-config",
+            "site-rule:first-layer",
+            "site-rule:replace-layer",
+            "site-rule:last-layer"
+        ]
+    );
+    assert_eq!(
+        resolved[&HintSelectorFamily::Buttons].provenance,
+        ["built-in"]
+    );
+    assert_eq!(resolved[&HintSelectorFamily::Buttons].policy, None);
+}
+
+#[test]
+fn empty_replace_resolves_as_an_explicit_disabled_family() {
+    let mut config = Config::default();
+    config.hints.selectors.insert(
+        HintSelectorFamily::Scrollables,
+        HintSelectorPolicy {
+            mode: HintSelectorMode::Replace,
+            selectors: Vec::new(),
+        },
+    );
+    validate(&config).expect("empty replacement is valid");
+    let resolved = resolve_hint_selector_policies(&config, "https://example.test/")
+        .expect("disabled family resolves");
+    assert_eq!(
+        resolved[&HintSelectorFamily::Scrollables].policy,
+        Some(HintSelectorPolicy {
+            mode: HintSelectorMode::Replace,
+            selectors: Vec::new(),
+        })
+    );
+}
+
+#[test]
 fn selector_layers_extend_stably_and_replace_inherited_values() {
     let mut base = Config::default();
     base.hints.selectors.insert(
@@ -241,6 +407,38 @@ fn site_selector_entries_are_typed_bounded_and_transactional() {
             .is_err()
     );
     assert_eq!(overrides, before);
+}
+
+#[test]
+fn one_site_rule_caps_selector_bytes_across_all_families() {
+    let policy = |prefix: char| HintSelectorPolicy {
+        mode: HintSelectorMode::Replace,
+        selectors: (0..9)
+            .map(|index| {
+                let start = format!("{prefix}{index}");
+                format!("{start}{}", "x".repeat(MAX_SELECTOR_BYTES - start.len()))
+            })
+            .collect(),
+    };
+    let rule = SiteRule {
+        id: "bounded-selectors".into(),
+        pattern: "https://example.test/*".into(),
+        priority: 0,
+        set: BTreeMap::from([
+            (
+                "hints.selectors.all".into(),
+                toml::Value::try_from(policy('a')).expect("encode all policy"),
+            ),
+            (
+                "hints.selectors.buttons".into(),
+                toml::Value::try_from(policy('b')).expect("encode button policy"),
+            ),
+        ]),
+    };
+    assert!(
+        validate_site_rule(&rule).is_err(),
+        "accepted a 32 KiB site rule"
+    );
 }
 
 #[test]

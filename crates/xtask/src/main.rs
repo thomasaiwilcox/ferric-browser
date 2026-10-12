@@ -272,6 +272,7 @@ fn render_user_docs() -> Result<(String, String, String, String), String> {
         )
         .map_err(|_| "could not format configuration metadata".to_owned())?;
     }
+    append_hint_selector_docs(&mut configuration);
     configuration.push_str(concat!(
         "\n## Validated hint proxies\n\n",
         "`hints.proxy_targets` accepts `off` (the default) or `validated` and can be set globally, in a profile, or with a site rule. `validated` enables only the browser's checked editor-container and native label/control pairings; it does not let selectors nominate hidden receivers or grant a general visibility exception. Editor proxies must remain connected, enabled, editable, non-inert, and visible through their editor container. The feature does not read editor contents or change page focusability styles. Structural fixtures do not establish compatibility with a particular editor framework build.\n",
@@ -287,6 +288,17 @@ fn render_user_docs() -> Result<(String, String, String, String), String> {
         render_binding_docs()?,
         render_action_docs()?,
     ))
+}
+
+fn append_hint_selector_docs(configuration: &mut String) {
+    configuration.push_str(concat!(
+        "\n## Hint selector policies\n\n",
+        "Configure the seven existing Hint families (`all`, `links`, `inputs`, `buttons`, `images`, `media`, and `scrollables`) with `mode = \"extend\"` or `mode = \"replace\"`. With no entry, Ferric uses that family's built-in selectors. `extend` adds unique selectors in stable order; `replace` uses only the listed selectors. An empty `replace` list disables that family. For example:\n\n",
+        "```toml\n[hints.selectors.buttons]\nmode = \"extend\"\nselectors = ['button[data-action]']\n```\n\n",
+        "The effective global/profile/runtime settings form the base policy. Matching site rules then apply in the repository's existing priority and source order; each family layers independently, and `all` is not an implicit union of the other families. `scrollables` must still match an actually scrollable element. Selectors control discovery only: semantic type checks, visibility, disabled/inert checks, and the existing action or proxy guards still decide what a target can do.\n\n",
+        "Each authored family entry allows at most 16 selectors, each up to 1,024 UTF-8 bytes, and at most 16 KiB of selector strings. A site rule has a shared 16 KiB selector-string budget across its families. After layering, each family allows at most 32 selectors and 32 KiB; the resolved policy across all families is also capped at 32 KiB. Empty strings, control characters, and duplicate selectors in one entry are rejected. The WebEngine CSS parser checks syntax before a selector setting is committed.\n\n",
+        "A Hint snapshot inspects at most 50,000 DOM nodes and returns at most 5,000 candidates. Truncation is reported in the Hint status. These limits bound traversal and output; one CSS selector match is synchronous and cannot be interrupted by a timeout.\n",
+    ));
 }
 
 fn generate_user_docs() -> Result<(), String> {

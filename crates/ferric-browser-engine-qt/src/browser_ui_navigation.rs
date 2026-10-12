@@ -9,6 +9,34 @@ use super::{
     refresh_labels,
 };
 
+use ferric_browser_config::{Config, HintSelectorFamily, resolve_hint_selector_policies};
+
+pub(super) fn effective_hint_selector_snapshot(
+    config_json: &str,
+    url: &str,
+    configuration_revision: u64,
+    family: &str,
+) -> Result<Value, String> {
+    let family = HintSelectorFamily::parse(family)
+        .ok_or_else(|| format!("unsupported hint selector family: {family}"))?;
+    let config = serde_json::from_str::<Config>(config_json)
+        .map_err(|error| format!("effective configuration is unavailable: {error}"))?;
+    let policies = resolve_hint_selector_policies(&config, url)?;
+    let revision_input = serde_json::to_vec(&(configuration_revision, url, family, &policies))
+        .map_err(|error| format!("selector policy could not be serialized: {error}"))?;
+    let selector_policy_revision = revision_input
+        .iter()
+        .fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+            (hash ^ u64::from(*byte)).wrapping_mul(0x0100_0000_01b3)
+        });
+    Ok(serde_json::json!({
+        "family": family.as_str(),
+        "configuration_revision": configuration_revision,
+        "selector_revision": format!("{selector_policy_revision:016x}"),
+        "policies": policies,
+    }))
+}
+
 impl qobject::BrowserUi {
     pub(super) fn dispatch_hint_command(
         mut self: Pin<&mut Self>,
@@ -212,6 +240,49 @@ impl qobject::BrowserUi {
         if self.as_ref().rust().core_mode != Mode::Hint {
             self.as_mut().set_hint_mode();
         }
+        let family = self.as_ref().rust().hint_family.to_string();
+        let configuration_revision = self.as_ref().rust().hint_configuration_revision;
+        let snapshot = match effective_hint_selector_snapshot(
+            &self.as_ref().rust().config_json.to_string(),
+            &self.as_ref().rust().current_url.to_string(),
+            configuration_revision,
+            &family,
+        ) {
+            Ok(snapshot) => snapshot,
+            Err(error) => {
+                self.set_status_text(QString::from(format!(
+                    "Hint selectors unavailable: {error}"
+                )));
+                return QString::from(
+                    serde_json::json!({"error":"selector-policy-unavailable"}).to_string(),
+                );
+            }
+        };
+        let expected_selector_revision = snapshot
+            .get("selector_revision")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let Some(selector_policy_revision) =
+            u64::from_str_radix(expected_selector_revision, 16).ok()
+        else {
+            self.set_status_text(QString::from(
+                "Hints rejected: invalid selector policy revision",
+            ));
+            return QString::from(
+                serde_json::json!({"error":"invalid-selector-policy-revision"}).to_string(),
+            );
+        };
+        let supplied_selector_revision =
+            serde_json::from_str::<Value>(&candidates_json.to_string())
+                .ok()
+                .and_then(|payload| payload.get("selector_revision").cloned())
+                .and_then(|value| value.as_str().map(ToOwned::to_owned));
+        if supplied_selector_revision.as_deref() != Some(expected_selector_revision) {
+            self.set_status_text(QString::from(
+                "Hints rejected: selector policy changed during collection",
+            ));
+            return QString::from(serde_json::json!({"error":"stale-selector-policy"}).to_string());
+        }
         let Some(target) = current_target(
             self.as_ref().rust().state.as_ref(),
             self.as_ref().rust().tab,
@@ -317,8 +388,17 @@ impl qobject::BrowserUi {
         } else {
             interaction.initial_activation().map(ToOwned::to_owned)
         };
-        let configuration_revision = self.as_ref().rust().hint_configuration_revision;
-        let session = HintSession::new_with_configuration_revision(
+        let discovery_provenance = snapshot
+            .get("policies")
+            .and_then(|policies| policies.get(family.as_str()))
+            .and_then(|entry| entry.get("provenance"))
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(ToOwned::to_owned)
+            .collect();
+        let session = HintSession::new_with_selector_policy(
             &mut ids,
             HintTarget {
                 tab: target.tab,
@@ -327,6 +407,8 @@ impl qobject::BrowserUi {
             },
             labeled.clone(),
             configuration_revision,
+            selector_policy_revision,
+            discovery_provenance,
         );
         let pointer_action = if self.as_ref().rust().hint_pointer_mode {
             let Some(source) = self.as_ref().rust().hint_pointer_source else {
@@ -487,6 +569,28 @@ impl qobject::BrowserUi {
         QString::from(response.to_string())
     }
 
+    pub(super) fn hint_selector_policy(self: Pin<&mut Self>, family: &QString) -> QString {
+        let result = {
+            let binding = self.as_ref();
+            let rust = binding.rust();
+            effective_hint_selector_snapshot(
+                &rust.config_json.to_string(),
+                &rust.current_url.to_string(),
+                rust.hint_configuration_revision,
+                &family.to_string(),
+            )
+        };
+        match result {
+            Ok(snapshot) => QString::from(snapshot.to_string()),
+            Err(error) => {
+                self.set_status_text(QString::from(format!(
+                    "Hint selectors unavailable: {error}"
+                )));
+                QString::default()
+            }
+        }
+    }
+
     pub(super) fn confirm_rapid_hint_tabs(mut self: Pin<&mut Self>) -> bool {
         let binding = self.as_ref();
         let rust = binding.rust();
@@ -537,4 +641,69 @@ fn hint_interaction_json(interaction: &HintInteraction) -> Value {
         "remaining": snapshot.remaining,
         "total": snapshot.total,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use ferric_browser_config::{HintSelectorMode, HintSelectorPolicy, SiteRule};
+
+    use super::*;
+
+    #[test]
+    fn selector_snapshot_binds_configuration_family_and_site_policy() {
+        let config = Config::default();
+        let config_json = serde_json::to_string(&config).expect("serialize default config");
+        let all =
+            effective_hint_selector_snapshot(&config_json, "https://example.test/page", 7, "all")
+                .expect("default selector snapshot");
+        let repeated =
+            effective_hint_selector_snapshot(&config_json, "https://example.test/page", 7, "all")
+                .expect("repeat selector snapshot");
+        let buttons = effective_hint_selector_snapshot(
+            &config_json,
+            "https://example.test/page",
+            7,
+            "buttons",
+        )
+        .expect("button selector snapshot");
+        let next_configuration =
+            effective_hint_selector_snapshot(&config_json, "https://example.test/page", 8, "all")
+                .expect("new config revision snapshot");
+        assert_eq!(all["selector_revision"], repeated["selector_revision"]);
+        assert_ne!(all["selector_revision"], buttons["selector_revision"]);
+        assert_ne!(
+            all["selector_revision"],
+            next_configuration["selector_revision"]
+        );
+
+        let mut site_config = config;
+        site_config.site_rules.push(SiteRule {
+            id: "custom-buttons".into(),
+            pattern: "https://example.test/*".into(),
+            priority: 1,
+            set: BTreeMap::from([(
+                "hints.selectors.buttons".into(),
+                toml::Value::try_from(HintSelectorPolicy {
+                    mode: HintSelectorMode::Replace,
+                    selectors: vec![".custom-button".into()],
+                })
+                .expect("serialize site policy"),
+            )]),
+        });
+        let site_json = serde_json::to_string(&site_config).expect("serialize site config");
+        let scoped =
+            effective_hint_selector_snapshot(&site_json, "https://example.test/page", 7, "buttons")
+                .expect("site selector snapshot");
+        assert_ne!(buttons["selector_revision"], scoped["selector_revision"]);
+        assert_eq!(
+            scoped["policies"]["buttons"]["policy"]["selectors"][0],
+            ".custom-button"
+        );
+        assert_eq!(
+            scoped["policies"]["buttons"]["provenance"][0],
+            "site-rule:custom-buttons"
+        );
+    }
 }

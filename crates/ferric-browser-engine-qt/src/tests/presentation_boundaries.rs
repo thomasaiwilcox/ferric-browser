@@ -1452,12 +1452,12 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(qml.contains("return BrowserScripts.focusProbe()"));
     assert!(qml.contains("return BrowserScripts.focusObserverSource()"));
     assert!(qml.contains("return BrowserScripts.shutdownPageProbe()"));
-    assert!(qml.contains("return BrowserScripts.hintCollector(family, browserUi.hint_proxy_targets_enabled)"));
+    assert!(qml.contains("return BrowserScripts.hintCollector(\n                    family, browserUi.hint_proxy_targets_enabled, selectorSnapshot)"));
     assert!(qml.contains("return BrowserScripts.hintDirtyRevision()"));
     assert!(qml.contains("return BrowserScripts.hintStopTracking()"));
-    assert!(qml.contains("return BrowserScripts.hintFresh(candidate)"));
-    assert!(qml.contains("return BrowserScripts.hintFocus(candidate)"));
-    assert!(qml.contains("return BrowserScripts.hintClick(candidate)"));
+    assert!(qml.contains("candidate, hintSelectorPolicySnapshot(browserUi.hint_family)"));
+    assert!(qml.contains("BrowserScripts.hintFocus("));
+    assert!(qml.contains("BrowserScripts.hintClick("));
     assert!(qml.contains("BrowserScripts.pageUserscriptRun(scriptSource)"));
     assert!(qml.contains("BrowserScripts.pageUserscriptInstall(script.source)"));
     assert!(!qml.contains("function hintSelector(linksOnly)"));
@@ -1536,13 +1536,13 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(script.contains("service_workers:'unavailable'"));
     assert!(script.contains("window.__ferric_browserFocusState"));
     assert!(script.contains("elements.length > 128"));
-    assert!(script.contains("function hintCollector(family, proxyTargets)"));
+    assert!(script.contains("function hintCollector(family, proxyTargets, selectorSnapshot)"));
     assert!(script.contains("function proxyPairValid(record,candidate,state)"));
     assert!(script.contains(".ace_editor[role="));
     assert!(script.contains("label.control!==control"));
-    assert!(script.contains("function hintFresh(candidate)"));
-    assert!(script.contains("function hintFocus(candidate)"));
-    assert!(script.contains("function hintClick(candidate)"));
+    assert!(script.contains("function hintFresh(candidate, selectorSnapshot)"));
+    assert!(script.contains("function hintFocus(candidate, selectorSnapshot)"));
+    assert!(script.contains("function hintClick(candidate, selectorSnapshot)"));
     assert!(script.contains("function focusObserverSource()"));
     assert!(script.contains("function formStateProbe()"));
     assert!(script.contains("function siteDataClearResult()"));
@@ -1620,7 +1620,7 @@ fn native_pointer_hint_waits_for_enter_release_and_uses_the_existing_adapter_onc
     assert!(presentation.contains("Pointer mode treats marker activation as selection only"));
     assert!(pointer.contains("PREFLIGHT_LIFETIME: Duration = Duration::from_millis(250)"));
     assert!(pointer.contains("LocalInteractionOperation::HintPointerDispatch"));
-    assert!(scripts.contains("function hintPointerPreflight(candidate, viewWidth, viewHeight)"));
+    assert!(scripts.contains("function hintPointerPreflight(candidate, viewWidth, viewHeight, selectorSnapshot)"));
     assert!(scripts.contains("function ftPointerDeepHit(doc,x,y)"));
     assert!(pointer.contains("no retry or fallback"));
 }

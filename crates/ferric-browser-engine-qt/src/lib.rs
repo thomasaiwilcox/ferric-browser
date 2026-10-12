@@ -1020,6 +1020,9 @@ mod qobject {
         fn begin_hint_session(self: Pin<&mut BrowserUi>, candidates_json: &QString) -> QString;
 
         #[qinvokable]
+        fn hint_selector_policy(self: Pin<&mut BrowserUi>, family: &QString) -> QString;
+
+        #[qinvokable]
         fn update_hint_interaction(
             self: Pin<&mut BrowserUi>,
             action: &QString,

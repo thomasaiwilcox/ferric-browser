@@ -59,6 +59,23 @@ TestCase {
         }, 5000)
         return found
     }
+    function selectorSnapshot(family, mode, selectors, revision, extraPolicies) {
+        var policies = ({})
+        policies[family] = {
+            mode: mode,
+            selectors: selectors,
+            provenance: ["site-rule:fixture"]
+        }
+        if (extraPolicies) {
+            for (var key in extraPolicies) policies[key] = extraPolicies[key]
+        }
+        return {
+            family: family,
+            configuration_revision: 0,
+            selector_revision: revision,
+            policies: policies
+        }
+    }
     function cleanup() {
         evaluate(BrowserScripts.hintStopTracking())
     }
@@ -338,5 +355,84 @@ TestCase {
         verify(evaluate(BrowserScripts.hintStopTracking()))
         verify(!evaluate(BrowserScripts.hintFresh(selected)).visible, "Teardown drops the representative and related receiver records")
         verify(evaluate("window.__ferric_browserHintState.elements.size===0 && window.__ferric_browserHintState.observers.length===0 && window.__ferric_browserHintState.windows.length===0 && !window.__ferric_browserHintState.tracking"))
+    }
+    // T031/T032: replacement selects discovery; captured policy survives fresh/final checks.
+    function test_T031_T032_custom_selector_and_action_boundary() {
+        load("adversarial-targets.html")
+        evaluate("document.body.innerHTML='<button id=custom class=ferric-custom>Custom action</button><div id=lookalike class=ferric-custom href=\"https://invalid.test/\">Lookalike</div>';document.getElementById('custom').onclick=function(){this.dataset.clicks=String(Number(this.dataset.clicks||0)+1)};true")
+        var snapshot = selectorSnapshot("all", "replace", [".ferric-custom"], "s12-custom-all", {
+            scrollables: {mode:"replace", selectors:[], provenance:["site-rule:fixture"]}
+        })
+        var value = evaluate(BrowserScripts.hintCollector("all", false, snapshot))
+        compare(value.selector_revision, "s12-custom-all")
+        compare(value.truncated, false)
+        var custom = value.candidates.filter(function(item) { return item.text === "Custom action" })[0]
+        var lookalike = value.candidates.filter(function(item) { return item.text === "Lookalike" })[0]
+        verify(custom, "Custom selector discovers the semantic button")
+        verify(lookalike, "A matching generic element remains discovery-only")
+        compare(lookalike.kind, "aria")
+        verify(lookalike.href === null || typeof lookalike.href === "undefined",
+               "A generic custom match carries no URL")
+        verify(evaluate(BrowserScripts.hintFresh(custom, snapshot)).visible)
+        verify(!evaluate(BrowserScripts.hintFresh(custom,
+                            selectorSnapshot("all", "replace", [".ferric-custom"], "stale-revision"))).visible,
+               "A changed site-policy revision invalidates retained identity")
+        verify(!evaluate(BrowserScripts.hintClick(lookalike, snapshot)),
+               "A generic custom match cannot gain click authority")
+        verify(!evaluate(BrowserScripts.hintFocus(lookalike, snapshot)),
+               "A generic custom match cannot gain focus authority")
+        var pointerPreflight = evaluate(
+                    BrowserScripts.hintPointerPreflight(lookalike, 640, 480, snapshot))
+        verify(!pointerPreflight.ok,
+               "A generic custom match cannot gain native pointer authority")
+        verify(evaluate(BrowserScripts.hintClick(custom, snapshot)),
+               "A real button retains its semantic final-action check")
+        compare(evaluate("document.getElementById('custom').dataset.clicks"), "1")
+    }
+    // T031: empty replacement disables implicit scrollable and proxy additions.
+    function test_T031_empty_replace_disables_secondary_discovery() {
+        load("proxy-targets.html")
+        var scrollablesDisabled = selectorSnapshot("all", "extend", [], "s12-disabled-scrollables", {
+            scrollables: {mode:"replace", selectors:[], provenance:["site-rule:fixture"]}
+        })
+        evaluate("document.body.innerHTML+='<div id=scroll style=\"width:80px;height:40px;overflow:auto\"><div style=\"width:400px;height:120px\"></div></div>';true")
+        var values = evaluate(BrowserScripts.hintCollector("all", true, scrollablesDisabled)).candidates
+        verify(!values.some(function(item) { return item.kind === "scrollable" }),
+               "The implicit all-family pass honors an empty scrollables replacement")
+        var allDisabled = selectorSnapshot("all", "replace", [], "s12-disabled-all")
+        values = evaluate(BrowserScripts.hintCollector("all", true, allDisabled)).candidates
+        verify(!values.length, "An empty all replacement also disables its implicit scrollable pass")
+        var inputsDisabled = selectorSnapshot("inputs", "replace", [], "s12-disabled-inputs")
+        var inputValues = evaluate(BrowserScripts.hintCollector("inputs", true, inputsDisabled)).candidates
+        verify(!inputValues.some(function(item) {
+            return item.kind === "editor-focus" || item.kind === "label-control"
+        }), "An empty inputs replacement disables opt-in proxy additions")
+    }
+    // T033: traversal and output stay bounded and report visible truncation.
+    function test_T033_selector_collection_resource_caps() {
+        load("adversarial-targets.html")
+        evaluate("document.body.innerHTML='';document.body.style='margin:0';const fragment=document.createDocumentFragment();for(let i=0;i<5001;i++){const input=document.createElement('input');input.setAttribute('aria-label','Stress '+i);input.style='position:fixed;left:4px;top:4px;width:12px;height:12px';fragment.appendChild(input)}for(let i=0;i<50000;i++){fragment.appendChild(document.createElement('div'))}document.body.appendChild(fragment);true")
+        var selectors = ["input[aria-label^='Stress']"]
+        for (var selectorIndex = 0; selectorIndex < 31; ++selectorIndex) {
+            selectors.push("div:not(:has(> [data-expensive='v" + selectorIndex + "']))")
+        }
+        var snapshot = selectorSnapshot("inputs", "replace", selectors, "s12-resource-stress")
+        var collection = BrowserScripts.hintCollector("inputs", false, snapshot)
+        var value = evaluate("(()=>{const started=performance.now();const result=" + collection
+                           + ";result.collection_ms=performance.now()-started;return result;})()")
+        verify(value.candidates.length <= 5000, "Output candidate limit is enforced")
+        compare(value.candidates.length, 5000)
+        verify(value.inspected_nodes <= 50000, "Per-snapshot inspected-element limit is enforced")
+        verify(value.truncated, "Budget exhaustion is reported rather than shown as complete")
+        verify(value.collection_ms >= 0, "Renderer timing is available for the bounded selector stress")
+        console.info("FERRIC_SELECTOR_STRESS_JSON " + JSON.stringify({
+            selector_count: selectors.length,
+            inspected_nodes: value.inspected_nodes,
+            candidates: value.candidates.length,
+            truncated: value.truncated,
+            collection_ms: value.collection_ms,
+            user_agent: evaluate("navigator.userAgent"),
+            viewport: evaluate("({width:innerWidth,height:innerHeight,device_pixel_ratio:devicePixelRatio})")
+        }))
     }
 }

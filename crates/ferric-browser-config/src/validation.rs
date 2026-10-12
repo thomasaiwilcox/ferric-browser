@@ -5,8 +5,8 @@ use super::{
     MAX_RUNTIME_KEY_BYTES, MAX_RUNTIME_SETTINGS, MAX_RUNTIME_VALUE_BYTES, PermissionDecision,
     ProfileDefinition, ProfilesConfig, RUNTIME_SCHEMA_VERSION, RuntimeOverrides,
     apply_runtime_overrides, parse_context_pattern, parse_site_pattern, selector_setting_family,
-    setting_supports_site_scope, valid_link_update_source, valid_sha256,
-    validate_selector_policy_map, validate_site_rule,
+    valid_link_update_source, valid_sha256, validate_resolved_selector_policy_map,
+    validate_site_rule,
 };
 use ferric_browser_core::{MixedPolicyLayer, resolve_mixed_key_policy};
 
@@ -92,7 +92,8 @@ pub fn validate(config: &Config) -> Result<(), ConfigError> {
             "hints.marker_scale must be 0.75..=2.0".into(),
         ));
     }
-    validate_selector_policy_map(&config.hints.selectors).map_err(ConfigError::Validation)?;
+    validate_resolved_selector_policy_map(&config.hints.selectors)
+        .map_err(ConfigError::Validation)?;
     if !(100..=2_000).contains(&config.discovery.keychain_overlay_delay_ms) {
         return Err(ConfigError::Validation(
             "discovery.keychain_overlay_delay_ms must be 100..=2000".into(),
@@ -356,71 +357,12 @@ pub fn validate(config: &Config) -> Result<(), ConfigError> {
     }
     let mut site_rule_ids = BTreeSet::new();
     for rule in &config.site_rules {
-        if validate_slug(&rule.id, "site rule id").is_err() || !site_rule_ids.insert(&rule.id) {
+        if !site_rule_ids.insert(&rule.id) {
             return Err(ConfigError::Validation(
                 "site rule IDs must be unique, nonempty, and lowercase slugs".into(),
             ));
         }
-        parse_site_pattern(&rule.pattern).map_err(|_| {
-            ConfigError::Validation(format!(
-                "site rule {} has an invalid HTTP(S) pattern",
-                rule.id
-            ))
-        })?;
-        if rule.set.len() > 32 {
-            return Err(ConfigError::Validation(format!(
-                "site rule {} has too many settings",
-                rule.id
-            )));
-        }
-        for (key, value) in &rule.set {
-            let valid = match key.as_str() {
-                "input.entry_mode" => value
-                    .as_str()
-                    .is_some_and(|value| matches!(value, "normal" | "insert" | "pass-through")),
-                "input.shortcut_policy" => value
-                    .as_str()
-                    .is_some_and(|value| matches!(value, "browser-first" | "mixed")),
-                "input.page_keys" => value.as_array().is_some_and(|values| {
-                    values.iter().all(toml::Value::is_str)
-                        && validate_mixed_input_policy(
-                            None,
-                            Some(
-                                values
-                                    .iter()
-                                    .filter_map(toml::Value::as_str)
-                                    .map(str::to_owned)
-                                    .collect(),
-                            ),
-                        )
-                        .is_ok()
-                }),
-                "hints.proxy_targets" => value
-                    .as_str()
-                    .is_some_and(|value| matches!(value, "off" | "validated")),
-                "content.javascript" | "content.images" | "content.force_dark" => {
-                    value.as_bool().is_some()
-                }
-                "content.autoplay" => value
-                    .as_str()
-                    .is_some_and(|value| matches!(value, "engine-default" | "require-gesture")),
-                "content.zoom" => {
-                    value
-                        .as_float()
-                        .is_some_and(|value| (0.25..=5.0).contains(&value))
-                        || value
-                            .as_integer()
-                            .is_some_and(|value| (1..=5).contains(&value))
-                }
-                _ => false,
-            };
-            if !setting_supports_site_scope(key) || !valid {
-                return Err(ConfigError::Validation(format!(
-                    "site rule {} has an invalid or unsupported setting {key}",
-                    rule.id
-                )));
-            }
-        }
+        validate_site_rule(rule)?;
     }
     for (mode, bindings) in &config.bindings {
         if !matches!(

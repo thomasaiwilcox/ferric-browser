@@ -1,0 +1,187 @@
+{
+  "quantile_method": "nearest-rank ceil(p*n), 1-indexed",
+  "scenarios": [
+    {
+      "scenario": "500-80",
+      "candidates": 500,
+      "zoom": 0.8,
+      "warmups": 10,
+      "sample_count": 100,
+      "collect": {
+        "n": 100,
+        "median_ms": 53.1000000089407,
+        "p95_ms": 61.599999994039536,
+        "p99_ms": 89.5,
+        "max_ms": 136
+      },
+      "fresh": {
+        "n": 100,
+        "median_ms": 0.30000001192092896,
+        "p95_ms": 0.5,
+        "p99_ms": 0.7000000178813934,
+        "max_ms": 0.8999999761581421
+      },
+      "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) QtWebEngine/6.11.2 Chrome/140.0.0.0 Safari/537.36",
+      "viewport": {
+        "device_pixel_ratio": 0.800000011920929,
+        "height": 600,
+        "width": 800
+      }
+    },
+    {
+      "scenario": "500-100",
+      "candidates": 500,
+      "zoom": 1,
+      "warmups": 10,
+      "sample_count": 100,
+      "collect": {
+        "n": 100,
+        "median_ms": 50.650000005960464,
+        "p95_ms": 54.20000001788139,
+        "p99_ms": 83,
+        "max_ms": 205
+      },
+      "fresh": {
+        "n": 100,
+        "median_ms": 0.30000001192092896,
+        "p95_ms": 0.699999988079071,
+        "p99_ms": 1,
+        "max_ms": 1.2999999821186066
+      },
+      "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) QtWebEngine/6.11.2 Chrome/140.0.0.0 Safari/537.36",
+      "viewport": {
+        "device_pixel_ratio": 1,
+        "height": 480,
+        "width": 640
+      }
+    },
+    {
+      "scenario": "500-125",
+      "candidates": 500,
+      "zoom": 1.25,
+      "warmups": 10,
+      "sample_count": 100,
+      "collect": {
+        "n": 100,
+        "median_ms": 50.75,
+        "p95_ms": 57.20000001788139,
+        "p99_ms": 65.7000000178814,
+        "max_ms": 89.90000000596046
+      },
+      "fresh": {
+        "n": 100,
+        "median_ms": 0.30000001192092896,
+        "p95_ms": 0.7999999821186066,
+        "p99_ms": 1.2000000178813934,
+        "max_ms": 1.4000000059604645
+      },
+      "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) QtWebEngine/6.11.2 Chrome/140.0.0.0 Safari/537.36",
+      "viewport": {
+        "device_pixel_ratio": 1.25,
+        "height": 384,
+        "width": 512
+      }
+    },
+    {
+      "scenario": "1000-100",
+      "candidates": 1000,
+      "zoom": 1,
+      "warmups": 10,
+      "sample_count": 100,
+      "collect": {
+        "n": 100,
+        "median_ms": 99.90000000596046,
+        "p95_ms": 112.60000002384186,
+        "p99_ms": 126.90000000596046,
+        "max_ms": 439.69999998807907
+      },
+      "fresh": {
+        "n": 100,
+        "median_ms": 0.30000001192092896,
+        "p95_ms": 0.5999999940395355,
+        "p99_ms": 1.4000000059604645,
+        "max_ms": 2.300000011920929
+      },
+      "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) QtWebEngine/6.11.2 Chrome/140.0.0.0 Safari/537.36",
+      "viewport": {
+        "device_pixel_ratio": 1,
+        "height": 480,
+        "width": 640
+      }
+    },
+    {
+      "scenario": "5000-100",
+      "candidates": 5000,
+      "zoom": 1,
+      "warmups": 10,
+      "sample_count": 100,
+      "collect": {
+        "n": 100,
+        "median_ms": 990.5,
+        "p95_ms": 1066.4000000059605,
+        "p99_ms": 1307.800000011921,
+        "max_ms": 2057.699999988079
+      },
+      "fresh": {
+        "n": 100,
+        "median_ms": 0.7000000178813934,
+        "p95_ms": 3.699999988079071,
+        "p99_ms": 5.0999999940395355,
+        "max_ms": 6
+      },
+      "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) QtWebEngine/6.11.2 Chrome/140.0.0.0 Safari/537.36",
+      "viewport": {
+        "device_pixel_ratio": 1,
+        "height": 480,
+        "width": 640
+      }
+    },
+    {
+      "scenario": "1000-mutation",
+      "candidates": 1000,
+      "zoom": 1,
+      "warmups": 10,
+      "sample_count": 100,
+      "collect": {
+        "n": 100,
+        "median_ms": 93.84999999403954,
+        "p95_ms": 108.2999999821186,
+        "p99_ms": 180.59999999403954,
+        "max_ms": 256.5
+      },
+      "fresh": {
+        "n": 100,
+        "median_ms": 0.30000001192092896,
+        "p95_ms": 0.699999988079071,
+        "p99_ms": 1,
+        "max_ms": 1
+      },
+      "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) QtWebEngine/6.11.2 Chrome/140.0.0.0 Safari/537.36",
+      "viewport": {
+        "device_pixel_ratio": 1,
+        "height": 480,
+        "width": 640
+      }
+    }
+  ],
+  "selector_stress": {
+    "selector_count": 32,
+    "inspected_nodes": 50000,
+    "candidates": 5000,
+    "truncated": true,
+    "collection_ms": 772,
+    "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) QtWebEngine/6.11.2 Chrome/140.0.0.0 Safari/537.36",
+    "viewport": {
+      "device_pixel_ratio": 1,
+      "height": 480,
+      "width": 640
+    },
+    "samples": 1,
+    "quantile": null,
+    "scope": "single production-script renderer pass; this is not a p95 result"
+  },
+  "limitations": [
+    "Current-build renderer timings only; no same-build pre-S12 comparison was run.",
+    "Collection and fresh checks are measured in the opt-in harness; Qt-to-Rust transfer, Rust labeling, QML overlay, and final action delivery are not included."
+  ]
+}

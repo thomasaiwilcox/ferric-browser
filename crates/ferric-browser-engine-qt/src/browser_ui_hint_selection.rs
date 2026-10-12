@@ -248,6 +248,38 @@ impl qobject::BrowserUi {
             ));
             return QString::from(r#"{"error":"stale-configuration"}"#);
         }
+        let selector_snapshot = match super::browser_ui_navigation::effective_hint_selector_snapshot(
+            &self.as_ref().rust().config_json.to_string(),
+            &self.as_ref().rust().current_url.to_string(),
+            configuration_revision,
+            &self.as_ref().rust().hint_family.to_string(),
+        ) {
+            Ok(snapshot) => snapshot,
+            Err(error) => {
+                self.set_status_text(QString::from(format!(
+                    "Hint selection rejected: selector policy unavailable: {error}"
+                )));
+                return QString::from(r#"{"error":"selector-policy-unavailable"}"#);
+            }
+        };
+        let current_selector_revision = selector_snapshot
+            .get("selector_revision")
+            .and_then(Value::as_str)
+            .and_then(|revision| u64::from_str_radix(revision, 16).ok());
+        if self
+            .as_ref()
+            .rust()
+            .hint_session
+            .as_ref()
+            .is_some_and(|session| {
+                Some(session.selector_policy_revision) != current_selector_revision
+            })
+        {
+            self.set_status_text(QString::from(
+                "Hint selection rejected: selector policy changed",
+            ));
+            return QString::from(r#"{"error":"stale-selector-policy"}"#);
+        }
         let selected = {
             let binding = self.as_ref();
             let Some(session) = binding.rust().hint_session.as_ref() else {

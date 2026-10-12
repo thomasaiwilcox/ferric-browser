@@ -1012,8 +1012,13 @@ FerricBrowserRuntimeServices {
         }
     }
 
-    function hintCollectorScript(family) {
-        return BrowserScripts.hintCollector(family, browserUi.hint_proxy_targets_enabled)
+    function hintSelectorPolicySnapshot(family) {
+        return browserUi.hint_selector_policy(family)
+    }
+
+    function hintCollectorScript(family, selectorSnapshot) {
+        return BrowserScripts.hintCollector(
+                    family, browserUi.hint_proxy_targets_enabled, selectorSnapshot)
     }
 
     function hintDirtyRevisionScript() {
@@ -1045,19 +1050,24 @@ FerricBrowserRuntimeServices {
     }
 
     function hintFreshScript(candidate) {
-        return BrowserScripts.hintFresh(candidate)
+        return BrowserScripts.hintFresh(
+                    candidate, hintSelectorPolicySnapshot(browserUi.hint_family))
     }
 
     function hintPointerPreflightScript(candidate, viewWidth, viewHeight) {
-        return BrowserScripts.hintPointerPreflight(candidate, viewWidth, viewHeight)
+        return BrowserScripts.hintPointerPreflight(
+                    candidate, viewWidth, viewHeight,
+                    hintSelectorPolicySnapshot(browserUi.hint_family))
     }
 
     function hintFocusScript(candidate) {
-        return BrowserScripts.hintFocus(candidate)
+        return BrowserScripts.hintFocus(
+                    candidate, hintSelectorPolicySnapshot(browserUi.hint_family))
     }
 
     function hintClickScript(candidate) {
-        return BrowserScripts.hintClick(candidate)
+        return BrowserScripts.hintClick(
+                    candidate, hintSelectorPolicySnapshot(browserUi.hint_family))
     }
 
     function hintSetScrollTargetScript(elementId, framePath) {
@@ -1085,7 +1095,18 @@ FerricBrowserRuntimeServices {
         var collectionEpoch = window.hintCollectionEpoch + 1
         window.hintCollectionEpoch = collectionEpoch
         window.hintRefreshPending = true
-        window.runBrowserScript(view, window.hintCollectorScript(browserUi.hint_family), function(value) {
+        var selectorSnapshot = window.hintSelectorPolicySnapshot(browserUi.hint_family)
+        if (!selectorSnapshot) {
+            window.hintRefreshPending = false
+            browserUi.cancel_hints()
+            var selectorFailure = "Hint selectors unavailable"
+            browserUi.status_text = selectorFailure
+            window.showCommandNotice(selectorFailure, true)
+            return
+        }
+        window.runBrowserScript(
+                    view,
+                    window.hintCollectorScript(browserUi.hint_family, selectorSnapshot), function(value) {
             if (window.hintCollectionEpoch !== collectionEpoch) {
                 return
             }
@@ -1093,7 +1114,15 @@ FerricBrowserRuntimeServices {
             if (browserUi.mode !== "hint" || window.hintTrackingView !== view) {
                 return
             }
+            if (value && value.error) {
+                window.hintResults = []
+                browserUi.cancel_hints()
+                browserUi.status_text = "Hint collection failed closed: " + String(value.error)
+                window.showCommandNotice(browserUi.status_text, true)
+                return
+            }
             window.hintDirtyRevision = Number(value && value.revision || 0)
+            window.hintCollectionTruncated = !!(value && value.truncated)
             var collectedViewport = value && value.viewport ? value.viewport : ({})
             var collectedWidth = Number(collectedViewport.width || 0)
             var collectedHeight = Number(collectedViewport.height || 0)
@@ -1104,7 +1133,8 @@ FerricBrowserRuntimeServices {
                         ? collectedHeight : 0
             })
             var payload = value && value.candidates !== undefined
-                    ? {candidates: value.candidates}
+                    ? {candidates: value.candidates,
+                       selector_revision: value.selector_revision}
                     : {candidates: value || []}
             var response = {}
             try {
@@ -1113,7 +1143,9 @@ FerricBrowserRuntimeServices {
                 response = {}
             }
             if (!response.hints || response.hints.length === 0) {
-                var hintFailure = response.error
+                var hintFailure = window.hintCollectionTruncated
+                        ? "Hint collection truncated at resource limits; no visible targets were found in the inspected region"
+                        : response.error
                         ? browserUi.status_text : "No visible hint targets"
                 window.hintResults = []
                 browserUi.cancel_hints()
@@ -1125,6 +1157,11 @@ FerricBrowserRuntimeServices {
             window.hintInput = window.hintState.mode === "text"
                     ? "/" + window.hintState.query : window.hintState.prefix
             window.hintResults = response.hints
+            if (window.hintCollectionTruncated) {
+                var truncationNotice = "Hint collection truncated by the 5,000-target or 50,000-element limit"
+                browserUi.status_text = truncationNotice
+                window.showCommandNotice(truncationNotice, false)
+            }
             if (response.first_label) {
                 Qt.callLater(function() { window.activateHint(String(response.first_label)) })
             }
@@ -1719,6 +1756,12 @@ FerricBrowserRuntimeServices {
                 }
             } catch (error) {
                 result = {}
+            }
+            if (result.error === "stale-selector-policy") {
+                window.closeHints()
+                browserUi.status_text = "Hint selector policy changed; targets were refreshed"
+                window.showCommandNotice(browserUi.status_text, true)
+                return
             }
             var pageActionPending = result.action === "focus"
                     || result.action === "click" || result.action === "scroll-target"

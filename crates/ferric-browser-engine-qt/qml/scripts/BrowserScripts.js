@@ -261,8 +261,8 @@ function scrollTargetStatus() {
     return interactionScript("scrollTargetStatus", [])
 }
 
-function hintCollector(family, proxyTargets) {
-    return interactionScript("hintCollector", [family, proxyTargets])
+function hintCollector(family, proxyTargets, selectorSnapshot) {
+    return interactionScript("hintCollector", [family, proxyTargets, selectorSnapshot])
 }
 
 function hintDirtyRevision() {
@@ -273,20 +273,20 @@ function hintStopTracking() {
     return interactionScript("hintStopTracking", [])
 }
 
-function hintFresh(candidate) {
-    return interactionScript("hintFresh", [candidate])
+function hintFresh(candidate, selectorSnapshot) {
+    return interactionScript("hintFresh", [candidate, selectorSnapshot])
 }
 
-function hintPointerPreflight(candidate, viewWidth, viewHeight) {
-    return interactionScript("hintPointerPreflight", [candidate, viewWidth, viewHeight])
+function hintPointerPreflight(candidate, viewWidth, viewHeight, selectorSnapshot) {
+    return interactionScript("hintPointerPreflight", [candidate, viewWidth, viewHeight, selectorSnapshot])
 }
 
-function hintFocus(candidate) {
-    return interactionScript("hintFocus", [candidate])
+function hintFocus(candidate, selectorSnapshot) {
+    return interactionScript("hintFocus", [candidate, selectorSnapshot])
 }
 
-function hintClick(candidate) {
-    return interactionScript("hintClick", [candidate])
+function hintClick(candidate, selectorSnapshot) {
+    return interactionScript("hintClick", [candidate, selectorSnapshot])
 }
 
 function hintSetScrollTarget(elementId, framePath) {

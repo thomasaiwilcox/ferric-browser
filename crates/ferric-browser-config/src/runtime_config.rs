@@ -12,7 +12,7 @@ use super::{
     io_error, runtime_site_rule_id, selector_setting_family, set_private_file_mode,
     set_private_permissions, setting_supports_site_scope, validate, validate_contexts,
     validate_profile_definition, validate_profiles, validate_runtime_binding, validate_runtime_key,
-    validate_runtime_overrides, validate_runtime_site_pattern,
+    validate_runtime_overrides, validate_runtime_site_pattern, validate_selector_policy_map,
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -678,6 +678,7 @@ pub fn load(path: impl AsRef<Path>) -> Result<LoadedConfig, ConfigError> {
             path: root.clone(),
             message: error.to_string(),
         })?;
+    validate_selector_policy_map(&config.hints.selectors).map_err(ConfigError::Validation)?;
     validate(&config)?;
     Ok(LoadedConfig {
         config,
