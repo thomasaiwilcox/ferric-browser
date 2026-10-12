@@ -21,6 +21,7 @@ impl qobject::BrowserUi {
             .registry
             .expand_command(command)
             .map_err(|error| error.to_string())?;
+        super::browser_ui_hint_pointer::reject_external_pointer_hint_chain(&expanded)?;
         if expanded.len() != 1 {
             let mut result = None;
             for command in expanded {

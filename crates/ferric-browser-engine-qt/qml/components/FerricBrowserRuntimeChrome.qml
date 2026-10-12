@@ -1234,15 +1234,25 @@ GridLayout {
 
     FerricPagePointerAdapter {
         id: spatialPointerAdapter
-        enabled: browserUi.spatial_visible
-        targetItem: browserUi.spatial_visible ? window.activeWebView() : null
+        enabled: browserUi.spatial_visible || browserUi.hint_pointer_pending
+        targetItem: (browserUi.spatial_visible || browserUi.hint_pointer_mode)
+                    ? window.activeWebView() : null
         targetWindow: window
         inputBlocked: window.browserChromeInputActive
         onDispatchAcknowledged: function(requestId, sessionId, serial, revision, outcome) {
-            browserUi.spatial_dispatch_ack(
-                        requestId, sessionId, serial, revision, outcome)
+            if (browserUi.hint_pointer_pending) {
+                browserUi.hint_pointer_dispatch_ack(
+                            requestId, sessionId, serial, revision, outcome)
+            } else {
+                browserUi.spatial_dispatch_ack(
+                            requestId, sessionId, serial, revision, outcome)
+            }
         }
         onInvalidated: function(reason) {
+            if (browserUi.hint_pointer_pending) {
+                browserUi.hint_pointer_invalidated(reason)
+                return
+            }
             // Initial target binding can advance the adapter stamp before the
             // first geometry observation. Once a root is installed, every
             // later invalidation is authoritative.
@@ -1251,12 +1261,16 @@ GridLayout {
             }
         }
         onPhysicalPointerDetected: function(reason) {
-            if (browserUi.spatial_visible) {
+            if (browserUi.hint_pointer_pending) {
+                browserUi.hint_pointer_invalidated(reason)
+            } else if (browserUi.spatial_visible) {
                 browserUi.spatial_invalidated(reason)
             }
         }
         onSurfaceChanged: {
-            if (browserUi.spatial_visible && browserUi.spatial_root_width > 0) {
+            if (browserUi.hint_pointer_pending) {
+                browserUi.hint_pointer_invalidated("geometry-changed")
+            } else if (browserUi.spatial_visible && browserUi.spatial_root_width > 0) {
                 browserUi.spatial_invalidated("geometry-changed")
             }
         }
@@ -1297,10 +1311,9 @@ GridLayout {
                 browserUi.spatial_invalidated("dispatch-rejected")
                 return
             }
-            // `enabled` stays declaratively bound to `spatial_visible` so the
-            // adapter always releases its session and physical-input filter
-            // state when Grid exits. Never assign to it here: doing so would
-            // replace the binding after the first dispatch.
+            // Keep `enabled` declaratively bound to the owning Grid or Hint
+            // lifecycle so teardown releases the adapter's session. Never
+            // assign here: that would replace the QML binding.
             if (!spatialPointerAdapter.enabled) {
                 browserUi.spatial_invalidated("dispatch-rejected")
                 return
@@ -1310,6 +1323,125 @@ GridLayout {
                         request.serial, request.revision,
                         Number(request.x), Number(request.y), request.action)
         }
+        function onHint_pointer_dispatch_requestChanged() {
+            var payload = browserUi.hint_pointer_dispatch_request
+            if (!payload || payload.length === 0) return
+            var request
+            try {
+                request = JSON.parse(payload)
+            } catch (error) {
+                browserUi.hint_pointer_invalidated("dispatch-rejected")
+                return
+            }
+            if (!spatialPointerAdapter.enabled || !browserUi.hint_pointer_pending) {
+                browserUi.hint_pointer_invalidated("dispatch-rejected")
+                return
+            }
+            spatialPointerAdapter.dispatch(
+                        request.request_id, request.session_id,
+                        request.serial, request.revision,
+                        Number(request.x), Number(request.y), request.action)
+        }
+    }
+
+    Timer {
+        id: hintPointerPreflightTimer
+        interval: 250
+        repeat: false
+        onTriggered: browserUi.hint_pointer_timeout()
+    }
+
+    Timer {
+        id: hintPointerDispatchTimer
+        interval: 2100
+        repeat: false
+        onTriggered: browserUi.hint_pointer_timeout()
+    }
+
+    Connections {
+        target: browserUi
+        function onHint_pointer_stateChanged() {
+            if (browserUi.hint_pointer_state !== "preflight") {
+                hintPointerPreflightTimer.stop()
+            }
+            if (browserUi.hint_pointer_state !== "dispatch-pending") {
+                hintPointerDispatchTimer.stop()
+            }
+        }
+    }
+
+    function releaseHintPointerConfirmation() {
+        if (!browserUi.hint_pointer_mode
+                || browserUi.hint_pointer_state !== "awaiting-confirmation-release") {
+            return false
+        }
+        var view = window.activeWebView()
+        var label = String(window.hintState.active_label || "")
+        var candidate = null
+        for (var index = 0; index < window.hintResults.length; ++index) {
+            if (String(window.hintResults[index].label) === label) {
+                candidate = window.hintResults[index]
+                break
+            }
+        }
+        if (!view || !candidate || view !== window.hintTrackingView
+                || spatialPointerAdapter.targetItem !== view
+                || window.hintRefreshPending || view.width <= 0 || view.height <= 0) {
+            browserUi.hint_pointer_invalidated("preflight-rejected")
+            return true
+        }
+        var response = {}
+        try {
+            response = JSON.parse(browserUi.hint_pointer_confirmation_released(
+                spatialPointerAdapter.surfaceSerial,
+                spatialPointerAdapter.surfaceRevision,
+                view.width,
+                view.height))
+        } catch (error) {
+            response = {}
+        }
+        if (!response.ok || !response.request_id) return true
+        var requestId = String(response.request_id)
+        var viewWidth = view.width
+        var viewHeight = view.height
+        var zoomFactor = Number(view.zoomFactor)
+        hintPointerPreflightTimer.restart()
+        var started = window.runBrowserScript(
+                    view,
+                    window.hintPointerPreflightScript(candidate, viewWidth, viewHeight),
+                    function(value) {
+            hintPointerPreflightTimer.stop()
+            if (browserUi.mode !== "hint" || !browserUi.hint_pointer_mode
+                    || browserUi.hint_pointer_state !== "preflight"
+                    || window.activeWebView() !== view
+                    || window.hintTrackingView !== view
+                    || spatialPointerAdapter.targetItem !== view
+                    || Number(view.zoomFactor) !== zoomFactor) {
+                if (browserUi.hint_pointer_state === "preflight") {
+                    browserUi.hint_pointer_invalidated("target-changed")
+                }
+                return
+            }
+            var accepted = false
+            try {
+                accepted = browserUi.complete_hint_pointer_preflight(
+                    requestId, JSON.stringify(value || {}),
+                    spatialPointerAdapter.surfaceSerial,
+                    spatialPointerAdapter.surfaceRevision,
+                    view.width, view.height)
+            } catch (error) {
+                browserUi.hint_pointer_invalidated("preflight-rejected")
+                return
+            }
+            if (accepted && browserUi.hint_pointer_state === "dispatch-pending") {
+                hintPointerDispatchTimer.restart()
+            }
+        })
+        if (!started) {
+            hintPointerPreflightTimer.stop()
+            browserUi.hint_pointer_invalidated("renderer-unavailable")
+        }
+        return true
     }
 
     FerricSpatialGridOverlay {
@@ -1353,7 +1485,7 @@ GridLayout {
         id: hintOverlaySurface
         anchors.fill: webViews
         browserWindow: window
-        hintsVisible: browserUi.hint_visible
+        hintsVisible: browserUi.hint_visible && !browserUi.hint_pointer_pending
         hintResults: window.hintResults
         sourceViewport: window.hintViewport
         hintState: window.hintState

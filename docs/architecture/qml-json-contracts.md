@@ -14,6 +14,9 @@ is being migrated. This document is the review allowlist for those exceptions.
   and detached-window handoff use versioned, bounded page-script,
   Rust-bridge, or cross-window result objects. Hint interaction JSON is capped
   by the 5,000-candidate session limit and keeps matching policy in Rust.
+- Explicit native-pointer Hint preflight returns only bounded candidate facts
+  and view-local geometry; the one-shot adapter request carries a request ID,
+  session ID, surface stamp, coordinates, and fixed action enum.
 - The primary and secondary window runtime pumps use bounded selection, caret,
   editor, download, and page-evaluation request tokens with opaque page-script
   result objects. Rust validates each result before it changes browser state.
@@ -50,7 +53,8 @@ The following formerly JSON-encoded policy/presentation data must remain typed:
   status.
 
 `tests::qml_json_contract_allowlist_is_explicit` records the current number of
-JSON calls in the window runtime and native-page components. Adding a new call requires a deliberate update to
+JSON calls in the window runtime and native-page components (17 parses and 32
+stringifications). Adding a new call requires a deliberate update to
 this document and a review that it is an opaque page-script, diagnostic, or
 export contract—not a presentation or policy model.
 

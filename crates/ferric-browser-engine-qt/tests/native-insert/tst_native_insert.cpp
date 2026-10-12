@@ -1,4 +1,5 @@
 #include "../../src/browser_key_router.h"
+#include "../../src/browser_page_pointer_adapter.h"
 #include <QtCore/QFile>
 #include <QtCore/QElapsedTimer>
 #include <QtCore/QJsonDocument>
@@ -609,6 +610,63 @@ WebEngineView {
         QTest::keyClick(&window, Qt::Key_A);
         QTRY_COMPARE(browserJs("document.getElementById('shadow-host').shadowRoot.getElementById('shadow-input').value").toString(),QString("a"));
         QCOMPARE(exits,0);
+        browserJs(browserScript("hintStopTracking()"));
+    }
+    // T011: exercise the production adapter against WebEngine's actual Quick
+    // target. The control reacts to pointerdown only; semantic click is not a
+    // fallback and each native transport event is observed once.
+    void pointerOnlyControlReceivesOneNativeClick() {
+        normal();
+        browserJs("window.pointerTrace=[];const target=document.createElement('div');"
+                  "target.id='pointer-only';target.setAttribute('role','button');"
+                  "target.setAttribute('aria-label','Pointer only');"
+                  "target.style='position:fixed;left:180px;top:140px;width:180px;height:50px;z-index:100';"
+                  "for(const type of ['pointerdown','mousedown','pointerup','mouseup','click'])"
+                  "target.addEventListener(type,event=>{pointerTrace.push({type,trusted:event.isTrusted,"
+                  "activation:navigator.userActivation.isActive});if(type==='pointerdown')"
+                  "target.dataset.activated=String(Number(target.dataset.activated||0)+1);});"
+                  "document.body.append(target);true");
+        QVariantMap snapshot;
+        QTRY_VERIFY(!(snapshot=browserJs(browserScript("hintCollector('buttons')")).toMap())
+                         .value("candidates").toList().isEmpty());
+        QVariantMap candidate;
+        for (const auto &value : snapshot.value("candidates").toList()) {
+            const auto item = value.toMap();
+            if (item.value("text").toString() == "Pointer only") candidate = item;
+        }
+        QVERIFY(candidate.value("element_id").toInt() > 0);
+        const QString candidateJson = QString::fromUtf8(
+            QJsonDocument::fromVariant(candidate).toJson(QJsonDocument::Compact));
+        const QString preflightScript = browserScript(
+            "hintPointerPreflight(" + candidateJson + ",640,480)");
+        const QVariantMap preflight = browserJs(preflightScript).toMap();
+        QVERIFY2(preflight.value("ok").toBool(), "retained pointer control should pass preflight");
+
+        FerricPagePointerAdapter adapter;
+        adapter.setTargetWindow(&window);
+        adapter.setTargetItem(view);
+        adapter.setEnabled(true);
+        QSignalSpy acknowledgements(&adapter, &FerricPagePointerAdapter::dispatchAcknowledged);
+        adapter.dispatch("pointer-request-1", "pointer-session-1",
+                         adapter.surfaceSerial(), adapter.surfaceRevision(),
+                         preflight.value("x").toDouble(), preflight.value("y").toDouble(),
+                         "left");
+        QCOMPARE(acknowledgements.size(), 1);
+        QCOMPARE(acknowledgements.first().at(4).toString(), QString("delivered"));
+        QTRY_COMPARE(browserJs("document.getElementById('pointer-only').dataset.activated").toString(),
+                     QString("1"));
+        const QVariantList trace = browserJs("pointerTrace").toList();
+        qInfo().noquote() << "T014 pointer event evidence:"
+                          << QJsonDocument::fromVariant(trace).toJson(QJsonDocument::Compact);
+        QCOMPARE(trace.size(), 5);
+        QCOMPARE(trace.at(0).toMap().value("type").toString(), QString("pointerdown"));
+        QCOMPARE(trace.at(1).toMap().value("type").toString(), QString("mousedown"));
+        QCOMPARE(trace.at(2).toMap().value("type").toString(), QString("pointerup"));
+        QCOMPARE(trace.at(3).toMap().value("type").toString(), QString("mouseup"));
+        QCOMPARE(trace.at(4).toMap().value("type").toString(), QString("click"));
+        QVERIFY(trace.at(0).toMap().contains("trusted"));
+        QVERIFY(trace.at(0).toMap().contains("activation"));
+        adapter.setEnabled(false);
         browserJs(browserScript("hintStopTracking()"));
     }
     void ordinaryText() {

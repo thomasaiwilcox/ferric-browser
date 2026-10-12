@@ -1253,6 +1253,12 @@ FerricBrowserRuntimeChrome {
                 ui.enter_search(logicalText === "?")
             }
             handled = true
+        } else if (ui === browserUi && ui.mode === "hint"
+                   && ui.hint_pointer_mode
+                   && ui.hint_pointer_state !== "selecting") {
+            // Enter release owns preflight. While it is pending, Escape above
+            // cancels and all other target input is consumed.
+            handled = true
         } else if (ui === browserUi && ui.mode === "hint") {
             var control = (event.modifiers & Qt.ControlModifier) !== 0
             var shift = (event.modifiers & Qt.ShiftModifier) !== 0
@@ -1267,7 +1273,11 @@ FerricBrowserRuntimeChrome {
                        || event.key === Qt.Key_Up) {
                 window.applyHintInteraction("previous", "")
             } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                window.applyHintInteraction("activate", "")
+                if (ui.hint_pointer_mode) {
+                    if (!event.isAutoRepeat) window.beginHintPointerConfirmation()
+                } else {
+                    window.applyHintInteraction("activate", "")
+                }
             } else if (control && event.key === Qt.Key_Space) {
                 window.applyHintInteraction("rotate", "")
             } else if (logicalText === "/" && window.hintState.mode === "label") {
@@ -1322,6 +1332,16 @@ FerricBrowserRuntimeChrome {
             }
         }
         return handled
+    }
+
+    function handleBrowserKeyRelease(ui, host, key, modifiers) {
+        if (ui === browserUi && ui.mode === "hint" && ui.hint_pointer_mode
+                && ui.hint_pointer_state === "awaiting-confirmation-release"
+                && (key === Qt.Key_Return || key === Qt.Key_Enter)) {
+            window.releaseHintPointerConfirmation()
+            return true
+        }
+        return false
     }
 
     FerricPermissionPrompt {

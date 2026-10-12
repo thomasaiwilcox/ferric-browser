@@ -6,7 +6,7 @@ use super::{
     is_reopen_in_window_command, is_scroll_command, is_scroll_target_command,
     is_search_next_command, is_tab_clone_command, is_tab_detach_command, is_tab_give_command,
     is_tab_undo_command, is_yank_command, is_zoom_command, learning_mode_request,
-    normalize_active_tab_command, parse_hint_options, qobject, selection_yank_command,
+    normalize_active_tab_command, qobject, selection_yank_command,
 };
 
 impl qobject::BrowserUi {
@@ -23,6 +23,9 @@ impl qobject::BrowserUi {
                 return false;
             }
         };
+        if self.as_mut().reject_generic_pointer_hint_chain(&commands) {
+            return false;
+        }
         let command_count = commands.len();
         for (command_index, mut command) in commands.into_iter().enumerate() {
             if command_index > 0 {
@@ -324,26 +327,9 @@ impl qobject::BrowserUi {
                 return false;
             }
             if command.name == "hint" {
-                let mode = self.as_ref().rust().core_mode;
-                if let Err(error) = registry.validate(&command, mode) {
-                    self.set_status_text(QString::from(error.to_string()));
+                if !self.as_mut().dispatch_hint_command(&command, &registry) {
                     return false;
                 }
-                let options = match parse_hint_options(&command) {
-                    Ok(options) => options,
-                    Err(error) => {
-                        self.set_status_text(QString::from(error));
-                        return false;
-                    }
-                };
-                self.as_mut().set_hint_options(
-                    &options.family,
-                    options.rapid,
-                    &options.target,
-                    options.script.as_deref(),
-                    options.first,
-                    options.index,
-                );
                 continue;
             }
             if command.name == "get" {

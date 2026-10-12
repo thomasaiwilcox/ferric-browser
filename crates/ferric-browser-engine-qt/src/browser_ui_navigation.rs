@@ -1,11 +1,42 @@
+use super::browser_ui_hint_pointer::HintPointerAction;
+use super::hint_policy::{
+    HintOptions, LocalInteractionOperation, LocalInteractionOwner, parse_hint_options,
+};
 use super::{
-    CoreHintAutoFollow, CxxQtType, Event, HintInteraction, HintInteractionInput,
-    HintInteractionOutcome, HintSession, HintTarget, Mode, Pin, QString, Value,
+    CommandRegistry, CoreHintAutoFollow, CxxQtType, Event, HintInteraction, HintInteractionInput,
+    HintInteractionOutcome, HintSession, HintTarget, Mode, ParsedCommand, Pin, QString, Value,
     assign_labels_with_options, current_target, hint_json, parse_hint_payload, qobject,
     refresh_labels,
 };
 
 impl qobject::BrowserUi {
+    pub(super) fn dispatch_hint_command(
+        mut self: Pin<&mut Self>,
+        command: &ParsedCommand,
+        registry: &CommandRegistry,
+    ) -> bool {
+        if let Err(error) = registry.validate(command, self.as_ref().rust().core_mode) {
+            self.set_status_text(QString::from(error.to_string()));
+            return false;
+        }
+        let options = match parse_hint_options(command) {
+            Ok(options) => options,
+            Err(error) => {
+                self.set_status_text(QString::from(error));
+                return false;
+            }
+        };
+        self.as_mut().set_hint_options(
+            &options.family,
+            options.rapid,
+            &options.target,
+            options.script.as_deref(),
+            options.first,
+            options.index,
+        );
+        true
+    }
+
     pub(super) fn note_hint_configuration_change(mut self: Pin<&mut Self>) {
         let hint_mode_was_active = self.as_ref().rust().core_mode == Mode::Hint;
         {
@@ -16,10 +47,21 @@ impl qobject::BrowserUi {
             this.hint_interaction = None;
             this.hint_consumed.clear();
             this.pending_hint_action = None;
+            if let Some(action) = this.hint_pointer_action.as_mut() {
+                action.terminate();
+            }
+            this.hint_pointer_action = None;
+            this.hint_pointer_source = None;
             this.pending_hint_palette_permit = None;
             this.hint_local_interaction_authority
                 .clear_session_requests();
         }
+        self.as_mut().set_hint_pointer_pending(false);
+        self.as_mut()
+            .set_hint_pointer_dispatch_request(QString::default());
+        self.as_mut().set_hint_pointer_mode(false);
+        self.as_mut()
+            .set_hint_pointer_state(QString::from("terminal"));
         if hint_mode_was_active {
             self.as_mut().cancel_hints();
         } else {
@@ -52,6 +94,12 @@ impl qobject::BrowserUi {
         first: bool,
         index: usize,
     ) {
+        self.as_mut().set_hint_pointer_pending(false);
+        self.as_mut()
+            .set_hint_pointer_state(QString::from("terminal"));
+        self.as_mut()
+            .set_hint_pointer_dispatch_request(QString::default());
+        self.as_mut().set_hint_pointer_mode(target == "pointer");
         self.as_mut().set_hint_links_only(family == "links");
         self.as_mut().set_hint_family(QString::from(family));
         self.as_mut().set_hint_rapid(rapid);
@@ -71,6 +119,8 @@ impl qobject::BrowserUi {
         {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
+            this.hint_pointer_source = None;
+            this.hint_pointer_action = None;
             this.hint_script = script.map(ToOwned::to_owned);
             this.hint_first = first;
             this.hint_index = index;
@@ -99,6 +149,35 @@ impl qobject::BrowserUi {
         self.set_status_text(QString::from("Select a page element"));
     }
 
+    pub(super) fn set_local_pointer_hint_options(
+        mut self: Pin<&mut Self>,
+        options: &HintOptions,
+        source: super::CommandSource,
+    ) -> bool {
+        if options.target != "pointer"
+            || !matches!(
+                source,
+                super::CommandSource::Ui | super::CommandSource::Keyboard
+            )
+            || self.as_ref().rust().recording_macro.is_some()
+        {
+            self.set_status_text(QString::from(
+                "Pointer click requires a direct local UI or keyboard command",
+            ));
+            return false;
+        }
+        self.as_mut()
+            .set_hint_options(&options.family, false, "pointer", None, false, 1);
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .hint_pointer_source = Some(source);
+        self.as_mut()
+            .set_hint_pointer_state(QString::from("selecting"));
+        true
+    }
+
     pub(super) fn clear_hint_session_state(mut self: Pin<&mut Self>) {
         {
             let mut rust = self.as_mut().rust_mut();
@@ -108,11 +187,22 @@ impl qobject::BrowserUi {
             this.hint_consumed.clear();
             this.hint_values = QString::default();
             this.pending_hint_action = None;
+            if let Some(action) = this.hint_pointer_action.as_mut() {
+                action.terminate();
+            }
+            this.hint_pointer_action = None;
+            this.hint_pointer_source = None;
             this.pending_hint_palette_permit = None;
             this.hint_local_interaction_authority
                 .clear_session_requests();
         }
-        self.set_hint_visible(false);
+        self.as_mut().set_hint_visible(false);
+        self.as_mut().set_hint_pointer_pending(false);
+        self.as_mut()
+            .set_hint_pointer_dispatch_request(QString::default());
+        self.as_mut().set_hint_pointer_mode(false);
+        self.as_mut()
+            .set_hint_pointer_state(QString::from("terminal"));
     }
 
     pub(super) fn begin_hint_session(
@@ -184,11 +274,17 @@ impl qobject::BrowserUi {
                     .to_string(),
             );
         }
-        let auto_follow = match config.hints.auto_follow {
-            ferric_browser_config::HintAutoFollow::Always => CoreHintAutoFollow::Always,
-            ferric_browser_config::HintAutoFollow::UniqueMatch => CoreHintAutoFollow::UniqueMatch,
-            ferric_browser_config::HintAutoFollow::FullMatch => CoreHintAutoFollow::FullMatch,
-            ferric_browser_config::HintAutoFollow::Never => CoreHintAutoFollow::Never,
+        let auto_follow = if self.as_ref().rust().hint_pointer_mode {
+            CoreHintAutoFollow::Never
+        } else {
+            match config.hints.auto_follow {
+                ferric_browser_config::HintAutoFollow::Always => CoreHintAutoFollow::Always,
+                ferric_browser_config::HintAutoFollow::UniqueMatch => {
+                    CoreHintAutoFollow::UniqueMatch
+                }
+                ferric_browser_config::HintAutoFollow::FullMatch => CoreHintAutoFollow::FullMatch,
+                ferric_browser_config::HintAutoFollow::Never => CoreHintAutoFollow::Never,
+            }
         };
         let interaction = HintInteraction::new(labeled.clone(), alphabet, auto_follow);
         let first_label = if hint_first {
@@ -207,6 +303,40 @@ impl qobject::BrowserUi {
             labeled.clone(),
             configuration_revision,
         );
+        let pointer_action = if self.as_ref().rust().hint_pointer_mode {
+            let Some(source) = self.as_ref().rust().hint_pointer_source else {
+                self.set_status_text(QString::from("Pointer Hint has no local authority"));
+                return QString::from(r#"{"error":"local-authority-required"}"#);
+            };
+            let Some(window) = self.as_ref().rust().window else {
+                self.set_status_text(QString::from("Pointer Hint has no owning window"));
+                return QString::from(r#"{"error":"window-unavailable"}"#);
+            };
+            let owner = LocalInteractionOwner {
+                window,
+                session: session.id,
+                target: session.target,
+                configuration_revision: session.configuration_revision,
+            };
+            let permit = {
+                let mut rust = self.as_mut().rust_mut();
+                rust.as_mut()
+                    .get_mut()
+                    .hint_local_interaction_authority
+                    .mint(
+                        source,
+                        owner,
+                        LocalInteractionOperation::HintPointerDispatch,
+                    )
+            };
+            let Some(permit) = permit else {
+                self.set_status_text(QString::from("Pointer Hint authority was rejected"));
+                return QString::from(r#"{"error":"local-authority-rejected"}"#);
+            };
+            Some(HintPointerAction::new(owner, source, permit))
+        } else {
+            None
+        };
         let result = serde_json::json!({
             "session_id": session.id.to_string(),
             "hints": hint_json(&labeled),
@@ -216,6 +346,16 @@ impl qobject::BrowserUi {
         {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
+            if !this.hint_pointer_mode {
+                this.hint_pointer_source = None;
+            }
+            this.hint_pointer_action = pointer_action;
+            this.hint_pointer_pending = false;
+            this.hint_pointer_state = QString::from(if this.hint_pointer_mode {
+                "selecting"
+            } else {
+                "terminal"
+            });
             this.hint_ids = ids;
             this.hint_session = Some(session);
             this.hint_interaction = Some(interaction);

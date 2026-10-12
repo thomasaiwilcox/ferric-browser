@@ -22,6 +22,7 @@ pub(super) struct LocalInteractionOwner {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum LocalInteractionOperation {
     HintPaletteSelection,
+    HintPointerDispatch,
     #[allow(dead_code)] // Reserved for the scoped Search palette contract.
     SearchPaletteSelection,
 }
@@ -31,6 +32,12 @@ pub(super) struct LocalInteractionPermit {
     owner: LocalInteractionOwner,
     operation: LocalInteractionOperation,
     request_id: u64,
+}
+
+impl LocalInteractionPermit {
+    pub(super) fn request_id(&self) -> u64 {
+        self.request_id
+    }
 }
 
 #[derive(Default)]
@@ -46,7 +53,7 @@ impl LocalInteractionAuthority {
         owner: LocalInteractionOwner,
         operation: LocalInteractionOperation,
     ) -> Option<LocalInteractionPermit> {
-        if source != CommandSource::Ui {
+        if !operation_allows_source(operation, source) {
             return None;
         }
         let request_id = self.next_request_id.checked_add(1)?;
@@ -70,11 +77,23 @@ impl LocalInteractionAuthority {
         {
             return false;
         }
-        source == CommandSource::Ui && permit.owner == owner && permit.operation == operation
+        operation_allows_source(operation, source)
+            && permit.owner == owner
+            && permit.operation == operation
     }
 
     pub(super) fn clear_session_requests(&mut self) {
         self.consumed_request_ids.clear();
+    }
+}
+
+fn operation_allows_source(operation: LocalInteractionOperation, source: CommandSource) -> bool {
+    match operation {
+        LocalInteractionOperation::HintPaletteSelection
+        | LocalInteractionOperation::SearchPaletteSelection => source == CommandSource::Ui,
+        LocalInteractionOperation::HintPointerDispatch => {
+            matches!(source, CommandSource::Ui | CommandSource::Keyboard)
+        }
     }
 }
 
@@ -167,7 +186,7 @@ pub(super) fn parse_hint_options(command: &ParsedCommand) -> Result<HintOptions,
                     .filter(|value| is_hint_target(value))
                     .cloned()
                     .ok_or_else(|| {
-                        "hint target must be current, tab, tab-bg, window, yank, clean-yank, download, userscript, ephemeral, choose, or external:NAME"
+                        "hint target must be current, tab, tab-bg, window, yank, clean-yank, download, userscript, ephemeral, choose, pointer, or external:NAME"
                             .to_owned()
                     })?;
             }
@@ -188,7 +207,7 @@ pub(super) fn parse_hint_options(command: &ParsedCommand) -> Result<HintOptions,
             }
             _ => {
                 return Err(
-                    "hint expects [--target TARGET] [--rapid] [--script NAME] [--first] [--index N] [links|all|inputs|buttons|images|media|scrollables]".into(),
+                    "hint expects [--target TARGET] [--rapid] [--script NAME] [--first] [--index N] [links|all|inputs|buttons|images|media|scrollables]; pointer requires a direct local command and explicit family".into(),
                 );
             }
         }
@@ -225,6 +244,11 @@ pub(super) fn parse_hint_options(command: &ParsedCommand) -> Result<HintOptions,
     if target != "userscript" && script.is_some() {
         return Err("--script is only valid with the userscript hint target".into());
     }
+    if target == "pointer"
+        && (!family_seen || rapid || first || requested_index.is_some() || script.is_some())
+    {
+        return Err("hint --target pointer requires an explicit FAMILY and cannot use --rapid, --first, --index, or --script".into());
+    }
     Ok(HintOptions {
         family,
         rapid,
@@ -233,6 +257,14 @@ pub(super) fn parse_hint_options(command: &ParsedCommand) -> Result<HintOptions,
         first,
         index: requested_index.unwrap_or(1),
     })
+}
+
+pub(super) fn hint_requests_pointer(command: &ParsedCommand) -> bool {
+    command.name == "hint"
+        && command
+            .arguments
+            .windows(2)
+            .any(|arguments| arguments[0] == "--target" && arguments[1] == "pointer")
 }
 
 fn is_hint_target(value: &str) -> bool {
@@ -248,6 +280,7 @@ fn is_hint_target(value: &str) -> bool {
             | "userscript"
             | "ephemeral"
             | "choose"
+            | "pointer"
     ) || external_hint_target(value).is_some()
 }
 
@@ -362,6 +395,37 @@ mod tests {
     }
 
     #[test]
+    fn pointer_permit_is_local_ui_or_keyboard_owner_bound_and_one_shot() {
+        let owner = local_owner();
+        let operation = LocalInteractionOperation::HintPointerDispatch;
+        let mut authority = LocalInteractionAuthority::default();
+        for source in [
+            CommandSource::Cli,
+            CommandSource::Ipc,
+            CommandSource::Switcher,
+            CommandSource::Userscript,
+            CommandSource::Macro,
+        ] {
+            assert!(authority.mint(source, owner, operation).is_none());
+        }
+        for source in [CommandSource::Ui, CommandSource::Keyboard] {
+            let permit = authority
+                .mint(source, owner, operation)
+                .expect("local permit");
+            assert!(authority.consume(permit, source, owner, operation));
+        }
+        let permit = authority
+            .mint(CommandSource::Ui, owner, operation)
+            .expect("owner-bound permit");
+        assert!(!authority.consume(
+            permit,
+            CommandSource::Keyboard,
+            another_local_owner(),
+            operation,
+        ));
+    }
+
+    #[test]
     fn parses_named_options_and_rejects_invalid_combinations() {
         let options = parse_hint_options(&ParsedCommand {
             name: "hint".into(),
@@ -392,6 +456,18 @@ mod tests {
             })
             .is_err()
         );
+    }
+
+    #[test]
+    fn pointer_origin_detection_does_not_treat_alias_names_as_local_commands() {
+        assert!(hint_requests_pointer(&ParsedCommand {
+            name: "hint".into(),
+            arguments: vec!["--target".into(), "pointer".into(), "buttons".into()],
+        }));
+        assert!(!hint_requests_pointer(&ParsedCommand {
+            name: "pointer-alias".into(),
+            arguments: vec!["--target".into(), "pointer".into(), "buttons".into()],
+        }));
     }
 
     #[test]
@@ -469,8 +545,16 @@ mod tests {
             );
         }
 
+        let pointer = parse_hint_options(&ParsedCommand {
+            name: "hint".into(),
+            arguments: vec!["--target".into(), "pointer".into(), "links".into()],
+        })
+        .expect("explicit Pointer family");
+        assert_eq!(pointer.target, "pointer");
+        assert_eq!(pointer.family, "links");
+
         for arguments in [
-            vec!["--target".into(), "pointer".into(), "links".into()],
+            vec!["--target".into(), "pointer".into()],
             vec!["--target".into(), "pointer".into(), "--rapid".into()],
             vec!["--target".into(), "pointer".into(), "--first".into()],
             vec![

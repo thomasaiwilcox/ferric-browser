@@ -69,6 +69,12 @@ parent-item delivery cannot execute a Normal-mode browser command afterward.
 Chrome tests check both window types' mode labels, recovery hints, accessible
 descriptions, and existing status-bar visibility policy.
 
+S04 adds a native-insert case that routes a retained page target through the
+production `FerricPagePointerAdapter`. It records the pointer/mouse sequence,
+`isTrusted`, and activation state for a local pointer-only fixture. This is
+offscreen Qt event evidence; it does not qualify physical Wayland delivery or
+application-level activation, and those limits remain in the slice evidence.
+
 The unified keyboard-interaction matrix lives in
 `docs/implementation/keyboard_interaction-v03/TEST_MATRIX.json`. Its synthetic
 HTML is under `crates/ferric-browser-engine-qt/tests/fixtures/webapp-interaction/`.

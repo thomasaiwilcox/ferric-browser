@@ -1048,6 +1048,10 @@ FerricBrowserRuntimeServices {
         return BrowserScripts.hintFresh(candidate)
     }
 
+    function hintPointerPreflightScript(candidate, viewWidth, viewHeight) {
+        return BrowserScripts.hintPointerPreflight(candidate, viewWidth, viewHeight)
+    }
+
     function hintFocusScript(candidate) {
         return BrowserScripts.hintFocus(candidate)
     }
@@ -1061,6 +1065,10 @@ FerricBrowserRuntimeServices {
     }
 
     function startHintCollection() {
+        if (browserUi.hint_pointer_mode
+                && browserUi.hint_pointer_state !== "selecting") {
+            return
+        }
         var view = window.activeWebView()
         if (!view) {
             browserUi.cancel_hints()
@@ -1125,7 +1133,9 @@ FerricBrowserRuntimeServices {
 
     function pollHintRefresh() {
         var view = window.activeWebView()
-        if (!view || !browserUi.hint_visible || window.hintRefreshPending) {
+        if (!view || !browserUi.hint_visible || window.hintRefreshPending
+                || (browserUi.hint_pointer_mode
+                    && browserUi.hint_pointer_state !== "selecting")) {
             return
         }
         window.runBrowserScript(view, window.hintDirtyRevisionScript(), function(value) {
@@ -1156,6 +1166,15 @@ FerricBrowserRuntimeServices {
             window.rotateHintCollision()
         }
         return true
+    }
+
+    function beginHintPointerConfirmation() {
+        try {
+            var response = JSON.parse(browserUi.hint_pointer_confirmation_pressed())
+            return response.ok === true
+        } catch (error) {
+            return false
+        }
     }
 
     function rotateHintCollision() {
@@ -1651,6 +1670,12 @@ FerricBrowserRuntimeServices {
     }
 
     function activateHint(label, actionId) {
+        if (browserUi.hint_pointer_mode) {
+            // Pointer mode treats marker activation as selection only. Enter
+            // release owns the separate preflight and native dispatch gesture.
+            window.applyHintInteraction("select", String(label))
+            return
+        }
         var selected = null
         for (var i = 0; i < window.hintResults.length; ++i) {
             if (window.hintResults[i].label === label) {

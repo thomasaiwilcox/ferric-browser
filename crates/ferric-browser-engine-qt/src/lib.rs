@@ -57,6 +57,7 @@ mod browser_ui_downloads_permissions;
 mod browser_ui_edit_commands;
 mod browser_ui_external_actions;
 mod browser_ui_guide;
+mod browser_ui_hint_pointer;
 mod browser_ui_hint_selection;
 mod browser_ui_input;
 #[allow(clippy::too_many_lines)]
@@ -559,6 +560,10 @@ mod qobject {
         #[qproperty(bool, external_navigation_visible)]
         #[qproperty(QString, hint_values)]
         #[qproperty(bool, hint_visible)]
+        #[qproperty(bool, hint_pointer_mode)]
+        #[qproperty(bool, hint_pointer_pending)]
+        #[qproperty(QString, hint_pointer_state)]
+        #[qproperty(QString, hint_pointer_dispatch_request)]
         #[qproperty(bool, hint_links_only)]
         #[qproperty(bool, hint_rapid)]
         #[qproperty(QString, hint_family)]
@@ -1015,6 +1020,45 @@ mod qobject {
             fresh_candidate_json: &QString,
             action_id: &QString,
         ) -> QString;
+
+        #[qinvokable]
+        fn hint_pointer_confirmation_pressed(self: Pin<&mut BrowserUi>) -> QString;
+
+        #[qinvokable]
+        fn hint_pointer_confirmation_released(
+            self: Pin<&mut BrowserUi>,
+            surface_serial: &QString,
+            surface_revision: &QString,
+            view_width: f64,
+            view_height: f64,
+        ) -> QString;
+
+        #[qinvokable]
+        fn complete_hint_pointer_preflight(
+            self: Pin<&mut BrowserUi>,
+            request_id: &QString,
+            preflight_json: &QString,
+            surface_serial: &QString,
+            surface_revision: &QString,
+            view_width: f64,
+            view_height: f64,
+        ) -> bool;
+
+        #[qinvokable]
+        fn hint_pointer_dispatch_ack(
+            self: Pin<&mut BrowserUi>,
+            request_id: &QString,
+            session_id: &QString,
+            surface_serial: &QString,
+            surface_revision: &QString,
+            outcome: &QString,
+        );
+
+        #[qinvokable]
+        fn hint_pointer_invalidated(self: Pin<&mut BrowserUi>, reason: &QString);
+
+        #[qinvokable]
+        fn hint_pointer_timeout(self: Pin<&mut BrowserUi>);
 
         #[qinvokable]
         fn cancel_hint_palette(self: Pin<&mut BrowserUi>);
@@ -1867,6 +1911,10 @@ pub struct BrowserUiRust {
     pending_external_navigation: Option<PendingExternalNavigation>,
     hint_values: QString,
     hint_visible: bool,
+    hint_pointer_mode: bool,
+    hint_pointer_pending: bool,
+    hint_pointer_state: QString,
+    hint_pointer_dispatch_request: QString,
     hint_links_only: bool,
     hint_rapid: bool,
     hint_family: QString,
@@ -1935,6 +1983,8 @@ pub struct BrowserUiRust {
     hint_consumed: BTreeSet<(String, u32)>,
     hint_configuration_revision: u64,
     pending_hint_palette_permit: Option<LocalInteractionPermit>,
+    hint_pointer_source: Option<CommandSource>,
+    hint_pointer_action: Option<browser_ui_hint_pointer::HintPointerAction>,
     hint_local_interaction_authority: LocalInteractionAuthority,
     hint_ids: IdSource,
     config_json: QString,
@@ -2563,6 +2613,10 @@ impl Default for BrowserUiRust {
             pending_external_navigation: None,
             hint_values: QString::default(),
             hint_visible: false,
+            hint_pointer_mode: false,
+            hint_pointer_pending: false,
+            hint_pointer_state: QString::from("terminal"),
+            hint_pointer_dispatch_request: QString::default(),
             hint_links_only: false,
             hint_rapid: false,
             hint_family: QString::from("all"),
@@ -2632,6 +2686,8 @@ impl Default for BrowserUiRust {
             hint_consumed: BTreeSet::new(),
             hint_configuration_revision: 0,
             pending_hint_palette_permit: None,
+            hint_pointer_source: None,
+            hint_pointer_action: None,
             hint_local_interaction_authority: LocalInteractionAuthority::default(),
             hint_ids: IdSource::new(),
             config_json: QString::from(

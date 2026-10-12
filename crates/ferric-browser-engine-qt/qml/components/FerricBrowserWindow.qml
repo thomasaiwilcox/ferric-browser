@@ -164,6 +164,12 @@ ApplicationWindow {
                 }
             }
         }
+        onKeyReleased: function(key, modifiers) {
+            if (rootWindow.handleBrowserKeyRelease(
+                        secondaryUi, secondaryWindow, key, modifiers)) {
+                secondaryKeyRouter.acceptCurrentEvent()
+            }
+        }
     }
 
     onActiveChanged: {

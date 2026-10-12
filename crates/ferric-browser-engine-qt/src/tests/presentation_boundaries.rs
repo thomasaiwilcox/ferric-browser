@@ -552,8 +552,8 @@ fn qml_json_contract_allowlist_is_explicit() {
 
     assert!(allowlist.contains("Opaque page-script request/result contracts"));
     assert!(allowlist.contains("Prohibited presentation payloads"));
-    assert_eq!(qml.matches("JSON.parse(").count(), 14);
-    assert_eq!(qml.matches("JSON.stringify(").count(), 31);
+    assert_eq!(qml.matches("JSON.parse(").count(), 17);
+    assert_eq!(qml.matches("JSON.stringify(").count(), 32);
 }
 
 #[test]
@@ -1500,6 +1500,32 @@ fn enhanced_hint_presentation_keeps_keyboard_policy_out_of_qml() {
     assert!(overlay.contains("var options = [[targetX, targetY]"));
     assert!(menu.contains("sequence: \"Tab\""));
     assert!(menu.contains("hint.clean-yank"));
+}
+
+#[test]
+fn native_pointer_hint_waits_for_enter_release_and_uses_the_existing_adapter_once() {
+    let surface = include_str!("../../qml/components/FerricBrowserRuntimeSurface.qml");
+    let chrome = include_str!("../../qml/components/FerricBrowserRuntimeChrome.qml");
+    let presentation = include_str!("../../qml/components/FerricBrowserRuntimePresentation.qml");
+    let scripts = include_str!("../../qml/scripts/BrowserScripts.js");
+    let base = include_str!("../../qml/components/FerricBrowserRuntimeBase.qml");
+    let pointer = include_str!("../browser_ui_hint_pointer.rs");
+
+    assert!(surface.contains("ui.hint_pointer_state !== \"selecting\""));
+    assert!(surface.contains("window.releaseHintPointerConfirmation()"));
+    assert!(surface.contains("if (!event.isAutoRepeat) window.beginHintPointerConfirmation()"));
+    assert!(base.contains("onKeyReleased: function(key, modifiers)"));
+    assert!(chrome.contains("hintPointerPreflightTimer\n        interval: 250"));
+    assert!(chrome.contains("hintPointerPreflightScript(candidate, viewWidth, viewHeight)"));
+    assert!(chrome.contains("request.action"));
+    assert!(chrome.contains("FerricPagePointerAdapter"));
+    assert!(chrome.contains("hint_pointer_dispatch_ack"));
+    assert!(presentation.contains("Pointer mode treats marker activation as selection only"));
+    assert!(pointer.contains("PREFLIGHT_LIFETIME: Duration = Duration::from_millis(250)"));
+    assert!(pointer.contains("LocalInteractionOperation::HintPointerDispatch"));
+    assert!(scripts.contains("function hintPointerPreflight(candidate, viewWidth, viewHeight)"));
+    assert!(scripts.contains("function ftPointerDeepHit(doc,x,y)"));
+    assert!(pointer.contains("no retry or fallback"));
 }
 
 #[test]

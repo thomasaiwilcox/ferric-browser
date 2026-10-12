@@ -197,6 +197,12 @@ impl qobject::BrowserUi {
         fresh_candidate_json: &QString,
         allow_local_palette: bool,
     ) -> QString {
+        if self.as_ref().rust().hint_pointer_mode {
+            self.set_status_text(QString::from(
+                "Pointer Hint selection requires Enter release; no DOM click was sent",
+            ));
+            return QString::from(r#"{"error":"pointer-confirmation-required"}"#);
+        }
         let fresh_value = match serde_json::from_str::<Value>(&fresh_candidate_json.to_string()) {
             Ok(value) => value,
             Err(error) => {

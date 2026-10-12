@@ -28,6 +28,7 @@ function scrollTargetRuntime() {
         + "function ftAxisScrollable(element,axis){if(!element||element.nodeType!==1)return false;const owner=element.ownerDocument,view=owner&&owner.defaultView;if(!view)return false;const root=ftRoot();if(owner===document&&element===root)return axis==='x'?element.scrollWidth>view.innerWidth:element.scrollHeight>view.innerHeight;const style=view.getComputedStyle(element);if(axis==='x')return ['auto','scroll','overlay'].indexOf(style.overflowX)>=0&&element.scrollWidth>element.clientWidth;if(axis==='y')return ['auto','scroll','overlay'].indexOf(style.overflowY)>=0&&element.scrollHeight>element.clientHeight;return false;}"
         + "function ftIntersect(a,b){const left=Math.max(a.left,b.left),top=Math.max(a.top,b.top),right=Math.min(a.right,b.right),bottom=Math.min(a.bottom,b.bottom);return {left:left,top:top,right:right,bottom:bottom,width:Math.max(0,right-left),height:Math.max(0,bottom-top)};}"
         + "function ftDeepHit(doc,x,y){let target=doc&&doc.elementFromPoint(x,y);for(let depth=0;target&&target.shadowRoot&&depth<8;depth++){const inner=target.shadowRoot.elementFromPoint(x,y);if(!inner||inner===target)break;target=inner;}return target&&target.shadowRoot?null:target;}"
+        + "function ftPointerDeepHit(doc,x,y){let current=doc,pointX=x,pointY=y;for(let depth=0;current&&depth<16;depth++){const target=ftDeepHit(current,pointX,pointY);if(!target)return null;if(target.localName!=='iframe'&&target.localName!=='frame')return target;try{const view=current.defaultView,style=view.getComputedStyle(target);if(style.transform!=='none'||style.perspective!=='none'||Number(style.zoom||1)!==1)return null;for(let node=target,guard=0;node&&guard<256;node=ftParent(node),guard++){const ancestorStyle=(node.ownerDocument&&node.ownerDocument.defaultView||view).getComputedStyle(node);if(ancestorStyle.transform!=='none'||ancestorStyle.perspective!=='none'||Number(ancestorStyle.zoom||1)!==1)return null;}const child=target.contentDocument,childView=child&&child.defaultView,rect=target.getBoundingClientRect(),width=target.clientWidth,height=target.clientHeight,left=rect.left+target.clientLeft,top=rect.top+target.clientTop;if(!child||!childView||childView.document!==child||!ftReachableFromTopDocument(target,document)||!(width>0&&height>0)||pointX<left||pointY<top||pointX>=left+width||pointY>=top+height)return null;pointX=(pointX-left)*childView.innerWidth/width;pointY=(pointY-top)*childView.innerHeight/height;current=child;}catch(error){return null;}}return null;}"
         + "function ftHit(element,rect){const doc=element&&element.ownerDocument;if(!doc||!rect||rect.width<=0||rect.height<=0)return false;const points=[[rect.left+rect.width/2,rect.top+rect.height/2],[rect.left+Math.min(4,rect.width/2),rect.top+Math.min(4,rect.height/2)],[rect.right-Math.min(4,rect.width/2),rect.bottom-Math.min(4,rect.height/2)]];return points.some(function(point){return ftContains(element,ftDeepHit(doc,point[0],point[1]));});}"
         + "function ftInert(element){let node=element,depth=0;for(;node&&depth<256;node=ftParent(node),depth++)if(node.inert||(node.hasAttribute&&node.hasAttribute('inert')))return true;return !!node;}"
         + "function ftDisabled(element){try{return !!(element.matches&&element.matches(':disabled'))||element.getAttribute('aria-disabled')==='true';}catch(error){return true;}}"
@@ -379,6 +380,30 @@ function hintFresh(candidate) {
         + "const policy=ftHintPolicy(description.kind,record.family),ownerView=el.ownerDocument&&el.ownerDocument.defaultView,local=ftLocalVisible(el,ownerView,policy),geometry=ftProjectedRect(el,local,policy);if(!geometry)return {visible:false,element_id:elementId};"
         + "return {visible:true,element_id:elementId,kind:description.kind,frame_path:path,text:description.text,href:description.href,geometry:{x:geometry.left,y:geometry.top,width:geometry.width,height:geometry.height}};"
         + "}catch(error){return {visible:false,element_id:" + Number(candidate.element_id) + "};}})()"
+}
+
+function hintPointerPreflight(candidate, viewWidth, viewHeight) {
+    var actionCandidate = Object.assign({}, candidate || {})
+    if (typeof actionCandidate.href === "undefined")
+        actionCandidate.href = null
+    var elementId = Number(actionCandidate.element_id)
+    var width = Number(viewWidth)
+    var height = Number(viewHeight)
+    var linkSelector = hintSelector(true)
+    return "(function(){try{" + scrollTargetRuntime()
+        + "const candidate=" + JSON.stringify(actionCandidate) + ",elementId=" + elementId
+        + ",viewWidth=" + width + ",viewHeight=" + height
+        + ",linkSelector=" + JSON.stringify(linkSelector) + ";"
+        + "if(!Number.isFinite(viewWidth)||!Number.isFinite(viewHeight)||viewWidth<=0||viewHeight<=0||!candidate||!Number.isInteger(candidate.element_id)||candidate.element_id!==elementId)return {ok:false};"
+        + "const state=window.__ferric_browserHintState,elements=state&&state.elements,record=elements&&elements.get(elementId),el=record&&record.element;"
+        + "if(!record||!el||!el.isConnected||record.framePath!==candidate.frame_path||record.ownerDocument!==el.ownerDocument||!ftReachableFromTopDocument(el,record.ownerDocument)||ftCurrentFramePath(el.ownerDocument)!==candidate.frame_path)return {ok:false};"
+        + "const description=ftHintDescription(el,record.family,linkSelector);if(description.kind!==record.kind||description.text!==record.text||description.href!==record.href||candidate.kind!==description.kind||candidate.text!==description.text||candidate.href!==description.href)return {ok:false};"
+        + "const ownerView=el.ownerDocument&&el.ownerDocument.defaultView,local=ftLocalVisible(el,ownerView,'pointer'),geometry=ftProjectedRect(el,local,'pointer');if(!geometry||!(window.innerWidth>0&&window.innerHeight>0))return {ok:false};"
+        + "const insetX=Math.min(12,geometry.width*0.2),insetY=Math.min(12,geometry.height*0.2),points=[[geometry.left+geometry.width/2,geometry.top+geometry.height/2],[geometry.left+insetX,geometry.top+insetY],[geometry.right-insetX,geometry.top+insetY],[geometry.left+insetX,geometry.bottom-insetY],[geometry.right-insetX,geometry.bottom-insetY]];"
+        + "let point=null;for(const sample of points){const hit=ftPointerDeepHit(document,sample[0],sample[1]);if(hit&&ftContains(el,hit)){point=sample;break;}}if(!point)return {ok:false};"
+        + "const scaleX=viewWidth/window.innerWidth,scaleY=viewHeight/window.innerHeight;if(!Number.isFinite(scaleX)||!Number.isFinite(scaleY)||scaleX<0.2||scaleX>5||scaleY<0.2||scaleY>5)return {ok:false};"
+        + "return {ok:true,candidate:{visible:true,element_id:elementId,kind:description.kind,frame_path:candidate.frame_path,text:description.text,href:description.href,geometry:{x:geometry.left,y:geometry.top,width:geometry.width,height:geometry.height}},css_x:point[0],css_y:point[1],x:point[0]*scaleX,y:point[1]*scaleY,viewport_width:window.innerWidth,viewport_height:window.innerHeight,view_width:viewWidth,view_height:viewHeight};"
+        + "}catch(error){return {ok:false};}})()"
 }
 
 function hintFocus(candidate) {

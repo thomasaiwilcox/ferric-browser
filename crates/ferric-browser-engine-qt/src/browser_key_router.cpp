@@ -187,6 +187,15 @@ bool FerricBrowserKeyRouter::eventFilter(QObject *watched, QEvent *event)
             }
             return true;
         }
+        // Auto-repeat releases are part of the held gesture. Keep ownership
+        // until the real release so a consumer that accepted the press also
+        // receives the matching release exactly once.
+        if (keyEvent->isAutoRepeat()) {
+            if (!acceptedKeys_.contains(identity))
+                return false;
+            event->accept();
+            return true;
+        }
         if (!acceptedKeys_.contains(identity))
             return false;
         acceptedKeys_.remove(identity);

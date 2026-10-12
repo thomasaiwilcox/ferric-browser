@@ -47,7 +47,7 @@ class PackValidatorTests(unittest.TestCase):
         self.edit('TEST_MATRIX.json',lambda x:x['tests'][0].update(status='passed'))
         self.fails_with('matrix must remain a plan')
     def test_completion_without_evidence(self):
-        self.edit('progress.json',lambda x:x['slices'][0].update(status='complete'))
+        self.edit('progress.json',lambda x:x['slices'][0].update(status='complete',evidence=None))
         self.fails_with('terminal status needs evidence',evidence=True)
     def test_unimplemented_delivery_not_complete(self):
         self.fails_with('implementation not complete',strict_completion=True)

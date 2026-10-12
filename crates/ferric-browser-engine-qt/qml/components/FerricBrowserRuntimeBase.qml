@@ -2078,9 +2078,17 @@ ApplicationWindow {
                 browserKeyRouter.acceptCurrentEvent()
             }
         }
+        onKeyReleased: function(key, modifiers) {
+            if (window.handleBrowserKeyRelease(browserUi, window, key, modifiers)) {
+                browserKeyRouter.acceptCurrentEvent()
+            }
+        }
     }
 
     onActiveChanged: {
+        if (!active && browserUi.hint_pointer_mode) {
+            browserUi.hint_pointer_invalidated("window-inactive")
+        }
         if (!active && browserUi.mode === "pass-through-once") {
             window.cancelFocusProbes()
             browserUi.escape()
