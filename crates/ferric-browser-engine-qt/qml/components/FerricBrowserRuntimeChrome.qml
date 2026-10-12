@@ -996,7 +996,7 @@ GridLayout {
                 }
                 onUrlChanged: {
                     if (nativeUrl.length > 0) return
-                    nativeContent.noteSameDocument()
+                    nativeContent.noteSameDocument(url.toString())
                     refreshEffectiveSiteSettings()
                     if (!viewModel.loaded) {
                         return
@@ -1004,11 +1004,6 @@ GridLayout {
                     var changedUrl = url.toString()
                     if (viewModel.url !== changedUrl && viewTabs === tabs) {
                         tabs.setProperty(tabIndex, "url", changedUrl)
-                    }
-                    if (viewTabs === tabs) {
-                        viewUi.navigation_url_changed_for(tabIndex, changedUrl)
-                    } else {
-                        viewUi.navigation_url_changed(changedUrl)
                     }
                     if (viewTabs !== tabs || tabIndex === viewUi.active_tab_index) {
                         if (viewUi === browserUi) {

@@ -15,6 +15,8 @@ impl qobject::BrowserUi {
             let this = rust.as_mut().get_mut();
             this.focus_observations.clear();
             this.focus_suppressions.clear();
+            this.page_document_identities.clear();
+            this.pending_same_document_pass_through = None;
         }
         if let Some(id) = self
             .as_ref()

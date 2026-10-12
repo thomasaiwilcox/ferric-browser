@@ -14,8 +14,12 @@ TestCase {
         id: page
         anchors.fill: parent
         property bool loaded: false
+        property int mainFrameNavigationRequests: 0
         onLoadingChanged: function(request) {
             loaded = request.status === WebEngineView.LoadSucceededStatus
+        }
+        onNavigationRequested: function(request) {
+            if (request.isMainFrame) mainFrameNavigationRequests += 1
         }
     }
     property bool done: false
@@ -66,6 +70,44 @@ TestCase {
         verify(evaluate("!!window.__ferric_browserHintState"))
         compare(evaluateMain("typeof window.__ferric_browserHintState"), "undefined")
         compare(evaluateMain("typeof window.__ferric_browserHintElements"), "undefined")
+    }
+
+    function test_T026_document_identity_survives_spa_urls_and_changes_on_replacement() {
+        page.userScripts.clear()
+        var identityScript = WebEngine.script()
+        identityScript.name = "ferric-test-document-identity"
+        identityScript.sourceCode = BrowserScripts.focusObserverSource()
+        identityScript.injectionPoint = WebEngineScript.DocumentCreation
+        identityScript.worldId = WebEngineScript.ApplicationWorld
+        page.userScripts.insert(identityScript)
+
+        page.loaded = false
+        page.loadHtml("<!doctype html><html><body>Identity fixture</body></html>",
+                      "https://identity.test/one")
+        tryVerify(function() { return page.loaded }, 5000)
+        var initial = evaluate(BrowserScripts.historyTraversalProbe())
+        verify(initial && initial.document.length > 0)
+        compare(evaluateMain("typeof window.__ferric_browserHistoryTraversal"), "undefined")
+
+        var requestsBeforeSpa = page.mainFrameNavigationRequests
+        evaluateMain("history.pushState({}, '', '/one#push'); true")
+        tryVerify(function() { return page.url.toString() === "https://identity.test/one#push" }, 5000)
+        var afterPush = evaluate(BrowserScripts.historyTraversalProbe())
+        compare(afterPush.document, initial.document)
+        compare(page.mainFrameNavigationRequests, requestsBeforeSpa)
+
+        evaluateMain("location.hash = 'fragment'; true")
+        tryVerify(function() { return page.url.toString() === "https://identity.test/one#fragment" }, 5000)
+        var afterFragment = evaluate(BrowserScripts.historyTraversalProbe())
+        compare(afterFragment.document, initial.document)
+        compare(page.mainFrameNavigationRequests, requestsBeforeSpa)
+
+        page.loaded = false
+        page.loadHtml("<!doctype html><html><body>Replacement</body></html>",
+                      "https://identity.test/two")
+        tryVerify(function() { return page.loaded }, 5000)
+        var replacement = evaluate(BrowserScripts.historyTraversalProbe())
+        verify(replacement.document !== initial.document)
     }
 
     // T002: production collection -> fresh -> final click, exact counter.

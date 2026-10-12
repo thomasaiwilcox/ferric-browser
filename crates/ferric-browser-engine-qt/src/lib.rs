@@ -144,6 +144,7 @@ mod network_policy;
 mod open_policy;
 mod operation_policy;
 mod operation_projection;
+mod page_document_identity;
 mod presentation_text;
 mod process_output;
 mod profile_management;
@@ -271,6 +272,7 @@ use operation_policy::{
     action_audit_record, action_operation_id, operation_is_terminal, operation_status_kind,
 };
 use operation_projection::{operations_query_value, remember_operation_stderr};
+use page_document_identity::{PageDocumentIdentities, PendingSameDocumentPassThrough};
 #[cfg(test)]
 use presentation_text::MAX_PAGE_TITLE_BYTES;
 use presentation_text::{
@@ -1474,6 +1476,35 @@ mod qobject {
         fn navigation_url_changed_for(self: Pin<&mut BrowserUi>, index: i32, url: QString);
 
         #[qinvokable]
+        fn page_document_identity_for(
+            self: Pin<&mut BrowserUi>,
+            index: i32,
+            tab_id: &QString,
+            document_id: &QString,
+            epoch: i32,
+        );
+
+        #[qinvokable]
+        fn begin_same_document_url_change_for(
+            self: Pin<&mut BrowserUi>,
+            index: i32,
+            tab_id: &QString,
+            url: QString,
+            document_id: &QString,
+            epoch: i32,
+        );
+
+        #[qinvokable]
+        fn complete_same_document_url_change_for(
+            self: Pin<&mut BrowserUi>,
+            index: i32,
+            tab_id: &QString,
+            url: &QString,
+            document_id: &QString,
+            epoch: i32,
+        );
+
+        #[qinvokable]
         fn navigation_committed(self: Pin<&mut BrowserUi>, url: QString, title: QString);
 
         #[qinvokable]
@@ -1753,6 +1784,8 @@ pub struct BrowserUiRust {
     pending_history_clear: Option<(Option<i64>, Option<String>)>,
     pending_journey_reopen: Option<(String, String, Option<TabId>, String)>,
     pending_navigation_urls: BTreeMap<TabId, String>,
+    page_document_identities: PageDocumentIdentities,
+    pending_same_document_pass_through: Option<PendingSameDocumentPassThrough>,
     pending_redirect_tabs: BTreeSet<TabId>,
     pending_redirect_hops: BTreeMap<TabId, u8>,
     popup_journey_targets: Vec<(String, Target, String, bool)>,
@@ -2455,6 +2488,8 @@ impl Default for BrowserUiRust {
             pending_history_clear: None,
             pending_journey_reopen: None,
             pending_navigation_urls: BTreeMap::new(),
+            page_document_identities: PageDocumentIdentities::default(),
+            pending_same_document_pass_through: None,
             pending_redirect_tabs: BTreeSet::new(),
             pending_redirect_hops: BTreeMap::new(),
             popup_journey_targets: Vec::new(),

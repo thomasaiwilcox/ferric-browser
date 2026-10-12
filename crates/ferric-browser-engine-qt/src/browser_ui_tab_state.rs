@@ -18,6 +18,7 @@ impl qobject::BrowserUi {
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
         this.core_mode = mode;
+        this.pending_same_document_pass_through = None;
         if let Some(bindings) = this.bindings.as_mut() {
             bindings.set_mode(mode);
         }
@@ -598,6 +599,8 @@ impl qobject::BrowserUi {
         }
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
+        this.page_document_identities.invalidate(target.tab);
+        this.pending_same_document_pass_through = None;
         let previous = this
             .pending_navigation_urls
             .insert(target.tab, url.to_owned());
@@ -612,8 +615,9 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn note_navigation_url_change(mut self: Pin<&mut Self>, target: Target, url: &str) {
-        // SPA navigation and fragment changes also end explicit page-shortcut
-        // ownership, without changing Insert's existing focus policy.
+        // URL notifications conservatively end explicit page-shortcut ownership.
+        // A separate, short-lived lease may restore persistent mode after
+        // ApplicationWorld proves that this exact document survived the change.
         if self.as_ref().rust().tab == Some(target.tab)
             && self.as_ref().rust().current_url.to_string() != url
             && matches!(

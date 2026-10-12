@@ -20,6 +20,17 @@ impl qobject::BrowserUi {
             self.set_status_text(QString::from("Renderer termination target is stale"));
             return false;
         };
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .page_document_identities
+            .invalidate(target.tab);
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .pending_same_document_pass_through = None;
         if self.as_ref().rust().tab == Some(target.tab) {
             self.as_mut().reset_editing_session();
         }

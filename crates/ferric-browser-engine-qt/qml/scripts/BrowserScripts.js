@@ -3,7 +3,7 @@
 
 // Browser-owned page scripts are versioned resources. The build manifest hashes
 // this file with the QML module, so script changes are explicit and auditable.
-var VERSION = "16"
+var VERSION = "17"
 
 // Page userscripts are trusted local content, but their failure boundary is
 // browser policy. Keeping the wrappers here prevents QML from assembling page
@@ -153,7 +153,8 @@ function focusObserverSource() {
         + "window.__ferric_browserFocusObserverInstalled=true;"
         // This state lives in ApplicationWorld. Only real popstate events
         // distinguish traversal from a new pushState with the same URL.
-        + "if(window===window.top){const historyState={document:String(performance.timeOrigin)+':'+String(Math.random()),sequence:0};"
+        + "if(window===window.top){const documentId=window.crypto&&typeof window.crypto.randomUUID==='function'?window.crypto.randomUUID():String(performance.timeOrigin)+':'+String(Math.random())+':'+String(Math.random());"
+        + "const historyState={document:documentId,sequence:0};"
         + "window.__ferric_browserHistoryTraversal=historyState;"
         + "window.addEventListener('popstate',function(event){if(event.isTrusted)historyState.sequence++;},true);}"
         + "var sequence=0;var userGestureUntil=0;var identities=new WeakMap();var nextIdentity=0;var watchedElement=null;var watchedParent=null;"

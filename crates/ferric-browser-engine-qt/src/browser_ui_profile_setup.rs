@@ -206,6 +206,8 @@ impl qobject::BrowserUi {
             this.pending_navigation_urls.clear();
             this.pending_redirect_tabs.clear();
             this.pending_redirect_hops.clear();
+            this.page_document_identities.clear();
+            this.pending_same_document_pass_through = None;
             this.ipc_sequence = this.state.as_ref().map_or(0, BrowserApplication::revision);
             this.window = Some(window);
             this.core_window_id = QString::from(window.to_string());

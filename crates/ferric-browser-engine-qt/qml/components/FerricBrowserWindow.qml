@@ -1595,13 +1595,8 @@ function onContext_workspaceChanged() {
         }
         onUrlChanged: {
             if (nativeUrl.length > 0) return
-            secondaryNativeContent.noteSameDocument()
+            secondaryNativeContent.noteSameDocument(url.toString())
             refreshEffectiveSiteSettings()
-            if (viewTabs === tabs) {
-                viewUi.navigation_url_changed_for(tabIndex, url.toString())
-            } else {
-                viewUi.navigation_url_changed(url.toString())
-            }
             if (viewHost === secondaryWindow) {
                 secondaryAddress.text = viewUi.display_url
             }
