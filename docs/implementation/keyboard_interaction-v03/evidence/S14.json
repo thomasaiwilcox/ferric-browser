@@ -2,7 +2,7 @@
   "schema_version": 1,
   "slice_id": "S14",
   "status": "implemented_unqualified",
-  "commit": "3c35fdd825959ec7a10c177590f6746c622ceccc",
+  "commit": "b23b3e14b051eb190fd28e8deef5589520df7422",
   "environment": {
     "os": "Linux 7.2.3-arch1-3 x86_64",
     "qt": "6.11.2",
@@ -38,7 +38,9 @@
     "docs/implementation/keyboard_interaction-v03/evidence/logs/S14/test-engine.log",
     "docs/implementation/keyboard_interaction-v03/evidence/logs/S14/xtask-check.log",
     "docs/implementation/keyboard_interaction-v03/progress.json",
-    "docs/user/commands.md"
+    "docs/user/commands.md",
+    "evidence/logs/S14/followup-check.log",
+    "evidence/logs/S14/followup-engine.log"
   ],
   "baseline_comparison": "Implementation started from S13 commit 1421b54c19b7ba9db526bd13827ac4dc6196efb4 on the existing implementation branch. No dependency or toolchain changes.",
   "test_results": [
@@ -47,8 +49,8 @@
       "level": "pure-unit",
       "result": "passed",
       "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
-      "commit": "3c35fdd825959ec7a10c177590f6746c622ceccc",
-      "log": "evidence/logs/S14/test-engine.log",
+      "commit": "b23b3e14b051eb190fd28e8deef5589520df7422",
+      "log": "evidence/logs/S14/followup-engine.log",
       "observations": [
         "The Rust Hint palette permit test passed: only direct local UI can mint it, it is bound to the active owner, and it is one-shot; capability tests enable HintWithin only for Region and ScrollableRegion."
       ]
@@ -58,7 +60,7 @@
       "level": "native-qt-offscreen",
       "result": "not_run",
       "command": "No composed BrowserUi local Hint palette-to-page acceptance test was executed.",
-      "commit": "3c35fdd825959ec7a10c177590f6746c622ceccc",
+      "commit": "b23b3e14b051eb190fd28e8deef5589520df7422",
       "log": null,
       "reason": "The offscreen suites do not compose the local palette, capability selection, and final page action in one BrowserUi journey; native-insert CTest covers a different input path."
     },
@@ -67,8 +69,8 @@
       "level": "webengine-fixture",
       "result": "passed",
       "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
-      "commit": "3c35fdd825959ec7a10c177590f6746c622ceccc",
-      "log": "evidence/logs/S14/test-engine.log",
+      "commit": "b23b3e14b051eb190fd28e8deef5589520df7422",
+      "log": "evidence/logs/S14/followup-engine.log",
       "observations": [
         "The scope-transfer fixture retained source records through destination weak-lease acquisition, then released the candidate map, observers, listeners, and aliases before scoped collection."
       ]
@@ -78,8 +80,8 @@
       "level": "webengine-fixture",
       "result": "passed",
       "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
-      "commit": "3c35fdd825959ec7a10c177590f6746c622ceccc",
-      "log": "evidence/logs/S14/test-engine.log",
+      "commit": "b23b3e14b051eb190fd28e8deef5589520df7422",
+      "log": "evidence/logs/S14/followup-engine.log",
       "observations": [
         "The parent exposed only the cross-origin iframe surface; a fabricated child-frame candidate could not acquire a semantic scope lease, and closed-root contents remained unavailable."
       ]
@@ -89,26 +91,28 @@
       "level": "native-wayland",
       "result": "not_run",
       "command": "No physical Wayland keyboard journey was run.",
-      "commit": "3c35fdd825959ec7a10c177590f6746c622ceccc",
+      "commit": "b23b3e14b051eb190fd28e8deef5589520df7422",
       "log": null,
       "reason": "This run used offscreen Qt/WebEngine fixtures and did not exercise a physical Wayland keyboard journey."
     },
     {
       "test_id": "T036",
       "level": "pure-unit",
-      "result": "not_run",
-      "command": "No isolated Rust scope-receipt state-machine test was executed.",
-      "commit": "3c35fdd825959ec7a10c177590f6746c622ceccc",
-      "log": null,
-      "reason": "The Rust receipt binding is exercised by compilation and WebEngine handoff coverage, but the exact BrowserUi owner/session/configuration replacement transitions lack an isolated Rust unit fixture."
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "b23b3e14b051eb190fd28e8deef5589520df7422",
+      "log": "evidence/logs/S14/followup-engine.log",
+      "observations": [
+        "A Rust unit test of the production admission validator accepted the exact receipt and rejected altered or extra fields, lease replay, changed window/document/configuration owner, changed source session identity/target/configuration, parent scope replacement, selector revision drift, family changes, and mode changes."
+      ]
     },
     {
       "test_id": "T036",
       "level": "webengine-fixture",
       "result": "passed",
       "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
-      "commit": "3c35fdd825959ec7a10c177590f6746c622ceccc",
-      "log": "evidence/logs/S14/test-engine.log",
+      "commit": "b23b3e14b051eb190fd28e8deef5589520df7422",
+      "log": "evidence/logs/S14/followup-engine.log",
       "observations": [
         "The lease transfer test verified exact candidate retention until weak destination refs validated, one-use acquisition, source-map teardown, descendant collection, and same-origin open-root/frame traversal."
       ]
@@ -118,8 +122,8 @@
       "level": "webengine-fixture",
       "result": "passed",
       "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
-      "commit": "3c35fdd825959ec7a10c177590f6746c622ceccc",
-      "log": "evidence/logs/S14/test-engine.log",
+      "commit": "b23b3e14b051eb190fd28e8deef5589520df7422",
+      "log": "evidence/logs/S14/followup-engine.log",
       "observations": [
         "Empty, replaced, and stale scopes returned no candidates without widening; the root and outside targets were excluded, focus and scroll were preserved, and the existing weak Set scroll-target setter passed."
       ]
@@ -129,8 +133,8 @@
       "level": "webengine-fixture",
       "result": "passed",
       "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
-      "commit": "3c35fdd825959ec7a10c177590f6746c622ceccc",
-      "log": "evidence/logs/S14/test-engine.log",
+      "commit": "b23b3e14b051eb190fd28e8deef5589520df7422",
+      "log": "evidence/logs/S14/followup-engine.log",
       "observations": [
         "All 1,000 create/acquire/teardown cycles passed with forced GC enabled; the connected exact weak target remained usable afterward and retained element, observer, and window counts were zero."
       ]
@@ -140,10 +144,10 @@
       "level": "performance",
       "result": "passed",
       "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
-      "commit": "3c35fdd825959ec7a10c177590f6746c622ceccc",
-      "log": "evidence/logs/S14/test-engine.log",
+      "commit": "b23b3e14b051eb190fd28e8deef5589520df7422",
+      "log": "evidence/logs/S14/followup-engine.log",
       "observations": [
-        "The 1,000-cycle WebEngine scope lifecycle script completed in 1,140 ms in the engine suite and 1,174 ms in the repository-wide check; these are fixture timings, not a production benchmark."
+        "The 1,000-cycle scope lifecycle script completed in 1,087 ms in the engine suite and 1,111 ms in the repository-wide check; these are fixture timings, not a production benchmark."
       ]
     },
     {
@@ -151,8 +155,8 @@
       "level": "pure-unit",
       "result": "passed",
       "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask check",
-      "commit": "3c35fdd825959ec7a10c177590f6746c622ceccc",
-      "log": "evidence/logs/S14/xtask-check.log",
+      "commit": "b23b3e14b051eb190fd28e8deef5589520df7422",
+      "log": "evidence/logs/S14/followup-check.log",
       "observations": [
         "Repository check passed QML lint and UI tests, generated-document and resource checks, release/license checks, formatting, and all workspace Rust tests."
       ]
@@ -165,13 +169,11 @@
   "remaining_risks": [
     "T010 local palette-to-page acceptance has no composed BrowserUi offscreen journey.",
     "T035 physical native Wayland interaction was not exercised.",
-    "T036 owner/session/configuration receipt replacement transitions lack an isolated Rust unit fixture.",
     "SearchWithin and GridWithin remain unavailable and were not implemented in S14."
   ],
   "not_run_reasons": [
     "T010 native-qt-offscreen: no composed local palette, HintWithin selection, and page-action BrowserUi test is available.",
-    "T035 native-wayland: no physical Wayland keyboard journey was run.",
-    "T036 pure-unit: no isolated Rust fixture exercises the full scope receipt and owner/session/configuration transition state machine."
+    "T035 native-wayland: no physical Wayland keyboard journey was run."
   ],
   "next_ready_slices": [
     "S15"

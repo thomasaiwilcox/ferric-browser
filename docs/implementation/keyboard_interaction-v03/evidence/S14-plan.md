@@ -63,16 +63,17 @@ separate commits on the existing branch; do not push or merge.
 
 ## Observed result
 
-- The locked offline engine suite passed: 431 Rust tests, 133 WebEngine QML
+- The locked offline engine suite passed: 432 Rust tests, 133 WebEngine QML
   tests, and native-insert CTest 1/1. The repository-wide `cargo xtask check`
   also passed, including QML lint, generated-document checks, and workspace
   tests.
 - WebEngine tests passed for transfer ordering, cross-origin and closed-root
   rejection, descendant-only collection, empty/replaced scope failure, and
   preservation of focus, scroll, and the existing scroll-target setter.
-- The forced-GC stress test completed 1,000 scope lifecycle cycles in 1,140 ms
+- The forced-GC stress test completed 1,000 scope lifecycle cycles in 1,087 ms in the engine run and 1,111 ms in the repository check,
   with zero retained element records, observers, or window listeners; the live
   weak target remained usable afterward.
-- T010 native offscreen palette-to-page acceptance, T036 isolated Rust
-  receipt/owner lifecycle tests, and the physical Wayland portion of T035 were
-  not run. These gaps keep S14 `implemented_unqualified`.
+- The T036 Rust admission test passes exact receipt, owner, source session,
+  parent lease, selector revision, family, and mode checks. T010 native
+  palette-to-page acceptance and the physical Wayland portion of T035 were not
+  run; these gaps keep S14 `implemented_unqualified`.
