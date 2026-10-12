@@ -123,7 +123,7 @@
     },
     {
       "test_id": "T043",
-      "level": "performance-profile",
+      "level": "performance",
       "result": "passed",
       "command": "QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME= QT_QUICK_BACKEND=software target/qml-tests/qml_tests -input crates/ferric-browser-engine-qt/tests/qml-perf",
       "commit": "3e961cb5438518f9cbd20af7e0881cc2056fba9e",
@@ -135,7 +135,7 @@
     },
     {
       "test_id": "T043",
-      "level": "rust-performance",
+      "level": "performance",
       "result": "passed",
       "command": "CARGO_NET_OFFLINE=true cargo test -p ferric-browser-engine-qt --lib s17_rust_hint_pipeline_performance -- --ignored --nocapture",
       "commit": "3e961cb5438518f9cbd20af7e0881cc2056fba9e",
@@ -157,7 +157,7 @@
     },
     {
       "test_id": "T045",
-      "level": "workspace",
+      "level": "pure-unit",
       "result": "passed",
       "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask check",
       "commit": "3e961cb5438518f9cbd20af7e0881cc2056fba9e",
@@ -168,7 +168,29 @@
     },
     {
       "test_id": "T045",
-      "level": "clippy",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask check",
+      "commit": "3e961cb5438518f9cbd20af7e0881cc2056fba9e",
+      "log": "evidence/logs/S17-check-final.log",
+      "observations": [
+        "The final locked/offline workspace Rust tests passed, including the engine crate; 141 Qt Quick/WebEngine tests passed, native_insert CTest passed 1/1, the release artifact manifest checked 38 inputs, and license policy checked 11 dependencies."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask check",
+      "commit": "3e961cb5438518f9cbd20af7e0881cc2056fba9e",
+      "log": "evidence/logs/S17-check-final.log",
+      "observations": [
+        "The final locked/offline workspace Rust tests passed, including the engine crate; 141 Qt Quick/WebEngine tests passed, native_insert CTest passed 1/1, the release artifact manifest checked 38 inputs, and license policy checked 11 dependencies."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "static-inspection",
       "result": "passed",
       "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo clippy --workspace --all-targets --locked --offline -- -D warnings",
       "commit": "3e961cb5438518f9cbd20af7e0881cc2056fba9e",
@@ -179,7 +201,7 @@
     },
     {
       "test_id": "T045",
-      "level": "format",
+      "level": "static-inspection",
       "result": "passed",
       "command": "cargo fmt --all -- --check",
       "commit": "3e961cb5438518f9cbd20af7e0881cc2056fba9e",
@@ -190,7 +212,7 @@
     },
     {
       "test_id": "T045",
-      "level": "adapter-smoke",
+      "level": "native-qt-offscreen",
       "result": "passed",
       "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test adapter",
       "commit": "3e961cb5438518f9cbd20af7e0881cc2056fba9e",
@@ -213,7 +235,7 @@
     },
     {
       "test_id": "T045",
-      "level": "generated-docs",
+      "level": "static-inspection",
       "result": "passed",
       "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask docs",
       "commit": "3e961cb5438518f9cbd20af7e0881cc2056fba9e",
@@ -224,7 +246,7 @@
     },
     {
       "test_id": "T045",
-      "level": "structural-validation",
+      "level": "static-inspection",
       "result": "passed",
       "command": "python3 tools/validate_pack.py --integrity && python3 tools/test_validate_pack.py",
       "commit": "3e961cb5438518f9cbd20af7e0881cc2056fba9e",
@@ -235,7 +257,7 @@
     },
     {
       "test_id": "T045",
-      "level": "diff-check",
+      "level": "static-inspection",
       "result": "passed",
       "command": "git diff --check",
       "commit": "3e961cb5438518f9cbd20af7e0881cc2056fba9e",
@@ -256,6 +278,10 @@
     {
       "path": "crates/ferric-browser-core/src/spatial_navigation.rs, crates/ferric-browser-engine-qt/src/browser_ui_scope_handoff.rs, crates/ferric-browser-engine-qt/src/browser_ui_spatial.rs, crates/ferric-browser-engine-qt/src/hint_policy.rs, crates/ferric-browser-engine-qt/src/browser_ui_hint_selection.rs, crates/ferric-browser-engine-qt/src/browser_ui_navigation.rs",
       "reason": "The strict workspace Clippy gate exposed two API documentation issues and six behavior-preserving internal naming/idiom lints in S16 scoped handoff code. The fixes are included to leave the required strict gate passing."
+    },
+    {
+      "path": "evidence/S17.json",
+      "reason": "Normalize the pre-existing S17 evidence levels to the pack validator taxonomy without changing commands, results, commits, or logs; the integrated T045 gate is represented by its pure-unit, WebEngine fixture, and native Qt offscreen coverage."
     }
   ],
   "remaining_risks": [
