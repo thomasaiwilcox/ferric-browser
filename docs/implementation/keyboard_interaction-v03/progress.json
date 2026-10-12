@@ -70,8 +70,8 @@
     },
     {
       "id": "S11",
-      "status": "not_started",
-      "evidence": null,
+      "status": "implemented_unqualified",
+      "evidence": "evidence/S11.json",
       "capability_decision": null
     },
     {
