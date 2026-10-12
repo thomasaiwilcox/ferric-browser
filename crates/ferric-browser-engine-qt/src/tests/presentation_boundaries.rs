@@ -629,7 +629,7 @@ fn qml_json_contract_allowlist_is_explicit() {
     assert!(allowlist.contains("Opaque page-script request/result contracts"));
     assert!(allowlist.contains("Prohibited presentation payloads"));
     assert_eq!(qml.matches("JSON.parse(").count(), 17);
-    assert_eq!(qml.matches("JSON.stringify(").count(), 32);
+    assert_eq!(qml.matches("JSON.stringify(").count(), 33);
 }
 
 #[test]
@@ -1452,9 +1452,9 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(qml.contains("return BrowserScripts.focusProbe()"));
     assert!(qml.contains("return BrowserScripts.focusObserverSource()"));
     assert!(qml.contains("return BrowserScripts.shutdownPageProbe()"));
-    assert!(qml.contains("return BrowserScripts.hintCollector(\n                    family, browserUi.hint_proxy_targets_enabled, selectorSnapshot)"));
+    assert!(qml.contains("return BrowserScripts.hintCollector(\n                    family, browserUi.hint_proxy_targets_enabled, selectorSnapshot,\n                    scopeLeaseId)"));
     assert!(qml.contains("return BrowserScripts.hintDirtyRevision()"));
-    assert!(qml.contains("return BrowserScripts.hintStopTracking()"));
+    assert!(qml.contains("return BrowserScripts.hintStopTracking(scopeLeaseId)"));
     assert!(qml.contains("candidate, hintSelectorPolicySnapshot(browserUi.hint_family)"));
     assert!(qml.contains("BrowserScripts.hintFocus("));
     assert!(qml.contains("BrowserScripts.hintClick("));
@@ -1536,7 +1536,7 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(script.contains("service_workers:'unavailable'"));
     assert!(script.contains("window.__ferric_browserFocusState"));
     assert!(script.contains("elements.length > 128"));
-    assert!(script.contains("function hintCollector(family, proxyTargets, selectorSnapshot)"));
+    assert!(script.contains("function hintCollector(family, proxyTargets, selectorSnapshot, scopeLeaseId)"));
     assert!(script.contains("function proxyPairValid(record,candidate,state)"));
     assert!(script.contains(".ace_editor[role="));
     assert!(script.contains("label.control!==control"));

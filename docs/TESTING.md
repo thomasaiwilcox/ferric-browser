@@ -83,6 +83,16 @@ and final actions in ApplicationWorld. The native suite also checks original
 Qt text entry after production shadow-root Hint focus. Baseline red logs and
 qualification gaps are retained in the implementation pack's evidence ledger.
 
+S14 extends the WebEngine interaction fixture with scoped Hint lease transfer:
+the source candidate map remains available until its destination WeakRefs are
+validated, then scoped collection excludes the root and every target outside
+it. The fixture covers open shadow roots, same-origin frames, empty and
+replaced scopes, rejected cross-origin scopes, focus/scroll independence, and
+1,000 create/cancel cycles with elapsed-time output.
+The stress test requires a WebEngine process started with Chromium's
+`--js-flags=--expose-gc` flag so it can force collection and verify that a
+connected weak target remains usable.
+
 After the engine runner is built, run the opt-in renderer benchmark with:
 
 ```sh

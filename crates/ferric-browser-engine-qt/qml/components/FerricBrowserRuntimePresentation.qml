@@ -10,6 +10,8 @@ import "../scripts/SpellcheckPresentation.js" as SpellcheckPresentation
 FerricBrowserRuntimeServices {
     id: window
 
+    property string activeHintScopeLeaseId: ""
+
     readonly property var clipboardBridge: window.clipboardBridgeObject
     readonly property var activationOutcomeTimer: window.activationOutcomeTimerObject
     readonly property var fileDialogSurfaces: window.fileDialogSurfacesObject
@@ -1016,17 +1018,18 @@ FerricBrowserRuntimeServices {
         return browserUi.hint_selector_policy(family)
     }
 
-    function hintCollectorScript(family, selectorSnapshot) {
+    function hintCollectorScript(family, selectorSnapshot, scopeLeaseId) {
         return BrowserScripts.hintCollector(
-                    family, browserUi.hint_proxy_targets_enabled, selectorSnapshot)
+                    family, browserUi.hint_proxy_targets_enabled, selectorSnapshot,
+                    scopeLeaseId)
     }
 
     function hintDirtyRevisionScript() {
         return BrowserScripts.hintDirtyRevision()
     }
 
-    function hintStopTrackingScript() {
-        return BrowserScripts.hintStopTracking()
+    function hintStopTrackingScript(scopeLeaseId) {
+        return BrowserScripts.hintStopTracking(scopeLeaseId)
     }
 
     function selectionScript() {
@@ -1052,6 +1055,80 @@ FerricBrowserRuntimeServices {
     function hintFreshScript(candidate) {
         return BrowserScripts.hintFresh(
                     candidate, hintSelectorPolicySnapshot(browserUi.hint_family))
+    }
+
+    function completeHintScopeHandoff(view, request, candidate, actionEpoch) {
+        if (!request || typeof request.lease_id !== "string"
+                || window.activeWebView() !== view
+                || window.hintTrackingView !== view
+                || browserUi.mode !== "hint") {
+            window.closeHints()
+            return
+        }
+        var selectorSnapshot = window.hintSelectorPolicySnapshot(browserUi.hint_family)
+        var acquireStarted = window.runBrowserScript(
+                    view,
+                    BrowserScripts.hintAcquireScopeLease(request, candidate, selectorSnapshot),
+                    function(receipt) {
+            if (window.hintCollectionEpoch !== actionEpoch
+                    || window.activeWebView() !== view
+                    || window.hintTrackingView !== view
+                    || browserUi.mode !== "hint") {
+                if (receipt && receipt.ok === true) {
+                    window.runBrowserScript(
+                                view, BrowserScripts.hintClearScopeLease(request.lease_id),
+                                function(value) {})
+                }
+                return
+            }
+            if (!receipt || receipt.ok !== true) {
+                var reason = receipt && receipt.error === "weak-reference-unavailable"
+                        ? "Scoped Hint needs weak references; use full-page Grid instead"
+                        : "Scoped Hint failed closed: the selected region is stale"
+                window.closeHints()
+                browserUi.status_text = reason
+                window.showCommandNotice(reason, true)
+                return
+            }
+            var stopStarted = window.runBrowserScript(
+                        view, window.hintStopTrackingScript(request.lease_id), function(stopped) {
+                if (window.hintCollectionEpoch !== actionEpoch
+                        || window.activeWebView() !== view
+                        || window.hintTrackingView !== view
+                        || browserUi.mode !== "hint") {
+                    window.runBrowserScript(
+                                view, BrowserScripts.hintClearScopeLease(request.lease_id),
+                                function(value) {})
+                    return
+                }
+                if (stopped !== true
+                        || !browserUi.complete_hint_scope_handoff(
+                            request.lease_id, JSON.stringify(receipt))) {
+                    window.runBrowserScript(
+                                view, BrowserScripts.hintClearScopeLease(request.lease_id),
+                                function(value) {})
+                    window.closeHints()
+                    browserUi.status_text = "Scoped Hint failed closed: the lease became stale"
+                    window.showCommandNotice(browserUi.status_text, true)
+                    return
+                }
+                window.activeHintScopeLeaseId = request.lease_id
+                window.hintResults = []
+                window.hintInput = ""
+                window.hintRefreshPending = false
+                window.startHintCollection()
+            })
+            if (!stopStarted && window.hintCollectionEpoch === actionEpoch) {
+                window.closeHints()
+                browserUi.status_text = "Scoped Hint source registry could not be released"
+                window.showCommandNotice(browserUi.status_text, true)
+            }
+        })
+        if (!acquireStarted && window.hintCollectionEpoch === actionEpoch) {
+            window.closeHints()
+            browserUi.status_text = "Scoped Hint lease could not be acquired"
+            window.showCommandNotice(browserUi.status_text, true)
+        }
     }
 
     function hintPointerPreflightScript(candidate, viewWidth, viewHeight) {
@@ -1081,7 +1158,7 @@ FerricBrowserRuntimeServices {
         }
         var view = window.activeWebView()
         if (!view) {
-            browserUi.cancel_hints()
+            window.closeHints()
             return
         }
         if (window.hintRefreshPending) {
@@ -1098,7 +1175,7 @@ FerricBrowserRuntimeServices {
         var selectorSnapshot = window.hintSelectorPolicySnapshot(browserUi.hint_family)
         if (!selectorSnapshot) {
             window.hintRefreshPending = false
-            browserUi.cancel_hints()
+            window.closeHints()
             var selectorFailure = "Hint selectors unavailable"
             browserUi.status_text = selectorFailure
             window.showCommandNotice(selectorFailure, true)
@@ -1106,7 +1183,9 @@ FerricBrowserRuntimeServices {
         }
         window.runBrowserScript(
                     view,
-                    window.hintCollectorScript(browserUi.hint_family, selectorSnapshot), function(value) {
+                    window.hintCollectorScript(
+                        browserUi.hint_family, selectorSnapshot,
+                        window.activeHintScopeLeaseId), function(value) {
             if (window.hintCollectionEpoch !== collectionEpoch) {
                 return
             }
@@ -1116,7 +1195,7 @@ FerricBrowserRuntimeServices {
             }
             if (value && value.error) {
                 window.hintResults = []
-                browserUi.cancel_hints()
+                window.closeHints()
                 browserUi.status_text = "Hint collection failed closed: " + String(value.error)
                 window.showCommandNotice(browserUi.status_text, true)
                 return
@@ -1136,6 +1215,9 @@ FerricBrowserRuntimeServices {
                     ? {candidates: value.candidates,
                        selector_revision: value.selector_revision}
                     : {candidates: value || []}
+            if (window.activeHintScopeLeaseId.length > 0) {
+                payload.scope_lease_id = window.activeHintScopeLeaseId
+            }
             var response = {}
             try {
                 response = JSON.parse(browserUi.begin_hint_session(JSON.stringify(payload)))
@@ -1148,7 +1230,7 @@ FerricBrowserRuntimeServices {
                         : response.error
                         ? browserUi.status_text : "No visible hint targets"
                 window.hintResults = []
-                browserUi.cancel_hints()
+                window.closeHints()
                 browserUi.status_text = hintFailure
                 window.showCommandNotice(hintFailure, true)
                 return
@@ -1239,6 +1321,7 @@ FerricBrowserRuntimeServices {
 
     function closeHints() {
         window.hintCollectionEpoch += 1
+        window.activeHintScopeLeaseId = ""
         window.stopHintTracking()
         window.hintRefreshPending = false
         window.hintInput = ""
@@ -1781,11 +1864,16 @@ FerricBrowserRuntimeServices {
             }
             var pageActionPending = result.action === "focus"
                     || result.action === "click" || result.action === "scroll-target"
+                    || result.action === "hint-within"
+            if (!pageActionPending && browserUi.mode !== "hint") {
+                window.activeHintScopeLeaseId = ""
+                window.stopHintTracking()
+            }
             if (!pageActionPending) {
                 window.hintRefreshPending = false
             }
             if ((result.action === "focus" || result.action === "click"
-                 || result.action === "scroll-target")
+                 || result.action === "scroll-target" || result.action === "hint-within")
                     && (window.hintCollectionEpoch !== actionEpoch
                         || window.activeWebView() !== view
                         || window.hintTrackingView !== view
@@ -1796,7 +1884,10 @@ FerricBrowserRuntimeServices {
                 }
                 return
             }
-            if (result.action === "navigate") {
+            if (result.action === "hint-within") {
+                window.completeHintScopeHandoff(
+                            view, result.scope_lease, value, actionEpoch)
+            } else if (result.action === "navigate") {
                 window.hintResults = []
                 window.hintInput = ""
                 window.executePendingEngineAction()
@@ -1966,7 +2057,7 @@ FerricBrowserRuntimeServices {
                 window.hintResults = []
                 window.hintInput = ""
                 var rejectionStatus = browserUi.status_text
-                browserUi.cancel_hints()
+                window.closeHints()
                 browserUi.status_text = rejectionStatus
             }
         })

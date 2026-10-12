@@ -261,16 +261,24 @@ function scrollTargetStatus() {
     return interactionScript("scrollTargetStatus", [])
 }
 
-function hintCollector(family, proxyTargets, selectorSnapshot) {
-    return interactionScript("hintCollector", [family, proxyTargets, selectorSnapshot])
+function hintCollector(family, proxyTargets, selectorSnapshot, scopeLeaseId) {
+    return interactionScript("hintCollector", [family, proxyTargets, selectorSnapshot, scopeLeaseId])
 }
 
 function hintDirtyRevision() {
     return interactionScript("hintDirtyRevision", [])
 }
 
-function hintStopTracking() {
-    return interactionScript("hintStopTracking", [])
+function hintStopTracking(scopeLeaseId) {
+    return interactionScript("hintStopTracking", [scopeLeaseId])
+}
+
+function hintAcquireScopeLease(request, candidate, selectorSnapshot) {
+    return interactionScript("hintAcquireScopeLease", [request, candidate, selectorSnapshot])
+}
+
+function hintClearScopeLease(scopeLeaseId) {
+    return interactionScript("hintClearScopeLease", [scopeLeaseId])
 }
 
 function hintFresh(candidate, selectorSnapshot) {

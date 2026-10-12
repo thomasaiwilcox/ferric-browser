@@ -25,13 +25,13 @@ TestCase {
     property bool done: false
     property var result
 
-    function evaluate(source) {
+    function evaluate(source, timeout) {
         done = false
         page.runJavaScript(source, WebEngineScript.ApplicationWorld, function(value) {
             result = value
             done = true
         })
-        tryVerify(function() { return done }, 5000)
+        tryVerify(function() { return done }, timeout || 5000)
         return result
     }
     function evaluateMain(source) {
@@ -520,6 +520,207 @@ TestCase {
         var ordinary = evaluate(BrowserScripts.hintCollector("all")).candidates
         verify(!ordinary.some(function(item) { return item.kind === "region" || item.kind === "surface" }),
                "The default family remains unchanged for frame and closed-root content")
+        var regionSnapshot = selectorSnapshot("regions", "merge", [], "0123456789abcdef")
+        var inaccessible = {
+            element_id: 2147483000,
+            related_element_id: null,
+            kind: "region",
+            frame_path: "0.0",
+            text: "Cross-origin child",
+            href: null
+        }
+        var request = {
+            lease_id: "cross-origin-scope",
+            element_id: inaccessible.element_id,
+            frame_path: inaccessible.frame_path,
+            kind: inaccessible.kind,
+            selector_revision: regionSnapshot.selector_revision,
+            configuration_revision: 0,
+            parent_scope_lease_id: null
+        }
+        var receipt = evaluate(BrowserScripts.hintAcquireScopeLease(
+                                  request, inaccessible, regionSnapshot))
+        verify(receipt && !receipt.ok,
+               "An inaccessible cross-origin child cannot mint a semantic scope lease")
+        cleanup()
+    }
+
+    // T020/T036/T037: the destination weak lease exists before source records are released.
+    function test_T036_scoped_lease_transfer_collects_only_descendants() {
+        load("scoped-hint.html")
+        tryVerify(function() {
+            return evaluate("!!(document.getElementById('same-origin-frame').contentDocument.body&&document.getElementById('shadow-host').shadowRoot.querySelector('iframe').contentDocument.body)")
+        }, 5000)
+        var regionSnapshot = selectorSnapshot("regions", "merge", [], "0123456789abcdef")
+        var allSnapshot = selectorSnapshot("all", "merge", [], "fedcba9876543210")
+        var regionCollection = evaluate(BrowserScripts.hintCollector(
+                                           "regions", false, regionSnapshot))
+        var scope = regionCollection.candidates.filter(function(item) {
+            return item.text === "Scoped region"
+        })[0]
+        verify(scope, "Named scope fixture was not collected")
+        var request = {
+            lease_id: "test-scope-transfer",
+            element_id: scope.element_id,
+            frame_path: scope.frame_path,
+            kind: scope.kind,
+            selector_revision: regionSnapshot.selector_revision,
+            configuration_revision: 0,
+            parent_scope_lease_id: null
+        }
+        var receipt = evaluate(BrowserScripts.hintAcquireScopeLease(
+                                  request, scope, regionSnapshot))
+        verify(receipt && receipt.ok, "A fresh eligible Region must mint its destination lease: "
+               + JSON.stringify(receipt))
+        compare(evaluate("window.__ferric_browserHintState.elements.size"),
+                regionCollection.candidates.length,
+                "Source records stay alive until the destination lease validates")
+        verify(evaluate("window.__ferric_browserHintState.scopeLease.elementRef instanceof WeakRef"))
+        verify(!evaluate("Object.prototype.hasOwnProperty.call(window.__ferric_browserHintState.scopeLease,'element')"),
+               "The scope lease stores no strong DOM element")
+        var replay = evaluate(BrowserScripts.hintAcquireScopeLease(request, scope, regionSnapshot))
+        verify(!replay.ok, "A local scope lease request cannot be replayed")
+        var unscoped = evaluate(BrowserScripts.hintCollector("all", false, allSnapshot))
+        compare(unscoped.error, "scope-lease-required")
+        compare(unscoped.candidates.length, 0, "An active lease cannot be omitted to widen collection")
+
+        verify(evaluate(BrowserScripts.hintStopTracking(request.lease_id)),
+               "Source tracking teardown failed")
+        compare(evaluate("window.__ferric_browserHintState.elements.size"), 0,
+                "Source candidate map is cleared after lease acquisition")
+        verify(evaluate("window.__ferric_browserHintState.scopeLease.elementRef.deref()===document.getElementById('scope')"),
+               "The connected exact target remains available through its weak reference")
+
+        evaluate("document.getElementById('scope').scrollTop=8;document.getElementById('outside').focus();true")
+        var before = evaluate("({focus:document.activeElement.id,scrollX:scrollX,scrollY:scrollY,scopeTop:document.getElementById('scope').scrollTop})")
+        var scoped = evaluate(BrowserScripts.hintCollector(
+                                 "all", false, allSnapshot, request.lease_id))
+        verify(scoped && scoped.candidates.length > 0,
+               "Visible descendants should be collected inside the selected Region")
+        verify(!scoped.candidates.some(function(item) {
+            return item.element_id === scope.element_id || item.text === "Scoped region"
+        }), "The scope root is excluded")
+        verify(!scoped.candidates.some(function(item) { return item.text === "Outside target" }),
+               "Candidates outside the selected Region are excluded")
+        verify(scoped.candidates.some(function(item) { return item.text === "Inside button" }))
+        verify(scoped.candidates.some(function(item) { return item.text === "Shadow child" }),
+               "Open shadow-root descendants remain in scope")
+        verify(scoped.candidates.some(function(item) { return item.text === "Frame child" }),
+               "Same-origin frame descendants rooted inside the scope remain in scope")
+        verify(scoped.candidates.some(function(item) { return item.text === "Shadow frame child" }),
+               "Same-origin frames in an open shadow root remain in scope")
+        var child = scoped.candidates.filter(function(item) { return item.text === "Inside button" })[0]
+        verify(evaluate(BrowserScripts.hintFresh(child, allSnapshot)).visible,
+               "A scoped child remains freshly revalidatable")
+        var after = evaluate("({focus:document.activeElement.id,scrollX:scrollX,scrollY:scrollY,scopeTop:document.getElementById('scope').scrollTop})")
+        compare(after, before, "Scoped entry and collection do not change focus or scroll")
+        cleanup()
+    }
+
+    function test_T037_empty_and_replaced_scopes_never_fall_back() {
+        load("scoped-hint.html")
+        var regionSnapshot = selectorSnapshot("regions", "merge", [], "0123456789abcdef")
+        var allSnapshot = selectorSnapshot("all", "merge", [], "fedcba9876543210")
+        var scope = evaluate(BrowserScripts.hintCollector("regions", false, regionSnapshot))
+                      .candidates.filter(function(item) { return item.text === "Scoped region" })[0]
+        verify(scope)
+        var request = {
+            lease_id: "test-empty-scope",
+            element_id: scope.element_id,
+            frame_path: scope.frame_path,
+            kind: scope.kind,
+            selector_revision: regionSnapshot.selector_revision,
+            configuration_revision: 0,
+            parent_scope_lease_id: null
+        }
+        verify(evaluate(BrowserScripts.hintAcquireScopeLease(request, scope, regionSnapshot)).ok)
+        verify(evaluate(BrowserScripts.hintStopTracking(request.lease_id)))
+        evaluate("document.getElementById('scope').innerHTML='<div style=\"height:300px\"></div>';true")
+        var empty = evaluate(BrowserScripts.hintCollector("all", false, allSnapshot, request.lease_id))
+        compare(empty.candidates.length, 0)
+        verify(!empty.candidates.some(function(item) { return item.text === "Outside target" }),
+               "An empty scope never broadens to the page")
+        cleanup()
+
+        load("scoped-hint.html")
+        scope = evaluate(BrowserScripts.hintCollector("regions", false, regionSnapshot))
+                    .candidates.filter(function(item) { return item.text === "Scoped region" })[0]
+        request.lease_id = "test-replaced-scope"
+        request.element_id = scope.element_id
+        request.frame_path = scope.frame_path
+        request.kind = scope.kind
+        verify(evaluate(BrowserScripts.hintAcquireScopeLease(request, scope, regionSnapshot)).ok)
+        verify(evaluate(BrowserScripts.hintStopTracking(request.lease_id)))
+        var descendants = evaluate(BrowserScripts.hintCollector(
+                                      "all", false, allSnapshot, request.lease_id))
+        var oldChild = descendants.candidates.filter(function(item) {
+            return item.text === "Inside button"
+        })[0]
+        verify(oldChild, "The replacement case needs a live scoped child")
+        evaluate("const old=document.getElementById('scope'),next=document.createElement('section');next.id='scope';next.setAttribute('aria-label','Replacement scope');old.replaceWith(next);true")
+        var stale = evaluate(BrowserScripts.hintCollector("all", false, allSnapshot, request.lease_id))
+        compare(stale.error, "stale-scope")
+        compare(stale.candidates.length, 0)
+        verify(!evaluate(BrowserScripts.hintFresh(oldChild, allSnapshot)).visible,
+               "A replacement root cannot authorize a retained child")
+        cleanup()
+    }
+
+    function test_T037_scroll_target_keeps_existing_weak_setter() {
+        load("scoped-hint.html")
+        var regionSnapshot = selectorSnapshot("regions", "merge", [], "0123456789abcdef")
+        var regions = evaluate(BrowserScripts.hintCollector("regions", false, regionSnapshot))
+        var scope = regions.candidates.filter(function(item) { return item.text === "Scoped region" })[0]
+        verify(scope && scope.kind === "scrollable-region")
+        var selected = evaluate(BrowserScripts.hintSetScrollTarget(scope.element_id, scope.frame_path))
+        verify(selected && selected.ok && selected.policy === "element")
+        verify(evaluate("window.__ferric_browserScrollTargetState.elementRef instanceof WeakRef"))
+        verify(evaluate("window.__ferric_browserScrollTargetState.elementRef.deref()===document.getElementById('scope')"),
+               "Set scroll target keeps the exact selected element in its existing weak policy")
+        cleanup()
+    }
+
+    // T044: exercise the production builders through repeated teardown and weak-target checks.
+    function test_T044_scope_start_cancel_stress_and_forced_gc() {
+        load("scoped-hint.html")
+        var regionSnapshot = selectorSnapshot("regions", "merge", [], "0123456789abcdef")
+        var source = evaluate(BrowserScripts.hintCollector("regions", false, regionSnapshot))
+        var scope = source.candidates.filter(function(item) { return item.text === "Scoped region" })[0]
+        verify(scope)
+        var request = {
+            lease_id: "hint-scope-stress",
+            element_id: scope.element_id,
+            frame_path: scope.frame_path,
+            kind: scope.kind,
+            selector_revision: regionSnapshot.selector_revision,
+            configuration_revision: 0,
+            parent_scope_lease_id: null
+        }
+        var collectScript = BrowserScripts.hintCollector("regions", false, regionSnapshot)
+        var acquireScript = BrowserScripts.hintAcquireScopeLease(request, scope, regionSnapshot)
+        var stopScript = BrowserScripts.hintStopTracking()
+        var stressScript = "(function(){const started=Date.now();let cycles=0;for(let index=0;index<1000;index++){const source="
+                + collectScript + ";if(!source.candidates.some(function(item){return item.element_id==="
+                + scope.element_id + "&&item.text==='Scoped region'}))return {ok:false,at:index};const receipt="
+                + acquireScript + ";if(!receipt.ok)return {ok:false,at:index,error:receipt.error};const stopped="
+                + stopScript + ";if(!stopped)return {ok:false,at:index,reason:'teardown'};cycles++;}const gcAvailable=typeof gc==='function';if(gcAvailable)gc();const s=window.__ferric_browserHintState;return {ok:cycles===1000&&s.elements.size===0&&s.observers.length===0&&s.windows.length===0&&!s.tracking&&!s.scopeLease,gc_available:gcAvailable,cycles:cycles,elements:s.elements.size,observers:s.observers.length,windows:s.windows.length,elapsed_ms:Date.now()-started};})()"
+        var stress = evaluate(stressScript, 30000)
+        console.log("S14 T044 scope stress: " + JSON.stringify(stress))
+        verify(stress && stress.ok, "1000 source-map/lease teardown cycles must remain bounded: "
+               + JSON.stringify(stress))
+        verify(Number.isFinite(stress.elapsed_ms) && stress.elapsed_ms >= 0,
+               "The 1000-cycle teardown measurement must report elapsed time")
+        verify(stress.gc_available, "The qualified WebEngine test process must expose forced GC")
+        var finalCandidate = evaluate(BrowserScripts.hintCollector("regions", false, regionSnapshot))
+                               .candidates.filter(function(item) { return item.text === "Scoped region" })[0]
+        request.element_id = finalCandidate.element_id
+        request.frame_path = finalCandidate.frame_path
+        request.kind = finalCandidate.kind
+        var finalReceipt = evaluate(BrowserScripts.hintAcquireScopeLease(
+                                        request, finalCandidate, regionSnapshot))
+        verify(finalReceipt.ok)
+        verify(evaluate("window.__ferric_browserHintState.scopeLease.elementRef.deref()===document.getElementById('scope')"),
+               "A legitimate connected weak target remains usable after GC")
         cleanup()
     }
 }

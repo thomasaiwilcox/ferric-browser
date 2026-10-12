@@ -209,7 +209,7 @@
       "required_levels": [
         "webengine-fixture"
       ],
-      "fixture": "lifetime-targets.html",
+      "fixture": "scoped-hint.html",
       "assertion": "No hint-map destruction before callback; acquire destination lease before source cleanup; weak refs, observers and callbacks terminate exactly once.",
       "status": "not_run"
     },
@@ -379,7 +379,7 @@
         "pure-unit",
         "webengine-fixture"
       ],
-      "fixture": "scope-lifetimes.html",
+      "fixture": "scoped-hint.html",
       "assertion": "Source session retains records until destination weak scope lease validates; cancellation/replacement clears without leaks; one page-target session per window.",
       "status": "not_run"
     },
@@ -389,7 +389,7 @@
       "required_levels": [
         "webengine-fixture"
       ],
-      "fixture": "multi-pane.html",
+      "fixture": "scoped-hint.html",
       "assertion": "Descendants only, no empty-scope full-page fallback; hint/search actions do not change focus/scroll; explicit Set scroll target uses existing axis/invalidation semantics.",
       "status": "not_run"
     },
@@ -467,7 +467,7 @@
         "webengine-fixture",
         "performance"
       ],
-      "fixture": "lifetime-targets.html",
+      "fixture": "scoped-hint.html",
       "assertion": "1000 start/cancel cycles and forced GC leave no growing retained maps/listeners/observers; legitimate connected weak targets stay usable in qualified engine.",
       "status": "not_run"
     },

@@ -19,6 +19,21 @@ pub(super) struct LocalInteractionOwner {
     pub(super) configuration_revision: u64,
 }
 
+/// Rust-owned identity for one local region-to-Hint scope handoff.
+///
+/// The page receives only the bounded lease ID and candidate facts. The
+/// actual DOM reference stays in the ApplicationWorld as a WeakRef.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct HintScopeBinding {
+    pub(super) lease_id: String,
+    pub(super) owner: LocalInteractionOwner,
+    pub(super) element_id: u32,
+    pub(super) frame_path: String,
+    pub(super) kind: ferric_browser_core::HintKind,
+    pub(super) selector_policy_revision: u64,
+    pub(super) parent_scope_lease_id: Option<String>,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum LocalInteractionOperation {
     HintPaletteSelection,

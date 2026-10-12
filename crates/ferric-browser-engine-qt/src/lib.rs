@@ -242,8 +242,8 @@ use feature_preferences::FeaturePreferences;
 use focus_policy::{FocusObservation, focus_mode_transition};
 use hint_payload::{hint_json, hint_kind_name, parse_hint_candidate, parse_hint_payload};
 use hint_policy::{
-    LocalInteractionAuthority, LocalInteractionPermit, external_hint_target, hint_uses_url_action,
-    parse_hint_options, rapid_hint_keeps_mode,
+    HintScopeBinding, LocalInteractionAuthority, LocalInteractionPermit, external_hint_target,
+    hint_uses_url_action, parse_hint_options, rapid_hint_keeps_mode,
 };
 use input_validation::{
     is_bounded_journey_query, is_bounded_untrusted_text, validate_jseval_script,
@@ -1018,6 +1018,13 @@ mod qobject {
 
         #[qinvokable]
         fn begin_hint_session(self: Pin<&mut BrowserUi>, candidates_json: &QString) -> QString;
+
+        #[qinvokable]
+        fn complete_hint_scope_handoff(
+            self: Pin<&mut BrowserUi>,
+            lease_id: &QString,
+            receipt_json: &QString,
+        ) -> bool;
 
         #[qinvokable]
         fn hint_selector_policy(self: Pin<&mut BrowserUi>, family: &QString) -> QString;
@@ -2073,6 +2080,9 @@ pub struct BrowserUiRust {
     userscript_cancellations: Arc<Mutex<BTreeMap<String, Arc<AtomicBool>>>>,
     hint_session: Option<HintSession>,
     hint_interaction: Option<HintInteraction>,
+    pending_hint_scope_handoff: Option<HintScopeBinding>,
+    active_hint_scope: Option<HintScopeBinding>,
+    next_hint_scope_lease_id: u64,
     hint_consumed: BTreeSet<(String, u32)>,
     hint_configuration_revision: u64,
     pending_hint_palette_permit: Option<LocalInteractionPermit>,
@@ -2790,6 +2800,9 @@ impl Default for BrowserUiRust {
             userscript_cancellations: Arc::new(Mutex::new(BTreeMap::new())),
             hint_session: None,
             hint_interaction: None,
+            pending_hint_scope_handoff: None,
+            active_hint_scope: None,
+            next_hint_scope_lease_id: 0,
             hint_consumed: BTreeSet::new(),
             hint_configuration_revision: 0,
             pending_hint_palette_permit: None,

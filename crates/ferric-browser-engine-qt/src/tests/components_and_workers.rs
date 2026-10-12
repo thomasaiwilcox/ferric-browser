@@ -902,7 +902,9 @@ fn completed_hints_pop_the_core_mode_stack_after_page_independent_actions() {
         .find("set_core_mode(Mode::Normal)")
         .expect("normal mode projection");
     assert!(pop < project, "the core stack must leave Hint before projecting Normal");
-    assert!(completion.contains("Some(\"focus\" | \"scroll-target\" | \"click\")"));
+    assert!(completion.contains(
+        "Some(\"focus\" | \"scroll-target\" | \"click\" | \"hint-within\")"
+    ));
 }
 
 #[test]
