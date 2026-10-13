@@ -39,6 +39,7 @@ class ApplicationTests final : public QObject {
     void reservedCommandRecovery();
     void realHintKeyboardActivation();
     void mixedReservedKeysAndUnmappedDelivery();
+    void heldPageKeyRetainsOwnerAcrossPolicyChange();
     void nativePointerRequiresLocalEntryAndClicksOnce();
     void nativePointerControlFamilies_data();
     void nativePointerControlFamilies();

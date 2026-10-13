@@ -833,6 +833,34 @@ void ApplicationTests::rendererLossCancelsHeldConfirmation() {
     QCOMPARE(text("mode"), QString("normal"));
 }
 
+void ApplicationTests::heldPageKeyRetainsOwnerAcrossPolicyChange() {
+    QVERIFY(command("set --temp input.shortcut_policy=mixed"));
+    QVERIFY(command("set --temp input.page_keys=['f']"));
+    page("window.heldEvents=[];for(const kind of "
+         "['keydown','keyup'])document.addEventListener(kind,e=>window."
+         "heldEvents.push({kind:kind,key:e.key,trusted:e.isTrusted}));true");
+    QTest::keyPress(window, Qt::Key_F);
+    QTRY_COMPARE(page("window.heldEvents.filter(e=>e.kind==='keydown'&&e.key==="
+                      "'f').length")
+                     .toInt(),
+                 1);
+    QVERIFY(command("set --temp input.page_keys=[]"));
+    QTest::keyRelease(window, Qt::Key_F);
+    QTRY_COMPARE(
+        page(
+            "window.heldEvents.filter(e=>e.kind==='keyup'&&e.key==='f').length")
+            .toInt(),
+        1);
+    QCOMPARE(text("mode"), QString("normal"));
+    QVERIFY(page("window.heldEvents.every(e=>e.trusted)").toBool());
+    key(Qt::Key_F);
+    QTRY_COMPARE(text("mode"), QString("hint"));
+    QCOMPARE(page("window.heldEvents.filter(e=>e.key==='f').length").toInt(),
+             2);
+    key(Qt::Key_Escape);
+    QTRY_COMPARE(text("mode"), QString("normal"));
+}
+
 void ApplicationTests::pointerObservationIntervalExperiment() {
     QVERIFY(command("bind p hint --target pointer all"));
     QJsonArray observations;
