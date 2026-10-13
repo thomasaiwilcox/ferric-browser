@@ -1,0 +1,33 @@
+$ cmake -S /home/tom/Projects/RustBrowser/crates/ferric-browser-engine-qt/tests/qml-runner -B /home/tom/Projects/RustBrowser/target/qml-tests
+-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR)
+-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR)
+-- Configuring done (0.4s)
+-- Generating done (0.0s)
+-- Build files have been written to: /home/tom/Projects/RustBrowser/target/qml-tests
+$ cmake --build /home/tom/Projects/RustBrowser/target/qml-tests --parallel 2
+[  0%] Built target qml_tests_autogen_timestamp_deps
+[ 25%] Built target qml_tests_autogen
+[100%] Built target qml_tests
+$ npm ci --ignore-scripts --no-audit --no-fund
+npm warn deprecated lodash.isequal@4.5.0: This package is deprecated. Use require('node:util').isDeepStrictEqual instead.
+
+added 68 packages in 3s
+$ /tmp/ferric-s22-probes-m5pr9ylj/node_modules/.bin/esbuild /tmp/ferric-s22-probes-m5pr9ylj/src/framework-probe.js --bundle --format=esm --platform=browser --outfile=/tmp/ferric-s22-probes-m5pr9ylj/www/framework-probe.js
+
+  www/framework-probe.js  1.2mb ⚠️
+
+⚡ Done in 100ms
+S22 npm lock sha256=08124d7abbcd0ba1b816a286500b9d3b592bd5b7bc2eee56526060eeca2c4f21
+S22 generated browser bundle sha256=0ee71f12b991ceafe4943beca41c037940625aca5baba47dc9be00205c2c5117
+S22 fixture origin=http://127.0.0.1:8765 (no CDN requests from WebEngine)
+$ /home/tom/Projects/RustBrowser/target/qml-tests/qml_tests -input /home/tom/Projects/RustBrowser/crates/ferric-browser-engine-qt/tests/framework-probes
+********* Start testing of ferric_qml_tests *********
+Config: Using QtTest library 6.11.2, Qt 6.11.2 (x86_64-little_endian-lp64 shared (dynamic) release build; by GCC 16.2.1 20260810), omarchy 4.0.4
+PASS   : ferric_qml_tests::FrameworkProbes::initTestCase()
+QWARN  : ferric_qml_tests::FrameworkProbes::test_T050_framework_api_conflict_undo_permission_prototype() js: addRange(): The given range isn't in document.
+QWARN  : ferric_qml_tests::FrameworkProbes::test_T050_framework_api_conflict_undo_permission_prototype() js: addRange(): The given range isn't in document.
+QDEBUG : ferric_qml_tests::FrameworkProbes::test_T050_framework_api_conflict_undo_permission_prototype() qml: S22_T050_RESULT {"results":[{"apply":true,"changed":true,"documentChanged":true,"extract":true,"extractDenied":true,"focusApi":true,"focusNoExtract":true,"focusReached":true,"formatPreserved":"not_applicable","name":"ace","ownerChanged":true,"ownerReplacementRejected":true,"permissionNoOp":true,"revisionStable":true,"selectionPreserved":true,"staleRejected":true,"undoAvailable":true,"undoRestored":true,"version":"ace-builds 1.44.0"},{"apply":true,"changed":true,"documentChanged":true,"extract":true,"extractDenied":true,"focusApi":true,"focusNoExtract":true,"focusReached":true,"formatPreserved":"not_applicable","name":"codemirror","ownerChanged":true,"ownerReplacementRejected":true,"permissionNoOp":true,"revisionStable":true,"selectionPreserved":true,"staleRejected":true,"undoAvailable":true,"undoRestored":true,"version":"@codemirror/state 6.7.6 + @codemirror/view 6.43.14 + @codemirror/commands 6.11.1"},{"apply":true,"changed":true,"documentChanged":true,"extract":true,"extractDenied":true,"focusApi":true,"focusNoExtract":true,"focusReached":true,"formatPreserved":"not_applicable","name":"monaco","ownerChanged":true,"ownerReplacementRejected":true,"permissionNoOp":true,"revisionStable":true,"selectionPreserved":true,"staleRejected":true,"undoAvailable":true,"undoRestored":true,"version":"monaco-editor 0.57.0"},{"apply":true,"changed":true,"documentChanged":true,"extract":true,"extractDenied":true,"focusApi":true,"focusNoExtract":true,"focusReached":true,"formatPreserved":true,"name":"prosemirror","ownerChanged":true,"ownerReplacementRejected":true,"permissionNoOp":true,"revisionStable":true,"selectionPreserved":true,"staleRejected":true,"undoAvailable":true,"undoRestored":true,"version":"prosemirror-model 1.25.12 + state 1.4.4 + view 1.42.6 + history 1.5.1"},{"apply":true,"changed":true,"documentChanged":true,"extract":true,"extractDenied":true,"focusApi":true,"focusNoExtract":true,"focusReached":false,"formatPreserved":true,"name":"tiptap","ownerChanged":true,"ownerReplacementRejected":true,"permissionNoOp":true,"revisionStable":true,"selectionPreserved":true,"staleRejected":true,"undoAvailable":true,"undoRestored":true,"version":"@tiptap/core + @tiptap/starter-kit 3.31.4"},{"apply":true,"changed":true,"documentChanged":true,"extract":true,"extractDenied":true,"focusApi":true,"focusNoExtract":true,"focusReached":true,"formatPreserved":true,"name":"quill","ownerChanged":true,"ownerReplacementRejected":true,"permissionNoOp":true,"revisionStable":true,"selectionPreserved":true,"staleRejected":true,"undoAvailable":true,"undoRestored":true,"version":"quill 2.0.3"}],"status":"ready","versions":{"ace":"ace-builds 1.44.0","codemirror":"@codemirror/state 6.7.6 + @codemirror/view 6.43.14 + @codemirror/commands 6.11.1","monaco":"monaco-editor 0.57.0","prosemirror":"prosemirror-model 1.25.12 + state 1.4.4 + view 1.42.6 + history 1.5.1","quill":"quill 2.0.3","tiptap":"@tiptap/core + @tiptap/starter-kit 3.31.4"}}
+PASS   : ferric_qml_tests::FrameworkProbes::test_T050_framework_api_conflict_undo_permission_prototype()
+PASS   : ferric_qml_tests::FrameworkProbes::cleanupTestCase()
+Totals: 3 passed, 0 failed, 0 skipped, 0 blacklisted, 1586ms
+********* Finished testing of ferric_qml_tests *********

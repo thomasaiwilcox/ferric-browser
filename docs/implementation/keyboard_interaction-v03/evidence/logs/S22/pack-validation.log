@@ -1,0 +1,23 @@
+PASS: pack checks
+NOTE: Structural success is not implementation/test completion; Ferric correctness is not checked.
+{"contracts": 24, "invariants": 26, "planned_tests": 57, "slices": 28, "source_items": 55}
+test_completion_without_evidence (__main__.PackValidatorTests.test_completion_without_evidence) ... ok
+test_dependency_cycle (__main__.PackValidatorTests.test_dependency_cycle) ... ok
+test_duplicate_slice (__main__.PackValidatorTests.test_duplicate_slice) ... ok
+test_fabricated_matrix_result (__main__.PackValidatorTests.test_fabricated_matrix_result) ... ok
+test_missing_source_coverage (__main__.PackValidatorTests.test_missing_source_coverage) ... ok
+test_no_go_cannot_mean_only_missing_infrastructure (__main__.PackValidatorTests.test_no_go_cannot_mean_only_missing_infrastructure) ... ok
+test_path_escape (__main__.PackValidatorTests.test_path_escape) ... ok
+test_pristine_structure (__main__.PackValidatorTests.test_pristine_structure) ... ok
+test_research_go_without_required_proof (__main__.PackValidatorTests.test_research_go_without_required_proof) ... ok
+test_unimplemented_delivery_not_complete (__main__.PackValidatorTests.test_unimplemented_delivery_not_complete) ... ok
+test_unknown_dependency (__main__.PackValidatorTests.test_unknown_dependency) ... ok
+test_unknown_test (__main__.PackValidatorTests.test_unknown_test) ... ok
+
+----------------------------------------------------------------------
+Ran 12 tests in 0.615s
+
+OK
+PASS: pack checks
+NOTE: Structural success is not implementation/test completion; Ferric correctness is not checked.
+{"contracts": 24, "invariants": 26, "planned_tests": 57, "slices": 28, "source_items": 55}
