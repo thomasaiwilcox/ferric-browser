@@ -1,0 +1,25 @@
+{
+  "name": "ferric-s22-framework-probes",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Test-only pinned editor API probes for the S22 research slice",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@codemirror/commands": "6.11.1",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.14",
+    "@tiptap/core": "3.31.4",
+    "@tiptap/starter-kit": "3.31.4",
+    "ace-builds": "1.44.0",
+    "monaco-editor": "0.57.0",
+    "prosemirror-history": "1.5.1",
+    "prosemirror-model": "1.25.12",
+    "prosemirror-state": "1.4.4",
+    "prosemirror-transform": "1.12.2",
+    "prosemirror-view": "1.42.6",
+    "quill": "2.0.3"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}
