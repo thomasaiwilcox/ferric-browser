@@ -7,10 +7,6 @@ impl qobject::BrowserUi {
         mut self: Pin<&mut Self>,
         tab_index: i32,
     ) -> bool {
-        if self.as_ref().rust().core_mode == super::Mode::Grid {
-            self.as_mut()
-                .spatial_invalidated(&QString::from("renderer-unavailable"));
-        }
         let tab = if tab_index >= 0 {
             self.as_ref().tab_for_index(tab_index)
         } else {
@@ -32,6 +28,13 @@ impl qobject::BrowserUi {
             .get_mut()
             .pending_same_document_pass_through = None;
         if self.as_ref().rust().tab == Some(target.tab) {
+            match self.as_ref().rust().core_mode {
+                super::Mode::Grid => self
+                    .as_mut()
+                    .spatial_invalidated(&QString::from("renderer-unavailable")),
+                super::Mode::Hint => self.as_mut().escape(),
+                _ => {}
+            }
             self.as_mut().reset_editing_session();
         }
         match self

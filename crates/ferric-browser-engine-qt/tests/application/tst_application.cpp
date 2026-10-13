@@ -13,6 +13,8 @@
 #include <QTemporaryDir>
 #include <QtTest>
 #include <QtWebEngineQuick/qtwebenginequickglobal.h>
+#include <csignal>
+#include <unistd.h>
 
 // Only observation and fixture orchestration live here. Policy, BrowserUi,
 // chrome, key routing and pointer dispatch all come from the production module.
@@ -775,6 +777,38 @@ void ApplicationTests::productionHintLifetimeCycles() {
     qInfo() << "1000 production Hint cycles, Qt objects" << baseline
             << finalCount << snapshot;
     QCOMPARE(finalCount, baseline);
+}
+
+void ApplicationTests::rendererLossCancelsHeldConfirmation() {
+    QVERIFY(command("bind p hint --target pointer all"));
+    key(Qt::Key_P);
+    const auto label = hintLabel("Activate exact button");
+    QVERIFY(!label.isEmpty());
+    typeText(label);
+    QTest::keyPress(window, Qt::Key_Return);
+    QTRY_COMPARE(text("hint_pointer_state"),
+                 QString("awaiting-confirmation-release"));
+    const auto pid =
+        evaluate("testWindow.activeWebView().renderProcessPid").toLongLong();
+    QVERIFY(pid > 1 && pid != getpid());
+    // The public PID belongs to this disposable view's renderer, never a
+    // desktop browser or external application.
+    QFile commandLine(QString("/proc/%1/cmdline").arg(pid));
+    QVERIFY(commandLine.open(QIODevice::ReadOnly));
+    QVERIFY(commandLine.readAll().contains("--type=renderer"));
+    QCOMPARE(::kill(static_cast<pid_t>(pid), SIGTERM), 0);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        evaluate("testWindow.rendererFailureVisible").toBool(), 10000);
+    QVERIFY(!evaluate("testWindow.browserUi.hint_pointer_mode").toBool());
+    QTest::keyRelease(window, Qt::Key_Return);
+    evaluate("testWindow.reloadRendererFailure()");
+    QTRY_VERIFY_WITH_TIMEOUT(
+        !evaluate("testWindow.activeWebView().loading").toBool(), 15000);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        page("document.getElementById('button') !== null").toBool(), 15000);
+    QCOMPARE(page("window.clicks").toInt(), 0);
+    QCOMPARE(page("window.allClicks || 0").toInt(), 0);
+    QCOMPARE(text("mode"), QString("normal"));
 }
 
 void ApplicationTests::popupWithoutUserActivationIsDenied() {

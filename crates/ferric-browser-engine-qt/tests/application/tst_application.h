@@ -59,6 +59,7 @@ class ApplicationTests final : public QObject {
     void mixedPageKeysAndBrowserSequence_data();
     void mixedPageKeysAndBrowserSequence();
     void pointerConfigurationInvalidatesHeldConfirmation();
+    void rendererLossCancelsHeldConfirmation();
     void pointerInvalidationBeforeRelease_data();
     void pointerInvalidationBeforeRelease();
     void targetSearchNeedsConfirmation();
