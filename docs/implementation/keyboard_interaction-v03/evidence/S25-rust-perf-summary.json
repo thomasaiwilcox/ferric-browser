@@ -1,0 +1,67 @@
+{
+  "method": "nearest rank: sorted index ceil(0.95*n)-1",
+  "baseline_log": "logs/S17-rust-performance-final.log",
+  "current_log": "S25-rust-perf.log",
+  "scenarios": [
+    {
+      "scenario": "rust-500",
+      "count": 500,
+      "warmups": 10,
+      "samples": 100,
+      "p95_ms": {
+        "decode_ms": 12.301065999999999,
+        "labels_ms": 0.338223,
+        "interaction_setup_ms": 0.19813,
+        "ranking_ms": 8.804388999999999,
+        "snapshot_ms": 0.020069
+      },
+      "baseline_p95_ms": {
+        "decode_ms": 11.467302,
+        "labels_ms": 0.30234,
+        "interaction_setup_ms": 0.190193,
+        "ranking_ms": 7.743998,
+        "snapshot_ms": 0.018691000000000003
+      }
+    },
+    {
+      "scenario": "rust-1000",
+      "count": 1000,
+      "warmups": 10,
+      "samples": 100,
+      "p95_ms": {
+        "decode_ms": 24.346459,
+        "labels_ms": 0.724003,
+        "interaction_setup_ms": 0.391798,
+        "ranking_ms": 18.305605999999997,
+        "snapshot_ms": 0.023103
+      },
+      "baseline_p95_ms": {
+        "decode_ms": 21.252797,
+        "labels_ms": 0.620826,
+        "interaction_setup_ms": 0.37892200000000004,
+        "ranking_ms": 16.341869,
+        "snapshot_ms": 0.023056
+      }
+    },
+    {
+      "scenario": "rust-5000",
+      "count": 5000,
+      "warmups": 10,
+      "samples": 100,
+      "p95_ms": {
+        "decode_ms": 99.375806,
+        "labels_ms": 2.8338270000000003,
+        "interaction_setup_ms": 1.621745,
+        "ranking_ms": 70.82200800000001,
+        "snapshot_ms": 0.130141
+      },
+      "baseline_p95_ms": {
+        "decode_ms": 101.30703700000001,
+        "labels_ms": 3.1621829999999997,
+        "interaction_setup_ms": 1.6748500000000002,
+        "ranking_ms": 69.240341,
+        "snapshot_ms": 0.127001
+      }
+    }
+  ]
+}
