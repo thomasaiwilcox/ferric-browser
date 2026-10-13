@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "slice_id": "S26",
+  "status": "complete",
+  "commit": "f06b1a7e566b695c81100b67ed90b1c3c44cb3eb",
+  "environment": {
+    "os": "Linux 7.2.3-arch1-3 x86_64",
+    "cpu": "Intel Core i5-7200U @ 2.50 GHz; 4 logical CPUs",
+    "qt": "Qt 6.11.2; QtWebEngine 6.11.2",
+    "chromium": "QtWebEngine Chromium 140.0.0.0",
+    "compiler": "GCC 16.2.1 20260810",
+    "rustc": "1.98.0 (88d9e12ae 2026-08-18)",
+    "cargo": "1.98.0 (797e8a9bc 2026-08-05)",
+    "build": "Locked offline workspace; no production source, dependency, or default changes in S26.",
+    "scope": "Research-only static wheel-gap evaluation backed by existing Rust binding tests and WebEngine scroll-target fixtures; no authorized live map/slider/custom-control task was available."
+  },
+  "changed_files": [
+    "docs/implementation/keyboard_interaction-v03/evidence/S26-plan.md",
+    "docs/implementation/keyboard_interaction-v03/evidence/S26-static-inspection.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/S26-core-scroll-tests.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/S26-wheel-gap-report.md",
+    "docs/implementation/keyboard_interaction-v03/evidence/S26.json",
+    "docs/implementation/keyboard_interaction-v03/progress.json"
+  ],
+  "baseline_comparison": "Evaluated the S25 evidence tree at f06b1a7e566b695c81100b67ed90b1c3c44cb3eb. S26 found no documented v0.3 task that requires a new wheel mode after existing page movement and exact scroll-target actions. No production behavior or defaults changed.",
+  "test_results": [
+    {
+      "test_id": "T037",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "14d901a0b717055929bae920098ba0f5d441ad6b",
+      "log": "evidence/S25-engine.log",
+      "observations": [
+        "HintGeometry::test_body_overflow_propagates_to_viewport selected a nested scroll pane, invoked the existing scroll operation, and observed that pane's scrollTop increase.",
+        "The T037 exact weak-setter case and empty/replaced-scope no-fallback case passed in the same engine gate."
+      ]
+    },
+    {
+      "test_id": "T037",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true cargo test -p ferric-browser-core input::tests::default_bindings -- --nocapture",
+      "commit": "f06b1a7e566b695c81100b67ed90b1c3c44cb3eb",
+      "log": "evidence/S26-core-scroll-tests.log",
+      "observations": [
+        "Five focused default-binding tests passed, including Ctrl+d/Ctrl+u half-page bindings and ;s selection/;S Auto reset for exact scroll-target handling."
+      ]
+    },
+    {
+      "test_id": "T054",
+      "level": "static-inspection",
+      "result": "passed",
+      "command": "rg -n 'wheel|Wheel|scroll-target|scroll-page|scroll-to|SetScrollTarget|Ctrl|scrollable|map|canvas|hint_pointer_pending|spatial_visible' docs/implementation/keyboard_interaction-v03/PROPOSAL.md docs/implementation/keyboard_interaction-v03/sources/v02-original.md crates/ferric-browser-core/src/input.rs crates/ferric-browser-engine-qt/qml/scripts/BrowserScripts.js crates/ferric-browser-engine-qt/tests/qml/tst_hint_geometry.qml crates/ferric-browser-engine-qt/tests/qml/tst_webapp_interaction.qml crates/ferric-browser-engine-qt/src/browser_page_pointer_adapter.cpp crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeChrome.qml",
+      "commit": "f06b1a7e566b695c81100b67ed90b1c3c44cb3eb",
+      "log": "evidence/S26-static-inspection.log",
+      "observations": [
+        "Existing page keys and Auto/Document/exact-element scroll commands are present; selected elements retain exact identity and axis checks.",
+        "The documented map/diagram example requires scoped visual Grid interaction and separately gated pan/drag, not a wheel-only action. The physical wheel observer is enabled only during scoped Grid or a pending local Hint pointer action."
+      ]
+    }
+  ],
+  "capability_decision": "no_need",
+  "capability_report": "evidence/S26-wheel-gap-report.md",
+  "review_kind": "self-review",
+  "scope_amendments": [],
+  "remaining_risks": [
+    "This is a bounded finding for the documented tasks in this pack; it does not establish wheel compatibility for arbitrary maps, canvases, sliders, or custom widgets.",
+    "No authorized live-site wheel task or physical Wayland wheel journey was available for qualification."
+  ],
+  "not_run_reasons": [
+    "No authorized live map/slider/custom-control task was available to demonstrate an unsolved wheel-only action; C19 therefore does not authorize adding a second wheel policy."
+  ],
+  "next_ready_slices": [
+    "S27"
+  ]
+}

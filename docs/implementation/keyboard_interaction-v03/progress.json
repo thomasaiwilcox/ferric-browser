@@ -160,9 +160,9 @@
     },
     {
       "id": "S26",
-      "status": "not_started",
-      "evidence": null,
-      "capability_decision": null
+      "status": "complete",
+      "evidence": "evidence/S26.json",
+      "capability_decision": "no_need"
     },
     {
       "id": "S27",
