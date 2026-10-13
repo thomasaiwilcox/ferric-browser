@@ -65,6 +65,19 @@ void ApplicationTests::accept(const QVariant &value) {
     scriptDone = true;
 }
 
+void ApplicationTests::initTestCase() {
+    if (QGuiApplication::platformName() != "wayland")
+        return;
+    QQuickWindow probe;
+    probe.resize(320, 240);
+    probe.show();
+    probe.requestActivate();
+    QTRY_VERIFY2_WITH_TIMEOUT(probe.isActive(),
+                              "Wayland input qualification unavailable: "
+                              "compositor cannot activate a test window/seat",
+                              3000);
+}
+
 void ApplicationTests::init() {
     // Qt can skip cleanup after an init assertion fails (for example an
     // unavailable compositor seat). Always retire the previous fixture.
@@ -805,6 +818,12 @@ void ApplicationTests::rendererLossCancelsHeldConfirmation() {
     QVERIFY(!evaluate("testWindow.browserUi.hint_pointer_mode").toBool());
     QTest::keyRelease(window, Qt::Key_Return);
     evaluate("testWindow.reloadRendererFailure()");
+    QTRY_VERIFY_WITH_TIMEOUT(
+        evaluate("testWindow.activeWebView().renderProcessPid").toLongLong() >
+                1 &&
+            evaluate("testWindow.activeWebView().renderProcessPid")
+                    .toLongLong() != pid,
+        15000);
     QTRY_VERIFY_WITH_TIMEOUT(
         !evaluate("testWindow.activeWebView().loading").toBool(), 15000);
     QTRY_VERIFY_WITH_TIMEOUT(

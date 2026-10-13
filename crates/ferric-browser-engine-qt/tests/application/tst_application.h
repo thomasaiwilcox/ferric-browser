@@ -32,6 +32,7 @@ class ApplicationTests final : public QObject {
   public:
     Q_INVOKABLE void accept(const QVariant &value);
   private slots:
+    void initTestCase();
     void init();
     void cleanup();
     void startupAndConfigPublication();
