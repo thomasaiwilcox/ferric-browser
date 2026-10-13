@@ -833,6 +833,54 @@ void ApplicationTests::rendererLossCancelsHeldConfirmation() {
     QCOMPARE(text("mode"), QString("normal"));
 }
 
+void ApplicationTests::pointerObservationIntervalExperiment() {
+    QVERIFY(command("bind p hint --target pointer all"));
+    QJsonArray observations;
+    for (int run = 0; run < 20; ++run) {
+        page(QString("document.querySelectorAll('.race-target').forEach(e=>e."
+                     "remove());"
+                     "window.raceReceiver='';window.raceClicks=0;window."
+                     "allClicks=0;window.raceOver=0;"
+                     "const "
+                     "b=document.createElement('button');b.className='race-"
+                     "target';b.textContent='Race target';"
+                     "b.style='position:fixed;left:%1px;top:350px;width:220px;"
+                     "height:32px';"
+                     "b.onclick=e=>{window.raceReceiver='original';window."
+                     "raceClicks++;window.raceTrusted=e.isTrusted};"
+                     "b.onpointerover=()=>{window.raceOver++;const "
+                     "c=b.cloneNode(true);"
+                     "c.onclick=e=>{window.raceReceiver='replacement';window."
+                     "raceClicks++;window.raceTrusted=e.isTrusted};"
+                     "b.replaceWith(c)};document.body.append(b);true")
+                 .arg(run % 2 ? 600 : 300));
+        key(Qt::Key_P);
+        const auto label = hintLabel("Race target");
+        QVERIFY(!label.isEmpty());
+        typeText(label);
+        key(Qt::Key_Return);
+        QTRY_VERIFY(
+            !evaluate("testWindow.browserUi.hint_pointer_mode").toBool());
+        QTest::qWait(150);
+        const auto fact = page("JSON.stringify({receiver:window.raceReceiver,"
+                               "clicks:window.raceClicks,"
+                               "allClicks:window.allClicks,over:window."
+                               "raceOver,trusted:!!window.raceTrusted})")
+                              .toString();
+        const auto row = QJsonDocument::fromJson(fact.toUtf8()).object();
+        QVERIFY(row.value("clicks").toInt() <= 1);
+        QVERIFY(row.value("allClicks").toInt() <= 1);
+        if (row.value("clicks").toInt() == 1)
+            QVERIFY(row.value("trusted").toBool());
+        observations.append(row);
+    }
+    qInfo().noquote()
+        << "FERRIC_POINTER_INTERVAL_JSON"
+        << QJsonDocument(observations).toJson(QJsonDocument::Compact);
+    // This deliberately measures the admitted DOM/native interval. A changed
+    // receiver is residual uncertainty, never proof of an atomic transaction.
+}
+
 void ApplicationTests::popupWithoutUserActivationIsDenied() {
     page("window.open('/popup.html','_blank');true");
     QTest::qWait(200);
