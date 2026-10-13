@@ -51,6 +51,10 @@ class ApplicationTests final : public QObject {
     void fullscreenApiOutcomes();
     void clipboardPermissionOutcomes_data();
     void clipboardPermissionOutcomes();
+    void selectorReloadActivatesAtBoundary_data();
+    void selectorReloadActivatesAtBoundary();
+    void selectorReloadRejectsInvalidAndStaleCandidates();
+    void selectorReloadTimeoutPreservesConfiguration();
     void selectorDiscoveryUsesProductionPolicy_data();
     void selectorDiscoveryUsesProductionPolicy();
     void startupSelectorValidation_data();

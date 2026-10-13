@@ -1017,8 +1017,28 @@ pub fn setting_supports_site_scope(key: &str) -> bool {
     setting_supported_scopes(key).contains(&"site")
 }
 
-fn applies_without_restart(apply_time: &str) -> bool {
-    matches!(apply_time, "live" | "navigation")
+/// Lifecycle boundary at which a validated configuration is published.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ConfigurationApplyBoundary {
+    RuntimeUpdate,
+    Reload,
+}
+
+impl ConfigurationApplyBoundary {
+    fn applies(self, apply_time: &str) -> bool {
+        matches!(apply_time, "live" | "navigation")
+            || (self == Self::Reload && apply_time == "reload")
+    }
+}
+
+// List metadata names use a wildcard for their public catalog entries.
+// Projection operates on the complete typed list at its root.
+fn configuration_value_metadata(key: &str) -> Option<&'static SettingMetadata> {
+    setting_metadata(key).or_else(|| match key {
+        "site_rules" => setting_metadata("site_rules.*"),
+        "permission_rules" => setting_metadata("permission_rules.*"),
+        _ => None,
+    })
 }
 
 fn is_pending_apply_time(apply_time: &str) -> bool {
@@ -1034,17 +1054,32 @@ pub fn apply_immediate_config_changes(
     current: &toml::Value,
     candidate: &toml::Value,
 ) -> toml::Value {
-    apply_immediate_config_changes_at(current, candidate, "")
+    apply_config_changes(
+        current,
+        candidate,
+        ConfigurationApplyBoundary::RuntimeUpdate,
+    )
 }
 
-fn apply_immediate_config_changes_at(
+/// Projects settings applicable at this boundary, retaining deferred values.
+#[must_use]
+pub fn apply_config_changes(
+    current: &toml::Value,
+    candidate: &toml::Value,
+    boundary: ConfigurationApplyBoundary,
+) -> toml::Value {
+    apply_config_changes_at(current, candidate, "", boundary)
+}
+
+fn apply_config_changes_at(
     current: &toml::Value,
     candidate: &toml::Value,
     prefix: &str,
+    boundary: ConfigurationApplyBoundary,
 ) -> toml::Value {
-    let key_metadata = (!prefix.is_empty()).then(|| setting_metadata(prefix));
+    let key_metadata = (!prefix.is_empty()).then(|| configuration_value_metadata(prefix));
     if let Some(Some(metadata)) = key_metadata
-        && applies_without_restart(metadata.apply_time)
+        && boundary.applies(metadata.apply_time)
     {
         return candidate.clone();
     }
@@ -1061,9 +1096,9 @@ fn apply_immediate_config_changes_at(
             format!("{prefix}.{key}")
         };
         let next = if let Some(current_value) = current_table.get(key) {
-            apply_immediate_config_changes_at(current_value, candidate_value, &full_key)
-        } else if setting_metadata(&full_key)
-            .is_some_and(|metadata| applies_without_restart(metadata.apply_time))
+            apply_config_changes_at(current_value, candidate_value, &full_key, boundary)
+        } else if configuration_value_metadata(&full_key)
+            .is_some_and(|metadata| boundary.applies(metadata.apply_time))
         {
             candidate_value.clone()
         } else {
@@ -1080,8 +1115,8 @@ fn apply_immediate_config_changes_at(
         } else {
             format!("{prefix}.{key}")
         };
-        if setting_metadata(&full_key)
-            .is_some_and(|metadata| applies_without_restart(metadata.apply_time))
+        if configuration_value_metadata(&full_key)
+            .is_some_and(|metadata| boundary.applies(metadata.apply_time))
         {
             merged.remove(key);
         }
@@ -1108,7 +1143,14 @@ fn collect_pending_config_changes(
 ) {
     if let (Some(current_table), Some(candidate_table)) = (current.as_table(), candidate.as_table())
     {
-        for (key, candidate_value) in candidate_table {
+        let keys = current_table
+            .keys()
+            .chain(candidate_table.keys())
+            .collect::<std::collections::BTreeSet<_>>();
+        for key in keys {
+            let candidate_value = candidate_table
+                .get(key)
+                .unwrap_or(&toml::Value::Boolean(false));
             let full_key = if prefix.is_empty() {
                 key.clone()
             } else {
@@ -1117,11 +1159,12 @@ fn collect_pending_config_changes(
             let current_value = current_table
                 .get(key)
                 .unwrap_or(&toml::Value::Boolean(false));
-            if setting_metadata(&full_key)
+            if configuration_value_metadata(&full_key)
                 .is_some_and(|metadata| is_pending_apply_time(metadata.apply_time))
             {
                 if current_value != candidate_value {
-                    let metadata = setting_metadata(&full_key).expect("metadata just matched");
+                    let metadata =
+                        configuration_value_metadata(&full_key).expect("metadata just matched");
                     changes.push(PendingSettingChange {
                         key: full_key,
                         current: current_value.clone(),
@@ -1138,10 +1181,10 @@ fn collect_pending_config_changes(
 
     if !prefix.is_empty()
         && current != candidate
-        && setting_metadata(prefix)
+        && configuration_value_metadata(prefix)
             .is_some_and(|metadata| is_pending_apply_time(metadata.apply_time))
     {
-        let metadata = setting_metadata(prefix).expect("metadata just matched");
+        let metadata = configuration_value_metadata(prefix).expect("metadata just matched");
         changes.push(PendingSettingChange {
             key: prefix.to_owned(),
             current: current.clone(),

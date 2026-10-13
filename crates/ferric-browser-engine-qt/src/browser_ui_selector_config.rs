@@ -47,9 +47,8 @@ impl qobject::BrowserUi {
             persist_path
                 .as_deref()
                 .map(|path| (path, &persistent_overrides)),
+            fingerprint,
         )?;
-        self.as_mut()
-            .set_active_selector_fingerprint_value(fingerprint);
         Ok(Some(result))
     }
 
@@ -242,11 +241,9 @@ impl qobject::BrowserUi {
                     persist_path
                         .as_deref()
                         .map(|path| (path, &persistent_overrides)),
+                    pending.fingerprint,
                 ) {
-                    Ok(_) => {
-                        self.as_mut()
-                            .set_active_selector_fingerprint_value(pending.fingerprint);
-                    }
+                    Ok(_) => {}
                     Err(error) => self.as_mut().set_status_text(QString::from(format!(
                         "Selector configuration commit rejected: {error}"
                     ))),
@@ -262,10 +259,12 @@ impl qobject::BrowserUi {
                 sources,
                 profiles_path,
             } => {
-                match self
-                    .as_mut()
-                    .commit_runtime_config(candidate, layers.clone(), &status)
-                {
+                match self.as_mut().commit_reloaded_config(
+                    candidate,
+                    layers.clone(),
+                    &status,
+                    pending.fingerprint,
+                ) {
                     Ok(_) => {
                         let mut rust = self.as_mut().rust_mut();
                         let this = rust.as_mut().get_mut();
@@ -283,8 +282,6 @@ impl qobject::BrowserUi {
                             serde_json::to_string(&profile_overrides)
                                 .unwrap_or_else(|_| "{}".into()),
                         ));
-                        self.as_mut()
-                            .set_active_selector_fingerprint_value(pending.fingerprint);
                     }
                     Err(error) => self.as_mut().set_status_text(QString::from(format!(
                         "Configuration reload rejected: {error}"

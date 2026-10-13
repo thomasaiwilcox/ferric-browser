@@ -617,10 +617,11 @@ impl qobject::BrowserUi {
                         );
                         return;
                     }
-                    if let Err(error) = self.as_mut().commit_runtime_config(
+                    if let Err(error) = self.as_mut().commit_reloaded_config(
                         candidate,
                         layers.clone(),
                         "Configuration reloaded",
+                        validation_fingerprint,
                     ) {
                         self.set_status_text(QString::from(format!(
                             "Configuration reload rejected: {error}"
@@ -642,8 +643,6 @@ impl qobject::BrowserUi {
                     self.as_mut().set_profile_overrides_json(QString::from(
                         serde_json::to_string(&profile_overrides).unwrap_or_else(|_| "{}".into()),
                     ));
-                    self.as_mut()
-                        .set_active_selector_fingerprint_value(validation_fingerprint);
                 }
                 Err(error) => self.as_mut().set_status_text(QString::from(format!(
                     "Configuration reload rejected: {error}"

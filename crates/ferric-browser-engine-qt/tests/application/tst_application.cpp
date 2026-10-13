@@ -699,6 +699,82 @@ void ApplicationTests::nativePopupActionIsOneTransport() {
     QVERIFY(page("window.lastTrusted").toBool());
     evaluate("testWindow.popupWindowRegistry[0].host.destroy()");
 }
+void ApplicationTests::selectorReloadActivatesAtBoundary_data() {
+    QTest::addColumn<QString>("selectors");
+    QTest::newRow("immediate-empty") << QString("[]");
+    QTest::newRow("parsed-nonempty") << QString("['#button']");
+}
+void ApplicationTests::selectorReloadActivatesAtBoundary() {
+    QFETCH(QString, selectors);
+    const auto path = directory.filePath("config.toml");
+    auto write = [&](const QString &selectorSection, int font) {
+        QFile file(path); QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write((QString("schema_version=3\n[ui]\nfont_size_pt=%1\n[navigation]\nstart_pages=['rb://blank']\n[ipc]\nenabled=false\n").arg(font) + selectorSection).toUtf8());
+    };
+    write("[hints.selectors.all]\nmode='replace'\nselectors=" + selectors + "\n",17);
+    evaluate("testWindow.browserUi.config_path=" + quoted(path));
+    QVERIFY(command("config-reload"));
+    QTRY_VERIFY_WITH_TIMEOUT(text("config_json").contains("17.0"),6000);
+    auto config = QJsonDocument::fromJson(text("config_json").toUtf8()).object();
+    QCOMPARE(config["hints"].toObject()["selectors"].toObject()["all"].toObject()["mode"].toString(),QString("replace"));
+    QVERIFY(config["ipc"].toObject()["enabled"].toBool());
+    QCOMPARE(config["navigation"].toObject()["start_pages"].toArray(),QJsonArray{"rb://start"});
+    QVERIFY(text("status_text").contains("2 lifecycle change(s) pending"));
+    QVERIFY(command("hint all"));
+    QTRY_VERIFY(text("status_text").contains("No visible hint targets") || evaluate("testWindow.hintResults.length").toInt()>0);
+    QCOMPARE(evaluate("testWindow.hintResults.length").toInt(),selectors=="[]"?0:1);
+    key(Qt::Key_Escape);
+    // Removing the family at the same boundary restores built-in discovery.
+    write("",18);
+    QVERIFY(command("config-reload"));
+    QTRY_VERIFY_WITH_TIMEOUT(text("config_json").contains("18.0"),6000);
+    config = QJsonDocument::fromJson(text("config_json").toUtf8()).object();
+    QVERIFY(config["hints"].toObject()["selectors"].toObject().isEmpty());
+    QVERIFY(command("hint all"));
+    QTRY_VERIFY(evaluate("testWindow.hintResults.length").toInt()>1);
+}
+void ApplicationTests::selectorReloadRejectsInvalidAndStaleCandidates() {
+    const auto path = directory.filePath("config.toml");
+    auto write = [&](const QString &selector) {
+        QFile file(path); QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write(("schema_version=3\n[ui]\nfont_size_pt=17\n[hints.selectors.all]\nmode='replace'\nselectors=['" + selector + "']\n").toUtf8());
+    };
+    const auto before = text("config_json");
+    const auto fingerprint = evaluate("testWindow.browserUi.hint_selector_policy('all')").toString();
+    write("[");
+    evaluate("testWindow.browserUi.config_path=" + quoted(path));
+    QVERIFY(command("config-reload"));
+    QTRY_VERIFY_WITH_TIMEOUT(text("status_text").contains("Selector validation failed"),6000);
+    QCOMPARE(text("config_json"),before);
+    QCOMPARE(evaluate("testWindow.browserUi.hint_selector_policy('all')").toString(),fingerprint);
+    auto validator = window->findChild<QObject *>("selectorValidationSurface");
+    QVERIFY(validator); QTRY_VERIFY(validator->property("documentReady").toBool());
+    QVERIFY(validator->setProperty("documentReady",false));
+    write("button[data-later]"); QVERIFY(command("config-reload"));
+    QTRY_VERIFY_WITH_TIMEOUT(!text("selector_validation_request").isEmpty(),6000);
+    const auto generation = QJsonDocument::fromJson(text("selector_validation_request").toUtf8()).object()["generation"].toString();
+    QVERIFY(evaluate("testWindow.browserUi.set_runtime_setting('hints.marker_scale','1.2',true)").toBool());
+    const auto newer = text("config_json");
+    evaluate("testWindow.browserUi.complete_selector_validation(" + quoted(generation) + ",'{\"ok\":true}')");
+    QCOMPARE(text("config_json"),newer);
+    QVERIFY(!newer.contains("replace"));
+}
+void ApplicationTests::selectorReloadTimeoutPreservesConfiguration() {
+    auto validator = window->findChild<QObject *>("selectorValidationSurface");
+    QVERIFY(validator); QTRY_VERIFY(validator->property("documentReady").toBool());
+    QVERIFY(validator->setProperty("documentReady",false));
+    const auto before = text("config_json");
+    const auto policy = evaluate("testWindow.browserUi.hint_selector_policy('all')").toString();
+    const auto path = directory.filePath("timeout.toml");
+    QFile file(path); QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write("schema_version=3\n[ui]\nfont_size_pt=23\n[hints.selectors.all]\nmode='replace'\nselectors=['#button']\n");file.close();
+    evaluate("testWindow.browserUi.config_path=" + quoted(path));
+    QVERIFY(command("config-reload"));
+    QTRY_VERIFY_WITH_TIMEOUT(!text("selector_validation_request").isEmpty(),6000);
+    QTRY_VERIFY_WITH_TIMEOUT(text("status_text").contains("timed out"),7000);
+    QCOMPARE(text("config_json"),before);
+    QCOMPARE(evaluate("testWindow.browserUi.hint_selector_policy('all')").toString(),policy);
+}
 void ApplicationTests::selectorDiscoveryUsesProductionPolicy_data() {
     QTest::addColumn<QString>("policy");
     for (const auto &name : {"inherit", "extend", "replace", "disabled"})
@@ -712,10 +788,10 @@ void ApplicationTests::selectorDiscoveryUsesProductionPolicy() {
     QTRY_VERIFY(!evaluate("testWindow.hintRefreshPending").toBool());
     // Wait for Rust to publish the collection, including an explicitly empty one.
     QTRY_VERIFY(text("status_text").contains("No visible hint targets") || evaluate("testWindow.hintResults.length").toInt() > 0);
-    const auto rows = evaluate("testWindow.hintResults").toList();
+    const auto rows = QJsonDocument::fromJson(evaluate("JSON.stringify(testWindow.hintResults)").toString().toUtf8()).array();
     bool customFound = false, buttonFound = false;
     for (const auto &row : rows) {
-        const auto text = row.toMap().value("text").toString();
+        const auto text = row.toObject().value("text").toString();
         customFound |= text == "Custom discovery";
         buttonFound |= text == "Activate exact button";
     }

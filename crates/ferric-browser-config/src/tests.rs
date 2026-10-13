@@ -1792,3 +1792,38 @@ fn schema_metadata_matches_the_actual_default() {
         Config::default().schema_version.to_string()
     );
 }
+
+#[test]
+fn reload_boundary_applies_rule_lists_and_defers_them_at_runtime() {
+    let current = toml::Value::try_from(Config::default()).unwrap();
+    let mut config = Config::default();
+    config.site_rules.push(SiteRule {
+        id: "zoom".into(),
+        pattern: "https://example.test/*".into(),
+        priority: 0,
+        set: BTreeMap::from([("content.zoom".into(), toml::Value::Float(1.25))]),
+    });
+    config.permission_rules.push(PermissionRuleConfig {
+        id: "clipboard".into(),
+        profile: "default".into(),
+        origin: "https://example.test".into(),
+        permission: "clipboard".into(),
+        decision: PermissionDecision::Allow,
+    });
+    validate(&config).unwrap();
+    let candidate = toml::Value::try_from(config).unwrap();
+    let live = apply_config_changes(
+        &current,
+        &candidate,
+        ConfigurationApplyBoundary::RuntimeUpdate,
+    );
+    assert_eq!(live, current);
+    assert_eq!(pending_config_changes(&live, &candidate).len(), 2);
+    let reload = apply_config_changes(&current, &candidate, ConfigurationApplyBoundary::Reload);
+    assert_eq!(reload, candidate);
+    assert!(pending_config_changes(&reload, &candidate).is_empty());
+    assert_eq!(
+        apply_config_changes(&reload, &current, ConfigurationApplyBoundary::Reload),
+        current
+    );
+}

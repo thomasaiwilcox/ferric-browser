@@ -8,7 +8,7 @@
 
 use std::collections::BTreeMap;
 
-use ferric_browser_config::{Config, ConfigError, RuntimeOverrides};
+use ferric_browser_config::{Config, ConfigError, ConfigurationApplyBoundary, RuntimeOverrides};
 use ferric_browser_core::{
     CommandContext, CommandSource, DispatchTarget, JourneyGraph, PrivacyKind, ProfileId,
     ProfileState, ShutdownState, TabId, TabState, Target, WindowId, WindowState,
@@ -242,8 +242,8 @@ impl BrowserApplication {
         self.configuration.activate_layers(layers)
     }
 
-    /// Atomically updates every configuration layer and preserves pending
-    /// startup/restart-scoped changes.
+    /// Atomically updates live settings and preserves pending reload-,
+    /// startup- and restart-scoped changes.
     ///
     /// # Errors
     ///
@@ -264,8 +264,27 @@ impl BrowserApplication {
         &self,
         layers: ConfigurationLayers,
     ) -> Result<PreparedConfigurationUpdate, ConfigError> {
+        self.prepare_configuration_at(layers, ConfigurationApplyBoundary::RuntimeUpdate)
+    }
+
+    /// Prepares live, navigation and reload settings, retaining startup/restart values.
+    ///
+    /// # Errors
+    /// Returns a validation error without changing the active configuration.
+    pub fn prepare_configuration_reload(
+        &self,
+        layers: ConfigurationLayers,
+    ) -> Result<PreparedConfigurationUpdate, ConfigError> {
+        self.prepare_configuration_at(layers, ConfigurationApplyBoundary::Reload)
+    }
+
+    fn prepare_configuration_at(
+        &self,
+        layers: ConfigurationLayers,
+        boundary: ConfigurationApplyBoundary,
+    ) -> Result<PreparedConfigurationUpdate, ConfigError> {
         let mut state = self.configuration.clone();
-        state.update_layers(layers)?;
+        state.update_layers_at(layers, boundary)?;
         Ok(PreparedConfigurationUpdate {
             expected_revision: self.configuration.revision(),
             state,
@@ -887,6 +906,94 @@ mod configuration_transaction_tests {
         let mut layers = ConfigurationLayers::new(Config::default());
         layers.runtime.set_literal("content.zoom", "1.25").unwrap();
         layers
+    }
+
+    #[test]
+    fn reload_activates_selectors_and_retains_startup_restart_deferral() {
+        use ferric_browser_config::{HintSelectorFamily, HintSelectorMode, HintSelectorPolicy};
+        let mut app = BrowserApplication::new(Config::default());
+        let mut base = Config::default();
+        for family in HintSelectorFamily::ALL {
+            base.hints.selectors.insert(
+                family,
+                HintSelectorPolicy {
+                    mode: HintSelectorMode::Replace,
+                    selectors: vec![],
+                },
+            );
+        }
+        base.ui.font_size_pt = 17.0;
+        base.ipc.enabled = false;
+        base.navigation.start_pages = vec!["rb://blank".into()];
+        let layers = ConfigurationLayers::new(base);
+        let live = app.prepare_configuration_update(layers.clone()).unwrap();
+        assert!(live.snapshot().effective.hints.selectors.is_empty());
+        assert_eq!(
+            live.snapshot()
+                .pending_changes
+                .iter()
+                .filter(|p| p.apply_time == "reload")
+                .count(),
+            7
+        );
+        let old = app.configuration_snapshot();
+        let reload = app.prepare_configuration_reload(layers).unwrap();
+        assert_eq!(app.configuration_snapshot(), old);
+        let published = app.publish_configuration_update(reload, || Ok(())).unwrap();
+        assert_eq!(published.effective.hints.selectors.len(), 7);
+        assert!((published.effective.ui.font_size_pt - 17.0).abs() < f64::EPSILON);
+        assert!(published.effective.ipc.enabled);
+        assert_eq!(
+            published.effective.navigation.start_pages,
+            Config::default().navigation.start_pages
+        );
+        assert_eq!(published.pending_changes.len(), 2);
+        assert!(
+            published
+                .pending_changes
+                .iter()
+                .all(|p| p.apply_time != "reload")
+        );
+        // Removal stays pending at runtime, then restores inheritance at reload.
+        let defaults = ConfigurationLayers::new(Config::default());
+        let removal = app.prepare_configuration_update(defaults.clone()).unwrap();
+        assert_eq!(removal.snapshot().effective.hints.selectors.len(), 7);
+        assert_eq!(removal.snapshot().pending_changes.len(), 7);
+        let removal = app.prepare_configuration_reload(defaults).unwrap();
+        let published = app
+            .publish_configuration_update(removal, || Ok(()))
+            .unwrap();
+        assert!(published.effective.hints.selectors.is_empty());
+        assert!(published.pending_changes.is_empty());
+    }
+
+    #[test]
+    fn reload_preparation_rejects_invalid_stale_and_failed_publication() {
+        let mut app = BrowserApplication::new(Config::default());
+        let before = app.configuration_snapshot();
+        let mut invalid = Config::default();
+        invalid.ui.font_size_pt = -1.0;
+        assert!(
+            app.prepare_configuration_reload(ConfigurationLayers::new(invalid))
+                .is_err()
+        );
+        assert_eq!(app.configuration_snapshot(), before);
+        let prepared = app.prepare_configuration_reload(changed_layers()).unwrap();
+        assert!(
+            app.publish_configuration_update(prepared, || Err(ConfigError::Validation(
+                "write failed".into()
+            )))
+            .is_err()
+        );
+        assert_eq!(app.configuration_snapshot(), before);
+        let prepared = app.prepare_configuration_reload(changed_layers()).unwrap();
+        app.update_configuration(changed_layers()).unwrap();
+        let updated = app.configuration_snapshot();
+        assert!(
+            app.publish_configuration_update(prepared, || panic!("stale reload must not persist"))
+                .is_err()
+        );
+        assert_eq!(app.configuration_snapshot(), updated);
     }
 
     #[test]

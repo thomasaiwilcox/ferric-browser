@@ -8,6 +8,8 @@ use super::{
     try_wait_editor_process,
 };
 
+use ferric_browser_config::ConfigurationApplyBoundary;
+
 impl qobject::BrowserUi {
     pub(super) fn select_site_rule_settings(mut self: Pin<&mut Self>, url: &QString) -> bool {
         let config = match serde_json::from_value::<Config>(self.as_ref().rust().config.clone()) {
@@ -143,14 +145,21 @@ impl qobject::BrowserUi {
         )
     }
 
-    pub(super) fn commit_runtime_config(
+    pub(super) fn commit_reloaded_config(
         mut self: Pin<&mut Self>,
         candidate: Value,
         layers: ConfigurationLayers,
         status: &str,
+        fingerprint: String,
     ) -> Result<Value, String> {
-        self.as_mut()
-            .commit_runtime_config_persisted(candidate, layers, status, None)
+        self.as_mut().commit_validated_configuration(
+            candidate,
+            layers,
+            status,
+            None,
+            ConfigurationApplyBoundary::Reload,
+            fingerprint,
+        )
     }
 
     pub(super) fn commit_runtime_config_persisted(
@@ -159,26 +168,49 @@ impl qobject::BrowserUi {
         layers: ConfigurationLayers,
         status: &str,
         persistence: Option<(&Path, &RuntimeOverrides)>,
+        fingerprint: String,
     ) -> Result<Value, String> {
-        let (candidate_mixed_policy, policy_changed) = self
-            .as_ref()
-            .resolve_candidate_mixed_policy(&candidate, &layers)?;
+        self.as_mut().commit_validated_configuration(
+            candidate,
+            layers,
+            status,
+            persistence,
+            ConfigurationApplyBoundary::RuntimeUpdate,
+            fingerprint,
+        )
+    }
+
+    fn commit_validated_configuration(
+        mut self: Pin<&mut Self>,
+        candidate: Value,
+        layers: ConfigurationLayers,
+        status: &str,
+        persistence: Option<(&Path, &RuntimeOverrides)>,
+        boundary: ConfigurationApplyBoundary,
+        fingerprint: String,
+    ) -> Result<Value, String> {
         let policy_layers = layers.clone();
         let previous_hints = serde_json::from_value::<Config>(self.as_ref().rust().config.clone())
             .ok()
             .map(|config| config.hints);
-        let prepared = self
-            .as_ref()
+        let browser = self.as_ref();
+        let state = browser
             .rust()
             .state
             .as_ref()
-            .ok_or_else(|| "application state is unavailable".to_owned())?
-            .prepare_configuration_update(layers)
-            .map_err(|error| error.to_string())?;
+            .ok_or_else(|| "application state is unavailable".to_owned())?;
+        let prepared = match boundary {
+            ConfigurationApplyBoundary::RuntimeUpdate => state.prepare_configuration_update(layers),
+            ConfigurationApplyBoundary::Reload => state.prepare_configuration_reload(layers),
+        }
+        .map_err(|error| error.to_string())?;
         let snapshot = prepared.snapshot();
         let active_settings = snapshot.effective;
         let active_config = serde_json::to_value(&active_settings)
             .map_err(|error| format!("could not serialize active configuration: {error}"))?;
+        let (candidate_mixed_policy, policy_changed) = self
+            .as_ref()
+            .resolve_candidate_mixed_policy(&active_config, &policy_layers)?;
         let pending = snapshot.pending_changes;
         let pending_summary = pending
             .iter()
@@ -218,6 +250,8 @@ impl qobject::BrowserUi {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
             this.config = active_config.clone();
+            this.active_selector_fingerprint = fingerprint;
+            this.selector_config_revision = this.selector_config_revision.wrapping_add(1);
             this.base_config = base_config;
             this.profile_overrides = policy_layers.profile.clone();
             this.runtime_overrides = policy_layers.runtime.clone();

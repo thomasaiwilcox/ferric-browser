@@ -165,3 +165,13 @@ Offscreen, Qt-generated Wayland, compositor input, authenticated live-site,
 platform IME/chooser, and human/screen-reader evidence are separate gates. Record
 unavailable gates as blocked rather than deriving their outcomes from startup
 or synthetic fixture results.
+
+The application suite includes production selector snapshots for inheritance,
+extension, replacement and disabled families. File reload cases exercise both
+immediate empty policies and asynchronous parser validation, including selector
+removal, invalid CSS and stale callbacks. Reload activates reload-scoped settings;
+startup/restart values remain pending. Native adapter regressions invalidate the
+surface during move and press delivery and check press suppression, cleanup and
+uncertain outcomes. The full offscreen application suite has a 300-second total
+bound. Run timing-sensitive UI suites after compilation completes; the product's
+250 ms pointer preflight deadline is unchanged.
