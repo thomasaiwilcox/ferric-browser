@@ -1,0 +1,457 @@
+{
+  "schema_version": 1,
+  "slice_id": "S27",
+  "status": "implemented_unqualified",
+  "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+  "environment": {
+    "os": "Linux 7.2.3-arch1-3 x86_64",
+    "cpu": "Intel Core i5-7200U @ 2.50 GHz; 4 logical CPUs",
+    "qt": "Qt 6.11.2; QtWebEngine 6.11.2",
+    "chromium": "QtWebEngine Chromium 140.0.0.0",
+    "compiler": "GCC 16.2.1 20260810",
+    "rustc": "1.98.0 (88d9e12ae 2026-08-18)",
+    "cargo": "1.98.0 (797e8a9bc 2026-08-05)",
+    "build": "Locked workspace; cargo xtask check, engine/native, adapter and Wayland startup tasks used the installed Qt 6.11.2 stack.",
+    "test_runner": "QML/WebEngine offscreen software runner at the repository test viewport; native-insert CTest offscreen suite; bounded adapter smoke.",
+    "compositor": "Nested Weston startup smoke passed. wtype could not access the virtual-keyboard protocol; no physical keyboard or pointer input was sent.",
+    "live_test_access": "No installed Ferric release or authorised disposable site/profile accounts were available.",
+    "scope": "Integrated release audit. One S25 opt-in test-helper cleanup was made for strict Clippy; no production source, defaults, keybindings, or runtime resources changed."
+  },
+  "changed_files": [
+    "crates/ferric-browser-engine-qt/tests/label_probes.rs",
+    "docs/implementation/keyboard_interaction-v03/evidence/S27-plan.md",
+    "docs/implementation/keyboard_interaction-v03/evidence/S27-integrated-validation-report.md",
+    "docs/implementation/keyboard_interaction-v03/evidence/S27-live-task-matrix.md",
+    "docs/implementation/keyboard_interaction-v03/evidence/S27-source-invariant-coverage.md",
+    "docs/implementation/keyboard_interaction-v03/evidence/S27-readiness-summary.md",
+    "docs/implementation/keyboard_interaction-v03/evidence/S27-fmt.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/S27-clippy.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/S27-clippy-initial-failure.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/S27-clippy-intermediate-failure.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/S27-label-probe.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/S27-workspace-tests.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/S27-xtask-check-no-gc.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/S27-xtask-check.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/S27-engine-native.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/S27-native-qt-offscreen.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/S27-adapter-smoke.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/S27-wayland-smoke.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/S27-pack-validation.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/S27-pack-tests.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/S27.json",
+    "docs/implementation/keyboard_interaction-v03/progress.json"
+  ],
+  "baseline_comparison": "Integrated audit followed S26 commit d457d3991a54c02557a88170321f4d45acc3bfb5. Strict Clippy found issues in the S25 opt-in test helper; commit 7dbfb14 fixes them with checked bounded conversions and clone_from. A rerun produced JSON identical to S25. Production runtime and defaults are unchanged from the measured S25 tree.",
+  "test_results": [
+    {
+      "test_id": "T057",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo test --workspace --locked",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-workspace-tests.log",
+      "observations": [
+        "All workspace test binaries passed, including ferric-browser CLI, core, engine, IPC, configuration and storage crates; the engine reported 441 passed and one existing ignored test."
+      ]
+    },
+    {
+      "test_id": "T057",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask check",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-xtask-check.log",
+      "observations": [
+        "The integrated QML/WebEngine suite passed 144/144 tests with forced GC enabled. Generated-document freshness, QML lint, architecture checks, and the deterministic workspace suite also passed."
+      ]
+    },
+    {
+      "test_id": "T057",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-engine-native.log",
+      "observations": [
+        "The engine gate passed 441 Rust engine tests, 144 QML/WebEngine tests, and native CTest 1/1. The verbose CTest log shows 59/59 native Qt cases passed."
+      ]
+    },
+    {
+      "test_id": "T057",
+      "level": "static-inspection",
+      "result": "passed",
+      "command": "cargo clippy --workspace --all-targets --locked -- -D warnings",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-clippy.log",
+      "observations": [
+        "All workspace targets passed strict Clippy after the S25 test-helper cleanup."
+      ]
+    },
+    {
+      "test_id": "T057",
+      "level": "static-inspection",
+      "result": "passed",
+      "command": "cargo fmt --all -- --check",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-fmt.log",
+      "observations": [
+        "Workspace formatting passed on the assessed source commit."
+      ]
+    },
+    {
+      "test_id": "T057",
+      "level": "static-inspection",
+      "result": "passed",
+      "command": "python3 docs/implementation/keyboard_interaction-v03/tools/validate_pack.py --integrity --evidence",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-pack-validation.log",
+      "observations": [
+        "Pack integrity/evidence validation passed with 55 source items, 24 contracts, 26 invariants, 57 planned tests, and 28 slices."
+      ]
+    },
+    {
+      "test_id": "T057",
+      "level": "static-inspection",
+      "result": "passed",
+      "command": "python3 docs/implementation/keyboard_interaction-v03/tools/test_validate_pack.py",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-pack-tests.log",
+      "observations": [
+        "All 12 structural and negative validator tests passed."
+      ]
+    },
+    {
+      "test_id": "T057",
+      "level": "static-inspection",
+      "result": "failed",
+      "command": "cargo clippy --workspace --all-targets --locked -- -D warnings",
+      "commit": "d457d3991a54c02557a88170321f4d45acc3bfb5",
+      "log": "evidence/S27-clippy-initial-failure.log",
+      "observations": [
+        "The pre-fix tree exposed precision casts and formatting lints in the opt-in S25 test. This finding was fixed in 7dbfb14; the final strict-Clippy rerun passed."
+      ]
+    },
+    {
+      "test_id": "T057",
+      "level": "webengine-fixture",
+      "result": "failed",
+      "command": "cargo xtask check",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-xtask-check-no-gc.log",
+      "observations": [
+        "This first invocation omitted --js-flags=--expose-gc and failed only the forced-GC test because gc_available was false. The corrected invocation passed all 144 QML tests."
+      ]
+    },
+    {
+      "test_id": "T009",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo test --workspace --locked",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-workspace-tests.log",
+      "observations": [
+        "The core candidate/label unit suites passed in the full workspace run."
+      ]
+    },
+    {
+      "test_id": "T009",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask check",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-xtask-check.log",
+      "observations": [
+        "The fresh WebEngine cases test_T009_control_value_privacy and test_T009_label_is_literal passed."
+      ]
+    },
+    {
+      "test_id": "T010",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo test --workspace --locked",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-workspace-tests.log",
+      "observations": [
+        "Owner-bound one-shot palette and pointer permit tests passed; local-only authority remains covered by the core and engine suites."
+      ]
+    },
+    {
+      "test_id": "T010",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "ctest --test-dir target/native-insert --verbose",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-native-qt-offscreen.log",
+      "observations": [
+        "The local native UI proxy/control and gesture-routing cases passed. IPC/CLI permit rejection is evidenced by the separate pure-unit suite; this offscreen test is not physical desktop qualification."
+      ]
+    },
+    {
+      "test_id": "T024",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "ctest --test-dir target/native-insert --verbose",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-native-qt-offscreen.log",
+      "observations": [
+        "Repeated and overlapping keys, owner/epoch changes, navigation invalidation, lost releases, and fresh-gesture recovery passed in 59 native Qt offscreen cases."
+      ]
+    },
+    {
+      "test_id": "T025",
+      "level": "qml-component",
+      "result": "passed",
+      "command": "QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-engine-native.log",
+      "observations": [
+        "Both primary and secondary QML interaction suites passed as part of the 144-case run."
+      ]
+    },
+    {
+      "test_id": "T025",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "ctest --test-dir target/native-insert --verbose",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-native-qt-offscreen.log",
+      "observations": [
+        "Escape, Insert/pass-through entry, recovery, and mode-routing cases passed in the offscreen native suite."
+      ]
+    },
+    {
+      "test_id": "T033",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask check",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-xtask-check.log",
+      "observations": [
+        "The large-selector fixture passed with 32 selectors, 50,000 inspected nodes, 5,000 candidates, and explicit truncation."
+      ]
+    },
+    {
+      "test_id": "T033",
+      "level": "performance",
+      "result": "passed",
+      "command": "QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask check",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-xtask-check.log",
+      "observations": [
+        "The current stress fixture reported a single 994.5 ms collection run; this is a bounded stress measurement, not a percentile or live-site latency claim."
+      ]
+    },
+    {
+      "test_id": "T038",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo test --workspace --locked",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-workspace-tests.log",
+      "observations": [
+        "Core geometry and coordinate contract tests passed in the workspace suite."
+      ]
+    },
+    {
+      "test_id": "T038",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-engine-native.log",
+      "observations": [
+        "Nested-frame scope geometry and unsupported-transform rejection passed."
+      ]
+    },
+    {
+      "test_id": "T038",
+      "level": "native-qt-offscreen",
+      "result": "not_run",
+      "command": "ctest --test-dir target/native-insert --verbose",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-native-qt-offscreen.log",
+      "reason": "The native-insert suite does not exercise the full scoped Grid window-offset, zoom, DPR and ViewLocal conversion matrix.",
+      "observations": []
+    },
+    {
+      "test_id": "T038",
+      "level": "native-wayland",
+      "result": "not_run",
+      "command": "cargo xtask test wayland",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-wayland-smoke.log",
+      "reason": "Nested Weston startup passed, but wtype could not access the compositor virtual-keyboard protocol; no physical geometry journey was sent.",
+      "observations": [
+        "Startup-only evidence is not native Wayland input qualification."
+      ]
+    },
+    {
+      "test_id": "T041",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-engine-native.log",
+      "observations": [
+        "The fresh identity/action-meaning target-selection fixture passed; replacement does not transfer selection by index or label."
+      ]
+    },
+    {
+      "test_id": "T041",
+      "level": "qml-component",
+      "result": "passed",
+      "command": "QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-engine-native.log",
+      "observations": [
+        "The ChromeInteractions target-search identity/action-meaning QML test passed."
+      ]
+    },
+    {
+      "test_id": "T042",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo test --workspace --locked",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-workspace-tests.log",
+      "observations": [
+        "Diagnostics snapshot privacy/provenance unit tests passed in the workspace run."
+      ]
+    },
+    {
+      "test_id": "T042",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask check",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-xtask-check.log",
+      "observations": [
+        "The literal-label/control-value privacy tests and target-search privacy/page-independence fixture passed."
+      ]
+    },
+    {
+      "test_id": "T043",
+      "level": "performance",
+      "result": "passed",
+      "command": "QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME= QT_QUICK_BACKEND=software target/qml-tests/qml_tests -input crates/ferric-browser-engine-qt/tests/qml-perf",
+      "commit": "14d901a0b717055929bae920098ba0f5d441ad6b",
+      "log": "evidence/S25-qml-perf.log",
+      "observations": [
+        "S25 supplied 10 warm-ups and 100 samples per row at 500 targets across three zooms plus 1,000/5,000 targets. Measurement execution passed, but repeated 500-target callback p95 exceeded the C17 relative investigation threshold and overlay p95 exceeded its 200 ms reference ambition. No production runtime changed afterward; the results remain unresolved."
+      ]
+    },
+    {
+      "test_id": "T044",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask check",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-xtask-check.log",
+      "observations": [
+        "The 1,000-cycle forced-GC stress reported zero retained elements, observers, and windows."
+      ]
+    },
+    {
+      "test_id": "T044",
+      "level": "performance",
+      "result": "passed",
+      "command": "QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask check",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-xtask-check.log",
+      "observations": [
+        "The stress emitted one elapsed-time result for 1,000 cycles; no repeated latency distribution was produced."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo test --workspace --locked",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-workspace-tests.log",
+      "observations": [
+        "The full workspace regression suite passed, including core Hint, key routing, configuration, IPC and CLI cases."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-engine-native.log",
+      "observations": [
+        "The full 144-case QML/WebEngine regression suite passed, retaining Hint, search, Grid, scroll, Insert and pass-through paths."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-engine-native.log",
+      "observations": [
+        "The native CTest target passed 1/1; its verbose output reports 59/59 cases passed."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask check",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-xtask-check.log",
+      "observations": [
+        "Generated user-document freshness, architecture contracts, release-artifact manifest validation, and license policy passed."
+      ]
+    },
+    {
+      "test_id": "T056",
+      "level": "native-wayland",
+      "result": "not_run",
+      "command": "cargo xtask test wayland",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-wayland-smoke.log",
+      "reason": "The nested compositor lacks the virtual-keyboard protocol required by wtype. Only bounded startup smoke passed; no installed-release input task ran.",
+      "observations": []
+    },
+    {
+      "test_id": "T056",
+      "level": "live-site",
+      "result": "not_run",
+      "command": "Not attempted: no installed Ferric release or authorised disposable reference-site profile/account was available.",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-live-task-matrix.md",
+      "reason": "No authorised disposable profile, account, or installed release was available for the specified live journeys.",
+      "observations": []
+    }
+  ],
+  "capability_decision": null,
+  "capability_report": null,
+  "review_kind": "self-review",
+  "scope_amendments": [
+    {
+      "path": "crates/ferric-browser-engine-qt/tests/label_probes.rs",
+      "reason": "S27's strict workspace Clippy gate found lint failures in the new S25 opt-in test helper. Replaced lossy casts with bounded checked conversions, used clone_from and inlined format arguments. The post-fix opt-in run produced identical JSON; no production behavior changed."
+    },
+    {
+      "path": "docs/implementation/keyboard_interaction-v03/evidence/S27-*",
+      "reason": "S27 integrated gate logs, test matrix, source/invariant review, live-task matrix, and readiness record required by the S27 card."
+    }
+  ],
+  "remaining_risks": [
+    "Native Wayland physical input and installed-release live tasks were not qualified; the implementation remains unqualified for those journeys.",
+    "S20 is blocked by missing virtual-keyboard support and S21 remains blocked without production drag implementation.",
+    "S25 callback latency and overlay p95 remain above C17 investigation/reference thresholds; the host was loaded and no controlled low-load repeat was available.",
+    "S23/S24/S25 research no-go outcomes do not provide independent-frame semantics, an accessibility provider, or a production label-strategy change.",
+    "The documented S21 conditional status instruction conflicts with the evidence contract: not_applicable requires S20 research_no_go, while S20 is blocked_environment. The evidence ledger preserves the observed statuses."
+  ],
+  "not_run_reasons": [
+    "The nested Weston compositor does not expose the virtual-keyboard protocol required by wtype, so native key/pointer task qualification could not run.",
+    "No installed Ferric release or authorised disposable Docs/Sheets/Slides, mail/chat, editor, GitHub/Reddit, YouTube, board, map, or embedded-viewer profile was available.",
+    "T038's full native window-offset/zoom/DPR coordinate matrix was not exercised by the current native-insert CTest suite.",
+    "S25 remains the latest multi-sample performance run because S26 and S27 made no production runtime changes."
+  ],
+  "next_ready_slices": []
+}

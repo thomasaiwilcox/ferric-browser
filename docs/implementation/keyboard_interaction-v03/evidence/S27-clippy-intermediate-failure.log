@@ -1,0 +1,247 @@
+   Compiling ferric-browser-engine-qt v0.1.0 (/home/tom/Projects/RustBrowser/crates/ferric-browser-engine-qt)
+warning: ferric-browser-engine-qt@0.1.0: In file included from /usr/include/qt6/QtCore/qstring.h:15,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qhashfunctions.h:10,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qhash.h:11,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/QHash:1,
+warning: ferric-browser-engine-qt@0.1.0:                  from /home/tom/Projects/RustBrowser/target/debug/build/ferric-browser-engine-qt-58c741805e605e21/out/moc/../../../../../../crates/ferric-browser-engine-qt/src/blocklist_updater.h:5,
+warning: ferric-browser-engine-qt@0.1.0:                  from /home/tom/Projects/RustBrowser/target/debug/build/ferric-browser-engine-qt-58c741805e605e21/out/moc/moc_blocklist_updater.h.cpp:9:
+warning: ferric-browser-engine-qt@0.1.0: /usr/include/qt6/QtCore/qchar.h:48:31: warning: defining 'QChar', which previously failed to be complete in a SFINAE context [-Wsfinae-incomplete=]
+warning: ferric-browser-engine-qt@0.1.0:    48 | class QT6_ONLY(Q_CORE_EXPORT) QChar {
+warning: ferric-browser-engine-qt@0.1.0:       |                               ^~~~~
+warning: ferric-browser-engine-qt@0.1.0: In file included from /usr/include/c++/16/unordered_map:44,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/c++/16/functional:80,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qcomparehelpers.h:29,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qcompare.h:661,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qnamespace.h:14,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qbytearray.h:10,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/QByteArray:1,
+warning: ferric-browser-engine-qt@0.1.0:                  from /home/tom/Projects/RustBrowser/target/debug/build/ferric-browser-engine-qt-58c741805e605e21/out/moc/../../../../../../crates/ferric-browser-engine-qt/src/blocklist_updater.h:4:
+warning: ferric-browser-engine-qt@0.1.0: /usr/include/c++/16/bits/range_access.h:325:24: note: here.  Use '-Wsfinae-incomplete=2' for a diagnostic at that point
+warning: ferric-browser-engine-qt@0.1.0:   325 |     -> decltype(__cont.data())
+warning: ferric-browser-engine-qt@0.1.0:       |                 ~~~~~~~^~~~
+warning: ferric-browser-engine-qt@0.1.0: In file included from /usr/include/qt6/QtCore/qstring.h:15,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qobject.h:12,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/QObject:1,
+warning: ferric-browser-engine-qt@0.1.0:                  from /home/tom/Projects/RustBrowser/target/debug/build/ferric-browser-engine-qt-58c741805e605e21/out/moc/../../../../../../crates/ferric-browser-engine-qt/src/link_rule_updater.h:5,
+warning: ferric-browser-engine-qt@0.1.0:                  from /home/tom/Projects/RustBrowser/target/debug/build/ferric-browser-engine-qt-58c741805e605e21/out/moc/moc_link_rule_updater.h.cpp:9:
+warning: ferric-browser-engine-qt@0.1.0: /usr/include/qt6/QtCore/qchar.h:48:31: warning: defining 'QChar', which previously failed to be complete in a SFINAE context [-Wsfinae-incomplete=]
+warning: ferric-browser-engine-qt@0.1.0:    48 | class QT6_ONLY(Q_CORE_EXPORT) QChar {
+warning: ferric-browser-engine-qt@0.1.0:       |                               ^~~~~
+warning: ferric-browser-engine-qt@0.1.0: In file included from /usr/include/c++/16/unordered_map:44,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/c++/16/functional:80,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qcomparehelpers.h:29,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qcompare.h:661,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qnamespace.h:14,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qbytearray.h:10,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/QByteArray:1,
+warning: ferric-browser-engine-qt@0.1.0:                  from /home/tom/Projects/RustBrowser/target/debug/build/ferric-browser-engine-qt-58c741805e605e21/out/moc/../../../../../../crates/ferric-browser-engine-qt/src/link_rule_updater.h:4:
+warning: ferric-browser-engine-qt@0.1.0: /usr/include/c++/16/bits/range_access.h:325:24: note: here.  Use '-Wsfinae-incomplete=2' for a diagnostic at that point
+warning: ferric-browser-engine-qt@0.1.0:   325 |     -> decltype(__cont.data())
+warning: ferric-browser-engine-qt@0.1.0:       |                 ~~~~~~~^~~~
+warning: ferric-browser-engine-qt@0.1.0: In file included from /usr/include/qt6/QtCore/qstring.h:15,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qhashfunctions.h:10,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qhash.h:11,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/QHash:1,
+warning: ferric-browser-engine-qt@0.1.0:                  from src/blocklist_updater.h:5,
+warning: ferric-browser-engine-qt@0.1.0:                  from src/blocklist_updater.cpp:1:
+warning: ferric-browser-engine-qt@0.1.0: /usr/include/qt6/QtCore/qchar.h:48:31: warning: defining 'QChar', which previously failed to be complete in a SFINAE context [-Wsfinae-incomplete=]
+warning: ferric-browser-engine-qt@0.1.0:    48 | class QT6_ONLY(Q_CORE_EXPORT) QChar {
+warning: ferric-browser-engine-qt@0.1.0:       |                               ^~~~~
+warning: ferric-browser-engine-qt@0.1.0: In file included from /usr/include/c++/16/unordered_map:44,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/c++/16/functional:80,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qcomparehelpers.h:29,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qcompare.h:661,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qnamespace.h:14,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qbytearray.h:10,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/QByteArray:1,
+warning: ferric-browser-engine-qt@0.1.0:                  from src/blocklist_updater.h:4:
+warning: ferric-browser-engine-qt@0.1.0: /usr/include/c++/16/bits/range_access.h:325:24: note: here.  Use '-Wsfinae-incomplete=2' for a diagnostic at that point
+warning: ferric-browser-engine-qt@0.1.0:   325 |     -> decltype(__cont.data())
+warning: ferric-browser-engine-qt@0.1.0:       |                 ~~~~~~~^~~~
+warning: ferric-browser-engine-qt@0.1.0: In file included from /usr/include/qt6/QtCore/qstring.h:15,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qobject.h:12,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/QObject:1,
+warning: ferric-browser-engine-qt@0.1.0:                  from src/link_rule_updater.h:5,
+warning: ferric-browser-engine-qt@0.1.0:                  from src/link_rule_updater.cpp:1:
+warning: ferric-browser-engine-qt@0.1.0: /usr/include/qt6/QtCore/qchar.h:48:31: warning: defining 'QChar', which previously failed to be complete in a SFINAE context [-Wsfinae-incomplete=]
+warning: ferric-browser-engine-qt@0.1.0:    48 | class QT6_ONLY(Q_CORE_EXPORT) QChar {
+warning: ferric-browser-engine-qt@0.1.0:       |                               ^~~~~
+warning: ferric-browser-engine-qt@0.1.0: In file included from /usr/include/c++/16/unordered_map:44,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/c++/16/functional:80,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qcomparehelpers.h:29,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qcompare.h:661,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qnamespace.h:14,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qbytearray.h:10,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/QByteArray:1,
+warning: ferric-browser-engine-qt@0.1.0:                  from src/link_rule_updater.h:4:
+warning: ferric-browser-engine-qt@0.1.0: /usr/include/c++/16/bits/range_access.h:325:24: note: here.  Use '-Wsfinae-incomplete=2' for a diagnostic at that point
+warning: ferric-browser-engine-qt@0.1.0:   325 |     -> decltype(__cont.data())
+warning: ferric-browser-engine-qt@0.1.0:       |                 ~~~~~~~^~~~
+warning: ferric-browser-engine-qt@0.1.0: In file included from /usr/include/qt6/QtCore/qstring.h:15,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qhashfunctions.h:10,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qlist.h:12,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qstringlist.h:6,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/QStringList:1,
+warning: ferric-browser-engine-qt@0.1.0:                  from /home/tom/Projects/RustBrowser/target/debug/build/ferric-browser-engine-qt-58c741805e605e21/out/cxxqtbuild/include/cxx-qt-lib/core/qstring.h:11,
+warning: ferric-browser-engine-qt@0.1.0:                  from /home/tom/Projects/RustBrowser/target/debug/build/ferric-browser-engine-qt-58c741805e605e21/out/cxxqtbuild/include/cxx-qt-lib/qstring.h:9,
+warning: ferric-browser-engine-qt@0.1.0:                  from /home/tom/Projects/RustBrowser/target/debug/build/ferric-browser-engine-qt-58c741805e605e21/out/cxxqtgen/src/lib.cxx.cpp:1:
+warning: ferric-browser-engine-qt@0.1.0: /usr/include/qt6/QtCore/qchar.h:48:31: warning: defining 'QChar', which previously failed to be complete in a SFINAE context [-Wsfinae-incomplete=]
+warning: ferric-browser-engine-qt@0.1.0:    48 | class QT6_ONLY(Q_CORE_EXPORT) QChar {
+warning: ferric-browser-engine-qt@0.1.0:       |                               ^~~~~
+warning: ferric-browser-engine-qt@0.1.0: In file included from /usr/include/c++/16/unordered_map:44,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/c++/16/functional:80,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qcomparehelpers.h:29,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qcompare.h:661,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qnamespace.h:14,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qbytearray.h:10,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/QByteArray:1,
+warning: ferric-browser-engine-qt@0.1.0:                  from /home/tom/Projects/RustBrowser/target/debug/build/ferric-browser-engine-qt-58c741805e605e21/out/cxxqtbuild/include/cxx-qt-lib/core/qstring.h:10:
+warning: ferric-browser-engine-qt@0.1.0: /usr/include/c++/16/bits/range_access.h:325:24: note: here.  Use '-Wsfinae-incomplete=2' for a diagnostic at that point
+warning: ferric-browser-engine-qt@0.1.0:   325 |     -> decltype(__cont.data())
+warning: ferric-browser-engine-qt@0.1.0:       |                 ~~~~~~~^~~~
+    Checking ferric-browser v0.1.0 (/home/tom/Projects/RustBrowser/crates/ferric-browser)
+error: item in documentation is missing backticks
+ --> crates/ferric-browser-engine-qt/tests/label_probes.rs:1:54
+  |
+1 | //! Opt-in S25 ergonomics model using the production HintInteraction and label
+  |                                                      ^^^^^^^^^^^^^^^
+  |
+  = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#doc_markdown
+  = note: `-D clippy::doc-markdown` implied by `-D warnings`
+  = help: to override `-D warnings` add `#[allow(clippy::doc_markdown)]`
+help: try
+  |
+1 - //! Opt-in S25 ergonomics model using the production HintInteraction and label
+1 + //! Opt-in S25 ergonomics model using the production `HintInteraction` and label
+  |
+
+error: casting `usize` to `f64` may cause a loss of precision (`usize` can be up to 64 bits wide depending on the target architecture, but `f64`'s mantissa is only 52 bits wide)
+   --> crates/ferric-browser-engine-qt/tests/label_probes.rs:151:16
+    |
+151 |             x: (index * 2) as f64,
+    |                ^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#cast_precision_loss
+    = note: `-D clippy::cast-precision-loss` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::cast_precision_loss)]`
+
+error: assigning the result of `Clone::clone()` may be inefficient
+   --> crates/ferric-browser-engine-qt/tests/label_probes.rs:388:13
+    |
+388 |             labels[index] = label.clone();
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use `clone_from()`: `labels[index].clone_from(label)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#assigning_clones
+    = note: `-D clippy::assigning-clones` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::assigning_clones)]`
+
+error: assigning the result of `Clone::clone()` may be inefficient
+   --> crates/ferric-browser-engine-qt/tests/label_probes.rs:430:13
+    |
+430 |             labels[index] = label.clone();
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use `clone_from()`: `labels[index].clone_from(label)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#assigning_clones
+
+warning: ferric-browser-engine-qt@0.1.0: In file included from /usr/include/qt6/QtCore/qstring.h:15,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qhashfunctions.h:10,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qhash.h:11,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/QHash:1,
+warning: ferric-browser-engine-qt@0.1.0:                  from /home/tom/Projects/RustBrowser/target/debug/build/ferric-browser-engine-qt-58c741805e605e21/out/moc/../../../../../../crates/ferric-browser-engine-qt/src/blocklist_updater.h:5,
+warning: ferric-browser-engine-qt@0.1.0:                  from /home/tom/Projects/RustBrowser/target/debug/build/ferric-browser-engine-qt-58c741805e605e21/out/moc/moc_blocklist_updater.h.cpp:9:
+warning: ferric-browser-engine-qt@0.1.0: /usr/include/qt6/QtCore/qchar.h:48:31: warning: defining 'QChar', which previously failed to be complete in a SFINAE context [-Wsfinae-incomplete=]
+warning: ferric-browser-engine-qt@0.1.0:    48 | class QT6_ONLY(Q_CORE_EXPORT) QChar {
+warning: ferric-browser-engine-qt@0.1.0:       |                               ^~~~~
+warning: ferric-browser-engine-qt@0.1.0: In file included from /usr/include/c++/16/unordered_map:44,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/c++/16/functional:80,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qcomparehelpers.h:29,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qcompare.h:661,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qnamespace.h:14,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qbytearray.h:10,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/QByteArray:1,
+warning: ferric-browser-engine-qt@0.1.0:                  from /home/tom/Projects/RustBrowser/target/debug/build/ferric-browser-engine-qt-58c741805e605e21/out/moc/../../../../../../crates/ferric-browser-engine-qt/src/blocklist_updater.h:4:
+warning: ferric-browser-engine-qt@0.1.0: /usr/include/c++/16/bits/range_access.h:325:24: note: here.  Use '-Wsfinae-incomplete=2' for a diagnostic at that point
+warning: ferric-browser-engine-qt@0.1.0:   325 |     -> decltype(__cont.data())
+warning: ferric-browser-engine-qt@0.1.0:       |                 ~~~~~~~^~~~
+warning: ferric-browser-engine-qt@0.1.0: In file included from /usr/include/qt6/QtCore/qstring.h:15,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qobject.h:12,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/QObject:1,
+warning: ferric-browser-engine-qt@0.1.0:                  from /home/tom/Projects/RustBrowser/target/debug/build/ferric-browser-engine-qt-58c741805e605e21/out/moc/../../../../../../crates/ferric-browser-engine-qt/src/link_rule_updater.h:5,
+warning: ferric-browser-engine-qt@0.1.0:                  from /home/tom/Projects/RustBrowser/target/debug/build/ferric-browser-engine-qt-58c741805e605e21/out/moc/moc_link_rule_updater.h.cpp:9:
+warning: ferric-browser-engine-qt@0.1.0: /usr/include/qt6/QtCore/qchar.h:48:31: warning: defining 'QChar', which previously failed to be complete in a SFINAE context [-Wsfinae-incomplete=]
+warning: ferric-browser-engine-qt@0.1.0:    48 | class QT6_ONLY(Q_CORE_EXPORT) QChar {
+warning: ferric-browser-engine-qt@0.1.0:       |                               ^~~~~
+warning: ferric-browser-engine-qt@0.1.0: In file included from /usr/include/c++/16/unordered_map:44,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/c++/16/functional:80,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qcomparehelpers.h:29,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qcompare.h:661,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qnamespace.h:14,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qbytearray.h:10,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/QByteArray:1,
+warning: ferric-browser-engine-qt@0.1.0:                  from /home/tom/Projects/RustBrowser/target/debug/build/ferric-browser-engine-qt-58c741805e605e21/out/moc/../../../../../../crates/ferric-browser-engine-qt/src/link_rule_updater.h:4:
+warning: ferric-browser-engine-qt@0.1.0: /usr/include/c++/16/bits/range_access.h:325:24: note: here.  Use '-Wsfinae-incomplete=2' for a diagnostic at that point
+warning: ferric-browser-engine-qt@0.1.0:   325 |     -> decltype(__cont.data())
+warning: ferric-browser-engine-qt@0.1.0:       |                 ~~~~~~~^~~~
+warning: ferric-browser-engine-qt@0.1.0: In file included from /usr/include/qt6/QtCore/qstring.h:15,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qhashfunctions.h:10,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qhash.h:11,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/QHash:1,
+warning: ferric-browser-engine-qt@0.1.0:                  from src/blocklist_updater.h:5,
+warning: ferric-browser-engine-qt@0.1.0:                  from src/blocklist_updater.cpp:1:
+warning: ferric-browser-engine-qt@0.1.0: /usr/include/qt6/QtCore/qchar.h:48:31: warning: defining 'QChar', which previously failed to be complete in a SFINAE context [-Wsfinae-incomplete=]
+warning: ferric-browser-engine-qt@0.1.0:    48 | class QT6_ONLY(Q_CORE_EXPORT) QChar {
+warning: ferric-browser-engine-qt@0.1.0:       |                               ^~~~~
+warning: ferric-browser-engine-qt@0.1.0: In file included from /usr/include/c++/16/unordered_map:44,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/c++/16/functional:80,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qcomparehelpers.h:29,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qcompare.h:661,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qnamespace.h:14,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qbytearray.h:10,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/QByteArray:1,
+warning: ferric-browser-engine-qt@0.1.0:                  from src/blocklist_updater.h:4:
+warning: ferric-browser-engine-qt@0.1.0: /usr/include/c++/16/bits/range_access.h:325:24: note: here.  Use '-Wsfinae-incomplete=2' for a diagnostic at that point
+warning: ferric-browser-engine-qt@0.1.0:   325 |     -> decltype(__cont.data())
+warning: ferric-browser-engine-qt@0.1.0:       |                 ~~~~~~~^~~~
+warning: ferric-browser-engine-qt@0.1.0: In file included from /usr/include/qt6/QtCore/qstring.h:15,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qobject.h:12,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/QObject:1,
+warning: ferric-browser-engine-qt@0.1.0:                  from src/link_rule_updater.h:5,
+warning: ferric-browser-engine-qt@0.1.0:                  from src/link_rule_updater.cpp:1:
+warning: ferric-browser-engine-qt@0.1.0: /usr/include/qt6/QtCore/qchar.h:48:31: warning: defining 'QChar', which previously failed to be complete in a SFINAE context [-Wsfinae-incomplete=]
+warning: ferric-browser-engine-qt@0.1.0:    48 | class QT6_ONLY(Q_CORE_EXPORT) QChar {
+warning: ferric-browser-engine-qt@0.1.0:       |                               ^~~~~
+warning: ferric-browser-engine-qt@0.1.0: In file included from /usr/include/c++/16/unordered_map:44,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/c++/16/functional:80,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qcomparehelpers.h:29,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qcompare.h:661,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qnamespace.h:14,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qbytearray.h:10,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/QByteArray:1,
+warning: ferric-browser-engine-qt@0.1.0:                  from src/link_rule_updater.h:4:
+warning: ferric-browser-engine-qt@0.1.0: /usr/include/c++/16/bits/range_access.h:325:24: note: here.  Use '-Wsfinae-incomplete=2' for a diagnostic at that point
+warning: ferric-browser-engine-qt@0.1.0:   325 |     -> decltype(__cont.data())
+warning: ferric-browser-engine-qt@0.1.0:       |                 ~~~~~~~^~~~
+warning: ferric-browser-engine-qt@0.1.0: In file included from /usr/include/qt6/QtCore/qstring.h:15,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qhashfunctions.h:10,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qlist.h:12,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qstringlist.h:6,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/QStringList:1,
+warning: ferric-browser-engine-qt@0.1.0:                  from /home/tom/Projects/RustBrowser/target/debug/build/ferric-browser-engine-qt-58c741805e605e21/out/cxxqtbuild/include/cxx-qt-lib/core/qstring.h:11,
+warning: ferric-browser-engine-qt@0.1.0:                  from /home/tom/Projects/RustBrowser/target/debug/build/ferric-browser-engine-qt-58c741805e605e21/out/cxxqtbuild/include/cxx-qt-lib/qstring.h:9,
+warning: ferric-browser-engine-qt@0.1.0:                  from /home/tom/Projects/RustBrowser/target/debug/build/ferric-browser-engine-qt-58c741805e605e21/out/cxxqtgen/src/lib.cxx.cpp:1:
+warning: ferric-browser-engine-qt@0.1.0: /usr/include/qt6/QtCore/qchar.h:48:31: warning: defining 'QChar', which previously failed to be complete in a SFINAE context [-Wsfinae-incomplete=]
+warning: ferric-browser-engine-qt@0.1.0:    48 | class QT6_ONLY(Q_CORE_EXPORT) QChar {
+warning: ferric-browser-engine-qt@0.1.0:       |                               ^~~~~
+warning: ferric-browser-engine-qt@0.1.0: In file included from /usr/include/c++/16/unordered_map:44,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/c++/16/functional:80,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qcomparehelpers.h:29,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qcompare.h:661,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qnamespace.h:14,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qbytearray.h:10,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/QByteArray:1,
+warning: ferric-browser-engine-qt@0.1.0:                  from /home/tom/Projects/RustBrowser/target/debug/build/ferric-browser-engine-qt-58c741805e605e21/out/cxxqtbuild/include/cxx-qt-lib/core/qstring.h:10:
+warning: ferric-browser-engine-qt@0.1.0: /usr/include/c++/16/bits/range_access.h:325:24: note: here.  Use '-Wsfinae-incomplete=2' for a diagnostic at that point
+warning: ferric-browser-engine-qt@0.1.0:   325 |     -> decltype(__cont.data())
+warning: ferric-browser-engine-qt@0.1.0:       |                 ~~~~~~~^~~~
+error: could not compile `ferric-browser-engine-qt` (test "label_probes") due to 4 previous errors
+warning: build failed, waiting for other jobs to finish...

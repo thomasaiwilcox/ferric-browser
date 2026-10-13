@@ -166,8 +166,8 @@
     },
     {
       "id": "S27",
-      "status": "not_started",
-      "evidence": null,
+      "status": "implemented_unqualified",
+      "evidence": "evidence/S27.json",
       "capability_decision": null
     }
   ]
