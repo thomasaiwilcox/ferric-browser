@@ -66,6 +66,9 @@ void ApplicationTests::accept(const QVariant &value) {
 }
 
 void ApplicationTests::init() {
+    // Qt can skip cleanup after an init assertion fails (for example an
+    // unavailable compositor seat). Always retire the previous fixture.
+    cleanup();
     pageReceiver = "testWindow.activeWebView()";
     QVERIFY(directory.isValid());
     QFile fixture(directory.filePath("fixture.html"));
