@@ -20,6 +20,6 @@ The first two strict-Clippy attempts are retained. They identified casts, a doc-
 
 ## Evidence that remains bounded
 
-The fresh fixture and offscreen results establish the behaviors exercised by those fixtures. They do not establish physical Wayland routing, installed-release behavior, live-site compatibility, or universal support for editors, frames, accessibility providers, canvases, maps, or sliders. S23/S24/S25 research decisions and S20/S21 environment statuses remain separate from the passing integrated test gates.
+The fresh fixture and offscreen results establish the behaviors exercised by those fixtures. They do not establish physical Wayland routing, installed-release behavior, live-site compatibility, or universal support for editors, frames, accessibility providers, canvases, maps, or sliders. S23/S24/S25 research decisions, S20's environment block, and S21's specification block remain separate from the passing integrated test gates.
 
 The latest performance evidence is S25 because there were no subsequent production changes. The 500-target callback p95 exceeded S17 by roughly 10–20% across zoom rows, focused repeats crossed the C17 relative threshold, and 500-marker overlay p95 was 212.60–224.29 ms against the 200 ms reference ambition. Rust-stage timings remained close to S17. Host load was elevated and no controlled low-load repeat was available, so these results remain unresolved rather than attributed to a runtime regression.

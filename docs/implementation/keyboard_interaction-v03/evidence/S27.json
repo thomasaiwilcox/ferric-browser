@@ -38,6 +38,8 @@
     "docs/implementation/keyboard_interaction-v03/evidence/S27-wayland-smoke.log",
     "docs/implementation/keyboard_interaction-v03/evidence/S27-pack-validation.log",
     "docs/implementation/keyboard_interaction-v03/evidence/S27-pack-tests.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/S21-blocked-specification.md",
+    "docs/implementation/keyboard_interaction-v03/evidence/S21.json",
     "docs/implementation/keyboard_interaction-v03/evidence/S27.json",
     "docs/implementation/keyboard_interaction-v03/progress.json"
   ],
@@ -442,10 +444,10 @@
   ],
   "remaining_risks": [
     "Native Wayland physical input and installed-release live tasks were not qualified; the implementation remains unqualified for those journeys.",
-    "S20 is blocked by missing virtual-keyboard support and S21 remains blocked without production drag implementation.",
+    "S20 is blocked by missing virtual-keyboard support; S21 is blocked_specification by the conflicting conditional-status rules and has no production drag implementation.",
     "S25 callback latency and overlay p95 remain above C17 investigation/reference thresholds; the host was loaded and no controlled low-load repeat was available.",
     "S23/S24/S25 research no-go outcomes do not provide independent-frame semantics, an accessibility provider, or a production label-strategy change.",
-    "The documented S21 conditional status instruction conflicts with the evidence contract: not_applicable requires S20 research_no_go, while S20 is blocked_environment. The evidence ledger preserves the observed statuses."
+    "The documented S21 conditional status instruction conflicts with the evidence contract: not_applicable requires S20 research_no_go, while S20 is blocked_environment. S21 is recorded blocked_specification under C23."
   ],
   "not_run_reasons": [
     "The nested Weston compositor does not expose the virtual-keyboard protocol required by wtype, so native key/pointer task qualification could not run.",

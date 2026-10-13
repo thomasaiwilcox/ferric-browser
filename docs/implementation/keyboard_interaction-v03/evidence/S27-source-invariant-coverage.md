@@ -28,7 +28,7 @@ Reviewed against integrated source commit `7dbfb14af070c2494077ca6342ad009cefb41
 | UI-018 | Fixture pass: visible target search, exact record meaning, confirmation, and replacement boundaries passed their existing tests. Virtualised live sites remain unqualified. |
 | UI-019 | Capability-gated: S23 records `research_no_go` for the independent frame provider; current cross-origin and closed-root boundaries passed in the fresh WebEngine suite. |
 | UI-020 | Fixture/research bounded: T009 privacy tests passed; S22–S24 provider investigations remain no-go. No page values or labels were added to persistent telemetry by S25–S27. |
-| UI-021 | Blocked: S20 remains `blocked_environment`; S21 remains blocked with no production drag UI. Cancellation cleanup does not imply rollback of site effects. |
+| UI-021 | Blocked: S20 remains `blocked_environment`; S21 is `blocked_specification` because its conditional status rules conflict. No production drag UI exists. Cancellation cleanup does not imply rollback of site effects. |
 | UI-022 | Capability-gated: S22 records `research_no_go`; editor focus is not promoted to generic rich writeback. |
 | UI-023 | Measured, unresolved: S25 sampling met its warm-up/sample protocol, but callback p95 crossed the C17 relative investigation threshold and overlay p95 exceeded its reference ambition. See `S25.json` and raw S25 performance logs. |
 | UI-024 | Preserved: missing physical/live tests remain `not_run` or blocked; neither startup smoke nor offscreen Qt is treated as Wayland. S27 reports the gaps explicitly. |
@@ -51,7 +51,7 @@ The table is generated from the canonical traceability ledger and final `progres
 | A-08 | C04, C13, C14 | S13 `implemented_unqualified`; S14 `implemented_unqualified` |
 | A-09 | C05, C14, C15 | S14 `implemented_unqualified`; S15 `implemented_unqualified` |
 | A-10 | C16, C21 | S16 `implemented_unqualified`; S25 `research_no_go` |
-| A-11 | C06, C19 | S04 `implemented_unqualified`; S19 `implemented_unqualified`; S20 `blocked_environment`; S21 `blocked_environment`; S26 `complete` |
+| A-11 | C06, C19 | S04 `implemented_unqualified`; S19 `implemented_unqualified`; S20 `blocked_environment`; S21 `blocked_specification`; S26 `complete` |
 | A-12 | C07, C20 | S05 `implemented_unqualified`; S22 `research_no_go` |
 | A-13 | C13, C15, C20 | S13 `implemented_unqualified`; S15 `implemented_unqualified`; S23 `research_no_go`; S24 `research_no_go` |
 | A-14 | C12, C18 | S10 `implemented_unqualified`; S18 `implemented_unqualified` |
@@ -85,7 +85,7 @@ The table is generated from the canonical traceability ledger and final `progres
 | WEBAPP-014 | C04, C06, C15 | S02 `implemented_unqualified`; S04 `implemented_unqualified`; S15 `implemented_unqualified` |
 | WEBAPP-015 | C16 | S16 `implemented_unqualified` |
 | WEBAPP-016 | C12 | S10 `implemented_unqualified` |
-| WEBAPP-017 | C19 | S19 `implemented_unqualified`; S20 `blocked_environment`; S21 `blocked_environment` |
+| WEBAPP-017 | C19 | S19 `implemented_unqualified`; S20 `blocked_environment`; S21 `blocked_specification` |
 | WEBAPP-018 | C20 | S22 `research_no_go` |
 | WEBAPP-019 | C18 | S02 `implemented_unqualified`; S18 `implemented_unqualified` |
 | WEBAPP-020 | C18, C22 | S18 `implemented_unqualified`; S27 `implemented_unqualified` |

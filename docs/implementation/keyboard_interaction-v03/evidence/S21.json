@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "slice_id": "S21",
+  "status": "blocked_specification",
+  "commit": "ad21eab1dee2774f9e41eae2cc7a7eabb8071bc7",
+  "environment": {
+    "os": "Linux 7.2.3-arch1-3 x86_64",
+    "cpu": "Intel Core i5-7200U @ 2.50 GHz; 4 logical CPUs",
+    "qt": "Qt 6.11.2; QtWebEngine 6.11.2",
+    "chromium": "QtWebEngine Chromium 140.0.0.0",
+    "rustc": "1.98.0 (88d9e12ae 2026-08-18)",
+    "compositor": "Nested Weston startup passed; wtype cannot access the virtual-keyboard protocol.",
+    "scope": "S21 implementation was not entered. S20 remains blocked_environment with no capability decision; no production drag UI/state was added."
+  },
+  "changed_files": [
+    "docs/implementation/keyboard_interaction-v03/evidence/S21-blocked-specification.md",
+    "docs/implementation/keyboard_interaction-v03/evidence/S21.json",
+    "docs/implementation/keyboard_interaction-v03/progress.json"
+  ],
+  "baseline_comparison": "No S21 production implementation is present. S20's test-only offscreen probe is feasibility evidence and cannot authorize or qualify the conditional S21 drag UI/state machine.",
+  "test_results": [
+    {
+      "test_id": "T010",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo test --workspace --locked",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-workspace-tests.log",
+      "observations": [
+        "Owner-bound one-shot local palette and pointer permit tests passed as shared provenance checks; they do not implement or qualify drag."
+      ]
+    },
+    {
+      "test_id": "T010",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "ctest --test-dir target/native-insert --verbose",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-native-qt-offscreen.log",
+      "observations": [
+        "The existing local native UI handoff/control and routing cases passed; this is shared contract evidence, not S21 drag evidence."
+      ]
+    },
+    {
+      "test_id": "T048",
+      "level": "native-qt-offscreen",
+      "result": "not_run",
+      "command": "Not attempted: S21 is gated on an S20 go decision and no S21 implementation was created.",
+      "commit": "ad21eab1dee2774f9e41eae2cc7a7eabb8071bc7",
+      "log": null,
+      "reason": "S20 is blocked_environment, not go. Its S20-only feasibility probe cannot serve as an S21 implementation test.",
+      "observations": []
+    },
+    {
+      "test_id": "T048",
+      "level": "native-wayland",
+      "result": "not_run",
+      "command": "cargo xtask test wayland",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-wayland-smoke.log",
+      "reason": "The nested compositor lacks the virtual-keyboard protocol required by wtype; only startup smoke ran and no native pointer input was sent.",
+      "observations": []
+    },
+    {
+      "test_id": "T049",
+      "level": "native-qt-offscreen",
+      "result": "not_run",
+      "command": "Not attempted: S21 is gated on an S20 go decision and no S21 implementation was created.",
+      "commit": "ad21eab1dee2774f9e41eae2cc7a7eabb8071bc7",
+      "log": null,
+      "reason": "The S20 cancellation experiment does not exercise an S21 UI path; no S21 native teardown behavior can be claimed.",
+      "observations": []
+    },
+    {
+      "test_id": "T049",
+      "level": "native-wayland",
+      "result": "not_run",
+      "command": "cargo xtask test wayland",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-wayland-smoke.log",
+      "reason": "The nested compositor lacks the virtual-keyboard protocol required by wtype; no native gesture or cancellation journey was sent.",
+      "observations": []
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask check",
+      "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
+      "log": "evidence/S27-xtask-check.log",
+      "observations": [
+        "Existing registry/help/documentation and resource checks passed. S21 added no command, setting, IPC path, or resource."
+      ]
+    }
+  ],
+  "capability_decision": null,
+  "capability_report": null,
+  "review_kind": "self-review",
+  "scope_amendments": [],
+  "remaining_risks": [
+    "S21 remains blocked until the conditional-status contradiction is resolved and S20 reaches an evidence-backed go decision; no drag capability is available."
+  ],
+  "not_run_reasons": [
+    "S20's required physical Wayland evidence could not run because the nested compositor lacks the virtual-keyboard protocol.",
+    "The goal prompt/S21 card say not_applicable when S20 is not go, while the evidence README and validator require S20 research_no_go. S20 is environment-blocked, so neither a technical no-go nor not_applicable can be recorded truthfully under all current instructions."
+  ],
+  "next_ready_slices": []
+}

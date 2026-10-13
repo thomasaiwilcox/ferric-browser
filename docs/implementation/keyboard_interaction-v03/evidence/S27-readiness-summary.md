@@ -10,7 +10,7 @@
 | --- | --- |
 | S01–S19 interaction implementation | Implemented in the checkout; slice statuses remain `implemented_unqualified`, with claims limited to recorded tests and fixtures |
 | S20 bounded drag feasibility | `blocked_environment`; the offscreen probe is not a Wayland capability decision |
-| S21 conditional drag implementation | `blocked_environment`; no production drag UI/state machine was added |
+| S21 conditional drag implementation | `blocked_specification`; no production drag UI/state machine was added |
 | S22 advanced editor/provider research | `research_no_go`; no generic rich-editor writeback capability |
 | S23 independent frame provider | `research_no_go`; no parent-world cross-origin access expansion |
 | S24 accessibility provider | `research_no_go`; existing visual fallback remains |
@@ -25,6 +25,6 @@ No new keybinding, wheel policy, drag capability, rich-editor writeback, accessi
 - Nested Wayland startup works, but `wtype` cannot access the compositor virtual-keyboard protocol. No physical key or pointer journey was sent.
 - No installed Ferric release, authorised disposable live profile, or test account was available; no live-site compatibility is claimed.
 - S25's repeated 500-target callback rows exceed the C17 relative investigation threshold, and 500-marker overlay p95 remains above its 200 ms reference ambition. There was no controlled low-load repeat.
-- S20 is `blocked_environment` with no capability decision. Although the goal prompt says S21 is `not_applicable` whenever S20 is not `go`, the evidence README and validator permit S21 `not_applicable` only after an evidenced S20 `research_no_go`. The ledger preserves S20/S21 as blocked rather than inventing a technical no-go.
+- S20 is `blocked_environment` with no capability decision. The goal prompt and S21 card say `not_applicable` whenever S20 is not `go`, but the evidence README and validator permit S21 `not_applicable` only after an evidenced S20 `research_no_go`. The ledger marks S21 `blocked_specification` rather than inventing a technical no-go or bypassing the validator.
 
 Publishing, installation into the daily profile, and live account testing remain separate user actions.

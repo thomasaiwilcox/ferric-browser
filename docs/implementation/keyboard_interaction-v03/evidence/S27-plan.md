@@ -23,6 +23,6 @@ The integrated source commit assessed by the gates is `7dbfb14af070c2494077ca634
 
 ## Release boundary
 
-Physical Wayland input cannot be qualified in this nested compositor because its virtual-keyboard protocol is unavailable. No authorised live account/profile or installed Ferric release was present. S20 therefore remains `blocked_environment`, S21 remains `blocked_environment` without an implementation, and the S21 `not_applicable` wording is not applied because the pack evidence contract and validator require an evidenced S20 `research_no_go` first.
+Physical Wayland input cannot be qualified in this nested compositor because its virtual-keyboard protocol is unavailable. No authorised live account/profile or installed Ferric release was present. S20 remains `blocked_environment`. S21 is recorded as `blocked_specification`: the goal prompt/card direct `not_applicable` when S20 is not `go`, while the evidence contract/validator require an evidenced S20 `research_no_go`; the prompt also forbids treating missing environment as a technical no-go.
 
 S25 performance measurements remain the latest runtime measurements because S26 and S27 did not change production code. Their callback and overlay threshold misses remain release risks.
