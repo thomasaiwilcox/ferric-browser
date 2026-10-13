@@ -75,6 +75,14 @@ production `FerricPagePointerAdapter`. It records the pointer/mouse sequence,
 offscreen Qt event evidence; it does not qualify physical Wayland delivery or
 application-level activation, and those limits remain in the slice evidence.
 
+`pointerAdapterSceneMapping` exercises the production adapter with mouse-accepting
+Qt Quick items. It verifies direct and ancestor translation, rotation and scale,
+and window position/size changes during move, press and first release. A changed
+mapping must send no initial press, preserve cleanup after an attempted press and
+prevent a second gesture. A stable transformed view remains usable. These are
+offscreen component regressions; DPR application cases separately cover stable
+display scales, while physical monitor transitions remain manual qualification.
+
 S19's `pointerAdapterDoubleClickSequence` fixture uses one production-adapter
 request and records the native DOM sequence, details, trust flags, transient
 activation, URL stability, acknowledgement count, duplicate-request rejection,
