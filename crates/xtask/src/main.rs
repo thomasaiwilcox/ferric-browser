@@ -1926,9 +1926,16 @@ fn run_wayland_input_qualification() -> Result<(), String> {
     check_nested_wayland_requirements()?;
     run(
         "cargo",
-        &["build", "-p", "ferric-browser", "--locked", "--offline"],
+        &[
+            "build",
+            "--release",
+            "-p",
+            "ferric-browser",
+            "--locked",
+            "--offline",
+        ],
     )?;
-    run_nested_wayland_smoke(Path::new("target/debug/ferric-browser"), true)
+    run_nested_wayland_smoke(Path::new("target/release/ferric-browser"), true)
 }
 
 #[allow(clippy::too_many_lines)]
