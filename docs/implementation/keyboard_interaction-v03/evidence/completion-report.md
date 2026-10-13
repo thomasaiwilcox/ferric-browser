@@ -1,5 +1,9 @@
 # Keyboard interaction completion work
 
+Later review repairs and integrated verification are recorded in the
+[repair report](review-repairs-report.md). The source revision and results below
+remain the historical completion baseline.
+
 This report supplements the original slice records. Historical measurements and
 failed attempts remain in the ledger. The final test logs and source revision
 are recorded in `completion-validation.json`; qualification statuses remain

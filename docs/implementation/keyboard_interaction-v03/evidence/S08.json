@@ -279,5 +279,11 @@
     "report": "evidence/completion-report.md",
     "status": "implemented_unqualified",
     "scope": "New composed application observations supplement historical component evidence; no missing qualification level is inferred."
+  },
+  "review_repair_followup": {
+    "commit": "5410c038409a835d271a08b42e96ea6dd434d6f9",
+    "report": "evidence/review-repairs-report.md",
+    "validation": "evidence/review-repairs-validation.json",
+    "scope": "Bounded local regression and composed application evidence; qualification status unchanged."
   }
 }

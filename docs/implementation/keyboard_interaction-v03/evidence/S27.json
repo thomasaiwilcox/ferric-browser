@@ -587,5 +587,11 @@
     "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
     "report": "evidence/completion-report.md",
     "scope": "Measured overlay allocation reduction; no new label/provider capability or budget change."
+  },
+  "review_repair_followup": {
+    "commit": "5410c038409a835d271a08b42e96ea6dd434d6f9",
+    "report": "evidence/review-repairs-report.md",
+    "validation": "evidence/review-repairs-validation.json",
+    "scope": "Bounded local regression and composed application evidence; qualification status unchanged."
   }
 }

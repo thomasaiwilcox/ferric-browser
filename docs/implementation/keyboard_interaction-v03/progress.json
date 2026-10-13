@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "note": "Active implementation ledger. Test results live in per-slice evidence; the matrix remains the immutable plan.",
+  "note": "Active implementation ledger. Test results live in per-slice evidence; the matrix remains the immutable plan. Subsequent review repairs are recorded in evidence/review-repairs-report.md; qualification statuses remain unchanged.",
   "slices": [
     {
       "id": "S00",

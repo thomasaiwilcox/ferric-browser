@@ -1,0 +1,23 @@
+********* Start testing of ApplicationTests *********
+Config: Using QtTest library 6.11.2, Qt 6.11.2 (x86_64-little_endian-lp64 shared (dynamic) release build; by GCC 16.2.1 20260810), omarchy 4.0.4
+PASS   : ApplicationTests::initTestCase()
+QINFO  : ApplicationTests::reviewSelectorReplacement() loading production QML
+QWARN  : ApplicationTests::reviewSelectorReplacement() QRhiGles2: Failed to create temporary context
+QWARN  : ApplicationTests::reviewSelectorReplacement() QRhiGles2: Failed to create context
+QWARN  : ApplicationTests::reviewSelectorReplacement() Failed to create RHI for backend: OpenGL
+QINFO  : ApplicationTests::reviewSelectorReplacement() production QML created
+QWARN  : ApplicationTests::reviewSelectorReplacement() GPUInfo not initialized on GpuInfoUpdate
+QINFO  : ApplicationTests::reviewSelectorReplacement() waiting for URL "about:blank"
+[2549257:2549257:1013/141014.173491:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+QINFO  : ApplicationTests::reviewSelectorReplacement() fixture loaded "http://127.0.0.1:46275/fixture.html" "URL changed"
+QINFO  : ApplicationTests::reviewSelectorReplacement() PRODUCTION_POLICY {"configuration_revision":2,"family":"all","policies":{"all":{"policy":{"mode":"replace","selectors":[]},"provenance":["effective-config"]},"buttons":{"policy":null,"provenance":["built-in"]},"images":{"policy":null,"provenance":["built-in"]},"inputs":{"policy":null,"provenance":["built-in"]},"links":{"policy":null,"provenance":["built-in"]},"media":{"policy":null,"provenance":["built-in"]},"scrollables":{"policy":{"mode":"replace","selectors":[]},"provenance":["effective-config"]}},"selector_revision":"bf151a4ac902a2de"}
+QINFO  : ApplicationTests::reviewSelectorReplacement() OBSERVED_TARGETS 12
+FAIL!  : ApplicationTests::reviewSelectorReplacement() Compared values are not the same
+   Actual   (labels): 12
+   Expected (0)     : 0
+   Loc: [/home/tom/Projects/RustBrowser/target/review-application/tst_application.cpp(1019)]
+QWARN  : ApplicationTests::reviewSelectorReplacement() QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+QWARN  : ApplicationTests::reviewSelectorReplacement() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_196(0x5602a48bd260, "ferric_browserWindow") is not a function
+PASS   : ApplicationTests::cleanupTestCase()
+Totals: 2 passed, 1 failed, 0 skipped, 0 blacklisted, 2162ms
+********* Finished testing of ApplicationTests *********

@@ -1,0 +1,22 @@
+********* Start testing of NativeInsertTest *********
+Config: Using QtTest library 6.11.2, Qt 6.11.2 (x86_64-little_endian-lp64 shared (dynamic) release build; by GCC 16.2.1 20260810), omarchy 4.0.4
+QWARN  : NativeInsertTest::initTestCase() QRhiGles2: Failed to create temporary context
+QWARN  : NativeInsertTest::initTestCase() QRhiGles2: Failed to create context
+QWARN  : NativeInsertTest::initTestCase() Failed to create RHI for backend: OpenGL
+QWARN  : NativeInsertTest::initTestCase() GPUInfo not initialized on GpuInfoUpdate
+PASS   : NativeInsertTest::initTestCase()
+PASS   : NativeInsertTest::pointerAdapterInvalidation(move-blocked)
+PASS   : NativeInsertTest::pointerAdapterInvalidation(press-blocked)
+PASS   : NativeInsertTest::pointerAdapterInvalidation(move-disabled)
+PASS   : NativeInsertTest::pointerAdapterInvalidation(press-disabled)
+PASS   : NativeInsertTest::pointerAdapterInvalidation(move-replacement)
+PASS   : NativeInsertTest::pointerAdapterInvalidation(press-replacement)
+PASS   : NativeInsertTest::pointerAdapterInvalidation(move-resize)
+PASS   : NativeInsertTest::pointerAdapterInvalidation(press-resize)
+PASS   : NativeInsertTest::pointerAdapterInvalidation(move-deactivated)
+PASS   : NativeInsertTest::pointerAdapterInvalidation(press-deactivated)
+QINFO  : NativeInsertTest::pointerAdapterDoubleClickSequence() T046 Qt/WebEngine double-click event evidence: [{"activation":true,"detail":0,"trusted":true,"type":"pointerdown"},{"activation":true,"detail":1,"trusted":true,"type":"mousedown"},{"activation":true,"detail":0,"trusted":true,"type":"pointerup"},{"activation":true,"detail":1,"trusted":true,"type":"mouseup"},{"activation":true,"detail":1,"trusted":true,"type":"click"},{"activation":true,"detail":0,"trusted":true,"type":"pointerdown"},{"activation":true,"detail":2,"trusted":true,"type":"mousedown"},{"activation":true,"detail":0,"trusted":true,"type":"pointerup"},{"activation":true,"detail":2,"trusted":true,"type":"mouseup"},{"activation":true,"detail":2,"trusted":true,"type":"click"},{"activation":true,"detail":2,"trusted":true,"type":"dblclick"}]
+PASS   : NativeInsertTest::pointerAdapterDoubleClickSequence()
+PASS   : NativeInsertTest::cleanupTestCase()
+Totals: 13 passed, 0 failed, 0 skipped, 0 blacklisted, 1763ms
+********* Finished testing of NativeInsertTest *********
