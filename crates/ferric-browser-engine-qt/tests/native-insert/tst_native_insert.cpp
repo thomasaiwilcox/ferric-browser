@@ -19,6 +19,7 @@
 #include <QtWebEngineQuick/qtwebenginequickglobal.h>
 #include <algorithm>
 #include <memory>
+#include <functional>
 
 // Test-only held-pointer experiment. Production Ferric currently exposes only
 // discrete pointer actions; this helper deliberately stays inside the native
@@ -1022,6 +1023,67 @@ WebEngineView {
     // T046: one production-adapter request mirrors Qt's public
     // Press-Release-Press-DoubleClick-Release sequence and exposes the actual
     // WebEngine DOM order rather than a two-click JS substitute.
+    void pointerAdapterInvalidation_data() {
+        QTest::addColumn<QString>("invalidation");
+        QTest::addColumn<bool>("afterPress");
+        for (const auto &kind : {"blocked", "disabled", "replacement", "resize", "deactivated"}) {
+            QTest::newRow(qPrintable(QString("move-%1").arg(kind))) << QString(kind) << false;
+            QTest::newRow(qPrintable(QString("press-%1").arg(kind))) << QString(kind) << true;
+        }
+    }
+    void pointerAdapterInvalidation() {
+        QFETCH(QString, invalidation);
+        QFETCH(bool, afterPress);
+        QQuickWindow surface;
+        surface.resize(320, 240);
+        QQuickItem target(surface.contentItem()), replacement(surface.contentItem());
+        target.setWidth(320); target.setHeight(240);
+        replacement.setWidth(320); replacement.setHeight(240);
+        surface.show(); surface.requestActivate();
+        QTRY_VERIFY(surface.isActive());
+        FerricPagePointerAdapter adapter;
+        adapter.setTargetItem(&target); adapter.setTargetWindow(&surface); adapter.setEnabled(true);
+        struct Observer : QObject {
+            QWindow *surface;
+            std::function<void()> invalidate;
+            bool afterPress;
+            int presses = 0, releases = 0;
+            bool changed = false;
+            bool eventFilter(QObject *watched, QEvent *event) override {
+                if (watched != surface) return false;
+                if (event->type() == QEvent::MouseButtonPress) ++presses;
+                if (event->type() == QEvent::MouseButtonRelease) ++releases;
+                if (!changed && event->type() == (afterPress ? QEvent::MouseButtonPress : QEvent::MouseMove)) {
+                    changed = true; invalidate();
+                }
+                return false;
+            }
+        } observer;
+        observer.surface = &surface; observer.afterPress = afterPress;
+        QQuickWindow other;
+        observer.invalidate = [&] {
+            if (invalidation == "blocked") adapter.setInputBlocked(true);
+            else if (invalidation == "disabled") adapter.setEnabled(false);
+            else if (invalidation == "replacement") adapter.setTargetItem(&replacement);
+            else if (invalidation == "resize") target.setWidth(300);
+            else { other.resize(100,100); other.show(); other.requestActivate(); QTest::qWait(30); }
+        };
+        surface.installEventFilter(&observer);
+        QSignalSpy acknowledgements(&adapter, &FerricPagePointerAdapter::dispatchAcknowledged);
+        const auto serial = adapter.surfaceSerial(), revision = adapter.surfaceRevision();
+        adapter.dispatch("invalidated-request", "invalidated-session", serial, revision, 50, 50, "left");
+        QVERIFY(observer.changed);
+        QCOMPARE(observer.presses, afterPress ? 1 : 0);
+        QCOMPARE(observer.releases, afterPress && invalidation != "replacement" ? 1 : 0);
+        QCOMPARE(acknowledgements.size(), 1);
+        QCOMPARE(acknowledgements.at(0).at(4).toString(), afterPress ? QString("uncertain") : QString("rejected"));
+        // An invalidated request cannot restart with its captured surface stamp.
+        adapter.setInputBlocked(false); target.setWidth(320); adapter.setTargetItem(&target);
+        surface.requestActivate(); QTRY_VERIFY(surface.isActive());
+        adapter.dispatch("invalidated-request", "invalidated-session", serial, revision, 50, 50, "left");
+        QCOMPARE(observer.presses, afterPress ? 1 : 0);
+        surface.removeEventFilter(&observer);
+    }
     void pointerAdapterDoubleClickSequence() {
         normal();
         const QString documentUrl = browserJs("location.href").toString();

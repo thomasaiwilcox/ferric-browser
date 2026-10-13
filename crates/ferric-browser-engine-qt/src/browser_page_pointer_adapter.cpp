@@ -249,28 +249,34 @@ void FerricPagePointerAdapter::dispatch(const QString &requestId,
     const bool moved = dispatchTarget && dispatchWindow
         && dispatchTarget->window() == dispatchWindow.data()
         && QCoreApplication::sendEvent(dispatchWindow.data(), &move);
-    bool delivered = moved;
-    if (click && moved && dispatchTarget && dispatchWindow) {
-        const auto sameTarget = [&] {
-            return dispatchTarget && dispatchWindow && targetItem_ == dispatchTarget
-                && targetWindow_ == dispatchWindow
-                && dispatchTarget->window() == dispatchWindow.data();
-        };
-        const auto currentSurface = [&] {
-            return sameTarget() && enabled_ && !inputBlocked_ && validTarget()
-                && surfaceSerial_ == serial && surfaceRevision_ == revision
-                && pendingRequestId_ == requestId && pendingSessionId_ == sessionId;
-        };
+    const auto sameTarget = [&] {
+        return dispatchTarget && dispatchWindow && targetItem_ == dispatchTarget
+            && targetWindow_ == dispatchWindow
+            && dispatchTarget->window() == dispatchWindow.data();
+    };
+    const auto currentSurface = [&] {
+        return sameTarget() && enabled_ && !inputBlocked_ && validTarget()
+            && surfaceSerial_ == serial && surfaceRevision_ == revision
+            && pendingRequestId_ == requestId && pendingSessionId_ == sessionId;
+    };
+    bool pressAttempted = false;
+    bool delivered = moved && currentSurface();
+    if (click && delivered) {
         QMouseEvent press(QEvent::MouseButtonPress, windowPosition, windowPosition, global,
                           button, button,
                           Qt::NoModifier, Qt::MouseEventSynthesizedByApplication);
         QMouseEvent release(QEvent::MouseButtonRelease, windowPosition, windowPosition,
                             global, button, Qt::NoButton, Qt::NoModifier,
                             Qt::MouseEventSynthesizedByApplication);
-        const bool pressed = QCoreApplication::sendEvent(dispatchWindow.data(), &press);
-        const bool released = sameTarget()
+        // The move can synchronously change chrome, ownership or geometry.
+        // Never begin a button gesture after an observed invalidation.
+        pressAttempted = currentSurface();
+        const bool pressed = pressAttempted
+            && QCoreApplication::sendEvent(dispatchWindow.data(), &press);
+        // Only clean up a gesture we attempted, on its unchanged receiver.
+        const bool released = pressAttempted && sameTarget()
             && QCoreApplication::sendEvent(dispatchWindow.data(), &release);
-        delivered = pressed && released;
+        delivered = pressed && released && currentSurface();
         if (delivered && doubleClick) {
             if (!currentSurface()) {
                 delivered = false;
@@ -279,7 +285,8 @@ void FerricPagePointerAdapter::dispatch(const QString &requestId,
                                         windowPosition, global, button, button,
                                         Qt::NoModifier,
                                         Qt::MouseEventSynthesizedByApplication);
-                const bool secondPressed = currentSurface()
+                const bool secondPressAttempted = currentSurface();
+                const bool secondPressed = secondPressAttempted
                     && QCoreApplication::sendEvent(dispatchWindow.data(), &secondPress);
                 QMouseEvent doubleClickEvent(QEvent::MouseButtonDblClick, windowPosition,
                                              windowPosition, global, button, button,
@@ -291,7 +298,7 @@ void FerricPagePointerAdapter::dispatch(const QString &requestId,
                                           windowPosition, global, button, Qt::NoButton,
                                           Qt::NoModifier,
                                           Qt::MouseEventSynthesizedByApplication);
-                const bool secondReleased = sameTarget()
+                const bool secondReleased = secondPressAttempted && sameTarget()
                     && QCoreApplication::sendEvent(dispatchWindow.data(), &secondRelease);
                 delivered = secondPressed && doubleClicked && secondReleased
                     && currentSurface();
@@ -300,7 +307,9 @@ void FerricPagePointerAdapter::dispatch(const QString &requestId,
     }
     dispatching_ = false;
     acknowledge(requestId, sessionId, serialText, revisionText,
-                delivered ? QStringLiteral("delivered") : QStringLiteral("rejected"));
+                delivered ? QStringLiteral("delivered")
+                          : pressAttempted ? QStringLiteral("uncertain")
+                                           : QStringLiteral("rejected"));
 }
 
 bool FerricPagePointerAdapter::eventFilter(QObject *watched, QEvent *event)
