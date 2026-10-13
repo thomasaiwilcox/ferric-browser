@@ -147,6 +147,17 @@ Item {
                                            sourceViewport && sourceViewport.height,
                                            Math.max(0.75, Math.min(2.0, markerScale)))
 
+    // Only one target can be active. Avoid constructing an invisible outline
+    // delegate for every other marker in dense collections.
+    property var activeHint: {
+        var label = String(hintState && hintState.active_label || "")
+        var values = laidOutHints
+        for (var index = 0; index < values.length; ++index) {
+            if (String(values[index].label) === label) return values[index]
+        }
+        return null
+    }
+
     Repeater {
         model: hintOverlay.laidOutHints
         delegate: Rectangle {
@@ -198,7 +209,8 @@ Item {
     }
 
     Repeater {
-        model: hintOverlay.laidOutHints
+        objectName: "activeHintOutlineRepeater"
+        model: hintOverlay.activeHint ? [hintOverlay.activeHint] : []
         delegate: Rectangle {
             visible: hintOverlay.active(modelData.label)
             x: modelData.x - 2
