@@ -1,0 +1,3 @@
+PASS: pack checks
+NOTE: Structural success is not implementation/test completion; Ferric correctness is not checked.
+{"contracts": 24, "invariants": 26, "planned_tests": 57, "slices": 28, "source_items": 55}

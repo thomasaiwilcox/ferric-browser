@@ -1,0 +1,139 @@
+$ cmake --build /home/tom/Projects/RustBrowser/target/qml-tests --parallel 2
+[  0%] Built target qml_tests_autogen_timestamp_deps
+[ 25%] Built target qml_tests_autogen
+[100%] Built target qml_tests
+$ cc -I/usr/include/at-spi-2.0 -I/usr/include/dbus-1.0 -I/usr/lib/dbus-1.0/include -I/usr/include/glib-2.0 -I/usr/lib/glib-2.0/include -I/usr/include/libmount -I/usr/include/blkid -I/usr/include/sysprof-6 -pthread /home/tom/Projects/RustBrowser/crates/ferric-browser-engine-qt/tests/accessibility-probes/atspi_probe.c -o /home/tom/Projects/RustBrowser/target/qml-tests/s24-atspi-probe -latspi -ldbus-1 -lglib-2.0 -lgobject-2.0 -lglib-2.0
+$ dbus-run-session -- /home/tom/.local/share/mise/installs/python/latest/bin/python3 /home/tom/Projects/RustBrowser/crates/ferric-browser-engine-qt/tests/accessibility-probes/run_probe.py --isolated
+$ gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus --method org.freedesktop.DBus.Properties.Get org.a11y.Status IsEnabled
+dbus-daemon[2106770]: [session uid=1000 pid=2106770 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.0' (uid=1000 pid=2106772 comm="gdbus call --session --dest org.a11y.Bus --object-")
+dbus-daemon[2106770]: [session uid=1000 pid=2106770 pidfd=5] Successfully activated service 'org.a11y.Bus'
+(<false>,)
+$ gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus --method org.freedesktop.DBus.Properties.Get org.a11y.Status ScreenReaderEnabled
+(<false>,)
+$ gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus --method org.a11y.Bus.GetAddress
+('unix:path=/tmp/ferric-s24-atspi-7tnkz4xu/runtime/at-spi/bus_0',)
+$ gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus --method org.freedesktop.DBus.Properties.Set org.a11y.Status IsEnabled '<true>'
+dbus-daemon[2106770]: [session uid=1000 pid=2106770 pidfd=5] Activating service name='org.freedesktop.systemd1' requested by ':1.4' (uid=1000 pid=2106790 comm="/usr/bin/dbus-broker-launch --config-file=/usr/sha")
+dbus-daemon[2106770]: [session uid=1000 pid=2106770 pidfd=5] Activated service 'org.freedesktop.systemd1' failed: Process org.freedesktop.systemd1 exited with status 1
+()
+$ gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus --method org.freedesktop.DBus.Properties.Set org.a11y.Status ScreenReaderEnabled '<true>'
+()
+dbus-daemon[2106770]: [session uid=1000 pid=2106770 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.7' (uid=1000 pid=2106817 comm="/home/tom/Projects/RustBrowser/target/qml-tests/qm")
+dbus-daemon[2106770]: [session uid=1000 pid=2106770 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.9' (uid=1000 pid=2106820 comm="/usr/lib/xdg-desktop-portal")
+dbus-daemon[2106770]: [session uid=1000 pid=2106770 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
+dbus-daemon[2106770]: [session uid=1000 pid=2106770 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.9' (uid=1000 pid=2106820 comm="/usr/lib/xdg-desktop-portal")
+dbus-daemon[2106770]: [session uid=1000 pid=2106770 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+dbus-daemon[2106770]: [session uid=1000 pid=2106770 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.9' (uid=1000 pid=2106820 comm="/usr/lib/xdg-desktop-portal")
+dbus-daemon[2106770]: [session uid=1000 pid=2106770 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.12' (uid=1000 pid=2106845 comm="/usr/lib/xdg-desktop-portal-gtk")
+dbus-daemon[2106770]: [session uid=1000 pid=2106770 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
+dbus-daemon[2106770]: [session uid=1000 pid=2106770 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.desktop.gtk'
+
+(/usr/lib/xdg-desktop-portal:2106820): xdg-desktop-portal-WARNING **: 01:38:22.140: Failed to load RealtimeKit property: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name is not activatable
+
+(/usr/lib/xdg-desktop-portal:2106820): xdg-desktop-portal-WARNING **: 01:38:22.141: Failed to load RealtimeKit property: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name is not activatable
+
+(/usr/lib/xdg-desktop-portal:2106820): xdg-desktop-portal-WARNING **: 01:38:22.142: Failed to load RealtimeKit property: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name is not activatable
+
+(/usr/lib/xdg-desktop-portal:2106820): xdg-desktop-portal-WARNING **: 01:38:22.157: Failed to connect to PipeWire: Couldn't connect to PipeWire
+dbus-daemon[2106770]: [session uid=1000 pid=2106770 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.hyprland' requested by ':1.9' (uid=1000 pid=2106820 comm="/usr/lib/xdg-desktop-portal")
+dbus-daemon[2106770]: [session uid=1000 pid=2106770 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.desktop.hyprland'
+[LOG] Initializing xdph...
+[LOG] XDG_CURRENT_DESKTOP set to Hyprland
+[LOG] Gathering exported interfaces
+[LOG]  | Got interface: wl_seat (ver 9)
+[LOG]  | Got interface: wl_data_device_manager (ver 3)
+[LOG]  | Got interface: wl_compositor (ver 6)
+[LOG]  | Got interface: wl_subcompositor (ver 1)
+[LOG]  | Got interface: wl_shm (ver 2)
+[LOG]  | Got interface: wp_viewporter (ver 1)
+[LOG]  | Got interface: wp_tearing_control_manager_v1 (ver 1)
+[LOG]  | Got interface: wp_fractional_scale_manager_v1 (ver 1)
+[LOG]  | Got interface: zxdg_output_manager_v1 (ver 3)
+[LOG]  | Got interface: wp_cursor_shape_manager_v1 (ver 2)
+[LOG]  | Got interface: zwp_idle_inhibit_manager_v1 (ver 1)
+[LOG]  | Got interface: zwp_relative_pointer_manager_v1 (ver 1)
+[LOG]  | Got interface: zxdg_decoration_manager_v1 (ver 2)
+[LOG]  | Got interface: wp_alpha_modifier_v1 (ver 1)
+[LOG]  | Got interface: zwlr_gamma_control_manager_v1 (ver 1)
+[LOG]  | Got interface: ext_foreign_toplevel_list_v1 (ver 1)
+[LOG]  | Got interface: zwp_pointer_gestures_v1 (ver 3)
+[LOG]  | Got interface: zwlr_foreign_toplevel_manager_v1 (ver 3)
+[LOG] [toplevel] (activate) locks: 1
+[LOG]  | Got interface: zwp_keyboard_shortcuts_inhibit_manager_v1 (ver 1)
+[LOG]  | Got interface: zwp_text_input_manager_v1 (ver 1)
+[LOG]  | Got interface: zwp_text_input_manager_v3 (ver 1)
+[LOG]  | Got interface: zwp_pointer_constraints_v1 (ver 1)
+[LOG]  | Got interface: zwlr_output_power_manager_v1 (ver 1)
+[LOG]  | Got interface: xdg_activation_v1 (ver 1)
+[LOG]  | Got interface: ext_idle_notifier_v1 (ver 2)
+[LOG]  | Got interface: hyprland_lock_notifier_v1 (ver 1)
+[LOG]  | Got interface: ext_session_lock_manager_v1 (ver 1)
+[LOG]  | Got interface: zwp_input_method_manager_v2 (ver 1)
+[LOG]  | Got interface: zwp_virtual_keyboard_manager_v1 (ver 1)
+[LOG]  | Got interface: zwlr_virtual_pointer_manager_v1 (ver 2)
+[LOG]  | Got interface: zwlr_output_manager_v1 (ver 4)
+[LOG]  | Got interface: org_kde_kwin_server_decoration_manager (ver 1)
+[LOG]  | Got interface: hyprland_focus_grab_manager_v1 (ver 1)
+[LOG]  | Got interface: zwp_tablet_manager_v2 (ver 1)
+[LOG]  | Got interface: zwlr_layer_shell_v1 (ver 5)
+[LOG]  | Got interface: wp_presentation (ver 2)
+[LOG]  | Got interface: xdg_wm_base (ver 7)
+[LOG]  | Got interface: zwlr_data_control_manager_v1 (ver 2)
+[LOG]  | Got interface: zwp_primary_selection_device_manager_v1 (ver 1)
+[LOG]  | Got interface: xwayland_shell_v1 (ver 1)
+[LOG]  | Got interface: hyprland_toplevel_mapping_manager_v1 (ver 1)
+[LOG] [toplevel mapping] registered manager
+[LOG]  | Got interface: hyprland_global_shortcuts_manager_v1 (ver 1)
+[LOG] [globalshortcuts] registered
+[LOG]  | Got interface: xdg_wm_dialog_v1 (ver 1)
+[LOG]  | Got interface: wp_single_pixel_buffer_manager_v1 (ver 1)
+[LOG]  | Got interface: wp_security_context_manager_v1 (ver 1)
+[LOG]  | Got interface: hyprland_ctm_control_manager_v1 (ver 2)
+[LOG]  | Got interface: hyprland_input_capture_manager_v1 (ver 1)
+[LOG] [input-capture] initializing input capture portal
+[LOG] [input-capture] init successful
+[LOG]  | Got interface: hyprland_surface_manager_v1 (ver 2)
+[LOG]  | Got interface: wp_content_type_manager_v1 (ver 1)
+[LOG]  | Got interface: xdg_toplevel_tag_manager_v1 (ver 1)
+[LOG]  | Got interface: xdg_system_bell_v1 (ver 1)
+[LOG]  | Got interface: vicinae_hotkey_manager_v1 (ver 1)
+[LOG]  | Got interface: ext_workspace_manager_v1 (ver 1)
+[LOG]  | Got interface: ext_data_control_manager_v1 (ver 1)
+[LOG]  | Got interface: wp_pointer_warp_v1 (ver 1)
+[LOG]  | Got interface: wp_fifo_manager_v1 (ver 1)
+[LOG]  | Got interface: zxdg_exporter_v2 (ver 1)
+[LOG]  | Got interface: zxdg_importer_v2 (ver 1)
+[LOG]  | Got interface: ext_background_effect_manager_v1 (ver 1)
+[LOG]  | Got interface: wp_commit_timing_manager_v1 (ver 1)
+[LOG]  | Got interface: zwlr_screencopy_manager_v1 (ver 3)
+[ERR] [pipewire] pw didn't allow for a context connection
+[LOG] [screencopy] init successful
+[LOG]  | Got interface: hyprland_toplevel_export_manager_v1 (ver 2)
+[LOG]  | Got interface: ext_output_image_capture_source_manager_v1 (ver 1)
+[LOG]  | Got interface: extdbus-daemon[2106770]: [session uid=1000 pid=2106770 pidfd=5] Successfully activated service 'org.freedesktop.portal.Desktop'
+$ /home/tom/Projects/RustBrowser/target/qml-tests/s24-atspi-probe
+AT-SPI tree snapshot
+node depth=0 role=desktop frame name=main bounds=0,0,1024,768
+node depth=1 role=application name=xdg-desktop-portal-gtk bounds=unavailable
+node depth=1 role=application name=qml_tests bounds=unavailable
+node depth=2 role=frame name=tst_accessibility_probes bounds=0,0,627,694
+node depth=3 role=filler name= bounds=unavailable
+node depth=4 role=document web name= bounds=unavailable
+node depth=3 role=button name=S24 QML safe action bounds=unavailable action[0]=Press action[1]=SetFocus action[2]=Press
+provider targets qml=1 web=0 closed_root=0 labeled_canvas=0
+qml press accepted=1
+qml stale target defunct=1 visible=0 still_enumerated=0 stale_press_accepted=0
+qml provider result action_once=1 exact_removal=1
+atspi helper result=0 qml=1 qml_action=1 qml_still_enumerated=0 stale_action=0
+********* Start testing of ferric_qml_tests *********
+Config: Using QtTest library 6.11.2, Qt 6.11.2 (x86_64-little_endian-lp64 shared (dynamic) release build; by GCC 16.2.1 20260810), omarchy 4.0.4
+PASS   : ferric_qml_tests::AccessibilityProviderProbes::initTestCase()
+QWARN  : ferric_qml_tests::AccessibilityProviderProbes::test_public_provider_window() qt.accessibility.atspi: AtSpiAdaptor::applicationInterface does not implement "GetApplicationBusAddress" "/org/a11y/atspi/accessible/root"
+QWARN  : ferric_qml_tests::AccessibilityProviderProbes::test_public_provider_window() qt.accessibility.atspi: Could not find accessible on path: "/org/a11y/atspi/accessible/2147483649"
+QWARN  : ferric_qml_tests::AccessibilityProviderProbes::test_public_provider_window() qt.accessibility.atspi: Could not find accessible on path: "/org/a11y/atspi/accessible/2147483649"
+PASS   : ferric_qml_tests::AccessibilityProviderProbes::test_public_provider_window()
+PASS   : ferric_qml_tests::AccessibilityProviderProbes::cleanupTestCase()
+Totals: 3 passed, 0 failed, 0 skipped, 0 blacklisted, 20166ms
+********* Finished testing of ferric_qml_tests *********
+A connection to the bus can't be made
+/bin/sh: line 1: kill: (2106880) - No such process

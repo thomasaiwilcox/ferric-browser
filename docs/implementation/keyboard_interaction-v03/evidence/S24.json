@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "slice_id": "S24",
+  "status": "research_no_go",
+  "commit": "6394a6ee43951819270ecb8f2d57bb3af666a92b",
+  "environment": {
+    "os": "Linux 7.2.3-arch1-3 x86_64",
+    "cpu": "Intel Core i5-7200U @ 2.50 GHz",
+    "qt": "Qt 6.11.2; QtWebEngine 6.11.2; package minimum Qt 6.11.2",
+    "chromium": "QtWebEngine Chromium 140.0.7339.225",
+    "atspi": "AT-SPI 2.60.6; native Wayland Qt QPA; isolated session D-Bus and registry",
+    "assistive_technology": "Orca and Accerciser are not installed; a small public AT-SPI client was used, not a screen reader.",
+    "compiler": "GCC 16.2.1 20260810",
+    "rustc": "1.98.0 (88d9e12ae 2026-08-18)",
+    "cargo": "1.98.0 (797e8a9bc 2026-08-05)",
+    "scope": "Research-only public AT-SPI probe and loopback fixture; no production provider or behavior change.",
+    "desktop_state": "Both live AT-SPI status flags and both GNOME accessibility preferences were false after the isolated probe; the probe checks private-bus addressing and the desktop preferences."
+  },
+  "changed_files": [
+    "crates/ferric-browser-engine-qt/tests/accessibility-probes/atspi_probe.c",
+    "crates/ferric-browser-engine-qt/tests/accessibility-probes/run_probe.py",
+    "crates/ferric-browser-engine-qt/tests/accessibility-probes/tst_accessibility_probes.qml",
+    "crates/ferric-browser-engine-qt/tests/fixtures/webapp-interaction/accessibility-provider.html",
+    "docs/implementation/keyboard_interaction-v03/evidence/S24-plan.md",
+    "docs/implementation/keyboard_interaction-v03/evidence/S24-accessibility-capability-report.md",
+    "docs/implementation/keyboard_interaction-v03/evidence/S24-bounded-accessibility-contract.md",
+    "docs/implementation/keyboard_interaction-v03/evidence/S24.json",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S24/accessibility-contract.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S24/atspi-probe.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S24/check.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S24/static-inspection.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S24/pack-validation.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S24/engine.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S24/pack-tests.log",
+    "docs/implementation/keyboard_interaction-v03/progress.json"
+  ],
+  "baseline_comparison": "Based on S23's recorded evidence commit af0e484. S24 adds an opt-in public AT-SPI client probe, QML test, and synthetic loopback fixture; browser production code and defaults are unchanged.",
+  "test_results": [
+    {
+      "test_id": "T035",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "6394a6ee43951819270ecb8f2d57bb3af666a92b",
+      "log": "evidence/logs/S24/engine.log",
+      "observations": [
+        "The existing cross-origin and closed-root WebEngine cases passed; semantic access remains limited to the parent-visible surface.",
+        "The engine gate passed 442 engine-crate tests, 144 QML/WebEngine tests, and native CTest 1/1."
+      ]
+    },
+    {
+      "test_id": "T035",
+      "level": "native-wayland",
+      "result": "not_run",
+      "command": "CARGO_NET_OFFLINE=true cargo xtask test wayland",
+      "commit": "8f087133eb3fb760517ae7dd81211eec6ff34c18",
+      "log": "evidence/logs/S23/wayland.log",
+      "reason": "No native keyboard journey was sent: the nested Weston path lacks the virtual-keyboard protocol required by wtype, as recorded in the existing S23 qualification."
+    },
+    {
+      "test_id": "T051",
+      "level": "static-inspection",
+      "result": "passed",
+      "command": "pkg-config --modversion Qt6Core Qt6WebEngineCore atspi-2; inspect public Qt accessibility documentation and local tool availability",
+      "commit": "6394a6ee43951819270ecb8f2d57bb3af666a92b",
+      "log": "evidence/logs/S24/static-inspection.log",
+      "observations": [
+        "The probe uses public AT-SPI and documented Qt environment/API routes only; Orca and Accerciser are absent."
+      ]
+    },
+    {
+      "test_id": "T051",
+      "level": "native-wayland",
+      "result": "passed",
+      "command": "python3 crates/ferric-browser-engine-qt/tests/accessibility-probes/run_probe.py",
+      "commit": "6394a6ee43951819270ecb8f2d57bb3af666a92b",
+      "log": "evidence/logs/S24/atspi-probe.log",
+      "observations": [
+        "The public QML button exposed its name, button role, and Press action; the action ran once and its destroyed object became defunct, left the tree, and rejected a stale press.",
+        "The QML button had no component bounds. The loaded WebEngine document exposed an unnamed document node with no button, canvas, or closed-root child semantics, so the provider capability result is no-go.",
+        "The run used native Wayland and a private AT-SPI session; it did not test a real screen reader."
+      ]
+    }
+  ],
+  "capability_decision": "no_go",
+  "capability_report": "evidence/S24-accessibility-capability-report.md",
+  "review_kind": "self-review",
+  "scope_amendments": [
+    "Added crates/ferric-browser-engine-qt/tests/accessibility-probes/ as an isolated, opt-in S24 module for the AT-SPI client and QML probe. The synthetic HTML fixture remains under the canonical tests/fixtures/webapp-interaction/ root. No production source or page-side instrumentation was added."
+  ],
+  "remaining_risks": [
+    "Orca and Accerciser are unavailable, so spoken output, focus/navigation announcements, and real screen-reader coexistence remain unqualified.",
+    "The WebEngine child-tree absence and QML bounds result are specific to the tested Qt 6.11.2 Wayland configuration; they do not establish universal Qt or platform behavior.",
+    "No production semantic provider is enabled; the existing visual Grid fallback remains the supported interaction path.",
+    "Qt versions below the declared 6.11.2 package minimum were not tested."
+  ],
+  "not_run_reasons": [
+    "T035/native-wayland: nested Weston does not provide the virtual-keyboard protocol required by wtype; native keyboard input remains unqualified.",
+    "T051/real-screen-reader: Orca and Accerciser are not installed; the custom AT-SPI client probe cannot establish screen-reader coexistence."
+  ],
+  "next_ready_slices": [
+    "S25",
+    "S26"
+  ]
+}

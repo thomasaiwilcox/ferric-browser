@@ -1,0 +1,29 @@
+S24 static inspection
+
+Environment:
+  Qt6Core: 6.11.2
+  Qt6WebEngineCore: 6.11.2
+  atspi-2: 2.60.6
+  QPA: native Wayland in the live probe
+  Orca: not installed
+  Accerciser: not installed
+
+Public API facts checked:
+  Qt Quick `Accessible` supports QML names, descriptions, roles, and action handlers.
+  Qt WebEngine Linux page accessibility depends on Qt Core accessibility support and platform activation; `QTWEBENGINE_ENABLE_LINUX_ACCESSIBILITY=0` disables it.
+  `QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1` is Qt's documented alternative to enabling the AT-SPI bus status properties for Qt applications.
+  No private Qt or Chromium header/API was used by the probe.
+
+Probe fixture coverage:
+  ordinary labelled HTML button and input
+  labelled canvas with no inferred child semantics
+  button inside a closed shadow root
+  named QML action with a dynamically destroyed target
+
+Desktop state after the private-bus probe:
+  `org.a11y.Status.IsEnabled`: false
+  `org.a11y.Status.ScreenReaderEnabled`: false
+  `org.gnome.desktop.interface toolkit-accessibility`: false
+  `org.gnome.desktop.a11y.applications screen-reader-enabled`: false
+
+Primary runtime evidence: `atspi-probe.log`.
