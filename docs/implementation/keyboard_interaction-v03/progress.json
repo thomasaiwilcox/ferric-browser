@@ -154,9 +154,9 @@
     },
     {
       "id": "S25",
-      "status": "not_started",
-      "evidence": null,
-      "capability_decision": null
+      "status": "research_no_go",
+      "evidence": "evidence/S25.json",
+      "capability_decision": "no_go"
     },
     {
       "id": "S26",
