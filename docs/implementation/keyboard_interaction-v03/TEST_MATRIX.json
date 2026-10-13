@@ -316,7 +316,7 @@
         "webengine-fixture"
       ],
       "fixture": "selector-validation",
-      "assertion": "Malformed CSS, unavailable engine, startup, stale validation callback and invalid runtime persistence leave the full old effective config intact; no regex-only success.",
+      "assertion": "Malformed CSS, unavailable engine, startup, stale validation callback and rejected persistence before replacement leave the full old effective config intact; no regex-only success. Replacement followed by failed directory sync publishes aligned memory and reports committed durability-uncertain.",
       "status": "not_run"
     },
     {

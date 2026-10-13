@@ -1,5 +1,7 @@
 # S27 source and invariant coverage review
 
+> Historical audit. The [completion report](completion-report.md) records later repairs and application coverage. The S21 specification contradiction is resolved; its current status is `blocked_environment`.
+
 Reviewed against integrated source commit `7dbfb14af070c2494077ca6342ad009cefb41840`. `TRACEABILITY.json` contains 55 source-item mappings: A-01–A-20, F-01–F-08, B-01/B-10–B-13, and WEBAPP-001–022. The pack validator confirms those mappings, 24 contracts, 26 unified invariants, 57 planned test IDs, and 28 slices. The full mapping table below preserves each source item's assigned contracts and owner slices with their current ledger status.
 
 “Implemented, unqualified” means the implementation and recorded local evidence exist while physical/live qualification remains open. A research no-go or environment block is not counted as a shipped capability.

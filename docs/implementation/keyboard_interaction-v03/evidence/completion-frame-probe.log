@@ -1,0 +1,27 @@
+$ pkg-config --modversion Qt6Core Qt6WebEngineCore
+6.11.2
+6.11.2
+S23 public QML frame-tree target versions=6.11.2 / 6.11.2
+$ pkg-config --cflags Qt6WebEngineCore
+-I/usr/include/qt6/QtWebEngineCore -I/usr/include/qt6 -DQT_WEBENGINECORE_LIB -I/usr/include/qt6/QtQuick -DQT_QUICK_LIB -I/usr/include/qt6/QtOpenGL -DQT_OPENGL_LIB -I/usr/include/qt6/QtGui -DQT_GUI_LIB -I/usr/include/qt6/QtWebChannel -DQT_WEBCHANNEL_LIB -I/usr/include/qt6/QtQml -DQT_QML_LIB -I/usr/include/qt6/QtQmlIntegration -DQT_QMLINTEGRATION_LIB -I/usr/include/qt6/QtNetwork -DQT_NETWORK_LIB -I/usr/include/qt6/QtPositioning -DQT_POSITIONING_LIB -I/usr/include/qt6/QtCore -DQT_CORE_LIB -I/usr/lib/qt6/mkspecs/linux-g++
+$ g++ -std=c++20 -Werror -fsyntax-only -x c++ - -I/usr/include/qt6/QtWebEngineCore -I/usr/include/qt6 -DQT_WEBENGINECORE_LIB -I/usr/include/qt6/QtQuick -DQT_QUICK_LIB -I/usr/include/qt6/QtOpenGL -DQT_OPENGL_LIB -I/usr/include/qt6/QtGui -DQT_GUI_LIB -I/usr/include/qt6/QtWebChannel -DQT_WEBCHANNEL_LIB -I/usr/include/qt6/QtQml -DQT_QML_LIB -I/usr/include/qt6/QtQmlIntegration -DQT_QMLINTEGRATION_LIB -I/usr/include/qt6/QtNetwork -DQT_NETWORK_LIB -I/usr/include/qt6/QtPositioning -DQT_POSITIONING_LIB -I/usr/include/qt6/QtCore -DQT_CORE_LIB -I/usr/lib/qt6/mkspecs/linux-g++
+S23 public C++ QWebEngineFrame API compile passed
+$ cmake -S /home/tom/Projects/RustBrowser/crates/ferric-browser-engine-qt/tests/qml-runner -B /home/tom/Projects/RustBrowser/target/qml-tests
+-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR) 
+-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR) 
+-- Configuring done (1.7s)
+-- Generating done (0.1s)
+-- Build files have been written to: /home/tom/Projects/RustBrowser/target/qml-tests
+$ cmake --build /home/tom/Projects/RustBrowser/target/qml-tests --parallel 2
+[  0%] Built target qml_tests_autogen_timestamp_deps
+[ 25%] Built target qml_tests_autogen
+[100%] Built target qml_tests
+$ /home/tom/Projects/RustBrowser/target/qml-tests/qml_tests -input /home/tom/Projects/RustBrowser/crates/ferric-browser-engine-qt/tests/frame-probes
+********* Start testing of ferric_qml_tests *********
+Config: Using QtTest library 6.11.2, Qt 6.11.2 (x86_64-little_endian-lp64 shared (dynamic) release build; by GCC 16.2.1 20260810), omarchy 4.0.4
+PASS   : ferric_qml_tests::FrameProviderProbes::initTestCase()
+QDEBUG : ferric_qml_tests::FrameProviderProbes::test_T035_T052_independent_frame_provider_boundary() qml: S23_T035_T052_RESULT {"parentBoundary":true,"independentApplicationWorld":true,"sandboxFrameAccessibleByBrowserProvider":true,"duplicateMetadata":true,"duplicateHandlesDistinct":true,"duplicateOuterXDistinct":true,"framePositionAvailable":false,"navigationEpochChanged":true,"destroyedHandleInvalidated":true,"callbackReturned":true}
+PASS   : ferric_qml_tests::FrameProviderProbes::test_T035_T052_independent_frame_provider_boundary()
+PASS   : ferric_qml_tests::FrameProviderProbes::cleanupTestCase()
+Totals: 3 passed, 0 failed, 0 skipped, 0 blacklisted, 879ms
+********* Finished testing of ferric_qml_tests *********

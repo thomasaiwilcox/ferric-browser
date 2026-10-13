@@ -130,7 +130,7 @@
     },
     {
       "id": "S21",
-      "status": "blocked_specification",
+      "status": "blocked_environment",
       "evidence": "evidence/S21.json",
       "capability_decision": null
     },

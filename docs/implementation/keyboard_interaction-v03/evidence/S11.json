@@ -122,6 +122,18 @@
       "observations": [
         "Strict workspace Clippy passed with Rust warnings denied; the log includes Qt/GCC header diagnostics from the C++ build."
       ]
+    },
+    {
+      "test_id": "T030",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "ctest --test-dir target/application-tests -R '^application_offscreen$' --verbose",
+      "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+      "log": "evidence/completion-application-functional-final.log",
+      "observations": [
+        "Real startup selector acceptance/rejection, malformed runtime CSS, stale and unavailable parser callbacks, plus rejected durable-write configuration/fingerprint/permit preservation are exercised. Directory-sync committed uncertainty has deterministic config-layer fault evidence.",
+        "This follow-up records bounded local coverage; missing physical, live-site, chooser and human evidence remains unqualified."
+      ]
     }
   ],
   "capability_decision": null,
@@ -139,5 +151,11 @@
   ],
   "next_ready_slices": [
     "S12"
-  ]
+  ],
+  "completion_followup": {
+    "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+    "report": "evidence/completion-report.md",
+    "status": "implemented_unqualified",
+    "scope": "New composed application observations supplement historical component evidence; no missing qualification level is inferred."
+  }
 }

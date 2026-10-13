@@ -80,6 +80,17 @@
         "The QML button had no component bounds. The loaded WebEngine document exposed an unnamed document node with no button, canvas, or closed-root child semantics, so the provider capability result is no-go.",
         "The run used native Wayland and a private AT-SPI session; it did not test a real screen reader."
       ]
+    },
+    {
+      "test_id": "T051",
+      "level": "native-wayland",
+      "result": "passed",
+      "command": "python3 crates/ferric-browser-engine-qt/tests/accessibility-probes/run_probe.py",
+      "commit": "f447da99f01eb666ca0f3be2d334b3eda0411466",
+      "log": "evidence/completion-accessibility-probe.log",
+      "observations": [
+        "Private session-bus probe on ambient Wayland exposes actionable Qt native button/removal facts but no usable WebEngine target set/bounds. No physical input or real screen-reader user is claimed; no-go retained."
+      ]
     }
   ],
   "capability_decision": "no_go",
@@ -101,5 +112,10 @@
   "next_ready_slices": [
     "S25",
     "S26"
-  ]
+  ],
+  "completion_followup": {
+    "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+    "report": "evidence/completion-report.md",
+    "scope": "Fresh bounded experiment; capability/status unchanged."
+  }
 }

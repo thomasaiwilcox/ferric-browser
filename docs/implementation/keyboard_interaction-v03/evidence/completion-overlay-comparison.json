@@ -1,0 +1,85 @@
+{
+  "method": "nearest-rank p95; 10 warmups and 100 samples; same viewport and user agent",
+  "baseline": "docs/implementation/keyboard_interaction-v03/evidence/completion-perf-baseline2.log",
+  "current": "docs/implementation/keyboard_interaction-v03/evidence/completion-overlay-optimized.log",
+  "comparisons": [
+    {
+      "kind": "overlay",
+      "scenario": "overlay-500-80",
+      "stage": "time_to_visible_ms",
+      "baseline_p50_ms": 205.8467195,
+      "current_p50_ms": 167.59105599999998,
+      "baseline_p95_ms": 226.759602,
+      "current_p95_ms": 187.214062,
+      "delta_ms": -39.54553999999999,
+      "delta_percent": -17.439411452133342,
+      "investigation_required": false,
+      "above_overlay_ambition": false
+    },
+    {
+      "kind": "overlay",
+      "scenario": "overlay-500-80",
+      "stage": "layout_compute_ms",
+      "baseline_p50_ms": 160.6249215,
+      "current_p50_ms": 128.28813350000001,
+      "baseline_p95_ms": 174.091374,
+      "current_p95_ms": 140.617975,
+      "delta_ms": -33.473399,
+      "delta_percent": -19.227488548628493,
+      "investigation_required": false,
+      "above_overlay_ambition": false
+    },
+    {
+      "kind": "overlay",
+      "scenario": "overlay-500-100",
+      "stage": "time_to_visible_ms",
+      "baseline_p50_ms": 198.0685885,
+      "current_p50_ms": 158.8068815,
+      "baseline_p95_ms": 226.039323,
+      "current_p95_ms": 183.433914,
+      "delta_ms": -42.60540900000001,
+      "delta_percent": -18.848671299550833,
+      "investigation_required": false,
+      "above_overlay_ambition": false
+    },
+    {
+      "kind": "overlay",
+      "scenario": "overlay-500-100",
+      "stage": "layout_compute_ms",
+      "baseline_p50_ms": 157.4132785,
+      "current_p50_ms": 120.24194800000001,
+      "baseline_p95_ms": 171.84616,
+      "current_p95_ms": 134.492054,
+      "delta_ms": -37.354106,
+      "delta_percent": -21.736945416761134,
+      "investigation_required": false,
+      "above_overlay_ambition": false
+    },
+    {
+      "kind": "overlay",
+      "scenario": "overlay-500-125",
+      "stage": "time_to_visible_ms",
+      "baseline_p50_ms": 192.6755625,
+      "current_p50_ms": 155.4007735,
+      "baseline_p95_ms": 217.049315,
+      "current_p95_ms": 176.18232,
+      "delta_ms": -40.866995,
+      "delta_percent": -18.82843767555774,
+      "investigation_required": false,
+      "above_overlay_ambition": false
+    },
+    {
+      "kind": "overlay",
+      "scenario": "overlay-500-125",
+      "stage": "layout_compute_ms",
+      "baseline_p50_ms": 150.8709365,
+      "current_p50_ms": 119.8567885,
+      "baseline_p95_ms": 173.279282,
+      "current_p95_ms": 135.221788,
+      "delta_ms": -38.05749399999999,
+      "delta_percent": -21.96309539186571,
+      "investigation_required": false,
+      "above_overlay_ambition": false
+    }
+  ]
+}

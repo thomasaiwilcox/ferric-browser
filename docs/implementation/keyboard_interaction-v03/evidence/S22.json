@@ -75,6 +75,17 @@
         "The rich-text probes preserved unrelated marks for ProseMirror, Tiptap, and Quill. Tiptap focus returned success but did not activate the editor DOM element in this offscreen fixture.",
         "The prototype reports booleans and versions only; no sample document content was emitted."
       ]
+    },
+    {
+      "test_id": "T050",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "python3 crates/ferric-browser-engine-qt/tests/framework-probes/run_probe.py",
+      "commit": "f447da99f01eb666ca0f3be2d334b3eda0411466",
+      "log": "evidence/completion-framework-probe.log",
+      "observations": [
+        "Pinned framework experiment reran successfully. Tiptap focus did not reach its sink; no complete generic provider gate passed. Existing bounded no-go retained."
+      ]
     }
   ],
   "capability_decision": "no_go",
@@ -99,5 +110,10 @@
     "S24",
     "S25",
     "S26"
-  ]
+  ],
+  "completion_followup": {
+    "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+    "report": "evidence/completion-report.md",
+    "scope": "Fresh bounded experiment; capability/status unchanged."
+  }
 }

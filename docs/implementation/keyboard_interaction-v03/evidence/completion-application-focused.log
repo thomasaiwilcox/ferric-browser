@@ -1,0 +1,48 @@
+********* Start testing of ApplicationTests *********
+Config: Using QtTest library 6.11.2, Qt 6.11.2 (x86_64-little_endian-lp64 shared (dynamic) release build; by GCC 16.2.1 20260810), omarchy 4.0.4
+PASS   : ApplicationTests::initTestCase()
+QINFO  : ApplicationTests::heldPageKeyRetainsOwnerAcrossPolicyChange() loading production QML
+QWARN  : ApplicationTests::heldPageKeyRetainsOwnerAcrossPolicyChange() QRhiGles2: Failed to create temporary context
+QWARN  : ApplicationTests::heldPageKeyRetainsOwnerAcrossPolicyChange() QRhiGles2: Failed to create context
+QWARN  : ApplicationTests::heldPageKeyRetainsOwnerAcrossPolicyChange() Failed to create RHI for backend: OpenGL
+QINFO  : ApplicationTests::heldPageKeyRetainsOwnerAcrossPolicyChange() production QML created
+QWARN  : ApplicationTests::heldPageKeyRetainsOwnerAcrossPolicyChange() GPUInfo not initialized on GpuInfoUpdate
+QINFO  : ApplicationTests::heldPageKeyRetainsOwnerAcrossPolicyChange() waiting for URL "about:blank"
+[2491210:2491210:1013/123900.595116:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+QINFO  : ApplicationTests::heldPageKeyRetainsOwnerAcrossPolicyChange() fixture loaded "http://127.0.0.1:37153/fixture.html" "Ready"
+QWARN  : ApplicationTests::heldPageKeyRetainsOwnerAcrossPolicyChange() QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+QWARN  : ApplicationTests::heldPageKeyRetainsOwnerAcrossPolicyChange() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_196(0x560215d1d980, "ferric_browserWindow") is not a function
+PASS   : ApplicationTests::heldPageKeyRetainsOwnerAcrossPolicyChange()
+QINFO  : ApplicationTests::pointerObservationIntervalExperiment() loading production QML
+QINFO  : ApplicationTests::pointerObservationIntervalExperiment() production QML created
+[2491210:2491210:1013/123902.385981:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 6 rejected by interface blink.mojom.WidgetHost
+[2491210:2491210:1013/123902.386006:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 7 rejected by interface blink.mojom.WidgetHost
+QINFO  : ApplicationTests::pointerObservationIntervalExperiment() waiting for URL "about:blank"
+QINFO  : ApplicationTests::pointerObservationIntervalExperiment() fixture loaded "http://127.0.0.1:38603/fixture.html" "Ready"
+QINFO  : ApplicationTests::pointerObservationIntervalExperiment() Interval trial 0 "{\"receiver\":\"replacement\",\"clicks\":1,\"allClicks\":1,\"over\":1,\"trusted\":true}"
+QINFO  : ApplicationTests::pointerObservationIntervalExperiment() Interval trial 1 "{\"receiver\":\"replacement\",\"clicks\":1,\"allClicks\":1,\"over\":1,\"trusted\":true}"
+QINFO  : ApplicationTests::pointerObservationIntervalExperiment() Interval trial 2 "{\"receiver\":\"replacement\",\"clicks\":1,\"allClicks\":1,\"over\":1,\"trusted\":true}"
+QINFO  : ApplicationTests::pointerObservationIntervalExperiment() Interval trial 3 "{\"receiver\":\"replacement\",\"clicks\":1,\"allClicks\":1,\"over\":1,\"trusted\":true}"
+QINFO  : ApplicationTests::pointerObservationIntervalExperiment() Interval trial 4 "{\"receiver\":\"replacement\",\"clicks\":1,\"allClicks\":1,\"over\":1,\"trusted\":true}"
+QINFO  : ApplicationTests::pointerObservationIntervalExperiment() Interval trial 5 "{\"receiver\":\"replacement\",\"clicks\":1,\"allClicks\":1,\"over\":1,\"trusted\":true}"
+QINFO  : ApplicationTests::pointerObservationIntervalExperiment() Interval trial 6 "{\"receiver\":\"replacement\",\"clicks\":1,\"allClicks\":1,\"over\":1,\"trusted\":true}"
+QINFO  : ApplicationTests::pointerObservationIntervalExperiment() Interval trial 7 "{\"receiver\":\"replacement\",\"clicks\":1,\"allClicks\":1,\"over\":1,\"trusted\":true}"
+QINFO  : ApplicationTests::pointerObservationIntervalExperiment() Interval trial 8 "{\"receiver\":\"replacement\",\"clicks\":1,\"allClicks\":1,\"over\":1,\"trusted\":true}"
+QINFO  : ApplicationTests::pointerObservationIntervalExperiment() Interval trial 9 "{\"receiver\":\"replacement\",\"clicks\":1,\"allClicks\":1,\"over\":1,\"trusted\":true}"
+QINFO  : ApplicationTests::pointerObservationIntervalExperiment() Interval trial 10 "{\"receiver\":\"replacement\",\"clicks\":1,\"allClicks\":1,\"over\":1,\"trusted\":true}"
+QINFO  : ApplicationTests::pointerObservationIntervalExperiment() Interval trial 11 "{\"receiver\":\"replacement\",\"clicks\":1,\"allClicks\":1,\"over\":1,\"trusted\":true}"
+QINFO  : ApplicationTests::pointerObservationIntervalExperiment() Interval trial 12 "{\"receiver\":\"replacement\",\"clicks\":1,\"allClicks\":1,\"over\":1,\"trusted\":true}"
+QINFO  : ApplicationTests::pointerObservationIntervalExperiment() Interval trial 13 "{\"receiver\":\"replacement\",\"clicks\":1,\"allClicks\":1,\"over\":1,\"trusted\":true}"
+QINFO  : ApplicationTests::pointerObservationIntervalExperiment() Interval trial 14 "{\"receiver\":\"replacement\",\"clicks\":1,\"allClicks\":1,\"over\":1,\"trusted\":true}"
+QINFO  : ApplicationTests::pointerObservationIntervalExperiment() Interval trial 15 "{\"receiver\":\"replacement\",\"clicks\":1,\"allClicks\":1,\"over\":1,\"trusted\":true}"
+QINFO  : ApplicationTests::pointerObservationIntervalExperiment() Interval trial 16 "{\"receiver\":\"replacement\",\"clicks\":1,\"allClicks\":1,\"over\":1,\"trusted\":true}"
+QINFO  : ApplicationTests::pointerObservationIntervalExperiment() Interval trial 17 "{\"receiver\":\"replacement\",\"clicks\":1,\"allClicks\":1,\"over\":1,\"trusted\":true}"
+QINFO  : ApplicationTests::pointerObservationIntervalExperiment() Interval trial 18 "{\"receiver\":\"replacement\",\"clicks\":1,\"allClicks\":1,\"over\":1,\"trusted\":true}"
+QINFO  : ApplicationTests::pointerObservationIntervalExperiment() Interval trial 19 "{\"receiver\":\"replacement\",\"clicks\":1,\"allClicks\":1,\"over\":1,\"trusted\":true}"
+QINFO  : ApplicationTests::pointerObservationIntervalExperiment() FERRIC_POINTER_INTERVAL_JSON [{"allClicks":1,"clicks":1,"over":1,"receiver":"replacement","trusted":true},{"allClicks":1,"clicks":1,"over":1,"receiver":"replacement","trusted":true},{"allClicks":1,"clicks":1,"over":1,"receiver":"replacement","trusted":true},{"allClicks":1,"clicks":1,"over":1,"receiver":"replacement","trusted":true},{"allClicks":1,"clicks":1,"over":1,"receiver":"replacement","trusted":true},{"allClicks":1,"clicks":1,"over":1,"receiver":"replacement","trusted":true},{"allClicks":1,"clicks":1,"over":1,"receiver":"replacement","trusted":true},{"allClicks":1,"clicks":1,"over":1,"receiver":"replacement","trusted":true},{"allClicks":1,"clicks":1,"over":1,"receiver":"replacement","trusted":true},{"allClicks":1,"clicks":1,"over":1,"receiver":"replacement","trusted":true},{"allClicks":1,"clicks":1,"over":1,"receiver":"replacement","trusted":true},{"allClicks":1,"clicks":1,"over":1,"receiver":"replacement","trusted":true},{"allClicks":1,"clicks":1,"over":1,"receiver":"replacement","trusted":true},{"allClicks":1,"clicks":1,"over":1,"receiver":"replacement","trusted":true},{"allClicks":1,"clicks":1,"over":1,"receiver":"replacement","trusted":true},{"allClicks":1,"clicks":1,"over":1,"receiver":"replacement","trusted":true},{"allClicks":1,"clicks":1,"over":1,"receiver":"replacement","trusted":true},{"allClicks":1,"clicks":1,"over":1,"receiver":"replacement","trusted":true},{"allClicks":1,"clicks":1,"over":1,"receiver":"replacement","trusted":true},{"allClicks":1,"clicks":1,"over":1,"receiver":"replacement","trusted":true}]
+QWARN  : ApplicationTests::pointerObservationIntervalExperiment() QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+QWARN  : ApplicationTests::pointerObservationIntervalExperiment() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_393(0x560216fbb260, "ferric_browserWindow") is not a function
+PASS   : ApplicationTests::pointerObservationIntervalExperiment()
+PASS   : ApplicationTests::cleanupTestCase()
+Totals: 4 passed, 0 failed, 0 skipped, 0 blacklisted, 31303ms
+********* Finished testing of ApplicationTests *********

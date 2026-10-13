@@ -1,5 +1,7 @@
 # S27 integrated validation report
 
+> Historical audit. The [completion report](completion-report.md) records later repairs and application coverage. The S21 specification contradiction is resolved; its current status is `blocked_environment`.
+
 ## Assessed tree
 
 The integrated source tree is commit `7dbfb14af070c2494077ca6342ad009cefb41840` on `implementation/keyboard-interaction-v03`. After S26, S27 made one test-only cleanup in `tests/label_probes.rs` to satisfy strict Clippy. The opt-in probe reran successfully and its JSON result exactly matched the prior S25 output. No production implementation, configuration default, keybinding, or resource manifest changed during S27.

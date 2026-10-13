@@ -204,6 +204,28 @@
       "observations": [
         "Pack integrity/evidence validation passed and all 12 negative validator tests passed. This checks pack records, not Ferric runtime correctness."
       ]
+    },
+    {
+      "test_id": "T047",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "cmake --build target/native-insert --parallel 2 && ctest --test-dir target/native-insert --verbose",
+      "commit": "f447da99f01eb666ca0f3be2d334b3eda0411466",
+      "log": "evidence/completion-native.log",
+      "observations": [
+        "Fresh component suite passed the bounded drag experiment and cleanup. This remains a test-only public Qt helper; missing physical input is not a capability no-go."
+      ]
+    },
+    {
+      "test_id": "T049",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "cmake --build target/native-insert --parallel 2 && ctest --test-dir target/native-insert --verbose",
+      "commit": "f447da99f01eb666ca0f3be2d334b3eda0411466",
+      "log": "evidence/completion-native.log",
+      "observations": [
+        "Fresh drag cleanup/site-effect fixture passed. No production drag UI/state was introduced."
+      ]
     }
   ],
   "capability_decision": null,
@@ -225,5 +247,10 @@
     "S24",
     "S25",
     "S26"
-  ]
+  ],
+  "completion_followup": {
+    "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+    "report": "evidence/completion-report.md",
+    "scope": "Fresh bounded experiment; capability/status unchanged."
+  }
 }

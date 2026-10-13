@@ -219,6 +219,12 @@ At startup with no prior accepted config, retain built-in safe behaviour and an 
 
 Selector syntax validation is not a runtime complexity proof. C17 bounds traversal work between operations and records that a single engine CSS match is not preemptible.
 
+### Runtime persistence publication outcome
+
+Prepare the resolved application state, presentation data and bindings without changing the active revision. After WebEngine validation and a final request/revision check, perform private atomic persistence before publishing the prepared state. Validation and write failures before replacement preserve the full old effective configuration, overrides, revision, selector fingerprint and interaction sessions.
+
+Atomic replacement is the publication point. A final directory-sync failure after replacement is a committed change with uncertain crash durability, not a rejected write. Publish the prepared in-memory state to match the visible file; expose `persistence: durability-uncertain` in accepted runtime command results and `config.changed` events and a readable status. Successful synchronized persistence reports `durable`; temporary/private overrides report `memory-only`. Do not attempt implicit rollback or report that the old file is intact after successful replacement.
+
 ## C10 — Exact-key Mixed ownership, integrated before QML shortcuts
 
 Keep only `browser-first` and `mixed` in this increment. Broad page-first, wildcard key classes and per-DOM-context automatic remaps remain deferred. Mixed applies in **Normal mode only**; it does not reinterpret typing or pass-through modes.
@@ -382,7 +388,7 @@ Before production code, S20 proves the adapter can deliver a bounded press/move/
 
 A live accepted drag maintains an explicit owner and held-button state. Cancellation releases the browser-generated pointer gesture only to its still-live original receiver as permitted by the adapter, then clears bookkeeping. If that receiver is destroyed, clear native state and report `target-gone`; no event is sent to a replacement view. This is pointer-gesture cleanup, not synthesis of keyboard releases. Releasing a button may commit a site's drop: cancellation cannot promise to undo effects already delivered. The UI/documentation must say so.
 
-HTML drag-and-drop, pointer capture, canvas panning and sliders must be qualified separately. Passing one pointermove fixture is not universal drag support. If a required public-API boundary fails, record a no-go and do not enable the feature. S21's implementation is conditional on S20's positive evidence.
+HTML drag-and-drop, pointer capture, canvas panning and sliders must be qualified separately. Passing one pointermove fixture is not universal drag support. If a required public-API boundary fails, record a no-go and do not enable the feature. S21's implementation is conditional on S20's positive evidence. An evidenced no-go makes S21 not_applicable; an undecided or environment-blocked predecessor leaves it blocked_environment.
 
 **Wheel:** retain the requested investigation but add no new wheel mode by default. A wheel-only custom widget first tries page shortcuts and existing explicit scroll targeting. Only an evidenced unsolved task can justify a separate future wheel ADR; it does not reuse or corrupt a selected DOM scroll target.
 

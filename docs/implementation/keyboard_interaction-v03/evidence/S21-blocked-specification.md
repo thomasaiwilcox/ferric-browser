@@ -1,5 +1,7 @@
 # S21 blocked by conflicting conditional-status rules
 
+> Historical audit. The [completion report](completion-report.md) records later repairs and application coverage. The S21 specification contradiction is resolved; its current status is `blocked_environment`.
+
 S21 cannot proceed because S20 has no positive `go` decision: S20 is `blocked_environment` after the nested Weston runner failed to expose the virtual-keyboard protocol required for native input. The offscreen S20 feasibility probe is not a technical no-go and does not authorize production drag behavior.
 
 The pack gives incompatible instructions for this exact state:

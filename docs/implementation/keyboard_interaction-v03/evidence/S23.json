@@ -94,6 +94,17 @@
         "Navigation reset the application-world document marker; removing an iframe invalidated its captured handle and fresh enumeration omitted it.",
         "Two distinct frame handles shared URL, htmlName and size while their outer rectangles differed; the public QML frame type had no position property."
       ]
+    },
+    {
+      "test_id": "T052",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "python3 crates/ferric-browser-engine-qt/tests/frame-probes/run_probe.py",
+      "commit": "f447da99f01eb666ca0f3be2d334b3eda0411466",
+      "log": "evidence/completion-frame-probe.log",
+      "observations": [
+        "Exact public child handles and isolated evaluation work, but duplicate metadata cannot be deterministically associated with embedding geometry. Existing provider no-go retained."
+      ]
     }
   ],
   "capability_decision": "no_go",
@@ -117,5 +128,10 @@
     "S24",
     "S25",
     "S26"
-  ]
+  ],
+  "completion_followup": {
+    "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+    "report": "evidence/completion-report.md",
+    "scope": "Fresh bounded experiment; capability/status unchanged."
+  }
 }

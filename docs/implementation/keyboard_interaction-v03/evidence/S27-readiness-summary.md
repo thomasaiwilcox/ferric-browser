@@ -1,5 +1,7 @@
 # S27 readiness summary
 
+> Historical audit. The [completion report](completion-report.md) records later repairs and application coverage. The S21 specification contradiction is resolved; its current status is `blocked_environment`.
+
 ## Result
 
 **Status: `implemented_unqualified`.** The integrated Rust, QML/WebEngine, native Qt offscreen, generated-document, adapter-smoke, and deterministic repository gates pass on commit `7dbfb14af070c2494077ca6342ad009cefb41840`. The pack is not release-qualified: physical Wayland input and authorised live tasks remain unavailable, S20/S21 drag stays blocked, and the S25 performance thresholds remain unresolved.

@@ -188,6 +188,18 @@
       "observations": [
         "Strict workspace Clippy passed with warnings denied; the log contains existing Qt/GCC header warnings emitted by the C++ build."
       ]
+    },
+    {
+      "test_id": "T029",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "ctest --test-dir target/application-tests -R '^application_offscreen$' --verbose",
+      "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+      "log": "evidence/completion-application-functional-final.log",
+      "observations": [
+        "Real confirm dialogs accept/cancel using focused keyboard controls. Nested application leases restore in LIFO order; stale completion after configuration publication cannot restore. Native chooser coverage is separate.",
+        "This follow-up records bounded local coverage; missing physical, live-site, chooser and human evidence remains unqualified."
+      ]
     }
   ],
   "capability_decision": null,
@@ -205,5 +217,11 @@
   ],
   "next_ready_slices": [
     "S11"
-  ]
+  ],
+  "completion_followup": {
+    "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+    "report": "evidence/completion-report.md",
+    "status": "implemented_unqualified",
+    "scope": "New composed application observations supplement historical component evidence; no missing qualification level is inferred."
+  }
 }

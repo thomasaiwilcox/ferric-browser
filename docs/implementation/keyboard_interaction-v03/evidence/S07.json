@@ -85,7 +85,25 @@
       "observations": [
         "Generated commands, configuration, bindings, and actions documentation successfully with no new Mixed settings advertised."
       ]
+    },
+    {
+      "test_id": "T023",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "ctest --test-dir target/application-tests -R '^application_offscreen$' --verbose",
+      "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+      "log": "evidence/completion-application-functional-final.log",
+      "observations": [
+        "Real Mixed page mapping wins at gesture entry while browser-owned count/keychain sequences and reserved command recovery remain available.",
+        "This follow-up records bounded local coverage; missing physical, live-site, chooser and human evidence remains unqualified."
+      ]
     }
   ],
-  "capability_decision": null
+  "capability_decision": null,
+  "completion_followup": {
+    "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+    "report": "evidence/completion-report.md",
+    "status": "implemented_unqualified",
+    "scope": "New composed application observations supplement historical component evidence; no missing qualification level is inferred."
+  }
 }

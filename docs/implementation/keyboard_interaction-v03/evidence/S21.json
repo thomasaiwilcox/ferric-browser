@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "slice_id": "S21",
-  "status": "blocked_specification",
-  "commit": "ad21eab1dee2774f9e41eae2cc7a7eabb8071bc7",
+  "status": "blocked_environment",
+  "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
   "environment": {
     "os": "Linux 7.2.3-arch1-3 x86_64",
     "cpu": "Intel Core i5-7200U @ 2.50 GHz; 4 logical CPUs",
@@ -10,7 +10,7 @@
     "chromium": "QtWebEngine Chromium 140.0.0.0",
     "rustc": "1.98.0 (88d9e12ae 2026-08-18)",
     "compositor": "Nested Weston startup passed; wtype cannot access the virtual-keyboard protocol.",
-    "scope": "S21 implementation was not entered. S20 remains blocked_environment with no capability decision; no production drag UI/state was added."
+    "scope": "S21 implementation was not entered. S20 remains blocked_environment with no capability decision; no production drag UI/state was added. The conditional-status contradiction is resolved by the completion contract amendment."
   },
   "changed_files": [
     "docs/implementation/keyboard_interaction-v03/evidence/S21-blocked-specification.md",
@@ -33,13 +33,14 @@
     {
       "test_id": "T010",
       "level": "native-qt-offscreen",
-      "result": "passed",
+      "result": "not_run",
       "command": "ctest --test-dir target/native-insert --verbose",
       "commit": "7dbfb14af070c2494077ca6342ad009cefb41840",
       "log": "evidence/S27-native-qt-offscreen.log",
       "observations": [
-        "The existing local native UI handoff/control and routing cases passed; this is shared contract evidence, not S21 drag evidence."
-      ]
+        "Component key-router/pointer-adapter checks passed, but the composed production T010 requirement was not exercised."
+      ],
+      "reason": "Historical native component suite uses a standalone WebEngineView and test policy callbacks; it does not qualify the production BrowserUi permit handoff."
     },
     {
       "test_id": "T048",
@@ -98,11 +99,10 @@
   "review_kind": "self-review",
   "scope_amendments": [],
   "remaining_risks": [
-    "S21 remains blocked until the conditional-status contradiction is resolved and S20 reaches an evidence-backed go decision; no drag capability is available."
+    "S21 requires a qualified S20 go decision. No production drag UI/state is available."
   ],
   "not_run_reasons": [
-    "S20's required physical Wayland evidence could not run because the nested compositor lacks the virtual-keyboard protocol.",
-    "The goal prompt/S21 card say not_applicable when S20 is not go, while the evidence README and validator require S20 research_no_go. S20 is environment-blocked, so neither a technical no-go nor not_applicable can be recorded truthfully under all current instructions."
+    "S20's required physical Wayland evidence could not run because the nested compositor lacks the virtual-keyboard protocol."
   ],
   "next_ready_slices": []
 }

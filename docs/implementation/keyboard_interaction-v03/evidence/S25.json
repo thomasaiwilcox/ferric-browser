@@ -136,6 +136,28 @@
         "Numeric labels saved one modeled gesture only at 1,000 candidates and changed all retained labels at the 1,000\u21921,001 width boundary; default labels changed none. All 10% replacement cases had zero retained-label churn.",
         "Human error rate, comfort and task completion time were not measured; modeled mismatches are not user errors."
       ]
+    },
+    {
+      "test_id": "T053",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "target/debug/deps/label_probes-c312a0dc85e6cfbc --ignored --nocapture",
+      "commit": "f447da99f01eb666ca0f3be2d334b3eda0411466",
+      "log": "evidence/completion-labels.log",
+      "observations": [
+        "Fresh deterministic model retains the numeric 1000-to-1001 relabel-all drawback and long word-pair entry. This is not human completion-time/error evidence; defaults/no-go retained."
+      ]
+    },
+    {
+      "test_id": "T043",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QT_SCALE_FACTOR=1 QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc target/qml-tests/qml_tests -input crates/ferric-browser-engine-qt/tests/qml-perf HintPerformance::test_T043_overlay_time_to_visible",
+      "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+      "log": "evidence/completion-overlay-optimized.log",
+      "observations": [
+        "Ten warmups/100 samples per zoom; optimized overlay p95 187.21/183.43/176.18 ms, below the 200 ms reference ambition. Both paired collector comparisons remain within the common callback threshold. See completion-performance-pair1.json, pair2.json, overlay-comparison.json and raw metadata/logs."
+      ]
     }
   ],
   "capability_decision": "no_go",
@@ -153,16 +175,20 @@
   ],
   "remaining_risks": [
     "The synthetic model has no human error, comfort or observed completion-time evidence; C21 does not authorize a production strategy change.",
-    "Two focused 500-target callback repeats exceed C17 by both 10% and 10 ms; the 100% row crossed the relative threshold but fell just below 10 ms on repeat. A controlled low-load comparison is still needed before release qualification.",
     "The 500-marker overlay p95 remains 12.60\u201324.29 ms above C17 reference ambition under offscreen software rendering.",
     "The 1,000\u21921,001 numeric label width boundary changed all retained prototype labels; the default alphabet did not churn.",
     "Synthetic names, exact full-name queries and fixed dictionary do not establish live-site ergonomics or universal text-search behavior."
   ],
   "not_run_reasons": [
-    "No human user evaluation was performed; T053 automation measures only deterministic model behavior and cannot establish an observed user error rate or support a production ergonomics decision.",
-    "No controlled low-load benchmark repeat was available; host load was approximately 2.56/2.74/3.03 on four logical CPUs, so the callback slowdown remains unqualified rather than being attributed to S25 runtime code."
+    "No human user evaluation was performed; T053 automation measures only deterministic model behavior and cannot establish an observed user error rate or support a production ergonomics decision."
   ],
   "next_ready_slices": [
     "S26"
-  ]
+  ],
+  "completion_followup": {
+    "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+    "report": "evidence/completion-report.md",
+    "scope": "Measured overlay allocation reduction; no new label/provider capability or budget change.",
+    "performance_disposition": "Both controlled common callback comparisons stay within the combined regression threshold. The active-outline allocation reduction meets 200 ms overlay p95 at all zooms in fresh measurements. Historical raw failures and older results remain preserved."
+  }
 }

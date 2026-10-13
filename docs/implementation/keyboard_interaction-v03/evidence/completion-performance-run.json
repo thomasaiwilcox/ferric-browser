@@ -1,0 +1,296 @@
+{
+  "source_commit": "f447da99f01eb666ca0f3be2d334b3eda0411466",
+  "baseline_commit": "3e961cb5438518f9cbd20af7e0881cc2056fba9e",
+  "os": "Linux-7.2.3-arch1-3-x86_64-with-glibc2.44",
+  "cpu": "Intel Core i5-7200U; 4 logical CPUs",
+  "qt": "6.11.2",
+  "chromium": "140.0.0.0",
+  "warmups": 10,
+  "samples": 100,
+  "environment": {
+    "QT_QPA_PLATFORM": "offscreen",
+    "QT_QUICK_BACKEND": "software",
+    "QT_SCALE_FACTOR": "1",
+    "QTWEBENGINE_CHROMIUM_FLAGS": "--js-flags=--expose-gc"
+  },
+  "order": [
+    "baseline1",
+    "current1",
+    "current2",
+    "baseline2"
+  ],
+  "runs": [
+    {
+      "name": "baseline1",
+      "command": [
+        "target/qml-tests/qml_tests",
+        "-input",
+        "target/completion-baseline/crates/ferric-browser-engine-qt/tests/qml-perf"
+      ],
+      "before": {
+        "utc": "2026-10-13T11:45:55.134493+00:00",
+        "load_average": [
+          1.27880859375,
+          1.93212890625,
+          4.013671875
+        ],
+        "cpu_mhz": [
+          "3100.078",
+          "3101.440",
+          "3099.888",
+          "3102.575"
+        ],
+        "temperatures_millidegrees": {
+          "/sys/class/thermal/thermal_zone2/temp": 65000,
+          "/sys/class/thermal/thermal_zone0/temp": 55000,
+          "/sys/class/thermal/thermal_zone3/temp": 58000,
+          "/sys/class/thermal/thermal_zone1/temp": 51000
+        },
+        "top_cpu": [
+          "COMMAND         %CPU",
+          "python3         60.0",
+          "bash            25.0",
+          "foot             9.6",
+          "Hyprland         6.0",
+          "codex            4.0",
+          "wireplumber      2.6"
+        ]
+      },
+      "exit_code": 0,
+      "elapsed_seconds": 405.00608980000834,
+      "after": {
+        "utc": "2026-10-13T11:52:40.159234+00:00",
+        "load_average": [
+          1.80810546875,
+          2.02880859375,
+          3.32763671875
+        ],
+        "cpu_mhz": [
+          "3100.005",
+          "3100.016",
+          "3100.007",
+          "3099.996"
+        ],
+        "temperatures_millidegrees": {
+          "/sys/class/thermal/thermal_zone2/temp": 65000,
+          "/sys/class/thermal/thermal_zone0/temp": 63000,
+          "/sys/class/thermal/thermal_zone3/temp": 67000,
+          "/sys/class/thermal/thermal_zone1/temp": 57500
+        },
+        "top_cpu": [
+          "COMMAND         %CPU",
+          "QtWebEngineProc 45.2",
+          "foot             9.6",
+          "Hyprland         6.0",
+          "codex            4.0",
+          "wireplumber      2.6",
+          "ChatGPT          2.0"
+        ]
+      }
+    },
+    {
+      "name": "current1",
+      "command": [
+        "target/qml-tests/qml_tests",
+        "-input",
+        "crates/ferric-browser-engine-qt/tests/qml-perf"
+      ],
+      "before": {
+        "utc": "2026-10-13T11:52:40.176253+00:00",
+        "load_average": [
+          1.80810546875,
+          2.02880859375,
+          3.32763671875
+        ],
+        "cpu_mhz": [
+          "3100.033",
+          "3100.012",
+          "3099.929",
+          "3102.330"
+        ],
+        "temperatures_millidegrees": {
+          "/sys/class/thermal/thermal_zone2/temp": 65000,
+          "/sys/class/thermal/thermal_zone0/temp": 63000,
+          "/sys/class/thermal/thermal_zone3/temp": 68000,
+          "/sys/class/thermal/thermal_zone1/temp": 57500
+        },
+        "top_cpu": [
+          "COMMAND         %CPU",
+          "QtWebEngineProc 45.2",
+          "foot             9.6",
+          "Hyprland         6.0",
+          "codex            4.0",
+          "wireplumber      2.6",
+          "ChatGPT          2.0"
+        ]
+      },
+      "exit_code": 0,
+      "elapsed_seconds": 416.11812792898854,
+      "after": {
+        "utc": "2026-10-13T11:59:36.311664+00:00",
+        "load_average": [
+          1.9580078125,
+          2.173828125,
+          2.927734375
+        ],
+        "cpu_mhz": [
+          "3100.021",
+          "3100.000",
+          "3100.047",
+          "3099.987"
+        ],
+        "temperatures_millidegrees": {
+          "/sys/class/thermal/thermal_zone2/temp": 65000,
+          "/sys/class/thermal/thermal_zone0/temp": 64000,
+          "/sys/class/thermal/thermal_zone3/temp": 68000,
+          "/sys/class/thermal/thermal_zone1/temp": 59000
+        },
+        "top_cpu": [
+          "COMMAND         %CPU",
+          "QtWebEngineProc 45.5",
+          "foot             9.6",
+          "Hyprland         6.0",
+          "codex            4.0",
+          "wireplumber      2.6",
+          "ChatGPT          2.0"
+        ]
+      }
+    },
+    {
+      "name": "current2",
+      "command": [
+        "target/qml-tests/qml_tests",
+        "-input",
+        "crates/ferric-browser-engine-qt/tests/qml-perf"
+      ],
+      "before": {
+        "utc": "2026-10-13T11:59:36.331594+00:00",
+        "load_average": [
+          1.9580078125,
+          2.173828125,
+          2.927734375
+        ],
+        "cpu_mhz": [
+          "3099.983",
+          "3099.994",
+          "3099.983",
+          "3099.982"
+        ],
+        "temperatures_millidegrees": {
+          "/sys/class/thermal/thermal_zone2/temp": 65000,
+          "/sys/class/thermal/thermal_zone0/temp": 64000,
+          "/sys/class/thermal/thermal_zone3/temp": 69000,
+          "/sys/class/thermal/thermal_zone1/temp": 59000
+        },
+        "top_cpu": [
+          "COMMAND         %CPU",
+          "QtWebEngineProc 45.5",
+          "foot             9.6",
+          "Hyprland         6.0",
+          "codex            4.0",
+          "wireplumber      2.6",
+          "ChatGPT          2.0"
+        ]
+      },
+      "exit_code": 0,
+      "elapsed_seconds": 404.80361633200664,
+      "after": {
+        "utc": "2026-10-13T12:06:21.160998+00:00",
+        "load_average": [
+          2.005859375,
+          2.205078125,
+          2.677734375
+        ],
+        "cpu_mhz": [
+          "3099.959",
+          "3099.990",
+          "3099.977",
+          "3100.025"
+        ],
+        "temperatures_millidegrees": {
+          "/sys/class/thermal/thermal_zone2/temp": 65000,
+          "/sys/class/thermal/thermal_zone0/temp": 64000,
+          "/sys/class/thermal/thermal_zone3/temp": 68000,
+          "/sys/class/thermal/thermal_zone1/temp": 58500
+        },
+        "top_cpu": [
+          "COMMAND         %CPU",
+          "QtWebEngineProc 44.8",
+          "foot             9.6",
+          "Hyprland         6.0",
+          "codex            4.0",
+          "wireplumber      2.6",
+          "ChatGPT          2.0"
+        ]
+      }
+    },
+    {
+      "name": "baseline2",
+      "command": [
+        "target/qml-tests/qml_tests",
+        "-input",
+        "target/completion-baseline/crates/ferric-browser-engine-qt/tests/qml-perf"
+      ],
+      "before": {
+        "utc": "2026-10-13T12:06:21.187190+00:00",
+        "load_average": [
+          2.005859375,
+          2.205078125,
+          2.677734375
+        ],
+        "cpu_mhz": [
+          "3100.011",
+          "3100.018",
+          "3100.014",
+          "3100.003"
+        ],
+        "temperatures_millidegrees": {
+          "/sys/class/thermal/thermal_zone2/temp": 65000,
+          "/sys/class/thermal/thermal_zone0/temp": 64000,
+          "/sys/class/thermal/thermal_zone3/temp": 68000,
+          "/sys/class/thermal/thermal_zone1/temp": 58000
+        },
+        "top_cpu": [
+          "COMMAND         %CPU",
+          "QtWebEngineProc 44.8",
+          "foot             9.6",
+          "Hyprland         6.0",
+          "codex            4.0",
+          "wireplumber      2.6",
+          "ChatGPT          2.0"
+        ]
+      },
+      "exit_code": 0,
+      "elapsed_seconds": 402.9846170810051,
+      "after": {
+        "utc": "2026-10-13T12:13:04.195357+00:00",
+        "load_average": [
+          2.52685546875,
+          2.47607421875,
+          2.6279296875
+        ],
+        "cpu_mhz": [
+          "3100.000",
+          "3099.984",
+          "3100.026",
+          "3099.993"
+        ],
+        "temperatures_millidegrees": {
+          "/sys/class/thermal/thermal_zone2/temp": 65000,
+          "/sys/class/thermal/thermal_zone0/temp": 64000,
+          "/sys/class/thermal/thermal_zone3/temp": 68000,
+          "/sys/class/thermal/thermal_zone1/temp": 58500
+        },
+        "top_cpu": [
+          "COMMAND         %CPU",
+          "ps               100",
+          "QtWebEngineProc 45.0",
+          "foot             9.6",
+          "Hyprland         6.0",
+          "codex            4.0",
+          "wireplumber      2.6"
+        ]
+      }
+    }
+  ]
+}

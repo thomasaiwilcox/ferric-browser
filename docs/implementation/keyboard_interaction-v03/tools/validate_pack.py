@@ -183,6 +183,10 @@ def validate(root: Path, integrity: bool = False, evidence: bool = False,
                     if cond:
                         pred=pmap.get(cond['slice'],{})
                         check(pred.get('status')=='research_no_go',f'{sid}: predecessor must have an evidenced no-go')
+                if s['kind']=='gated_implementation' and s.get('condition'):
+                    pred=pmap.get(s['condition']['slice'],{})
+                    if pred.get('status') in {'blocked_environment','implemented_unqualified'} and pred.get('capability_decision') is None:
+                        check(status=='blocked_environment',f'{sid}: undecided environment-blocked predecessor requires blocked_environment')
                 if s['kind']=='research' and status=='complete':
                     check(decision in {'go','no_go','no_need'},f'{sid}: research decision required')
                 if decision is not None and status in {'complete','research_no_go'}:

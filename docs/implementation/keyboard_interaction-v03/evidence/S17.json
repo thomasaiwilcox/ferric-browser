@@ -265,6 +265,29 @@
       "observations": [
         "Whitespace and patch integrity check passed."
       ]
+    },
+    {
+      "test_id": "T044",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "ctest --test-dir target/application-tests --verbose (DPR/lifetime cases passed; earlier functional fixture failures are retained)",
+      "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+      "log": "evidence/completion-application-final-dpr-lifetime.log",
+      "observations": [
+        "One thousand real Hint cycles with forced GC leave zero retained DOM elements, observers, windows and scopes; Qt object count returns exactly to its process baseline.",
+        "This follow-up records bounded local coverage; missing physical, live-site, chooser and human evidence remains unqualified."
+      ]
+    },
+    {
+      "test_id": "T043",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QT_SCALE_FACTOR=1 QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc target/qml-tests/qml_tests -input crates/ferric-browser-engine-qt/tests/qml-perf HintPerformance::test_T043_overlay_time_to_visible",
+      "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+      "log": "evidence/completion-overlay-optimized.log",
+      "observations": [
+        "Ten warmups/100 samples per zoom; optimized overlay p95 187.21/183.43/176.18 ms, below the 200 ms reference ambition. Both paired collector comparisons remain within the common callback threshold. See completion-performance-pair1.json, pair2.json, overlay-comparison.json and raw metadata/logs."
+      ]
     }
   ],
   "capability_decision": null,
@@ -285,7 +308,6 @@
     }
   ],
   "remaining_risks": [
-    "The 500-marker overlay time-to-visible p95 remains 16.42\u201325.26 ms above C17\u2019s 200 ms reference ambition under this offscreen software renderer; layout computation is the largest measured stage.",
     "Native Wayland editable-page input remains unqualified because the nested Weston compositor lacks the virtual-keyboard protocol needed by wtype; only startup smoke passed.",
     "Host callback timing includes page-script return and QML payload conversion, not transport alone. The 5,000-target scenario remains approximately 1.20 seconds p95 and is retained as a scale measurement.",
     "The full S01 baseline benchmark log ends at an S17-only mutation dirty-revision assertion that does not exist in S01; the separate baseline mutation run without that assertion passed."
@@ -295,5 +317,11 @@
   ],
   "next_ready_slices": [
     "S18"
-  ]
+  ],
+  "completion_followup": {
+    "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+    "report": "evidence/completion-report.md",
+    "scope": "Measured overlay allocation reduction; no new label/provider capability or budget change.",
+    "performance_disposition": "Both controlled common callback comparisons stay within the combined regression threshold. The active-outline allocation reduction meets 200 ms overlay p95 at all zooms in fresh measurements. Historical raw failures and older results remain preserved."
+  }
 }

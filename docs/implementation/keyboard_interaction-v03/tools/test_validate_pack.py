@@ -69,6 +69,14 @@ class PackValidatorTests(unittest.TestCase):
         (self.root/'evidence/S20.json').write_text(json.dumps(record))
         self.edit('progress.json',lambda x:x['slices'][20].update(status='research_no_go',evidence='evidence/S20.json',capability_decision='no_go'))
         self.fails_with('no-go needs concrete evidence',evidence=True)
+    def test_undecided_drag_cannot_be_not_applicable(self):
+        self.edit('progress.json',lambda x:x['slices'][21].update(status='not_applicable'))
+        self.edit('evidence/S21.json',lambda x:x.update(status='not_applicable'))
+        self.fails_with('predecessor must have an evidenced no-go',evidence=True)
+    def test_undecided_drag_requires_environment_block(self):
+        self.edit('progress.json',lambda x:x['slices'][21].update(status='blocked_specification'))
+        self.edit('evidence/S21.json',lambda x:x.update(status='blocked_specification'))
+        self.fails_with('requires blocked_environment',evidence=True)
     def test_duplicate_slice(self):
         self.edit('plan.json',lambda x:x['slices'].append(dict(x['slices'][0])))
         self.fails_with('Duplicate slice')

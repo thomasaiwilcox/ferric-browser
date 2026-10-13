@@ -1,0 +1,103 @@
+{
+  "kind": "keyboard-interaction-local-completion-validation",
+  "date": "2026-10-13",
+  "source_commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+  "review_kind": "self-review",
+  "release_qualified": false,
+  "environment": {
+    "os": "Linux 7.2.3-arch1-3 x86_64",
+    "cpu": "Intel Core i5-7200U; 4 logical CPUs",
+    "qt": "6.11.2",
+    "chromium": "140.0.0.0",
+    "rustc": "1.98.0",
+    "rendering": "offscreen software; Qt-generated local input; disposable profiles"
+  },
+  "results": [
+    {
+      "gate": "repository",
+      "result": "passed",
+      "command": "QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc target/release/xtask check",
+      "log": "evidence/completion-check-final.log",
+      "observations": "886 Rust and 160 QML cases, lint, architecture, generated docs, artifact and license checks."
+    },
+    {
+      "gate": "clippy",
+      "result": "passed",
+      "command": "cargo clippy --workspace --all-targets --locked --offline -- -D warnings",
+      "log": "evidence/completion-clippy-final.log",
+      "observations": "Strict workspace Clippy."
+    },
+    {
+      "gate": "format",
+      "result": "passed",
+      "command": "cargo fmt --all -- --check",
+      "log": "evidence/completion-fmt.log",
+      "observations": "Workspace formatting."
+    },
+    {
+      "gate": "native-components",
+      "result": "passed",
+      "command": "cmake --build target/native-insert --parallel 2 && ctest --test-dir target/native-insert --verbose",
+      "log": "evidence/completion-native.log",
+      "observations": "59 component cases; no composed BrowserUi claim."
+    },
+    {
+      "gate": "application-functional",
+      "result": "passed",
+      "command": "ctest --test-dir target/application-tests -R '^application_offscreen$' --verbose",
+      "log": "evidence/completion-application-functional-final.log",
+      "observations": "48 passed; stress slot skipped and executed separately."
+    },
+    {
+      "gate": "application-dpr-lifetime",
+      "result": "passed",
+      "command": "ctest --test-dir target/application-tests --verbose",
+      "log": "evidence/completion-application-final-dpr-lifetime.log",
+      "observations": "DPR 2 and 1,000-cycle cases passed. Functional portion failed under compiler contention and passed its separate idle rerun. Qt objects 3367 -> 3367; retained elements, observers, windows and scopes zero; forced GC available."
+    },
+    {
+      "gate": "real-cli-ipc",
+      "result": "passed",
+      "command": "python3 crates/ferric-browser-engine-qt/tests/application/run_ipc_probe.py",
+      "log": "evidence/completion-ipc-final.log",
+      "observations": "Real release browser rejects whole restricted chain without changing URL; actual Mixed binding explanation."
+    },
+    {
+      "gate": "physical-wayland",
+      "result": "blocked_environment",
+      "command": "cargo run --release -p xtask --locked --offline -- test wayland-input",
+      "log": "evidence/completion-wayland-input.log",
+      "observations": "Required virtual-keyboard protocol absent; startup is not input proof."
+    },
+    {
+      "gate": "nested-wayland",
+      "result": "blocked_environment",
+      "command": "target/release/xtask test application-wayland",
+      "log": "evidence/completion-application-wayland.log",
+      "observations": "Nested compositor cannot activate test window/seat; no application journeys qualified."
+    }
+  ],
+  "performance": {
+    "result": "passed",
+    "metadata": "evidence/completion-performance-run.json",
+    "comparisons": [
+      "evidence/completion-performance-pair1.json",
+      "evidence/completion-performance-pair2.json",
+      "evidence/completion-overlay-comparison.json"
+    ],
+    "observations": "Both paired common callbacks stay within combined 10%/10 ms regression threshold. Optimized overlay p95 187.21/183.43/176.18 ms meets 200 ms ambition. Safety/freshness budgets unchanged."
+  },
+  "research": "Fresh bounded probes retain no-go decisions; S20 has no decision, S21 blocked_environment, S26 no_need. No production promotion.",
+  "manual_live": {
+    "result": "not_run",
+    "reason": "No physical operator, authorized disposable accounts, platform IME/chooser operator or human/screen-reader participants provided; local automation scope."
+  },
+  "known_limitation": "Twenty post-preflight replacement trials deliver one trusted click to the replacement each time. The DOM/native interval is not atomic; no retry/fallback.",
+  "integrity_validation": "evidence/completion-pack-validation.json",
+  "strict_completion_audit": "evidence/completion-strict-completion.json",
+  "validator_regressions": {
+    "result": "passed",
+    "count": 14,
+    "log": "evidence/completion-pack-tests-final.log"
+  }
+}
