@@ -1,4 +1,4 @@
-//! Opt-in S25 ergonomics model using the production HintInteraction and label
+//! Opt-in S25 ergonomics model using the production `HintInteraction` and label
 //! assignment APIs. This compares deterministic synthetic codes; it is not a
 //! user study and does not change production defaults.
 
@@ -148,7 +148,7 @@ fn candidate(index: usize, text: String) -> HintCandidate {
         text,
         href: None,
         geometry: HintGeometry {
-            x: (index * 2) as f64,
+            x: f64::from(u32::try_from(index * 2).expect("bounded fixture coordinate fits u32")),
             y: 0.0,
             width: 1.0,
             height: 1.0,
@@ -385,7 +385,7 @@ fn refresh_scattered(mut input: Vec<HintCandidate>, previous: &[LabeledHint]) ->
             && label.len() == width
             && used.insert(label.clone())
         {
-            labels[index] = label.clone();
+            labels[index].clone_from(label);
         }
     }
     let mut next = 0;
@@ -427,7 +427,7 @@ fn refresh_words(
         if let Some(label) = old.get(&candidate.element_id)
             && used.insert(label.clone())
         {
-            labels[index] = label.clone();
+            labels[index].clone_from(label);
         }
     }
     let mut next = 0;
@@ -501,7 +501,10 @@ fn churn_measurement(
         churn_fraction: if retained.is_empty() {
             0.0
         } else {
-            changed as f64 / retained.len() as f64
+            f64::from(u32::try_from(changed).expect("bounded retained candidate count"))
+                / f64::from(
+                    u32::try_from(retained.len()).expect("bounded retained candidate count"),
+                )
         },
     }
 }
@@ -542,12 +545,16 @@ fn build_result(corpus: &Corpus, count: usize, strategy: Strategy) -> ScenarioMe
     }
     let mut median_gestures = gestures;
     let median_input_gestures = median(&mut median_gestures);
-    let median_assumed_time_ms = median_input_gestures * corpus.assumed_ms_per_gesture as f64;
-    let average_label_characters = hints
+    let median_assumed_time_ms = median_input_gestures
+        * f64::from(u32::try_from(corpus.assumed_ms_per_gesture).expect("assumed time fits u32"));
+    let total_label_characters = hints
         .iter()
-        .map(|hint| hint.label.chars().count())
-        .sum::<usize>() as f64
-        / hints.len() as f64;
+        .map(|hint| {
+            u32::try_from(hint.label.chars().count()).expect("bounded label length fits u32")
+        })
+        .sum::<u32>();
+    let average_label_characters = f64::from(total_label_characters)
+        / f64::from(u32::try_from(hints.len()).expect("candidate count fits u32"));
     let labels_unique = hints
         .iter()
         .map(|hint| hint.label.as_str())
@@ -604,7 +611,7 @@ fn s25_evaluate_label_strategies() {
             let refreshed = refreshed_labels(strategy, refreshed_candidates, &previous, &corpus);
             refresh_churn.push(churn_measurement(
                 strategy,
-                &format!("{}-10-percent-replacement", count),
+                &format!("{count}-10-percent-replacement"),
                 &previous,
                 &refreshed,
             ));
