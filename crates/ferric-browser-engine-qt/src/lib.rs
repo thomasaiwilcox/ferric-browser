@@ -58,6 +58,7 @@ mod browser_ui_edit_commands;
 mod browser_ui_external_actions;
 mod browser_ui_guide;
 mod browser_ui_hint_pointer;
+pub use browser_ui_hint_pointer::reject_external_hint_interaction_chain;
 mod browser_ui_hint_proxy_configuration;
 mod browser_ui_hint_selection;
 mod browser_ui_input;
@@ -582,6 +583,7 @@ mod qobject {
         #[qproperty(QString, hint_pointer_dispatch_request)]
         #[qproperty(bool, hint_links_only)]
         #[qproperty(bool, hint_rapid)]
+        #[qproperty(QString, hint_target)]
         #[qproperty(QString, hint_family)]
         #[qproperty(bool, hint_proxy_targets_enabled)]
         #[qproperty(QString, hint_unmatched_policy)]
@@ -1515,6 +1517,9 @@ mod qobject {
         );
 
         #[qinvokable]
+        fn new_prompt_view_identity(self: Pin<&mut BrowserUi>) -> QString;
+
+        #[qinvokable]
         fn register_prompt_view_identity(
             self: Pin<&mut BrowserUi>,
             index: i32,
@@ -1768,8 +1773,8 @@ use ferric_browser_application::{
 use ferric_browser_config::{
     ActionTargetConfig, Config, ContextsConfig, HyprlandConfig, LoggingConfig, RuntimeOverrides,
     ThemePalette, load_theme_palette, matching_context_routes, matching_site_rules,
-    save_contexts_atomic, save_runtime_overrides_atomic, setting_metadata, setting_metadata_all,
-    setting_supported_scopes, setting_supports_site_scope, theme_contrast_report,
+    save_contexts_atomic, setting_metadata, setting_metadata_all, setting_supported_scopes,
+    setting_supports_site_scope, theme_contrast_report,
 };
 #[cfg(test)]
 use ferric_browser_core::ActionSubject;
@@ -2061,6 +2066,7 @@ pub struct BrowserUiRust {
     hint_links_only: bool,
     hint_rapid: bool,
     hint_family: QString,
+    hint_target: QString,
     hint_proxy_targets_enabled: bool,
     hint_unmatched_policy: QString,
     hint_chrome_available: bool,
@@ -2134,6 +2140,7 @@ pub struct BrowserUiRust {
     next_hint_scope_lease_id: u64,
     hint_consumed: BTreeSet<(String, u32)>,
     hint_configuration_revision: u64,
+    runtime_config_persistence: &'static str,
     pending_hint_palette_permit: Option<LocalInteractionPermit>,
     pending_grid_scope_permit: Option<LocalInteractionPermit>,
     hint_pointer_source: Option<CommandSource>,
@@ -2788,6 +2795,7 @@ impl Default for BrowserUiRust {
             hint_pointer_dispatch_request: QString::default(),
             hint_links_only: false,
             hint_rapid: false,
+            hint_target: QString::from("current"),
             hint_family: QString::from("all"),
             hint_proxy_targets_enabled: false,
             hint_unmatched_policy: QString::from("hide"),
@@ -2863,6 +2871,7 @@ impl Default for BrowserUiRust {
             next_hint_scope_lease_id: 0,
             hint_consumed: BTreeSet::new(),
             hint_configuration_revision: 0,
+            runtime_config_persistence: "memory-only",
             pending_hint_palette_permit: None,
             pending_grid_scope_permit: None,
             hint_pointer_source: None,

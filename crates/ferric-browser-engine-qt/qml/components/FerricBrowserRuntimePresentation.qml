@@ -1085,7 +1085,7 @@ FerricBrowserRuntimeServices {
             meaning: window.targetSearchSelectedMeaning
         })
         if (!selected) return false
-        window.activateHint(selected.label)
+        window.activateHint(selected.label, "", true)
         return true
     }
 
@@ -1134,11 +1134,18 @@ FerricBrowserRuntimeServices {
             window.closeHints()
             return
         }
+        window.hintScopeHandoffLeaseId = request.lease_id
+        var finishHandoff = function() {
+            if (window.hintScopeHandoffLeaseId === request.lease_id) window.hintScopeHandoffLeaseId = ""
+        }
         var selectorSnapshot = window.hintSelectorPolicySnapshot(browserUi.hint_family)
         var acquireStarted = window.runBrowserScript(
                     view,
-                    BrowserScripts.hintAcquireScopeLease(request, candidate, selectorSnapshot),
-                    function(receipt) {
+                    "JSON.stringify(" + BrowserScripts.hintAcquireScopeLease(request, candidate, selectorSnapshot) + ")",
+                    function(receiptJson) {
+            // Preserve explicit null fields across WebEngine's QVariant bridge.
+            var receipt = null
+            try { receipt = JSON.parse(receiptJson) } catch (error) {}
             if (window.hintCollectionEpoch !== actionEpoch
                     || window.activeWebView() !== view
                     || window.hintTrackingView !== view
@@ -1148,6 +1155,7 @@ FerricBrowserRuntimeServices {
                                 view, BrowserScripts.hintClearScopeLease(request.lease_id),
                                 function(value) {})
                 }
+                finishHandoff()
                 return
             }
             if (!receipt || receipt.ok !== true) {
@@ -1168,6 +1176,7 @@ FerricBrowserRuntimeServices {
                     window.runBrowserScript(
                                 view, BrowserScripts.hintClearScopeLease(request.lease_id),
                                 function(value) {})
+                    finishHandoff()
                     return
                 }
                 if (stopped !== true
@@ -1182,6 +1191,7 @@ FerricBrowserRuntimeServices {
                     return
                 }
                 window.activeHintScopeLeaseId = request.lease_id
+                finishHandoff()
                 window.hintResults = []
                 window.hintInput = ""
                 window.hintRefreshPending = false
@@ -1208,12 +1218,23 @@ FerricBrowserRuntimeServices {
             window.closeHints()
             return
         }
+        window.scopedGridHandoffView = view
+        window.scopedGridHandoffLeaseId = request.lease_id
+        var finishSurfaceHandoff = function() {
+            if (window.scopedGridHandoffLeaseId === request.lease_id) {
+                window.scopedGridHandoffView = null
+                window.scopedGridHandoffLeaseId = ""
+            }
+        }
         var selectorSnapshot = window.hintSelectorPolicySnapshot(browserUi.hint_family)
         var acquireStarted = window.runBrowserScript(
                     view,
-                    BrowserScripts.hintAcquireScopeLease(
-                        request, candidate, selectorSnapshot), function(receipt) {
+                    "JSON.stringify(" + BrowserScripts.hintAcquireScopeLease(
+                        request, candidate, selectorSnapshot) + ")", function(receiptJson) {
+            var receipt = null
+            try { receipt = JSON.parse(receiptJson) } catch (error) {}
             var clearLease = function() {
+                finishSurfaceHandoff()
                 window.runBrowserScript(
                             view, BrowserScripts.hintClearScopeLease(request.lease_id),
                             function(value) {})
@@ -1223,9 +1244,11 @@ FerricBrowserRuntimeServices {
                     || window.hintTrackingView !== view
                     || browserUi.mode !== "hint") {
                 if (receipt && receipt.ok === true) clearLease()
+                else finishSurfaceHandoff()
                 return
             }
             if (!receipt || receipt.ok !== true) {
+                finishSurfaceHandoff()
                 window.closeHints()
                 browserUi.status_text = receipt && receipt.error === "weak-reference-unavailable"
                         ? "Scoped Grid needs weak references; use full-page Grid instead"
@@ -1281,6 +1304,7 @@ FerricBrowserRuntimeServices {
                         window.showCommandNotice(browserUi.status_text, true)
                         return
                     }
+                    finishSurfaceHandoff()
                     window.activeSpatialScopeLeaseId = request.lease_id
                     window.activeSpatialScopeView = view
                     window.activeHintScopeLeaseId = ""
@@ -1305,6 +1329,7 @@ FerricBrowserRuntimeServices {
             }
         })
         if (!acquireStarted && window.hintCollectionEpoch === actionEpoch) {
+            finishSurfaceHandoff()
             window.closeHints()
             browserUi.status_text = "Scoped Grid lease could not be acquired"
             window.showCommandNotice(browserUi.status_text, true)
@@ -1332,6 +1357,7 @@ FerricBrowserRuntimeServices {
     }
 
     function startHintCollection() {
+        if (window.pendingContextMenuRequest && window.pendingContextMenuRequest.hintAction) return
         if (browserUi.hint_pointer_mode
                 && browserUi.hint_pointer_state !== "selecting") {
             return
@@ -1452,6 +1478,9 @@ FerricBrowserRuntimeServices {
             return
         }
         window.runBrowserScript(view, window.hintDirtyRevisionScript(), function(value) {
+            // A palette captures one session. Refreshing underneath it would
+            // invalidate its permit; final selection still checks fresh DOM.
+            if (window.pendingContextMenuRequest && window.pendingContextMenuRequest.hintAction) return
             if (value && value.dirty === true
                     && Number(value.revision || 0) !== window.hintDirtyRevision) {
                 window.startHintCollection()
@@ -1475,7 +1504,7 @@ FerricBrowserRuntimeServices {
             window.reconcileTargetSearchSelection()
         }
         if (response.outcome === "activate") {
-            window.activateHint(String(response.label || ""))
+            window.activateHint(String(response.label || ""), "", true)
         } else if (response.outcome === "cancel") {
             window.closeHints()
         } else if (response.outcome === "rotate") {
@@ -1517,6 +1546,12 @@ FerricBrowserRuntimeServices {
     }
 
     function closeHints() {
+        window.hintScopeHandoffLeaseId = ""
+        window.scopedGridHandoffView = null
+        window.scopedGridHandoffLeaseId = ""
+        if (window.pendingContextMenuRequest && window.pendingContextMenuRequest.hintAction) {
+            window.clearContextMenuRequest()
+        }
         window.hintCollectionEpoch += 1
         window.activeHintScopeLeaseId = ""
         window.stopHintTracking()
@@ -1536,7 +1571,12 @@ FerricBrowserRuntimeServices {
         var view = window.hintTrackingView
         window.hintTrackingView = null
         if (view) {
-            window.runBrowserScript(view, window.hintStopTrackingScript(), function(value) {})
+            var preservedLease = window.hintScopeHandoffLeaseId || window.scopedGridHandoffLeaseId
+            if (!preservedLease && browserUi.spatial_visible
+                    && window.activeSpatialScopeView === view) {
+                preservedLease = window.activeSpatialScopeLeaseId
+            }
+            window.runBrowserScript(view, window.hintStopTrackingScript(preservedLease), function(value) {})
         }
     }
 
@@ -2005,7 +2045,7 @@ FerricBrowserRuntimeServices {
         browserUi.status_text = "Hint actions"
     }
 
-    function activateHint(label, actionId) {
+    function activateHint(label, actionId, localSelection) {
         if (browserUi.hint_pointer_mode) {
             // Pointer mode treats marker activation as selection only. Enter
             // release owns the separate preflight and native dispatch gesture.
@@ -2027,6 +2067,14 @@ FerricBrowserRuntimeServices {
                 browserUi.cancel_hint_palette()
             }
             return
+        }
+        // A keyboard/overlay selection is a new local palette entry. An
+        // automatic --first completion cannot acquire that authority.
+        if (!actionId && localSelection === true
+                && (browserUi.hint_target === "choose"
+                    || selected.kind === "region" || selected.kind === "scrollable-region"
+                    || selected.kind === "surface" || selected.kind === "focusable-surface")) {
+            actionId = "hint.choose"
         }
         var activationEpoch = window.hintCollectionEpoch
         window.hintRefreshPending = true

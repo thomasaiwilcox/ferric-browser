@@ -869,7 +869,14 @@ impl qobject::BrowserUi {
         // asynchronous page script has consumed that record.
         let awaits_page_activation = matches!(
             result.get("action").and_then(Value::as_str),
-            Some("focus" | "scroll-target" | "click" | "hint-within" | "target-search-within")
+            Some(
+                "focus"
+                    | "scroll-target"
+                    | "click"
+                    | "hint-within"
+                    | "target-search-within"
+                    | "grid-within"
+            )
         );
         let palette_open = result.get("action").and_then(Value::as_str) == Some("choose");
         if keeps_hint_mode {

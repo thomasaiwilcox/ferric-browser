@@ -1740,6 +1740,10 @@ ApplicationWindow {
     property string targetSearchSelectedIdentity: ""
     property string targetSearchSelectedMeaning: ""
     property bool targetSearchSelectionInitialized: false
+    property string hintScopeHandoffLeaseId: ""
+    property var scopedGridHandoffView: null
+    property string scopedGridHandoffLeaseId: ""
+    property bool hintCollectionTruncated: false
     property int hintDirtyRevision: 0
     property bool hintRefreshPending: false
     property int hintCollectionEpoch: 0

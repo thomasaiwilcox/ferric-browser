@@ -880,7 +880,7 @@ GridLayout {
 
             WebEngineView {
                 id: webView
-                readonly property string promptLeaseIdentity: Qt.createUuid()
+                readonly property string promptLeaseIdentity: browserUi.new_prompt_view_identity()
                 property var promptIdentityUi: null
                 property int promptIdentityTabIndex: -1
                 function refreshPromptViewIdentity() {
@@ -1262,8 +1262,11 @@ GridLayout {
     FerricPagePointerAdapter {
         id: spatialPointerAdapter
         enabled: browserUi.spatial_visible || browserUi.hint_pointer_pending
-        targetItem: (browserUi.spatial_visible || browserUi.hint_pointer_mode)
-                    ? window.activeWebView() : null
+                 || window.scopedGridHandoffView !== null
+        targetItem: window.scopedGridHandoffView !== null
+                    ? window.scopedGridHandoffView
+                    : (browserUi.spatial_visible || browserUi.hint_pointer_mode)
+                      ? window.activeWebView() : null
         targetWindow: window
         inputBlocked: window.browserChromeInputActive
         // S19 stays fail-closed until the native Wayland gesture gate passes.
@@ -1636,7 +1639,7 @@ GridLayout {
         unmatchedPolicy: browserUi.hint_unmatched_policy
         markerScale: browserUi.hint_marker_scale
         collisionRotation: window.hintCollisionRotation
-        onActivationRequested: function(label) { window.activateHint(label) }
+        onActivationRequested: function(label) { window.activateHint(label, "", true) }
         onActionsRequested: function(label) { window.showHintActions(label) }
     }
 
@@ -1653,8 +1656,6 @@ GridLayout {
         focus: true
         padding: 12 * window.chromeScale
         closePolicy: Popup.NoAutoClose
-        Accessible.role: Accessible.Dialog
-        Accessible.name: "Visible target search"
         onOpened: {
             window.captureOverlayFocus(window, window.activeWebView())
             Qt.callLater(function() { targetSearchInput.forceActiveFocus() })
@@ -1668,6 +1669,8 @@ GridLayout {
         }
 
         contentItem: ColumnLayout {
+            Accessible.role: Accessible.Dialog
+            Accessible.name: "Visible target search"
             spacing: 8 * window.chromeScale
 
             Label {

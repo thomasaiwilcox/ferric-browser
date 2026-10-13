@@ -664,7 +664,17 @@ FerricBrowserRuntimeBase {
         onItemActivated: function(item) {
             window.activateContextMenuItem(item)
         }
-        onDismissed: window.clearContextMenuRequest()
+        onDismissed: {
+            // Qt can close a Menu before its MenuItem emits triggered. Give
+            // that selection a chance to consume its captured permit, while
+            // never clearing a replacement request from a later menu.
+            var dismissedRequest = window.pendingContextMenuRequest
+            Qt.callLater(function() {
+                if (window.pendingContextMenuRequest === dismissedRequest) {
+                    window.clearContextMenuRequest()
+                }
+            })
+        }
     }
 
     FerricUserscriptRemovalDialog {

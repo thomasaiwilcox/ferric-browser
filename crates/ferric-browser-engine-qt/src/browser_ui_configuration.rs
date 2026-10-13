@@ -149,6 +149,17 @@ impl qobject::BrowserUi {
         layers: ConfigurationLayers,
         status: &str,
     ) -> Result<Value, String> {
+        self.as_mut()
+            .commit_runtime_config_persisted(candidate, layers, status, None)
+    }
+
+    pub(super) fn commit_runtime_config_persisted(
+        mut self: Pin<&mut Self>,
+        candidate: Value,
+        layers: ConfigurationLayers,
+        status: &str,
+        persistence: Option<(&Path, &RuntimeOverrides)>,
+    ) -> Result<Value, String> {
         let (candidate_mixed_policy, policy_changed) = self
             .as_ref()
             .resolve_candidate_mixed_policy(&candidate, &layers)?;
@@ -156,15 +167,15 @@ impl qobject::BrowserUi {
         let previous_hints = serde_json::from_value::<Config>(self.as_ref().rust().config.clone())
             .ok()
             .map(|config| config.hints);
-        let snapshot = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.state
-                .as_mut()
-                .ok_or_else(|| "application state is unavailable".to_owned())?
-                .update_configuration(layers)
-                .map_err(|error| error.to_string())?
-        };
+        let prepared = self
+            .as_ref()
+            .rust()
+            .state
+            .as_ref()
+            .ok_or_else(|| "application state is unavailable".to_owned())?
+            .prepare_configuration_update(layers)
+            .map_err(|error| error.to_string())?;
+        let snapshot = prepared.snapshot();
         let active_settings = snapshot.effective;
         let active_config = serde_json::to_value(&active_settings)
             .map_err(|error| format!("could not serialize active configuration: {error}"))?;
@@ -182,12 +193,32 @@ impl qobject::BrowserUi {
             .collect::<Vec<_>>();
         let config_json = serde_json::to_string(&active_config)
             .map_err(|error| format!("could not serialize effective configuration: {error}"))?;
-        let bindings = {
+        let base_config = serde_json::to_value(&policy_layers.base)
+            .map_err(|error| format!("could not serialize base configuration: {error}"))?;
+        let bindings = configured_bindings(&self.as_ref().rust().registry, &active_config);
+        let mut write_outcome = None;
+        {
+            let mut rust = self.as_mut().rust_mut();
+            rust.as_mut()
+                .get_mut()
+                .state
+                .as_mut()
+                .ok_or_else(|| "application state is unavailable".to_owned())?
+                .publish_configuration_update(prepared, || {
+                    if let Some((path, overrides)) = persistence {
+                        write_outcome = Some(ferric_browser_config::save_runtime_overrides_atomic(
+                            path, overrides,
+                        )?);
+                    }
+                    Ok(())
+                })
+                .map_err(|error| format!("configuration publication rejected: {error}"))?;
+        }
+        {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
             this.config = active_config.clone();
-            this.base_config = serde_json::to_value(&policy_layers.base)
-                .map_err(|error| format!("could not serialize base configuration: {error}"))?;
+            this.base_config = base_config;
             this.profile_overrides = policy_layers.profile.clone();
             this.runtime_overrides = policy_layers.runtime.clone();
             this.cli_overrides = policy_layers.command_line.clone();
@@ -200,8 +231,7 @@ impl qobject::BrowserUi {
                 .and_then(|discovery| discovery.get("learning_mode"))
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
-            configured_bindings(&this.registry, &this.config)
-        };
+        }
         {
             let mut rust = self.as_mut().rust_mut();
             rust.as_mut().get_mut().bindings = bindings;
@@ -248,9 +278,23 @@ impl qobject::BrowserUi {
         } else {
             format!("{status}; {} lifecycle change(s) pending", pending.len())
         };
+        let persistence_name = match &write_outcome {
+            None => "memory-only",
+            Some(ferric_browser_config::RuntimeOverrideWriteOutcome::Durable) => "durable",
+            Some(ferric_browser_config::RuntimeOverrideWriteOutcome::DurabilityUncertain(_)) => {
+                "durability-uncertain"
+            }
+        };
+        let status = match &write_outcome {
+            Some(ferric_browser_config::RuntimeOverrideWriteOutcome::DurabilityUncertain(
+                error,
+            )) => format!("{status}; change committed, crash durability uncertain: {error}"),
+            _ => status,
+        };
         self.as_mut().set_status_text(QString::from(status));
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
+        this.runtime_config_persistence = persistence_name;
         let revision = this.ipc_sequence.saturating_add(1);
         publish_ipc_event(
             &mut this.ipc_sequence,
@@ -258,6 +302,7 @@ impl qobject::BrowserUi {
             serde_json::json!({
                 "revision": revision,
                 "pending": pending_summary,
+                "persistence": persistence_name,
             }),
         );
         Ok(active_config)

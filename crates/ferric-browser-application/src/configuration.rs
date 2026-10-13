@@ -50,6 +50,20 @@ pub struct ConfigurationSnapshot {
     pub pending_changes: Vec<PendingSettingChange>,
 }
 
+/// A validated update that has not changed the active application state.
+#[derive(Debug)]
+pub struct PreparedConfigurationUpdate {
+    pub(crate) expected_revision: u64,
+    pub(crate) state: ConfigurationState,
+}
+
+impl PreparedConfigurationUpdate {
+    #[must_use]
+    pub fn snapshot(&self) -> ConfigurationSnapshot {
+        self.state.snapshot()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ConfigurationState {
     layers: ConfigurationLayers,

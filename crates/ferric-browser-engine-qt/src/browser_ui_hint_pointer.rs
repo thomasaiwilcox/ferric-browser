@@ -30,9 +30,13 @@ const PREFLIGHT_KEYS: &[&str] = &[
     "view_height",
 ];
 
-pub(super) fn reject_external_hint_interaction_chain(
-    commands: &[ParsedCommand],
-) -> Result<(), String> {
+/// Rejects local-only Hint interactions in an expanded external command chain.
+/// Callers must check the entire chain before sending or executing any member.
+///
+/// # Errors
+/// Returns a local-input requirement when a chain requests Pointer Hint or
+/// Target Search; ordinary semantic Hint commands remain allowed.
+pub fn reject_external_hint_interaction_chain(commands: &[ParsedCommand]) -> Result<(), String> {
     if commands
         .iter()
         .any(|command| command.name == "target-search")

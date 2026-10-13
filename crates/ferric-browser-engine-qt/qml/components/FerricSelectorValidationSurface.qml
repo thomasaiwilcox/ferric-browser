@@ -3,6 +3,7 @@ import QtWebEngine
 
 Item {
     id: root
+    objectName: "selectorValidationSurface"
 
     required property var browserUi
     property string activeGeneration: ""

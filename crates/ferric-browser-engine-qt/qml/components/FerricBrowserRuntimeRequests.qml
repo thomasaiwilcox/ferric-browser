@@ -1852,6 +1852,7 @@ FerricBrowserRuntimePresentation {
 
     FerricPageDialog {
         id: pageDialogPopup
+        objectName: "pageDialogPopup"
         browserWindow: window
     }
 

@@ -1502,7 +1502,7 @@ function onContext_workspaceChanged() {
 
     WebEngineView {
         id: secondaryView
-        readonly property string promptLeaseIdentity: Qt.createUuid()
+        readonly property string promptLeaseIdentity: secondaryUi.new_prompt_view_identity()
         property var promptIdentityUi: null
         property int promptIdentityTabIndex: -1
         function refreshPromptViewIdentity() {

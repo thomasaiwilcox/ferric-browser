@@ -164,6 +164,7 @@ pub(super) fn forward_command(
     let commands = CommandRegistry::default_v1()
         .expand_chain(commands)
         .map_err(|error| error.to_string())?;
+    ferric_browser_engine_qt::reject_external_hint_interaction_chain(&commands)?;
     for command in commands {
         let name = command.name.clone();
         let mut params = command_params(&command)?;

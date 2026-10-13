@@ -86,7 +86,7 @@ pub(super) const SETTING_METADATA: &[SettingMetadata] = &[
     setting_metadata!(
         "schema_version",
         "integer",
-        "1",
+        "3",
         GLOBAL_SCOPES,
         "reload",
         "none",

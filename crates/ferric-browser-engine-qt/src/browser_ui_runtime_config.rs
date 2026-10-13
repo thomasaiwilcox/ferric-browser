@@ -129,10 +129,13 @@ impl qobject::BrowserUi {
             if let Some(pending) = pending {
                 match result.map_err(|error| error.to_string()) {
                     Ok(effect) => {
-                        let base = serde_json::from_value::<Config>(
-                            self.as_ref().rust().base_config.clone(),
+                        // The Rust active base still contains safe defaults
+                        // during bootstrap. Validate the authored startup input,
+                        // not that prior active projection.
+                        let base = serde_json::from_str::<Config>(
+                            &self.as_ref().rust().config_base_json.to_string(),
                         )
-                        .unwrap_or_else(|_| effect.configuration.effective.clone());
+                        .unwrap_or_default();
                         let cli = serde_json::from_str::<RuntimeOverrides>(
                             &self.as_ref().rust().cli_overrides_json.to_string(),
                         )
@@ -876,6 +879,7 @@ impl qobject::BrowserUi {
             .runtime_overrides = persistent;
         Ok(serde_json::json!({
             "status": "accepted",
+            "persistence": self.as_ref().rust().runtime_config_persistence,
             "mode": mode_name,
             "keychain": keychain,
             "command": binding_command,

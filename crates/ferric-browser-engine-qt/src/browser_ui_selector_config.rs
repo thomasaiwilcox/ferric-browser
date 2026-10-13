@@ -7,7 +7,7 @@ use super::selector_validation::{
 };
 use super::{
     Config, ConfigurationLayers, CxxQtType, Duration, Instant, PathBuf, Pin, ProfileOpenEffect,
-    QString, RuntimeOverrides, Value, qobject, save_runtime_overrides_atomic,
+    QString, RuntimeOverrides, Value, qobject,
 };
 use ferric_browser_config::ProfilesConfig;
 
@@ -40,14 +40,16 @@ impl qobject::BrowserUi {
             );
             return Ok(None);
         }
-        let result = self
-            .as_mut()
-            .commit_runtime_config(candidate, layers.clone(), &status)?;
-        self.as_mut().set_active_selector_fingerprint(&layers)?;
-        if let Some(path) = persist_path {
-            save_runtime_overrides_atomic(&path, &persistent_overrides)
-                .map_err(|error| format!("could not save runtime overrides: {error}"))?;
-        }
+        let result = self.as_mut().commit_runtime_config_persisted(
+            candidate,
+            layers,
+            &status,
+            persist_path
+                .as_deref()
+                .map(|path| (path, &persistent_overrides)),
+        )?;
+        self.as_mut()
+            .set_active_selector_fingerprint_value(fingerprint);
         Ok(Some(result))
     }
 
@@ -233,22 +235,17 @@ impl qobject::BrowserUi {
                 persistent_overrides,
                 persist_path,
             } => {
-                match self
-                    .as_mut()
-                    .commit_runtime_config(candidate, layers.clone(), &status)
-                {
+                match self.as_mut().commit_runtime_config_persisted(
+                    candidate,
+                    layers,
+                    &status,
+                    persist_path
+                        .as_deref()
+                        .map(|path| (path, &persistent_overrides)),
+                ) {
                     Ok(_) => {
                         self.as_mut()
                             .set_active_selector_fingerprint_value(pending.fingerprint);
-                        if let Some(path) = persist_path {
-                            if let Err(error) =
-                                save_runtime_overrides_atomic(&path, &persistent_overrides)
-                            {
-                                self.as_mut().set_status_text(QString::from(format!(
-                                    "Configuration accepted in memory; runtime override persistence failed: {error}"
-                                )));
-                            }
-                        }
                     }
                     Err(error) => self.as_mut().set_status_text(QString::from(format!(
                         "Selector configuration commit rejected: {error}"
@@ -346,17 +343,6 @@ impl qobject::BrowserUi {
                 self.as_mut().set_status_text(QString::from(diagnostic));
             }
         }
-    }
-
-    fn set_active_selector_fingerprint(
-        mut self: Pin<&mut Self>,
-        layers: &ConfigurationLayers,
-    ) -> Result<(), String> {
-        let items = selector_validation_items(layers);
-        let fingerprint = selector_fingerprint(&items)?;
-        self.as_mut()
-            .set_active_selector_fingerprint_value(fingerprint);
-        Ok(())
     }
 
     pub(super) fn set_active_selector_fingerprint_value(

@@ -5,6 +5,13 @@ use super::native_prompt_lease::{
 use super::{CxxQtType, Mode, Pin, QString, TabId, qobject};
 
 impl qobject::BrowserUi {
+    // QML's Qt object has no createUuid() API. Generate a stable identity once
+    // per view using the application's native UUID implementation.
+    #[allow(clippy::unused_self)] // Qt invokables require a QObject receiver.
+    pub(super) fn new_prompt_view_identity(self: Pin<&mut Self>) -> QString {
+        QString::from(super::Uuid::new_v4().to_string())
+    }
+
     pub(super) fn note_native_prompt_configuration_change(
         mut self: Pin<&mut Self>,
         policy_changed: bool,

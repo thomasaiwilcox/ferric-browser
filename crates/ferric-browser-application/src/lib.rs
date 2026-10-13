@@ -26,7 +26,7 @@ mod profile_open;
 mod storage;
 
 use configuration::ConfigurationState;
-pub use configuration::{ConfigurationLayers, ConfigurationSnapshot};
+pub use configuration::{ConfigurationLayers, ConfigurationSnapshot, PreparedConfigurationUpdate};
 pub use ferric_browser_storage::StorageCommand as StorageRequest;
 use profile::ActiveProfile;
 use profile::ProfileActivation;
@@ -254,6 +254,43 @@ impl BrowserApplication {
         layers: ConfigurationLayers,
     ) -> Result<ConfigurationSnapshot, ConfigError> {
         self.configuration.update_layers(layers)
+    }
+
+    /// Prepares a runtime update without publishing it or its revision.
+    ///
+    /// # Errors
+    /// Returns a validation error for invalid configuration layers.
+    pub fn prepare_configuration_update(
+        &self,
+        layers: ConfigurationLayers,
+    ) -> Result<PreparedConfigurationUpdate, ConfigError> {
+        let mut state = self.configuration.clone();
+        state.update_layers(layers)?;
+        Ok(PreparedConfigurationUpdate {
+            expected_revision: self.configuration.revision(),
+            state,
+        })
+    }
+
+    /// Checks freshness, performs persistence, then publishes without another
+    /// fallible operation. The callback must not reenter the application.
+    ///
+    /// # Errors
+    /// Returns an error without publishing when preparation is stale or the
+    /// persistence callback rejects the update.
+    pub fn publish_configuration_update(
+        &mut self,
+        prepared: PreparedConfigurationUpdate,
+        persist: impl FnOnce() -> Result<(), ConfigError>,
+    ) -> Result<ConfigurationSnapshot, ConfigError> {
+        if self.configuration.revision() != prepared.expected_revision {
+            return Err(ConfigError::Validation(
+                "prepared configuration became stale".into(),
+            ));
+        }
+        persist()?;
+        self.configuration = prepared.state;
+        Ok(self.configuration.snapshot())
     }
 
     /// Replaces the effective configuration for compatibility bootstrap paths.
@@ -839,5 +876,65 @@ mod tests {
         assert_eq!(terminated, accepted);
         assert!(!application.storage_is_open());
         fs::remove_dir_all(root).expect("remove test storage directory");
+    }
+}
+
+#[cfg(test)]
+mod configuration_transaction_tests {
+    use super::*;
+
+    fn changed_layers() -> ConfigurationLayers {
+        let mut layers = ConfigurationLayers::new(Config::default());
+        layers.runtime.set_literal("content.zoom", "1.25").unwrap();
+        layers
+    }
+
+    #[test]
+    fn persistence_rejection_preserves_full_configuration_and_revision() {
+        let mut app = BrowserApplication::new(Config::default());
+        let old = app.configuration_snapshot();
+        let prepared = app.prepare_configuration_update(changed_layers()).unwrap();
+        assert_eq!(app.configuration_snapshot(), old);
+        let result = app.publish_configuration_update(prepared, || {
+            Err(ConfigError::Validation(
+                "injected persistence rejection".into(),
+            ))
+        });
+        assert!(result.is_err());
+        assert_eq!(app.configuration_snapshot(), old);
+    }
+
+    #[test]
+    fn stale_preparation_is_rejected_before_persistence() {
+        let mut app = BrowserApplication::new(Config::default());
+        let prepared = app.prepare_configuration_update(changed_layers()).unwrap();
+        app.update_configuration(ConfigurationLayers::new(Config::default()))
+            .unwrap();
+        let old = app.configuration_snapshot();
+        assert!(
+            app.publish_configuration_update(prepared, || {
+                panic!("stale candidate must not persist")
+            })
+            .is_err()
+        );
+        assert_eq!(app.configuration_snapshot(), old);
+    }
+
+    #[test]
+    fn successful_publication_commits_once_after_persistence() {
+        let mut app = BrowserApplication::new(Config::default());
+        let prepared = app.prepare_configuration_update(changed_layers()).unwrap();
+        let expected = prepared.snapshot();
+        let mut persisted = false;
+        let published = app
+            .publish_configuration_update(prepared, || {
+                persisted = true;
+                Ok(())
+            })
+            .unwrap();
+        assert!(persisted);
+        assert_eq!(published, expected);
+        assert_eq!(published.revision, 1);
+        assert_eq!(app.configuration_snapshot(), published);
     }
 }

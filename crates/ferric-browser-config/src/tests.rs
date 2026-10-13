@@ -1754,3 +1754,41 @@ fn one_key_mode_supports_bindings_but_not_automatic_entry() {
             .is_err()
     );
 }
+
+#[test]
+fn runtime_override_can_add_the_first_supported_selector_family() {
+    let mut overrides = RuntimeOverrides::default();
+    overrides
+        .set_literal(
+            "hints.selectors.all",
+            "{mode='extend',selectors=['button[data-local]']}",
+        )
+        .unwrap();
+    let applied = apply_runtime_overrides(&Config::default(), &overrides).unwrap();
+    assert_eq!(
+        applied.hints.selectors[&HintSelectorFamily::All],
+        selector_policy(HintSelectorMode::Extend, &["button[data-local]"])
+    );
+    overrides.unset_setting("hints.selectors.all").unwrap();
+    assert_eq!(
+        apply_runtime_overrides(&Config::default(), &overrides).unwrap(),
+        Config::default()
+    );
+    assert!(
+        overrides
+            .set_literal(
+                "hints.selectors.unknown",
+                "{mode='extend',selectors=['button']}"
+            )
+            .is_err()
+    );
+}
+
+#[test]
+fn schema_metadata_matches_the_actual_default() {
+    let metadata = setting_metadata("schema_version").unwrap();
+    assert_eq!(
+        metadata.default_value,
+        Config::default().schema_version.to_string()
+    );
+}

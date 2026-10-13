@@ -210,6 +210,21 @@ void FerricPagePointerAdapter::dispatch(const QString &requestId,
         return;
     }
 
+    // In-scene Hint/Grid overlays can still own keyboard focus. A native
+    // button gesture must focus the page just as a direct mouse press would;
+    // trusted events alone do not satisfy focus-sensitive page API gates.
+    if (action != QStringLiteral("hover")) {
+        const QPointer<QQuickItem> focusTarget = targetItem_;
+        const QPointer<QWindow> focusWindow = targetWindow_;
+        focusTarget->forceActiveFocus(Qt::MouseFocusReason);
+        if (!focusTarget || !focusWindow || targetItem_ != focusTarget
+            || targetWindow_ != focusWindow || !validTarget()
+            || serial != surfaceSerial_ || revision != surfaceRevision_) {
+            acknowledge(requestId, sessionId, serialText, revisionText, QStringLiteral("rejected"));
+            return;
+        }
+    }
+
     const QPointF targetLocal(x, y);
     const QPointF windowPosition = targetItem_->mapToScene(targetLocal);
     const QPoint global = targetWindow_->mapToGlobal(windowPosition.toPoint());

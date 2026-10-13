@@ -70,3 +70,5 @@ sole exception: it is transient native-callback narration for the visible
 status surface, not application or policy state. The
 `qml_submits_runtime_intents_instead_of_writing_runtime_state` architecture
 test enforces this boundary.
+
+Scope acquisition receipts are serialized inside WebEngine before crossing its QVariant result bridge, then decoded in QML and passed unchanged to Rust's strict receipt validator. The two scoped Hint/Grid handoff paths preserve explicit nullable parent-lease fields; a QVariant object conversion must not turn a valid null into an omitted field. These are bounded opaque page-script results, not presentation models.

@@ -628,8 +628,8 @@ fn qml_json_contract_allowlist_is_explicit() {
 
     assert!(allowlist.contains("Opaque page-script request/result contracts"));
     assert!(allowlist.contains("Prohibited presentation payloads"));
-    assert_eq!(qml.matches("JSON.parse(").count(), 18);
-    assert_eq!(qml.matches("JSON.stringify(").count(), 37);
+    assert_eq!(qml.matches("JSON.parse(").count(), 20);
+    assert_eq!(qml.matches("JSON.stringify(").count(), 39);
 }
 
 #[test]

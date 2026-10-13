@@ -132,6 +132,7 @@ impl qobject::BrowserUi {
         first: bool,
         index: usize,
     ) {
+        self.as_mut().set_hint_target(QString::from(target));
         self.as_mut().set_target_search_active(false);
         self.as_mut().set_target_search_scope(QString::from("all"));
         self.as_mut().set_target_search_query(QString::default());

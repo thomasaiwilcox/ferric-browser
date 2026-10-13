@@ -396,18 +396,36 @@ pub fn load_runtime_overrides(path: impl AsRef<Path>) -> Result<RuntimeOverrides
     Ok(overrides)
 }
 
+/// Outcome after the atomic replacement has published the new file.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RuntimeOverrideWriteOutcome {
+    Durable,
+    /// The new file is visible, but crash durability could not be confirmed.
+    DurabilityUncertain(String),
+}
+
 /// Atomically writes generated runtime overrides with private permissions.
 /// The user configuration file is never opened or rewritten.
 ///
 /// # Errors
 ///
 /// Returns an error when validation, serialization, directory preparation, or
-/// the synchronized atomic write fails.
+/// any operation before replacement fails. A final directory-sync failure is
+/// returned as a committed outcome because the new file is already visible.
 pub fn save_runtime_overrides_atomic(
     path: impl AsRef<Path>,
     overrides: &RuntimeOverrides,
-) -> Result<(), ConfigError> {
-    let path = path.as_ref();
+) -> Result<RuntimeOverrideWriteOutcome, ConfigError> {
+    write_runtime_overrides(path.as_ref(), overrides, |parent| {
+        fs::File::open(parent).and_then(|directory| directory.sync_all())
+    })
+}
+
+fn write_runtime_overrides(
+    path: &Path,
+    overrides: &RuntimeOverrides,
+    sync_directory: impl FnOnce(&Path) -> std::io::Result<()>,
+) -> Result<RuntimeOverrideWriteOutcome, ConfigError> {
     validate_runtime_overrides(overrides)?;
     let bytes = toml::to_string_pretty(overrides)
         .map_err(|error| {
@@ -442,9 +460,10 @@ pub fn save_runtime_overrides_atomic(
             .and_then(|()| file.sync_all())
             .map_err(|error| io_error(&temporary, &error))?;
         fs::rename(&temporary, path).map_err(|error| io_error(path, &error))?;
-        fs::File::open(parent)
-            .and_then(|directory| directory.sync_all())
-            .map_err(|error| io_error(parent, &error))
+        Ok(match sync_directory(parent) {
+            Ok(()) => RuntimeOverrideWriteOutcome::Durable,
+            Err(error) => RuntimeOverrideWriteOutcome::DurabilityUncertain(error.to_string()),
+        })
     })();
     if result.is_err() {
         let _ = fs::remove_file(&temporary);
@@ -577,7 +596,7 @@ fn set_config_value(
         .copied()
         .ok_or_else(|| ConfigError::Validation(format!("configuration key is empty: {key}")))?;
     if parts.len() == 1 {
-        if !table.contains_key(part) {
+        if !table.contains_key(part) && selector_setting_family(key).is_none() {
             return Err(ConfigError::Validation(format!(
                 "configuration key not found: {key}"
             )));
@@ -885,5 +904,47 @@ fn merge(destination: &mut toml::Value, source: &toml::Value) {
                 destination.insert(key.clone(), value.clone());
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod persistence_tests {
+    use super::*;
+
+    #[test]
+    fn directory_sync_failure_is_a_committed_outcome() {
+        let directory =
+            std::env::temp_dir().join(format!("ferric-config-sync-fault-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("runtime.toml");
+        let mut overrides = RuntimeOverrides::default();
+        overrides.set_literal("content.zoom", "1.25").unwrap();
+        let outcome = write_runtime_overrides(&path, &overrides, |_| {
+            Err(std::io::Error::other("injected directory sync failure"))
+        })
+        .unwrap();
+        assert!(matches!(
+            outcome,
+            RuntimeOverrideWriteOutcome::DurabilityUncertain(_)
+        ));
+        assert_eq!(load_runtime_overrides(&path).unwrap(), overrides);
+        assert_eq!(fs::read_dir(&directory).unwrap().count(), 1);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn rejected_replacement_keeps_destination_and_cleans_temporary_file() {
+        let directory =
+            std::env::temp_dir().join(format!("ferric-config-rename-fault-{}", std::process::id()));
+        let path = directory.join("runtime.toml");
+        fs::create_dir_all(&path).unwrap();
+        fs::write(path.join("old"), b"old effective state").unwrap();
+        let result = write_runtime_overrides(&path, &RuntimeOverrides::default(), |_| {
+            panic!("directory sync must not run after failed replacement")
+        });
+        assert!(result.is_err());
+        assert_eq!(fs::read(path.join("old")).unwrap(), b"old effective state");
+        assert_eq!(fs::read_dir(&directory).unwrap().count(), 1);
+        fs::remove_dir_all(directory).unwrap();
     }
 }

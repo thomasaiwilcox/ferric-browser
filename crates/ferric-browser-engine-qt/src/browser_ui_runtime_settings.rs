@@ -156,6 +156,7 @@ impl qobject::BrowserUi {
             .unwrap_or(Value::Null);
         Ok(serde_json::json!({
             "status": "accepted",
+            "persistence": self.as_ref().rust().runtime_config_persistence,
             "key": key,
             "pattern": pattern,
             "temporary": temporary,

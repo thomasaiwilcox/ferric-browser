@@ -83,6 +83,13 @@ FocusScope {
     }
     Component.onCompleted: if (visible) prepareForDisplay()
 
+    Keys.onPressed: function(event) {
+        if (surface.visible && surface.dismissOnEscape && event.key === Qt.Key_Escape) {
+            event.accepted = true
+            surface.dismissRequested()
+        }
+    }
+
     Shortcut {
         sequence: "Escape"
         context: Qt.WindowShortcut

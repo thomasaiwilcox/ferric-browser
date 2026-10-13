@@ -4,7 +4,7 @@ import QtQuick.Controls
 TextField {
     id: field
     required property var browserWindow
-    implicitHeight: Math.max(42, implicitContentHeight + topPadding + bottomPadding)
+    implicitHeight: Math.max(42, contentHeight + topPadding + bottomPadding)
     leftPadding: 12
     rightPadding: 12
     topPadding: 10

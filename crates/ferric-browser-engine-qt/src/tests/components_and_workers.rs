@@ -496,7 +496,7 @@ fn hint_overlay_component_renders_candidates_and_emits_root_owned_intents() {
     assert!(!qml.contains("browserUi."));
     assert!(!qml.contains("activateHint("));
     assert!(composition_root.contains("FerricHintOverlay {"));
-    assert!(composition_root.contains("window.activateHint(label)"));
+    assert!(composition_root.contains("window.activateHint(label, \"\", true)"));
     assert!(composition_root.contains("window.showHintActions(label)"));
 }
 
@@ -924,9 +924,9 @@ fn completed_hints_pop_the_core_mode_stack_after_page_independent_actions() {
         .find("set_core_mode(Mode::Normal)")
         .expect("normal mode projection");
     assert!(pop < project, "the core stack must leave Hint before projecting Normal");
-    assert!(completion.contains(
-        "Some(\"focus\" | \"scroll-target\" | \"click\" | \"hint-within\" | \"target-search-within\")"
-    ));
+    for action in ["focus", "scroll-target", "click", "hint-within", "target-search-within", "grid-within"] {
+        assert!(completion.contains(&format!("\"{action}\"")), "page-backed handoff must retain its source: {action}");
+    }
 }
 
 #[test]

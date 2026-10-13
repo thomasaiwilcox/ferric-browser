@@ -142,3 +142,26 @@ under a Wayland compositor additionally requires a keyboard seat and an active
 test window. A headless Weston instance without a keyboard seat cannot satisfy
 the suite's focus prerequisite; that environment can still check installed
 application startup and page loading, but cannot qualify keyboard routing.
+
+`cargo xtask test application` builds a release BrowserUi and runs the shipped
+QML resources in a native Qt test harness with a disposable profile and a
+loopback fixture server. It covers composed keyboard routing, local Pointer
+Hint authority, scope handoffs, real modal responses, selector callbacks,
+configuration persistence rejection, page API outcomes, coordinate mapping at
+multiple zoom/DPR settings, and 1,000 Hint lifetime cycles with forced GC.
+The accompanying CLI probe starts the release browser and checks restricted
+command chains before any IPC frame is sent. This suite uses production routing
+and policy; it does not substitute test implementations for them.
+
+The offscreen clipboard case uses only the process-local clipboard. Tests on
+Wayland skip that case. `cargo xtask test application-wayland` runs the same
+application harness on an isolated nested Weston instance using Qt-generated
+input. It qualifies that platform path, but does not prove compositor-delivered
+physical input. `cargo xtask test wayland-input` requires the compositor input
+facility and fails explicitly when it is unavailable. The older `test wayland`
+command remains a startup smoke and can succeed without injected input.
+
+Offscreen, Qt-generated Wayland, compositor input, authenticated live-site,
+platform IME/chooser, and human/screen-reader evidence are separate gates. Record
+unavailable gates as blocked rather than deriving their outcomes from startup
+or synthetic fixture results.
