@@ -92,7 +92,7 @@ fn write_script_manifest(resources: &[PathBuf]) -> PathBuf {
         entries.join(",\n")
     );
     let manifest_path = out_dir.join("browser-script-manifest.json");
-    fs::write(&manifest_path, manifest).expect("write the generated browser script manifest");
+    write_generated_resource(&manifest_path, manifest.as_bytes());
     manifest_path
 }
 
@@ -119,7 +119,21 @@ fn write_manifest_qrc(qrc_path: &Path, manifest_path: &Path, resources: &[PathBu
         manifest_path.display(),
         script_resources
     );
-    fs::write(qrc_path, qrc).expect("write the generated browser script resource file");
+    write_generated_resource(qrc_path, qrc.as_bytes());
+}
+
+fn write_generated_resource(path: &Path, contents: &[u8]) {
+    // The QRC builder watches these generated inputs. Rewriting identical
+    // bytes after the build starts makes Cargo consider the next build dirty.
+    if fs::read(path).is_ok_and(|existing| existing == contents) {
+        return;
+    }
+    fs::write(path, contents).unwrap_or_else(|error| {
+        panic!(
+            "write generated browser resource {}: {error}",
+            path.display()
+        );
+    });
 }
 
 #[allow(clippy::too_many_lines)]
