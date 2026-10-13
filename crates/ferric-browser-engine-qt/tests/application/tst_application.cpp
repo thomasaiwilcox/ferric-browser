@@ -143,6 +143,16 @@ void ApplicationTests::init() {
         startupConfig = QString::fromUtf8(
             QJsonDocument(config).toJson(QJsonDocument::Compact));
     }
+    if (QString::fromLatin1(QTest::currentTestFunction()) == "selectorDiscoveryUsesProductionPolicy") {
+        const auto tag = QString::fromLatin1(QTest::currentDataTag());
+        QJsonObject policies;
+        policies.insert("scrollables", QJsonObject{{"mode", "replace"}, {"selectors", QJsonArray{}}});
+        if (tag != "inherit") policies.insert("all", QJsonObject{
+            {"mode", tag == "extend" ? "extend" : "replace"},
+            {"selectors", tag == "disabled" ? QJsonArray{} : tag == "extend" ? QJsonArray{".custom"} : QJsonArray{"#button"}}});
+        startupConfig = QString::fromUtf8(QJsonDocument(QJsonObject{
+            {"schema_version",3}, {"hints",QJsonObject{{"selectors",policies}}}}).toJson(QJsonDocument::Compact));
+    }
     engine->setInitialProperties(
         {{"temporaryProfile", !durable},
          {"storageBasePath", directory.filePath("durable-test")},
@@ -688,6 +698,31 @@ void ApplicationTests::nativePopupActionIsOneTransport() {
     QCOMPARE(page("window.allClicks").toInt(), 1);
     QVERIFY(page("window.lastTrusted").toBool());
     evaluate("testWindow.popupWindowRegistry[0].host.destroy()");
+}
+void ApplicationTests::selectorDiscoveryUsesProductionPolicy_data() {
+    QTest::addColumn<QString>("policy");
+    for (const auto &name : {"inherit", "extend", "replace", "disabled"})
+        QTest::newRow(name) << QString(name);
+}
+void ApplicationTests::selectorDiscoveryUsesProductionPolicy() {
+    QFETCH(QString, policy);
+    QVERIFY(page("var custom=document.createElement('div');custom.className='custom';custom.textContent='Custom discovery';custom.style='position:fixed;left:530px;top:410px;width:220px;height:32px';document.body.append(custom);true").toBool());
+    QTRY_VERIFY(text("selector_validation_request").isEmpty());
+    QVERIFY(command("hint all"));
+    QTRY_VERIFY(!evaluate("testWindow.hintRefreshPending").toBool());
+    // Wait for Rust to publish the collection, including an explicitly empty one.
+    QTRY_VERIFY(text("status_text").contains("No visible hint targets") || evaluate("testWindow.hintResults.length").toInt() > 0);
+    const auto rows = evaluate("testWindow.hintResults").toList();
+    bool customFound = false, buttonFound = false;
+    for (const auto &row : rows) {
+        const auto text = row.toMap().value("text").toString();
+        customFound |= text == "Custom discovery";
+        buttonFound |= text == "Activate exact button";
+    }
+    QCOMPARE(customFound, policy == "extend");
+    QCOMPARE(buttonFound, policy != "disabled");
+    if (policy == "disabled") QCOMPARE(rows.size(), 0);
+    if (policy == "replace") QCOMPARE(rows.size(), 1);
 }
 void ApplicationTests::startupSelectorValidation_data() {
     QTest::addColumn<bool>("valid");

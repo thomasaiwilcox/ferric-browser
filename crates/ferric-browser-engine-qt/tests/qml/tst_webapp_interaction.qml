@@ -62,13 +62,15 @@ TestCase {
     }
     function selectorSnapshot(family, mode, selectors, revision, extraPolicies) {
         var policies = ({})
-        policies[family] = {
-            mode: mode,
-            selectors: selectors,
+        if (family !== "regions" && family !== "surfaces") policies[family] = {
+            policy: {mode: mode === "merge" ? "extend" : mode, selectors: selectors},
             provenance: ["site-rule:fixture"]
         }
         if (extraPolicies) {
-            for (var key in extraPolicies) policies[key] = extraPolicies[key]
+            for (var key in extraPolicies) policies[key] = {
+                policy: {mode: extraPolicies[key].mode, selectors: extraPolicies[key].selectors},
+                provenance: extraPolicies[key].provenance
+            }
         }
         return {
             family: family,
@@ -76,6 +78,15 @@ TestCase {
             selector_revision: revision,
             policies: policies
         }
+    }
+    function test_selector_snapshot_rejects_flat_and_malformed_policy() {
+        load("adversarial-targets.html")
+        var invalid = {policies:{all:{mode:"replace",selectors:[]}}}
+        compare(evaluate(BrowserScripts.hintCollector("all",false,invalid)).error,"invalid-selector-policy")
+        invalid = {policies:{all:{policy:{mode:"unknown",selectors:[]}}}}
+        compare(evaluate(BrowserScripts.hintCollector("all",false,invalid)).error,"invalid-selector-policy")
+        var inherited = {policies:{all:{policy:null,provenance:["built-in"]}}}
+        verify(evaluate(BrowserScripts.hintCollector("all",false,inherited)).candidates.length > 0)
     }
     function cleanup() {
         evaluate(BrowserScripts.hintStopTracking())

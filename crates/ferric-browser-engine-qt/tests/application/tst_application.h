@@ -51,6 +51,8 @@ class ApplicationTests final : public QObject {
     void fullscreenApiOutcomes();
     void clipboardPermissionOutcomes_data();
     void clipboardPermissionOutcomes();
+    void selectorDiscoveryUsesProductionPolicy_data();
+    void selectorDiscoveryUsesProductionPolicy();
     void startupSelectorValidation_data();
     void startupSelectorValidation();
     void staleSelectorCallbackCannotPublish();
