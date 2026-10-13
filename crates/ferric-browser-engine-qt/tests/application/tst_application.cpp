@@ -835,7 +835,7 @@ void ApplicationTests::rendererLossCancelsHeldConfirmation() {
 
 void ApplicationTests::heldPageKeyRetainsOwnerAcrossPolicyChange() {
     QVERIFY(command("set --temp input.shortcut_policy=mixed"));
-    QVERIFY(command("set --temp input.page_keys=['f']"));
+    QVERIFY(command("set --temp \"input.page_keys=['f']\""));
     page("window.heldEvents=[];for(const kind of "
          "['keydown','keyup'])document.addEventListener(kind,e=>window."
          "heldEvents.push({kind:kind,key:e.key,trusted:e.isTrusted}));true");
@@ -865,7 +865,10 @@ void ApplicationTests::pointerObservationIntervalExperiment() {
     QVERIFY(command("bind p hint --target pointer all"));
     QJsonArray observations;
     for (int run = 0; run < 20; ++run) {
-        page(QString("document.querySelectorAll('.race-target').forEach(e=>e."
+        QVERIFY(
+            page(QString(
+                     "(function(){document.querySelectorAll('.race-target')."
+                     "forEach(e=>e."
                      "remove());"
                      "window.raceReceiver='';window.raceClicks=0;window."
                      "allClicks=0;window.raceOver=0;"
@@ -880,8 +883,10 @@ void ApplicationTests::pointerObservationIntervalExperiment() {
                      "c=b.cloneNode(true);"
                      "c.onclick=e=>{window.raceReceiver='replacement';window."
                      "raceClicks++;window.raceTrusted=e.isTrusted};"
-                     "b.replaceWith(c)};document.body.append(b);true")
-                 .arg(run % 2 ? 600 : 300));
+                     "b.replaceWith(c)};document.body.append(b);return "
+                     "true;})()")
+                     .arg(run % 2 ? 600 : 300))
+                .toBool());
         key(Qt::Key_P);
         const auto label = hintLabel("Race target");
         QVERIFY(!label.isEmpty());
@@ -896,6 +901,7 @@ void ApplicationTests::pointerObservationIntervalExperiment() {
                                "raceOver,trusted:!!window.raceTrusted})")
                               .toString();
         const auto row = QJsonDocument::fromJson(fact.toUtf8()).object();
+        qInfo() << "Interval trial" << run << fact;
         QVERIFY(row.value("clicks").toInt() <= 1);
         QVERIFY(row.value("allClicks").toInt() <= 1);
         if (row.value("clicks").toInt() == 1)
