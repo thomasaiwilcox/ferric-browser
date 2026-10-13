@@ -1084,6 +1084,99 @@ WebEngineView {
         QCOMPARE(observer.presses, afterPress ? 1 : 0);
         surface.removeEventFilter(&observer);
     }
+    void pointerAdapterSceneMapping_data() {
+        QTest::addColumn<QString>("change");
+        QTest::addColumn<QString>("stage");
+        QTest::newRow("stable-transformed-view") << QString("stable") << QString("move");
+        for (const auto &kind : {"target-x", "target-y", "ancestor-x", "ancestor-y",
+                                 "target-rotation", "ancestor-scale", "window-position",
+                                 "window-size"}) {
+            for (const auto &phase : {"move", "press", "release"})
+                QTest::newRow(qPrintable(QString("%1-%2").arg(phase, kind)))
+                    << QString(kind) << QString(phase);
+        }
+    }
+    void pointerAdapterSceneMapping() {
+        QFETCH(QString, change);
+        QFETCH(QString, stage);
+        struct Receiver : QQuickItem {
+            explicit Receiver(QQuickItem *parent) : QQuickItem(parent) {
+                setAcceptedMouseButtons(Qt::LeftButton);
+            }
+            int presses = 0, releases = 0;
+            std::function<void()> afterPress, afterRelease;
+            void mousePressEvent(QMouseEvent *event) override {
+                ++presses; event->accept();
+                if (afterPress) afterPress();
+            }
+            void mouseReleaseEvent(QMouseEvent *event) override {
+                ++releases; event->accept();
+                if (afterRelease) afterRelease();
+            }
+        };
+        QQuickWindow surface;
+        surface.resize(400, 240);
+        Receiver background(surface.contentItem());
+        background.setWidth(400); background.setHeight(240);
+        QQuickItem parent(surface.contentItem());
+        parent.setWidth(100); parent.setHeight(100);
+        Receiver target(&parent);
+        target.setWidth(100); target.setHeight(100);
+        if (change == "stable") {
+            parent.setPosition(QPointF(40, 20)); parent.setScale(1.2);
+            target.setRotation(10);
+        }
+        surface.show(); surface.requestActivate(); QTRY_VERIFY(surface.isActive());
+        FerricPagePointerAdapter adapter;
+        adapter.setTargetItem(&target); adapter.setTargetWindow(&surface); adapter.setEnabled(true);
+        adapter.setDoubleClickEnabled(stage == "release");
+        bool changed = false;
+        const auto mutate = [&] {
+            if (changed || change == "stable") return;
+            changed = true;
+            if (change == "target-x") target.setX(200);
+            else if (change == "target-y") target.setY(150);
+            else if (change == "ancestor-x") parent.setX(200);
+            else if (change == "ancestor-y") parent.setY(150);
+            // These preserve the selected centre point, so checking only that
+            // point would miss the changed scene transform.
+            else if (change == "target-rotation") target.setRotation(90);
+            else if (change == "ancestor-scale") parent.setScale(2);
+            else if (change == "window-position")
+                surface.setPosition(surface.position() + QPoint(40, 25));
+            else if (change == "window-size") surface.resize(350, 220);
+        };
+        struct Observer : QObject {
+            std::function<void()> onMove;
+            bool eventFilter(QObject *, QEvent *event) override {
+                if (event->type() == QEvent::MouseMove) onMove();
+                return false;
+            }
+        } observer;
+        observer.onMove = stage == "move" ? std::function<void()>(mutate) : [] {};
+        if (stage == "press") target.afterPress = mutate;
+        if (stage == "release") target.afterRelease = mutate;
+        surface.installEventFilter(&observer);
+        QSignalSpy acknowledgements(&adapter, &FerricPagePointerAdapter::dispatchAcknowledged);
+        const auto serial = adapter.surfaceSerial(), revision = adapter.surfaceRevision();
+        adapter.dispatch("mapping-request", "mapping-session", serial, revision, 50, 50,
+                         stage == "release" ? "double" : "left");
+        const int expected = change == "stable" || stage != "move" ? 1 : 0;
+        QCOMPARE(changed, change != "stable");
+        QCOMPARE(background.presses, 0);
+        QCOMPARE(background.releases, 0);
+        QCOMPARE(target.presses, expected);
+        QCOMPARE(target.releases, expected);
+        QCOMPARE(acknowledgements.size(), 1);
+        QCOMPARE(acknowledgements.first().at(4).toString(), change == "stable" ? QString("delivered")
+                 : stage == "move" ? QString("rejected") : QString("uncertain"));
+        adapter.dispatch("mapping-request", "mapping-session", serial, revision, 50, 50, "left");
+        QCOMPARE(acknowledgements.size(), 2);
+        QCOMPARE(acknowledgements.last().at(4).toString(), QString("rejected"));
+        QCOMPARE(background.presses, 0);
+        QCOMPARE(target.presses, expected);
+        surface.removeEventFilter(&observer);
+    }
     void pointerAdapterDoubleClickSequence() {
         normal();
         const QString documentUrl = browserJs("location.href").toString();

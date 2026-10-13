@@ -6,6 +6,7 @@
 #include <QtGui/QGuiApplication>
 #include <QtGui/QMouseEvent>
 #include <QtQuick/QQuickWindow>
+#include <array>
 #include <cmath>
 #include <limits>
 
@@ -227,6 +228,27 @@ void FerricPagePointerAdapter::dispatch(const QString &requestId,
 
     const QPointF targetLocal(x, y);
     const QPointF windowPosition = targetItem_->mapToScene(targetLocal);
+    const std::array<QPointF, 4> localCorners = {
+        QPointF(0, 0), QPointF(targetItem_->width(), 0),
+        QPointF(0, targetItem_->height()),
+        QPointF(targetItem_->width(), targetItem_->height())
+    };
+    std::array<QPointF, 4> sceneCorners;
+    bool mappingFinite = std::isfinite(windowPosition.x()) && std::isfinite(windowPosition.y());
+    for (std::size_t index = 0; index < localCorners.size(); ++index) {
+        sceneCorners[index] = targetItem_->mapToScene(localCorners[index]);
+        mappingFinite = mappingFinite && std::isfinite(sceneCorners[index].x())
+            && std::isfinite(sceneCorners[index].y());
+    }
+    const QRect windowGeometry = targetWindow_->geometry();
+    const qreal devicePixelRatio = targetWindow_->devicePixelRatio();
+    if (!mappingFinite || !std::isfinite(devicePixelRatio) || devicePixelRatio <= 0.0
+        || windowPosition.x() < 0.0 || windowPosition.y() < 0.0
+        || windowPosition.x() >= windowGeometry.width()
+        || windowPosition.y() >= windowGeometry.height()) {
+        acknowledge(requestId, sessionId, serialText, revisionText, QStringLiteral("rejected"));
+        return;
+    }
     const QPoint global = targetWindow_->mapToGlobal(windowPosition.toPoint());
     const bool doubleClick = action == QStringLiteral("double");
     const Qt::MouseButton button = action == QStringLiteral("right")
@@ -255,9 +277,22 @@ void FerricPagePointerAdapter::dispatch(const QString &requestId,
             && dispatchTarget->window() == dispatchWindow.data();
     };
     const auto currentSurface = [&] {
-        return sameTarget() && enabled_ && !inputBlocked_ && validTarget()
-            && surfaceSerial_ == serial && surfaceRevision_ == revision
-            && pendingRequestId_ == requestId && pendingSessionId_ == sessionId;
+        if (!sameTarget() || !enabled_ || inputBlocked_ || !validTarget()
+            || surfaceSerial_ != serial || surfaceRevision_ != revision
+            || pendingRequestId_ != requestId || pendingSessionId_ != sessionId
+            || dispatchWindow->geometry() != windowGeometry
+            || dispatchWindow->devicePixelRatio() != devicePixelRatio
+            || dispatchWindow->mapToGlobal(windowPosition.toPoint()) != global)
+            return false;
+        // Compare the effective mapping, including ancestor and custom transforms.
+        // The selected point alone can stay fixed while a view rotates or scales.
+        for (std::size_t index = 0; index < localCorners.size(); ++index) {
+            const QPointF current = dispatchTarget->mapToScene(localCorners[index]);
+            if (current.x() != sceneCorners[index].x() || current.y() != sceneCorners[index].y())
+                return false;
+        }
+        const QPointF current = dispatchTarget->mapToScene(targetLocal);
+        return current.x() == windowPosition.x() && current.y() == windowPosition.y();
     };
     bool pressAttempted = false;
     bool delivered = moved && currentSurface();
