@@ -2138,7 +2138,7 @@ pub struct BrowserUiRust {
     pending_hint_scope_handoff: Option<HintScopeBinding>,
     active_hint_scope: Option<HintScopeBinding>,
     next_hint_scope_lease_id: u64,
-    hint_consumed: BTreeSet<(String, u32)>,
+    hint_consumed: BTreeSet<(String, String, u32)>,
     hint_configuration_revision: u64,
     runtime_config_persistence: &'static str,
     pending_hint_palette_permit: Option<LocalInteractionPermit>,

@@ -21,6 +21,7 @@ pub(super) fn hint_capabilities_json(kind: ferric_browser_core::HintKind) -> Val
                         capability,
                         ferric_browser_core::HintCapability::SetScrollTarget
                             | ferric_browser_core::HintCapability::Focus
+                            | ferric_browser_core::HintCapability::HintInsideFrame
                             | ferric_browser_core::HintCapability::HintWithin
                             | ferric_browser_core::HintCapability::SearchWithin
                             | ferric_browser_core::HintCapability::GridWithin
@@ -32,9 +33,11 @@ pub(super) fn hint_capabilities_json(kind: ferric_browser_core::HintKind) -> Val
 }
 
 pub(super) fn known_hint_capability_id(id: &str) -> bool {
-    use ferric_browser_core::HintKind::{FocusableSurface, Region, ScrollableRegion, Surface};
+    use ferric_browser_core::HintKind::{
+        FocusableSurface, Frame, Region, ScrollableRegion, Surface,
+    };
 
-    [Region, ScrollableRegion, Surface, FocusableSurface]
+    [Region, ScrollableRegion, Surface, FocusableSurface, Frame]
         .into_iter()
         .any(|kind| {
             ferric_browser_core::hint_capabilities(kind)
@@ -69,7 +72,10 @@ pub(super) fn hint_scope_handoff_is_valid(
         (HintScopePurpose::Grid, HintKind::Region | HintKind::ScrollableRegion) => {
             matches!(binding.source_family.as_str(), "regions" | "all")
         }
-        (HintScopePurpose::Grid, HintKind::Surface | HintKind::FocusableSurface) => {
+        (
+            HintScopePurpose::Grid,
+            HintKind::Surface | HintKind::FocusableSurface | HintKind::Frame,
+        ) => {
             matches!(binding.source_family.as_str(), "surfaces" | "all")
         }
         _ => false,
@@ -644,5 +650,66 @@ impl qobject::BrowserUi {
         self.as_mut()
             .set_status_text(QString::from("Grid within ready"));
         true
+    }
+}
+
+impl qobject::BrowserUi {
+    pub(super) fn reset_frame_hint_session(mut self: Pin<&mut Self>) {
+        self.as_mut().set_hint_family(QString::from("all"));
+        self.as_mut().set_hint_target(QString::from("current"));
+        let mut rust = self.as_mut().rust_mut();
+        let this = rust.as_mut().get_mut();
+        this.hint_session = None;
+        this.hint_interaction = None;
+        this.hint_consumed.clear();
+        "current".clone_into(&mut this.hint_rapid_target);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{hint_capabilities_json, known_hint_capability_id};
+    use ferric_browser_core::HintKind;
+
+    #[test]
+    fn region_surface_palette_actions_are_rust_derived_and_bounded() {
+        let regions = hint_capabilities_json(HintKind::ScrollableRegion);
+        let regions = regions.as_array().expect("capability array");
+        assert_eq!(regions.len(), 4);
+        assert_eq!(regions[0]["id"], "hint-within");
+        assert_eq!(regions[0]["enabled"], true);
+        assert_eq!(regions[1]["id"], "search-within");
+        assert_eq!(regions[1]["enabled"], true);
+        assert_eq!(regions[2]["id"], "grid-within");
+        assert_eq!(regions[2]["enabled"], true);
+        assert_eq!(regions[3]["id"], "set-scroll-target");
+        assert_eq!(regions[3]["enabled"], true);
+
+        let surface = hint_capabilities_json(HintKind::FocusableSurface);
+        let surface = surface.as_array().expect("capability array");
+        assert_eq!(surface.len(), 2);
+        assert_eq!(surface[0]["id"], "grid-within");
+        assert_eq!(surface[0]["enabled"], true);
+        assert_eq!(surface[1]["id"], "focus");
+        assert_eq!(surface[1]["enabled"], true);
+
+        assert!(known_hint_capability_id("set-scroll-target"));
+        assert!(!known_hint_capability_id("click"));
+    }
+
+    #[test]
+    fn scoped_actions_are_available_only_for_region_and_surface_kinds() {
+        let region = hint_capabilities_json(HintKind::Region);
+        assert_eq!(region[0]["id"], "hint-within");
+        assert_eq!(region[0]["enabled"], true);
+
+        let surface = hint_capabilities_json(HintKind::Surface);
+        assert!(
+            surface
+                .as_array()
+                .expect("surface capabilities")
+                .iter()
+                .all(|capability| capability["id"] != "hint-within")
+        );
     }
 }

@@ -1387,13 +1387,14 @@ FerricBrowserRuntimeServices {
             window.showCommandNotice(selectorFailure, true)
             return
         }
-        window.runBrowserScript(
+        window.hintFrameProvider.collect(
                     view,
                     window.hintCollectorScript(
                         browserUi.hint_family, selectorSnapshot,
                         window.activeHintScopeLeaseId,
                         browserUi.target_search_active
-                            && browserUi.target_search_scope === "all"), function(value) {
+                            && browserUi.target_search_scope === "all"),
+                    {family:browserUi.hint_family,proxy:browserUi.hint_proxy_targets_enabled,selectors:selectorSnapshot,scope:window.activeHintScopeLeaseId,pointer:browserUi.hint_pointer_mode}, function(value) {
             if (window.hintCollectionEpoch !== collectionEpoch) {
                 return
             }
@@ -1484,7 +1485,7 @@ FerricBrowserRuntimeServices {
                     && browserUi.hint_pointer_state !== "selecting")) {
             return
         }
-        window.runBrowserScript(view, window.hintDirtyRevisionScript(), function(value) {
+        window.hintFrameProvider.dirty(function(value) {
             // A palette captures one session. Refreshing underneath it would
             // invalidate its permit; final selection still checks fresh DOM.
             if (window.pendingContextMenuRequest && window.pendingContextMenuRequest.hintAction) return
@@ -1568,6 +1569,7 @@ FerricBrowserRuntimeServices {
     }
 
     function stopHintTracking() {
+        window.hintFrameProvider.stop()
         var view = window.hintTrackingView
         window.hintTrackingView = null
         if (view) {
@@ -2060,7 +2062,8 @@ FerricBrowserRuntimeServices {
             }
         }
         var view = window.activeWebView()
-        if (!selected || !view || window.hintRefreshPending) {
+        var explicitSelection = localSelection === true || !!actionId
+        if (!selected || !view || window.hintRefreshPending && !explicitSelection) {
             if (!selected || !view) {
                 window.closeHints()
             } else if (actionId && actionId !== "hint.choose") {
@@ -2068,18 +2071,23 @@ FerricBrowserRuntimeServices {
             }
             return
         }
+        // A local confirmation freezes the displayed identity even if a passive
+        // collection is pending. Its late result cannot overwrite this request;
+        // the exact retained receiver still has to pass fresh validation below.
+        if (window.hintRefreshPending) window.hintCollectionEpoch += 1
         // A keyboard/overlay selection is a new local palette entry. An
         // automatic --first completion cannot acquire that authority.
         if (!actionId && localSelection === true
                 && (browserUi.hint_target === "choose"
                     || selected.kind === "region" || selected.kind === "scrollable-region"
-                    || selected.kind === "surface" || selected.kind === "focusable-surface")) {
+                    || selected.kind === "surface" || selected.kind === "focusable-surface" || selected.kind === "frame")) {
             actionId = "hint.choose"
         }
         var activationEpoch = window.hintCollectionEpoch
+        var frameEntrySelectors = window.hintSelectorPolicySnapshot(browserUi.hint_family)
         window.hintRefreshPending = true
-        var activationStarted = window.runBrowserScript(
-                    view, window.hintFreshScript(selected), function(value) {
+        var activationStarted = window.hintFrameProvider.fresh(
+                    selected, window.hintFreshScript(selected), function(value) {
             if (window.hintCollectionEpoch !== activationEpoch
                     || window.activeWebView() !== view
                     || window.hintTrackingView !== view
@@ -2110,7 +2118,7 @@ FerricBrowserRuntimeServices {
                 window.showCommandNotice(browserUi.status_text, true)
                 return
             }
-            var pageActionPending = result.action === "focus"
+            var pageActionPending = result.action === "hint-inside-frame" || result.action === "focus"
                     || result.action === "click" || result.action === "scroll-target"
                     || result.action === "hint-within"
                     || result.action === "target-search-within"
@@ -2122,7 +2130,7 @@ FerricBrowserRuntimeServices {
             if (!pageActionPending) {
                 window.hintRefreshPending = false
             }
-            if ((result.action === "focus" || result.action === "click"
+            if ((result.action === "hint-inside-frame" || result.action === "focus" || result.action === "click"
                  || result.action === "scroll-target" || result.action === "hint-within"
                  || result.action === "target-search-within"
                  || result.action === "grid-within")
@@ -2148,7 +2156,9 @@ FerricBrowserRuntimeServices {
                 window.hintInput = ""
                 window.executePendingEngineAction()
             } else if (result.action === "choose") {
-                window.openHintActionPalette(label, result.capabilities)
+                var capabilities = result.capabilities
+                if (selected.frame_owner && capabilities) capabilities = capabilities.filter(function(capability) {return capability.id === "hint-inside-frame" || capability.id === "focus"})
+                window.openHintActionPalette(label, capabilities)
             } else if (result.action === "tab") {
                 window.hintResults = []
                 window.hintInput = ""
@@ -2222,9 +2232,23 @@ FerricBrowserRuntimeServices {
                 window.hintResults = []
                 window.hintInput = ""
                 window.rapidHintConfirmationVisible = true
+            } else if (result.action === "hint-inside-frame") {
+                window.hintFrameProvider.enter(value, frameEntrySelectors, function(entered) {
+                    if (window.hintCollectionEpoch !== actionEpoch || window.activeWebView() !== view || browserUi.mode !== "hint") return
+                    window.hintRefreshPending = false
+                    if (!entered || !entered.ok) {
+                        window.closeHints()
+                        browserUi.status_text = "Cannot hint inside this frame; use Focus then pass-through, or Grid"
+                        window.showCommandNotice(browserUi.status_text, true)
+                        return
+                    }
+                    browserUi.cancel_hint_palette()
+                    window.hintResults = []
+                    window.startHintCollection()
+                })
             } else if (result.action === "focus") {
                 var focusScript = window.hintFocusScript(value)
-                var focusStarted = window.runBrowserScript(view, focusScript, function(value) {
+                var focusStarted = window.hintFrameProvider.action(value, focusScript, function(value) {
                     if (window.hintCollectionEpoch !== actionEpoch
                             || window.activeWebView() !== view
                             || window.hintTrackingView !== view
@@ -2284,7 +2308,7 @@ FerricBrowserRuntimeServices {
                 }
             } else if (result.action === "click") {
                 var clickScript = window.hintClickScript(value)
-                var clickStarted = window.runBrowserScript(view, clickScript, function(value) {
+                var clickStarted = window.hintFrameProvider.action(value, clickScript, function(value) {
                     if (window.hintCollectionEpoch !== actionEpoch
                             || window.activeWebView() !== view
                             || window.hintTrackingView !== view
@@ -2298,7 +2322,8 @@ FerricBrowserRuntimeServices {
                     window.closeHints()
                     browserUi.status_text = value === true
                             ? "Hint target activated"
-                            : "Hint target is no longer clickable"
+                            : value === false ? "Hint target is no longer clickable"
+                            : "Activation result unavailable; check the page before trying again"
                     window.showCommandNotice(browserUi.status_text, value !== true)
                 })
                 if (!clickStarted) {

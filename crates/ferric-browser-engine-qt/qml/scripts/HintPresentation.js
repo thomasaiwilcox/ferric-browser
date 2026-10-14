@@ -2,7 +2,7 @@
 
 // Presentation only. Labels still resolve through the current Rust Hint session.
 function identity(row) {
-    return JSON.stringify([String(row.label), String(row.frame_path || ""),
+    return JSON.stringify([String(row.label), String(row.frame_owner || ""), String(row.frame_path || ""),
                            Number(row.element_id || 0), row.related_element_id || null])
 }
 

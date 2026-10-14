@@ -13,6 +13,7 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QTcpSocket>
+#include <QtWebEngineCore/QWebEngineFrame>
 #include <QTemporaryDir>
 #include <QtTest>
 #include <QtWebEngineQuick/qtwebenginequickglobal.h>
@@ -68,6 +69,10 @@ void ApplicationTests::accept(const QVariant &value) {
     scriptDone = true;
 }
 
+void ApplicationTests::frameOperationComplete(const QVariant &value) {
+    ++frameCallbackCount;scriptResult=value;
+}
+
 void ApplicationTests::initTestCase() {
     if (QGuiApplication::platformName() != "wayland")
         return;
@@ -107,7 +112,8 @@ void ApplicationTests::init() {
                 const auto request = socket->readAll();
                 if (!request.contains("\r\n\r\n"))
                     return;
-                const QByteArray body =
+                const auto path = request.split(' ').value(1);
+                const QByteArray body = frameFixtures.contains(path) ? frameFixtures.value(path) :
                     request.startsWith("GET /child.html ")
                         ? QByteArray(
                               "<!doctype "
@@ -201,12 +207,203 @@ void ApplicationTests::init() {
 }
 void ApplicationTests::cleanup() {
     engine.reset();
+    frameFixtures.clear();
     server.close();
     server.disconnect(this);
     window = nullptr;
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
     QTest::qWait(20);
 }
+
+void ApplicationTests::crossOriginConsentHints_data() {
+    QTest::addColumn<double>("zoom");
+    QTest::addColumn<QString>("choice");
+    QTest::addColumn<QString>("entry");
+    for (const auto zoom : {0.8,1.0,1.25}) for (const auto &choice : {"Accept","Reject All","Manage My Choices"}) {
+        const auto tag=QString("explicit-%1-%2").arg(zoom).arg(choice).toUtf8();
+        QTest::newRow(tag.constData()) << zoom << QString(choice) << QString("explicit");
+    }
+    QTest::newRow("already-focused") << 1.0 << QString("Reject All") << QString("focused");
+    QTest::newRow("nested") << 1.0 << QString("Manage My Choices") << QString("nested");
+    QTest::newRow("duplicate-left") << 1.0 << QString("Accept") << QString("left");
+    QTest::newRow("duplicate-right") << 1.0 << QString("Accept") << QString("right");
+    QTest::newRow("opaque-script-allowed") << 1.0 << QString("Accept") << QString("opaque");
+    QTest::newRow("positive-scaling") << 1.0 << QString("Reject All") << QString("scaled");
+}
+void ApplicationTests::crossOriginConsentHints() {
+    QFETCH(double,zoom);QFETCH(QString,choice);QFETCH(QString,entry);
+    const auto port=server.serverPort();
+    const auto child=QString("http://localhost:%1/consent").arg(port);
+    frameFixtures["/consent"]=R"HTML(<!doctype html><style>body{margin:10px}button{display:block;width:260px;height:38px;margin:10px}</style><button onclick="window.choice='Accept';window.count=(window.count||0)+1">Accept</button><button onclick="window.choice='Reject All';window.count=(window.count||0)+1">Reject All</button><button onclick="window.choice='Manage My Choices';window.count=(window.count||0)+1;document.body.dataset.preferences='open'">Manage My Choices</button><script>window.count=0;window.keys=[];document.addEventListener('keydown',e=>window.keys.push(e.key))</script>)HTML";
+    QString source=child;
+    if(entry=="nested") {
+        frameFixtures["/outer"]=QString("<!doctype html><iframe title='Nested consent' src='http://127.0.0.1:%1/consent' style='position:absolute;left:15px;top:20px;width:300px;height:200px;border:3px solid'></iframe>").arg(port).toUtf8();
+        source=QString("http://localhost:%1/outer").arg(port);
+    }
+    const bool duplicate=entry=="left"||entry=="right";
+    fixtureHtml=QString("<!doctype html><input aria-label='Covered background'><div role='dialog'><iframe id='left' name='duplicate' title='Left consent' src='%1' style='position:absolute;left:30px;top:80px;width:340px;height:260px;border:9px solid;padding:4px'></iframe>%2</div>").arg(source,duplicate?QString("<iframe id='right' name='duplicate' title='Right consent' src='%1' style='position:absolute;left:430px;top:80px;width:340px;height:260px;border:9px solid;padding:4px'></iframe>").arg(source):QString()).toUtf8();
+    if(entry=="opaque")fixtureHtml.replace("id='left'", "id='left' sandbox='allow-scripts'");
+    if(entry=="scaled")fixtureHtml.replace("border:9px solid;padding:4px", "border:9px solid;padding:4px;transform:scale(1.25);transform-origin:left top");
+    QVERIFY(command(QString("open http://127.0.0.1:%1/frames").arg(port)));
+    QTRY_VERIFY_WITH_TIMEOUT(page("!!document.getElementById('left')").toBool(),10000);
+    QTRY_VERIFY_WITH_TIMEOUT(evaluate("testWindow.activeWebView().mainFrame.children.length>0").toBool(),10000);
+    QTest::qWait(150);
+    QVERIFY(page("document.getElementById('left').contentDocument===null").toBool());
+    evaluate(QString("testWindow.activeWebView().zoomFactor=%1").arg(zoom));
+    QVERIFY(command("set --temp hints.auto_follow=never"));
+    if(entry=="focused") page("document.getElementById('left').focus();true");
+    QVERIFY(command("hint all"));
+    if(entry!="focused") {
+        const auto frameName=entry=="right"?"Right consent":"Left consent";
+        const auto label=hintLabel(frameName);QVERIFY2(!label.isEmpty(),qPrintable(text("status_text")));
+        typeText(label);key(Qt::Key_Return);
+        QTRY_VERIFY(evaluate("testWindow.pendingContextMenuRequest!==null").toBool());
+        QVERIFY(chooseCapability("hint-inside-frame"));
+        if(entry=="nested") {
+            const auto nested=hintLabel("Nested consent");QVERIFY2(!nested.isEmpty(),qPrintable(text("status_text")));
+            typeText(nested);key(Qt::Key_Return);
+            QTRY_VERIFY(evaluate("testWindow.pendingContextMenuRequest!==null").toBool());
+            QVERIFY(chooseCapability("hint-inside-frame"));
+        }
+    }
+    const auto label=hintLabel(choice);QVERIFY2(!label.isEmpty(),qPrintable(text("status_text")));
+    QTRY_VERIFY(!evaluate("testWindow.hintRefreshPending").toBool());
+    const auto values=QJsonDocument::fromJson(text("hint_values").toUtf8()).array();
+    QString owner;
+    for(const auto &value:values) {
+        const auto row=value.toObject();
+        QVERIFY(row["text"].toString()!="Covered background");
+        if(row["text"].toString()==choice) {
+            owner=row["frame_owner"].toString();
+            QVERIFY(owner.startsWith("frame-"));
+            const auto geometry=row;
+            QVERIFY(geometry["x"].toDouble()>(entry=="right"?430:30));
+            QVERIFY(geometry["y"].toDouble()>80);
+        }
+    }
+    QVERIFY(!owner.isEmpty());
+    // Reading through the browser-owned lease verifies the frame selected by production,
+    // independently of native frame enumeration order or duplicate metadata.
+    auto childRead=[this,owner](const QString &script){
+        scriptDone=false;
+        evaluate("testWindow.hintFrameProvider.run("+quoted(owner)+","+quoted(script)+",function(v){testProbe.accept(v)})");
+        QElapsedTimer timer;timer.start();while(!scriptDone&&timer.elapsed()<5000)QTest::qWait(10);
+        return scriptResult;
+    };
+    QCOMPARE(childRead("document.querySelectorAll('button').length").toInt(),3);
+    // Preserve a native handle for read-only post-activation observation, because
+    // successful activation must release the production lease.
+    QList<QWebEngineFrame> observed;
+    std::function<void(QWebEngineFrame,int)> retain=[&](QWebEngineFrame frame,int depth){
+        if(depth>8)return;
+        observed.append(frame);
+        for(const auto &childFrame:frame.children())retain(childFrame,depth+1);
+    };
+    retain(evaluate("testWindow.activeWebView().mainFrame").value<QWebEngineFrame>(),0);
+    QVERIFY(observed.size()>1);
+    typeText(label);key(Qt::Key_Return);
+    QTRY_COMPARE(text("mode"),QString("normal"));
+    QVariantList choices;
+    for(auto frame:observed){
+        scriptDone=false;
+        frame.runJavaScript("({choice:window.choice,count:window.count,keys:window.keys})",0,[this](const QVariant &value){accept(value);});
+        QTRY_VERIFY_WITH_TIMEOUT(scriptDone,5000);
+        if(!scriptResult.toMap()["choice"].toString().isEmpty())choices.append(scriptResult);
+    }
+    QCOMPARE(choices.size(),1);
+    QCOMPARE(choices[0].toMap()["choice"].toString(),choice);
+    QCOMPARE(choices[0].toMap()["count"].toInt(),1);
+    QCOMPARE(choices[0].toMap()["keys"].toList().size(),0);
+    QCOMPARE(evaluate("testWindow.hintFrameProvider.leaseCount").toInt(),0);
+}
+void ApplicationTests::crossOriginFrameInvalidation_data() {
+    QTest::addColumn<QString>("change");
+    for(const auto &change:{"navigate","remove","replace","covered","focus","rotate","sandbox","redirect","zoom","resize"})QTest::newRow(change)<<QString(change);
+}
+void ApplicationTests::crossOriginFrameInvalidation() {
+    QFETCH(QString,change);
+    const auto port=server.serverPort();
+    frameFixtures["/consent"]="<!doctype html><button onclick='window.count=(window.count||0)+1'>Reject All</button><script>window.count=0</script>";
+    fixtureHtml=QString("<!doctype html><iframe id='left' title='Consent' src='http://localhost:%1/consent' style='position:absolute;left:40px;top:80px;width:300px;height:180px'></iframe><input id='other'>").arg(port).toUtf8();
+    QVERIFY(command(QString("open http://127.0.0.1:%1/frames").arg(port)));
+    QTRY_VERIFY(page("!!document.getElementById('left')").toBool());QTest::qWait(180);
+    QVERIFY(command("set --temp hints.auto_follow=never"));
+    if(change=="sandbox")page("document.getElementById('left').setAttribute('sandbox','');true");
+    if(change=="redirect")page("document.getElementById('left').addEventListener('focus',()=>document.getElementById('other').focus());true");
+    QVERIFY(command("hint all"));
+    auto label=hintLabel("Consent");QVERIFY(!label.isEmpty());typeText(label);key(Qt::Key_Return);
+    QTRY_VERIFY(evaluate("testWindow.pendingContextMenuRequest!==null").toBool());QVERIFY(chooseCapability("hint-inside-frame"));
+    if(change=="sandbox"||change=="redirect") {
+        QTRY_COMPARE(text("mode"),QString("normal"));
+        QVERIFY(text("status_text").contains("Cannot hint inside"));return;
+    }
+    label=hintLabel("Reject All");QVERIFY2(!label.isEmpty(),qPrintable(text("status_text")));
+    const auto rows=QJsonDocument::fromJson(text("hint_values").toUtf8()).array();QJsonObject selected;
+    for(const auto &row:rows)if(row.toObject()["label"].toString()==label)selected=row.toObject();
+    QVERIFY(!selected.isEmpty());
+    const QHash<QString,QString> scripts{
+        {"navigate","document.getElementById('left').src+='/new';true"},
+        {"remove","document.getElementById('left').remove();true"},
+        {"replace","let old=document.getElementById('left');old.replaceWith(old.cloneNode(true));true"},
+        {"covered","let cover=document.createElement('div');cover.style='position:fixed;inset:0;background:black;z-index:9999';document.body.append(cover);true"},
+        {"focus","document.getElementById('other').focus();true"},
+        {"rotate","document.getElementById('left').style.transform='rotate(15deg)';true"}};
+    if(change=="zoom")evaluate("testWindow.activeWebView().zoomFactor=1.25");
+    else if(change=="resize")evaluate("testWindow.width+=80");
+    else page(scripts.value(change));
+    if(change!="zoom"&&change!="resize")QTest::qWait(120);
+    scriptDone=false;
+    evaluate("testWindow.hintFrameProvider.fresh("+QString::fromUtf8(QJsonDocument(selected).toJson(QJsonDocument::Compact))+",testWindow.hintFreshScript("+QString::fromUtf8(QJsonDocument(selected).toJson(QJsonDocument::Compact))+"),function(v){testProbe.accept(v)})");
+    QTRY_VERIFY_WITH_TIMEOUT(scriptDone,5000);
+    QVERIFY(!scriptResult.toMap()["visible"].toBool());
+    key(Qt::Key_Escape);
+    QTRY_COMPARE(evaluate("testWindow.hintFrameProvider.leaseCount").toInt(),0);
+}
+
+void ApplicationTests::crossOriginFrameOperationLifetimes() {
+    const auto port=server.serverPort();
+    frameFixtures["/consent"]="<!doctype html><button>Accept</button>";
+    fixtureHtml=QString("<!doctype html><iframe id='left' src='http://localhost:%1/consent'></iframe>").arg(port).toUtf8();
+    QVERIFY(command(QString("open http://127.0.0.1:%1/frames").arg(port)));
+    QTRY_VERIFY(page("!!document.getElementById('left')").toBool());QTest::qWait(150);
+    page("document.getElementById('left').focus();true");
+    QVERIFY(command("set --temp hints.auto_follow=never"));QVERIFY(command("hint all"));
+    QVERIFY(!hintLabel("Accept").isEmpty());
+    QString owner;
+    for(const auto &value:QJsonDocument::fromJson(text("hint_values").toUtf8()).array())if(value.toObject()["text"].toString()=="Accept")owner=value.toObject()["frame_owner"].toString();
+    QVERIFY(!owner.isEmpty());frameCallbackCount=0;
+    const auto delayed=[](int millis){return QString("(()=>{const end=performance.now()+%1;while(performance.now()<end){};return true})()").arg(millis);};
+    evaluate("testWindow.hintFrameProvider.run("+quoted(owner)+","+quoted(delayed(1200))+",function(v){testProbe.frameOperationComplete(v)})");
+    QTRY_COMPARE_WITH_TIMEOUT(frameCallbackCount,1,2500);
+    QCOMPARE(scriptResult.toMap()["error"].toString(),QString("frame-timeout"));
+    QTest::qWait(500);QCOMPARE(frameCallbackCount,1);
+    key(Qt::Key_Escape);page("document.getElementById('left').focus();true");
+    QVERIFY(command("hint all"));QVERIFY(!hintLabel("Accept").isEmpty());
+    owner.clear();
+    for(const auto &value:QJsonDocument::fromJson(text("hint_values").toUtf8()).array())if(value.toObject()["text"].toString()=="Accept")owner=value.toObject()["frame_owner"].toString();
+    QVERIFY(!owner.isEmpty());frameCallbackCount=0;
+    evaluate("testWindow.hintFrameProvider.run("+quoted(owner)+","+quoted(delayed(150))+",function(v){testProbe.frameOperationComplete(v)})");
+    key(Qt::Key_Escape);QTest::qWait(300);QCOMPARE(frameCallbackCount,0);
+    QCOMPARE(evaluate("testWindow.hintFrameProvider.leaseCount").toInt(),0);
+}
+void ApplicationTests::crossOriginFrameLifetimeCycles() {
+    if(!qEnvironmentVariableIsSet("FERRIC_APP_STRESS"))QSKIP("Opt-in 1000-cycle frame lifetime check");
+    const auto port=server.serverPort();
+    frameFixtures["/consent"]="<!doctype html><button>Accept</button>";
+    fixtureHtml=QString("<!doctype html><iframe id='left' src='http://localhost:%1/consent'></iframe>").arg(port).toUtf8();
+    QVERIFY(command(QString("open http://127.0.0.1:%1/frames").arg(port)));
+    QTRY_VERIFY(page("!!document.getElementById('left')").toBool());QTest::qWait(150);
+    QVERIFY(command("set --temp hints.auto_follow=never"));
+    for(int cycle=0;cycle<1000;++cycle){
+        page("document.getElementById('left').focus();true");QVERIFY(command("hint all"));
+        QTRY_VERIFY_WITH_TIMEOUT(evaluate("testWindow.hintResults.some(r=>r.text==='Accept'&&r.frame_owner)").toBool(),5000);
+        key(Qt::Key_Escape);QTRY_COMPARE(evaluate("testWindow.hintFrameProvider.leaseCount").toInt(),0);
+        if((cycle+1)%100==0)qInfo()<<"Frame lifetime cycles completed"<<cycle+1;
+    }
+    page("gc&&gc();true",1);QTest::qWait(1200);
+    QCOMPARE(evaluate("testWindow.hintFrameProvider.leaseCount").toInt(),0);
+}
+
 void ApplicationTests::startupAndConfigPublication() {
     const auto oldConfig = text("config_json");
     QVERIFY(command("set --temp content.zoom=1.25"));

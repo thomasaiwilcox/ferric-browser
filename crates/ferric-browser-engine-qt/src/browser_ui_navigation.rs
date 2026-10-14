@@ -375,6 +375,7 @@ impl qobject::BrowserUi {
                         candidate.kind,
                         ferric_browser_core::HintKind::Surface
                             | ferric_browser_core::HintKind::FocusableSurface
+                            | ferric_browser_core::HintKind::Frame
                     )
                 })
                 .cloned()
@@ -434,11 +435,11 @@ impl qobject::BrowserUi {
                     .is_some_and(|control_id| normally_usable_control_ids.contains(&control_id))
         });
         candidates.retain(|candidate| {
-            !self
-                .as_ref()
-                .rust()
-                .hint_consumed
-                .contains(&(candidate.frame_path.clone(), candidate.element_id))
+            !self.as_ref().rust().hint_consumed.contains(&(
+                candidate.frame_owner.clone(),
+                candidate.frame_path.clone(),
+                candidate.element_id,
+            ))
         });
         let config =
             serde_json::from_str::<super::Config>(&self.as_ref().rust().config_json.to_string())

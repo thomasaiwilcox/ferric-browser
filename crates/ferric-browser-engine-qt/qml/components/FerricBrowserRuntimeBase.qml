@@ -1748,6 +1748,8 @@ ApplicationWindow {
     property bool hintRefreshPending: false
     property int hintCollectionEpoch: 0
     property var hintTrackingView: null
+    readonly property alias hintFrameProvider: hintFrameProviderObject
+    FerricHintFrameProvider { id: hintFrameProviderObject; browserWindow: window }
     property bool rapidHintConfirmationVisible: false
     property string copiedText: ""
     property string copiedValue: ""

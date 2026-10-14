@@ -6,7 +6,7 @@ function identity(candidate) {
             || typeof candidate.related_element_id === "undefined"
             ? null : Number(candidate.related_element_id)
     return JSON.stringify([
-        String(candidate.frame_path || ""), Number(candidate.element_id || 0), related
+        String(candidate.frame_owner || ""), String(candidate.frame_path || ""), Number(candidate.element_id || 0), related
     ])
 }
 

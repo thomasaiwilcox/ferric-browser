@@ -25,6 +25,7 @@ pub enum HintKind {
     ScrollableRegion,
     Surface,
     FocusableSurface,
+    Frame,
 }
 
 /// A semantic user intent selected after Ferric validates candidate facts.
@@ -96,7 +97,8 @@ pub const fn hint_intent_for_candidate(kind: HintKind, uses_url_action: bool) ->
         HintKind::Region
         | HintKind::ScrollableRegion
         | HintKind::Surface
-        | HintKind::FocusableSurface => HintIntent::ActionPalette,
+        | HintKind::FocusableSurface
+        | HintKind::Frame => HintIntent::ActionPalette,
         HintKind::Link => HintIntent::OpenUrl,
         HintKind::Button
         | HintKind::Image
@@ -115,6 +117,7 @@ pub enum HintCapability {
     GridWithin,
     SetScrollTarget,
     Focus,
+    HintInsideFrame,
 }
 
 impl HintCapability {
@@ -126,6 +129,7 @@ impl HintCapability {
             Self::GridWithin => "grid-within",
             Self::SetScrollTarget => "set-scroll-target",
             Self::Focus => "focus",
+            Self::HintInsideFrame => "hint-inside-frame",
         }
     }
 
@@ -137,6 +141,7 @@ impl HintCapability {
             Self::GridWithin => "Grid within",
             Self::SetScrollTarget => "Set scroll target",
             Self::Focus => "Focus",
+            Self::HintInsideFrame => "Hint inside frame",
         }
     }
 }
@@ -151,6 +156,7 @@ pub const fn hint_capabilities(kind: HintKind) -> &'static [HintCapability] {
         HintKind::ScrollableRegion => &[HintWithin, SearchWithin, GridWithin, SetScrollTarget],
         HintKind::Surface => &[GridWithin],
         HintKind::FocusableSurface => &[GridWithin, Focus],
+        HintKind::Frame => &[HintCapability::HintInsideFrame, GridWithin, Focus],
         _ => &[],
     }
 }
@@ -163,6 +169,7 @@ pub const fn hint_kind_is_region_or_surface(kind: HintKind) -> bool {
             | HintKind::ScrollableRegion
             | HintKind::Surface
             | HintKind::FocusableSurface
+            | HintKind::Frame
     )
 }
 
@@ -237,6 +244,8 @@ pub struct HintCandidate {
     pub related_element_id: Option<u32>,
     pub kind: HintKind,
     pub frame_path: String,
+    /// Browser-owned native frame/document lease; empty for the top collector.
+    pub frame_owner: String,
     pub text: String,
     pub href: Option<String>,
     pub geometry: HintGeometry,
@@ -476,6 +485,7 @@ pub fn refresh_labels(
         .map(|hint| {
             (
                 (
+                    hint.candidate.frame_owner.as_str(),
                     hint.candidate.frame_path.as_str(),
                     hint.candidate.element_id,
                     hint.candidate.related_element_id,
@@ -488,6 +498,7 @@ pub fn refresh_labels(
     let mut labels = vec![String::new(); candidates.len()];
     for (index, candidate) in candidates.iter().enumerate() {
         if let Some(label) = previous_labels.get(&(
+            candidate.frame_owner.as_str(),
             candidate.frame_path.as_str(),
             candidate.element_id,
             candidate.related_element_id,
@@ -539,6 +550,7 @@ fn sort_candidates(candidates: &mut [HintCandidate]) {
             .y
             .total_cmp(&right.geometry.y)
             .then_with(|| left.geometry.x.total_cmp(&right.geometry.x))
+            .then_with(|| left.frame_owner.cmp(&right.frame_owner))
             .then_with(|| left.frame_path.cmp(&right.frame_path))
             .then_with(|| left.element_id.cmp(&right.element_id))
             .then_with(|| left.related_element_id.cmp(&right.related_element_id))
@@ -634,10 +646,11 @@ struct HintLabelBinding {
     state: HintBindingState,
 }
 
-type HintIdentity = (String, u32, Option<u32>);
+type HintIdentity = (String, String, u32, Option<u32>);
 
 fn hint_identity(candidate: &HintCandidate) -> HintIdentity {
     (
+        candidate.frame_owner.clone(),
         candidate.frame_path.clone(),
         candidate.element_id,
         candidate.related_element_id,
@@ -1030,6 +1043,7 @@ mod tests {
             related_element_id: None,
             kind: HintKind::Link,
             frame_path: "0".into(),
+            frame_owner: String::new(),
             text: text.into(),
             href: None,
             presentation: None,
@@ -1040,6 +1054,34 @@ mod tests {
                 height: 10.0,
             },
         }
+    }
+
+    #[test]
+    fn frame_document_owners_keep_labels_and_consumption_separate() {
+        let mut left = candidate(10.0, 10.0, "Accept");
+        left.frame_owner = "frame-left-document".into();
+        let mut right = left.clone();
+        right.frame_owner = "frame-right-document".into();
+        let mut hints = assign_labels(vec![left.clone(), right.clone()]).unwrap();
+        assert_ne!(hints[0].label, hints[1].label);
+        let labels = hints
+            .iter()
+            .map(|hint| (hint.candidate.frame_owner.clone(), hint.label.clone()))
+            .collect::<BTreeMap<_, _>>();
+        hints = refresh_labels(
+            vec![right.clone(), left.clone()],
+            &hints,
+            DEFAULT_HINT_CHARS,
+            1,
+        )
+        .unwrap();
+        for hint in &hints {
+            assert_eq!(hint.label, labels[&hint.candidate.frame_owner]);
+        }
+        assert_ne!(hint_identity(&left), hint_identity(&right));
+        let mut navigated = left.clone();
+        navigated.frame_owner = "frame-left-new-document".into();
+        assert_ne!(hint_identity(&left), hint_identity(&navigated));
     }
 
     #[test]

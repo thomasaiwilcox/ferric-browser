@@ -3,7 +3,7 @@
 
 // Browser-owned page scripts are versioned resources. The build manifest hashes
 // this file with the QML module, so script changes are explicit and auditable.
-var VERSION = "20"
+var VERSION = "21"
 
 // Page userscripts are trusted local content, but their failure boundary is
 // browser policy. Keeping the wrappers here prevents QML from assembling page
@@ -224,7 +224,7 @@ function shutdownPageProbe() {
 // The imported resource is independently versioned and covered by the build
 // manifest. Every compatibility entry point fails closed if that contract is
 // unavailable or mismatched.
-var PAGE_INTERACTION_VERSION = "3"
+var PAGE_INTERACTION_VERSION = "4"
 
 function interactionFailureScript(code) {
     return "(function(){return {ok:false,error:" + JSON.stringify(code) + "};})()"
@@ -261,8 +261,8 @@ function scrollTargetStatus() {
     return interactionScript("scrollTargetStatus", [])
 }
 
-function hintCollector(family, proxyTargets, selectorSnapshot, scopeLeaseId, includeFacets) {
-    return interactionScript("hintCollector", [family, proxyTargets, selectorSnapshot, scopeLeaseId, includeFacets])
+function hintCollector(family, proxyTargets, selectorSnapshot, scopeLeaseId, includeFacets, budget) {
+    return interactionScript("hintCollector", [family, proxyTargets, selectorSnapshot, scopeLeaseId, includeFacets, budget])
 }
 
 function hintDirtyRevision() {
@@ -303,4 +303,8 @@ function hintClick(candidate, selectorSnapshot) {
 
 function hintSetScrollTarget(elementId, framePath) {
     return interactionScript("hintSetScrollTarget", [elementId, framePath])
+}
+
+function hintFrameHost(lease, viewport, point) {
+    return PageInteractionScripts.hintFrameHost(lease, viewport, point)
 }

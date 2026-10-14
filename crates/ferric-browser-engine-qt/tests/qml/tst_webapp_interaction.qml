@@ -530,14 +530,14 @@ TestCase {
 
         var ordinary = evaluate(BrowserScripts.hintCollector("all")).candidates
         verify(!ordinary.some(function(item) {
-            return ["region", "scrollable-region", "surface", "focusable-surface"].includes(item.kind)
+            return ["region", "scrollable-region", "surface", "focusable-surface", "frame"].includes(item.kind)
         }), "legacy all Hint remains free of opt-in facets")
 
         var collected = evaluate(BrowserScripts.hintCollector("all", false, undefined, "", true))
         verify(collected.candidates.some(function(item) { return item.kind === "region" }),
                "Target Search all includes visible regions")
         verify(collected.candidates.some(function(item) {
-            return item.kind === "surface" || item.kind === "focusable-surface"
+            return item.kind === "surface" || item.kind === "focusable-surface" || item.kind === "frame"
         }), "Target Search all includes visible surfaces")
         verify(!collected.candidates.some(function(item) {
             return item.text === "Offscreen search region"
@@ -593,7 +593,7 @@ TestCase {
                "The cross-origin child document is not readable from its parent")
         var surfaces = evaluate(BrowserScripts.hintCollector("surfaces"))
         var exterior = surfaces.candidates.filter(function(item) { return item.text === "Cross-origin frame surface" })[0]
-        verify(exterior && exterior.kind === "focusable-surface" && exterior.frame_path === "0",
+        verify(exterior && exterior.kind === "frame" && exterior.frame_path === "0",
                "The visible iframe exterior is represented in the parent document")
         verify(evaluate(BrowserScripts.hintFresh(exterior)).visible)
         var regions = evaluate(BrowserScripts.hintCollector("regions")).candidates
@@ -850,10 +850,10 @@ TestCase {
         var candidates = evaluate(BrowserScripts.hintCollector("surfaces", false, surfaces))
         var frameSurface = candidates.candidates.filter(function(item) {
             return item.frame_path === "0"
-                    && (item.kind === "surface" || item.kind === "focusable-surface")
+                    && (item.kind === "surface" || item.kind === "focusable-surface" || item.kind === "frame")
         })[0]
         verify(frameSurface, "The parent can identify the outer iframe surface")
-        verify(frameSurface.kind === "surface" || frameSurface.kind === "focusable-surface")
+        verify(frameSurface.kind === "frame")
         compare(frameSurface.frame_path, "0")
         verify(!candidates.candidates.some(function(item) {
             return item.frame_path !== "0"

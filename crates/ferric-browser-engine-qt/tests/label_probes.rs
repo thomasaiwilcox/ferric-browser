@@ -144,6 +144,7 @@ fn candidate(index: usize, text: String) -> HintCandidate {
         element_id,
         related_element_id: None,
         kind: HintKind::Button,
+        frame_owner: String::new(),
         frame_path: "0".into(),
         text,
         href: None,

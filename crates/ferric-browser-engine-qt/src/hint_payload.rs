@@ -18,6 +18,7 @@ pub(super) fn parse_hint_candidate(value: &Value) -> Result<HintCandidate, Strin
         "related_element_id",
         "kind",
         "frame_path",
+        "frame_owner",
         "text",
         "href",
         "geometry",
@@ -74,6 +75,19 @@ pub(super) fn parse_hint_candidate(value: &Value) -> Result<HintCandidate, Strin
         .get("frame_path")
         .and_then(Value::as_str)
         .ok_or_else(|| "hint candidate frame_path must be a string".to_owned())?;
+    let frame_owner = match object.get("frame_owner") {
+        None => "",
+        Some(value) => value.as_str().ok_or("hint frame owner must be a string")?,
+    };
+    if !frame_owner.is_empty()
+        && (frame_owner.len() != 42
+            || !frame_owner.starts_with("frame-")
+            || !frame_owner[6..]
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit() || byte == b'-'))
+    {
+        return Err("invalid hint frame owner".into());
+    }
     let text = object
         .get("text")
         .and_then(Value::as_str)
@@ -107,6 +121,7 @@ pub(super) fn parse_hint_candidate(value: &Value) -> Result<HintCandidate, Strin
         related_element_id,
         kind,
         frame_path: frame_path.to_owned(),
+        frame_owner: frame_owner.to_owned(),
         text: text.to_owned(),
         href,
         geometry,
@@ -228,7 +243,7 @@ pub(super) fn parse_hint_payload(raw: &str) -> Result<Vec<HintCandidate>, String
         .collect::<Result<Vec<_>, _>>()?;
     let unique_ids = candidates
         .iter()
-        .map(|candidate| candidate.element_id)
+        .map(|candidate| (&candidate.frame_owner, candidate.element_id))
         .collect::<BTreeSet<_>>();
     if unique_ids.len() != candidates.len() {
         return Err("hint candidate element_id values must be unique".into());
@@ -245,10 +260,13 @@ pub(super) fn validate_hint_candidates_for_family(
             matches!(kind, HintKind::Region | HintKind::ScrollableRegion)
         }),
         "surfaces" => (Some(ferric_browser_core::MAX_HINT_SURFACES), |kind| {
-            matches!(kind, HintKind::Surface | HintKind::FocusableSurface)
+            matches!(
+                kind,
+                HintKind::Surface | HintKind::FocusableSurface | HintKind::Frame
+            )
         }),
         _ => (None, |kind| {
-            !ferric_browser_core::hint_kind_is_region_or_surface(kind)
+            kind == HintKind::Frame || !ferric_browser_core::hint_kind_is_region_or_surface(kind)
         }),
     };
     if maximum.is_some_and(|maximum| candidates.len() > maximum)
@@ -278,6 +296,7 @@ pub(super) fn hint_kind_name(kind: HintKind) -> &'static str {
         HintKind::Scrollable => "scrollable",
         HintKind::Aria => "aria",
         HintKind::Focusable => "focusable",
+        HintKind::Frame => "frame",
         HintKind::EditorFocus => "editor-focus",
         HintKind::LabelControl => "label-control",
         HintKind::Region => "region",
@@ -327,6 +346,7 @@ pub(super) fn hint_json(hints: &[LabeledHint], rapid: bool, target: &str) -> Val
                     "related_element_id": hint.candidate.related_element_id,
                     "kind": hint_kind_name(hint.candidate.kind),
                     "frame_path": hint.candidate.frame_path,
+                    "frame_owner": hint.candidate.frame_owner,
                     "text": hint.candidate.text,
                     "href": hint.candidate.href,
                     "action": hint_action_label(hint.candidate.kind, rapid, target),
@@ -371,6 +391,7 @@ fn parse_hint_kind(value: &str) -> Result<HintKind, String> {
         "scrollable" => Ok(HintKind::Scrollable),
         "aria" => Ok(HintKind::Aria),
         "focusable" => Ok(HintKind::Focusable),
+        "frame" => Ok(HintKind::Frame),
         "editor-focus" => Ok(HintKind::EditorFocus),
         "label-control" => Ok(HintKind::LabelControl),
         "region" => Ok(HintKind::Region),
@@ -427,6 +448,25 @@ mod tests {
         assert!(parse_hint_candidate(&candidate("😀".repeat(512))).is_ok());
         assert!(parse_hint_candidate(&candidate("😀".repeat(513))).is_err());
         assert!(parse_hint_candidate(&candidate("unsafe\u{0085}text".into())).is_err());
+    }
+
+    #[test]
+    fn frame_owners_namespace_ids_and_reject_invalid_leases() {
+        let row = serde_json::json!({"element_id":1,"kind":"button","frame_path":"0","text":"Accept","href":null,"geometry":{"x":0,"y":0,"width":100,"height":30}});
+        let mut child = row.clone();
+        child["frame_owner"] = "frame-01234567-89ab-cdef-0123-456789abcdef".into();
+        assert_eq!(
+            parse_hint_payload(&serde_json::json!([row, child.clone()]).to_string())
+                .unwrap()
+                .len(),
+            2
+        );
+        assert!(
+            parse_hint_payload(&serde_json::json!([child.clone(), child.clone()]).to_string())
+                .is_err()
+        );
+        child["frame_owner"] = "https://example.com/frame".into();
+        assert!(parse_hint_candidate(&child).is_err());
     }
 
     #[test]
@@ -494,6 +534,7 @@ mod tests {
             related_element_id: None,
             kind,
             frame_path: "0".into(),
+            frame_owner: String::new(),
             text: "Target".into(),
             href: None,
             presentation: None,

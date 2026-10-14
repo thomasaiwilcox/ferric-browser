@@ -16,8 +16,10 @@ class ApplicationTests final : public QObject {
     QTemporaryDir directory;
     QTcpServer server;
     QByteArray fixtureHtml;
+    QHash<QByteArray, QByteArray> frameFixtures;
     QVariant scriptResult;
     bool scriptDone = false;
+    int frameCallbackCount = 0;
     QString pageReceiver = "testWindow.activeWebView()";
     QVariant evaluate(const QString &source);
     QString text(const QString &property);
@@ -31,7 +33,14 @@ class ApplicationTests final : public QObject {
 
   public:
     Q_INVOKABLE void accept(const QVariant &value);
+    Q_INVOKABLE void frameOperationComplete(const QVariant &value);
   private slots:
+    void crossOriginConsentHints_data();
+    void crossOriginConsentHints();
+    void crossOriginFrameInvalidation_data();
+    void crossOriginFrameInvalidation();
+    void crossOriginFrameLifetimeCycles();
+    void crossOriginFrameOperationLifetimes();
     void embeddedResourceParity();
     void stretchedPostTitleKeyboardNavigation_data();
     void stretchedPostTitleKeyboardNavigation();

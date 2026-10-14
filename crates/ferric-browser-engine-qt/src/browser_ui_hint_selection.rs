@@ -326,6 +326,7 @@ impl qobject::BrowserUi {
                 if candidate.element_id == fresh.element_id
                     && candidate.related_element_id == fresh.related_element_id
                     && candidate.kind == fresh.kind
+                    && candidate.frame_owner == fresh.frame_owner
                     && candidate.frame_path == fresh.frame_path
                     && candidate.text == fresh.text
                     && candidate.href == fresh.href =>
@@ -365,14 +366,28 @@ impl qobject::BrowserUi {
             &self.as_ref().rust().hint_rapid_target,
             pending_action.is_some(),
         );
-        if self
-            .as_ref()
-            .rust()
-            .hint_consumed
-            .contains(&(selected.frame_path.clone(), selected.element_id))
-        {
+        if self.as_ref().rust().hint_consumed.contains(&(
+            selected.frame_owner.clone(),
+            selected.frame_path.clone(),
+            selected.element_id,
+        )) {
             self.set_status_text(QString::from("Hint target was already consumed"));
             return QString::from(r#"{"error":"consumed-target"}"#);
+        }
+        if !selected.frame_owner.is_empty()
+            && (matches!(
+                requested_capability,
+                Some("grid-within" | "hint-within" | "search-within" | "set-scroll-target")
+            ) || matches!(
+                selected.kind,
+                ferric_browser_core::HintKind::Scrollable
+                    | ferric_browser_core::HintKind::Region
+                    | ferric_browser_core::HintKind::ScrollableRegion
+                    | ferric_browser_core::HintKind::Surface
+                    | ferric_browser_core::HintKind::FocusableSurface
+            ))
+        {
+            return QString::from(r#"{"error":"unsupported-frame-action"}"#);
         }
         let result = if let Some(capability_id) = requested_capability {
             let capability = ferric_browser_core::hint_capabilities(selected.kind)
@@ -386,6 +401,11 @@ impl qobject::BrowserUi {
                 return QString::from(r#"{"error":"unsupported-capability"}"#);
             };
             match capability {
+                ferric_browser_core::HintCapability::HintInsideFrame
+                    if selected.kind == ferric_browser_core::HintKind::Frame =>
+                {
+                    serde_json::json!({"action":"hint-inside-frame"})
+                }
                 ferric_browser_core::HintCapability::SearchWithin
                     if matches!(
                         selected.kind,
@@ -424,6 +444,7 @@ impl qobject::BrowserUi {
                         ferric_browser_core::HintKind::Region
                             | ferric_browser_core::HintKind::ScrollableRegion
                             | ferric_browser_core::HintKind::Surface
+                            | ferric_browser_core::HintKind::Frame
                             | ferric_browser_core::HintKind::FocusableSurface
                     ) =>
                 {
@@ -443,7 +464,11 @@ impl qobject::BrowserUi {
                     })
                 }
                 ferric_browser_core::HintCapability::Focus
-                    if selected.kind == ferric_browser_core::HintKind::FocusableSurface =>
+                    if matches!(
+                        selected.kind,
+                        ferric_browser_core::HintKind::FocusableSurface
+                            | ferric_browser_core::HintKind::Frame
+                    ) =>
                 {
                     serde_json::json!({
                         "action":"focus",
@@ -885,14 +910,21 @@ impl qobject::BrowserUi {
                     | "hint-within"
                     | "target-search-within"
                     | "grid-within"
+                    | "hint-inside-frame"
             )
         );
+        if result.get("action").and_then(Value::as_str) == Some("hint-inside-frame") {
+            self.as_mut().reset_frame_hint_session();
+        }
         let palette_open = result.get("action").and_then(Value::as_str) == Some("choose");
         if keeps_hint_mode {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
-            this.hint_consumed
-                .insert((selected.frame_path.clone(), selected.element_id));
+            this.hint_consumed.insert((
+                selected.frame_owner.clone(),
+                selected.frame_path.clone(),
+                selected.element_id,
+            ));
             if let Some(interaction) = this.hint_interaction.as_mut() {
                 interaction.consume(&selected);
             }
@@ -965,54 +997,4 @@ pub(super) fn local_hint_owner(rust: &super::BrowserUiRust) -> Option<LocalInter
         target: session.target,
         configuration_revision: rust.hint_configuration_revision,
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::super::browser_ui_scope_handoff::{
-        hint_capabilities_json, known_hint_capability_id,
-    };
-    use ferric_browser_core::HintKind;
-
-    #[test]
-    fn region_surface_palette_actions_are_rust_derived_and_bounded() {
-        let regions = hint_capabilities_json(HintKind::ScrollableRegion);
-        let regions = regions.as_array().expect("capability array");
-        assert_eq!(regions.len(), 4);
-        assert_eq!(regions[0]["id"], "hint-within");
-        assert_eq!(regions[0]["enabled"], true);
-        assert_eq!(regions[1]["id"], "search-within");
-        assert_eq!(regions[1]["enabled"], true);
-        assert_eq!(regions[2]["id"], "grid-within");
-        assert_eq!(regions[2]["enabled"], true);
-        assert_eq!(regions[3]["id"], "set-scroll-target");
-        assert_eq!(regions[3]["enabled"], true);
-
-        let surface = hint_capabilities_json(HintKind::FocusableSurface);
-        let surface = surface.as_array().expect("capability array");
-        assert_eq!(surface.len(), 2);
-        assert_eq!(surface[0]["id"], "grid-within");
-        assert_eq!(surface[0]["enabled"], true);
-        assert_eq!(surface[1]["id"], "focus");
-        assert_eq!(surface[1]["enabled"], true);
-
-        assert!(known_hint_capability_id("set-scroll-target"));
-        assert!(!known_hint_capability_id("click"));
-    }
-
-    #[test]
-    fn scoped_actions_are_available_only_for_region_and_surface_kinds() {
-        let region = hint_capabilities_json(HintKind::Region);
-        assert_eq!(region[0]["id"], "hint-within");
-        assert_eq!(region[0]["enabled"], true);
-
-        let surface = hint_capabilities_json(HintKind::Surface);
-        assert!(
-            surface
-                .as_array()
-                .expect("surface capabilities")
-                .iter()
-                .all(|capability| capability["id"] != "hint-within")
-        );
-    }
 }

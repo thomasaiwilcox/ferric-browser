@@ -20,7 +20,9 @@ Item {
     anchors.fill: parent
     z: 30
     visible: hintsVisible && hintResults.length > 0
-    focus: visible
+    // FerricBrowserKeyRouter owns hint gestures at the window boundary. Moving
+    // Quick focus here would blur the page and invalidate focused-frame proof.
+    focus: false
 
     property var laidOutHints: []
     property var placementCache: ({})

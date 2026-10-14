@@ -43,7 +43,10 @@ pub(super) fn target_search_candidate_matches(scope: &str, kind: HintKind) -> bo
                 | HintKind::LabelControl
         ),
         "regions" => matches!(kind, HintKind::Region | HintKind::ScrollableRegion),
-        "surfaces" => matches!(kind, HintKind::Surface | HintKind::FocusableSurface),
+        "surfaces" => matches!(
+            kind,
+            HintKind::Surface | HintKind::FocusableSurface | HintKind::Frame
+        ),
         "all" => true,
         _ => false,
     }

@@ -1463,11 +1463,11 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(qml.contains("BrowserScripts.pageUserscriptRun(scriptSource)"));
     assert!(qml.contains("BrowserScripts.pageUserscriptInstall(script.source)"));
     assert!(!qml.contains("function hintSelector(linksOnly)"));
-    assert!(BROWSER_SCRIPT_FACADE.contains("var VERSION = \"20\""));
+    assert!(BROWSER_SCRIPT_FACADE.contains("var VERSION = \"21\""));
     assert!(BROWSER_SCRIPT_FACADE.contains(".import \"PageInteractionScripts.js\" as PageInteractionScripts"));
     assert!(BROWSER_SCRIPT_FACADE.contains("asset.VERSION !== PAGE_INTERACTION_VERSION"));
     assert!(BROWSER_SCRIPT_FACADE.contains("script-version-mismatch"));
-    assert!(PAGE_INTERACTION_SCRIPT.contains("var VERSION = \"3\""));
+    assert!(PAGE_INTERACTION_SCRIPT.contains("var VERSION = \"4\""));
     let manifest: serde_json::Value = serde_json::from_str(BROWSER_SCRIPT_MANIFEST).unwrap();
     let entry = manifest["resources"]
         .as_array()
@@ -1546,7 +1546,7 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(script.contains("service_workers:'unavailable'"));
     assert!(script.contains("window.__ferric_browserFocusState"));
     assert!(script.contains("elements.length > 128"));
-    assert!(script.contains("function hintCollector(family, proxyTargets, selectorSnapshot, scopeLeaseId, includeFacets)"));
+    assert!(script.contains("function hintCollector(family, proxyTargets, selectorSnapshot, scopeLeaseId, includeFacets, budget)"));
     assert!(script.contains("function proxyPairValid(record,candidate,state)"));
     assert!(script.contains(".ace_editor[role="));
     assert!(script.contains("label.control!==control"));
@@ -1560,7 +1560,8 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(script.contains("function restoreScrollPosition(x, y)"));
     assert!(script.contains("function cosmeticFilter(css)"));
     assert!(script.contains("out.length>=5000"));
-    assert!(script.contains("depth>8"));
+    assert!(script.contains("depth>traversalDepthLimit"));
+    assert!(script.contains("Math.min(8, Number(budget && budget.depth"));
     assert!(script.contains("r.bottom<=0||r.right<=0||r.top>=vh||r.left>=vw"));
     assert!(script.contains("x>=window.innerWidth||y>=window.innerHeight"));
     assert!(script.contains("rect=ftIntersect(rect,{left:0,top:0,right:window.innerWidth,bottom:window.innerHeight})"));
@@ -1700,7 +1701,7 @@ fn page_backed_hints_close_after_the_renderer_consumes_the_retained_record() {
         };
         let branch = &presentation[start..end];
         let launch = branch
-            .find("window.runBrowserScript(")
+            .find(if action == "scroll-target" { "window.runBrowserScript(" } else { "window.hintFrameProvider.action(" })
             .unwrap_or_else(|| panic!("missing {action} renderer launch"));
         let close = branch
             .find("window.closeHints()")
