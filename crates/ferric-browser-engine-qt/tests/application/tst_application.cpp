@@ -1,6 +1,8 @@
 #include "tst_application.h"
 #include "../../src/url_display.h"
 #include <QClipboard>
+#include <QMimeData>
+#include <QProcess>
 #include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
@@ -1478,4 +1480,567 @@ void ApplicationTests::hintCollisionCyclesActualMarkers() {
     QCOMPARE(page("window.clicks").toInt(),0);
     key(Qt::Key_Return);
     QTRY_COMPARE(page("window.clicks").toInt(),1);
+}
+
+void ApplicationTests::clipboardChrome() {
+    QGuiApplication::clipboard()->setText("fixture-browser-input");
+    key(Qt::Key_O);
+    QTRY_VERIFY(text("mode")=="command");
+    auto input=window->findChild<QQuickItem *>("commandLineInput");QVERIFY(input);
+    QTRY_VERIFY(input->hasActiveFocus());
+    input->setProperty("text","open ");input->setProperty("cursorPosition",5);
+    key(Qt::Key_V, Qt::ControlModifier);
+    QTest::qWait(100);
+    QCOMPARE(input->property("text").toString(),
+             QString("open fixture-browser-input"));
+    QCOMPARE(text("mode"), QString("command"));
+    QMetaObject::invokeMethod(input, "selectAll");
+    QGuiApplication::clipboard()->setText("fixture-before");
+    key(Qt::Key_C, Qt::ControlModifier);
+    QTest::qWait(100);
+    QCOMPARE(QGuiApplication::clipboard()->text(),
+             QString("open fixture-browser-input"));
+    input->setProperty("text", "open ");
+    input->setProperty("cursorPosition", 5);
+    key(Qt::Key_V, Qt::ControlModifier | Qt::ShiftModifier);
+    QCOMPARE(input->property("text").toString(),
+             QString("open open fixture-browser-input"));
+}
+
+void ApplicationTests::clipboardMenus() {
+  page("document.body.innerHTML='<p id=parent tabindex=0>Parent remembered "
+       "selection</p><input id=field value=Field-copy><div id=rich "
+       "tabindex=0><b>Rich</b> selection</div><iframe id=child src=/child.html "
+       "style=\"width:420px;height:150px\"></iframe>';true");
+  QTRY_VERIFY(page("!!document.getElementById('child').contentDocument?.body")
+                  .toBool());
+  const QStringList targets{"field", "rich", "same-origin-child",
+                            "cross-origin-child"};
+  QTcpServer foreign;
+  QVERIFY(foreign.listen(QHostAddress::LocalHost, 0));
+  connect(&foreign, &QTcpServer::newConnection, this, [&foreign] {
+    while (auto socket = foreign.nextPendingConnection()) {
+      QObject::connect(socket, &QTcpSocket::readyRead, socket, [socket] {
+        socket->readAll();
+        const QByteArray html =
+            "<!doctype html><p id=childText tabindex=0 "
+            "style='margin:8px;font:16px sans-serif'>Child selected "
+            "text</p><script>onload=()=>{let "
+            "e=document.getElementById('childText');e.focus();let "
+            "r=document.createRange();r.selectNodeContents(e);let "
+            "s=getSelection();s.removeAllRanges();s.addRange(r);}</script>";
+        socket->write("HTTP/1.1 200 OK\r\nContent-Type: "
+                      "text/html\r\nConnection: close\r\nContent-Length: " +
+                      QByteArray::number(html.size()) + "\r\n\r\n" + html);
+        socket->disconnectFromHost();
+      });
+      QObject::connect(socket, &QTcpSocket::disconnected, socket,
+                       &QObject::deleteLater);
+    }
+  });
+  for (const auto &target : targets) {
+    evaluate("testWindow.browserUi.escape();testWindow.activeWebView()."
+             "forceActiveFocus()");
+    QString pointScript;
+    if (target.contains("child")) {
+      page("(()=>{let e=document.getElementById('parent');e.focus();let "
+           "r=document.createRange();r.selectNodeContents(e);let "
+           "s=getSelection();s.removeAllRanges();s.addRange(r);return "
+           "true;})()");
+      if (target == "cross-origin-child") {
+        page("document.getElementById('child').src=" +
+             quoted(QString("http://127.0.0.1:%1/foreign")
+                        .arg(foreign.serverPort())) +
+             ";true");
+        QTest::qWait(500);
+      } else {
+        page("(()=>{let "
+             "f=document.getElementById('child'),d=f.contentDocument;d.body."
+             "innerHTML='<p id=childText tabindex=0 "
+             "style=\"margin:8px;font:16px sans-serif\">Child selected "
+             "text</p>';let e=d.getElementById('childText');e.focus();let "
+             "r=d.createRange();r.selectNodeContents(e);let "
+             "s=f.contentWindow.getSelection();s.removeAllRanges();s.addRange("
+             "r);return true;})()");
+      }
+      pointScript = "(()=>{let "
+                    "r=document.getElementById('child').getBoundingClientRect()"
+                    ";return {x:r.left+40,y:r.top+20};})()";
+    } else {
+      page("(()=>{let e=document.getElementById(" + quoted(target) +
+           ");e.focus();if(e.tagName==='INPUT')e.select();else{let "
+           "r=document.createRange();r.selectNodeContents(e);let "
+           "s=getSelection();s.removeAllRanges();s.addRange(r);}return "
+           "true;})()");
+      pointScript =
+          "(()=>{let r=document.getElementById(" + quoted(target) +
+          ").getBoundingClientRect();return {x:r.left+25,y:r.top+16};})()";
+    }
+    QTest::qWait(100);
+    auto view = qobject_cast<QQuickItem *>(
+        evaluate("testWindow.activeWebView()").value<QObject *>());
+    QVERIFY(view);
+    const auto local = page(pointScript).toMap();
+    const auto point =
+        view->mapToScene(QPointF(local["x"].toDouble(), local["y"].toDouble()));
+    QGuiApplication::clipboard()->setText("fixture-before");
+    QTest::mouseClick(window, Qt::RightButton, Qt::NoModifier, point.toPoint());
+    QTRY_VERIFY_WITH_TIMEOUT(
+        evaluate("testWindow.pendingContextMenuRequest!==null").toBool(), 3000);
+    QTRY_VERIFY_WITH_TIMEOUT(
+        evaluate("testWindow.pendingContextMenuSelection !== null").toBool(),
+        3000);
+    const auto selected =
+        evaluate(
+            "String(testWindow.pendingContextMenuRequest.selectedText||'')")
+            .toString();
+    const bool copyOffered =
+        evaluate("testWindow.contextMenuItems.some(function(i){return "
+                 "i.action==='web-copy'})")
+            .toBool();
+    if (copyOffered)
+      evaluate("testWindow.activateContextMenuItem(testWindow.contextMenuItems."
+               "filter(function(i){return i.action==='web-copy'})[0])");
+    else
+      evaluate("testWindow.clearContextMenuRequest()");
+    QTest::qWait(300);
+    QVERIFY(copyOffered);
+    QCOMPARE(QGuiApplication::clipboard()->text(), selected);
+    QCOMPARE(QGuiApplication::clipboard()->mimeData()->hasHtml(),
+             target != "field");
+    QVERIFY(text("status_text") == "Copy requested" ||
+            (target == "field" && text("status_text") == "Insert mode"));
+  }
+}
+
+void ApplicationTests::clipboardNativeEditing_data() {
+  QTest::addColumn<QString>("context");
+  QTest::addColumn<QString>("mode");
+  QTest::addColumn<QString>("operation");
+  for (const auto &context :
+       {QString("input"), QString("area"), QString("rich"), QString("plain")})
+    for (const auto &mode :
+         {QString("normal"), QString("insert"), QString("insert-locked"),
+          QString("passthrough"), QString("passthrough-once")})
+      for (const auto &operation : {QString("copy"), QString("cut"),
+                                    QString("paste"), QString("paste-plain")}) {
+        if (context == "plain" && operation != "copy")
+          continue;
+        const auto name = context + "-" + mode + "-" + operation;
+        QTest::newRow(qPrintable(name)) << context << mode << operation;
+      }
+}
+void ApplicationTests::clipboardNativeEditing() {
+  QFETCH(QString, context);
+  QFETCH(QString, mode);
+  QFETCH(QString, operation);
+  page("document.body.innerHTML='<input id=input><textarea "
+       "id=area></textarea><div id=rich contenteditable=true></div><p id=plain "
+       "tabindex=0></p>';window.edits=[];for(const kind of "
+       "['copy','cut','paste'])document.addEventListener(kind,e=>window.edits."
+       "push(kind),true);true");
+  evaluate("testWindow.activeWebView().forceActiveFocus()");
+  const bool selected = operation == "copy" || operation == "cut";
+  page(
+      "(()=>{let e=document.getElementById(" + quoted(context) +
+      ");e.focus();if('value' in e){e.value='Alpha beta';e.setSelectionRange(" +
+      (selected ? QString("0,10") : QString("10,10")) +
+      ");}else{e.innerHTML='<b>Alpha</b> beta';let "
+      "s=getSelection(),r=document.createRange();r.selectNodeContents(e);" +
+      (selected ? QString() : QString("r.collapse(false);")) +
+      "s.removeAllRanges();s.addRange(r);}return true;})()");
+  evaluate("testWindow.browserUi.escape()");
+  if (mode != "normal")
+    QVERIFY(command("mode-enter " + mode));
+  const auto before = text("mode");
+  auto mime = new QMimeData;
+  mime->setText("fixture-paste");
+  mime->setHtml("<b>fixture-paste</b>");
+  QGuiApplication::clipboard()->setMimeData(mime);
+  key(operation == "copy"  ? Qt::Key_C
+      : operation == "cut" ? Qt::Key_X
+                           : Qt::Key_V,
+      operation == "paste-plain" ? (Qt::ControlModifier | Qt::ShiftModifier)
+                                 : Qt::ControlModifier);
+  const auto expected =
+      selected ? (operation == "cut" ? QString("") : QString("Alpha beta"))
+               : QString("Alpha betafixture-paste");
+  QTRY_COMPARE(page("(()=>{let e=document.getElementById(" + quoted(context) +
+                    ");return 'value' in e?e.value:e.textContent;})()")
+                   .toString(),
+               expected);
+  if (selected)
+    QTRY_COMPARE(QGuiApplication::clipboard()->text(), QString("Alpha beta"));
+  if (mode == "passthrough-once")
+    QTRY_COMPARE(text("mode"), QString("normal"));
+  else
+    QCOMPARE(text("mode"), before);
+  QCOMPARE(page("window.edits.length").toInt(), 1);
+  if (context == "rich" && operation == "paste-plain")
+    QVERIFY(!page("document.getElementById('rich').innerHTML")
+                 .toString()
+                 .contains("<b>fixture-paste"));
+  if (selected && (context == "rich" || context == "plain"))
+    QVERIFY(QGuiApplication::clipboard()->mimeData()->hasHtml());
+}
+void ApplicationTests::clipboardSelectionOwnership() {
+  page("document.body.innerHTML='<p id=parent tabindex=0>Parent "
+       "selection</p><iframe id=child src=/child.html></iframe>';true");
+  QTRY_VERIFY(page("!!document.getElementById('child').contentDocument?.body")
+                  .toBool());
+  evaluate("testWindow.activeWebView().forceActiveFocus()");
+  page("(()=>{let p=document.getElementById('parent');p.focus();let "
+       "r=document.createRange();r.selectNodeContents(p);getSelection()."
+       "removeAllRanges();getSelection().addRange(r);let "
+       "f=document.getElementById('child'),d=f.contentDocument;d.body."
+       "innerHTML='<p id=text tabindex=0>Child selection</p>';let "
+       "e=d.getElementById('text');e.focus();let "
+       "c=d.createRange();c.selectNodeContents(e);f.contentWindow.getSelection("
+       ").removeAllRanges();f.contentWindow.getSelection().addRange(c);return "
+       "true;})()");
+  QTRY_VERIFY(evaluate("testWindow.selectionProviderFor(testWindow."
+                       "activeWebView()).snapshot() !== null && "
+                       "testWindow.selectionProviderFor(testWindow."
+                       "activeWebView()).snapshot().chain.length===2")
+                  .toBool());
+  // Browser chrome can take focus without changing the retained source.
+  key(Qt::Key_Colon);
+  QTRY_COMPARE(text("mode"), QString("command"));
+  QGuiApplication::clipboard()->setText("sentinel");
+  QVERIFY(command("yank selection"));
+  evaluate("testWindow.scheduleRuntimeWork(0)");
+  QTRY_COMPARE(QGuiApplication::clipboard()->text(),
+               QString("Child selection"));
+  QVERIFY(!QGuiApplication::clipboard()->mimeData()->hasHtml());
+  QCOMPARE(text("status_text"), QString("Selection copied"));
+  // A detached frame invalidates its lease and cannot fall back to the parent.
+  evaluate("testProbe.savedSelection=testWindow.selectionProviderFor("
+           "testWindow.activeWebView()).snapshot()");
+  page("document.getElementById('child').remove();true");
+  scriptDone = false;
+  evaluate(
+      "testWindow.selectionProviderFor(testWindow.activeWebView()).extract("
+      "function(result){testProbe.accept(result)},testProbe.savedSelection)");
+  QTRY_VERIFY(scriptDone);
+  QVERIFY(scriptResult.toMap().contains("error"));
+  QCOMPARE(QGuiApplication::clipboard()->text(), QString("Child selection"));
+}
+void ApplicationTests::clipboardShortcutOverride() {
+  QVERIFY(command("bind Ctrl+v mode-enter passthrough"));
+  page("let "
+       "e=document.getElementById('input');e.value='unchanged';e.focus();e."
+       "setSelectionRange(9,9);true");
+  evaluate("testWindow.browserUi.escape();testWindow.activeWebView()."
+           "forceActiveFocus()");
+  QGuiApplication::clipboard()->setText("must-not-paste");
+  key(Qt::Key_V, Qt::ControlModifier);
+  QTRY_COMPARE(text("mode"), QString("pass-through"));
+  QCOMPARE(page("document.getElementById('input').value").toString(),
+           QString("unchanged"));
+  evaluate("testWindow.browserUi.escape()");
+  QVERIFY(command("bind Ctrl+Shift+v mode-enter passthrough-once"));
+  key(Qt::Key_V, Qt::ControlModifier | Qt::ShiftModifier);
+  QTRY_COMPARE(text("mode"), QString("pass-through-once"));
+  QCOMPARE(page("document.getElementById('input').value").toString(),
+           QString("unchanged"));
+}
+
+// Cross-process data-device transfer in a private compositor. The injector
+// verifies the parent window PID before sending compositor-delivered input.
+void ApplicationTests::clipboardWaylandTransport() {
+  if (QGuiApplication::platformName() != "wayland" ||
+      qEnvironmentVariable("FERRIC_CLIPBOARD_ISOLATED") != "1")
+    QSKIP("requires the isolated Wayland clipboard runner");
+  auto inject = [this](const QString &action) {
+    if (!window->isActive())
+      return false;
+    const auto helper = qEnvironmentVariable("FERRIC_CLIPBOARD_INJECTOR");
+    if (helper.isEmpty())
+      return false;
+    QProcess process;
+    process.start("python3", {helper, "--inject", action});
+    if (!process.waitForStarted(1000))
+      return false;
+    QElapsedTimer deadline;
+    deadline.start();
+    while (process.state() != QProcess::NotRunning && deadline.elapsed() < 8000)
+      QTest::qWait(10);
+    if (process.state() != QProcess::NotRunning) {
+      process.kill();
+      process.waitForFinished(1000);
+      return false;
+    }
+    if (process.exitCode() != 0)
+      qWarning().noquote() << process.readAllStandardError();
+    return process.exitCode() == 0;
+  };
+  auto readClipboard = []() {
+    QProcess reader;
+    reader.start("wl-paste", {"--no-newline"});
+    if (!reader.waitForStarted(1000))
+      return QByteArray();
+    QElapsedTimer deadline;
+    deadline.start();
+    while (reader.state() != QProcess::NotRunning && deadline.elapsed() < 3000)
+      QTest::qWait(10);
+    if (reader.state() != QProcess::NotRunning) {
+      reader.kill();
+      reader.waitForFinished(1000);
+      return QByteArray();
+    }
+    return reader.exitCode() == 0 ? reader.readAllStandardOutput()
+                                  : QByteArray();
+  };
+  page("let "
+       "e=document.getElementById('input');e.value='native-wayland-copy';e."
+       "focus();e.select();true");
+  evaluate("testWindow.browserUi.escape();testWindow.activeWebView()."
+           "forceActiveFocus()");
+  QVERIFY(inject("copy"));
+  QTRY_COMPARE(readClipboard(), QByteArray("native-wayland-copy"));
+  QVERIFY(inject("yank"));
+  QTRY_COMPARE(readClipboard(), text("current_url").toUtf8());
+  QProcess writer;
+  writer.start("wl-copy", {"--foreground", "--type", "text/plain"});
+  QVERIFY(writer.waitForStarted(1000));
+  writer.write("external-wayland-paste");
+  writer.closeWriteChannel();
+  QTRY_COMPARE(QGuiApplication::clipboard()->text(),
+               QString("external-wayland-paste"));
+  page("let e=document.getElementById('input');e.value='';e.focus();true");
+  evaluate("testWindow.browserUi.escape();testWindow.activeWebView()."
+           "forceActiveFocus()");
+  QVERIFY(inject("paste"));
+  QTRY_COMPARE(page("document.getElementById('input').value").toString(),
+               QString("external-wayland-paste"));
+  QCOMPARE(text("mode"), QString("normal"));
+  QVERIFY(inject("command"));
+  QTRY_COMPARE(text("mode"), QString("command"));
+  auto input = window->findChild<QQuickItem *>("commandLineInput");
+  QVERIFY(input);
+  QTRY_VERIFY(input->hasActiveFocus());
+  input->setProperty("text", "open ");
+  input->setProperty("cursorPosition", 5);
+  QVERIFY(inject("paste"));
+  QTRY_COMPARE(input->property("text").toString(),
+               QString("open external-wayland-paste"));
+  writer.terminate();
+  if (!writer.waitForFinished(1000)) {
+    writer.kill();
+    writer.waitForFinished(1000);
+  }
+}
+
+void ApplicationTests::clipboardSelectionControls_data() {
+  QTest::addColumn<QString>("fixture");
+  QTest::addColumn<QString>("expected");
+  QTest::addColumn<bool>("allowed");
+  QTest::newRow("unicode-input-substring")
+      << QString("<input id=text value='aé漢字z'>")
+      << QString::fromUtf8("é漢字") << true;
+  QTest::newRow("multiline-textarea")
+      << QString("<textarea id=text>aé漢字z\nnext</textarea>")
+      << QString::fromUtf8("é漢字") << true;
+  QTest::newRow("open-shadow-input")
+      << QString("<div id=host></div>") << QString::fromUtf8("é漢字") << true;
+  QTest::newRow("closed-shadow-input")
+      << QString(
+             "<p id=prior>Parent remembered selection</p><div id=host></div>")
+      << QString("sentinel") << false;
+  QTest::newRow("password")
+      << QString("<input id=text type=password value='aé漢字z'>")
+      << QString("sentinel") << false;
+}
+void ApplicationTests::clipboardSelectionControls() {
+  QFETCH(QString, fixture);
+  QFETCH(QString, expected);
+  QFETCH(bool, allowed);
+  const bool closed =
+      QString::fromLatin1(QTest::currentDataTag()) == "closed-shadow-input";
+  page("document.body.innerHTML=" + quoted(fixture) +
+       ";if(document.getElementById('host')){let "
+       "root=document.getElementById('host').attachShadow({mode:" +
+       quoted(closed ? "closed" : "open") +
+       "});root.innerHTML=" + quoted("<input id=text value='aé漢字z'>") +
+       ";window.selectionControl=root.getElementById('text');}let "
+       "prior=document.getElementById('prior');if(prior){let "
+       "r=document.createRange();r.selectNodeContents(prior);getSelection()."
+       "removeAllRanges();getSelection().addRange(r);}true");
+  evaluate("testWindow.activeWebView().forceActiveFocus()");
+  page("let "
+       "e=document.getElementById('text')||window.selectionControl;e.focus();e."
+       "setSelectionRange(1,4);true");
+  QTRY_VERIFY(evaluate("testWindow.selectionProviderFor(testWindow."
+                       "activeWebView()).snapshot() !== null")
+                  .toBool());
+  QTest::qWait(50);
+  QGuiApplication::clipboard()->setText("sentinel");
+  QVERIFY(command("yank selection"));
+  evaluate("testWindow.scheduleRuntimeWork(0)");
+  if (allowed)
+    QTRY_COMPARE(QGuiApplication::clipboard()->text(), expected);
+  else {
+    QTRY_VERIFY(
+        text("status_text").contains(closed ? "unsupported" : "password"));
+    QCOMPARE(QGuiApplication::clipboard()->text(), expected);
+  }
+}
+void ApplicationTests::clipboardSelectionChangedRejects() {
+  evaluate("testWindow.activeWebView().forceActiveFocus()");
+  page("let e=document.getElementById('input');e.value='Alpha "
+       "beta';e.focus();e.select();true");
+  QTRY_VERIFY(evaluate("testWindow.selectionProviderFor(testWindow."
+                       "activeWebView()).snapshot() !== null")
+                  .toBool());
+  QTest::qWait(50);
+  evaluate("testProbe.savedSelection=testWindow.selectionProviderFor("
+           "testWindow.activeWebView()).snapshot()");
+  page("document.getElementById('input').setSelectionRange(0,5);true");
+  scriptDone = false;
+  evaluate(
+      "testWindow.selectionProviderFor(testWindow.activeWebView()).extract("
+      "function(result){testProbe.accept(result)},testProbe.savedSelection)");
+  QTRY_VERIFY(scriptDone);
+  QVERIFY(scriptResult.toMap().contains("error"));
+  // Broker cancellation completes exactly once through the bounded adapter.
+  scriptDone = false;
+  evaluate("testWindow.selectionProviderFor(testWindow.activeWebView())."
+           "extract(function(result){testProbe.accept(result)},testProbe."
+           "savedSelection);testWindow.selectionProviderFor(testWindow."
+           "activeWebView()).invalidate()");
+  QTRY_VERIFY_WITH_TIMEOUT(scriptDone, 2500);
+  QVERIFY(scriptResult.toMap().contains("error"));
+}
+
+void ApplicationTests::clipboardSelectionLifetimeCycles() {
+  evaluate("testWindow.activeWebView().forceActiveFocus()");
+  page("document.getElementById('input').focus();true");
+  for (int cycle = 0; cycle < 200; ++cycle) {
+    evaluate("testWindow.selectionProviderFor(testWindow.activeWebView())."
+             "capture();testWindow.selectionProviderFor(testWindow."
+             "activeWebView()).invalidate()");
+    QCOMPARE(evaluate("testWindow.selectionProviderFor(testWindow."
+                      "activeWebView()).leaseCount")
+                 .toInt(),
+             0);
+    if (cycle % 16 == 0)
+      QTest::qWait(10);
+  }
+  QTest::qWait(2100);
+  scriptDone = false;
+  evaluate("testWindow.selectionProviderFor(testWindow.activeWebView())."
+           "capture(function(source){testProbe.accept(source!==null)})");
+  QTRY_VERIFY(scriptDone);
+  QVERIFY(scriptResult.toBool());
+  evaluate("testWindow.selectionProviderFor(testWindow.activeWebView())."
+           "invalidate()");
+  QTest::qWait(100);
+  for (auto object : window->findChildren<QObject *>())
+    if (QByteArray(object->metaObject()->className()) ==
+        "FerricSelectionFrameBroker") {
+      QCOMPARE(object->property("leaseCount").toInt(), 0);
+      QCOMPARE(object->findChildren<QTimer *>().size(), 0);
+    }
+}
+
+void ApplicationTests::clipboardHeldBrowserGesture() {
+  page("let "
+       "e=document.getElementById('input');e.value='unchanged';e.focus();e."
+       "setSelectionRange(9,9);true");
+  evaluate("testWindow.browserUi.escape();testWindow.activeWebView()."
+           "forceActiveFocus()");
+  QGuiApplication::clipboard()->setText("must-not-paste");
+  key(Qt::Key_2);
+  QTest::keyPress(window, Qt::Key_V, Qt::ControlModifier);
+  QKeyEvent repeat(QEvent::KeyPress, Qt::Key_V, Qt::ControlModifier, QString(),
+                   true, 1);
+  QCoreApplication::sendEvent(window, &repeat);
+  QTest::keyRelease(window, Qt::Key_V, Qt::ControlModifier);
+  QTest::qWait(100);
+  QCOMPARE(page("document.getElementById('input').value").toString(),
+           QString("unchanged"));
+  QCOMPARE(text("mode"), QString("normal"));
+  key(Qt::Key_Q);
+  key(Qt::Key_V, Qt::ControlModifier);
+  QCOMPARE(page("document.getElementById('input').value").toString(),
+           QString("unchanged"));
+}
+
+void ApplicationTests::clipboardOtherWindows_data() {
+  QTest::addColumn<bool>("popup");
+  QTest::newRow("secondary") << false;
+  QTest::newRow("popup") << true;
+}
+void ApplicationTests::clipboardOtherWindows() {
+  QFETCH(bool, popup);
+  QString entry;
+  if (popup) {
+    QVERIFY(command("bind p hint --target pointer links"));
+    key(Qt::Key_P);
+    const auto label = hintLabel("Open popup");
+    QVERIFY(!label.isEmpty());
+    typeText(label);
+    key(Qt::Key_Return);
+    QTRY_COMPARE(evaluate("testWindow.popupWindowRegistry.length").toInt(), 1);
+    entry = "testWindow.popupWindowRegistry[0]";
+    pageReceiver = entry + ".view";
+  } else {
+    QVERIFY(evaluate("testWindow.openEphemeralWindow(" +
+                     quoted(text("current_url")) + ")")
+                .toBool());
+    QTRY_VERIFY(
+        evaluate("testWindow.browserWindowRegistry.length > 1").toBool());
+    entry = "testWindow.browserWindowRegistry[testWindow.browserWindowRegistry."
+            "length-1]";
+    pageReceiver = entry + ".host.activeView";
+  }
+  auto child = qobject_cast<QQuickWindow *>(
+      evaluate(entry + ".host").value<QObject *>());
+  QVERIFY(child);
+  QTRY_VERIFY(
+      evaluate(pageReceiver + " !== null && !" + pageReceiver + ".loading")
+          .toBool());
+  QTRY_VERIFY(page("document.getElementById('button') !== null").toBool());
+  evaluate(pageReceiver + ".viewUi.escape()");
+  child->requestActivate();
+  QTRY_VERIFY(child->isActive());
+  evaluate(pageReceiver + ".forceActiveFocus()");
+  QTest::qWait(100);
+  page("document.body.innerHTML='<input id=input "
+       "value=Other-window-copy>';document.getElementById('input').focus();"
+       "document.getElementById('input').select();true");
+  QTRY_VERIFY(page("document.hasFocus()").toBool());
+  QCOMPARE(page("document.activeElement.value").toString(),
+           QString("Other-window-copy"));
+  QGuiApplication::clipboard()->setText("sentinel");
+  QTest::keyClick(child, Qt::Key_C, Qt::ControlModifier);
+  QTRY_COMPARE(QGuiApplication::clipboard()->text(),
+               QString("Other-window-copy"));
+  page("let e=document.getElementById('input');e.value='';e.focus();true");
+  QGuiApplication::clipboard()->setText("Other-window-paste");
+  QTest::keyClick(child, Qt::Key_V, Qt::ControlModifier);
+  QTRY_COMPARE(page("document.getElementById('input').value").toString(),
+               QString("Other-window-paste"));
+  auto view =
+      qobject_cast<QQuickItem *>(evaluate(pageReceiver).value<QObject *>());
+  QVERIFY(view);
+  page("document.getElementById('input').select();true");
+  auto local = page("let "
+                    "r=document.getElementById('input').getBoundingClientRect()"
+                    ";({x:r.left+25,y:r.top+16})")
+                   .toMap();
+  auto point =
+      view->mapToScene(QPointF(local["x"].toDouble(), local["y"].toDouble()));
+  QTest::mouseClick(child, Qt::RightButton, Qt::NoModifier, point.toPoint());
+  QTRY_VERIFY(
+      evaluate("testWindow.pendingContextMenuSelection !== null").toBool());
+  QGuiApplication::clipboard()->setText("sentinel");
+  evaluate("testWindow.activateContextMenuItem(testWindow.contextMenuItems."
+           "filter(function(item){return item.action==='web-copy'})[0])");
+  QTest::qWait(150);
+  qInfo()<<"other-window context edit outcome"<<text("status_text")<<evaluate(pageReceiver+".viewUi.status_text");
+  QTRY_COMPARE(QGuiApplication::clipboard()->text(),
+               QString("Other-window-paste"));
+  evaluate(entry + ".host.destroy()");
+  pageReceiver = "testWindow.activeWebView()";
 }

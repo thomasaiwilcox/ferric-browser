@@ -23,3 +23,6 @@ set_tests_properties(application_frame_dpr2 PROPERTIES TIMEOUT 120 ENVIRONMENT "
 
 add_test(NAME application_frame_lifetime COMMAND application_tests crossOriginFrameLifetimeCycles)
 set_tests_properties(application_frame_lifetime PROPERTIES TIMEOUT 700 ENVIRONMENT "QTEST_FUNCTION_TIMEOUT=600000;FERRIC_APP_STRESS=1;QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu --js-flags=--expose-gc")
+
+add_test(NAME application_clipboard COMMAND application_tests clipboardNativeEditing clipboardChrome clipboardMenus clipboardSelectionOwnership clipboardShortcutOverride clipboardSelectionControls clipboardSelectionChangedRejects clipboardSelectionLifetimeCycles clipboardHeldBrowserGesture clipboardOtherWindows)
+set_tests_properties(application_clipboard PROPERTIES TIMEOUT 360 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
