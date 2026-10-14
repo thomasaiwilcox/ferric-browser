@@ -1,7 +1,8 @@
 # Hint quality repair — 2026-10-14
 
 The repair implements the [hint quality plan](../implementation/hint-quality-plan-2026-10-13.md)
-against `ff9c69b`. The prior installed browser was built from `c9e734a`.
+against `ff9c69b`. Product source is `0480cd4cc074a8c1e40deb4a29a97f9a792435bd`.
+The prior installed browser was built from `c9e734a`.
 The [original investigation](hint-label-investigation-2026-10-13.md) remains a
 historical record; its Reddit snapshot is not the same page state as the new run.
 
@@ -145,9 +146,25 @@ matched an extended-budget reference exactly: zero lost or extra targets.
 See `reddit-final.log` and `reddit-equivalence.log`; changes between those live
 states are not attributed to the repair.
 
-The release artifact passed application qualification and is prepared for per-user
-installation. Installed-binary evidence is recorded after atomic replacement. The per-user install uses atomic replacement, backs up prior files
-and verifies the installed hashes. The running user session is not restarted.
+The qualified build is installed at `/home/tom/.local/bin/ferric-browser`.
+All 13 installed files match their source hashes. The binary SHA-256 is
+`204f7a0b6b62a26694a2bc0b58038be243344cb3d42d09e1d99d1eef58b5899a`.
+The previous binary and files are backed up under
+`target/hint-quality-fix/previous-installation/`; the prior-binary backup matches
+the previous installation manifest. HTTP/HTTPS default handlers are unchanged.
+
+Installed help and JSON diagnostics passed. CLI/IPC provenance checks passed in
+an isolated offscreen profile and a private headless Weston compositor using the
+installed executable. See `installation.json`, `installed-help.log`,
+`installed-diagnostics.json`, `installed-ipc.log`, `installed-wayland-check.log`
+and `installed-wayland-ipc.log`. This qualifies installed startup and IPC, not
+physical keyboard/pointer input. The running user browser was not restarted;
+restart it to load the new build.
+
+`validation.json`, `source-and-binary-qualified.json` and
+`resource-parity-qualified.json` retain the source/binary/evidence hashes.
+The final documentation update changes this report only; the installed product
+comes from the source commit above.
 
 ## Remaining manual qualification
 
