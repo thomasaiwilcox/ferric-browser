@@ -1791,7 +1791,7 @@ use ferric_browser_core::{
     SpatialError, SpatialLifecycle, SpatialOwner, SpatialScope, SpatialSession, SpatialTarget,
     SurfaceStamp, TabId, TabTransfer, Target, ValidatedUrl, WindowId, assign_labels_with_options,
     canonical_origin, clean_link, complete, hint_intent_for_candidate, map_css_rect_to_view_local,
-    parse_chain, refresh_labels, resolve_input, switcher_rank, tokenize_switcher_query,
+    parse_chain, resolve_input, switcher_rank, tokenize_switcher_query,
 };
 use ferric_browser_ipc::{
     EventNotification, PublicError, Request, Response, has_pending_requests,

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Hint discovery now excludes plain slotted containers and reuses completed
+  traversal work. Labels and partial input survive page updates without passive
+  activation or label reuse. Anchored badges, target outlines, accessible names,
+  action previews and selectable overlap stacks make controls easier to identify.
+  Focus-only widgets focus correctly; supported frame geometry includes scaling,
+  borders and padding. New controls beyond the current label capacity require
+  restarting hints, preserving the labels already on screen.
+
 - Pass-through now forwards ordinary Escape to the webpage; use Ctrl+Escape
   to return to Normal. Ctrl+v retains persistent Pass-through, while
   Ctrl+Shift+v and `; v` forward one complete key gesture and return to Normal.

@@ -3,7 +3,7 @@
 
 // Browser-owned page scripts are versioned resources. The build manifest hashes
 // this file with the QML module, so script changes are explicit and auditable.
-var VERSION = "18"
+var VERSION = "19"
 
 // Page userscripts are trusted local content, but their failure boundary is
 // browser policy. Keeping the wrappers here prevents QML from assembling page
@@ -224,7 +224,7 @@ function shutdownPageProbe() {
 // The imported resource is independently versioned and covered by the build
 // manifest. Every compatibility entry point fails closed if that contract is
 // unavailable or mismatched.
-var PAGE_INTERACTION_VERSION = "1"
+var PAGE_INTERACTION_VERSION = "2"
 
 function interactionFailureScript(code) {
     return "(function(){return {ok:false,error:" + JSON.stringify(code) + "};})()"

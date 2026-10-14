@@ -147,6 +147,7 @@ fn candidate(index: usize, text: String) -> HintCandidate {
         frame_path: "0".into(),
         text,
         href: None,
+        presentation: None,
         geometry: HintGeometry {
             x: f64::from(u32::try_from(index * 2).expect("bounded fixture coordinate fits u32")),
             y: 0.0,

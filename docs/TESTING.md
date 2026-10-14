@@ -183,3 +183,10 @@ surface during move and press delivery and check press suppression, cleanup and
 uncertain outcomes. The full offscreen application suite has a 300-second total
 bound. Run timing-sensitive UI suites after compilation completes; the product's
 250 ms pointer preflight deadline is unchanged.
+
+The October 2026 hint quality repair adds T058–T061 to the keyboard interaction
+matrix. The [repair record](testing/hint-quality-repair-2026-10-14.md) covers
+collector admission, reserved labels, passive refresh, accessible naming, frame
+geometry, marker placement, overlap selection, performance and installation.
+Automated Qt/WebEngine checks and nested Wayland startup evidence are recorded
+separately from physical-input and human usability qualification.

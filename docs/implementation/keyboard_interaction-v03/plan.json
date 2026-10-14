@@ -991,7 +991,11 @@
       "test_ids": [
         "T040",
         "T043",
-        "T053"
+        "T053",
+        "T058",
+        "T059",
+        "T060",
+        "T061"
       ],
       "locks": [
         "ergonomics-research"

@@ -7,7 +7,6 @@ use super::{
     CommandRegistry, CoreHintAutoFollow, CxxQtType, Event, HintInteraction, HintInteractionInput,
     HintInteractionOutcome, HintSession, HintTarget, Mode, ParsedCommand, Pin, QString, Value,
     assign_labels_with_options, current_target, hint_json, parse_hint_payload, qobject,
-    refresh_labels,
 };
 
 use ferric_browser_config::{Config, HintSelectorFamily, resolve_hint_selector_policies};
@@ -450,38 +449,6 @@ impl qobject::BrowserUi {
             let mut rust = self.as_mut().rust_mut();
             rust.as_mut().get_mut().hint_ids.clone()
         };
-        let binding = self.as_ref();
-        let previous = binding
-            .rust()
-            .hint_session
-            .as_ref()
-            .filter(|session| {
-                session.target.tab == target.tab && session.target.document == target.document
-            })
-            .map_or(&[][..], |session| session.hints.as_slice());
-        let labeled = match if previous.is_empty() {
-            assign_labels_with_options(candidates, &alphabet, minimum_width)
-        } else {
-            refresh_labels(candidates, previous, &alphabet, minimum_width)
-        } {
-            Ok(labeled) => labeled,
-            Err(error) => {
-                self.set_status_text(QString::from(format!("Hints rejected: {error}")));
-                return QString::from(serde_json::json!({"error": error.to_string()}).to_string());
-            }
-        };
-        let hint_first = self.as_ref().rust().hint_first;
-        let hint_index = self.as_ref().rust().hint_index;
-        if hint_first && hint_index > labeled.len() {
-            self.set_status_text(QString::from(format!(
-                "Hint index {hint_index} is unavailable; only {} candidate(s)",
-                labeled.len()
-            )));
-            return QString::from(
-                serde_json::json!({"error":"index-unavailable", "available":labeled.len()})
-                    .to_string(),
-            );
-        }
         let auto_follow = if self.as_ref().rust().hint_pointer_mode || target_search_active {
             CoreHintAutoFollow::Never
         } else {
@@ -494,11 +461,55 @@ impl qobject::BrowserUi {
                 ferric_browser_config::HintAutoFollow::Never => CoreHintAutoFollow::Never,
             }
         };
-        let mut interaction = HintInteraction::new(labeled.clone(), alphabet, auto_follow);
-        if target_search_active {
+        let previous = self
+            .as_ref()
+            .rust()
+            .hint_session
+            .as_ref()
+            .filter(|session| {
+                session.target.tab == target.tab
+                    && session.target.generation == target.generation
+                    && session.target.document == target.document
+                    && session.configuration_revision == configuration_revision
+                    && session.selector_policy_revision == selector_policy_revision
+            })
+            .and_then(|_| self.as_ref().rust().hint_interaction.clone());
+        let refreshing = previous.is_some();
+        let mut interaction = if let Some(mut previous) = previous {
+            if let Err(error) = previous.refresh(candidates) {
+                self.set_status_text(QString::from(format!("Hints rejected: {error}")));
+                return QString::from(serde_json::json!({"error":error.to_string()}).to_string());
+            }
+            previous
+        } else {
+            let labeled = match assign_labels_with_options(candidates, &alphabet, minimum_width) {
+                Ok(labeled) => labeled,
+                Err(error) => {
+                    self.set_status_text(QString::from(format!("Hints rejected: {error}")));
+                    return QString::from(
+                        serde_json::json!({"error":error.to_string()}).to_string(),
+                    );
+                }
+            };
+            HintInteraction::new(labeled, alphabet, auto_follow)
+        };
+        if target_search_active && !refreshing {
             interaction.handle(HintInteractionInput::SetText(preserved_query));
         }
-        let first_label = if target_search_active {
+        let labeled = interaction.hints().to_vec();
+        let hint_first = self.as_ref().rust().hint_first;
+        let hint_index = self.as_ref().rust().hint_index;
+        if hint_first && hint_index > labeled.len() {
+            self.set_status_text(QString::from(format!(
+                "Hint index {hint_index} is unavailable; only {} candidate(s)",
+                labeled.len()
+            )));
+            return QString::from(
+                serde_json::json!({"error":"index-unavailable", "available":labeled.len()})
+                    .to_string(),
+            );
+        }
+        let first_label = if target_search_active || refreshing {
             None
         } else if hint_first {
             labeled.get(hint_index - 1).map(|hint| hint.label.clone())
@@ -561,9 +572,22 @@ impl qobject::BrowserUi {
         } else {
             None
         };
+        let serialized_hints = {
+            let binding = self.as_ref();
+            let rust = binding.rust();
+            hint_json(
+                &labeled,
+                rust.hint_rapid,
+                if rust.hint_pointer_mode {
+                    "pointer"
+                } else {
+                    &rust.hint_rapid_target
+                },
+            )
+        };
         let result = serde_json::json!({
             "session_id": session.id.to_string(),
-            "hints": hint_json(&labeled),
+            "hints": serialized_hints,
             "state": hint_interaction_json(&interaction),
             "first_label": first_label,
         });
@@ -782,6 +806,7 @@ fn hint_interaction_json(interaction: &HintInteraction) -> Value {
         "active_label": snapshot.active_label,
         "remaining": snapshot.remaining,
         "total": snapshot.total,
+        "refresh_required": snapshot.refresh_required,
     })
 }
 

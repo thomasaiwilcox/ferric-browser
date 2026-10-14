@@ -1747,7 +1747,6 @@ ApplicationWindow {
     property int hintDirtyRevision: 0
     property bool hintRefreshPending: false
     property int hintCollectionEpoch: 0
-    property int hintCollisionRotation: 0
     property var hintTrackingView: null
     property bool rapidHintConfirmationVisible: false
     property string copiedText: ""

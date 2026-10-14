@@ -1129,3 +1129,104 @@ int main(int argc, char **argv) {
     ApplicationTests tests;
     return QTest::qExec(&tests, argc, argv);
 }
+
+void ApplicationTests::hintRefreshRetainsInput() {
+    QVERIFY(command("set --temp hints.min_chars=2"));
+    QVERIFY(command("set --temp hints.auto_follow=never"));
+    QVERIFY(command("hint buttons"));
+    const auto label=hintLabel("Activate exact button");
+    QCOMPARE(label.size(),2);
+    QTRY_VERIFY(!evaluate("testWindow.hintRefreshPending").toBool());
+    typeText(label.left(1));
+    QCOMPARE(evaluate("testWindow.hintState.prefix").toString(),label.left(1));
+    const auto revision=evaluate("testWindow.hintDirtyRevision").toInt();
+    page("document.body.setAttribute('data-unrelated','refresh');true");
+    QTRY_VERIFY(evaluate("testWindow.hintDirtyRevision").toInt()>revision);
+    QTRY_VERIFY(!evaluate("testWindow.hintRefreshPending").toBool());
+    qInfo().noquote()<<"REFRESH_PREFIX before="<<label.left(1)<<"after="<<evaluate("testWindow.hintState.prefix").toString();
+    QCOMPARE(evaluate("testWindow.hintState.prefix").toString(),label.left(1));
+    QCOMPARE(hintLabel("Activate exact button"),label);
+    key(Qt::Key_Slash); typeText("activate");
+    QCOMPARE(evaluate("testWindow.hintState.mode").toString(),QString("text"));
+    QCOMPARE(evaluate("testWindow.hintState.query").toString(),QString("activate"));
+    const auto textRevision=evaluate("testWindow.hintDirtyRevision").toInt();
+    page("document.body.setAttribute('data-unrelated','refresh-again');true");
+    QTRY_VERIFY(evaluate("testWindow.hintDirtyRevision").toInt()>textRevision);
+    QTRY_VERIFY(!evaluate("testWindow.hintRefreshPending").toBool());
+    qInfo().noquote()<<"REFRESH_TEXT after="<<evaluate("JSON.stringify(testWindow.hintState)").toString();
+    QCOMPARE(evaluate("testWindow.hintState.mode").toString(),QString("text"));
+    QCOMPARE(evaluate("testWindow.hintState.query").toString(),QString("activate"));
+}
+void ApplicationTests::hintRefreshDoesNotAutoFollow() {
+    QVERIFY(command("set --temp hints.auto_follow=always"));
+    // Exactly two top-level buttons; changing the DOM must not count as typing.
+    page("document.body.innerHTML='<button id=remaining onclick=\"window.clicks++\">Remaining</button><button id=removed>Removed</button>';window.clicks=0;true");
+    QVERIFY(command("hint buttons"));
+    QVERIFY(!hintLabel("Remaining").isEmpty());
+    QTRY_COMPARE(evaluate("testWindow.hintResults.length").toInt(),2);
+    QCOMPARE(page("window.clicks").toInt(),0);
+    page("document.getElementById('removed').remove();true");
+    QTest::qWait(350);
+    QCOMPARE(page("window.clicks").toInt(),0);
+    key(Qt::Key_Return);
+    QTRY_COMPARE(page("window.clicks").toInt(),1);
+    qInfo()<<"EXPLICIT_AUTO_FOLLOW clicks_after_enter="<<page("window.clicks").toInt();
+}
+
+void ApplicationTests::rapidHintRejectsConsumedReplay() {
+    QVERIFY(command("hint --rapid --target yank links"));
+    const auto label=hintLabel("Same document");
+    QVERIFY(!label.isEmpty());
+    const auto candidate=evaluate("JSON.stringify(testWindow.hintResults.find(r=>r.label==="+quoted(label)+"))").toString();
+    const auto fresh=page("("+evaluate("testWindow.hintFreshScript(JSON.parse("+quoted(candidate)+"))").toString()+")",1);
+    const auto raw=QString::fromUtf8(QJsonDocument::fromVariant(fresh).toJson(QJsonDocument::Compact));
+    const auto results=evaluate("JSON.stringify([JSON.parse(testWindow.browserUi.select_hint("+quoted(label)+","+quoted(raw)+")),JSON.parse(testWindow.browserUi.select_hint("+quoted(label)+","+quoted(raw)+"))])").toString();
+    const auto rows=QJsonDocument::fromJson(results.toUtf8()).array();
+    QCOMPARE(rows.size(),2);
+    QCOMPARE(rows[0].toObject().value("action").toString(),QString("yank"));
+    QCOMPARE(rows[1].toObject().value("error").toString(),QString("consumed-target"));
+}
+
+void ApplicationTests::hintConfirmationFreezesPendingRefresh() {
+    QVERIFY(command("bind p hint --target pointer all"));
+    key(Qt::Key_P);
+    const auto label=hintLabel("Activate exact button");
+    QVERIFY(!label.isEmpty());
+    typeText(label);
+    QTRY_VERIFY(!evaluate("testWindow.hintRefreshPending").toBool());
+    QVERIFY(evaluate("testWindow.startHintCollection();testWindow.hintRefreshPending").toBool());
+    QTest::keyPress(window,Qt::Key_Return);
+    QCOMPARE(text("hint_pointer_state"),QString("awaiting-confirmation-release"));
+    // Complete the older callback while the user's explicit gesture is held.
+    QTest::qWait(180);
+    QCOMPARE(text("hint_pointer_state"),QString("awaiting-confirmation-release"));
+    QCOMPARE(evaluate("testWindow.hintState.prefix").toString(),label);
+    QCOMPARE(page("window.clicks").toInt(),0);
+    QTest::keyRelease(window,Qt::Key_Return);
+    QTRY_COMPARE(page("window.clicks").toInt(),1);
+    QVERIFY(page("window.trust").toBool());
+    QCOMPARE(page("window.allClicks").toInt(),1);
+}
+
+void ApplicationTests::hintCollisionCyclesActualMarkers() {
+    QVERIFY(command("set --temp hints.auto_follow=never"));
+    page("document.body.innerHTML='<div role=button style=\"position:absolute;left:40px;top:0;width:160px;height:16px\" onclick=\"window.clicks++\"><button style=\"position:absolute;left:0;top:0;width:100%;height:100%;padding:0;margin:0;border:0;box-sizing:border-box;font-size:10px\" onclick=\"event.stopPropagation();window.clicks++\">Overlapping control</button></div>';window.clicks=0;true");
+    QVERIFY(command("hint buttons"));
+    QVERIFY(!hintLabel("Overlapping control").isEmpty());
+    QTRY_VERIFY(!evaluate("testWindow.hintRefreshPending").toBool());
+    const auto before=evaluate("testWindow.hintState.active_label").toString();
+    QCOMPARE(evaluate("testWindow.hintCollisionLabels("+quoted(before)+").length").toInt(),2);
+    key(Qt::Key_Space);
+    QVERIFY(evaluate("testWindow.hintState.active_label").toString()!=before);
+    auto panel=window->findChild<QObject*>("hintStackPanel");
+    QVERIFY(panel);
+    QTRY_VERIFY(panel->property("visible").toBool());
+    const auto revision=evaluate("testWindow.hintDirtyRevision").toInt();
+    page("document.body.dataset.unrelated='changed';true");
+    QTRY_VERIFY(evaluate("testWindow.hintDirtyRevision").toInt()>revision);
+    QTRY_VERIFY(!evaluate("testWindow.hintRefreshPending").toBool());
+    QVERIFY(panel->property("visible").toBool());
+    QCOMPARE(page("window.clicks").toInt(),0);
+    key(Qt::Key_Return);
+    QTRY_COMPARE(page("window.clicks").toInt(),1);
+}

@@ -4,7 +4,8 @@
 //! result contract emitted by `BrowserScripts.js`.
 
 use ferric_browser_core::{
-    HintCandidate, HintGeometry, HintKind, LabeledHint, MAX_HINT_CANDIDATES,
+    HintCandidate, HintGeometry, HintKind, HintPoint, HintPresentationGeometry, LabeledHint,
+    MAX_HINT_CANDIDATES,
 };
 use serde_json::Value;
 use std::collections::BTreeSet;
@@ -21,8 +22,8 @@ pub(super) fn parse_hint_candidate(value: &Value) -> Result<HintCandidate, Strin
         "href",
         "geometry",
         "visible",
+        "presentation",
     ];
-    const GEOMETRY_KEYS: &[&str] = &["x", "y", "width", "height"];
 
     let object = value
         .as_object()
@@ -96,9 +97,27 @@ pub(super) fn parse_hint_candidate(value: &Value) -> Result<HintCandidate, Strin
     }) {
         return Err("hint candidate href is invalid".into());
     }
-    let geometry = object
-        .get("geometry")
-        .and_then(Value::as_object)
+    let geometry = parse_geometry(object.get("geometry").ok_or("hint geometry is missing")?)?;
+    let presentation = match object.get("presentation") {
+        None | Some(Value::Null) => None,
+        Some(value) => Some(parse_presentation(value, geometry)?),
+    };
+    Ok(HintCandidate {
+        element_id,
+        related_element_id,
+        kind,
+        frame_path: frame_path.to_owned(),
+        text: text.to_owned(),
+        href,
+        geometry,
+        presentation,
+    })
+}
+
+fn parse_geometry(value: &Value) -> Result<HintGeometry, String> {
+    const GEOMETRY_KEYS: &[&str] = &["x", "y", "width", "height"];
+    let geometry = value
+        .as_object()
         .ok_or_else(|| "hint candidate geometry must be an object".to_owned())?;
     if geometry.len() != GEOMETRY_KEYS.len()
         || geometry
@@ -128,15 +147,59 @@ pub(super) fn parse_hint_candidate(value: &Value) -> Result<HintCandidate, Strin
     {
         return Err("hint candidate geometry is invalid".into());
     }
-    Ok(HintCandidate {
-        element_id,
-        related_element_id,
-        kind,
-        frame_path: frame_path.to_owned(),
-        text: text.to_owned(),
-        href,
-        geometry,
-    })
+    Ok(geometry)
+}
+
+fn parse_presentation(
+    value: &Value,
+    bounds: HintGeometry,
+) -> Result<HintPresentationGeometry, String> {
+    let object = value
+        .as_object()
+        .ok_or("hint presentation must be an object")?;
+    if object.len() != 2 || !object.contains_key("anchor") || !object.contains_key("fragments") {
+        return Err("hint presentation contains unsupported fields".into());
+    }
+    let point = object["anchor"]
+        .as_object()
+        .ok_or("hint anchor must be an object")?;
+    if point.len() != 2 || !point.contains_key("x") || !point.contains_key("y") {
+        return Err("hint anchor contains unsupported fields".into());
+    }
+    let anchor = HintPoint {
+        x: point["x"]
+            .as_f64()
+            .ok_or("hint anchor x must be a number")?,
+        y: point["y"]
+            .as_f64()
+            .ok_or("hint anchor y must be a number")?,
+    };
+    let rows = object["fragments"]
+        .as_array()
+        .ok_or("hint fragments must be an array")?;
+    if rows.is_empty() || rows.len() > 8 {
+        return Err("hint fragments exceed the bounded contract".into());
+    }
+    let fragments = rows
+        .iter()
+        .map(parse_geometry)
+        .collect::<Result<Vec<_>, _>>()?;
+    let inside = |x: f64, y: f64, rect: HintGeometry| {
+        x.is_finite()
+            && y.is_finite()
+            && x >= rect.x - 1e-6
+            && y >= rect.y - 1e-6
+            && x <= rect.x + rect.width + 1e-6
+            && y <= rect.y + rect.height + 1e-6
+    };
+    if fragments
+        .iter()
+        .any(|r| !inside(r.x, r.y, bounds) || !inside(r.x + r.width, r.y + r.height, bounds))
+        || !fragments.iter().any(|r| inside(anchor.x, anchor.y, *r))
+    {
+        return Err("hint presentation lies outside its target geometry".into());
+    }
+    Ok(HintPresentationGeometry { anchor, fragments })
 }
 
 pub(super) fn parse_hint_payload(raw: &str) -> Result<Vec<HintCandidate>, String> {
@@ -214,6 +277,7 @@ pub(super) fn hint_kind_name(kind: HintKind) -> &'static str {
         HintKind::Media => "media",
         HintKind::Scrollable => "scrollable",
         HintKind::Aria => "aria",
+        HintKind::Focusable => "focusable",
         HintKind::EditorFocus => "editor-focus",
         HintKind::LabelControl => "label-control",
         HintKind::Region => "region",
@@ -223,7 +287,36 @@ pub(super) fn hint_kind_name(kind: HintKind) -> &'static str {
     }
 }
 
-pub(super) fn hint_json(hints: &[LabeledHint]) -> Value {
+fn hint_action_label(kind: HintKind, rapid: bool, target: &str) -> &'static str {
+    use ferric_browser_core::{HintIntent, hint_intent_for_candidate};
+    if target == "pointer" {
+        return "Pointer click · Enter confirms";
+    }
+    if target == "choose" {
+        return "Choose action";
+    }
+    let uses_url = super::hint_policy::hint_uses_url_action(kind, rapid, target, false);
+    match hint_intent_for_candidate(kind, uses_url) {
+        HintIntent::OpenUrl => match target {
+            "current" => "Open link",
+            "tab" => "Open in new tab",
+            "tab-bg" => "Open in background tab",
+            "window" => "Open in new window",
+            "yank" => "Copy link",
+            "clean-yank" => "Copy clean link",
+            "download" => "Download",
+            "userscript" => "Run userscript",
+            "ephemeral" => "Open private window",
+            _ => "Open externally",
+        },
+        HintIntent::Focus => "Focus",
+        HintIntent::SetScrollTarget => "Set scroll target",
+        HintIntent::ActionPalette => "Choose action",
+        _ => "Activate",
+    }
+}
+
+pub(super) fn hint_json(hints: &[LabeledHint], rapid: bool, target: &str) -> Value {
     Value::Array(
         hints
             .iter()
@@ -236,6 +329,11 @@ pub(super) fn hint_json(hints: &[LabeledHint]) -> Value {
                     "frame_path": hint.candidate.frame_path,
                     "text": hint.candidate.text,
                     "href": hint.candidate.href,
+                    "action": hint_action_label(hint.candidate.kind, rapid, target),
+                    "presentation": hint.candidate.presentation.as_ref().map(|presentation| serde_json::json!({
+                        "anchor":{"x":presentation.anchor.x,"y":presentation.anchor.y},
+                        "fragments":presentation.fragments.iter().map(|r|serde_json::json!({"x":r.x,"y":r.y,"width":r.width,"height":r.height})).collect::<Vec<_>>()
+                    })),
                     "x": hint.candidate.geometry.x,
                     "y": hint.candidate.geometry.y,
                     "width": hint.candidate.geometry.width,
@@ -272,6 +370,7 @@ fn parse_hint_kind(value: &str) -> Result<HintKind, String> {
         "media" => Ok(HintKind::Media),
         "scrollable" => Ok(HintKind::Scrollable),
         "aria" => Ok(HintKind::Aria),
+        "focusable" => Ok(HintKind::Focusable),
         "editor-focus" => Ok(HintKind::EditorFocus),
         "label-control" => Ok(HintKind::LabelControl),
         "region" => Ok(HintKind::Region),
@@ -397,6 +496,7 @@ mod tests {
             frame_path: "0".into(),
             text: "Target".into(),
             href: None,
+            presentation: None,
             geometry: HintGeometry {
                 x: 0.0,
                 y: 0.0,
@@ -457,5 +557,52 @@ mod tests {
         value["kind"] = serde_json::json!("input");
         value["related_element_id"] = serde_json::json!(9);
         assert!(parse_hint_candidate(&value).is_err());
+    }
+    #[test]
+    fn presentation_is_bounded_and_cannot_supply_an_outside_anchor() {
+        let mut value = serde_json::json!({
+            "anchor":{"x":2.0,"y":3.0},
+            "fragments":[{"x":1.0,"y":2.0,"width":10.0,"height":10.0}]
+        });
+        let bounds = HintGeometry {
+            x: 1.0,
+            y: 2.0,
+            width: 10.0,
+            height: 10.0,
+        };
+        assert_eq!(
+            parse_presentation(&value, bounds).unwrap().fragments.len(),
+            1
+        );
+        value["anchor"]["x"] = serde_json::json!(99.0);
+        assert!(parse_presentation(&value, bounds).is_err());
+        value["anchor"]["x"] = serde_json::json!(2.0);
+        value["fragments"] = serde_json::json!(vec![
+            serde_json::json!({"x":1,"y":2,"width":10,"height":10});
+            9
+        ]);
+        assert!(parse_presentation(&value, bounds).is_err());
+        value["fragments"] = serde_json::json!([{ "x":0,"y":2,"width":10,"height":10 }]);
+        assert!(parse_presentation(&value, bounds).is_err());
+    }
+
+    #[test]
+    fn preview_action_uses_the_same_url_and_focus_policy_as_selection() {
+        assert_eq!(
+            hint_action_label(HintKind::Image, false, "current"),
+            "Activate"
+        );
+        assert_eq!(
+            hint_action_label(HintKind::Image, false, "yank"),
+            "Copy link"
+        );
+        assert_eq!(
+            hint_action_label(HintKind::Focusable, false, "current"),
+            "Focus"
+        );
+        assert_eq!(
+            hint_action_label(HintKind::Button, false, "pointer"),
+            "Pointer click · Enter confirms"
+        );
     }
 }

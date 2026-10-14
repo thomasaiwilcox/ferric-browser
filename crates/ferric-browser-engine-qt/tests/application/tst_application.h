@@ -32,6 +32,11 @@ class ApplicationTests final : public QObject {
   public:
     Q_INVOKABLE void accept(const QVariant &value);
   private slots:
+    void hintConfirmationFreezesPendingRefresh();
+    void hintCollisionCyclesActualMarkers();
+    void rapidHintRejectsConsumedReplay();
+    void hintRefreshRetainsInput();
+    void hintRefreshDoesNotAutoFollow();
     void initTestCase();
     void init();
     void cleanup();

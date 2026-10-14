@@ -33,6 +33,7 @@ pub(super) fn target_search_candidate_matches(scope: &str, kind: HintKind) -> bo
         "controls" => matches!(
             kind,
             HintKind::Button
+                | HintKind::Focusable
                 | HintKind::Aria
                 | HintKind::Input
                 | HintKind::Select

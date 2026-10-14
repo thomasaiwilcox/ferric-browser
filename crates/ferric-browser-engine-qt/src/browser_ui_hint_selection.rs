@@ -365,6 +365,15 @@ impl qobject::BrowserUi {
             &self.as_ref().rust().hint_rapid_target,
             pending_action.is_some(),
         );
+        if self
+            .as_ref()
+            .rust()
+            .hint_consumed
+            .contains(&(selected.frame_path.clone(), selected.element_id))
+        {
+            self.set_status_text(QString::from("Hint target was already consumed"));
+            return QString::from(r#"{"error":"consumed-target"}"#);
+        }
         let result = if let Some(capability_id) = requested_capability {
             let capability = ferric_browser_core::hint_capabilities(selected.kind)
                 .iter()
@@ -884,7 +893,9 @@ impl qobject::BrowserUi {
             let this = rust.as_mut().get_mut();
             this.hint_consumed
                 .insert((selected.frame_path.clone(), selected.element_id));
-            this.hint_interaction = None;
+            if let Some(interaction) = this.hint_interaction.as_mut() {
+                interaction.consume(&selected);
+            }
             this.pending_hint_action = None;
         } else if !palette_open && !awaits_page_activation {
             self.as_mut().clear_hint_session_state();

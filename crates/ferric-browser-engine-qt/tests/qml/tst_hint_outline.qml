@@ -23,7 +23,6 @@ TestCase {
         hintState: ({mode: "label", matching_labels: [], active_label: ""})
         unmatchedPolicy: "show"
         markerScale: 1
-        collisionRotation: 0
     }
     function test_only_selected_target_has_outline() {
         var rows = []

@@ -1008,6 +1008,7 @@ fn presentation_helper_resources_have_no_runtime_or_page_authority() {
     let helpers = [
         include_str!("../../qml/scripts/ChromePresentation.js"),
         include_str!("../../qml/scripts/SpellcheckPresentation.js"),
+        include_str!("../../qml/scripts/HintPresentation.js"),
     ];
     for helper in helpers {
         for forbidden in [
@@ -1378,6 +1379,7 @@ fn context_menus_use_engine_actions_and_bound_spellcheck_data() {
         include_str!("../../qml/components/FerricContextMenu.qml"),
         include_str!("../../qml/components/FerricHintOverlay.qml"),
         include_str!("../../qml/scripts/SpellcheckPresentation.js"),
+        include_str!("../../qml/scripts/HintPresentation.js"),
     ]
     .concat();
     assert!(qml.contains("onContextMenuRequested"));
@@ -1461,11 +1463,11 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(qml.contains("BrowserScripts.pageUserscriptRun(scriptSource)"));
     assert!(qml.contains("BrowserScripts.pageUserscriptInstall(script.source)"));
     assert!(!qml.contains("function hintSelector(linksOnly)"));
-    assert!(BROWSER_SCRIPT_FACADE.contains("var VERSION = \"18\""));
+    assert!(BROWSER_SCRIPT_FACADE.contains("var VERSION = \"19\""));
     assert!(BROWSER_SCRIPT_FACADE.contains(".import \"PageInteractionScripts.js\" as PageInteractionScripts"));
     assert!(BROWSER_SCRIPT_FACADE.contains("asset.VERSION !== PAGE_INTERACTION_VERSION"));
     assert!(BROWSER_SCRIPT_FACADE.contains("script-version-mismatch"));
-    assert!(PAGE_INTERACTION_SCRIPT.contains("var VERSION = \"1\""));
+    assert!(PAGE_INTERACTION_SCRIPT.contains("var VERSION = \"2\""));
     let manifest: serde_json::Value = serde_json::from_str(BROWSER_SCRIPT_MANIFEST).unwrap();
     let entry = manifest["resources"]
         .as_array()
@@ -1564,14 +1566,15 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(script.contains("rect=ftIntersect(rect,{left:0,top:0,right:window.innerWidth,bottom:window.innerHeight})"));
     assert!(script.contains("state.resize.unobserve"));
     assert!(script.contains("function intersect(a,b)"));
-    assert!(script.contains("trim().slice(0,512)"));
+    assert!(script.contains("Array.from("));
+    assert!(script.contains(".slice(0,512)"));
     assert!(script.contains("kind==='link'&&href===null"));
     assert!(script.contains("function linkedSurface(el,r)"));
     assert!(script.contains(
         "candidateFamily==='all'&&(kind==='image'||kind==='media')&&linkedSurface(el,r)"
     ));
     assert!(script.contains("function hasPreferredLink(el,r)"));
-    assert!(script.contains("String(candidate.href||candidate.getAttribute('href')||'')!==href"));
+    assert!(script.contains("summary.get(href)+1<r.width*r.height"));
 }
 
 #[test]
@@ -1633,9 +1636,14 @@ fn enhanced_hint_presentation_keeps_keyboard_policy_out_of_qml() {
     assert!(overlay.contains("unmatchedPolicy === \"show\""));
     assert!(overlay.contains("<u>"));
     assert!(overlay.contains("Active hint target"));
-    assert!(overlay.contains("function coordinateScale(renderedSize, sourceSize)"));
-    assert!(overlay.contains("var targetX = source.x * scaleX"));
-    assert!(overlay.contains("var options = [[targetX, targetY]"));
+    assert!(overlay.contains("HintPresentation.layout("));
+    assert!(overlay.contains("matchingLabelLookup"));
+    let presentation = include_str!("../../qml/scripts/HintPresentation.js");
+    for source in [overlay,presentation] {
+        assert!(!source.contains("execute_command("));
+        assert!(!source.contains("runJavaScript("));
+        assert!(!source.contains("select_hint("));
+    }
     assert!(menu.contains("sequence: \"Tab\""));
     assert!(menu.contains("hint.clean-yank"));
 }

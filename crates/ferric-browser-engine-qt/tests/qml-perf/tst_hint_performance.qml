@@ -48,7 +48,6 @@ TestCase {
                 hintState: ({mode: "label", prefix: "", matching_labels: [], active_label: ""})
                 unmatchedPolicy: "show"
                 markerScale: 1
-                collisionRotation: 0
                 anchors.fill: parent
                 z: 30
             }
@@ -363,7 +362,7 @@ TestCase {
                    && placed.marker_x + placed.marker_width <= hintOverlay.width
                    && placed.marker_y + placed.marker_height <= hintOverlay.height,
                    "every marker stays inside the overlay viewport")
-            verify(placed.collision_cluster === 0 || placed.collision_cluster === 1)
+            verify(placed.collision_cluster === 0 || placed.cluster.length > 1)
             if (placed.collision_cluster === 0) {
                 for (var earlierIndex = 0; earlierIndex < placedIndex; ++earlierIndex) {
                     var earlier = layoutPreview[earlierIndex]

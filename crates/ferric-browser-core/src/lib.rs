@@ -42,10 +42,10 @@ pub use dispatcher::{
 pub use hints::{
     HintAutoFollow, HintCandidate, HintCapability, HintError, HintGeometry, HintInputMode,
     HintIntent, HintInteraction, HintInteractionInput, HintInteractionOutcome,
-    HintInteractionSnapshot, HintKind, HintSession, HintTarget, HintTransport, HintUnmatchedPolicy,
-    LabeledHint, MAX_HINT_CANDIDATES, MAX_HINT_REGIONS, MAX_HINT_SURFACES, assign_labels,
-    assign_labels_with_options, hint_capabilities, hint_intent_for_candidate,
-    hint_kind_is_region_or_surface, refresh_labels,
+    HintInteractionSnapshot, HintKind, HintPoint, HintPresentationGeometry, HintSession,
+    HintTarget, HintTransport, HintUnmatchedPolicy, LabeledHint, MAX_HINT_CANDIDATES,
+    MAX_HINT_REGIONS, MAX_HINT_SURFACES, assign_labels, assign_labels_with_options,
+    hint_capabilities, hint_intent_for_candidate, hint_kind_is_region_or_surface, refresh_labels,
 };
 pub use id::{
     ActionId, ContextId, DocumentId, DownloadId, HintSessionId, IdSource, JourneyNodeId, ProfileId,

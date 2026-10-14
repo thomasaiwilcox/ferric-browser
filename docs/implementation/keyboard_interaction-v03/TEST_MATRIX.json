@@ -611,6 +611,50 @@
       "fixture": "integration",
       "assertion": "Rerun applicable full gates on integrated HEAD and report baseline failures, unsupported research and unrun native cases without claiming universal readiness.",
       "status": "not_run"
+    },
+    {
+      "id": "T058",
+      "title": "Hint admission and bounded discovery",
+      "required_levels": [
+        "webengine-fixture"
+      ],
+      "fixture": "tst_hint_quality.qml",
+      "assertion": "Slotted non-controls receive no hints; legitimate descendants remain reachable; the sibling-link fixture completes within existing work limits.",
+      "status": "not_run"
+    },
+    {
+      "id": "T059",
+      "title": "Hint refresh and reserved label lifetime",
+      "required_levels": [
+        "pure-unit",
+        "native-qt-offscreen"
+      ],
+      "fixture": "hintRefreshRetainsInput",
+      "assertion": "Passive refresh preserves input and meaning-stable selection without activation; retired labels are not reused, label width stays fixed, and late collection cannot replace a held explicit pointer confirmation.",
+      "status": "not_run"
+    },
+    {
+      "id": "T060",
+      "title": "Hint names focus and projected fragments",
+      "required_levels": [
+        "pure-unit",
+        "webengine-fixture"
+      ],
+      "fixture": "tst_hint_quality.qml",
+      "assertion": "Bounded names exclude editable values; focus-only widgets receive exact focus; scaled frames and fragments map correctly.",
+      "status": "not_run"
+    },
+    {
+      "id": "T061",
+      "title": "Anchored hint presentation and collision reachability",
+      "required_levels": [
+        "qml-component",
+        "native-qt-offscreen",
+        "performance"
+      ],
+      "fixture": "tst_hint_presentation.qml",
+      "assertion": "Stationary markers stay anchored; all distinct overlapping actions remain reachable; hover cannot redirect keyboard activation; layout stays bounded.",
+      "status": "not_run"
     }
   ]
 }

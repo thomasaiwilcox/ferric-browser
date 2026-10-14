@@ -1409,6 +1409,7 @@ FerricBrowserRuntimeServices {
                 return
             }
             window.hintDirtyRevision = Number(value && value.revision || 0)
+            var wasTruncated = window.hintCollectionTruncated
             window.hintCollectionTruncated = !!(value && value.truncated)
             var collectedViewport = value && value.viewport ? value.viewport : ({})
             var collectedWidth = Number(collectedViewport.width || 0)
@@ -1445,7 +1446,9 @@ FerricBrowserRuntimeServices {
                 return
             }
             if (!response.hints || response.hints.length === 0) {
-                var hintFailure = window.hintCollectionTruncated
+                var hintFailure = response.state && response.state.refresh_required
+                        ? "New controls available—restart hints"
+                        : window.hintCollectionTruncated
                         ? "Hint collection truncated at resource limits; no visible targets were found in the inspected region"
                         : response.error
                         ? browserUi.status_text : "No visible hint targets"
@@ -1455,14 +1458,18 @@ FerricBrowserRuntimeServices {
                 window.showCommandNotice(hintFailure, true)
                 return
             }
+            var requiredRestart = !!(window.hintState && window.hintState.refresh_required)
             window.hintState = response.state || window.hintState
             window.hintInput = window.hintState.mode === "text"
                     ? "/" + window.hintState.query : window.hintState.prefix
             window.hintResults = response.hints
-            if (window.hintCollectionTruncated) {
-                var truncationNotice = "Hint collection truncated by the 5,000-target or 50,000-element limit"
+            if (window.hintState.refresh_required) {
+                browserUi.status_text = "New controls available—restart hints"
+                if (!requiredRestart) window.showCommandNotice(browserUi.status_text,false)
+            } else if (window.hintCollectionTruncated) {
+                var truncationNotice = "Some targets may be missing · narrow hints or select a region"
                 browserUi.status_text = truncationNotice
-                window.showCommandNotice(truncationNotice, false)
+                if (!wasTruncated) window.showCommandNotice(truncationNotice, false)
             }
             if (response.first_label) {
                 Qt.callLater(function() { window.activateHint(String(response.first_label)) })
@@ -1516,7 +1523,13 @@ FerricBrowserRuntimeServices {
     function beginHintPointerConfirmation() {
         try {
             var response = JSON.parse(browserUi.hint_pointer_confirmation_pressed())
-            return response.ok === true
+            if (response.ok !== true) return false
+            // Freeze the displayed session for this explicit gesture. An older
+            // passive callback must not replace its freshly checked authority.
+            // Enter release still performs full DOM and native preflight.
+            window.hintCollectionEpoch += 1
+            window.hintRefreshPending = false
+            return true
         } catch (error) {
             return false
         }
@@ -1524,25 +1537,11 @@ FerricBrowserRuntimeServices {
 
     function rotateHintCollision() {
         var active = String(window.hintState.active_label || "")
-        var selected = null
-        for (var i = 0; i < window.hintResults.length; ++i) {
-            if (String(window.hintResults[i].label) === active) {
-                selected = window.hintResults[i]
-                break
-            }
-        }
-        if (!selected) return
-        var cluster = window.hintResults.filter(function(candidate) {
-            return candidate.x < selected.x + selected.width
-                    && candidate.x + candidate.width > selected.x
-                    && candidate.y < selected.y + selected.height
-                    && candidate.y + candidate.height > selected.y
-        })
-        if (cluster.length < 2) return
-        var current = cluster.indexOf(selected)
-        var next = cluster[(current + 1) % cluster.length]
-        window.hintCollisionRotation += 1
-        window.applyHintInteraction("select", String(next.label))
+        var labels = window.hintCollisionLabels(active)
+        if (labels.length < 2) return
+        var next = labels[(labels.indexOf(active)+1)%labels.length]
+        window.applyHintInteraction("select",String(next))
+        window.expandHintStack()
     }
 
     function closeHints() {
@@ -1556,6 +1555,7 @@ FerricBrowserRuntimeServices {
         window.activeHintScopeLeaseId = ""
         window.stopHintTracking()
         window.hintRefreshPending = false
+        window.hintCollectionTruncated = false
         window.hintInput = ""
         window.hintViewport = ({ width: 0, height: 0 })
         window.hintState = ({ mode: "label", prefix: "", query: "", matching_labels: [], active_label: "", remaining: 0, total: 0 })

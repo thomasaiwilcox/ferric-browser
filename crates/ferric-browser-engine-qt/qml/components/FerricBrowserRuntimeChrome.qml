@@ -1627,6 +1627,9 @@ GridLayout {
         onTriggered: window.pollHintRefresh()
     }
 
+    function hintCollisionLabels(label) { return hintOverlaySurface.collisionLabels(label) }
+    function expandHintStack() { hintOverlaySurface.stackExpanded = true }
+
     FerricHintOverlay {
         id: hintOverlaySurface
         anchors.fill: webViews
@@ -1638,7 +1641,8 @@ GridLayout {
         hintState: window.hintState
         unmatchedPolicy: browserUi.hint_unmatched_policy
         markerScale: browserUi.hint_marker_scale
-        collisionRotation: window.hintCollisionRotation
+        interactionActive: browserUi.hint_visible
+        onSelectionRequested: function(label) { window.applyHintInteraction("select",label) }
         onActivationRequested: function(label) { window.activateHint(label, "", true) }
         onActionsRequested: function(label) { window.showHintActions(label) }
     }
@@ -1831,6 +1835,7 @@ GridLayout {
         statusVisible: window.statusBarVisible
         mode: browserUi.mode
         displayUrl: browserUi.display_url
+        hintPreviewText: browserUi.mode === "hint" && !browserUi.target_search_active ? hintOverlaySurface.previewText : ""
         statusText: window.commandNoticeVisible
                     ? window.commandNoticeText : browserUi.status_text
         statusError: window.commandNoticeVisible && window.commandNoticeError
