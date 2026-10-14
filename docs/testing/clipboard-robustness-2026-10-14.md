@@ -60,12 +60,20 @@ The release build and tests use Qt 6.11.2 on this Linux/Wayland machine.
 | Strict workspace Clippy (`--all-targets -- -D warnings`) | Passed |
 | Formatting and `git diff --check` | Passed |
 | Debug Qt/QML adapter startup smoke | Passed (bounded 10-second lifetime) |
+| CMake 3.31.6 compatibility | Configure/link passed; resource parity and chrome clipboard smoke: 4 passed |
 
 The four transport checks cover native page Copy to an independent reader,
 browser URL yank to an independent reader, an independent writer to native page
 Paste, and an independent writer to command-bar Paste. The focused production
-suite is now required in GitHub Actions; that remote run has not been performed
-as part of this local qualification.
+suite is now required in GitHub Actions. Remote checks are tracked separately on
+[PR #13](https://github.com/thomasaiwilcox/ferric-browser/pull/13).
+
+The first remote run passed Clippy, workspace tests, the repository gate and the
+three independent policy/documentation jobs, then exposed a test-harness CMake
+compatibility issue before clipboard tests started. `FindSQLite3` added the
+`SQLite3::SQLite3` target in CMake 4.3; older versions expose
+`SQLite::SQLite3`. The harness now supplies the compatibility alias when needed,
+preserving its declared CMake minimum and supporting the runner's CMake 3.31.
 
 Release artifact: `target/release/ferric-browser`; SHA-256:
 `6287882233154af417d710063bae721201bc839c374068206c7da9577bc9453f`.
