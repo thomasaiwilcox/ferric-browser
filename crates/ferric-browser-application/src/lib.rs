@@ -964,7 +964,7 @@ mod configuration_transaction_tests {
             .publish_configuration_update(removal, || Ok(()))
             .unwrap();
         assert!(published.effective.hints.selectors.is_empty());
-        assert!(published.pending_changes.is_empty());
+        assert_eq!(published.pending_changes, []);
     }
 
     #[test]

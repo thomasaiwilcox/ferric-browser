@@ -1165,7 +1165,7 @@ mod tests {
             hint_capabilities(HintKind::FocusableSurface),
             &[GridWithin, Focus]
         );
-        assert!(hint_capabilities(HintKind::Link).is_empty());
+        assert_eq!(hint_capabilities(HintKind::Link), []);
         assert!(hint_kind_is_region_or_surface(HintKind::Region));
         assert!(hint_kind_is_region_or_surface(HintKind::FocusableSurface));
         assert!(!hint_kind_is_region_or_surface(HintKind::Button));

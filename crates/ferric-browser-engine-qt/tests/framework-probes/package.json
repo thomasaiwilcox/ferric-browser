@@ -19,6 +19,9 @@
     "prosemirror-view": "1.42.6",
     "quill": "2.0.3"
   },
+  "overrides": {
+    "dompurify": "3.4.17"
+  },
   "devDependencies": {
     "esbuild": "0.28.2"
   }

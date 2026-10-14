@@ -1821,7 +1821,7 @@ fn reload_boundary_applies_rule_lists_and_defers_them_at_runtime() {
     assert_eq!(pending_config_changes(&live, &candidate).len(), 2);
     let reload = apply_config_changes(&current, &candidate, ConfigurationApplyBoundary::Reload);
     assert_eq!(reload, candidate);
-    assert!(pending_config_changes(&reload, &candidate).is_empty());
+    assert_eq!(pending_config_changes(&reload, &candidate), []);
     assert_eq!(
         apply_config_changes(&reload, &current, ConfigurationApplyBoundary::Reload),
         current
