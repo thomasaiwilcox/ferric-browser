@@ -1,7 +1,10 @@
 #include "tst_application.h"
 #include "../../src/url_display.h"
 #include <QClipboard>
+#include <QCryptographicHash>
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QGuiApplication>
 #include <QHostAddress>
 #include <QQmlApplicationEngine>
@@ -212,6 +215,25 @@ void ApplicationTests::startupAndConfigPublication() {
     QVERIFY(!command("set --temp content.zoom=-2"));
     QCOMPARE(text("config_json"), accepted);
 }
+void ApplicationTests::embeddedResourceParity() {
+    const QString prefix=":/qt/qml/io/github/ferricbrowser/";
+    QFile manifest(prefix+"browser-script-manifest.json");
+    QVERIFY(manifest.open(QIODevice::ReadOnly));
+    const auto resources=QJsonDocument::fromJson(manifest.readAll()).object()["resources"].toArray();
+    QVERIFY(!resources.isEmpty());
+    const QDir sourceRoot(QDir(QFileInfo(QString::fromUtf8(__FILE__)).absolutePath()).absoluteFilePath("../../../.."));
+    for(const auto &entry:resources) {
+        const auto resource=entry.toObject();
+        const auto path=resource["path"].toString();
+        QFile embedded(prefix+path),source(sourceRoot.filePath("crates/ferric-browser-engine-qt/"+path));
+        QVERIFY2(embedded.open(QIODevice::ReadOnly),qPrintable(path));
+        QVERIFY2(source.open(QIODevice::ReadOnly),qPrintable(path));
+        const auto bytes=embedded.readAll();
+        QVERIFY2(bytes==source.readAll(),qPrintable(path));
+        QCOMPARE(QString::fromLatin1(QCryptographicHash::hash(bytes,QCryptographicHash::Sha256).toHex()),resource["sha256"].toString());
+    }
+    qInfo()<<"Embedded resource bytes and manifest hashes match"<<resources.size()<<"source files";
+}
 void ApplicationTests::reservedCommandRecovery() {
     key(Qt::Key_Colon);
     QTRY_COMPARE(text("mode"), QString("command"));
@@ -234,6 +256,36 @@ void ApplicationTests::realHintKeyboardActivation() {
     QTRY_COMPARE(page("window.clicks").toInt(), 1);
     QTest::qWait(100);
     QCOMPARE(page("window.clicks").toInt(), 1);
+}
+void ApplicationTests::stretchedPostTitleKeyboardNavigation_data() {
+    QTest::addColumn<double>("zoom");
+    QTest::newRow("zoom80") << 0.8;
+    QTest::newRow("zoom100") << 1.0;
+    QTest::newRow("zoom125") << 1.25;
+}
+void ApplicationTests::stretchedPostTitleKeyboardNavigation() {
+    QFETCH(double, zoom);
+    QVERIFY(command("set --temp hints.auto_follow=never"));
+    QVERIFY(command("set --temp content.zoom=" + QString::number(zoom)));
+    page(R"JS(document.body.innerHTML='<article id=card><a id=cover slot=cover href=/posts/example/comments aria-label="Open whole post"></a><a id=community slot=credit href=/community>Community</a><a id=title slot=title href=/posts/example/comments>Article title</a></article>';
+        const style=document.createElement('style');style.textContent='body{margin:0;height:1800px}#card{position:relative;margin:450px 20px 0;width:600px;height:180px}#card a{margin:0}#cover{position:absolute;inset:0;width:100%;height:100%;z-index:2}#community{position:absolute;left:16px;top:8px;width:140px;height:24px;z-index:3}#title{position:absolute;left:16px;top:40px;width:568px;height:48px}';document.head.append(style);
+        document.getElementById('card').attachShadow({mode:'open'}).innerHTML='<slot name=cover></slot><slot name=credit></slot><h2><slot name=title></slot></h2>';scrollTo(0,400);true)JS");
+    QTest::qWait(150);
+    key(Qt::Key_F);
+    const auto label=hintLabel("Article title");
+    QVERIFY2(!label.isEmpty(), "Visible title needs its own URL hint");
+    auto repeater=window->findChild<QQuickItem*>("hintMarkerRepeater");
+    QVERIFY(repeater);
+    engine->rootContext()->setContextProperty("testHintOverlay",repeater->parentItem());
+    QTRY_VERIFY(evaluate("testHintOverlay.laidOutHints.some(r=>r.text==='Article title')").toBool());
+    QVERIFY(evaluate(R"JS((function(){const rows=testHintOverlay.laidOutHints, title=rows.find(r=>r.text==='Article title'), community=rows.find(r=>r.text==='Community');return !!community && !(community.marker_x<title.x+title.width&&community.marker_x+community.marker_width>title.x&&community.marker_y<title.y+title.height&&community.marker_y+community.marker_height>title.y);})())JS").toBool());
+    typeText(label);
+    QTRY_VERIFY(!evaluate("testWindow.hintRefreshPending").toBool());
+    key(Qt::Key_Return);
+    QTRY_VERIFY_WITH_TIMEOUT(text("current_url").endsWith("/posts/example/comments"),10000);
+    QTRY_COMPARE_WITH_TIMEOUT(page("location.pathname").toString(),QString("/posts/example/comments"),10000);
+    QTRY_VERIFY_WITH_TIMEOUT(!evaluate("testWindow.activeWebView().loading").toBool(),10000);
+    QVERIFY(!text("current_url").endsWith("/community"));
 }
 void ApplicationTests::mixedReservedKeysAndUnmappedDelivery() {
     QVERIFY(command("set --temp input.shortcut_policy=mixed"));
@@ -1210,7 +1262,7 @@ void ApplicationTests::hintConfirmationFreezesPendingRefresh() {
 
 void ApplicationTests::hintCollisionCyclesActualMarkers() {
     QVERIFY(command("set --temp hints.auto_follow=never"));
-    page("document.body.innerHTML='<div role=button style=\"position:absolute;left:40px;top:0;width:160px;height:16px\" onclick=\"window.clicks++\"><button style=\"position:absolute;left:0;top:0;width:100%;height:100%;padding:0;margin:0;border:0;box-sizing:border-box;font-size:10px\" onclick=\"event.stopPropagation();window.clicks++\">Overlapping control</button></div>';window.clicks=0;true");
+    page("document.body.innerHTML='<div role=button aria-label=\"Overlapping control\" style=\"position:absolute;left:40px;top:0;width:16px;height:16px\" onclick=\"window.clicks++\"><button aria-label=\"Overlapping control\" style=\"position:absolute;left:0;top:0;width:100%;height:100%;padding:0;margin:0;border:0;box-sizing:border-box;font-size:10px\" onclick=\"event.stopPropagation();window.clicks++\"></button></div>';window.clicks=0;true");
     QVERIFY(command("hint buttons"));
     QVERIFY(!hintLabel("Overlapping control").isEmpty());
     QTRY_VERIFY(!evaluate("testWindow.hintRefreshPending").toBool());

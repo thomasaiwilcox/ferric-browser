@@ -1,6 +1,7 @@
 import QtQuick
 import QtTest
 import "../../qml/components" as Ferric
+import "../../qml/scripts/HintPresentation.js" as Presentation
 
 TestCase {
     id:test
@@ -38,6 +39,42 @@ TestCase {
     function state(rows,active){return {mode:"label",prefix:"",matching_labels:rows.map(function(r){return r.label}),active_label:active||""}}
     function row(label,x,y,w,h,id){return {label:label,text:"Control "+id,action:"Activate",kind:"button",element_id:id,frame_path:"0",x:x,y:y,width:w,height:h}}
     function cleanup(){overlay.hintsVisible=false;overlay.hintResults=[];overlay.hintsVisible=true}
+    function test_metadata_badge_does_not_cover_title_data() {
+        return [{tag:"small",scale:0.75},{tag:"default",scale:1},{tag:"large",scale:1.25}]
+    }
+    function test_metadata_badge_does_not_cover_title(data) {
+        var rows=[row("aa",40,34,24,22,1),row("as",40,60,140,16,2),row("ad",40,80,400,35,3)]
+        var placed=Presentation.layout(rows,640,480,640,480,data.scale,{},null)
+        var badge=placed[1],title=placed[2]
+        verify(!(badge.marker_x<title.x+title.width&&badge.marker_x+badge.marker_width>title.x&&badge.marker_y<title.y+title.height&&badge.marker_y+badge.marker_height>title.y),"Metadata badge must not cover a distinct article title")
+        // A cached offset must be revalidated when a neighboring target appears.
+        var cache={};cache[Presentation.identity(rows[1])]={width:badge.marker_width,height:badge.marker_height,dx:0,dy:20}
+        placed=Presentation.layout(rows,640,480,640,480,data.scale,{},cache)
+        badge=placed[1];title=placed[2]
+        verify(!(badge.marker_x<title.x+title.width&&badge.marker_x+badge.marker_width>title.x&&badge.marker_y<title.y+title.height&&badge.marker_y+badge.marker_height>title.y))
+    }
+    function test_card_badge_and_metadata_do_not_cover_title() {
+        var rows=[row("aa",16,109,613,236,1),row("as",32,109,131,32,2),row("ad",32,145,581,24,3)]
+        rows[0].kind=rows[1].kind=rows[2].kind="link"
+        var placed=Presentation.layout(rows,640,480,640,480,1,{},null)
+        compare(placed[2].collision_cluster,0)
+        for(var badge of placed.slice(0,2)) {
+            var title=placed[2]
+            verify(!(badge.marker_x<title.x+title.width&&badge.marker_x+badge.marker_width>title.x&&badge.marker_y<title.y+title.height&&badge.marker_y+badge.marker_height>title.y))
+        }
+    }
+    function test_edge_badge_has_short_connector() {
+        var card=row("aa",100,100,300,200,1),cache={}
+        cache[Presentation.identity(card)]={width:32,height:22,dx:304,dy:0}
+        var placed=Presentation.layout([card],640,480,640,480,1,{},cache)[0]
+        verify(placed.connected)
+        compare(placed.endpoint_x,396)
+        compare(placed.endpoint_y,111)
+        card.width=120
+        var resized=Presentation.layout([card],640,480,640,480,1,{},cache)[0]
+        verify(!resized.retained,"A cached placement outside a resized control must be repaired")
+        verify(resized.marker_x<=card.x+card.width+4)
+    }
     function test_stationary_target_keeps_placement() {
         var card=row("aa",340,100,230,270,1)
         overlay.hintResults=[card];overlay.hintState=state([card],"aa")
@@ -49,6 +86,7 @@ TestCase {
     function test_distinct_overlap_reachable_and_actual_marker_group() {
         var rows=[row("aa",40,100,160,32,1),row("as",40,100,160,32,2)]
         // Constrain a narrow corner so local displacement cannot hide the collision.
+        rows[0].width=rows[1].width=16
         rows[0].height=rows[1].height=16
         rows[0].y=rows[1].y=0
         overlay.hintResults=rows;overlay.hintState=state(rows,"aa")

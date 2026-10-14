@@ -33,6 +33,57 @@ TestCase {
         wait(100)
     }
     function cleanup() { evaluate(BrowserScripts.hintStopTracking()) }
+    function stretchedPost() {
+        load("<article id=card><a id=cover slot=cover href=/posts/example/comments aria-label='Open whole post'></a><a id=community slot=credit href=/community>Community</a><a id=title slot=title href=/posts/example/comments>Article title</a></article>",
+             "body{height:1800px}#card{position:relative;margin:450px 20px 0;width:600px;height:180px}#cover{position:absolute;inset:0;z-index:2}#community{position:absolute;left:16px;top:8px;width:140px;height:24px;z-index:3}#title{position:absolute;left:16px;top:40px;width:568px;height:48px}")
+        evaluate("document.getElementById('card').attachShadow({mode:'open'}).innerHTML='<slot name=cover></slot><slot name=credit></slot><h2><slot name=title></slot></h2>';scrollTo(0,400);true")
+        wait(100)
+    }
+    function test_stretched_link_title_data() {
+        return [{tag:"zoom80",zoom:0.8},{tag:"zoom100",zoom:1},{tag:"zoom125",zoom:1.25}]
+    }
+    function test_stretched_link_title(data) {
+        page.zoomFactor=data.zoom
+        stretchedPost()
+        var snapshot=evaluate(BrowserScripts.hintCollector("links"))
+        var title=snapshot.candidates.filter(function(c){return c.text==='Article title'})[0]
+        verify(!!title,"A visible title covered by its same-destination card link needs its own hint")
+        verify(title.href.endsWith('/posts/example/comments'))
+        verify(evaluate(BrowserScripts.hintFresh(title)).visible)
+        // URL opening can resolve the title; native delivery must still identify
+        // the actual pointer receiver, rather than dispatching to another node.
+        verify(!evaluate(BrowserScripts.hintPointerPreflight(title,1000,800)).ok)
+        verify(!evaluate(BrowserScripts.hintClick(title)))
+        evaluate("document.getElementById('cover').href='/community';true")
+        verify(!evaluate(BrowserScripts.hintFresh(title)).visible)
+        evaluate("document.getElementById('cover').href='/posts/example/comments';document.getElementById('title').href='/changed';true")
+        verify(!evaluate(BrowserScripts.hintFresh(title)).visible)
+        page.zoomFactor=1
+    }
+    function test_stretched_link_excludes_unrelated_and_hidden_targets() {
+        stretchedPost()
+        for(var mutation of ["document.getElementById('cover').href='/community'",
+                             "document.getElementById('cover').style.background='white'",
+                             "document.getElementById('title').style.visibility='hidden'",
+                             "document.getElementById('title').setAttribute('aria-disabled','true')",
+                             "document.getElementById('card').inert=true"]) {
+            evaluate(mutation+";true")
+            var snapshot=evaluate(BrowserScripts.hintCollector("links"))
+            verify(!snapshot.candidates.some(function(c){return c.text==='Article title'}))
+            evaluate("document.getElementById('cover').href='/posts/example/comments';document.getElementById('cover').style.background='';document.getElementById('title').style.visibility='';document.getElementById('title').removeAttribute('aria-disabled');document.getElementById('card').inert=false;true")
+        }
+        // A separate dialog is not a card alias, even if its link has the same URL.
+        evaluate("const dialog=document.createElement('div');dialog.innerHTML='<a href=/posts/example/comments style=\"position:fixed;inset:0;z-index:20\">Dialog link</a>';document.body.append(dialog);true")
+        verify(!evaluate(BrowserScripts.hintCollector("links")).candidates.some(function(c){return c.text==='Article title'}))
+    }
+    function test_stretched_link_nested_title() {
+        stretchedPost()
+        evaluate("const title=document.getElementById('title'),wrapper=document.createElement('div');wrapper.slot='title';title.removeAttribute('slot');title.replaceWith(wrapper);wrapper.append(title);true")
+        var title=evaluate(BrowserScripts.hintCollector("links")).candidates.filter(function(c){return c.text==='Article title'})[0]
+        verify(!!title)
+        verify(evaluate(BrowserScripts.hintFresh(title)).visible)
+        verify(!evaluate(BrowserScripts.hintClick(title)))
+    }
     function test_budget_starves_shadow_controls() {
         load("<main id=links></main><div id=shadow></div>","a{display:inline-block;width:36px;height:24px}#shadow{position:absolute;top:500px;left:30px}")
         evaluate("document.getElementById('links').innerHTML=Array.from({length:250},(_,i)=>'<a href=\"/target-'+i+'\">'+i+'</a>').join('');document.getElementById('shadow').attachShadow({mode:'open'}).innerHTML='<button>Shadow action</button>';true")

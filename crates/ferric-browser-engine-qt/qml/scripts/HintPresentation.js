@@ -57,8 +57,16 @@ function layout(values, viewportWidth, viewportHeight, sourceWidth, sourceHeight
         var found = false
         buckets(marker,function(key){
             var bucket = targetCells[key] || []
-            for (var i=0;i<bucket.length;++i)
-                if (bucket[i].layout_key !== marker.layout_key && intersects(marker,bucket[i])) { found=true;break }
+            for (var i=0;i<bucket.length;++i) {
+                var other = bucket[i], own = marker.fragments[0]
+                // A card/region containing this control must not block its badge.
+                var containsOwn = other.marker_x <= own.x && other.marker_y <= own.y
+                        && other.marker_x+other.marker_width >= own.x+own.width
+                        && other.marker_y+other.marker_height >= own.y+own.height
+                if (other.layout_key !== marker.layout_key && !containsOwn && intersects(marker,other)) {
+                    found=true;break
+                }
+            }
         })
         return found
     }
@@ -71,6 +79,14 @@ function layout(values, viewportWidth, viewportHeight, sourceWidth, sourceHeight
     function position(row, x, y) {
         row.marker_x = Math.max(0, Math.min(Math.max(0, viewportWidth - row.marker_width), x))
         row.marker_y = Math.max(0, Math.min(Math.max(0, viewportHeight - row.marker_height), y))
+    }
+    function nearOwnControl(marker) {
+        for (var fragment of marker.fragments) {
+            var dx=Math.max(0,fragment.x-marker.marker_x-marker.marker_width,marker.marker_x-fragment.x-fragment.width)
+            var dy=Math.max(0,fragment.y-marker.marker_y-marker.marker_height,marker.marker_y-fragment.y-fragment.height)
+            if (dx*dx+dy*dy <= 16*scale*scale) return true
+        }
+        return false
     }
     for (var i = 0; i < values.length; ++i) {
         var source = values[i], row = ({})
@@ -111,24 +127,41 @@ function layout(values, viewportWidth, viewportHeight, sourceWidth, sourceHeight
     }
     for (var t=0;t<rows.length;++t) {
         var control=rows[t]
-        if (control.document_scroll || control.width>160*scale || control.height>80*scale) continue
-        var box={layout_key:control.layout_key,marker_x:control.x,marker_y:control.y,marker_width:control.width,marker_height:control.height}
-        buckets(box,function(key){if(!targetCells[key])targetCells[key]=[];targetCells[key].push(box)})
+        if (control.document_scroll) continue
+        // Protect visible fragments of titles and wide links as well as icons.
+        for (var fragment of control.fragments) {
+            var box={layout_key:control.layout_key,marker_x:fragment.x,marker_y:fragment.y,
+                     marker_width:fragment.width,marker_height:fragment.height}
+            buckets(box,function(key){if(!targetCells[key])targetCells[key]=[];targetCells[key].push(box)})
+        }
     }
-    // Reserve surviving markers first. A newly inserted control cannot move one.
+    // Keep surviving placements unless they now obscure a neighboring control.
     for (var r = 0; r < rows.length; ++r)
-        if (rows[r].retained && !rows[r].document_scroll) occupy(rows[r])
+        if (rows[r].retained && !rows[r].document_scroll) {
+            if (!nearOwnControl(rows[r]) || coversOtherControl(rows[r])) rows[r].retained=false
+            else occupy(rows[r])
+        }
     for (var n = 0; n < rows.length; ++n) {
         var marker = rows[n]
         if (marker.retained || marker.document_scroll) continue
-        var h = marker.marker_height, budget = h + 4 * scale
-        var small=marker.fragments[0].width<marker.marker_width || marker.fragments[0].height<h
-        var options = small ? [[0,-h-4*scale],[0,marker.fragments[0].height+4*scale],[marker.fragments[0].width+4*scale,0],[0,0]]
-                            : [[0,0],[0,-h-4*scale],[-8*scale,0],[8*scale,0],[0,h+4*scale]]
+        var h = marker.marker_height, gap = 4 * scale, fragment = marker.fragments[0]
+        var small=fragment.width<marker.marker_width || fragment.height<h
+        var centerY=Math.min(0,(fragment.height-h)/2)
+        var options = small ? [[0,-h-gap],[0,centerY],[0,0]] : [[0,0],[0,-h-gap]]
+        // Move along the owning fragment before placing a badge on another row.
+        // Every candidate remains on or within one gap of its own control.
+        var step=marker.marker_width+gap
+        var offsets=[step,step*2,step*3,fragment.width-marker.marker_width]
+        for (var offset of offsets) {
+            if (offset <= 0 || offset+marker.marker_width > fragment.width) continue
+            options.push([offset,centerY])
+            if (small) options.push([offset,-h-gap])
+        }
+        options.push([0,fragment.height+gap],[fragment.width+gap,0])
         var chosen = false
         for (var o = 0; o < options.length; ++o) {
             position(marker, marker.anchor_x + options[o][0], marker.anchor_y + options[o][1])
-            if (Math.hypot(marker.marker_x-marker.anchor_x,marker.marker_y-marker.anchor_y) > budget) continue
+            if (!nearOwnControl(marker)) continue
             if (!collisions(marker).length && !coversOtherControl(marker)) { chosen = true; break }
         }
         if (!chosen) position(marker, marker.anchor_x, marker.anchor_y)
@@ -165,9 +198,18 @@ function layout(values, viewportWidth, viewportHeight, sourceWidth, sourceHeight
                     && target.marker_x+target.marker_width <= fragment.x+fragment.width
                     && target.marker_y+target.marker_height <= fragment.y+fragment.height
         })
-        // Connect to a point visibly inside the fragment, including tiny controls.
-        target.endpoint_x = target.fragments[0].x + Math.min(4*scale,target.fragments[0].width/2)
-        target.endpoint_y = target.fragments[0].y + Math.min(4*scale,target.fragments[0].height/2)
+        // Use the nearest interior point so an edge badge has a short leader,
+        // instead of drawing across the card and unrelated controls.
+        var centerX=target.marker_x+target.marker_width/2,centerY=target.marker_y+target.marker_height/2,bestDistance=Infinity
+        for (var visibleFragment of target.fragments) {
+            var insetX=Math.min(4*scale,visibleFragment.width/2),insetY=Math.min(4*scale,visibleFragment.height/2)
+            var endpointX=Math.max(visibleFragment.x+insetX,Math.min(visibleFragment.x+visibleFragment.width-insetX,centerX))
+            var endpointY=Math.max(visibleFragment.y+insetY,Math.min(visibleFragment.y+visibleFragment.height-insetY,centerY))
+            var distance=(centerX-endpointX)*(centerX-endpointX)+(centerY-endpointY)*(centerY-endpointY)
+            if (distance < bestDistance) {
+                bestDistance=distance;target.endpoint_x=endpointX;target.endpoint_y=endpointY
+            }
+        }
     }
     return rows
 }

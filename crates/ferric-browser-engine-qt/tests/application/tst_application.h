@@ -32,6 +32,9 @@ class ApplicationTests final : public QObject {
   public:
     Q_INVOKABLE void accept(const QVariant &value);
   private slots:
+    void embeddedResourceParity();
+    void stretchedPostTitleKeyboardNavigation_data();
+    void stretchedPostTitleKeyboardNavigation();
     void hintConfirmationFreezesPendingRefresh();
     void hintCollisionCyclesActualMarkers();
     void rapidHintRejectsConsumedReplay();

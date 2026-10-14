@@ -2,7 +2,7 @@
 
 // Versioned ApplicationWorld script builders for scroll and Hint operations.
 // BrowserScripts.js remains the stable QML-facing compatibility facade.
-var VERSION = "2"
+var VERSION = "3"
 
 function boundedCount(value) {
     return Math.max(1, Math.min(9999, Number(value) || 1))
@@ -38,11 +38,28 @@ function scrollTargetRuntime() {
     }
     return null;
 }`
-        + "function ftHit(element,rect){const doc=element&&element.ownerDocument;if(!doc||!rect||rect.width<=0||rect.height<=0)return false;const points=[[rect.left+rect.width/2,rect.top+rect.height/2],[rect.left+Math.min(4,rect.width/2),rect.top+Math.min(4,rect.height/2)],[rect.right-Math.min(4,rect.width/2),rect.bottom-Math.min(4,rect.height/2)]];return points.some(function(point){return ftContains(element,ftDeepHit(doc,point[0],point[1]));});}"
+        + `function ftLinkAliasHit(element,target,rect){
+    // A stretched sibling link can receive the pointer over a visible title.
+    // This exception belongs to URL hints only: native delivery stays exact.
+    const receiver=target;
+    if(element.localName!=='a'||!element.hasAttribute('href')||!receiver||receiver.localName!=='a'||!receiver.hasAttribute('href'))return false;
+    const doc=element.ownerDocument,container=receiver.parentElement;
+    if(receiver.ownerDocument!==doc||!container||container===doc.body||container===doc.documentElement||!ftContains(container,element)||ftDisabled(receiver)||ftInert(receiver))return false;
+    if(!element.href||receiver.href!==element.href)return false;
+    const cover=receiver.getBoundingClientRect(),style=doc.defaultView.getComputedStyle(receiver);
+    // An opaque replacement or coincident clone is not a visible title alias.
+    if(style.backgroundImage!=='none'||!['transparent','rgba(0, 0, 0, 0)'].includes(style.backgroundColor))return false;
+    for(const pseudo of ['::before','::after']){
+        const content=doc.defaultView.getComputedStyle(receiver,pseudo).content;
+        if(content!=='none'&&content!=='normal')return false;
+    }
+    return cover.left<=rect.left&&cover.top<=rect.top&&cover.right>=rect.right&&cover.bottom>=rect.bottom&&(cover.width>rect.width+1||cover.height>rect.height+1);
+}`
+        + "function ftHit(element,rect,linkAlias){const doc=element&&element.ownerDocument;if(!doc||!rect||rect.width<=0||rect.height<=0)return false;const points=[[rect.left+rect.width/2,rect.top+rect.height/2],[rect.left+Math.min(4,rect.width/2),rect.top+Math.min(4,rect.height/2)],[rect.right-Math.min(4,rect.width/2),rect.bottom-Math.min(4,rect.height/2)]];return points.some(function(point){const target=ftDeepHit(doc,point[0],point[1]);return ftContains(element,target)||linkAlias&&ftLinkAliasHit(element,target,rect);});}"
         + "function ftInert(element){let node=element,depth=0;for(;node&&depth<256;node=ftParent(node),depth++)if(node.inert||(node.hasAttribute&&node.hasAttribute('inert')))return true;return !!node;}"
         + "function ftDisabled(element){try{return !!(element.matches&&element.matches(':disabled'))||element.getAttribute('aria-disabled')==='true';}catch(error){return true;}}"
         + "function ftFocusEligible(element){if(!element||ftDisabled(element)||ftInert(element))return false;try{return element.matches('input:not([type=hidden]),select,textarea,button,iframe,object,embed,summary,a[href],area[href]')||!!element.isContentEditable||element.tabIndex>=0;}catch(error){return false;}}"
-        + "function ftHintPolicy(kind,family){if(family==='scrollables'||kind==='scrollable'||kind==='scrollable-region')return 'scroll';if(kind==='input'||kind==='select'||kind==='textarea'||kind==='contenteditable'||kind==='focusable'||kind==='focusable-surface')return 'focus';if(family==='regions'||family==='surfaces')return 'visible';return 'pointer';}"
+        + "function ftHintPolicy(kind,family){if(family==='scrollables'||kind==='scrollable'||kind==='scrollable-region')return 'scroll';if(kind==='input'||kind==='select'||kind==='textarea'||kind==='contenteditable'||kind==='focusable'||kind==='focusable-surface')return 'focus';if(family==='regions'||family==='surfaces')return 'visible';return kind==='link'?'link':'pointer';}"
         + `function ftHintDescription(el,family,linkSelector){
     if(family==='regions'||family==='surfaces')return ftHintFacetDescription(el,family);
     let kind=family==='scrollables'?'scrollable':'aria';
@@ -76,11 +93,11 @@ function scrollTargetRuntime() {
         // https://www.w3.org/TR/css-overflow-3/#overflow-propagation
         + "function ftComputedStyle(element,view,styleCache){if(!styleCache||!styleCache.styles)return view.getComputedStyle(element);let style=styleCache.styles.get(element);if(!style){style=view.getComputedStyle(element);styleCache.styles.set(element,style);}return style;}"
         + "function ftRememberStyleChain(cache,chain,key,visible){if(!cache||!cache.ancestors)return;for(const node of chain){let state=cache.ancestors.get(node);if(!state){state={all:null,pointer:null};cache.ancestors.set(node,state);}state[key]=visible;}}"
-        + "function ftStyleChainVisible(element,view,policy,cache){const key=policy==='pointer'?'pointer':'all',ancestors=cache&&cache.ancestors;if(!ancestors){let node=element,depth=0;for(;node&&depth<256;node=ftParent(node),depth++){const nodeView=node.ownerDocument&&node.ownerDocument.defaultView||view,style=view&&ftComputedStyle(node,nodeView,null);if(style.display==='none'||style.visibility==='hidden'||style.visibility==='collapse'||Number(style.opacity)===0||(key==='pointer'&&style.pointerEvents==='none'))return false;}return !node;}const chain=[];let node=element,depth=0;for(;node&&depth<256;node=ftParent(node),depth++){const state=ancestors.get(node);if(state&&state[key]!==null){ftRememberStyleChain(cache,chain,key,state[key]);return state[key];}const nodeView=node.ownerDocument&&node.ownerDocument.defaultView||view,style=ftComputedStyle(node,nodeView,cache);if(style.display==='none'||style.visibility==='hidden'||style.visibility==='collapse'||Number(style.opacity)===0||(key==='pointer'&&style.pointerEvents==='none')){chain.push(node);ftRememberStyleChain(cache,chain,key,false);return false;}chain.push(node);}const visible=!node;ftRememberStyleChain(cache,chain,key,visible);return visible;}"
+        + "function ftStyleChainVisible(element,view,policy,cache){const key=policy==='pointer'||policy==='link'?'pointer':'all',ancestors=cache&&cache.ancestors;if(!ancestors){let node=element,depth=0;for(;node&&depth<256;node=ftParent(node),depth++){const nodeView=node.ownerDocument&&node.ownerDocument.defaultView||view,style=view&&ftComputedStyle(node,nodeView,null);if(style.display==='none'||style.visibility==='hidden'||style.visibility==='collapse'||Number(style.opacity)===0||(key==='pointer'&&style.pointerEvents==='none'))return false;}return !node;}const chain=[];let node=element,depth=0;for(;node&&depth<256;node=ftParent(node),depth++){const state=ancestors.get(node);if(state&&state[key]!==null){ftRememberStyleChain(cache,chain,key,state[key]);return state[key];}const nodeView=node.ownerDocument&&node.ownerDocument.defaultView||view,style=ftComputedStyle(node,nodeView,cache);if(style.display==='none'||style.visibility==='hidden'||style.visibility==='collapse'||Number(style.opacity)===0||(key==='pointer'&&style.pointerEvents==='none')){chain.push(node);ftRememberStyleChain(cache,chain,key,false);return false;}chain.push(node);}const visible=!node;ftRememberStyleChain(cache,chain,key,visible);return visible;}"
         + "function ftCachedRect(element,cache){if(!cache||!cache.rects)return element.getBoundingClientRect();let rect=cache.rects.get(element);if(!rect){const raw=element.getBoundingClientRect();rect={left:raw.left,top:raw.top,right:raw.right,bottom:raw.bottom};cache.rects.set(element,rect);}return rect;}"
         + "function ftViewportOverflow(node,view,styleCache){const doc=node.ownerDocument,root=doc&&doc.documentElement;if(node===root)return true;if(!root||node!==doc.body||node.localName!=='body'||root.localName!=='html'||node.parentElement!==root)return false;const rs=ftComputedStyle(root,view,styleCache),bs=ftComputedStyle(node,view,styleCache);return rs.overflowX==='visible'&&rs.overflowY==='visible'&&rs.contain==='none'&&bs.contain==='none'&&bs.display!=='none';}"
         + "function ftClippedRect(element,raw,view,styleCache){let left=Math.max(0,raw.left),top=Math.max(0,raw.top),right=Math.min(view.innerWidth,raw.right),bottom=Math.min(view.innerHeight,raw.bottom),node=ftParent(element),depth=0;for(;node&&right>left&&bottom>top&&depth<256;node=ftParent(node),depth++){const nodeView=node.ownerDocument&&node.ownerDocument.defaultView||view;if(ftViewportOverflow(node,nodeView,styleCache))continue;const style=ftComputedStyle(node,nodeView,styleCache),rect=ftCachedRect(node,styleCache);if(ftOverflowClips(style.overflowX)){left=Math.max(left,rect.left);right=Math.min(right,rect.right);}if(ftOverflowClips(style.overflowY)){top=Math.max(top,rect.top);bottom=Math.min(bottom,rect.bottom);}}if(node){right=left;bottom=top;}return {left:left,top:top,right:right,bottom:bottom,width:Math.max(0,right-left),height:Math.max(0,bottom-top)};}"
-        + "function ftLocalVisible(element,view,policy,styleCache){const actionPolicy=policy||'pointer';if(!element||element.nodeType!==1||!view||ftDisabled(element)||ftInert(element)||actionPolicy==='focus'&&!ftFocusEligible(element)||actionPolicy==='scroll'&&!(ftAxisScrollable(element,'x')||ftAxisScrollable(element,'y')))return null;const raw=element.getBoundingClientRect();if(!(raw.width>0&&raw.height>0)||!ftStyleChainVisible(element,view,actionPolicy,styleCache))return null;const clipped=ftClippedRect(element,raw,view,styleCache);if(!(clipped.width>0&&clipped.height>0)||actionPolicy==='pointer'&&!ftHit(element,clipped))return null;return {raw:raw,clipped:clipped};}"
+        + "function ftLocalVisible(element,view,policy,styleCache){const actionPolicy=policy||'pointer';if(!element||element.nodeType!==1||!view||ftDisabled(element)||ftInert(element)||actionPolicy==='focus'&&!ftFocusEligible(element)||actionPolicy==='scroll'&&!(ftAxisScrollable(element,'x')||ftAxisScrollable(element,'y')))return null;const raw=element.getBoundingClientRect();if(!(raw.width>0&&raw.height>0)||!ftStyleChainVisible(element,view,actionPolicy,styleCache))return null;const clipped=ftClippedRect(element,raw,view,styleCache);if(!(clipped.width>0&&clipped.height>0)||(actionPolicy==='pointer'||actionPolicy==='link')&&!ftHit(element,clipped,actionPolicy==='link'))return null;return {raw:raw,clipped:clipped};}"
         + `function ftFrameMapping(frame,local,cache){
     try{
         if(cache&&cache.frames&&cache.frames.has(frame))return cache.frames.get(frame);
@@ -111,7 +128,7 @@ function scrollTargetRuntime() {
     for(let depth=0;view!==window&&depth<16;depth++){
         const childView=view,frame=childView.frameElement;
         if(!frame||!frame.isConnected||frame.contentWindow!==childView||frame.contentDocument!==childView.document)return null;
-        const parentView=frame.ownerDocument.defaultView,frameLocal=ftLocalVisible(frame,parentView,policy==='pointer'?'pointer':'visible',styleCache),mapping=ftFrameMapping(frame,frameLocal,styleCache);
+        const parentView=frame.ownerDocument.defaultView,frameLocal=ftLocalVisible(frame,parentView,policy==='pointer'||policy==='link'?'pointer':'visible',styleCache),mapping=ftFrameMapping(frame,frameLocal,styleCache);
         if(!mapping)return null;
         rect=ftIntersect({left:mapping.left+rect.left*mapping.scaleX,top:mapping.top+rect.top*mapping.scaleY,right:mapping.left+rect.right*mapping.scaleX,bottom:mapping.top+rect.bottom*mapping.scaleY},mapping.content);
         if(!(rect.width>0&&rect.height>0))return null;view=parentView;
@@ -530,7 +547,7 @@ function hintClick(candidate, selectorSnapshot) {
         + scrollTargetRuntime()
         + hintProxyRuntime()
         + "if(candidate.kind==='label-control'){if(!proxyPairValid(record,candidate,state)||typeof el.click!=='function')return false;const control=record.relatedElement,before=!!control.checked,radio=String(control.type).toLowerCase()==='radio';el.click();return !!control.checked===(radio||!before);}"
-        + "if(!el||record.family==='regions'||record.family==='surfaces'||!el.matches(" + JSON.stringify(selector) + ")||typeof el.click!=='function')return false;el.click();return true;"
+        + "if(!el||record.family==='regions'||record.family==='surfaces'||!el.matches(" + JSON.stringify(selector) + ")||typeof el.click!=='function'||candidate.kind==='link'&&!ftMeaningfullyVisible(el,'pointer'))return false;el.click();return true;"
         + "}catch(error){return false;}})()"
 }
 

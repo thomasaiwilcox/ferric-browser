@@ -136,10 +136,10 @@ TestCase {
                 "function __profiledComputedStyleInner(element,view,styleCache){",
                 "computed style cache")
         }
-        var profilesLocalHit = source.indexOf("function ftHit(element,rect){") >= 0
+        var profilesLocalHit = source.indexOf("function ftHit(element,rect,linkAlias){") >= 0
         if (profilesLocalHit) {
-            source = replaceOnce(source, "function ftHit(element,rect){",
-                "function __profiledLocalHitInner(element,rect){", "local hit test")
+            source = replaceOnce(source, "function ftHit(element,rect,linkAlias){",
+                "function __profiledLocalHitInner(element,rect,linkAlias){", "local hit test")
         }
         var profilesAncestorChain = source.indexOf("function ftStyleChainVisible(element,view,policy,cache){") >= 0
         if (profilesAncestorChain) {
@@ -201,7 +201,7 @@ TestCase {
                     + "return __profiledComputedStyleInner.apply(null,arguments);}"
         }
         if (profilesLocalHit) {
-            prelude += "function ftHit(element,rect){const started=performance.now();"
+            prelude += "function ftHit(element,rect,linkAlias){const started=performance.now();"
                     + "try{return __profiledLocalHitInner.apply(null,arguments);}"
                     + "finally{__profile.local_hit_test_ms+=performance.now()-started;}}"
         }
