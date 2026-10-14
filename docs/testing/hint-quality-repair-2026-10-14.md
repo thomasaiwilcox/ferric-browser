@@ -5,6 +5,10 @@ against `ff9c69b`. Product source is `0480cd4cc074a8c1e40deb4a29a97f9a792435bd`.
 The prior installed browser was built from `c9e734a`.
 The [original investigation](hint-label-investigation-2026-10-13.md) remains a
 historical record; its Reddit snapshot is not the same page state as the new run.
+The user's subsequent scrolled-feed report exposed a title eligibility and badge
+association defect missed by this qualification. The
+[title alignment follow-up](hint-title-alignment-repair-2026-10-14.md) records its
+reproduction, repair and destination-level regression checks.
 
 ## Changes and user behavior
 
