@@ -91,6 +91,12 @@ const NO_OPTIONS: &[&str] = &[];
 // schema while avoiding controls for values that need a dedicated workflow.
 const SETTINGS_SURFACE: &[SettingsSurfaceDefinition] = &[
     SettingsSurfaceDefinition {
+        key: "hints.proxy_targets",
+        label: "Validated editor and label hints",
+        editor_type: "enum",
+        options: &["off", "validated"],
+    },
+    SettingsSurfaceDefinition {
         key: "ui.statusbar",
         label: "Status bar visibility",
         editor_type: "enum",

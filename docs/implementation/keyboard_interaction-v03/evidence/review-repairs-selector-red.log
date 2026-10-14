@@ -1,0 +1,9 @@
+********* Start testing of ferric_qml_tests *********
+Config: Using QtTest library 6.11.2, Qt 6.11.2 (x86_64-little_endian-lp64 shared (dynamic) release build; by GCC 16.2.1 20260810), omarchy 4.0.4
+PASS   : ferric_qml_tests::WebAppInteraction::initTestCase()
+FAIL!  : ferric_qml_tests::WebAppInteraction::test_T031_T032_custom_selector_and_action_boundary() 'A matching generic element remains discovery-only' returned FALSE. ()
+   Loc: [/home/tom/Projects/RustBrowser/crates/ferric-browser-engine-qt/tests/qml/tst_webapp_interaction.qml(376)]
+FAIL!  : ferric_qml_tests::WebAppInteraction::cleanupTestCase() Could not find test functions: WebAppInteraction::test_T031_replacement_disables_secondary_and_proxy_passes
+   Loc: [(0)]
+Totals: 1 passed, 2 failed, 0 skipped, 0 blacklisted, 389ms
+********* Finished testing of ferric_qml_tests *********

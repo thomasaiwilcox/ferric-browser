@@ -1,0 +1,20 @@
+{
+  "ok": true,
+  "errors": [],
+  "warnings": [
+    "Structural success is not implementation/test completion; Ferric correctness is not checked."
+  ],
+  "counts": {
+    "contracts": 24,
+    "invariants": 26,
+    "slices": 28,
+    "planned_tests": 57,
+    "source_items": 55
+  },
+  "checks": {
+    "integrity": true,
+    "evidence_records": true,
+    "strict_completion": false
+  },
+  "scope": "pack records only; not Ferric correctness"
+}

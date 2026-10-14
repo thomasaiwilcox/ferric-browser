@@ -1,0 +1,7 @@
+********* Start testing of ferric_qml_tests *********
+Config: Using QtTest library 6.11.2, Qt 6.11.2 (x86_64-little_endian-lp64 shared (dynamic) release build; by GCC 16.2.1 20260810), omarchy 4.0.4
+PASS   : ferric_qml_tests::HintOutline::initTestCase()
+PASS   : ferric_qml_tests::HintOutline::test_only_selected_target_has_outline()
+PASS   : ferric_qml_tests::HintOutline::cleanupTestCase()
+Totals: 3 passed, 0 failed, 0 skipped, 0 blacklisted, 225ms
+********* Finished testing of ferric_qml_tests *********

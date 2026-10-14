@@ -29,12 +29,36 @@ TestCase {
     QtObject {
         id: ui
         property int active_tab_index: 0
+        property int input_epoch: 7
         property int content_history_revision: 0
         property var entries: []
         property var snapshot: null
+        property var begunSameDocumentChanges: []
+        property var completedSameDocumentChanges: []
+        property var urlChanges: []
+        property var documentIdentities: []
         property int committedCount: 0
         property string load_state: "complete"
         function content_history_available(index, offset) { return false }
+        function tab_id_for_index(index) { return index === 0 ? "tab-a" : "" }
+        function page_document_identity_for(index, tabId, document, epoch) {
+            documentIdentities = documentIdentities.concat([{
+                index: index, tabId: tabId, document: document, epoch: epoch
+            }])
+        }
+        function begin_same_document_url_change_for(index, tabId, url, document, epoch) {
+            begunSameDocumentChanges = begunSameDocumentChanges.concat([{
+                index: index, tabId: tabId, url: url, epoch: epoch, document: document
+            }])
+        }
+        function complete_same_document_url_change_for(index, tabId, url, document, epoch) {
+            completedSameDocumentChanges = completedSameDocumentChanges.concat([{
+                index: index, tabId: tabId, url: url, epoch: epoch, document: document
+            }])
+        }
+        function navigation_url_changed_for(index, url) {
+            urlChanges = urlChanges.concat([{index: index, url: url}])
+        }
         function content_navigated(index, url, anchor, traversal) {
             entries = entries.concat([{ url: url, anchor: anchor, traversal: traversal }])
         }
@@ -66,9 +90,65 @@ TestCase {
         }
     }
     function init() {
-        ui.entries = []; ui.snapshot = null; ui.committedCount = 0; web.loading = false; web.url = "https://a.test"
+        ui.entries = []; ui.snapshot = null; ui.begunSameDocumentChanges = []
+        ui.completedSameDocumentChanges = []; ui.urlChanges = []; ui.documentIdentities = []
+        ui.committedCount = 0; ui.input_epoch = 7; web.loading = false; web.url = "https://a.test"
         backItems.clear(); backItems.append({url: "https://a.test", offset: -1})
         web.historyObservation = null; web.deferProbe = false; web.probeCallback = null
+    }
+    function test_same_document_url_change_requires_matching_document_identity() {
+        var content = createTemporaryObject(fixture, host.contentItem)
+        verify(content)
+        web.historyObservation = {document: "document-one", sequence: 0, url: web.url.toString()}
+        content.synchronizeHistory()
+        compare(content.historyDocument, "document-one")
+
+        web.url = "https://a.test/#section"
+        web.historyObservation = {document: "document-one", sequence: 0, url: web.url.toString()}
+        content.noteSameDocument(web.url.toString())
+        wait(0)
+        compare(ui.begunSameDocumentChanges.length, 1)
+        compare(ui.begunSameDocumentChanges[0].index, 0)
+        compare(ui.begunSameDocumentChanges[0].tabId, "tab-a")
+        compare(ui.begunSameDocumentChanges[0].url, web.url.toString())
+        compare(ui.begunSameDocumentChanges[0].epoch, 7)
+        compare(ui.begunSameDocumentChanges[0].document, "document-one")
+        compare(ui.completedSameDocumentChanges.length, 1)
+        compare(ui.completedSameDocumentChanges[0].document, "document-one")
+        compare(ui.urlChanges.length, 0)
+    }
+    function test_document_replacement_uses_baseline_url_change_path() {
+        var content = createTemporaryObject(fixture, host.contentItem)
+        verify(content)
+        web.historyObservation = {document: "document-one", sequence: 0, url: web.url.toString()}
+        content.synchronizeHistory()
+
+        web.url = "https://b.test/"
+        web.historyObservation = {document: "document-two", sequence: 0, url: web.url.toString()}
+        content.noteSameDocument(web.url.toString())
+        wait(0)
+        compare(ui.begunSameDocumentChanges.length, 1)
+        compare(ui.completedSameDocumentChanges.length, 1)
+        compare(ui.completedSameDocumentChanges[0].document, "")
+        compare(ui.urlChanges.length, 0)
+    }
+    function test_delayed_identity_result_is_rejected_after_navigation_start() {
+        var content = createTemporaryObject(fixture, host.contentItem)
+        verify(content)
+        web.historyObservation = {document: "document-one", sequence: 0, url: web.url.toString()}
+        content.synchronizeHistory()
+        web.deferProbe = true
+        web.url = "https://a.test/#section"
+        content.noteSameDocument(web.url.toString())
+        tryVerify(function() { return !!web.probeCallback }, 1000)
+        var callback = web.probeCallback
+        verify(callback)
+
+        content.beginNavigation()
+        callback({document: "document-one", sequence: 0, url: "https://a.test/#section"})
+        compare(ui.begunSameDocumentChanges.length, 1)
+        compare(ui.completedSameDocumentChanges.length, 0)
+        compare(ui.urlChanges.length, 0)
     }
     function test_document_navigation_cannot_be_recorded_as_same_document() {
         var content = createTemporaryObject(fixture, host.contentItem)

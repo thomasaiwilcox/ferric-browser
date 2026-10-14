@@ -1,0 +1,194 @@
+{
+  "schema_version": 1,
+  "slice_id": "S25",
+  "status": "research_no_go",
+  "commit": "14d901a0b717055929bae920098ba0f5d441ad6b",
+  "environment": {
+    "os": "Linux 7.2.3-arch1-3 x86_64",
+    "cpu": "Intel Core i5-7200U @ 2.50 GHz; 4 logical CPUs",
+    "qt": "Qt 6.11.2; QtWebEngine 6.11.2",
+    "chromium": "QtWebEngine Chromium 140.0.0.0",
+    "compiler": "GCC 16.2.1 20260810",
+    "rustc": "1.98.0 (88d9e12ae 2026-08-18)",
+    "cargo": "1.98.0 (797e8a9bc 2026-08-05)",
+    "build": "Locked offline workspace; no dependency or runtime-source changes in S25.",
+    "measurement_runner": "Qt Quick/WebEngine offscreen software; 800x600 CSS viewport for browser callback rows and 640x480 overlay viewport; 10 warm-ups and 100 samples per row.",
+    "observed_host_load": "Load averages immediately after the full run were approximately 2.56/2.74/3.03 on four logical CPUs; focused repeats were run serially.",
+    "scope": "Synthetic label/search ergonomics, current Hint interaction matching, offscreen candidate collection and overlay timing; no live-site or human task evaluation."
+  },
+  "changed_files": [
+    "crates/ferric-browser-engine-qt/tests/fixtures/webapp-interaction/label-corpus.json",
+    "crates/ferric-browser-engine-qt/tests/label_probes.rs",
+    "docs/implementation/keyboard_interaction-v03/evidence/S25-plan.md",
+    "docs/implementation/keyboard_interaction-v03/evidence/S25-ergonomics-report.md",
+    "docs/implementation/keyboard_interaction-v03/evidence/S25-engine.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/S25-label-probe.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/S25-qml-perf-summary.json",
+    "docs/implementation/keyboard_interaction-v03/evidence/S25-qml-perf.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/S25-qml-repeat-500-100.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/S25-qml-repeat-500-125.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/S25-qml-repeat.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/S25-rust-perf-summary.json",
+    "docs/implementation/keyboard_interaction-v03/evidence/S25-rust-perf.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/S25.json",
+    "docs/implementation/keyboard_interaction-v03/progress.json"
+  ],
+  "baseline_comparison": "S25 research harness was added on top of S24 evidence commit 83f8db82095bbf93f5b5d94c0a07cf01b469244d. Runtime behavior/defaults were unchanged. Performance rows use S17 commit 3e961cb5438518f9cbd20af7e0881cc2056fba9e raw samples on the same recorded hardware, kernel, Qt and Chromium; current callback slowdown is not attributed to an S25 runtime change.",
+  "test_results": [
+    {
+      "test_id": "T040",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "14d901a0b717055929bae920098ba0f5d441ad6b",
+      "log": "evidence/S25-engine.log",
+      "observations": [
+        "The shared HintInteraction/switcher ranking tests passed; the engine gate reported 441 passed, 0 failed and 1 existing ignored test."
+      ]
+    },
+    {
+      "test_id": "T040",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "14d901a0b717055929bae920098ba0f5d441ad6b",
+      "log": "evidence/S25-engine.log",
+      "observations": [
+        "The WebAppInteraction Target Search fixture verified all-facet candidate privacy and page independence on the current tree."
+      ]
+    },
+    {
+      "test_id": "T040",
+      "level": "qml-component",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "14d901a0b717055929bae920098ba0f5d441ad6b",
+      "log": "evidence/S25-engine.log",
+      "observations": [
+        "QML selection followed exact identity/action meaning and retained explicit confirmation; all 144 QML/WebEngine tests passed. Native CTest passed 1/1."
+      ]
+    },
+    {
+      "test_id": "T043",
+      "level": "performance",
+      "result": "passed",
+      "command": "QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME= QT_QUICK_BACKEND=software target/qml-tests/qml_tests -input crates/ferric-browser-engine-qt/tests/qml-perf",
+      "commit": "14d901a0b717055929bae920098ba0f5d441ad6b",
+      "log": "evidence/S25-qml-perf.log",
+      "observations": [
+        "The complete QML matrix passed 11/11 cases with 10 warm-ups and 100 samples per row; raw data and nearest-rank p95 summaries are retained.",
+        "500-target callback p95 was 92.14/86.21/94.03 ms at 80/100/125% versus S17 81.72/74.31/73.68 ms. The 500-marker overlay p95 was 224.29/220.75/212.60 ms, above the 200 ms reference ambition."
+      ]
+    },
+    {
+      "test_id": "T043",
+      "level": "performance",
+      "result": "passed",
+      "command": "QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME= QT_QUICK_BACKEND=software target/qml-tests/qml_tests -input crates/ferric-browser-engine-qt/tests/qml-perf HintPerformance::test_T043_samples:500-80",
+      "commit": "14d901a0b717055929bae920098ba0f5d441ad6b",
+      "log": "evidence/S25-qml-repeat.log",
+      "observations": [
+        "Focused repeat p95 was 92.71 ms versus the S17 81.72 ms baseline (+10.99 ms, +13.4%), reproducing both C17 investigation thresholds."
+      ]
+    },
+    {
+      "test_id": "T043",
+      "level": "performance",
+      "result": "passed",
+      "command": "QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME= QT_QUICK_BACKEND=software target/qml-tests/qml_tests -input crates/ferric-browser-engine-qt/tests/qml-perf HintPerformance::test_T043_samples:500-100",
+      "commit": "14d901a0b717055929bae920098ba0f5d441ad6b",
+      "log": "evidence/S25-qml-repeat-500-100.log",
+      "observations": [
+        "Focused repeat p95 was 83.80 ms versus the S17 74.31 ms baseline (+9.48 ms, +12.8%); it crossed the relative threshold but fell just below the 10 ms absolute threshold."
+      ]
+    },
+    {
+      "test_id": "T043",
+      "level": "performance",
+      "result": "passed",
+      "command": "QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME= QT_QUICK_BACKEND=software target/qml-tests/qml_tests -input crates/ferric-browser-engine-qt/tests/qml-perf HintPerformance::test_T043_samples:500-125",
+      "commit": "14d901a0b717055929bae920098ba0f5d441ad6b",
+      "log": "evidence/S25-qml-repeat-500-125.log",
+      "observations": [
+        "Focused repeat p95 was 83.76 ms versus the S17 73.68 ms baseline (+10.08 ms, +13.7%), crossing both C17 investigation thresholds."
+      ]
+    },
+    {
+      "test_id": "T043",
+      "level": "performance",
+      "result": "passed",
+      "command": "target/debug/deps/ferric_browser_engine_qt-fb4162bc0163308c s17_rust_hint_pipeline_performance --ignored --nocapture",
+      "commit": "14d901a0b717055929bae920098ba0f5d441ad6b",
+      "log": "evidence/S25-rust-perf.log",
+      "observations": [
+        "The opt-in Rust sampler completed 10 warm-ups and 100 samples at 500/1,000/5,000 targets. At 5,000, p95 decode/labels/setup/ranking/snapshot was 99.38/2.83/1.62/70.82/0.13 ms, close to S17."
+      ]
+    },
+    {
+      "test_id": "T053",
+      "level": "performance",
+      "result": "passed",
+      "command": "target/debug/deps/label_probes-c312a0dc85e6cfbc --ignored --nocapture",
+      "commit": "14d901a0b717055929bae920098ba0f5d441ad6b",
+      "log": "evidence/S25-label-probe.log",
+      "observations": [
+        "Twelve synthetic tasks at 500/1,000/5,000 targets activated the exact expected identity; model labels were deterministic, unique and prefix-free.",
+        "Numeric labels saved one modeled gesture only at 1,000 candidates and changed all retained labels at the 1,000\u21921,001 width boundary; default labels changed none. All 10% replacement cases had zero retained-label churn.",
+        "Human error rate, comfort and task completion time were not measured; modeled mismatches are not user errors."
+      ]
+    },
+    {
+      "test_id": "T053",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "target/debug/deps/label_probes-c312a0dc85e6cfbc --ignored --nocapture",
+      "commit": "f447da99f01eb666ca0f3be2d334b3eda0411466",
+      "log": "evidence/completion-labels.log",
+      "observations": [
+        "Fresh deterministic model retains the numeric 1000-to-1001 relabel-all drawback and long word-pair entry. This is not human completion-time/error evidence; defaults/no-go retained."
+      ]
+    },
+    {
+      "test_id": "T043",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QT_SCALE_FACTOR=1 QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc target/qml-tests/qml_tests -input crates/ferric-browser-engine-qt/tests/qml-perf HintPerformance::test_T043_overlay_time_to_visible",
+      "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+      "log": "evidence/completion-overlay-optimized.log",
+      "observations": [
+        "Ten warmups/100 samples per zoom; optimized overlay p95 187.21/183.43/176.18 ms, below the 200 ms reference ambition. Both paired collector comparisons remain within the common callback threshold. See completion-performance-pair1.json, pair2.json, overlay-comparison.json and raw metadata/logs."
+      ]
+    }
+  ],
+  "capability_decision": "no_go",
+  "capability_report": "evidence/S25-ergonomics-report.md",
+  "review_kind": "self-review",
+  "scope_amendments": [
+    {
+      "path": "crates/ferric-browser-engine-qt/tests/label_probes.rs and crates/ferric-browser-engine-qt/tests/fixtures/webapp-interaction/label-corpus.json",
+      "reason": "S25-only opt-in deterministic ergonomics model and fixed synthetic corpus under the canonical test fixture root. It exercises existing core APIs; no production default, UI, configuration parser, searcher or cache was added."
+    },
+    {
+      "path": "docs/implementation/keyboard_interaction-v03/evidence/S25-*",
+      "reason": "S25 test mapping, raw performance/model logs, derived nearest-rank summaries, decision report and evidence ledger."
+    }
+  ],
+  "remaining_risks": [
+    "The synthetic model has no human error, comfort or observed completion-time evidence; C21 does not authorize a production strategy change.",
+    "The 500-marker overlay p95 remains 12.60\u201324.29 ms above C17 reference ambition under offscreen software rendering.",
+    "The 1,000\u21921,001 numeric label width boundary changed all retained prototype labels; the default alphabet did not churn.",
+    "Synthetic names, exact full-name queries and fixed dictionary do not establish live-site ergonomics or universal text-search behavior."
+  ],
+  "not_run_reasons": [
+    "No human user evaluation was performed; T053 automation measures only deterministic model behavior and cannot establish an observed user error rate or support a production ergonomics decision."
+  ],
+  "next_ready_slices": [
+    "S26"
+  ],
+  "completion_followup": {
+    "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+    "report": "evidence/completion-report.md",
+    "scope": "Measured overlay allocation reduction; no new label/provider capability or budget change.",
+    "performance_disposition": "Both controlled common callback comparisons stay within the combined regression threshold. The active-outline allocation reduction meets 200 ms overlay p95 at all zooms in fresh measurements. Historical raw failures and older results remain preserved."
+  }
+}

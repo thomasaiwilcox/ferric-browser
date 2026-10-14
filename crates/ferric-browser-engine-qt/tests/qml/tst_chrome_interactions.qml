@@ -1,9 +1,11 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtTest
 import "../../qml/components"
 import "../../qml/scripts/ChromePresentation.js" as ChromePresentation
 import "../../qml/scripts/KeyboardPresentation.js" as KeyboardPresentation
+import "../../qml/scripts/TargetSearchPresentation.js" as TargetSearchPresentation
 
 TestCase {
     id: chromeTest
@@ -32,6 +34,8 @@ TestCase {
     property int dismissedRecoveries: 0
     property int acceptedCommandDialogs: 0
     property int cancelledCommandDialogs: 0
+    property int acceptedEngineFileDialogs: 0
+    property int rejectedEngineFileDialogs: 0
     property int closedLibraries: 0
     property int openedLibraryEntries: 0
     property string openedLibraryEntryId: ""
@@ -75,6 +79,16 @@ TestCase {
         property bool journeyExportPreviewVisible: false
         property string journeyExportPreviewText: ""
         property bool privateHistoryTransferVisible: false
+        property bool siteLedgerVisible: true
+        property bool siteDataClearPending: false
+        property var siteLedgerData: ({
+            private: true,
+            origin: "",
+            facts: [],
+            blocking: ({ active_site_decisions: [] }),
+            site_doctor: ({ active: ({ kind: "" }), experiments: [] }),
+            interaction: ({})
+        })
         property string bindingHelpSearch: ""
         property var bindingHelpRows: [
             { kind: "binding", mode: "normal", command: ":open",
@@ -143,6 +157,16 @@ TestCase {
             statusColor: theme.primaryTextColor
             profileColor: theme.primaryTextColor
             accessibleDetails: ""
+        }
+    }
+
+    Component {
+        id: siteLedgerFixture
+        FerricSiteLedger {
+            width: 900
+            height: 660
+            browserWindow: theme
+            siteExperimentAvailable: false
         }
     }
 
@@ -235,6 +259,14 @@ TestCase {
                 chromeTest.activatedContextAction = item.action
             }
             onDismissed: chromeTest.dismissedContextMenus += 1
+        }
+    }
+
+    Component {
+        id: fileDialogSurfacesFixture
+        FerricFileDialogSurfaces {
+            onEngineFileAccepted: chromeTest.acceptedEngineFileDialogs++
+            onEngineFileRejected: chromeTest.rejectedEngineFileDialogs++
         }
     }
 
@@ -461,6 +493,8 @@ TestCase {
                 id: spatialGridModel
                 property bool spatial_visible: true
                 property bool spatial_selecting: true
+                property real spatial_viewport_width: 300
+                property real spatial_viewport_height: 240
                 property real spatial_root_width: 300
                 property real spatial_root_height: 240
                 property real spatial_current_x: 0
@@ -786,6 +820,35 @@ TestCase {
         tryCompare(popup, "visible", false)
     }
 
+    function test_native_prompt_file_chooser_accept_and_cancel_by_keyboard() {
+        var accepted = createTemporaryObject(fileDialogSurfacesFixture,
+                                             testWindow.contentItem, {
+                                                 engineFileOptions: FileDialog.DontUseNativeDialog,
+                                                 engineFileMode: FileDialog.SaveFile,
+                                                 engineFileCurrentFolder: "file:///tmp/"
+                                             })
+        verify(accepted)
+        accepted.openEngineFile()
+        tryCompare(accepted, "engineFileVisible", true)
+        var acceptName = findChild(testWindow, "fileNameTextField")
+        verify(acceptName)
+        tryCompare(acceptName, "visible", true)
+        acceptName.forceActiveFocus()
+        tryCompare(acceptName, "activeFocus", true)
+        acceptName.text = "ferric-keyboard-accept.txt"
+        keyClick(Qt.Key_Tab)
+        keyClick(Qt.Key_Tab)
+        keyClick(Qt.Key_Space)
+        tryCompare(chromeTest, "acceptedEngineFileDialogs", 1, 3000)
+        tryCompare(accepted, "engineFileVisible", false)
+        accepted.openEngineFile()
+        tryCompare(accepted, "engineFileVisible", true)
+        acceptName.forceActiveFocus()
+        tryCompare(acceptName, "activeFocus", true)
+        keyClick(Qt.Key_Escape)
+        tryCompare(chromeTest, "rejectedEngineFileDialogs", 1, 3000)
+    }
+
     function test_large_font_rows_expand_to_fit_content() {
         var helpHost = createTemporaryObject(largeFontHelpFixture,
                                              testWindow.contentItem)
@@ -852,9 +915,75 @@ TestCase {
         tryCompare(fixture.gridItem, "visible", false)
     }
 
+    function test_spatial_grid_maps_nonzero_scope_into_full_view() {
+        var fixture = createTemporaryObject(spatialGridFixture,
+                                            testWindow.contentItem)
+        verify(fixture)
+        fixture.gridModel.spatial_viewport_width = 600
+        fixture.gridModel.spatial_viewport_height = 480
+        fixture.gridModel.spatial_current_x = 120
+        fixture.gridModel.spatial_current_y = 72
+        fixture.gridModel.spatial_current_width = 240
+        fixture.gridModel.spatial_current_height = 192
+        compare(fixture.gridItem.cx, 60)
+        compare(fixture.gridItem.cy, 36)
+        compare(fixture.gridItem.cw, 120)
+        compare(fixture.gridItem.ch, 96)
+    }
+
+    function test_spatial_grid_discloses_unqualified_double_click_gate() {
+        var fixture = createTemporaryObject(spatialGridFixture,
+                                           testWindow.contentItem)
+        verify(fixture)
+        fixture.gridModel.spatial_help_visible = true
+        compare(fixture.gridItem.doubleClickEnabled, false)
+        verify(fixture.gridItem.Accessible.description.indexOf("unavailable") >= 0)
+    }
+
     function test_context_accent_matching_surface_is_readable() {
         var textColor = ChromePresentation.readableTextColor("#313244", "#313244")
         verify(ChromePresentation.contrastRatio(textColor, "#313244") >= 4.5)
+    }
+
+    function test_siteLedgerInteractionStatusIsOnDemandAndRedacted() {
+        theme.siteLedgerData = {
+            private: true,
+            origin: "",
+            facts: [],
+            blocking: ({ active_site_decisions: [] }),
+            site_doctor: ({ active: ({ kind: "" }), experiments: [] }),
+            interaction: {
+                mode: "normal",
+                focus: { category: "editable", frame_count: 2 },
+                shortcut_policy: {
+                    value: "mixed",
+                    source: "site",
+                    page_key_count: 4,
+                    policy_site_rule: "docs-shortcuts"
+                },
+                native_prompt: {
+                    active: false,
+                    category: "none",
+                    last_outcome: "awaiting-focus"
+                },
+                scroll_policy: { status: "unknown" },
+                recent_action_errors: {
+                    categories: [{ category: "stale-target", count: 2 }]
+                },
+                private_url_forbidden: "https://private.test/doc?token=secret"
+            }
+        }
+        var ledger = createTemporaryObject(siteLedgerFixture, testWindow.contentItem)
+        verify(ledger !== null)
+        var summary = findChild(ledger, "siteLedgerInteractionSummary")
+        verify(summary !== null)
+        verify(summary.text.indexOf("focus editable") >= 0)
+        verify(summary.text.indexOf("mixed (site)") >= 0)
+        verify(summary.text.indexOf("policy rule docs-shortcuts") >= 0)
+        verify(summary.text.indexOf("prompt outcome awaiting-focus") >= 0)
+        verify(summary.text.indexOf("stale-target ×2") >= 0)
+        verify(summary.text.indexOf("private.test") < 0)
+        verify(summary.text.indexOf("token=secret") < 0)
     }
 
     function test_statusbar_visibility_matches_in_mode_policy() {
@@ -920,6 +1049,28 @@ TestCase {
         compare(KeyboardPresentation.logicalNormalKeyText({
             key: Qt.Key_V, text: "", modifiers: Qt.ControlModifier | Qt.ShiftModifier
         }), "Ctrl+Shift+v")
+    }
+
+    function test_grid_double_click_shortcut_is_explicit_and_mode_local() {
+        compare(KeyboardPresentation.logicalGridKeyText({
+            key: Qt.Key_Enter, text: "\r", modifiers: Qt.AltModifier
+        }), "Alt+Enter")
+        compare(KeyboardPresentation.logicalGridKeyText({
+            key: Qt.Key_Enter, text: "\r", modifiers: Qt.NoModifier
+        }), "Enter")
+        compare(KeyboardPresentation.logicalGridKeyText({
+            key: Qt.Key_Enter, text: "\r", modifiers: Qt.ShiftModifier
+        }), "Shift+Enter")
+        compare(KeyboardPresentation.logicalGridKeyText({
+            key: Qt.Key_Enter, text: "\r", modifiers: Qt.ControlModifier
+        }), "Ctrl+Enter")
+        compare(KeyboardPresentation.logicalGridKeyText({
+            key: Qt.Key_Enter, text: "\r",
+            modifiers: Qt.AltModifier | Qt.ShiftModifier
+        }), "")
+        compare(KeyboardPresentation.logicalGridKeyText({
+            key: Qt.Key_A, text: "a", modifiers: Qt.NoModifier
+        }), "")
     }
 
     function test_shutdown_decision_is_keyboard_operable() {
@@ -1016,5 +1167,58 @@ TestCase {
         verify(accept)
         mouseClick(accept, accept.width / 2, accept.height / 2)
         compare(acceptedCommandDialogs, 2)
+    }
+
+    function test_target_search_selection_tracks_identity_and_action_meaning() {
+        var hints = [
+            { label: "a", element_id: 11, related_element_id: null,
+              frame_path: "0", kind: "link", text: "Documentation",
+              href: "https://example.test/docs?token=private" },
+            { label: "b", element_id: 22, related_element_id: null,
+              frame_path: "0", kind: "button", text: "Open menu", href: null }
+        ]
+        var rows = TargetSearchPresentation.rows(hints, ["b", "a"])
+        compare(rows[0].label, "b", "the shared matcher ranking controls result order")
+        verify(rows[0].text === "Open menu")
+        verify(!("href" in rows[1]), "page URLs are not projected into result rows")
+
+        var selection = TargetSearchPresentation.reconcile(rows, {
+            identity: "", meaning: "", initialized: false
+        })
+        compare(selection.identity, rows[0].identity)
+        selection = TargetSearchPresentation.move(rows, selection, 1)
+        compare(selection.identity, rows[1].identity)
+        verify(!selection.meaning.includes("private"),
+               "the selection signature does not retain a tokenised URL")
+
+        var refreshed = TargetSearchPresentation.rows([
+            { label: "x", element_id: 22, related_element_id: null,
+              frame_path: "0", kind: "button", text: "Open menu", href: null },
+            { label: "y", element_id: 11, related_element_id: null,
+              frame_path: "0", kind: "link", text: "Documentation",
+              href: "https://example.test/docs?token=private" }
+        ], ["x", "y"])
+        var preserved = TargetSearchPresentation.reconcile(refreshed, selection)
+        compare(preserved.identity, selection.identity)
+        compare(TargetSearchPresentation.selectedRow(refreshed, preserved).label, "y")
+
+        var virtualReplacement = TargetSearchPresentation.rows([
+            { label: "y", element_id: 99, related_element_id: null,
+              frame_path: "0", kind: "link", text: "Documentation",
+              href: "https://example.test/docs?token=private" }
+        ], ["y"])
+        var cleared = TargetSearchPresentation.reconcile(virtualReplacement, preserved)
+        compare(cleared.identity, "", "a replacement at the same list position cannot inherit selection")
+        verify(TargetSearchPresentation.selectedRow(virtualReplacement, cleared) === null)
+
+        var changedMeaning = TargetSearchPresentation.rows([
+            { label: "y", element_id: 11, related_element_id: null,
+              frame_path: "0", kind: "link", text: "Documentation",
+              href: "https://example.test/other" }
+        ], ["y"])
+        cleared = TargetSearchPresentation.reconcile(changedMeaning, preserved)
+        compare(cleared.identity, "", "changed action meaning clears the selection")
+        cleared = TargetSearchPresentation.reconcile([], preserved)
+        compare(cleared.identity, "", "a filtered-out target cannot remain selected")
     }
 }

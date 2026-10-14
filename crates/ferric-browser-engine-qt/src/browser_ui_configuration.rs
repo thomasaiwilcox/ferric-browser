@@ -4,20 +4,34 @@ use super::{
     RuntimeOverrides, Value, chrome_preferences, config_get_command_parameters,
     configured_bindings, desktop_portals, feature_preferences, hyprland, is_bounded_untrusted_text,
     load_theme_palette, matching_site_rules, publish_ipc_event, qobject, safe_ipc_url,
-    sanitize_process_stderr, save_runtime_overrides_atomic, setting_metadata,
-    settings_presentation, theme_presentation, try_wait_editor_process,
+    sanitize_process_stderr, setting_metadata, settings_presentation, theme_presentation,
+    try_wait_editor_process,
 };
+
+use ferric_browser_config::ConfigurationApplyBoundary;
 
 impl qobject::BrowserUi {
     pub(super) fn select_site_rule_settings(mut self: Pin<&mut Self>, url: &QString) -> bool {
         let config = match serde_json::from_value::<Config>(self.as_ref().rust().config.clone()) {
             Ok(config) => config,
             Err(error) => {
+                if self
+                    .as_mut()
+                    .update_hint_proxy_targets(&Config::default(), "")
+                {
+                    self.as_mut().note_hint_configuration_change();
+                }
                 self.as_mut()
                     .set_status_text(QString::from(format!("Site rules unavailable: {error}")));
                 return false;
             }
         };
+        if !self
+            .as_mut()
+            .refresh_mixed_policy_for_url(&config, &url.to_string())
+        {
+            return false;
+        }
         let mut javascript = None;
         let mut images = None;
         let mut force_dark = None;
@@ -58,6 +72,12 @@ impl qobject::BrowserUi {
             .set_site_rule_autoplay(QString::from(autoplay.unwrap_or_default()));
         self.as_mut().set_site_rule_zoom_set(zoom.is_some());
         self.as_mut().set_site_rule_zoom(zoom.unwrap_or_default());
+        let proxy_targets_changed = self
+            .as_mut()
+            .update_hint_proxy_targets(&config, &url.to_string());
+        if proxy_targets_changed {
+            self.as_mut().note_hint_configuration_change();
+        }
         true
     }
 
@@ -125,46 +145,72 @@ impl qobject::BrowserUi {
         )
     }
 
-    pub(super) fn runtime_config_candidate_from(
-        &self,
-        base_value: &Value,
-        profile_overrides: &RuntimeOverrides,
-        runtime_overrides: &RuntimeOverrides,
-        temporary_overrides: &RuntimeOverrides,
-    ) -> Result<Value, String> {
-        let layers = ConfigurationLayers {
-            base: serde_json::from_value(base_value.clone())
-                .map_err(|error| format!("base configuration is invalid: {error}"))?,
-            profile: profile_overrides.clone(),
-            runtime: runtime_overrides.clone(),
-            command_line: self.rust().cli_overrides.clone(),
-            temporary: temporary_overrides.clone(),
-        };
-        serde_json::to_value(layers.resolve().map_err(|error| error.to_string())?)
-            .map_err(|error| format!("could not serialize resolved configuration: {error}"))
-    }
-
-    pub(super) fn commit_runtime_config(
+    pub(super) fn commit_reloaded_config(
         mut self: Pin<&mut Self>,
         candidate: Value,
         layers: ConfigurationLayers,
         status: &str,
+        fingerprint: String,
     ) -> Result<Value, String> {
+        self.as_mut().commit_validated_configuration(
+            candidate,
+            layers,
+            status,
+            None,
+            ConfigurationApplyBoundary::Reload,
+            fingerprint,
+        )
+    }
+
+    pub(super) fn commit_runtime_config_persisted(
+        mut self: Pin<&mut Self>,
+        candidate: Value,
+        layers: ConfigurationLayers,
+        status: &str,
+        persistence: Option<(&Path, &RuntimeOverrides)>,
+        fingerprint: String,
+    ) -> Result<Value, String> {
+        self.as_mut().commit_validated_configuration(
+            candidate,
+            layers,
+            status,
+            persistence,
+            ConfigurationApplyBoundary::RuntimeUpdate,
+            fingerprint,
+        )
+    }
+
+    fn commit_validated_configuration(
+        mut self: Pin<&mut Self>,
+        candidate: Value,
+        layers: ConfigurationLayers,
+        status: &str,
+        persistence: Option<(&Path, &RuntimeOverrides)>,
+        boundary: ConfigurationApplyBoundary,
+        fingerprint: String,
+    ) -> Result<Value, String> {
+        let policy_layers = layers.clone();
         let previous_hints = serde_json::from_value::<Config>(self.as_ref().rust().config.clone())
             .ok()
             .map(|config| config.hints);
-        let snapshot = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.state
-                .as_mut()
-                .ok_or_else(|| "application state is unavailable".to_owned())?
-                .update_configuration(layers)
-                .map_err(|error| error.to_string())?
-        };
+        let browser = self.as_ref();
+        let state = browser
+            .rust()
+            .state
+            .as_ref()
+            .ok_or_else(|| "application state is unavailable".to_owned())?;
+        let prepared = match boundary {
+            ConfigurationApplyBoundary::RuntimeUpdate => state.prepare_configuration_update(layers),
+            ConfigurationApplyBoundary::Reload => state.prepare_configuration_reload(layers),
+        }
+        .map_err(|error| error.to_string())?;
+        let snapshot = prepared.snapshot();
         let active_settings = snapshot.effective;
         let active_config = serde_json::to_value(&active_settings)
             .map_err(|error| format!("could not serialize active configuration: {error}"))?;
+        let (candidate_mixed_policy, policy_changed) = self
+            .as_ref()
+            .resolve_candidate_mixed_policy(&active_config, &policy_layers)?;
         let pending = snapshot.pending_changes;
         let pending_summary = pending
             .iter()
@@ -179,10 +225,39 @@ impl qobject::BrowserUi {
             .collect::<Vec<_>>();
         let config_json = serde_json::to_string(&active_config)
             .map_err(|error| format!("could not serialize effective configuration: {error}"))?;
-        let bindings = {
+        let base_config = serde_json::to_value(&policy_layers.base)
+            .map_err(|error| format!("could not serialize base configuration: {error}"))?;
+        let bindings = configured_bindings(&self.as_ref().rust().registry, &active_config);
+        let mut write_outcome = None;
+        {
+            let mut rust = self.as_mut().rust_mut();
+            rust.as_mut()
+                .get_mut()
+                .state
+                .as_mut()
+                .ok_or_else(|| "application state is unavailable".to_owned())?
+                .publish_configuration_update(prepared, || {
+                    if let Some((path, overrides)) = persistence {
+                        write_outcome = Some(ferric_browser_config::save_runtime_overrides_atomic(
+                            path, overrides,
+                        )?);
+                    }
+                    Ok(())
+                })
+                .map_err(|error| format!("configuration publication rejected: {error}"))?;
+        }
+        {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
             this.config = active_config.clone();
+            this.active_selector_fingerprint = fingerprint;
+            this.selector_config_revision = this.selector_config_revision.wrapping_add(1);
+            this.base_config = base_config;
+            this.profile_overrides = policy_layers.profile.clone();
+            this.runtime_overrides = policy_layers.runtime.clone();
+            this.cli_overrides = policy_layers.command_line.clone();
+            this.temporary_overrides = policy_layers.temporary.clone();
+            this.mixed_policy = candidate_mixed_policy;
             this.pending_config = (!pending.is_empty()).then_some(candidate.clone());
             this.learning_mode = active_config
                 .get("discovery")
@@ -190,11 +265,23 @@ impl qobject::BrowserUi {
                 .and_then(|discovery| discovery.get("learning_mode"))
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
-            configured_bindings(&this.registry, &this.config)
-        };
+        }
         {
             let mut rust = self.as_mut().rust_mut();
             rust.as_mut().get_mut().bindings = bindings;
+        }
+        self.as_mut()
+            .note_native_prompt_configuration_change(policy_changed);
+        if policy_changed {
+            let mut rust = self.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            if let Some(bindings) = this.bindings.as_mut() {
+                bindings.reset();
+            }
+            this.macro_key_prefix = None;
+            this.macro_key_started_ms = None;
+            drop(rust);
+            self.as_mut().set_binding_overlay(QString::default());
         }
         self.as_mut()
             .set_desktop_portal_mode(QString::from(desktop_portals::mode_name(
@@ -203,8 +290,12 @@ impl qobject::BrowserUi {
         self.as_mut().update_chrome_preferences(&active_settings);
         self.as_mut().update_feature_preferences(&active_settings);
         self.as_mut().update_hint_preferences(&active_settings);
+        let current_url = self.as_ref().rust().current_url.to_string();
+        self.as_mut()
+            .update_hint_proxy_targets(&active_settings, &current_url);
         self.as_mut().update_settings_presentation(&active_config);
         self.as_mut().set_config_json(QString::from(config_json));
+        self.as_mut().note_hint_configuration_change();
         let learning_mode = self.as_ref().rust().learning_mode;
         self.as_mut().set_learning_mode(learning_mode);
         self.as_mut().update_theme_palette(&candidate);
@@ -221,9 +312,23 @@ impl qobject::BrowserUi {
         } else {
             format!("{status}; {} lifecycle change(s) pending", pending.len())
         };
+        let persistence_name = match &write_outcome {
+            None => "memory-only",
+            Some(ferric_browser_config::RuntimeOverrideWriteOutcome::Durable) => "durable",
+            Some(ferric_browser_config::RuntimeOverrideWriteOutcome::DurabilityUncertain(_)) => {
+                "durability-uncertain"
+            }
+        };
+        let status = match &write_outcome {
+            Some(ferric_browser_config::RuntimeOverrideWriteOutcome::DurabilityUncertain(
+                error,
+            )) => format!("{status}; change committed, crash durability uncertain: {error}"),
+            _ => status,
+        };
         self.as_mut().set_status_text(QString::from(status));
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
+        this.runtime_config_persistence = persistence_name;
         let revision = this.ipc_sequence.saturating_add(1);
         publish_ipc_event(
             &mut this.ipc_sequence,
@@ -231,6 +336,7 @@ impl qobject::BrowserUi {
             serde_json::json!({
                 "revision": revision,
                 "pending": pending_summary,
+                "persistence": persistence_name,
             }),
         );
         Ok(active_config)
@@ -375,154 +481,6 @@ impl qobject::BrowserUi {
             .set_theme_contrast_reason(QString::from(presentation.contrast_reason));
         self.as_mut().rust_mut().as_mut().get_mut().theme_palette = palette;
         true
-    }
-
-    pub(super) fn execute_runtime_config_command(
-        mut self: Pin<&mut Self>,
-        command: &ParsedCommand,
-    ) -> Result<Value, String> {
-        let mut temporary = false;
-        let mut pattern = None;
-        let mut positional = Vec::new();
-        let mut arguments = command.arguments.iter();
-        while let Some(argument) = arguments.next() {
-            match argument.as_str() {
-                "--temp" if !temporary => temporary = true,
-                "--pattern" if pattern.is_none() => {
-                    let value = arguments
-                        .next()
-                        .ok_or_else(|| "--pattern requires a value".to_owned())?;
-                    pattern = Some(value.as_str());
-                }
-                _ => positional.push(argument.as_str()),
-            }
-        }
-        let (key, literal) = if command.name == "set" {
-            let [setting] = positional.as_slice() else {
-                return Err("set accepts [--temp] [--pattern PATTERN] KEY=VALUE".into());
-            };
-            let (key, literal) = setting
-                .split_once('=')
-                .ok_or_else(|| "set requires KEY=VALUE".to_owned())?;
-            (key, Some(literal))
-        } else {
-            let [key] = positional.as_slice() else {
-                return Err("unset accepts [--temp] [--pattern PATTERN] KEY".into());
-            };
-            (*key, None)
-        };
-        if key.is_empty() || key.len() > 256 || key.chars().any(char::is_control) {
-            return Err("configuration key is empty, too long, or unsafe".into());
-        }
-
-        let mut persistent = self.as_ref().rust().runtime_overrides.clone();
-        let mut temporary_layer = self.as_ref().rust().temporary_overrides.clone();
-        let changed = if command.name == "set" {
-            let literal = literal.ok_or_else(|| "set requires KEY=VALUE".to_owned())?;
-            let layer = if temporary {
-                &mut temporary_layer
-            } else {
-                &mut persistent
-            };
-            if let Some(pattern) = pattern {
-                layer
-                    .set_site_literal(pattern, key, literal)
-                    .map_err(|error| error.to_string())?;
-            } else {
-                layer
-                    .set_literal(key, literal)
-                    .map_err(|error| error.to_string())?;
-            }
-            true
-        } else if temporary {
-            if let Some(pattern) = pattern {
-                temporary_layer
-                    .unset_site_setting(pattern, key)
-                    .map_err(|error| error.to_string())?
-            } else {
-                temporary_layer
-                    .unset_setting(key)
-                    .map_err(|error| error.to_string())?
-            }
-        } else {
-            if let Some(pattern) = pattern {
-                persistent
-                    .unset_site_setting(pattern, key)
-                    .map_err(|error| error.to_string())?
-            } else {
-                persistent
-                    .unset_setting(key)
-                    .map_err(|error| error.to_string())?
-            }
-        };
-        let candidate = self
-            .as_ref()
-            .runtime_config_candidate(&persistent, &temporary_layer)?;
-        let persistent_storage = !temporary
-            && self.as_ref().rust().profile_persistence.is_durable()
-            && self.as_ref().rust().storage_roots.is_some();
-        if persistent_storage {
-            let path = self
-                .as_ref()
-                .rust()
-                .storage_roots
-                .as_ref()
-                .map(|roots| roots.state.join("runtime-overrides.toml"))
-                .ok_or_else(|| "runtime storage is unavailable".to_owned())?;
-            save_runtime_overrides_atomic(&path, &persistent)
-                .map_err(|error| format!("could not save runtime overrides: {error}"))?;
-        }
-        let layers = ConfigurationLayers {
-            base: serde_json::from_value(self.as_ref().rust().base_config.clone())
-                .map_err(|error| format!("base configuration is invalid: {error}"))?,
-            profile: self.as_ref().rust().profile_overrides.clone(),
-            runtime: persistent.clone(),
-            command_line: self.as_ref().rust().cli_overrides.clone(),
-            temporary: temporary_layer.clone(),
-        };
-        let scope = if temporary {
-            "temporary"
-        } else if persistent_storage {
-            "persistent"
-        } else {
-            "memory-only"
-        };
-        let action = if command.name == "set" {
-            "Set"
-        } else {
-            "Unset"
-        };
-        let detail = if changed {
-            ""
-        } else {
-            " (no matching override)"
-        };
-        let status = pattern.map_or_else(
-            || format!("{action} {key} ({scope}){detail}"),
-            |pattern| format!("{action} {key} for {pattern} ({scope}){detail}"),
-        );
-        let result = self
-            .as_mut()
-            .commit_runtime_config(candidate, layers, &status)?;
-        {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.runtime_overrides = persistent;
-            this.temporary_overrides = temporary_layer;
-        }
-        let value = key
-            .split('.')
-            .try_fold(&result, |value, part| value.as_object()?.get(part))
-            .cloned()
-            .unwrap_or(Value::Null);
-        Ok(serde_json::json!({
-            "status": "accepted",
-            "key": key,
-            "pattern": pattern,
-            "temporary": temporary,
-            "changed": changed,
-            "value": value
-        }))
     }
 
     pub(super) fn execute_config_get_command(

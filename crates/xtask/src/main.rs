@@ -33,6 +33,16 @@ fn main() {
             println!("  Run deterministic project checks.");
             println!("cargo xtask test engine");
             println!("  Build and run the QtWebEngine adapter tests.");
+            println!("cargo xtask test application");
+            println!("  Run production BrowserUi/QML/WebEngine integration tests offscreen.");
+            println!("cargo xtask test application-wayland");
+            println!(
+                "  Run production integration tests with Qt-generated events on nested Wayland (not physical-input qualification)."
+            );
+            println!("cargo xtask test wayland-input");
+            println!(
+                "  Require compositor-delivered input; unavailable input fails qualification."
+            );
             println!("cargo xtask test adapter");
             println!("  Run the bounded offscreen Qt/QML adapter integration smoke.");
             println!("cargo xtask test core");
@@ -272,6 +282,15 @@ fn render_user_docs() -> Result<(String, String, String, String), String> {
         )
         .map_err(|_| "could not format configuration metadata".to_owned())?;
     }
+    configuration.push_str(concat!(
+        "\n## Runtime persistence\n\n",
+        "Runtime settings and bindings are prepared and validated before their generated override file is replaced. A rejected validation or write before replacement leaves the old effective configuration and interaction sessions intact. Accepted command results and `config.changed` events include `persistence`: `memory-only`, `durable`, or `durability-uncertain`. The last outcome means replacement committed and memory matches the visible file, but the final directory sync could not confirm crash durability. It is not a rejected change and does not trigger automatic rollback or retry. Selector commands can first return `pending-validation`; their eventual publication is reported by `config.changed`, while rejection is shown in browser status.\n",
+    ));
+    append_hint_selector_docs(&mut configuration);
+    configuration.push_str(concat!(
+        "\n## Validated hint proxies\n\n",
+        "`hints.proxy_targets` accepts `off` (the default) or `validated` and can be set globally, in a profile, or with a site rule. `validated` enables only the browser's checked editor-container and native label/control pairings; it does not let selectors nominate hidden receivers or grant a general visibility exception. Editor proxies must remain connected, enabled, editable, non-inert, and visible through their editor container. The feature does not read editor contents or change page focusability styles. Structural fixtures do not establish compatibility with a particular editor framework build.\n",
+    ));
     configuration.push_str("\n## Starter configuration\n\n```toml\n");
     let starter = toml::to_string_pretty(&Config::default())
         .map_err(|error| format!("could not serialize default configuration: {error}"))?;
@@ -283,6 +302,17 @@ fn render_user_docs() -> Result<(String, String, String, String), String> {
         render_binding_docs()?,
         render_action_docs()?,
     ))
+}
+
+fn append_hint_selector_docs(configuration: &mut String) {
+    configuration.push_str(concat!(
+        "\n## Hint selector policies\n\n",
+        "Configure the seven existing Hint families (`all`, `links`, `inputs`, `buttons`, `images`, `media`, and `scrollables`) with `mode = \"extend\"` or `mode = \"replace\"`. With no entry, Ferric uses that family's built-in selectors. `extend` adds unique selectors in stable order; `replace` uses only the listed selectors. An empty `replace` list disables that family. For example:\n\n",
+        "```toml\n[hints.selectors.buttons]\nmode = \"extend\"\nselectors = ['button[data-action]']\n```\n\n",
+        "The effective global/profile/runtime settings form the base policy. Matching site rules then apply in the repository's existing priority and source order; each family layers independently, and `all` is not an implicit union of the other families. `scrollables` must still match an actually scrollable element. Selectors control discovery only: semantic type checks, visibility, disabled/inert checks, and the existing action or proxy guards still decide what a target can do.\n\n",
+        "Each authored family entry allows at most 16 selectors, each up to 1,024 UTF-8 bytes, and at most 16 KiB of selector strings. A site rule has a shared 16 KiB selector-string budget across its families. After layering, each family allows at most 32 selectors and 32 KiB; the resolved policy across all families is also capped at 32 KiB. Empty strings, control characters, and duplicate selectors in one entry are rejected. The WebEngine CSS parser checks syntax before a selector setting is committed.\n\n",
+        "A Hint snapshot inspects at most 50,000 DOM nodes and returns at most 5,000 candidates. Truncation is reported in the Hint status. These limits bound traversal and output; one CSS selector match is synchronous and cannot be interrupted by a timeout.\n",
+    ));
 }
 
 fn generate_user_docs() -> Result<(), String> {
@@ -524,6 +554,114 @@ fn run_native_insert_tests() -> Result<(), String> {
         "ctest",
         &["--test-dir", "target/native-insert", "--output-on-failure"],
     )
+}
+
+fn prepare_application_tests() -> Result<(), String> {
+    run(
+        "cargo",
+        &[
+            "build",
+            "--release",
+            "-p",
+            "ferric-browser-engine-qt",
+            "-p",
+            "ferric-browser",
+            "--locked",
+            "--offline",
+        ],
+    )?;
+    run(
+        "cmake",
+        &[
+            "-S",
+            "crates/ferric-browser-engine-qt/tests/application",
+            "-B",
+            "target/application-tests",
+        ],
+    )?;
+    run(
+        "cmake",
+        &["--build", "target/application-tests", "--parallel", "2"],
+    )?;
+    Ok(())
+}
+
+fn run_application_tests() -> Result<(), String> {
+    prepare_application_tests()?;
+    run(
+        "ctest",
+        &[
+            "--test-dir",
+            "target/application-tests",
+            "--output-on-failure",
+        ],
+    )?;
+    run(
+        "python3",
+        &["crates/ferric-browser-engine-qt/tests/application/run_ipc_probe.py"],
+    )
+}
+
+fn run_wayland_application_tests() -> Result<(), String> {
+    check_nested_wayland_requirements()?;
+    prepare_application_tests()?;
+    let run_id = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| error.to_string())?
+        .as_nanos();
+    let runtime_dir = std::env::temp_dir().join(format!("ferric-application-wayland-{run_id}"));
+    fs::create_dir(&runtime_dir).map_err(|error| error.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&runtime_dir, fs::Permissions::from_mode(0o700))
+            .map_err(|error| error.to_string())?;
+    }
+    let display = format!("wayland-application-{run_id}");
+    let result = (|| {
+        let mut compositor = start_nested_compositor(&runtime_dir, &display)?;
+        wait_for_wayland_socket(&mut compositor, &runtime_dir.join(&display))?;
+        let mut application = ChildGuard::spawn(
+            Command::new("target/application-tests/application_tests")
+                .env("QT_QPA_PLATFORM", "wayland")
+                .env("QT_QPA_PLATFORMTHEME", "")
+                .env("QT_QUICK_BACKEND", "software")
+                .env("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu")
+                .env("WAYLAND_DISPLAY", &display)
+                .env("XDG_RUNTIME_DIR", &runtime_dir),
+            "production Wayland integration tests",
+        )?;
+        let deadline = Instant::now() + Duration::from_secs(240);
+        loop {
+            if let Some(status) = application
+                .child_mut("production Wayland integration tests")?
+                .try_wait()
+                .map_err(|error| error.to_string())?
+            {
+                if status.success() {
+                    println!(
+                        "production Wayland Qt-generated event tests passed; physical/compositor-delivered input remains a separate gate"
+                    );
+                    return Ok(());
+                }
+                return Err(format!(
+                    "production Wayland integration tests failed: {status}"
+                ));
+            }
+            if Instant::now() >= deadline {
+                return Err("production Wayland integration tests exceeded 240 seconds".into());
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
+    })();
+    let cleanup = cleanup_nested_runtime_dir(&runtime_dir).map_err(|error| error.to_string());
+    match (result, cleanup) {
+        (Err(error), Err(cleanup)) => Err(format!(
+            "{error}; private runtime cleanup failed: {cleanup}"
+        )),
+        (Err(error), _) | (_, Err(error)) => Err(error),
+        (Ok(()), Ok(())) => Ok(()),
+    }
 }
 
 fn check_architecture_boundaries() -> Result<(), String> {
@@ -1473,6 +1611,9 @@ fn run_test(arguments: &[String]) -> Result<(), String> {
             run_qml_ui_tests()?;
             run_native_insert_tests()
         }
+        "application" => run_application_tests(),
+        "application-wayland" => run_wayland_application_tests(),
+        "wayland-input" => run_wayland_input_qualification(),
         "adapter" => run_adapter_smoke(),
         "fuzz" => run_fuzz_smoke(),
         "storage" => run(
@@ -1778,7 +1919,23 @@ fn run_wayland_smoke() -> Result<(), String> {
         ));
     }
 
-    run_nested_wayland_smoke(executable)
+    run_nested_wayland_smoke(executable, false)
+}
+
+fn run_wayland_input_qualification() -> Result<(), String> {
+    check_nested_wayland_requirements()?;
+    run(
+        "cargo",
+        &[
+            "build",
+            "--release",
+            "-p",
+            "ferric-browser",
+            "--locked",
+            "--offline",
+        ],
+    )?;
+    run_nested_wayland_smoke(Path::new("target/release/ferric-browser"), true)
 }
 
 #[allow(clippy::too_many_lines)]
@@ -2409,7 +2566,7 @@ fn run_nested_application(
     }
 }
 
-fn run_nested_wayland_smoke(executable: &Path) -> Result<(), String> {
+fn run_nested_wayland_smoke(executable: &Path, require_input: bool) -> Result<(), String> {
     let run_id = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|error| format!("could not create nested Wayland run ID: {error}"))?
@@ -2444,6 +2601,9 @@ fn run_nested_wayland_smoke(executable: &Path) -> Result<(), String> {
             println!("nested Wayland editable-page input smoke passed");
             Ok(())
         }
+        (Ok(false), _) if require_input => Err(
+            "native Wayland input qualification unavailable: compositor lacks virtual-keyboard protocol; startup success is not input evidence".into()
+        ),
         (Ok(false), _) => {
             println!(
                 "nested native Wayland startup smoke passed; editable-page input qualification not-run (compositor lacks virtual-keyboard protocol)"

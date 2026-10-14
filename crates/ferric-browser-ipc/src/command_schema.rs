@@ -129,6 +129,7 @@ mod tests {
         assert!(command_argument_names("open").contains(&"input"));
         assert!(command_argument_names("context-route").contains(&"entry_points"));
         assert_eq!(command_argument_names("scroll-target"), &["action"]);
+        assert_eq!(command_argument_names("grid-double-click"), &[] as &[&str]);
         assert_eq!(command_argument_names("not-a-command"), &[] as &[&str]);
         assert!(validate_command_argument_fields("open", &Map::new()).is_ok());
         assert!(

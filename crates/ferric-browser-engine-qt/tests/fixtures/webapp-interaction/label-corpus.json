@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "candidate_counts": [500, 1000, 5000],
+  "assumed_ms_per_gesture": 200,
+  "filler_prefix": "Control item",
+  "task_targets": [
+    {"id": "save-profile", "accessible_name": "Save profile", "query": "Save profile"},
+    {"id": "open-settings", "accessible_name": "Open settings", "query": "Open settings"},
+    {"id": "search-history", "accessible_name": "Search history", "query": "Search history"},
+    {"id": "create-note", "accessible_name": "Create note", "query": "Create note"},
+    {"id": "delete-draft", "accessible_name": "Delete draft", "query": "Delete draft"},
+    {"id": "share-canvas", "accessible_name": "Share canvas", "query": "Share canvas"},
+    {"id": "download-file", "accessible_name": "Download file", "query": "Download file"},
+    {"id": "close-dialog", "accessible_name": "Close dialog", "query": "Close dialog"},
+    {"id": "move-tab", "accessible_name": "Move tab", "query": "Move tab"},
+    {"id": "play-media", "accessible_name": "Play media", "query": "Play media"},
+    {"id": "mute-audio", "accessible_name": "Mute audio", "query": "Mute audio"},
+    {"id": "add-comment", "accessible_name": "Add comment", "query": "Add comment"}
+  ],
+  "word_dictionary": [
+    "anchor", "apple", "apricot", "arch", "artist", "autumn", "bamboo", "banner", "basil", "beacon",
+    "birch", "blossom", "blue", "breeze", "brook", "bronze", "bubble", "cabin", "cactus", "cedar",
+    "cherry", "circle", "cloud", "cobalt", "comet", "coral", "cricket", "crystal", "daisy", "dawn",
+    "delta", "desert", "diamond", "dolphin", "dragon", "dream", "eagle", "earth", "echo", "ember",
+    "emerald", "engine", "feather", "fern", "field", "finch", "flame", "flower", "forest", "fossil",
+    "fountain", "galaxy", "garden", "glacier", "gold", "granite", "grape", "guitar", "hammer", "harbor",
+    "hazel", "honey", "horizon", "island", "ivory", "jasmine", "jasper", "journey", "kettle", "kiwi",
+    "lantern", "lemon", "lilac", "marble", "meadow", "melody", "memory", "meteor", "midnight", "mint",
+    "mirror", "mosaic", "mountain", "muffin", "nebula", "nectar", "ocean", "olive", "orange", "orchid",
+    "orchard", "otter", "oyster", "paper", "pebble", "pepper", "piano", "picnic", "pillow", "planet"
+  ],
+  "mutation": {
+    "remove_element_id_modulus": 10,
+    "add_replacements": true,
+    "width_boundary": {"from": 1000, "to": 1001}
+  }
+}

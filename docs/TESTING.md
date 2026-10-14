@@ -69,8 +69,124 @@ parent-item delivery cannot execute a Normal-mode browser command afterward.
 Chrome tests check both window types' mode labels, recovery hints, accessible
 descriptions, and existing status-bar visibility policy.
 
+S04 adds a native-insert case that routes a retained page target through the
+production `FerricPagePointerAdapter`. It records the pointer/mouse sequence,
+`isTrusted`, and activation state for a local pointer-only fixture. This is
+offscreen Qt event evidence; it does not qualify physical Wayland delivery or
+application-level activation, and those limits remain in the slice evidence.
+
+`pointerAdapterSceneMapping` exercises the production adapter with mouse-accepting
+Qt Quick items. It verifies direct and ancestor translation, rotation and scale,
+and window position/size changes during move, press and first release. A changed
+mapping must send no initial press, preserve cleanup after an attempted press and
+prevent a second gesture. A stable transformed view remains usable. These are
+offscreen component regressions; DPR application cases separately cover stable
+display scales, while physical monitor transitions remain manual qualification.
+
+S19's `pointerAdapterDoubleClickSequence` fixture uses one production-adapter
+request and records the native DOM sequence, details, trust flags, transient
+activation, URL stability, acknowledgement count, duplicate-request rejection,
+and the disabled-by-default gate. The sequence is Qt/WebEngine offscreen
+evidence only. The runtime remains disabled until the required native Wayland
+qualification passes; the observed trust/activation values do not qualify
+permission-gated APIs. See
+[`ADR-0016`](architecture/ADR-0016-qualification-gated-double-click.md).
+
+The unified keyboard-interaction matrix lives in
+`docs/implementation/keyboard_interaction-v03/TEST_MATRIX.json`. Its synthetic
+HTML is under `crates/ferric-browser-engine-qt/tests/fixtures/webapp-interaction/`.
+`tst_webapp_interaction.qml` calls the production collector, fresh validator,
+and final actions in ApplicationWorld. The native suite also checks original
+Qt text entry after production shadow-root Hint focus. Baseline red logs and
+qualification gaps are retained in the implementation pack's evidence ledger.
+
+The Site Ledger also shows an on-demand interaction snapshot: mode, focus
+category, shortcut-policy source, native-prompt category, scroll-policy status,
+and allowlisted counts of recent action-error categories. It never records a
+keystroke stream or includes URLs, frame paths, input values, labels, or audit
+identifiers. S18's example site-rule bundle is documentation data only; it is
+not loaded by default and has no live-site qualification claim.
+
+S14 extends the WebEngine interaction fixture with scoped Hint lease transfer:
+the source candidate map remains available until its destination WeakRefs are
+validated, then scoped collection excludes the root and every target outside
+it. The fixture covers open shadow roots, same-origin frames, empty and
+replaced scopes, rejected cross-origin scopes, focus/scroll independence, and
+1,000 create/cancel cycles with elapsed-time output.
+The stress test requires a WebEngine process started with Chromium's
+`--js-flags=--expose-gc` flag so it can force collection and verify that a
+connected weak target remains usable.
+
+After the engine runner is built, run the opt-in interaction benchmark with:
+
+```sh
+QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME= QT_QUICK_BACKEND=software target/qml-tests/qml_tests -input crates/ferric-browser-engine-qt/tests/qml-perf
+```
+
+It records 10 warm-ups and 100 measured samples for 500 targets at 80/100/125%
+zoom, 1,000/5,000 targets, a 1,000-target mutation case, and a 500-marker
+overlay at each zoom. The JSON retains raw collection, fresh-target,
+pointer-preflight, action, refresh, layout-compute, and time-to-visible samples
+with the viewport and engine user-agent. The collector phase clock is added by
+a test-only transform; it adds overhead, so use the matching unprofiled run for
+baseline regression comparisons. The host callback measurement includes the
+page-script return and QML callback/payload conversion, not just transport.
+
+The separate Rust decode, label assignment, interaction setup, ranking, and
+snapshot sample is opt-in:
+
+```sh
+CARGO_NET_OFFLINE=true cargo test -p ferric-browser-engine-qt --lib s17_rust_hint_pipeline_performance -- --ignored --nocapture
+```
+
+Keep the raw samples and workload/build/platform identity. The S17 evidence
+records p95 as the nearest-rank 95th value (sorted sample index 94 of 100),
+including full tails and the offscreen software-rendering limit. The
+instrumented renderer profile, unprofiled baseline comparison, Rust stages,
+and overlay visibility stages together form the T043 evidence.
+
 CTest runs this suite offscreen with software rendering. Running the executable
 under a Wayland compositor additionally requires a keyboard seat and an active
 test window. A headless Weston instance without a keyboard seat cannot satisfy
 the suite's focus prerequisite; that environment can still check installed
 application startup and page loading, but cannot qualify keyboard routing.
+
+`cargo xtask test application` builds a release BrowserUi and runs the shipped
+QML resources in a native Qt test harness with a disposable profile and a
+loopback fixture server. It covers composed keyboard routing, local Pointer
+Hint authority, scope handoffs, real modal responses, selector callbacks,
+configuration persistence rejection, page API outcomes, coordinate mapping at
+multiple zoom/DPR settings, and 1,000 Hint lifetime cycles with forced GC.
+The accompanying CLI probe starts the release browser and checks restricted
+command chains before any IPC frame is sent. This suite uses production routing
+and policy; it does not substitute test implementations for them.
+
+The offscreen clipboard case uses only the process-local clipboard. Tests on
+Wayland skip that case. `cargo xtask test application-wayland` runs the same
+application harness on an isolated nested Weston instance using Qt-generated
+input. It qualifies that platform path, but does not prove compositor-delivered
+physical input. `cargo xtask test wayland-input` requires the compositor input
+facility and fails explicitly when it is unavailable. The older `test wayland`
+command remains a startup smoke and can succeed without injected input.
+
+Offscreen, Qt-generated Wayland, compositor input, authenticated live-site,
+platform IME/chooser, and human/screen-reader evidence are separate gates. Record
+unavailable gates as blocked rather than deriving their outcomes from startup
+or synthetic fixture results.
+
+The application suite includes production selector snapshots for inheritance,
+extension, replacement and disabled families. File reload cases exercise both
+immediate empty policies and asynchronous parser validation, including selector
+removal, invalid CSS and stale callbacks. Reload activates reload-scoped settings;
+startup/restart values remain pending. Native adapter regressions invalidate the
+surface during move and press delivery and check press suppression, cleanup and
+uncertain outcomes. The full offscreen application suite has a 300-second total
+bound. Run timing-sensitive UI suites after compilation completes; the product's
+250 ms pointer preflight deadline is unchanged.
+
+The October 2026 hint quality repair adds T058–T061 to the keyboard interaction
+matrix. The [repair record](testing/hint-quality-repair-2026-10-14.md) covers
+collector admission, reserved labels, passive refresh, accessible naming, frame
+geometry, marker placement, overlap selection, performance and installation.
+Automated Qt/WebEngine checks and nested Wayland startup evidence are recorded
+separately from physical-input and human usability qualification.

@@ -155,6 +155,9 @@ impl qobject::BrowserUi {
         self.as_mut()
             .update_feature_preferences(&presentation_config);
         self.as_mut().update_hint_preferences(&presentation_config);
+        let current_url = self.as_ref().rust().current_url.to_string();
+        self.as_mut()
+            .update_hint_proxy_targets(&presentation_config, &current_url);
         self.as_mut().update_settings_presentation(&config);
         let hyprland_config = serde_json::from_value::<ferric_browser_config::HyprlandConfig>(
             config.get("hyprland").cloned().unwrap_or(Value::Null),
@@ -203,6 +206,8 @@ impl qobject::BrowserUi {
             this.pending_navigation_urls.clear();
             this.pending_redirect_tabs.clear();
             this.pending_redirect_hops.clear();
+            this.page_document_identities.clear();
+            this.pending_same_document_pass_through = None;
             this.ipc_sequence = this.state.as_ref().map_or(0, BrowserApplication::revision);
             this.window = Some(window);
             this.core_window_id = QString::from(window.to_string());
@@ -332,6 +337,8 @@ impl qobject::BrowserUi {
             this.hint_session = None;
             this.hint_interaction = None;
             this.hint_consumed.clear();
+            this.config_revision = this.config_revision.wrapping_add(1);
+            this.policy_revision = this.policy_revision.wrapping_add(1);
             this.config = config;
             this.base_config = base_config;
             this.learning_mode = this
@@ -345,6 +352,26 @@ impl qobject::BrowserUi {
             this.temporary_overrides = RuntimeOverrides::default();
             this.cli_overrides = cli_overrides;
             this.profile_overrides = profile_overrides;
+            this.mixed_policy = serde_json::from_value::<Config>(this.config.clone())
+                .ok()
+                .and_then(|effective| {
+                    serde_json::from_value::<Config>(this.base_config.clone())
+                        .ok()
+                        .and_then(|base| {
+                            super::mixed_policy_runtime::resolve_for_layers(
+                                &base,
+                                &this.profile_overrides,
+                                &this.runtime_overrides,
+                                &this.cli_overrides,
+                                &this.temporary_overrides,
+                                &effective,
+                                &this.current_url.to_string(),
+                            )
+                            .ok()
+                        })
+                })
+                .unwrap_or_default();
+            this.binding_overlay = QString::default();
             this.config_watch = config_watch;
             this.config_reload_worker = ConfigReloadWorker::spawn().ok();
             this.config_write_worker = ConfigWriteWorker::spawn().ok();
@@ -447,7 +474,11 @@ impl qobject::BrowserUi {
         self.as_mut().publish_start_page();
         self.as_mut()
             .set_config_json(QString::from(effective_config_json));
+        self.as_mut().note_hint_configuration_change();
         self.as_mut().update_hint_preferences(&presentation_config);
+        let current_url = self.as_ref().rust().current_url.to_string();
+        self.as_mut()
+            .update_hint_proxy_targets(&presentation_config, &current_url);
         self.as_mut()
             .set_desktop_portal_mode(QString::from(desktop_portal_mode));
         let learning_mode = self.as_ref().rust().learning_mode;

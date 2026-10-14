@@ -1,0 +1,758 @@
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running `target/debug/xtask test engine`
+   Compiling ferric-browser-core v0.1.0 (/home/tom/Projects/RustBrowser/crates/ferric-browser-core)
+   Compiling ferric-browser-engine-qt v0.1.0 (/home/tom/Projects/RustBrowser/crates/ferric-browser-engine-qt)
+   Compiling ferric-browser-ipc v0.1.0 (/home/tom/Projects/RustBrowser/crates/ferric-browser-ipc)
+   Compiling ferric-browser-config v0.1.0 (/home/tom/Projects/RustBrowser/crates/ferric-browser-config)
+   Compiling ferric-browser-runtime v0.1.0 (/home/tom/Projects/RustBrowser/crates/ferric-browser-runtime)
+   Compiling ferric-browser-application v0.1.0 (/home/tom/Projects/RustBrowser/crates/ferric-browser-application)
+warning: ferric-browser-engine-qt@0.1.0: In file included from /usr/include/qt6/QtCore/qstring.h:15,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qhashfunctions.h:10,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qhash.h:11,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/QHash:1,
+warning: ferric-browser-engine-qt@0.1.0:                  from /home/tom/Projects/RustBrowser/target/debug/build/ferric-browser-engine-qt-9f93ee6183126b19/out/moc/../../../../../../crates/ferric-browser-engine-qt/src/blocklist_updater.h:5,
+warning: ferric-browser-engine-qt@0.1.0:                  from /home/tom/Projects/RustBrowser/target/debug/build/ferric-browser-engine-qt-9f93ee6183126b19/out/moc/moc_blocklist_updater.h.cpp:9:
+warning: ferric-browser-engine-qt@0.1.0: /usr/include/qt6/QtCore/qchar.h:48:31: warning: defining 'QChar', which previously failed to be complete in a SFINAE context [-Wsfinae-incomplete=]
+warning: ferric-browser-engine-qt@0.1.0:    48 | class QT6_ONLY(Q_CORE_EXPORT) QChar {
+warning: ferric-browser-engine-qt@0.1.0:       |                               ^~~~~
+warning: ferric-browser-engine-qt@0.1.0: In file included from /usr/include/c++/16/unordered_map:44,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/c++/16/functional:80,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qcomparehelpers.h:29,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qcompare.h:661,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qnamespace.h:14,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qbytearray.h:10,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/QByteArray:1,
+warning: ferric-browser-engine-qt@0.1.0:                  from /home/tom/Projects/RustBrowser/target/debug/build/ferric-browser-engine-qt-9f93ee6183126b19/out/moc/../../../../../../crates/ferric-browser-engine-qt/src/blocklist_updater.h:4:
+warning: ferric-browser-engine-qt@0.1.0: /usr/include/c++/16/bits/range_access.h:325:24: note: here.  Use '-Wsfinae-incomplete=2' for a diagnostic at that point
+warning: ferric-browser-engine-qt@0.1.0:   325 |     -> decltype(__cont.data())
+warning: ferric-browser-engine-qt@0.1.0:       |                 ~~~~~~~^~~~
+warning: ferric-browser-engine-qt@0.1.0: In file included from /usr/include/qt6/QtCore/qstring.h:15,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qobject.h:12,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/QObject:1,
+warning: ferric-browser-engine-qt@0.1.0:                  from /home/tom/Projects/RustBrowser/target/debug/build/ferric-browser-engine-qt-9f93ee6183126b19/out/moc/../../../../../../crates/ferric-browser-engine-qt/src/link_rule_updater.h:5,
+warning: ferric-browser-engine-qt@0.1.0:                  from /home/tom/Projects/RustBrowser/target/debug/build/ferric-browser-engine-qt-9f93ee6183126b19/out/moc/moc_link_rule_updater.h.cpp:9:
+warning: ferric-browser-engine-qt@0.1.0: /usr/include/qt6/QtCore/qchar.h:48:31: warning: defining 'QChar', which previously failed to be complete in a SFINAE context [-Wsfinae-incomplete=]
+warning: ferric-browser-engine-qt@0.1.0:    48 | class QT6_ONLY(Q_CORE_EXPORT) QChar {
+warning: ferric-browser-engine-qt@0.1.0:       |                               ^~~~~
+warning: ferric-browser-engine-qt@0.1.0: In file included from /usr/include/c++/16/unordered_map:44,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/c++/16/functional:80,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qcomparehelpers.h:29,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qcompare.h:661,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qnamespace.h:14,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qbytearray.h:10,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/QByteArray:1,
+warning: ferric-browser-engine-qt@0.1.0:                  from /home/tom/Projects/RustBrowser/target/debug/build/ferric-browser-engine-qt-9f93ee6183126b19/out/moc/../../../../../../crates/ferric-browser-engine-qt/src/link_rule_updater.h:4:
+warning: ferric-browser-engine-qt@0.1.0: /usr/include/c++/16/bits/range_access.h:325:24: note: here.  Use '-Wsfinae-incomplete=2' for a diagnostic at that point
+warning: ferric-browser-engine-qt@0.1.0:   325 |     -> decltype(__cont.data())
+warning: ferric-browser-engine-qt@0.1.0:       |                 ~~~~~~~^~~~
+warning: ferric-browser-engine-qt@0.1.0: In file included from /usr/include/qt6/QtCore/qstring.h:15,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qhashfunctions.h:10,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qhash.h:11,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/QHash:1,
+warning: ferric-browser-engine-qt@0.1.0:                  from src/blocklist_updater.h:5,
+warning: ferric-browser-engine-qt@0.1.0:                  from src/blocklist_updater.cpp:1:
+warning: ferric-browser-engine-qt@0.1.0: /usr/include/qt6/QtCore/qchar.h:48:31: warning: defining 'QChar', which previously failed to be complete in a SFINAE context [-Wsfinae-incomplete=]
+warning: ferric-browser-engine-qt@0.1.0:    48 | class QT6_ONLY(Q_CORE_EXPORT) QChar {
+warning: ferric-browser-engine-qt@0.1.0:       |                               ^~~~~
+warning: ferric-browser-engine-qt@0.1.0: In file included from /usr/include/c++/16/unordered_map:44,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/c++/16/functional:80,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qcomparehelpers.h:29,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qcompare.h:661,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qnamespace.h:14,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qbytearray.h:10,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/QByteArray:1,
+warning: ferric-browser-engine-qt@0.1.0:                  from src/blocklist_updater.h:4:
+warning: ferric-browser-engine-qt@0.1.0: /usr/include/c++/16/bits/range_access.h:325:24: note: here.  Use '-Wsfinae-incomplete=2' for a diagnostic at that point
+warning: ferric-browser-engine-qt@0.1.0:   325 |     -> decltype(__cont.data())
+warning: ferric-browser-engine-qt@0.1.0:       |                 ~~~~~~~^~~~
+warning: ferric-browser-engine-qt@0.1.0: In file included from /usr/include/qt6/QtCore/qstring.h:15,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qobject.h:12,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/QObject:1,
+warning: ferric-browser-engine-qt@0.1.0:                  from src/link_rule_updater.h:5,
+warning: ferric-browser-engine-qt@0.1.0:                  from src/link_rule_updater.cpp:1:
+warning: ferric-browser-engine-qt@0.1.0: /usr/include/qt6/QtCore/qchar.h:48:31: warning: defining 'QChar', which previously failed to be complete in a SFINAE context [-Wsfinae-incomplete=]
+warning: ferric-browser-engine-qt@0.1.0:    48 | class QT6_ONLY(Q_CORE_EXPORT) QChar {
+warning: ferric-browser-engine-qt@0.1.0:       |                               ^~~~~
+warning: ferric-browser-engine-qt@0.1.0: In file included from /usr/include/c++/16/unordered_map:44,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/c++/16/functional:80,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qcomparehelpers.h:29,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qcompare.h:661,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qnamespace.h:14,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qbytearray.h:10,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/QByteArray:1,
+warning: ferric-browser-engine-qt@0.1.0:                  from src/link_rule_updater.h:4:
+warning: ferric-browser-engine-qt@0.1.0: /usr/include/c++/16/bits/range_access.h:325:24: note: here.  Use '-Wsfinae-incomplete=2' for a diagnostic at that point
+warning: ferric-browser-engine-qt@0.1.0:   325 |     -> decltype(__cont.data())
+warning: ferric-browser-engine-qt@0.1.0:       |                 ~~~~~~~^~~~
+warning: ferric-browser-engine-qt@0.1.0: In file included from /usr/include/qt6/QtCore/qstring.h:15,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qhashfunctions.h:10,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qlist.h:12,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qstringlist.h:6,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/QStringList:1,
+warning: ferric-browser-engine-qt@0.1.0:                  from /home/tom/Projects/RustBrowser/target/debug/build/ferric-browser-engine-qt-9f93ee6183126b19/out/cxxqtbuild/include/cxx-qt-lib/core/qstring.h:11,
+warning: ferric-browser-engine-qt@0.1.0:                  from /home/tom/Projects/RustBrowser/target/debug/build/ferric-browser-engine-qt-9f93ee6183126b19/out/cxxqtbuild/include/cxx-qt-lib/qstring.h:9,
+warning: ferric-browser-engine-qt@0.1.0:                  from /home/tom/Projects/RustBrowser/target/debug/build/ferric-browser-engine-qt-9f93ee6183126b19/out/cxxqtgen/src/lib.cxx.cpp:1:
+warning: ferric-browser-engine-qt@0.1.0: /usr/include/qt6/QtCore/qchar.h:48:31: warning: defining 'QChar', which previously failed to be complete in a SFINAE context [-Wsfinae-incomplete=]
+warning: ferric-browser-engine-qt@0.1.0:    48 | class QT6_ONLY(Q_CORE_EXPORT) QChar {
+warning: ferric-browser-engine-qt@0.1.0:       |                               ^~~~~
+warning: ferric-browser-engine-qt@0.1.0: In file included from /usr/include/c++/16/unordered_map:44,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/c++/16/functional:80,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qcomparehelpers.h:29,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qcompare.h:661,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qnamespace.h:14,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/qbytearray.h:10,
+warning: ferric-browser-engine-qt@0.1.0:                  from /usr/include/qt6/QtCore/QByteArray:1,
+warning: ferric-browser-engine-qt@0.1.0:                  from /home/tom/Projects/RustBrowser/target/debug/build/ferric-browser-engine-qt-9f93ee6183126b19/out/cxxqtbuild/include/cxx-qt-lib/core/qstring.h:10:
+warning: ferric-browser-engine-qt@0.1.0: /usr/include/c++/16/bits/range_access.h:325:24: note: here.  Use '-Wsfinae-incomplete=2' for a diagnostic at that point
+warning: ferric-browser-engine-qt@0.1.0:   325 |     -> decltype(__cont.data())
+warning: ferric-browser-engine-qt@0.1.0:       |                 ~~~~~~~^~~~
+warning: the gold linker is deprecated and has known bugs with Rust
+  |
+  = help: consider using LLD or ld from GNU binutils instead
+
+warning: `ferric-browser-engine-qt` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4m 39s
+     Running unittests src/lib.rs (target/debug/deps/ferric_browser_engine_qt-fb4162bc0163308c)
+
+running 442 tests
+test action_arguments::tests::decodes_compact_action_values_without_opening_the_argument_boundary ... ok
+test action_mapping::tests::generic_action_executor_cannot_enter_hint_palette_or_pointer_paths ... ok
+test action_catalog::tests::catalog_filters_known_subjects_and_counts_only_valid_rules ... ok
+test action_mapping::tests::maps_basic_actions_without_opening_the_qt_boundary ... ok
+test action_mapping::tests::preserves_canonical_forms_and_subject_specific_failures ... ok
+test blocking_evidence::tests::evidence_requires_complete_bounded_rows ... ok
+test browser_ui_command_history::tests::durable_history_excludes_queries_files_and_arbitrary_arguments ... ok
+test browser_ui_command_history::tests::secondary_windows_reject_commands_their_chrome_cannot_present ... ok
+test browser_ui_hint_pointer::tests::external_hint_interaction_guard_rejects_target_search_after_expansion ... ok
+test browser_ui_hint_pointer::tests::preflight_requires_release_owner_facts_and_one_live_request ... ok
+test blocking_evidence::tests::live_counts_reject_non_finite_negative_and_unbounded_values ... ok
+test browser_ui_hint_pointer::tests::preflight_timeout_is_terminal_and_never_becomes_dispatchable ... ok
+test browser_ui_guide::tests::direct_input_gestures_have_registered_manual_commands ... ok
+test browser_ui_hint_pointer::tests::terminal_clears_permit_and_preflight_authority ... ok
+test browser_ui_hint_selection::tests::region_surface_palette_actions_are_rust_derived_and_bounded ... ok
+test browser_ui_hint_selection::tests::scoped_actions_are_available_only_for_region_and_surface_kinds ... ok
+test browser_ui_navigation::tests::grid_scope_handoff_is_limited_to_region_and_surface_families ... ok
+test browser_ui_navigation::tests::search_within_handoff_accepts_target_search_all_and_rejects_family_drift ... ok
+test browser_ui_navigation::tests::scoped_handoff_requires_exact_receipt_and_current_owner_session ... ok
+test browser_ui_query_bindings::mixed_explain_keychain_tests::keychain_explanation_accepts_logical_tokens_and_count_prefixes ... ok
+test browser_ui_query_bindings::mixed_explain_keychain_tests::local_explanation_feedback_reports_routing_without_retaining_the_token ... ok
+test browser_ui_query_diagnostics::interaction_status_tests::interaction_errors_are_bounded_allowlisted_and_drop_audit_identifiers ... ok
+test browser_ui_spatial::tests::pending_dispatch_invalidation_is_uncertain_but_acknowledgements_remain_exact ... ok
+test browser_ui_target_search::tests::target_search_grammar_is_closed_and_has_no_query_argument ... ok
+test browser_ui_target_search::tests::target_search_uses_existing_collector_families_and_closed_kind_filters ... ok
+test chrome_preferences::tests::projection_keeps_chrome_values_in_the_valid_presentation_domain ... ok
+test chrome_preferences::tests::statusbar_projection_uses_in_mode_and_normalizes_the_legacy_alias ... ok
+test command_options::tests::options_keep_counts_and_exact_origins_bounded ... ok
+test browser_ui_navigation::tests::selector_snapshot_binds_configuration_family_and_site_policy ... ok
+test command_options::tests::scroll_target_parser_accepts_only_the_closed_action_enum ... ok
+test compatibility::tests::diagnostic_snapshot_accepts_runtime_engine_version ... ok
+test compatibility::tests::user_agent_policy_keeps_the_engine_identity ... ok
+test compatibility::tests::active_matching_requires_site_and_engine_range ... ok
+test compatibility::tests::shipped_registry_is_valid_reviewed_data ... ok
+test config_projection::tests::editor_argv_requires_one_complete_file_placeholder ... ok
+test config_projection::tests::lookup_preserves_the_typed_value_at_a_dotted_path ... ok
+test desktop_portals::tests::exposes_only_known_capabilities_after_the_service_is_available ... ok
+test desktop_preferences::tests::projections_keep_only_known_statuses_and_valid_values ... ok
+test diagnostics::tests::action_errors_are_summarized_without_audit_identifiers ... ok
+test diagnostics::tests::dictionary_inventory_redacts_paths_and_deduplicates_formats ... ok
+test diagnostics::tests::engine_update_policy_distinguishes_qualified_and_unqualified_versions ... ok
+test diagnostics::tests::gpu_driver_names_are_bounded_and_path_free ... ok
+test diagnostics::tests::live_network_blocking_fact_exposes_only_bounded_counts ... ok
+test diagnostics::tests::media_manifest_rejects_schema_and_capability_overclaims ... ok
+test diagnostics::tests::package_probe_parses_only_a_bounded_version_value ... ok
+test diagnostics::tests::pipewire_version_parser_rejects_unbounded_values ... ok
+test diagnostics::tests::portal_interface_facts_distinguish_available_missing_and_malformed_versions ... ok
+test diagnostics::tests::portal_probe_parses_only_known_interface_versions ... ok
+test diagnostics::tests::reduced_motion_parser_maps_only_boolean_gsettings_values ... ok
+test diagnostics::tests::font_scale_parser_accepts_only_bounded_numeric_values ... ok
+test diagnostics::tests::sandbox_probe_is_bounded_to_process_security_fields ... ok
+test diagnostics::tests::renderer_helper_probe_requires_uniform_security_fields ... ok
+test download_files::tests::file_urls_encode_untrusted_path_delimiters ... ok
+test download_files::tests::parses_only_safe_xdg_download_paths ... ok
+test effect_projection::tests::restore_projection_uses_explicit_placeholder_scroll_coordinates ... ok
+test feature_preferences::tests::projection_bounds_ui_counts_and_preserves_validated_feature_flags ... ok
+test focus_policy::insert_tests::locked_insert_survives_editable_focus_changes_and_blur ... ok
+test focus_policy::insert_tests::transient_context_tracks_the_element_while_locked_tracks_the_session ... ok
+test focus_policy::tests::automatic_entry_only_changes_normal_mode ... ok
+test hint_payload::tests::accepts_bounded_unicode_text_by_byte_and_character_count ... ok
+test hint_payload::tests::accepts_only_closed_typed_region_and_surface_kinds ... ok
+test hint_payload::tests::enforces_family_caps_and_rejects_facet_authority_outside_explicit_families ... ok
+test hint_payload::tests::pair_candidates_require_a_distinct_retained_related_element ... ok
+test hint_payload::tests::rejects_duplicate_or_unsafe_page_script_candidates ... ok
+test hint_payload::tests::rejects_extra_authority_fields_and_invalid_geometry ... ok
+test hint_policy::tests::current_images_and_media_activate_the_element_instead_of_the_source_url ... ok
+test hint_policy::tests::external_hint_targets_have_a_small_safe_name_language ... ok
+test hint_policy::tests::local_hint_palette_permit_is_ui_only_owner_bound_and_one_shot ... ok
+test hint_policy::tests::parses_named_options_and_rejects_invalid_combinations ... ok
+test hint_policy::tests::parses_specialized_first_selection_and_rejects_conflicts ... ok
+test hint_policy::tests::pointer_origin_detection_does_not_treat_alias_names_as_local_commands ... ok
+test hint_policy::tests::pointer_permit_is_local_ui_or_keyboard_owner_bound_and_one_shot ... ok
+test hint_policy::tests::region_surface_families_open_only_the_explicit_action_palette ... ok
+test hyprland::tests::browser_client_discovery_discards_unbounded_or_unidentifiable_rows ... ok
+test hyprland::tests::browser_client_discovery_uses_the_stable_desktop_id ... ok
+test hyprland::tests::disabled_adapter_never_requires_runtime_sockets ... ok
+test hyprland::tests::move_active_window_request_uses_the_validated_workspace ... ok
+test hyprland::tests::request_retries_transient_compositor_restart_errors_with_a_cap ... ok
+test hyprland::tests::version_metadata_keeps_only_bounded_safe_fields ... ok
+test hyprland::tests::workspace_request_is_bounded_and_uses_the_request_socket ... ok
+test hyprland::tests::workspace_selector_rejects_command_like_values ... ok
+test input_validation::tests::rejects_controls_and_oversized_scripts ... ok
+test ipc_params::tests::bounds_pagination_parameters ... ok
+test ipc_params::tests::rejects_unknown_fields_and_invalid_types ... ok
+test ipc_response::tests::action_failures_keep_codes_and_categories_structured ... ok
+test ipc_response::tests::query_failures_map_each_outcome_to_a_stable_public_code ... ok
+test ipc_route::tests::rejects_ipc_spoofing_local_interaction_sources_and_preserves_cli ... ok
+test ipc_route::tests::rejects_unknown_context_fields_and_invalid_target_combinations ... ok
+test ipc_schema::tests::exposes_exact_known_command_fields_and_closes_unknown_commands ... ok
+test ipc_schema::tests::rejects_invalid_cross_field_hint_and_yank_requests ... ok
+test ipc_schema::tests::rejects_unknown_and_mistyped_common_envelope_fields ... ok
+test ipc_transport::tests::hello_advertises_discoverable_query_and_activation_methods ... ok
+test ipc_transport::tests::server_queues_requests_for_the_qt_poller ... ok
+test link_cleaning_policy::tests::accepted_candidates_store_bounded_conditional_metadata ... ok
+test link_cleaning_policy::tests::diagnostics_expose_revision_without_corpus_urls ... ok
+test link_cleaning_policy::tests::downloaded_candidate_is_atomic_and_invalid_candidate_keeps_last_good ... ok
+test link_cleaning_policy::tests::shipped_bundle_checksum_and_corpus_are_valid ... ok
+test logging::tests::action_records_are_redacted_bounded_and_level_filtered ... ok
+test logging::tests::log_file_symlinks_are_rejected ... ok
+test logging::tests::opening_an_oversized_log_rotates_before_new_events ... ok
+test logging::tests::rotation_keeps_the_configured_number_of_files ... ok
+test macro_policy::tests::repeatable_commands_and_registers_are_bounded ... ok
+test maintenance::tests::default_policy_has_no_hidden_browser_network ... ok
+test maintenance::tests::normal_profile_report_distinguishes_opt_in_push_and_blocklist_refresh ... ok
+test mixed_policy_runtime::tests::effective_policy_keeps_layer_and_site_precedence ... ok
+test mixed_policy_runtime::tests::synchronous_route_preserves_pending_browser_count_and_keychain ... ok
+test native_files::tests::cursor_conversion_is_stable_for_non_bmp_characters ... ok
+test native_files::tests::headers_are_bounded_and_control_free ... ok
+test native_prompt_lease::tests::editing_restore_requires_the_exact_observed_frame_context_and_editability ... ok
+test native_prompt_lease::tests::nested_prompts_complete_in_lifo_order_and_only_outer_can_restore ... ok
+test native_prompt_lease::tests::only_owner_bound_persistent_or_editing_modes_are_candidates ... ok
+test native_prompt_lease::tests::out_of_order_completion_clears_the_stack_and_stale_completion_is_noop ... ok
+test native_prompt_lease::tests::owner_epoch_configuration_and_policy_changes_reject_restore ... ok
+test native_prompt_lease::tests::prompt_categories_are_closed_and_bounded ... ok
+test native_prompt_lease::tests::stack_is_bounded_and_invalidates_when_depth_is_exceeded ... ok
+test navigation_policy::tests::redirect_chains_are_recorded_unless_navigation_is_a_traversal ... ok
+test navigation_policy::tests::search_resolution_uses_the_typed_configuration_graph ... ok
+test network_policy::tests::adblock_ffi_boundary_returns_match_provenance_and_releases ... ok
+test network_policy::tests::explicit_https_sources_use_stable_opaque_cache_ids ... ok
+test network_policy::tests::host_rules_are_conservative_and_bounded ... ok
+test network_policy::tests::invalid_utf8_is_reported_as_a_compile_failure ... ok
+test network_policy::tests::loads_named_cached_list_with_explicit_exception ... ok
+test network_policy::tests::maintained_abp_engine_matches_loopback_fixture_paths ... ok
+test network_policy::tests::maintained_abp_engine_matches_url_type_and_exception_options ... ok
+test network_policy::tests::malformed_validator_metadata_is_ignored_without_disabling_the_list ... ok
+test network_policy::tests::parses_bounded_host_scoped_cosmetic_rules_and_exceptions ... ok
+test network_policy::tests::parses_host_rules_and_exceptions_but_ignores_cosmetic_rules ... ok
+test network_policy::tests::security_deny_hosts_survive_disabled_adblocking ... ok
+test open_policy::tests::clean_input_accepts_an_option_terminator ... ok
+test open_policy::tests::interactive_open_normalizes_current_and_keeps_route_context ... ok
+test operation_policy::tests::action_ids_accept_only_bounded_untrusted_values ... ok
+test operation_policy::tests::audit_record_has_only_the_public_ledger_fields ... ok
+test operation_policy::tests::status_classification_and_terminal_states_are_stable ... ok
+test page_document_identity::tests::document_id_input_is_bounded_and_rejects_controls ... ok
+test page_document_identity::tests::identity_proof_is_exact_and_scoped_to_one_tab ... ok
+test page_document_identity::tests::only_proven_persistent_pass_through_can_be_restored ... ok
+test presentation_text::tests::bounds_preserve_utf8_boundaries ... ok
+test presentation_text::tests::sanitization_neutralizes_controls_and_directional_isolates ... ok
+test process_output::tests::redacts_tokens_without_preserving_controls_or_urls_with_secrets ... ok
+test profile_workers::tests::profile_list_values_keep_the_name_and_label_boundary ... ok
+test runtime_facts::tests::chromium_facts_are_bounded_and_explicit ... ok
+test selector_validation::tests::config_check_includes_every_declared_profile_policy ... ok
+test selector_validation::tests::selector_callback_decision_rejects_stale_and_invalid_candidates ... ok
+test selector_validation::tests::validation_items_cover_layers_and_deduplicate_css_syntax_checks ... ok
+test settings_presentation::tests::presentation_rows_use_registry_scope_and_apply_metadata ... ok
+test settings_presentation::tests::rows_cross_the_qml_boundary_as_structured_records ... ok
+test settings_presentation::tests::rows_follow_the_authoritative_registry_and_effective_values ... ok
+test settings_presentation::tests::statusbar_visibility_is_live_and_exposes_the_supported_policies ... ok
+test single_flight::tests::enforces_single_flight_and_accepts_the_next_request_after_polling ... ok
+test switcher_index::tests::index_is_profile_scoped_and_cancellation_aware ... ok
+test switcher_presentation::tests::projection_requires_the_complete_typed_row_contract ... ok
+test tests::accessibility_surface_reports_theme_contrast_and_reduced_motion ... ok
+test tests::account_flows_keep_tabs_and_popups_on_the_opener_profile ... ok
+test tests::action_audit_event_is_structured_and_contains_only_bounded_ledger_fields ... ok
+test tests::action_capabilities_are_declared_and_subjects_revalidate ... ok
+test tests::action_command_maps_subject_and_verb_to_a_registered_executor ... ok
+test tests::action_failures_have_structured_redacted_details ... ok
+test tests::action_url_inputs_use_the_shared_untrusted_argument_bound ... ok
+test tests::activation_uses_qt_request_and_reports_unknown_compositor_outcomes ... ok
+test tests::all_hints_cover_qutebrowser_control_families_and_activate_controls ... ok
+test diagnostics::tests::snapshot_has_explicit_statuses_and_privacy_contract ... ok
+test diagnostics::tests::display_probe_never_returns_the_display_name ... ok
+test tests::binding_commands_use_typed_mode_and_keychain_arguments ... ok
+test tests::background_link_navigation_captures_the_source_journey_node ... ok
+test tests::authentication_and_client_certificates_stay_in_native_engine_prompts ... ok
+test tests::binding_help_component_renders_rows_and_emits_root_owned_intents ... ok
+test tests::blocking_policy_projection_is_separate_from_the_qt_bootstrap ... ok
+test tests::blocking_site_host_accepts_safe_http_authorities ... ok
+test tests::blocking_status_counts_security_deny_rules_without_exposing_hosts ... ok
+test tests::bookmark_and_quickmark_creation_actions_map_typed_arguments ... ok
+test tests::blocking_evidence_uses_bounded_native_rows_not_qml_json ... ok
+test tests::browser_key_router_filters_before_webengine_and_requires_explicit_acceptance ... ok
+test tests::browser_owned_dialogs_share_the_command_first_modal_contract ... ok
+test tests::captured_target_validation_is_not_limited_to_the_focused_tab ... ok
+test tests::caret_requests_cross_the_qml_boundary_as_typed_fields ... ok
+test tests::chained_scroll_target_policy_actions_keep_the_issuing_tab_identity ... ok
+test tests::chrome_presentation_controller_projects_browser_ui_facts_without_navigation_authority ... ok
+test tests::clipboard_navigation_input_is_bounded_and_rejects_failures ... ok
+test tests::closed_tab_undo_limit_respects_configured_zero_and_spec_cap ... ok
+test tests::command_completion_popup_has_accessible_popup_semantics ... ok
+test tests::command_line_component_emits_editing_intents_without_executing_commands ... ok
+test tests::blocking_host_lists_cross_the_qml_boundary_as_string_lists ... ok
+test tests::completed_hints_pop_the_core_mode_stack_after_page_independent_actions ... ok
+test tests::config_editor_captures_bounded_stderr ... ok
+test tests::command_outcomes_remain_visible_and_detached_windows_pump_runtime_work ... ok
+test tests::config_reload_worker_loads_and_validates_off_thread ... ok
+test tests::config_watcher_notifies_after_atomic_file_replacement_with_polling_fallback ... ok
+test tests::configured_editor_argv_replaces_only_the_complete_file_argument ... ok
+test tests::configured_selection_search_uses_https_data_only_templates ... ok
+test tests::config_write_worker_creates_private_non_overwriting_file ... ok
+test tests::configured_target_discovery_exposes_url_and_tab_subjects ... ok
+test tests::configured_target_availability_is_subject_specific ... ok
+test tests::configured_target_discovery_preserves_declared_subjects ... ok
+test tests::browser_owned_script_resource_has_a_versioned_bounded_contract ... ok
+test tests::context_menu_uses_a_compact_keyboard_operable_menu ... ok
+test tests::context_move_choices_are_a_typed_qml_projection ... ok
+test tests::context_routes_are_pre_navigation_and_browser_confirmed ... ok
+test tests::context_routes_validate_before_assigning_window_membership ... ok
+test tests::copy_actions_map_to_yank_and_preserve_clean_intent ... ok
+test tests::current_session_paths_prefer_window_snapshots_and_retain_legacy_fallback ... ok
+test tests::context_entry_restores_safe_descriptors_lazily_and_focuses_live_members ... ok
+test tests::context_menus_use_engine_actions_and_bound_spellcheck_data ... ok
+test tests::detached_devtools_imports_the_application_window_type_it_uses ... ok
+test tests::desktop_multiple_url_launches_open_separate_startup_tabs ... ok
+test tests::diagnostics_component_is_intent_only_and_replaces_the_inline_surface ... ok
+test tests::display_url_redacts_credentials_secrets_and_directional_controls ... ok
+test tests::download_activation_requests_cross_the_qml_boundary_as_typed_fields ... ok
+test tests::download_desktop_actions_cross_the_qml_boundary_as_a_typed_uri ... ok
+test tests::default_chrome_is_compact_modal_and_content_first ... ok
+test tests::diagnostics_export_requires_explicit_local_save_and_never_overwrites ... ok
+test tests::durable_site_doctor_override_uses_a_typed_toml_array ... ok
+test tests::download_destination_uses_encoded_file_urls ... ok
+test tests::editor_completion_records_cross_the_qml_boundary_as_typed_fields ... ok
+test tests::download_manager_component_renders_model_and_emits_root_owned_intents ... ok
+test tests::editor_write_worker_creates_private_scratch_file_off_thread ... ok
+test tests::editor_process_termination_reaps_the_child ... ok
+test tests::enhanced_hint_presentation_keeps_keyboard_policy_out_of_qml ... ok
+test tests::ephemeral_hint_target_creates_a_typed_new_window_action ... ok
+test tests::external_action_ids_are_strictly_bounded_and_typed ... ok
+test tests::every_builtin_action_example_maps_through_typed_parser ... ok
+test tests::external_actions_cross_the_qml_boundary_as_typed_columns ... ok
+test tests::external_editor_rejects_rich_contenteditable_controls ... ok
+test tests::external_navigation_has_a_native_confirmation_boundary ... ok
+test tests::extracted_prompt_components_render_state_and_emit_intents_without_engine_policy ... ok
+test tests::external_window_focus_reports_bounded_activation_outcome ... ok
+test tests::extracted_runtime_scripts_are_registered_beneath_the_qml_resource_root ... ok
+test tests::file_urls_encode_download_paths_without_leaking_raw_delimiters ... ok
+test tests::focus_overlay_controller_owns_capture_state_and_only_restores_live_targets ... ok
+test tests::foreground_hint_tab_materializes_the_view_before_navigation ... ok
+test tests::foreground_hints_complete_directly_without_redispatching_a_normal_mode_command ... ok
+test tests::hint_collection_accepts_qt_variant_candidate_lists ... ok
+test tests::fullscreen_command_and_page_request_share_the_window_boundary ... ok
+test tests::hint_overlay_component_renders_candidates_and_emits_root_owned_intents ... ok
+test tests::hint_payload_carries_unique_bounded_element_ids ... ok
+test tests::history_clear_action_preserves_bounded_filters_and_confirmation ... ok
+test tests::history_commands_use_typed_bounded_counts ... ok
+test tests::hint_results_are_not_discarded_based_on_renderer_callback_latency ... ok
+test tests::interactive_clean_link_rejects_background_target ... ok
+test tests::interactive_open_options_preserve_typed_url_and_route ... ok
+test tests::ephemeral_profile_uses_off_the_record_memory_only_setup ... ok
+test tests::ipc_blocking_toggle_uses_typed_site_flag ... ok
+test tests::ipc_caret_commands_use_typed_fields ... ok
+test tests::ipc_command_failure_preserves_context_without_sensitive_details ... ok
+test tests::ipc_commands_use_typed_arguments_without_shell_parsing ... ok
+test tests::ipc_configuration_lifecycle_commands_use_typed_paths_and_no_arguments ... ok
+test tests::ipc_command_context_captures_route_and_privacy_metadata ... ok
+test tests::ipc_context_commands_use_explicit_typed_fields ... ok
+test tests::ipc_copy_commands_use_safe_typed_url_arguments ... ok
+test tests::ipc_devtools_command_uses_typed_detach_flag ... ok
+test tests::ipc_get_command_uses_typed_key_url_and_explain_fields ... ok
+test tests::ipc_jseval_command_uses_typed_world_and_script_fields ... ok
+test tests::ipc_hint_commands_use_a_bounded_kind_selector ... ok
+test tests::ipc_link_commands_use_one_optional_typed_url ... ok
+test tests::ipc_library_commands_use_typed_fields ... ok
+test tests::ipc_passthrough_modes_keep_canonical_names_and_aliases ... ok
+test tests::inherited_runtime_layers_cross_component_scopes_through_explicit_properties ... ok
+test tests::ipc_permission_commands_use_typed_origin_and_permission_fields ... ok
+test tests::ipc_print_command_is_typed_without_arguments ... ok
+test tests::ipc_print_pdf_command_uses_a_typed_path_field ... ok
+test tests::ipc_profile_create_preserves_ephemeral_flag_as_typed_data ... ok
+test tests::ipc_profile_open_uses_a_typed_name_and_optional_input ... ok
+test diagnostics::tests::primary_selection_runtime_fact_distinguishes_available_and_missing ... ok
+test tests::ipc_query_boundaries_reject_unknown_and_mistyped_fields ... ok
+test tests::ipc_save_page_command_uses_a_typed_path_field ... ok
+test tests::ipc_script_run_command_uses_a_typed_name_field ... ok
+test tests::ipc_site_doctor_commands_use_typed_experiment_fields ... ok
+test tests::ipc_spawn_commands_accept_one_userscript_name ... ok
+test tests::ipc_spawn_commands_use_a_typed_argv_vector ... ok
+test tests::ipc_support_commands_use_typed_help_and_empty_arguments ... ok
+test tests::ipc_site_status_accepts_an_optional_stable_tab_target ... ok
+test tests::ipc_url_output_removes_credentials_auth_secrets_and_fragments ... ok
+test tests::ipc_view_source_command_is_typed_without_arguments ... ok
+test tests::ipc_open_context_routes_preserve_new_window_context_metadata ... ok
+test tests::ipc_window_move_requires_bounded_id_and_workspace_arguments ... ok
+test tests::journey_graph_component_only_renders_root_owned_graph_models ... ok
+test tests::journey_export_requires_preview_and_explicit_local_destination ... ok
+test tests::jseval_script_validation_allows_js_whitespace_but_bounds_controls_and_size ... ok
+test tests::learning_mode_requests_are_per_window_state_transitions ... ok
+test tests::journey_graph_edges_cross_the_qml_boundary_as_typed_columns ... ok
+test tests::journey_search_component_emits_queries_without_constructing_commands ... ok
+test tests::library_listing_actions_map_without_arguments ... ok
+test tests::library_entries_component_preserves_row_state_and_emits_root_owned_operations ... ok
+test tests::jseval_requests_cross_the_qml_boundary_as_typed_fields ... ok
+test tests::live_document_capability_requires_a_healthy_current_tab ... ok
+test tests::live_window_registry_decoder_requires_complete_typed_rows ... ok
+test tests::library_manager_composes_presentation_and_forwards_every_operation_to_the_root ... ok
+test tests::link_preview_component_renders_preview_data_and_emits_root_owned_intents ... ok
+test tests::local_empty_binding_commands_use_the_full_executor ... ok
+test tests::library_preview_components_render_models_and_emit_root_owned_intents ... ok
+test tests::live_window_registry_never_uses_qml_json ... ok
+test tests::mixed_policy_tokens_match_the_existing_qml_logical_vocabulary ... ok
+test tests::modal_navigation_bindings_open_an_editable_command_line ... ok
+test tests::macro_register_gestures_are_native_and_timeout_bounded ... ok
+test tests::native_pointer_hint_waits_for_enter_release_and_uses_the_existing_adapter_once ... ok
+test tests::native_prompt_ownership_precedes_media_and_mixed_key_routing ... ok
+test tests::media_keys_and_mpris_use_one_engine_toggle_path ... ok
+test tests::native_window_close_requires_a_user_decision_before_shutdown_checks ... ok
+test tests::network_policy_worker_loads_cached_policy_off_thread ... ok
+test tests::navigation_uses_configured_search_engines_for_keywords_and_fallback ... ok
+test tests::macro_status_is_redacted_and_rust_formats_its_presentation_text ... ok
+test tests::one_shot_background_hints_use_the_background_route_and_exit_hint_mode ... ok
+test tests::operation_events_publish_only_bounded_status_categories ... ok
+test tests::navigation_failure_surface_keeps_safe_context_without_retry_action ... ok
+test tests::notifications_require_consent_and_push_is_explicitly_opt_in ... ok
+test tests::page_focus_requires_a_recent_user_gesture_before_insert_mode ... ok
+test tests::page_titles_are_sanitized_and_bounded_before_storage ... ok
+test tests::page_backed_hints_close_after_the_renderer_consumes_the_retained_record ... ok
+test tests::performance::s17_rust_hint_pipeline_performance ... ignored, opt-in C17 performance qualification; invoked explicitly by the S17 benchmark command
+test tests::page_authority_boundary_has_no_web_channel_or_privileged_page_object ... ok
+test tests::permission_session_key_is_scoped_to_profile_uuid_and_lifetime ... ok
+test tests::page_userscript_metadata_crosses_the_qml_boundary_as_typed_columns ... ok
+test tests::presentation_helper_resources_have_no_runtime_or_page_authority ... ok
+test tests::permission_revocation_reloads_all_registered_matching_views ... ok
+test tests::private_editor_artifact_cleanup_removes_only_its_managed_directory ... ok
+test tests::private_history_is_bounded_deduplicated_and_origin_clearable ... ok
+test tests::primary_web_engine_profile_uses_selected_profile_namespace ... ok
+test tests::profile_delete_command_uses_the_existing_preview_boundary ... ok
+test tests::profile_delete_preview_component_only_emits_confirmation_intents ... ok
+test tests::process_group_termination_stops_a_child_descendant ... ok
+test tests::profile_delete_worker_removes_data_and_registry_off_thread ... ok
+test tests::profile_list_worker_reads_registry_off_thread ... ok
+test tests::profile_preview_worker_reads_delete_metadata_off_thread ... ok
+test tests::popup_windows_capture_opener_context_identity ... ok
+test tests::qml_json_contract_allowlist_is_explicit ... ok
+test tests::profile_manager_component_renders_model_and_emits_root_owned_intents ... ok
+test tests::qml_qt_request_resolution_is_centralized_and_bounded ... ok
+test tests::qt_url_conversion_is_strict_before_rust_policy_canonicalization ... ok
+test tests::rapid_download_hints_queue_the_validated_download_and_keep_hint_mode ... ok
+test tests::qml_idle_path_is_event_driven_and_devtools_are_lazy ... ok
+test tests::redirect_observation_is_distinct_from_fragment_changes_and_traversal ... ok
+test tests::normal_input_uses_logical_unmodified_text_and_preserves_unicode_fields ... ok
+test tests::registered_command_execution_enters_the_runtime_once ... ok
+test tests::renderer_termination_is_reduced_before_qml_recovery_surface ... ok
+test tests::rapid_hint_confirmation_component_emits_root_owned_intents ... ok
+test tests::reload_command_uses_typed_bypass_cache ... ok
+test tests::request_presentation_controller_bounds_dialog_text_and_has_no_resolution_authority ... ok
+test tests::request_interceptor_uses_bounded_engine_context_without_ui_fallback ... ok
+test tests::same_document_history_avoids_pending_load_duplicates ... ok
+test tests::reopen_window_confirmation_component_only_emits_root_owned_intents ... ok
+test tests::scalar_feature_preferences_cross_the_qml_boundary_without_config_parsing ... ok
+test tests::scaling_uses_qt_logical_units_and_bounds_large_font_overlays ... ok
+test tests::scroll_command_options_reject_duplicates_and_wrong_order ... ok
+test tests::qml_submits_runtime_intents_instead_of_writing_runtime_state ... ok
+test tests::required_desktop_portals_gate_file_selection_asynchronously ... ok
+test tests::search_command_uses_typed_query_direction_and_case ... ok
+test tests::search_next_options_accept_flags_in_any_order_and_reject_duplicates ... ok
+test tests::search_bar_component_emits_intents_without_page_or_engine_policy ... ok
+test tests::selector_validation_uses_a_browser_owned_webengine_document ... ok
+test tests::session_management_actions_map_typed_arguments ... ok
+test tests::screen_capture_keeps_scoped_indicator_and_reload_stop_boundary ... ok
+test tests::security_deny_hosts_are_separate_from_adblock_bypasses ... ok
+test tests::scroll_target_command_uses_the_shared_executor_and_owned_view_actions ... ok
+test tests::session_manager_component_renders_model_and_emits_root_owned_intents ... ok
+test tests::shutdown_gate_only_blocks_mutating_ipc_methods ... ok
+test tests::setting_rows_component_emits_intents_without_reaching_the_runtime_bridge ... ok
+test tests::site_doctor_experiment_deadline_is_bounded ... ok
+test tests::site_data_clear_is_bound_to_its_originating_view ... ok
+test tests::session_preview_component_renders_state_and_emits_root_owned_intents ... ok
+test tests::site_ledger_exposes_bounded_userscript_metadata_without_sources ... ok
+test tests::site_ledger_uses_on_demand_redacted_interaction_status ... ok
+test tests::site_origin_is_normalized_and_never_keeps_path_or_credentials ... ok
+test tests::site_ledger_component_renders_data_and_emits_bridge_intents ... ok
+test tests::settings_component_composes_schema_rows_and_keeps_mutations_at_the_root ... ok
+test tests::site_rules_cross_the_qml_boundary_as_typed_properties ... ok
+test tests::staged_download_finalization_is_exclusive_and_cross_filesystem_safe ... ok
+test tests::spatial_grid_owns_complete_input_gestures_and_stale_surface_callbacks ... ok
+test tests::site_doctor_presentation_uses_typed_properties_not_qml_json ... ok
+test tests::startup_profile_overrides_reach_the_browser_ui ... ok
+test tests::statusbar_visibility_is_mode_aware_in_every_browser_window ... ok
+test tests::switcher_cache_requires_the_same_revisions_and_snapshot_inputs ... ok
+test tests::switcher_command_parsing_is_scoped_and_bounded ... ok
+test tests::status_surfaces_report_bounded_navigation_and_activity_state ... ok
+test tests::switcher_component_exposes_focus_and_query_without_runtime_policy ... ok
+test tests::switcher_context_boost_is_bounded_and_neutral_without_a_context ... ok
+test tests::switcher_external_actions_share_bounded_available_target_policy ... ok
+test tests::switcher_page_selection_preserves_order_and_total ... ok
+test tests::switcher_result_limit_uses_the_validated_setting_and_safe_fallback ... ok
+test tests::switcher_results_component_keeps_navigation_and_dispatch_at_the_root_boundary ... ok
+test tests::switcher_input_coalesces_refreshes_and_cancels_on_close ... ok
+test tests::switcher_surface_exposes_selection_state_and_scaled_keyboard_navigation ... ok
+test tests::tab_give_action_maps_the_validated_target_window ... ok
+test tests::tab_close_command_uses_optional_typed_id_and_count ... ok
+test tests::tab_open_action_maps_foreground_and_background_inputs ... ok
+test tests::tab_open_command_uses_typed_input_and_background_target ... ok
+test tests::tab_projection_changes_use_qt_property_setters ... ok
+test tests::target_search_is_local_native_ranked_and_identity_bound ... ok
+test tests::terminal_operation_states_cannot_be_cancelled_again ... ok
+test tests::spatial_grid_reports_ready_pending_and_terminal_outcomes ... ok
+test tests::typed_actions_enforce_declared_argument_types ... ok
+test tests::typed_actions_enforce_their_registry_argument_schema ... ok
+test tests::typed_actions_validate_url_arguments_at_the_action_boundary ... ok
+test tests::typed_history_clear_preserves_bounded_filters ... ok
+test tests::typed_paste_open_preserves_target_and_primary_channel ... ok
+test tests::typed_tab_move_context_allows_active_or_indexed_targets ... ok
+test tests::ui_action_values_use_the_shared_typed_argument_boundary ... ok
+test tests::userscript_action_arguments_follow_subject_schema ... ok
+test tests::tab_give_command_preserves_target_and_queues_live_transfer ... ok
+test tests::userscript_discovery_exposes_shared_action_metadata ... ok
+test tests::userscript_discovery_matches_storage_capability_to_subject ... ok
+test tests::userscript_actions_cross_the_qml_boundary_as_typed_columns ... ok
+test tests::switcher_actions_have_safe_defaults_and_kind_allowlists ... ok
+test tests::userscript_inventory_component_keeps_enable_rollback_at_the_root_boundary ... ok
+test tests::tls_errors_are_blocked_by_default_and_only_allow_scoped_confirmation ... ok
+test tests::userscript_live_subjects_capture_stable_targets ... ok
+test tests::userscript_inventory_crosses_the_qml_boundary_as_typed_columns ... ok
+test tests::userscript_manager_worker_reads_and_updates_off_thread ... ok
+test tests::webengine_surface_recovery_is_frame_synchronized_and_wired_to_every_window ... ok
+test tests::window_new_action_maps_profile_and_private_options ... ok
+test tests::window_registry_controller_keeps_ephemeral_owners_per_window_token ... ok
+test tests::xdg_user_dirs_resolve_downloads_without_shell_expansion ... ok
+test theme_presentation::tests::every_projected_qml_color_is_opaque_rgb ... ok
+test theme_presentation::tests::projects_opaque_surfaces_and_readable_semantic_text ... ok
+test url_presentation::tests::blocking_hosts_reject_unsafe_authorities ... ok
+test url_presentation::tests::link_preview_projection_matches_the_ipc_safe_parameter_view ... ok
+test url_presentation::tests::query_names_stop_at_fragments_and_skip_empty_items ... ok
+test url_safety::tests::new_native_tabs_use_only_their_exact_queued_descriptor ... ok
+test url_safety::tests::normalizes_permission_origins_without_credentials_or_paths ... ok
+test tests::window_new_command_uses_typed_profile_and_private_options ... ok
+test url_safety::tests::redacts_encoded_and_malformed_secret_keys ... ok
+test tests::userscript_stderr_is_bounded_redacted_and_explicit ... ok
+test userscript::tests::install_manifest_copies_relative_page_assets_without_overwriting ... ok
+test userscript::tests::installed_script_enable_state_is_atomic_and_affects_matching ... ok
+test userscript::tests::manifest_validation_rejects_duplicate_context_permissions ... ok
+test userscript::tests::manifest_validation_accepts_stored_subject_fields ... ok
+test userscript::tests::manifest_validation_rejects_oversized_argv_values ... ok
+test userscript::tests::manifest_validation_accepts_typed_window_and_context_fields ... ok
+test userscript::tests::manifest_validation_rejects_relative_path_traversal_but_accepts_dot_prefix ... ok
+test userscript::tests::manifest_validation_rejects_unknown_fields_and_unscoped_actions ... ok
+test userscript::tests::manifest_validation_requires_subject_context_fields ... ok
+test userscript::tests::matching_page_scripts_loads_local_source_and_honors_private_gate ... ok
+test userscript::tests::page_url_patterns_are_bounded_and_excludes_win ... ok
+test userscript::tests::output_parses_allowlisted_typed_actions ... ok
+test userscript::tests::output_requires_declared_message_and_enforces_limits ... ok
+test userscript::tests::page_world_metadata_requires_explicit_scope_and_source ... ok
+test userscript::tests::registered_actions_are_stable_and_removed_with_the_manifest ... ok
+test userscript::tests::remove_deletes_manifest_and_private_assets ... ok
+test userscript_catalog::tests::projection_keeps_the_userscript_boundary_typed ... ok
+test userscript::tests::remove_refuses_symlinked_private_assets_and_keeps_manifest ... ok
+test userscript_catalog::tests::availability_enforces_storage_and_private_boundaries ... ok
+test userscript_catalog::tests::subjects_map_to_their_stable_argument_names ... ok
+test userscript_io::tests::bounds_untrusted_child_output_without_returning_a_partial_payload ... ok
+test tests::webauthn_uses_engine_state_and_clears_pin_input ... ok
+
+test result: ok. 441 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 1.15s
+
+   Doc-tests ferric_browser_engine_qt
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR) 
+-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR) 
+-- Configuring done (0.7s)
+-- Generating done (0.0s)
+-- Build files have been written to: /home/tom/Projects/RustBrowser/target/qml-tests
+[  0%] Built target qml_tests_autogen_timestamp_deps
+[ 25%] Built target qml_tests_autogen
+[100%] Built target qml_tests
+********* Start testing of ferric_qml_tests *********
+Config: Using QtTest library 6.11.2, Qt 6.11.2 (x86_64-little_endian-lp64 shared (dynamic) release build; by GCC 16.2.1 20260810), omarchy 4.0.4
+PASS   : ferric_qml_tests::ChromeInteractions::initTestCase()
+PASS   : ferric_qml_tests::ChromeInteractions::test_active_tab_is_revealed_in_both_orientations()
+PASS   : ferric_qml_tests::ChromeInteractions::test_close_button_retains_hover_and_does_not_select()
+PASS   : ferric_qml_tests::ChromeInteractions::test_command_feedback_is_visible_and_editing_clears_it()
+PASS   : ferric_qml_tests::ChromeInteractions::test_completion_selection_replaces_only_the_active_token()
+PASS   : ferric_qml_tests::ChromeInteractions::test_completion_surface_is_opaque_over_page_content()
+PASS   : ferric_qml_tests::ChromeInteractions::test_context_accent_matching_surface_is_readable()
+PASS   : ferric_qml_tests::ChromeInteractions::test_context_menu_is_compact_keyboard_navigable_and_selectable()
+PASS   : ferric_qml_tests::ChromeInteractions::test_enum_options_reach_the_editor()
+PASS   : ferric_qml_tests::ChromeInteractions::test_few_tabs_use_available_strip_width()
+PASS   : ferric_qml_tests::ChromeInteractions::test_grid_double_click_shortcut_is_explicit_and_mode_local()
+QWARN  : ferric_qml_tests::ChromeInteractions::test_guide_help_escape_returns_focus_before_closing() file:///home/tom/Projects/RustBrowser/crates/ferric-browser-engine-qt/qml/components/FerricStartField.qml:7: ReferenceError: implicitContentHeight is not defined
+PASS   : ferric_qml_tests::ChromeInteractions::test_guide_help_escape_returns_focus_before_closing()
+PASS   : ferric_qml_tests::ChromeInteractions::test_history_list_owns_navigation_and_activates_selection()
+PASS   : ferric_qml_tests::ChromeInteractions::test_insert_entry_keys_remain_distinct_on_webengine_paths()
+PASS   : ferric_qml_tests::ChromeInteractions::test_large_font_rows_expand_to_fit_content()
+PASS   : ferric_qml_tests::ChromeInteractions::test_library_escape_works_when_a_child_control_has_focus()
+PASS   : ferric_qml_tests::ChromeInteractions::test_modified_space_does_not_claim_other_shortcuts()
+PASS   : ferric_qml_tests::ChromeInteractions::test_mouse_wheel_on_tab_strip_requests_switch()
+PASS   : ferric_qml_tests::ChromeInteractions::test_native_prompt_file_chooser_accept_and_cancel_by_keyboard()
+PASS   : ferric_qml_tests::ChromeInteractions::test_overlay_focus_wins_deferred_command_mode_restore()
+PASS   : ferric_qml_tests::ChromeInteractions::test_passthrough_status_feedback_in_both_windows()
+PASS   : ferric_qml_tests::ChromeInteractions::test_recovery_banner_has_window_shortcuts()
+PASS   : ferric_qml_tests::ChromeInteractions::test_shared_command_dialog_supports_keyboard_and_mouse()
+PASS   : ferric_qml_tests::ChromeInteractions::test_shifted_ascii_key_normalization_preserves_H_binding()
+PASS   : ferric_qml_tests::ChromeInteractions::test_shutdown_decision_is_keyboard_operable()
+PASS   : ferric_qml_tests::ChromeInteractions::test_siteLedgerInteractionStatusIsOnDemandAndRedacted()
+PASS   : ferric_qml_tests::ChromeInteractions::test_spatial_grid_discloses_unqualified_double_click_gate()
+PASS   : ferric_qml_tests::ChromeInteractions::test_spatial_grid_hides_labels_when_cells_become_too_small()
+PASS   : ferric_qml_tests::ChromeInteractions::test_spatial_grid_maps_nonzero_scope_into_full_view()
+PASS   : ferric_qml_tests::ChromeInteractions::test_start_page_cycle_key_keeps_both_modifiers()
+PASS   : ferric_qml_tests::ChromeInteractions::test_statusbar_visibility_matches_in_mode_policy()
+PASS   : ferric_qml_tests::ChromeInteractions::test_switcher_actions_do_not_activate_the_result()
+PASS   : ferric_qml_tests::ChromeInteractions::test_target_search_selection_tracks_identity_and_action_meaning()
+PASS   : ferric_qml_tests::ChromeInteractions::cleanupTestCase()
+QWARN  : ferric_qml_tests::UnknownTestFunc() QRhiGles2: Failed to create temporary context
+QWARN  : ferric_qml_tests::UnknownTestFunc() QRhiGles2: Failed to create context
+QWARN  : ferric_qml_tests::UnknownTestFunc() Failed to create RHI for backend: OpenGL
+QWARN  : ferric_qml_tests::UnknownTestFunc() GPUInfo not initialized on GpuInfoUpdate
+PASS   : ferric_qml_tests::HintGeometry::initTestCase()
+PASS   : ferric_qml_tests::HintGeometry::test_body_overflow_propagates_to_viewport()
+PASS   : ferric_qml_tests::HintGeometry::test_body_remains_clipping_box_when_root_owns_overflow()
+PASS   : ferric_qml_tests::HintGeometry::test_contained_body_remains_a_clipping_box()
+PASS   : ferric_qml_tests::HintGeometry::test_pointer_coordinates_map_css_viewport_to_qt_logical_view_at_zoom()
+PASS   : ferric_qml_tests::HintGeometry::test_pointer_preflight_requires_the_retained_uncovered_target()
+PASS   : ferric_qml_tests::HintGeometry::test_root_overflow_propagates_to_viewport()
+PASS   : ferric_qml_tests::HintGeometry::test_same_origin_frame_uses_its_own_viewport()
+PASS   : ferric_qml_tests::HintGeometry::cleanupTestCase()
+PASS   : ferric_qml_tests::NativeTabContent::initTestCase()
+PASS   : ferric_qml_tests::NativeTabContent::test_browser_back_corrects_a_stale_anchor_without_duplicating_its_target()
+PASS   : ferric_qml_tests::NativeTabContent::test_coalesced_url_notifications_recover_the_intermediate_engine_entry()
+PASS   : ferric_qml_tests::NativeTabContent::test_delayed_identity_result_is_rejected_after_navigation_start()
+PASS   : ferric_qml_tests::NativeTabContent::test_document_navigation_cannot_be_recorded_as_same_document()
+PASS   : ferric_qml_tests::NativeTabContent::test_document_replacement_uses_baseline_url_change_path()
+PASS   : ferric_qml_tests::NativeTabContent::test_engine_back_waits_for_the_history_model_and_preserves_forward()
+PASS   : ferric_qml_tests::NativeTabContent::test_engine_model_corrects_an_anchor_captured_before_history_updated()
+PASS   : ferric_qml_tests::NativeTabContent::test_history_probe_cannot_overwrite_a_new_native_destination()
+PASS   : ferric_qml_tests::NativeTabContent::test_model_sync_and_navigation_action_wait_for_one_commit()
+PASS   : ferric_qml_tests::NativeTabContent::test_native_branch_does_not_reintroduce_hidden_forward_entries()
+PASS   : ferric_qml_tests::NativeTabContent::test_new_view_cannot_commit_its_placeholder_before_the_navigation_action()
+PASS   : ferric_qml_tests::NativeTabContent::test_rapid_same_document_changes_preserve_each_destination()
+PASS   : ferric_qml_tests::NativeTabContent::test_same_document_engine_back_selects_the_previous_same_url_state()
+PASS   : ferric_qml_tests::NativeTabContent::test_same_document_forward_preserves_the_remaining_forward_branch()
+PASS   : ferric_qml_tests::NativeTabContent::test_same_document_navigation_and_native_traversal_stay_distinct()
+PASS   : ferric_qml_tests::NativeTabContent::test_same_document_url_change_requires_matching_document_identity()
+PASS   : ferric_qml_tests::NativeTabContent::test_same_url_engine_state_keeps_both_history_positions()
+PASS   : ferric_qml_tests::NativeTabContent::test_same_url_forward_and_new_push_have_different_branch_behavior()
+PASS   : ferric_qml_tests::NativeTabContent::cleanupTestCase()
+PASS   : ferric_qml_tests::SelectorSyntaxValidation::initTestCase()
+PASS   : ferric_qml_tests::SelectorSyntaxValidation::test_webengine_accepts_valid_css_selector()
+PASS   : ferric_qml_tests::SelectorSyntaxValidation::test_webengine_rejects_malformed_css_selector()
+PASS   : ferric_qml_tests::SelectorSyntaxValidation::cleanupTestCase()
+PASS   : ferric_qml_tests::StartPage::initTestCase()
+PASS   : ferric_qml_tests::StartPage::test_background_snapshot_cannot_move_numbered_targets()
+PASS   : ferric_qml_tests::StartPage::test_deleted_url_clears_slot_even_when_site_still_exists()
+PASS   : ferric_qml_tests::StartPage::test_guide_disclosure_uses_the_focused_control()
+PASS   : ferric_qml_tests::StartPage::test_guide_filter_keeps_a_useful_empty_state()
+QWARN  : ferric_qml_tests::StartPage::test_guide_groups_shortcuts_without_losing_invocations() file:///home/tom/Projects/RustBrowser/crates/ferric-browser-engine-qt/qml/components/FerricGuide.qml:84: TypeError: Cannot read property 'visible' of null (exception occurred during delayed function evaluation)
+QWARN  : ferric_qml_tests::StartPage::test_guide_groups_shortcuts_without_losing_invocations() file:///home/tom/Projects/RustBrowser/crates/ferric-browser-engine-qt/qml/components/FerricGuide.qml:84: TypeError: Cannot read property 'visible' of null (exception occurred during delayed function evaluation)
+PASS   : ferric_qml_tests::StartPage::test_guide_groups_shortcuts_without_losing_invocations()
+QWARN  : ferric_qml_tests::StartPage::test_guide_reader_is_bounded_and_narrow_back_restores_focus() file:///home/tom/Projects/RustBrowser/crates/ferric-browser-engine-qt/qml/components/FerricGuide.qml:84: TypeError: Cannot read property 'visible' of null (exception occurred during delayed function evaluation)
+QWARN  : ferric_qml_tests::StartPage::test_guide_reader_is_bounded_and_narrow_back_restores_focus() file:///home/tom/Projects/RustBrowser/crates/ferric-browser-engine-qt/qml/components/FerricGuide.qml:84: TypeError: Cannot read property 'visible' of null (exception occurred during delayed function evaluation)
+PASS   : ferric_qml_tests::StartPage::test_guide_reader_is_bounded_and_narrow_back_restores_focus()
+PASS   : ferric_qml_tests::StartPage::test_guide_reader_scroll_and_copy_keep_keyboard_actions_local()
+PASS   : ferric_qml_tests::StartPage::test_guide_selection_shows_article_without_a_reveal_step()
+QWARN  : ferric_qml_tests::StartPage::test_narrow_guide_opens_an_article_with_one_click() file:///home/tom/Projects/RustBrowser/crates/ferric-browser-engine-qt/qml/components/FerricGuide.qml:84: TypeError: Cannot read property 'visible' of null (exception occurred during delayed function evaluation)
+QWARN  : ferric_qml_tests::StartPage::test_narrow_guide_opens_an_article_with_one_click() file:///home/tom/Projects/RustBrowser/crates/ferric-browser-engine-qt/qml/components/FerricGuide.qml:84: TypeError: Cannot read property 'visible' of null (exception occurred during delayed function evaluation)
+PASS   : ferric_qml_tests::StartPage::test_narrow_guide_opens_an_article_with_one_click()
+PASS   : ferric_qml_tests::StartPage::test_number_keys_open_only_populated_grid_slots()
+PASS   : ferric_qml_tests::StartPage::test_only_saved_sites_have_numeric_shortcut_badges()
+PASS   : ferric_qml_tests::StartPage::test_popup_controls_keep_numbers_out_of_grid()
+PASS   : ferric_qml_tests::StartPage::test_profile_switch_clears_tiles_and_waits_for_preference()
+PASS   : ferric_qml_tests::StartPage::test_refresh_waits_for_ranked_result()
+PASS   : ferric_qml_tests::StartPage::test_text_entry_does_not_activate_numbered_targets()
+QWARN  : ferric_qml_tests::StartPage::test_view_buttons_keep_keyboard_activation_local() file:///home/tom/Projects/RustBrowser/crates/ferric-browser-engine-qt/qml/components/FerricGuide.qml:84: TypeError: Cannot read property 'visible' of null (exception occurred during delayed function evaluation)
+PASS   : ferric_qml_tests::StartPage::test_view_buttons_keep_keyboard_activation_local()
+PASS   : ferric_qml_tests::StartPage::test_view_switch_is_explicit_and_saved()
+PASS   : ferric_qml_tests::StartPage::cleanupTestCase()
+PASS   : ferric_qml_tests::WebAppInteraction::initTestCase()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T002_shadow_click()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T002_shadow_focus()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T003_excessive_ancestry()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T003_slot_and_inert()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T003_slot_clipping()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T004_adopted_element()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T004_frame_border_projection()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T004_frame_replaced()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T005_disabled_fieldset()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T005_ineligible(hidden)
+PASS   : ferric_qml_tests::WebAppInteraction::test_T005_ineligible(opacity)
+PASS   : ferric_qml_tests::WebAppInteraction::test_T005_ineligible(disabled)
+PASS   : ferric_qml_tests::WebAppInteraction::test_T005_ineligible(inert)
+PASS   : ferric_qml_tests::WebAppInteraction::test_T005_ineligible(detached)
+PASS   : ferric_qml_tests::WebAppInteraction::test_T005_ineligible(covered)
+PASS   : ferric_qml_tests::WebAppInteraction::test_T005_ineligible(replacement)
+PASS   : ferric_qml_tests::WebAppInteraction::test_T005_transparent_ancestor()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T006_viewport_overflow()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T007_same_url_cover()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T008_focus_uses_focus_eligibility()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T008_normal_focus()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T008_observed_focus()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T009_control_value_privacy()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T009_label_is_literal()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T015_editor_focus_pair()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T016_label_control_pair()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T017_proxy_exclusions_and_identity()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T019_extracted_script_world_isolation()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T020_map_teardown()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T020_proxy_pair_teardown()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T026_document_identity_survives_spa_urls_and_changes_on_replacement()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T031_T032_custom_selector_and_action_boundary()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T031_empty_replace_disables_secondary_discovery()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T033_collection_style_cache_is_pass_local()
+QINFO  : ferric_qml_tests::WebAppInteraction::test_T033_selector_collection_resource_caps() qml: FERRIC_SELECTOR_STRESS_JSON {"selector_count":32,"inspected_nodes":50000,"candidates":5000,"truncated":true,"collection_ms":755.0999999940395,"user_agent":"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) QtWebEngine/6.11.2 Chrome/140.0.0.0 Safari/537.36","viewport":{"device_pixel_ratio":1,"height":480,"width":640}}
+PASS   : ferric_qml_tests::WebAppInteraction::test_T033_selector_collection_resource_caps()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T034_region_and_surface_caps()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T034_region_and_surface_classification()
+Fontconfig error: Cannot load default config file: File not found
+PASS   : ferric_qml_tests::WebAppInteraction::test_T035_cross_origin_and_closed_root_boundaries()
+Fontconfig error: Cannot load default config file: File not found
+PASS   : ferric_qml_tests::WebAppInteraction::test_T035_cross_origin_frame_scopes_only_its_outer_surface()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T036_scoped_lease_transfer_collects_only_descendants()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T037_empty_and_replaced_scopes_never_fall_back()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T037_scroll_target_keeps_existing_weak_setter()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T038_nested_frame_scope_geometry_uses_measured_spaces()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T038_transformed_scope_is_rejected()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T039_scope_scroll_revision_and_reflow_are_observable()
+QDEBUG : ferric_qml_tests::WebAppInteraction::test_T044_scope_start_cancel_stress_and_forced_gc() qml: S14 T044 scope stress: {"cycles":1000,"elapsed_ms":1073,"elements":0,"gc_available":true,"observers":0,"ok":true,"windows":0}
+PASS   : ferric_qml_tests::WebAppInteraction::test_T044_scope_start_cancel_stress_and_forced_gc()
+PASS   : ferric_qml_tests::WebAppInteraction::test_target_search_all_facets_privacy_and_page_independence()
+PASS   : ferric_qml_tests::WebAppInteraction::cleanupTestCase()
+PASS   : ferric_qml_tests::WebEngineSurfaceRecovery::initTestCase()
+PASS   : ferric_qml_tests::WebEngineSurfaceRecovery::test_current_views_are_resolved_at_frame_time()
+PASS   : ferric_qml_tests::WebEngineSurfaceRecovery::test_deactivation_before_the_returned_frame_cancels_recovery()
+PASS   : ferric_qml_tests::WebEngineSurfaceRecovery::test_disabled_controller_never_recovers()
+PASS   : ferric_qml_tests::WebEngineSurfaceRecovery::test_ineligible_and_duplicate_views_are_bounded()
+PASS   : ferric_qml_tests::WebEngineSurfaceRecovery::test_initial_frame_does_not_recover()
+PASS   : ferric_qml_tests::WebEngineSurfaceRecovery::test_rapid_reactivation_coalesces_before_a_frame()
+PASS   : ferric_qml_tests::WebEngineSurfaceRecovery::test_reactivation_recovers_after_returned_frame()
+PASS   : ferric_qml_tests::WebEngineSurfaceRecovery::cleanupTestCase()
+Totals: 144 passed, 0 failed, 0 skipped, 0 blacklisted, 39013ms
+********* Finished testing of ferric_qml_tests *********
+-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR) 
+-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR) 
+-- Configuring done (0.5s)
+-- Generating done (0.0s)
+-- Build files have been written to: /home/tom/Projects/RustBrowser/target/native-insert
+[  0%] Built target native_insert_autogen_timestamp_deps
+[ 16%] Automatic MOC for target native_insert
+[ 16%] Built target native_insert_autogen
+[ 33%] Building CXX object CMakeFiles/native_insert.dir/home/tom/Projects/RustBrowser/crates/ferric-browser-engine-qt/src/browser_page_pointer_adapter.cpp.o
+[ 50%] Linking CXX executable native_insert
+[100%] Built target native_insert
+Test project /home/tom/Projects/RustBrowser/target/native-insert
+    Start 1: native_insert
+1/1 Test #1: native_insert ....................   Passed   11.61 sec
+
+100% tests passed out of 1
+
+Total Test time (real) =  11.61 sec

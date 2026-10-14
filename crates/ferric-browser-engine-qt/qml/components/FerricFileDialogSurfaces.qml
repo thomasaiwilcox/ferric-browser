@@ -29,8 +29,10 @@ Item {
     readonly property var engineFileSelectedFiles: engineFileChooser.selectedFiles
     readonly property bool engineFileVisible: engineFileChooser.visible
     property alias engineFileCurrentFile: engineFileChooser.currentFile
+    property alias engineFileCurrentFolder: engineFileChooser.currentFolder
     property alias engineFileMode: engineFileChooser.fileMode
     property alias engineFileNameFilters: engineFileChooser.nameFilters
+    property alias engineFileOptions: engineFileChooser.options
     property alias engineFileTitle: engineFileChooser.title
     readonly property url engineFolderSelectedFolder: engineFolderChooser.selectedFolder
     readonly property bool engineFolderVisible: engineFolderChooser.visible
@@ -74,6 +76,7 @@ Item {
 
     FileDialog {
         id: engineFileChooser
+        objectName: "engineFileChooser"
         title: "Choose file"
         onAccepted: root.engineFileAccepted()
         onRejected: root.engineFileRejected()

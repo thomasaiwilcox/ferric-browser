@@ -477,7 +477,8 @@ pub(super) fn parse_action_invocation(
 
 #[cfg(test)]
 mod tests {
-    use super::map_basic;
+    use super::{map_basic, parse_action_invocation};
+    use ferric_browser_core::ParsedCommand;
 
     #[test]
     fn maps_basic_actions_without_opening_the_qt_boundary() {
@@ -537,5 +538,22 @@ mod tests {
                 "https://example.test".into()
             ]))
         );
+    }
+
+    #[test]
+    fn generic_action_executor_cannot_enter_hint_palette_or_pointer_paths() {
+        for arguments in [
+            vec!["hint".into(), "choose".into()],
+            vec!["hint".into(), "pointer".into()],
+            vec!["pointer".into(), "click".into()],
+        ] {
+            assert!(
+                parse_action_invocation(&ParsedCommand {
+                    name: "action".into(),
+                    arguments,
+                })
+                .is_err()
+            );
+        }
     }
 }

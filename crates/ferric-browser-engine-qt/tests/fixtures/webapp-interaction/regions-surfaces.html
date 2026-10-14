@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Region and surface fixture</title>
+<style>
+  body { margin: 0; font: 14px sans-serif; }
+  main, nav, aside, section, [role] { box-sizing: border-box; }
+  #scroll-pane { width: 120px; height: 80px; overflow: auto; }
+  #scroll-content { width: 360px; height: 240px; }
+  #large-generic { position: absolute; left: 500px; top: 100px; }
+  canvas, video { position: absolute; display: block; }
+  #visible-canvas { left: 10px; top: 20px; width: 120px; height: 90px; }
+  #minimum-canvas { left: 150px; top: 20px; width: 16px; height: 16px; }
+  #below-minimum { left: 180px; top: 20px; width: 15px; height: 24px; }
+  #named-small { left: 210px; top: 20px; width: 8px; height: 8px; }
+  #focusable-canvas { left: 10px; top: 130px; width: 160px; height: 90px; }
+  #video-surface { left: 10px; top: 240px; width: 160px; height: 90px; }
+  #offscreen { position: absolute; left: -1000px; top: 0; }
+</style>
+<body data-ready="true">
+  <nav aria-label="Primary navigation">Navigation</nav>
+  <main id="main" aria-label="Main content">
+    <section aria-label="Named section">Section content</section>
+    <section id="unnamed-section">Unnamed section</section>
+    <div role="region">Unnamed ARIA region</div>
+    <div role="dialog" aria-label="Preferences">Dialog content</div>
+    <div role="toolbar" aria-label="Editing tools">Toolbar content</div>
+    <div role="tablist" aria-label="Views">Tab list</div>
+    <div role="tree" aria-label="Files">Tree</div>
+    <div role="listbox" aria-label="Choices">List box</div>
+    <div role="grid" aria-label="Results">Grid</div>
+    <div id="scroll-pane" aria-label="Scrollable results"><div id="scroll-content"></div></div>
+    <div id="large-generic" style="width:500px;height:300px">Large generic div</div>
+    <canvas id="visible-canvas" width="400" height="300" aria-label="Drawing board"></canvas>
+    <canvas id="minimum-canvas" width="16" height="16"></canvas>
+    <canvas id="below-minimum" width="15" height="24"></canvas>
+    <canvas id="named-small" width="8" height="8" aria-label="Small named surface"></canvas>
+    <canvas id="hidden-canvas" width="400" height="300" style="display:none"></canvas>
+    <canvas id="offscreen" width="400" height="300"></canvas>
+    <canvas id="focusable-canvas" width="160" height="90" tabindex="0" aria-label="Keyboard canvas"></canvas>
+    <video id="video-surface" width="160" height="90" controls aria-label="Preview video"></video>
+  </main>
+  <script>
+    const fragment = document.createDocumentFragment();
+    for (let i = 0; i < 300; ++i) {
+      const generic = document.createElement('div');
+      generic.textContent = 'Generic flood ' + i;
+      generic.style = 'width:300px;height:200px';
+      fragment.appendChild(generic);
+    }
+    document.getElementById('main').appendChild(fragment);
+  </script>
+</body>
+</html>

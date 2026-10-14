@@ -8,6 +8,7 @@ import io.github.ferricbrowser 1.0
 ApplicationWindow {
     required property var rootWindow
     id: secondaryWindow
+    readonly property alias browserKeyRouterObject: secondaryKeyRouter
     width: 1180
     height: 760
     visible: true
@@ -147,12 +148,13 @@ ApplicationWindow {
                      || secondaryUi.mode === "insert-locked"
                      || secondaryUi.mode === "pass-through"
                      || secondaryUi.mode === "pass-through-once")
-        onKeyPressed: function(text, key, modifiers, isAutoRepeat) {
+        onKeyPressed: function(text, key, modifiers, isAutoRepeat, browserOwnedRepeat) {
             var event = {
                 text: text,
                 key: key,
                 modifiers: modifiers,
                 isAutoRepeat: !!isAutoRepeat,
+                browserOwnedRepeat: !!browserOwnedRepeat,
                 accepted: false
             }
             if (rootWindow.handleBrowserKey(
@@ -162,6 +164,12 @@ ApplicationWindow {
                     rootWindow.probeActiveFocus(secondaryUi, secondaryUi.active_tab_index,
                                                secondaryWindow.activeView)
                 }
+            }
+        }
+        onKeyReleased: function(key, modifiers) {
+            if (rootWindow.handleBrowserKeyRelease(
+                        secondaryUi, secondaryWindow, key, modifiers)) {
+                secondaryKeyRouter.acceptCurrentEvent()
             }
         }
     }
@@ -1494,6 +1502,33 @@ function onContext_workspaceChanged() {
 
     WebEngineView {
         id: secondaryView
+        readonly property string promptLeaseIdentity: secondaryUi.new_prompt_view_identity()
+        property var promptIdentityUi: null
+        property int promptIdentityTabIndex: -1
+        function refreshPromptViewIdentity() {
+            if (promptIdentityUi && promptIdentityTabIndex >= 0
+                    && promptIdentityUi.unregister_prompt_view_identity) {
+                promptIdentityUi.unregister_prompt_view_identity(
+                    promptIdentityTabIndex, promptLeaseIdentity)
+            }
+            promptIdentityUi = viewUi
+            promptIdentityTabIndex = tabIndex >= 0 ? tabIndex
+                                                   : Number(viewUi.active_tab_index)
+            if (promptIdentityUi && promptIdentityTabIndex >= 0
+                    && promptIdentityUi.register_prompt_view_identity) {
+                promptIdentityUi.register_prompt_view_identity(
+                    promptIdentityTabIndex, promptLeaseIdentity)
+            }
+        }
+        onTabIndexChanged: refreshPromptViewIdentity()
+        onViewUiChanged: refreshPromptViewIdentity()
+        Component.onDestruction: {
+            if (promptIdentityUi && promptIdentityTabIndex >= 0
+                    && promptIdentityUi.unregister_prompt_view_identity) {
+                promptIdentityUi.unregister_prompt_view_identity(
+                    promptIdentityTabIndex, promptLeaseIdentity)
+            }
+        }
         property alias nativeUrl: secondaryNativeContent.nativeUrl
         property alias contentTraversalPending: secondaryNativeContent.traversalPending
         readonly property var startPage: secondaryNativeContent.startPage
@@ -1579,6 +1614,7 @@ function onContext_workspaceChanged() {
             === "require-gesture"
         Accessible.name: "Web content"
         Component.onCompleted: {
+            refreshPromptViewIdentity()
             if (!secondaryWindow.windowTransferMode) setContentUrl(viewUi.initial_url, false)
             refreshEffectiveSiteSettings()
         }
@@ -1587,13 +1623,8 @@ function onContext_workspaceChanged() {
         }
         onUrlChanged: {
             if (nativeUrl.length > 0) return
-            secondaryNativeContent.noteSameDocument()
+            secondaryNativeContent.noteSameDocument(url.toString())
             refreshEffectiveSiteSettings()
-            if (viewTabs === tabs) {
-                viewUi.navigation_url_changed_for(tabIndex, url.toString())
-            } else {
-                viewUi.navigation_url_changed(url.toString())
-            }
             if (viewHost === secondaryWindow) {
                 secondaryAddress.text = viewUi.display_url
             }
@@ -1619,6 +1650,7 @@ function onContext_workspaceChanged() {
         onLoadingChanged: function(loadRequest) {
             if (nativeUrl.length > 0) return
             if (loadRequest.status === WebEngineView.LoadStartedStatus) {
+                viewUi.invalidate_native_prompt_leases()
                 rootWindow.clearPageDialogForView(secondaryView)
                 rootWindow.clearClientCertificateForView(secondaryView)
                 rootWindow.clearCertificateErrorForView(secondaryView)
@@ -1685,7 +1717,7 @@ function onContext_workspaceChanged() {
         }
         onPermissionRequested: function(permissionRequest) {
             rootWindow.handleImmediatePermissionRequested(
-                viewUi, permissionRequest, viewTransientProfile, viewHost)
+                viewUi, permissionRequest, viewTransientProfile, viewHost, secondaryView)
         }
         onJavaScriptDialogRequested: function(request) {
             rootWindow.handleJavaScriptDialogRequested(
@@ -2208,6 +2240,10 @@ function onContext_workspaceChanged() {
                         secondaryWindow.windowStartupUrl, "external-open", false)
         }
     }
+    FerricSelectorValidationSurface {
+        browserUi: secondaryUi
+    }
+
     Component.onDestruction: {
         if (secondaryWindow.devToolsWindow) {
             secondaryWindow.devToolsWindow.close()

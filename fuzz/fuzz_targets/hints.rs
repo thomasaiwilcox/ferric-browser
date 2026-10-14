@@ -17,6 +17,7 @@ fn candidate(bytes: &[u8], index: usize) -> HintCandidate {
     };
     HintCandidate {
         element_id: u32::try_from(index).unwrap_or(u32::MAX),
+        related_element_id: None,
         kind,
         frame_path: format!("frame-{}", second % 4),
         text: format!("candidate-{index}-{}", first % 16),

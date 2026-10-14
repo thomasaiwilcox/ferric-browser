@@ -1,0 +1,75 @@
+********* Start testing of ApplicationTests *********
+Config: Using QtTest library 6.11.2, Qt 6.11.2 (x86_64-little_endian-lp64 shared (dynamic) release build; by GCC 16.2.1 20260810), omarchy 4.0.4
+PASS   : ApplicationTests::initTestCase()
+QINFO  : ApplicationTests::selectorDiscoveryUsesProductionPolicy(inherit) loading production QML
+QWARN  : ApplicationTests::selectorDiscoveryUsesProductionPolicy(inherit) QRhiGles2: Failed to create temporary context
+QWARN  : ApplicationTests::selectorDiscoveryUsesProductionPolicy(inherit) QRhiGles2: Failed to create context
+QWARN  : ApplicationTests::selectorDiscoveryUsesProductionPolicy(inherit) Failed to create RHI for backend: OpenGL
+QINFO  : ApplicationTests::selectorDiscoveryUsesProductionPolicy(inherit) production QML created
+QWARN  : ApplicationTests::selectorDiscoveryUsesProductionPolicy(inherit) GPUInfo not initialized on GpuInfoUpdate
+QINFO  : ApplicationTests::selectorDiscoveryUsesProductionPolicy(inherit) waiting for URL "about:blank"
+[2580107:2580107:1013/150220.202711:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+QINFO  : ApplicationTests::selectorDiscoveryUsesProductionPolicy(inherit) fixture loaded "http://127.0.0.1:38125/fixture.html" "Ready"
+QWARN  : ApplicationTests::selectorDiscoveryUsesProductionPolicy(inherit) QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+QWARN  : ApplicationTests::selectorDiscoveryUsesProductionPolicy(inherit) qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_196(0x559bed3e1b30, "ferric_browserWindow") is not a function
+PASS   : ApplicationTests::selectorDiscoveryUsesProductionPolicy(inherit)
+QINFO  : ApplicationTests::selectorDiscoveryUsesProductionPolicy(extend) loading production QML
+QINFO  : ApplicationTests::selectorDiscoveryUsesProductionPolicy(extend) production QML created
+[2580107:2580107:1013/150221.258534:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+QINFO  : ApplicationTests::selectorDiscoveryUsesProductionPolicy(extend) waiting for URL "about:blank"
+QINFO  : ApplicationTests::selectorDiscoveryUsesProductionPolicy(extend) fixture loaded "http://127.0.0.1:42509/fixture.html" "Ready"
+QWARN  : ApplicationTests::selectorDiscoveryUsesProductionPolicy(extend) QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+QWARN  : ApplicationTests::selectorDiscoveryUsesProductionPolicy(extend) qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_393(0x559bee6dbed0, "ferric_browserWindow") is not a function
+PASS   : ApplicationTests::selectorDiscoveryUsesProductionPolicy(extend)
+QINFO  : ApplicationTests::selectorDiscoveryUsesProductionPolicy(replace) loading production QML
+QINFO  : ApplicationTests::selectorDiscoveryUsesProductionPolicy(replace) production QML created
+[2580107:2580107:1013/150222.433344:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+QINFO  : ApplicationTests::selectorDiscoveryUsesProductionPolicy(replace) waiting for URL "http://127.0.0.1:37303/fixture.html"
+QINFO  : ApplicationTests::selectorDiscoveryUsesProductionPolicy(replace) fixture loaded "http://127.0.0.1:37303/fixture.html" "Ready"
+QWARN  : ApplicationTests::selectorDiscoveryUsesProductionPolicy(replace) QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+QWARN  : ApplicationTests::selectorDiscoveryUsesProductionPolicy(replace) qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_590(0x559bee76d7a0, "ferric_browserWindow") is not a function
+PASS   : ApplicationTests::selectorDiscoveryUsesProductionPolicy(replace)
+QINFO  : ApplicationTests::selectorDiscoveryUsesProductionPolicy(disabled) loading production QML
+QINFO  : ApplicationTests::selectorDiscoveryUsesProductionPolicy(disabled) production QML created
+[2580107:2580107:1013/150223.639972:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 6 rejected by interface blink.mojom.WidgetHost
+[2580107:2580107:1013/150223.640007:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 7 rejected by interface blink.mojom.WidgetHost
+QINFO  : ApplicationTests::selectorDiscoveryUsesProductionPolicy(disabled) waiting for URL "about:blank"
+QINFO  : ApplicationTests::selectorDiscoveryUsesProductionPolicy(disabled) fixture loaded "http://127.0.0.1:41403/fixture.html" "Ready"
+QWARN  : ApplicationTests::selectorDiscoveryUsesProductionPolicy(disabled) QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+QWARN  : ApplicationTests::selectorDiscoveryUsesProductionPolicy(disabled) qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_787(0x559bed441000, "ferric_browserWindow") is not a function
+PASS   : ApplicationTests::selectorDiscoveryUsesProductionPolicy(disabled)
+QINFO  : ApplicationTests::selectorReloadActivatesAtBoundary(immediate-empty) loading production QML
+QINFO  : ApplicationTests::selectorReloadActivatesAtBoundary(immediate-empty) production QML created
+[2580107:2580107:1013/150224.827972:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+QINFO  : ApplicationTests::selectorReloadActivatesAtBoundary(immediate-empty) waiting for URL "about:blank"
+QINFO  : ApplicationTests::selectorReloadActivatesAtBoundary(immediate-empty) fixture loaded "http://127.0.0.1:44695/fixture.html" "Ready"
+QWARN  : ApplicationTests::selectorReloadActivatesAtBoundary(immediate-empty) QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+QWARN  : ApplicationTests::selectorReloadActivatesAtBoundary(immediate-empty) qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_984(0x559bed441000, "ferric_browserWindow") is not a function
+PASS   : ApplicationTests::selectorReloadActivatesAtBoundary(immediate-empty)
+QINFO  : ApplicationTests::selectorReloadActivatesAtBoundary(parsed-nonempty) loading production QML
+QINFO  : ApplicationTests::selectorReloadActivatesAtBoundary(parsed-nonempty) production QML created
+[2580107:2580107:1013/150226.404157:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+QINFO  : ApplicationTests::selectorReloadActivatesAtBoundary(parsed-nonempty) waiting for URL "about:blank"
+QINFO  : ApplicationTests::selectorReloadActivatesAtBoundary(parsed-nonempty) fixture loaded "http://127.0.0.1:43301/fixture.html" "Ready"
+QWARN  : ApplicationTests::selectorReloadActivatesAtBoundary(parsed-nonempty) QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+QWARN  : ApplicationTests::selectorReloadActivatesAtBoundary(parsed-nonempty) qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_1181(0x559bef809900, "ferric_browserWindow") is not a function
+PASS   : ApplicationTests::selectorReloadActivatesAtBoundary(parsed-nonempty)
+QINFO  : ApplicationTests::selectorReloadRejectsInvalidAndStaleCandidates() loading production QML
+QINFO  : ApplicationTests::selectorReloadRejectsInvalidAndStaleCandidates() production QML created
+[2580107:2580107:1013/150227.996198:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+QINFO  : ApplicationTests::selectorReloadRejectsInvalidAndStaleCandidates() waiting for URL "about:blank"
+QINFO  : ApplicationTests::selectorReloadRejectsInvalidAndStaleCandidates() fixture loaded "http://127.0.0.1:39443/fixture.html" "Ready"
+QWARN  : ApplicationTests::selectorReloadRejectsInvalidAndStaleCandidates() QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+QWARN  : ApplicationTests::selectorReloadRejectsInvalidAndStaleCandidates() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_1378(0x559bee670260, "ferric_browserWindow") is not a function
+PASS   : ApplicationTests::selectorReloadRejectsInvalidAndStaleCandidates()
+QINFO  : ApplicationTests::selectorReloadTimeoutPreservesConfiguration() loading production QML
+QINFO  : ApplicationTests::selectorReloadTimeoutPreservesConfiguration() production QML created
+[2580107:2580107:1013/150229.377775:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+QINFO  : ApplicationTests::selectorReloadTimeoutPreservesConfiguration() waiting for URL "about:blank"
+QINFO  : ApplicationTests::selectorReloadTimeoutPreservesConfiguration() fixture loaded "http://127.0.0.1:42701/fixture.html" "Ready"
+QWARN  : ApplicationTests::selectorReloadTimeoutPreservesConfiguration() QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+QWARN  : ApplicationTests::selectorReloadTimeoutPreservesConfiguration() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_1575(0x559beeb8e220, "ferric_browserWindow") is not a function
+PASS   : ApplicationTests::selectorReloadTimeoutPreservesConfiguration()
+PASS   : ApplicationTests::cleanupTestCase()
+Totals: 10 passed, 0 failed, 0 skipped, 0 blacklisted, 15793ms
+********* Finished testing of ApplicationTests *********

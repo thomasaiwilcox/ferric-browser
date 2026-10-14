@@ -1,0 +1,6 @@
+$ cmake -S crates/ferric-browser-engine-qt/tests/native-insert -B target/native-insert
+-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR)
+-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR)
+-- Configuring done (0.6s)
+-- Generating done (0.0s)
+-- Build files have been written to: /home/tom/Projects/RustBrowser/target/native-insert

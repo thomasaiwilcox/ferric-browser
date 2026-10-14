@@ -56,7 +56,7 @@ TestCase {
                     + "<button style='margin-top:30px'>Partial</button>"
                     + "<a href='/hidden' style='margin-top:60px'>Clipped</a></div>"
                     + "<a href='/offscreen' style='position:absolute;top:700px'>Offscreen</a>"
-                    + "<div aria-label='Results' style='overflow:auto;width:180px;height:50px'>"
+                    + "<div id='results' aria-label='Results' style='overflow:auto;width:180px;height:50px'>"
                     + "<div style='height:200px'>Scrollable content</div></div>")
         compare(evaluate("document.body.getBoundingClientRect().height"), 0)
         var links = evaluate(BrowserScripts.hintCollector("links")).candidates
@@ -71,20 +71,73 @@ TestCase {
         compare(partial.geometry.height, 10)
         compare(evaluate(BrowserScripts.hintFresh(partial)).geometry.height, 10)
         var control = buttons.filter(function(candidate) { return candidate.text === "Menu" })[0]
-        verify(evaluate(BrowserScripts.hintClick(control.element_id)))
+        verify(evaluate(BrowserScripts.hintClick(control)))
         compare(evaluate("document.getElementById('control').dataset.clicked"), "1")
 
+        evaluate("document.getElementById('results').style.pointerEvents='none';true")
         var scrollables = evaluate(BrowserScripts.hintCollector("scrollables")).candidates
         var results = scrollables.filter(function(candidate) { return candidate.text === "Results" })[0]
         verify(results)
         verify(evaluate(BrowserScripts.hintFresh(results)).visible)
         verify(evaluate(BrowserScripts.hintSetScrollTarget(results.element_id, results.frame_path)).ok)
+        evaluate(BrowserScripts.scroll("scroll", "down", false, 1))
+        tryVerify(function() { return evaluate("document.getElementById('results').scrollTop") > 0 })
 
         var all = evaluate(BrowserScripts.hintCollector("all")).candidates
         verify(all.some(function(candidate) { return candidate.text === "Video" }))
         var target = all.filter(function(candidate) { return candidate.text === "Video" })[0]
         evaluate("document.getElementById('target').style.visibility='hidden';true")
         verify(!evaluate(BrowserScripts.hintFresh(target)).visible)
+    }
+
+    function test_pointer_preflight_requires_the_retained_uncovered_target() {
+        loadFixture("", "",
+                    "<button id='target' aria-label='Pointer target' "
+                    + "style='position:absolute;left:0;top:0;width:160px;height:40px'>"
+                    + "Pointer</button>")
+        var candidates = evaluate(BrowserScripts.hintCollector("buttons")).candidates
+        compare(candidates.length, 1)
+        var candidate = candidates[0]
+        var fresh = evaluate(BrowserScripts.hintPointerPreflight(
+                                 candidate, page.width, page.height))
+        verify(fresh.ok, "uncovered retained control should be pointer eligible")
+        verify(fresh.x >= 0 && fresh.x < page.width)
+        verify(fresh.y >= 0 && fresh.y < page.height)
+        compare(evaluate("document.elementFromPoint(" + fresh.css_x + "," + fresh.css_y + ").id"), "target")
+
+        evaluate("var cover=document.createElement('div');cover.id='cover';" +
+                 "cover.style='position:fixed;inset:0;z-index:9999;background:transparent';" +
+                 "document.body.append(cover);true")
+        verify(!evaluate(BrowserScripts.hintPointerPreflight(
+                             candidate, page.width, page.height)).ok,
+               "a covering page element must reject preflight")
+
+        evaluate("document.getElementById('cover').remove();" +
+                 "document.getElementById('target').replaceWith(" +
+                 "document.getElementById('target').cloneNode(true));true")
+        verify(!evaluate(BrowserScripts.hintPointerPreflight(
+                             candidate, page.width, page.height)).ok,
+               "a replacement with the same attributes cannot inherit retained authority")
+    }
+
+    function test_pointer_coordinates_map_css_viewport_to_qt_logical_view_at_zoom() {
+        loadFixture("", "",
+                    "<button id='target' aria-label='Pointer target' "
+                    + "style='position:absolute;left:0;top:0;width:160px;height:40px'>"
+                    + "Pointer</button>")
+        var candidate = evaluate(BrowserScripts.hintCollector("buttons")).candidates[0]
+        for (var zoom of [0.5, 1, 2]) {
+            page.zoomFactor = zoom
+            tryVerify(function() {
+                return Math.abs(evaluate("window.innerWidth") - page.width / zoom) < 4
+            }, 5000)
+            var result = evaluate(BrowserScripts.hintPointerPreflight(
+                                     candidate, page.width, page.height))
+            verify(result.ok, "visible target should remain eligible at zoom " + zoom)
+            verify(Math.abs(result.x - result.css_x * page.width / result.viewport_width) < 0.75)
+            verify(Math.abs(result.y - result.css_y * page.height / result.viewport_height) < 0.75)
+        }
+        page.zoomFactor = 1
     }
 
     function test_root_overflow_propagates_to_viewport() {
@@ -134,6 +187,9 @@ TestCase {
         verify(child)
         compare(child.frame_path, "0.0")
         verify(evaluate(BrowserScripts.hintFresh(child)).visible)
+        var pointer = evaluate(BrowserScripts.hintPointerPreflight(
+                                   child, page.width, page.height))
+        verify(pointer.ok, "untransformed same-origin frame target should map to the view")
         evaluate("document.getElementById('child').style.visibility='hidden';true")
         verify(!evaluate(BrowserScripts.hintFresh(child)).visible)
     }

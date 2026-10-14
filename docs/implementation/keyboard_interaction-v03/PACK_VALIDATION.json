@@ -1,0 +1,39 @@
+{
+  "kind": "specification-pack-validation-only",
+  "prepared_date": "2026-10-11",
+  "structural_and_integrity": {
+    "ok": true,
+    "errors": [],
+    "warnings": [
+      "Structural success is not implementation/test completion; Ferric correctness is not checked."
+    ],
+    "counts": {
+      "contracts": 24,
+      "invariants": 26,
+      "slices": 28,
+      "planned_tests": 57,
+      "source_items": 55
+    },
+    "checks": {
+      "integrity": true,
+      "evidence_records": false,
+      "strict_completion": false
+    },
+    "scope": "pack records only; not Ferric correctness"
+  },
+  "negative_validator_tests": {
+    "tests_run": 12,
+    "result": "passed"
+  },
+  "toml_example": {
+    "syntax": "valid",
+    "current_ferric_acceptance": "not_claimed"
+  },
+  "relative_markdown_links": "passed",
+  "archived_source_a_sha256": "04f5bd028c8e5b9ab624efe3585597b32e0fabe777d69f9e7a1c1f8d2052b3b6",
+  "archived_source_a_unchanged": true,
+  "untouched_implementation_strict_completion": "correctly_rejected",
+  "ferric_implementation_or_runtime_tests_executed": false,
+  "suspected_shadow_root_defect_reproduced": false,
+  "native_wayland_or_live_site_qualification_executed": false
+}

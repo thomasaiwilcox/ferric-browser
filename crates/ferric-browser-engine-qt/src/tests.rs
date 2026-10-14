@@ -45,6 +45,7 @@ const ADAPTER_SOURCE: &str = concat!(
     include_str!("browser_ui_repeat_macros.rs"),
     include_str!("browser_ui_runtime.rs"),
     include_str!("browser_ui_runtime_config.rs"),
+    include_str!("browser_ui_runtime_settings.rs"),
     include_str!("browser_ui_sessions.rs"),
     include_str!("browser_ui_site.rs"),
     include_str!("browser_ui_spatial.rs"),
@@ -56,6 +57,15 @@ const ADAPTER_SOURCE: &str = concat!(
     include_str!("browser_ui_ipc_operations.rs"),
     include_str!("browser_ui_ipc_switcher_actions.rs"),
 );
+
+const BROWSER_SCRIPT_FACADE: &str = include_str!("../qml/scripts/BrowserScripts.js");
+const PAGE_INTERACTION_SCRIPT: &str = include_str!("../qml/scripts/PageInteractionScripts.js");
+const BROWSER_SCRIPT_SOURCE: &str = concat!(
+    include_str!("../qml/scripts/BrowserScripts.js"),
+    include_str!("../qml/scripts/PageInteractionScripts.js"),
+);
+const BROWSER_SCRIPT_MANIFEST: &str =
+    include_str!(concat!(env!("OUT_DIR"), "/browser-script-manifest.json"));
 
 const QML_SOURCE: &str = concat!(
     include_str!("../qml/Main.qml"),
@@ -99,3 +109,6 @@ include!("tests/commands_and_actions.rs");
 include!("tests/presentation_boundaries.rs");
 include!("tests/context_and_library.rs");
 include!("tests/action_runtime.rs");
+
+#[path = "tests/performance.rs"]
+mod performance;

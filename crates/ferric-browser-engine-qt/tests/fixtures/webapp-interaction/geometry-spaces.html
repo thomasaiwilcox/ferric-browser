@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Scoped Grid geometry spaces</title>
+<style>
+  html, body { margin: 0; width: 100%; height: 100%; }
+  #outer-frame {
+    position: absolute;
+    left: 45px;
+    top: 38px;
+    width: 360px;
+    height: 230px;
+    border: 12px solid #345;
+    zoom: 1.2;
+  }
+</style>
+<body data-ready="true">
+  <iframe id="outer-frame" title="Nested geometry frame"></iframe>
+  <script>
+    const leaf = [
+      '<!doctype html><html><head><style>',
+      'html,body{margin:0;width:100%;height:100%}',
+      '#scope{position:absolute;left:31px;top:27px;width:180px;height:120px;',
+      'overflow:auto;border:8px solid #9ab}',
+      '#content{height:300px}',
+      '</style></head><body>',
+      '<section id="scope" role="region" aria-label="Nested scoped region">',
+      '<div id="content">Nested content</div></section>',
+      '</body></html>'
+    ].join('');
+    const childSetup = 'document.getElementById("inner-frame").srcdoc='
+      + JSON.stringify(leaf) + ';';
+    const inner = [
+      '<!doctype html><html><head><style>',
+      'html,body{margin:0;width:100%;height:100%}',
+      '#inner-frame{position:absolute;left:18px;top:22px;width:240px;',
+      'height:180px;border:6px solid #678}',
+      '</style></head><body>',
+      '<iframe id="inner-frame" title="Inner geometry frame"></iframe>',
+      '<script>', childSetup, '</scr', 'ipt></body></html>'
+    ].join('');
+    document.getElementById('outer-frame').srcdoc = inner;
+  </script>
+</body>
+</html>

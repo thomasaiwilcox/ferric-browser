@@ -110,6 +110,44 @@ mod tests {
     }
 
     #[test]
+    fn region_surface_hint_families_round_trip_and_reject_other_actions() {
+        for family in ["regions", "surfaces"] {
+            let command = ferric_browser_core::ParsedCommand {
+                name: "hint".into(),
+                arguments: vec![family.into()],
+            };
+            let envelope = encode_command(&command).expect("encode explicit facet family");
+            assert_eq!(envelope["arguments"], json!({"kind": family}));
+            let invocation = decode_command_invocation(&envelope).expect("decode facet family");
+            assert_eq!(invocation.command, command);
+        }
+
+        for arguments in [
+            json!({"kind":"regions", "target":"current"}),
+            json!({"kind":"regions", "target":"tab"}),
+            json!({"kind":"surfaces", "rapid":true}),
+            json!({"kind":"surfaces", "first":true}),
+            json!({"kind":"surfaces", "index":2, "first":true}),
+            json!({"kind":"regions", "script":"reader"}),
+        ] {
+            let envelope = json!({"command":"hint", "arguments":arguments});
+            assert!(decode_command_invocation(&envelope).is_err(), "{envelope}");
+        }
+
+        for arguments in [
+            vec!["regions".into(), "--target".into(), "current".into()],
+            vec!["surfaces".into(), "--rapid".into()],
+            vec!["surfaces".into(), "--first".into()],
+        ] {
+            let command = ferric_browser_core::ParsedCommand {
+                name: "hint".into(),
+                arguments,
+            };
+            assert!(encode_command(&command).is_err());
+        }
+    }
+
+    #[test]
     fn scroll_target_actions_round_trip_and_reject_open_ended_forms() {
         for action in ["select", "auto", "document", "status"] {
             let parsed = ferric_browser_core::ParsedCommand {
@@ -163,6 +201,13 @@ mod tests {
                     1,
                     "example {example:?} must contain one command"
                 );
+                if definition.name == "target-search" && !parsed[0].arguments.is_empty() {
+                    assert!(
+                        encode_command(&parsed[0]).is_err(),
+                        "scoped Target Search unexpectedly has a public IPC envelope: {example}"
+                    );
+                    continue;
+                }
                 let envelope = encode_command(&parsed[0]).unwrap_or_else(|error| {
                     panic!("could not encode example {example:?}: {error}")
                 });

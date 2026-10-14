@@ -401,6 +401,7 @@ Pane {
                                     onClicked: tileMenu.open()
                                     Menu {
                                         id: tileMenu
+                                        property string promptLeaseToken: ""
                                         palette.window: page.canvasColor
                                         palette.base: page.canvasColor
                                         palette.text: page.inkColor
@@ -408,8 +409,20 @@ Pane {
                                         palette.highlight: page.browserWindow.surfaceColor
                                         palette.highlightedText: page.inkColor
                                         background: Rectangle { color: page.canvasColor; radius: 10; border.color: page.browserWindow.borderColor }
-                                        onAboutToShow: page.menuActive = true
+                                        onAboutToShow: {
+                                            promptLeaseToken = page.browserWindow.beginNativePromptLease(
+                                                page.browserUi,
+                                                page.browserWindow.activeWebView(), "qt-menu")
+                                            page.menuActive = true
+                                        }
                                         onAboutToHide: page.menuActive = false
+                                        onClosed: {
+                                            var token = promptLeaseToken
+                                            promptLeaseToken = ""
+                                            page.browserWindow.completeNativePromptLease(
+                                                page.browserUi, token,
+                                                page.browserWindow.activeWebView())
+                                        }
                                         MenuItem { text: "Open"; onTriggered: page.activate(index) }
                                         MenuItem { visible: page.selectedView === "top-sites"; text: "Add to Favourites"; onTriggered: page.addCaptured(tile.url, tile.title) }
                                         MenuItem { visible: page.selectedView === "top-sites"; text: "Hide site"; onTriggered: page.browserUi.start_page_action("dismiss", 0, tile.site, "") }

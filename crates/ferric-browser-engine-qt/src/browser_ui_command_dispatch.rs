@@ -6,7 +6,7 @@ use super::{
     is_reopen_in_window_command, is_scroll_command, is_scroll_target_command,
     is_search_next_command, is_tab_clone_command, is_tab_detach_command, is_tab_give_command,
     is_tab_undo_command, is_yank_command, is_zoom_command, learning_mode_request,
-    normalize_active_tab_command, parse_hint_options, qobject, selection_yank_command,
+    normalize_active_tab_command, qobject, selection_yank_command,
 };
 
 impl qobject::BrowserUi {
@@ -23,6 +23,9 @@ impl qobject::BrowserUi {
                 return false;
             }
         };
+        if self.as_mut().reject_generic_pointer_hint_chain(&commands) {
+            return false;
+        }
         let command_count = commands.len();
         for (command_index, mut command) in commands.into_iter().enumerate() {
             if command_index > 0 {
@@ -324,26 +327,18 @@ impl qobject::BrowserUi {
                 return false;
             }
             if command.name == "hint" {
-                let mode = self.as_ref().rust().core_mode;
-                if let Err(error) = registry.validate(&command, mode) {
-                    self.set_status_text(QString::from(error.to_string()));
+                if !self.as_mut().dispatch_hint_command(&command, &registry) {
                     return false;
                 }
-                let options = match parse_hint_options(&command) {
-                    Ok(options) => options,
-                    Err(error) => {
-                        self.set_status_text(QString::from(error));
-                        return false;
-                    }
-                };
-                self.as_mut().set_hint_options(
-                    &options.family,
-                    options.rapid,
-                    &options.target,
-                    options.script.as_deref(),
-                    options.first,
-                    options.index,
-                );
+                continue;
+            }
+            if command.name == "target-search" {
+                if !self
+                    .as_mut()
+                    .dispatch_target_search_command(&command, &registry)
+                {
+                    return false;
+                }
                 continue;
             }
             if command.name == "get" {
@@ -440,6 +435,12 @@ impl qobject::BrowserUi {
                         return false;
                     }
                 };
+                let explanation = if command.name == "binding-explain" {
+                    self.as_ref()
+                        .binding_explanation_feedback(keychain.as_deref(), mode.as_deref())
+                } else {
+                    None
+                };
                 let search = keychain.or(mode);
                 self.as_mut()
                     .rust_mut()
@@ -449,12 +450,10 @@ impl qobject::BrowserUi {
                     || "show-binding-help".into(),
                     |search| format!("show-binding-help\t{search}"),
                 ));
-                self.as_mut()
-                    .set_status_text(QString::from(if command.name == "binding-list" {
-                        "Binding list requested"
-                    } else {
-                        "Binding explanation requested"
-                    }));
+                let status = explanation.unwrap_or_else(|| {
+                    super::browser_ui_query_bindings::binding_command_status(&command.name).into()
+                });
+                self.as_mut().set_status_text(QString::from(status));
                 continue;
             }
             if is_library_command(&command.name) {

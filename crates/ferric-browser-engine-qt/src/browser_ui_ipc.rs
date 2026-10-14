@@ -21,6 +21,7 @@ impl qobject::BrowserUi {
             .registry
             .expand_command(command)
             .map_err(|error| error.to_string())?;
+        super::browser_ui_hint_pointer::reject_external_hint_interaction_chain(&expanded)?;
         if expanded.len() != 1 {
             let mut result = None;
             for command in expanded {
@@ -190,12 +191,12 @@ impl qobject::BrowserUi {
                 || "show-binding-help".into(),
                 |search| format!("show-binding-help\t{search}"),
             ));
-            self.as_mut()
-                .set_status_text(QString::from(if command.name == "binding-list" {
-                    "Binding list requested"
-                } else {
-                    "Binding explanation requested"
-                }));
+            if command.name == "binding-explain" {
+                self.as_mut().set_binding_explanation_status(&result);
+            } else {
+                self.as_mut()
+                    .set_status_text(QString::from("Binding list requested"));
+            }
             return Ok(result);
         }
         if matches!(command.name.as_str(), "set" | "unset" | "bind" | "unbind") {

@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "slice_id": "S07",
+  "status": "implemented_unqualified",
+  "commit": "fe0d8c6a2ff04b08323e1f0fe4731580be9d63ab",
+  "environment": {
+    "os": "Linux 7.2.3 x86_64",
+    "qt": "6.11.2",
+    "build": "Rust dev/test with local Qt 6.11.2 toolchain",
+    "scope": "Pure Rust logical-key policy model; no native key routing changed"
+  },
+  "changed_files": [
+    "Cargo.lock",
+    "crates/ferric-browser-core/Cargo.toml",
+    "crates/ferric-browser-core/src/lib.rs",
+    "crates/ferric-browser-core/src/mixed_policy.rs",
+    "crates/ferric-browser-engine-qt/src/tests/presentation_boundaries.rs",
+    "docs/implementation/keyboard_interaction-v03/evidence/S07-plan.md"
+  ],
+  "baseline_comparison": null,
+  "test_results": [
+    {
+      "test_id": "T021",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo test -p ferric-browser-core --locked --offline",
+      "commit": "fe0d8c6a2ff04b08323e1f0fe4731580be9d63ab",
+      "log": "evidence/logs/S07/core-tests.log",
+      "observations": [
+        "All 130 core tests pass, including the Mixed token parser, exact global/profile/site/runtime layering, whole-list replacement, explicit empty-list clearing, duplicate and 64-entry limits, reserved controls, unknown syntax, and atomic errors.",
+        "Logical case, existing named modifier tokens, one-grapheme Unicode text, and the four UTF-16-unit text limit are preserved; AltGr spellings are not aliased to Ctrl+Alt tokens."
+      ]
+    },
+    {
+      "test_id": "T021",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo test -p ferric-browser-engine-qt --locked --offline mixed_policy_tokens_match_the_existing_qml_logical_vocabulary",
+      "commit": "fe0d8c6a2ff04b08323e1f0fe4731580be9d63ab",
+      "log": "evidence/logs/S07/engine-parity.log",
+      "observations": [
+        "The Rust token parser accepts every named token emitted by KeyboardPresentation.logicalNormalKeyText and Alt+1 through Alt+9; AltGr+p remains an unknown token."
+      ]
+    },
+    {
+      "test_id": "T023",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo test -p ferric-browser-core --locked --offline",
+      "commit": "fe0d8c6a2ff04b08323e1f0fe4731580be9d63ab",
+      "log": "evidence/logs/S07/core-tests.log",
+      "observations": [
+        "An idle mapped g or digit is page-owned; an active browser count or keychain remains browser-owned through continuation.",
+        "A keychain mismatch is consumed, timeout clears its prefix without output, and resetting an incomplete resolver for a policy revision emits no buffered key to the page. A later fresh gesture is classified under the effective policy."
+      ]
+    },
+    {
+      "test_id": "T023",
+      "level": "native-qt-offscreen",
+      "result": "not_run",
+      "command": "Deferred until S08 integrates the pure policy with native event ownership.",
+      "commit": "fe0d8c6a2ff04b08323e1f0fe4731580be9d63ab",
+      "log": null,
+      "reason": "S07 intentionally leaves native event routing untouched; an offscreen route assertion before S08 would not exercise Mixed ownership."
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask check --locked --offline",
+      "commit": "fe0d8c6a2ff04b08323e1f0fe4731580be9d63ab",
+      "log": "evidence/logs/S07/xtask-check.log",
+      "observations": [
+        "The repository check passed, including all workspace Rust tests, 113 QML/WebEngine tests, generated-contract and architecture checks, and release manifest/license checks.",
+        "No user-visible Mixed setting, CLI option, registry entry, IPC field, or generated documentation was published in S07."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask docs",
+      "commit": "fe0d8c6a2ff04b08323e1f0fe4731580be9d63ab",
+      "log": "evidence/logs/S07/docs-generation.log",
+      "observations": [
+        "Generated commands, configuration, bindings, and actions documentation successfully with no new Mixed settings advertised."
+      ]
+    },
+    {
+      "test_id": "T023",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "ctest --test-dir target/application-tests -R '^application_offscreen$' --verbose",
+      "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+      "log": "evidence/completion-application-functional-final.log",
+      "observations": [
+        "Real Mixed page mapping wins at gesture entry while browser-owned count/keychain sequences and reserved command recovery remain available.",
+        "This follow-up records bounded local coverage; missing physical, live-site, chooser and human evidence remains unqualified."
+      ]
+    }
+  ],
+  "capability_decision": null,
+  "completion_followup": {
+    "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+    "report": "evidence/completion-report.md",
+    "status": "implemented_unqualified",
+    "scope": "New composed application observations supplement historical component evidence; no missing qualification level is inferred."
+  }
+}

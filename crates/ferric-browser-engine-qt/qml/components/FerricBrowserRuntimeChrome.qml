@@ -18,6 +18,10 @@ FerricBrowserRuntimeRequests {
     readonly property alias commandSurfaceObject: commandSurface
     readonly property alias searchSurfaceObject: searchSurface
     readonly property alias attachedDevToolsLoaderObject: attachedDevToolsLoader
+    property alias spatialAdapterEnabled: spatialPointerAdapter.enabled
+    property alias spatialAdapterTargetItem: spatialPointerAdapter.targetItem
+    property alias spatialAdapterSurfaceSerial: spatialPointerAdapter.surfaceSerial
+    property alias spatialAdapterSurfaceRevision: spatialPointerAdapter.surfaceRevision
 
     Component {
         id: popupWindowComponent
@@ -876,6 +880,25 @@ GridLayout {
 
             WebEngineView {
                 id: webView
+                readonly property string promptLeaseIdentity: browserUi.new_prompt_view_identity()
+                property var promptIdentityUi: null
+                property int promptIdentityTabIndex: -1
+                function refreshPromptViewIdentity() {
+                    if (promptIdentityUi && promptIdentityTabIndex >= 0
+                            && promptIdentityUi.unregister_prompt_view_identity) {
+                        promptIdentityUi.unregister_prompt_view_identity(
+                            promptIdentityTabIndex, promptLeaseIdentity)
+                    }
+                    promptIdentityUi = viewUi
+                    promptIdentityTabIndex = tabIndex
+                    if (promptIdentityUi && promptIdentityTabIndex >= 0
+                            && promptIdentityUi.register_prompt_view_identity) {
+                        promptIdentityUi.register_prompt_view_identity(
+                            promptIdentityTabIndex, promptLeaseIdentity)
+                    }
+                }
+                onTabIndexChanged: refreshPromptViewIdentity()
+                onViewUiChanged: refreshPromptViewIdentity()
                 property alias nativeUrl: nativeContent.nativeUrl
                 property alias contentTraversalPending: nativeContent.traversalPending
                 readonly property var startPage: nativeContent.startPage
@@ -968,6 +991,7 @@ GridLayout {
                     === "require-gesture"
                 Accessible.name: "Web content for tab " + (tabIndex + 1)
                 Component.onCompleted: {
+                    refreshPromptViewIdentity()
                     if (viewModel.loaded && !contentInitialized) setContentUrl(viewModel.url || "about:blank", false)
                     refreshEffectiveSiteSettings()
                     if (nativeUrl.length > 0) {
@@ -996,7 +1020,7 @@ GridLayout {
                 }
                 onUrlChanged: {
                     if (nativeUrl.length > 0) return
-                    nativeContent.noteSameDocument()
+                    nativeContent.noteSameDocument(url.toString())
                     refreshEffectiveSiteSettings()
                     if (!viewModel.loaded) {
                         return
@@ -1004,11 +1028,6 @@ GridLayout {
                     var changedUrl = url.toString()
                     if (viewModel.url !== changedUrl && viewTabs === tabs) {
                         tabs.setProperty(tabIndex, "url", changedUrl)
-                    }
-                    if (viewTabs === tabs) {
-                        viewUi.navigation_url_changed_for(tabIndex, changedUrl)
-                    } else {
-                        viewUi.navigation_url_changed(changedUrl)
                     }
                     if (viewTabs !== tabs || tabIndex === viewUi.active_tab_index) {
                         if (viewUi === browserUi) {
@@ -1030,6 +1049,7 @@ GridLayout {
                 onLoadingChanged: function(loadRequest) {
                     if (!viewModel.loaded || nativeUrl.length > 0) return
                     if (loadRequest.status === WebEngineView.LoadStartedStatus) {
+                        viewUi.invalidate_native_prompt_leases()
                         webView.scrollPositionRestored = false
                         window.clearPageDialogForView(webView)
                         window.clearClientCertificateForView(webView)
@@ -1120,7 +1140,9 @@ GridLayout {
                 }
                 onPermissionRequested: function(permissionRequest) {
                     if (viewTabs !== tabs || tabIndex === viewUi.active_tab_index) {
-                        window.handlePermissionRequested(permissionRequest, tabIndex)
+                        window.handlePermissionRequested(
+                            permissionRequest, tabIndex, viewUi, webView,
+                            viewTransientProfile)
                     } else {
                         window.resolveQtRequest(viewUi, permissionRequest, "permission", "deny", [])
                     }
@@ -1198,6 +1220,11 @@ GridLayout {
                     window.clearCaptureSessionForView(webView)
                     window.clearFileDialogForView(webView)
                     window.clearRendererFailureForView(webView)
+                    if (promptIdentityUi && promptIdentityTabIndex >= 0
+                            && promptIdentityUi.unregister_prompt_view_identity) {
+                        promptIdentityUi.unregister_prompt_view_identity(
+                            promptIdentityTabIndex, promptLeaseIdentity)
+                    }
                 }
                 onNewWindowRequested: function(request) {
                     var popupAllowed = viewTabs === tabs
@@ -1234,15 +1261,35 @@ GridLayout {
 
     FerricPagePointerAdapter {
         id: spatialPointerAdapter
-        enabled: browserUi.spatial_visible
-        targetItem: browserUi.spatial_visible ? window.activeWebView() : null
+        enabled: browserUi.spatial_visible || browserUi.hint_pointer_pending
+                 || window.scopedGridHandoffView !== null
+        targetItem: window.scopedGridHandoffView !== null
+                    ? window.scopedGridHandoffView
+                    : (browserUi.spatial_visible || browserUi.hint_pointer_mode)
+                      ? window.activeWebView() : null
         targetWindow: window
         inputBlocked: window.browserChromeInputActive
+        // S19 stays fail-closed until the native Wayland gesture gate passes.
+        doubleClickEnabled: false
         onDispatchAcknowledged: function(requestId, sessionId, serial, revision, outcome) {
-            browserUi.spatial_dispatch_ack(
-                        requestId, sessionId, serial, revision, outcome)
+            if (browserUi.hint_pointer_pending) {
+                browserUi.hint_pointer_dispatch_ack(
+                            requestId, sessionId, serial, revision, outcome)
+            } else {
+                browserUi.spatial_dispatch_ack(
+                            requestId, sessionId, serial, revision,
+                            outcome === "unavailable" ? "rejected" : outcome)
+                if (outcome === "unavailable") {
+                    browserUi.status_text =
+                            "Native double-click remains unavailable pending Wayland qualification"
+                }
+            }
         }
         onInvalidated: function(reason) {
+            if (browserUi.hint_pointer_pending) {
+                browserUi.hint_pointer_invalidated(reason)
+                return
+            }
             // Initial target binding can advance the adapter stamp before the
             // first geometry observation. Once a root is installed, every
             // later invalidation is authoritative.
@@ -1251,21 +1298,89 @@ GridLayout {
             }
         }
         onPhysicalPointerDetected: function(reason) {
-            if (browserUi.spatial_visible) {
+            if (browserUi.hint_pointer_pending) {
+                browserUi.hint_pointer_invalidated(reason)
+            } else if (browserUi.spatial_visible) {
                 browserUi.spatial_invalidated(reason)
             }
         }
         onSurfaceChanged: {
-            if (browserUi.spatial_visible && browserUi.spatial_root_width > 0) {
+            if (browserUi.hint_pointer_pending) {
+                browserUi.hint_pointer_invalidated("geometry-changed")
+            } else if (browserUi.spatial_visible && browserUi.spatial_root_width > 0) {
                 browserUi.spatial_invalidated("geometry-changed")
             }
         }
+    }
+
+    property bool spatialScopeGeometryPending: false
+
+    function releaseSpatialScopeLease() {
+        spatialScopeGeometryTimer.stop()
+        spatialScopeDispatchTimer.stop()
+        spatialScopeGeometryPending = false
+        var leaseId = String(window.activeSpatialScopeLeaseId || "")
+        var view = window.activeSpatialScopeView
+        window.activeSpatialScopeLeaseId = ""
+        window.activeSpatialScopeView = null
+        if (leaseId.length > 0 && view) {
+            window.runBrowserScript(
+                        view, BrowserScripts.hintClearScopeLease(leaseId), function(value) {})
+        }
+    }
+
+    Timer {
+        id: spatialScopeGeometryTimer
+        interval: 100
+        repeat: true
+        running: browserUi.spatial_visible
+                 && browserUi.spatial_selecting
+                 && browserUi.spatial_scope_lease_id.length > 0
+        onTriggered: {
+            if (window.spatialScopeGeometryPending) return
+            var view = window.activeSpatialScopeView
+            var leaseId = String(browserUi.spatial_scope_lease_id || "")
+            var sessionId = String(browserUi.spatial_session_id || "")
+            if (!view || leaseId.length === 0 || view !== window.activeWebView()
+                    || spatialPointerAdapter.targetItem !== view) {
+                browserUi.spatial_invalidated("target-changed")
+                return
+            }
+            window.spatialScopeGeometryPending = true
+            var started = window.runBrowserScript(
+                        view, BrowserScripts.spatialScopeGeometry(leaseId), function(value) {
+                window.spatialScopeGeometryPending = false
+                if (!browserUi.spatial_visible
+                        || String(browserUi.spatial_session_id || "") !== sessionId
+                        || String(browserUi.spatial_scope_lease_id || "") !== leaseId
+                        || window.activeSpatialScopeView !== view) {
+                    return
+                }
+                browserUi.spatial_scope_geometry_validated(
+                            "", JSON.stringify(value || {}),
+                            spatialPointerAdapter.surfaceSerial,
+                            spatialPointerAdapter.surfaceRevision,
+                            view.width, view.height, Number(view.zoomFactor))
+            })
+            if (!started) {
+                window.spatialScopeGeometryPending = false
+                browserUi.spatial_invalidated("renderer-unavailable")
+            }
+        }
+    }
+
+    Timer {
+        id: spatialScopeDispatchTimer
+        interval: 250
+        repeat: false
+        onTriggered: browserUi.spatial_invalidated("renderer-unavailable")
     }
 
     Connections {
         target: browserUi
         function onSpatial_visibleChanged() {
             if (!browserUi.spatial_visible) {
+                window.releaseSpatialScopeLease()
                 return
             }
             var sessionId = browserUi.spatial_session_id
@@ -1297,12 +1412,55 @@ GridLayout {
                 browserUi.spatial_invalidated("dispatch-rejected")
                 return
             }
-            // `enabled` stays declaratively bound to `spatial_visible` so the
-            // adapter always releases its session and physical-input filter
-            // state when Grid exits. Never assign to it here: doing so would
-            // replace the binding after the first dispatch.
+            // Keep `enabled` declaratively bound to the owning Grid or Hint
+            // lifecycle so teardown releases the adapter's session. Never
+            // assign here: that would replace the QML binding.
             if (!spatialPointerAdapter.enabled) {
                 browserUi.spatial_invalidated("dispatch-rejected")
+                return
+            }
+            var scopeLeaseId = String(request.scope_lease_id || "")
+            if (scopeLeaseId.length > 0) {
+                var view = window.activeSpatialScopeView
+                var sessionId = String(request.session_id || "")
+                var zoomFactor = view ? Number(view.zoomFactor) : NaN
+                if (!view || view !== window.activeWebView()
+                        || spatialPointerAdapter.targetItem !== view
+                        || scopeLeaseId !== String(browserUi.spatial_scope_lease_id || "")) {
+                    browserUi.spatial_invalidated("target-changed")
+                    return
+                }
+                spatialScopeDispatchTimer.restart()
+                var started = window.runBrowserScript(
+                            view, BrowserScripts.spatialScopeGeometry(scopeLeaseId), function(value) {
+                    spatialScopeDispatchTimer.stop()
+                    if (!browserUi.spatial_visible
+                            || String(browserUi.spatial_session_id || "") !== sessionId
+                            || String(browserUi.spatial_scope_lease_id || "") !== scopeLeaseId
+                            || window.activeWebView() !== view
+                            || window.activeSpatialScopeView !== view
+                            || spatialPointerAdapter.targetItem !== view
+                            || browserUi.mode !== "grid"
+                            || Number(view.zoomFactor) !== zoomFactor) {
+                        browserUi.spatial_invalidated("target-changed")
+                        return
+                    }
+                    if (!browserUi.spatial_scope_geometry_validated(
+                                request.request_id, JSON.stringify(value || {}),
+                                spatialPointerAdapter.surfaceSerial,
+                                spatialPointerAdapter.surfaceRevision,
+                                view.width, view.height, Number(view.zoomFactor))) {
+                        return
+                    }
+                    spatialPointerAdapter.dispatch(
+                                request.request_id, request.session_id,
+                                request.serial, request.revision,
+                                Number(request.x), Number(request.y), request.action)
+                })
+                if (!started) {
+                    spatialScopeDispatchTimer.stop()
+                    browserUi.spatial_invalidated("renderer-unavailable")
+                }
                 return
             }
             spatialPointerAdapter.dispatch(
@@ -1310,6 +1468,125 @@ GridLayout {
                         request.serial, request.revision,
                         Number(request.x), Number(request.y), request.action)
         }
+        function onHint_pointer_dispatch_requestChanged() {
+            var payload = browserUi.hint_pointer_dispatch_request
+            if (!payload || payload.length === 0) return
+            var request
+            try {
+                request = JSON.parse(payload)
+            } catch (error) {
+                browserUi.hint_pointer_invalidated("dispatch-rejected")
+                return
+            }
+            if (!spatialPointerAdapter.enabled || !browserUi.hint_pointer_pending) {
+                browserUi.hint_pointer_invalidated("dispatch-rejected")
+                return
+            }
+            spatialPointerAdapter.dispatch(
+                        request.request_id, request.session_id,
+                        request.serial, request.revision,
+                        Number(request.x), Number(request.y), request.action)
+        }
+    }
+
+    Timer {
+        id: hintPointerPreflightTimer
+        interval: 250
+        repeat: false
+        onTriggered: browserUi.hint_pointer_timeout()
+    }
+
+    Timer {
+        id: hintPointerDispatchTimer
+        interval: 2100
+        repeat: false
+        onTriggered: browserUi.hint_pointer_timeout()
+    }
+
+    Connections {
+        target: browserUi
+        function onHint_pointer_stateChanged() {
+            if (browserUi.hint_pointer_state !== "preflight") {
+                hintPointerPreflightTimer.stop()
+            }
+            if (browserUi.hint_pointer_state !== "dispatch-pending") {
+                hintPointerDispatchTimer.stop()
+            }
+        }
+    }
+
+    function releaseHintPointerConfirmation() {
+        if (!browserUi.hint_pointer_mode
+                || browserUi.hint_pointer_state !== "awaiting-confirmation-release") {
+            return false
+        }
+        var view = window.activeWebView()
+        var label = String(window.hintState.active_label || "")
+        var candidate = null
+        for (var index = 0; index < window.hintResults.length; ++index) {
+            if (String(window.hintResults[index].label) === label) {
+                candidate = window.hintResults[index]
+                break
+            }
+        }
+        if (!view || !candidate || view !== window.hintTrackingView
+                || spatialPointerAdapter.targetItem !== view
+                || window.hintRefreshPending || view.width <= 0 || view.height <= 0) {
+            browserUi.hint_pointer_invalidated("preflight-rejected")
+            return true
+        }
+        var response = {}
+        try {
+            response = JSON.parse(browserUi.hint_pointer_confirmation_released(
+                spatialPointerAdapter.surfaceSerial,
+                spatialPointerAdapter.surfaceRevision,
+                view.width,
+                view.height))
+        } catch (error) {
+            response = {}
+        }
+        if (!response.ok || !response.request_id) return true
+        var requestId = String(response.request_id)
+        var viewWidth = view.width
+        var viewHeight = view.height
+        var zoomFactor = Number(view.zoomFactor)
+        hintPointerPreflightTimer.restart()
+        var started = window.runBrowserScript(
+                    view,
+                    window.hintPointerPreflightScript(candidate, viewWidth, viewHeight),
+                    function(value) {
+            hintPointerPreflightTimer.stop()
+            if (browserUi.mode !== "hint" || !browserUi.hint_pointer_mode
+                    || browserUi.hint_pointer_state !== "preflight"
+                    || window.activeWebView() !== view
+                    || window.hintTrackingView !== view
+                    || spatialPointerAdapter.targetItem !== view
+                    || Number(view.zoomFactor) !== zoomFactor) {
+                if (browserUi.hint_pointer_state === "preflight") {
+                    browserUi.hint_pointer_invalidated("target-changed")
+                }
+                return
+            }
+            var accepted = false
+            try {
+                accepted = browserUi.complete_hint_pointer_preflight(
+                    requestId, JSON.stringify(value || {}),
+                    spatialPointerAdapter.surfaceSerial,
+                    spatialPointerAdapter.surfaceRevision,
+                    view.width, view.height)
+            } catch (error) {
+                browserUi.hint_pointer_invalidated("preflight-rejected")
+                return
+            }
+            if (accepted && browserUi.hint_pointer_state === "dispatch-pending") {
+                hintPointerDispatchTimer.restart()
+            }
+        })
+        if (!started) {
+            hintPointerPreflightTimer.stop()
+            browserUi.hint_pointer_invalidated("renderer-unavailable")
+        }
+        return true
     }
 
     FerricSpatialGridOverlay {
@@ -1321,6 +1598,7 @@ GridLayout {
         labelColor: window.selectionTextColor
         labelBackground: window.selectionColor
         crosshairColor: window.accentColor
+        doubleClickEnabled: spatialPointerAdapter.doubleClickEnabled
     }
 
     Loader {
@@ -1349,19 +1627,186 @@ GridLayout {
         onTriggered: window.pollHintRefresh()
     }
 
+    function hintCollisionLabels(label) { return hintOverlaySurface.collisionLabels(label) }
+    function expandHintStack() { hintOverlaySurface.stackExpanded = true }
+
     FerricHintOverlay {
         id: hintOverlaySurface
         anchors.fill: webViews
         browserWindow: window
-        hintsVisible: browserUi.hint_visible
+        hintsVisible: browserUi.hint_visible && !browserUi.hint_pointer_pending
+                      && !browserUi.target_search_active
         hintResults: window.hintResults
         sourceViewport: window.hintViewport
         hintState: window.hintState
         unmatchedPolicy: browserUi.hint_unmatched_policy
         markerScale: browserUi.hint_marker_scale
-        collisionRotation: window.hintCollisionRotation
-        onActivationRequested: function(label) { window.activateHint(label) }
+        interactionActive: browserUi.hint_visible
+        onSelectionRequested: function(label) { window.applyHintInteraction("select",label) }
+        onActivationRequested: function(label) { window.activateHint(label, "", true) }
         onActionsRequested: function(label) { window.showHintActions(label) }
+    }
+
+    Popup {
+        id: targetSearchPopup
+        objectName: "targetSearchPopup"
+        parent: Overlay.overlay
+        x: Math.max(12, (parent ? parent.width - width : window.width - width) / 2)
+        y: Math.max(12, (parent ? parent.height : window.height) * 0.16)
+        width: Math.max(1, Math.min(620 * window.chromeScale, window.width - 24))
+        height: Math.max(1, Math.min(520 * window.chromeScale, window.height - 48))
+        visible: browserUi.target_search_active
+        modal: true
+        focus: true
+        padding: 12 * window.chromeScale
+        closePolicy: Popup.NoAutoClose
+        onOpened: {
+            window.captureOverlayFocus(window, window.activeWebView())
+            Qt.callLater(function() { targetSearchInput.forceActiveFocus() })
+        }
+        onClosed: window.restoreOverlayFocus()
+
+        background: Rectangle {
+            color: window.panelColor
+            border.color: window.borderColor
+            radius: 6 * window.chromeScale
+        }
+
+        contentItem: ColumnLayout {
+            Accessible.role: Accessible.Dialog
+            Accessible.name: "Visible target search"
+            spacing: 8 * window.chromeScale
+
+            Label {
+                Layout.fillWidth: true
+                text: "Visible targets · " + browserUi.target_search_scope
+                color: window.primaryTextColor
+                font.bold: true
+                Accessible.name: text
+            }
+
+            TextField {
+                id: targetSearchInput
+                objectName: "targetSearchInput"
+                Layout.fillWidth: true
+                text: window.hintState.query || ""
+                placeholderText: "Search visible page targets"
+                maximumLength: 256
+                Accessible.name: "Search visible targets"
+                selectByMouse: true
+                onTextEdited: window.applyTargetSearchQuery(text)
+                Keys.onPressed: function(event) {
+                    if (event.key === Qt.Key_Up) {
+                        window.moveTargetSearchSelection(-1)
+                        event.accepted = true
+                    } else if (event.key === Qt.Key_Down) {
+                        window.moveTargetSearchSelection(1)
+                        event.accepted = true
+                    } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                        window.confirmTargetSearchSelection()
+                        event.accepted = true
+                    } else if (event.key === Qt.Key_Escape) {
+                        browserUi.cancel_target_search()
+                        event.accepted = true
+                    }
+                }
+            }
+
+            ListView {
+                id: targetSearchList
+                objectName: "targetSearchList"
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                model: window.targetSearchRows()
+                Accessible.role: Accessible.List
+                Accessible.name: "Visible target results"
+                delegate: ItemDelegate {
+                    id: targetSearchRow
+                    required property var modelData
+                    width: targetSearchList.width
+                    height: Math.max(44 * window.chromeScale, rowContent.implicitHeight + 8)
+                    highlighted: modelData.identity === window.targetSearchSelectedIdentity
+                            && modelData.meaning === window.targetSearchSelectedMeaning
+                    Accessible.name: modelData.kind + ": " + modelData.text
+                    onClicked: window.selectTargetSearchIdentity(modelData.identity)
+
+                    contentItem: RowLayout {
+                        id: rowContent
+                        spacing: 10 * window.chromeScale
+                        Label {
+                            text: targetSearchRow.modelData.kind
+                            color: window.accentColor
+                            font.bold: true
+                            Layout.preferredWidth: 128 * window.chromeScale
+                            elide: Text.ElideRight
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        Label {
+                            text: targetSearchRow.modelData.text
+                            color: window.primaryTextColor
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
+                            wrapMode: Text.NoWrap
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                    }
+
+                    background: Rectangle {
+                        color: targetSearchRow.highlighted
+                                ? window.selectionColor : "transparent"
+                        radius: 3 * window.chromeScale
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Label {
+                    Layout.fillWidth: true
+                    text: targetSearchList.count === 0
+                            ? "No visible targets match"
+                            : targetSearchList.count + " visible target(s) · Enter to confirm"
+                    color: window.mutedTextColor
+                }
+                Button {
+                    text: "Cancel"
+                    Accessible.name: "Cancel target search"
+                    onClicked: browserUi.cancel_target_search()
+                }
+                Button {
+                    text: "Confirm"
+                    Accessible.name: "Confirm selected target"
+                    enabled: window.targetSearchSelectedIdentity.length > 0
+                    onClicked: window.confirmTargetSearchSelection()
+                }
+            }
+        }
+    }
+
+    Connections {
+        target: browserUi
+        function onTarget_search_activeChanged() {
+            var searchActive = browserUi.target_search_active
+            window.hintCollectionEpoch += 1
+            window.hintRefreshPending = false
+            if (browserUi.target_search_active) {
+                window.targetSearchSelectedIdentity = ""
+                window.targetSearchSelectedMeaning = ""
+                window.targetSearchSelectionInitialized = false
+            } else {
+                window.targetSearchSelectedIdentity = ""
+                window.targetSearchSelectedMeaning = ""
+                window.targetSearchSelectionInitialized = false
+            }
+            Qt.callLater(function() {
+                if (browserUi.mode === "hint"
+                        && browserUi.target_search_active === searchActive) {
+                    window.startHintCollection()
+                    if (searchActive) targetSearchInput.forceActiveFocus()
+                }
+            })
+        }
     }
 
     FerricRapidHintConfirmation {
@@ -1390,6 +1835,7 @@ GridLayout {
         statusVisible: window.statusBarVisible
         mode: browserUi.mode
         displayUrl: browserUi.display_url
+        hintPreviewText: browserUi.mode === "hint" && !browserUi.target_search_active ? hintOverlaySurface.previewText : ""
         statusText: window.commandNoticeVisible
                     ? window.commandNoticeText : browserUi.status_text
         statusError: window.commandNoticeVisible && window.commandNoticeError

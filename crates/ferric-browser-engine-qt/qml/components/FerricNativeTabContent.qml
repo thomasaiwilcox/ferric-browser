@@ -16,6 +16,8 @@ Item {
     property int historyProbeEpoch: 0
     property bool historyProbePending: false
     property bool historyProbeAgain: false
+    property int sameDocumentNotificationSerial: 0
+    property var pendingSameDocumentNotification: null
     property string historyDocument: ""
     property int historySequence: 0
     property bool navigationPending: false
@@ -77,6 +79,10 @@ Item {
         var epoch = historyProbeEpoch
         var destination = webView.url.toString()
         var position = engineHistoryIndex
+        var identityIndex = tabIndex
+        var identityTabId = identityIndex >= 0
+                ? String(browserUi.tab_id_for_index(identityIndex)) : ""
+        var identityInputEpoch = Number(browserUi.input_epoch) || 0
         historyProbePending = true
         webView.runJavaScript(BrowserScripts.historyTraversalProbe(), browserWindow.browserScriptWorld, function(value) {
             if (epoch !== historyProbeEpoch) return
@@ -88,10 +94,43 @@ Item {
             }
             if (value && value.url === destination && typeof value.document === "string"
                     && typeof value.sequence === "number" && value.sequence >= 0) {
+                var notification = pendingSameDocumentNotification
+                var identityMatches = !!notification
+                        && notification.probeEpoch === epoch
+                        && notification.destination === destination
+                        && notification.index === identityIndex
+                        && notification.tabId === identityTabId
+                        && notification.document.length > 0
+                        && notification.document === value.document
+                        && value.url === notification.destination
+                        && !webView.loading && !navigationPending
+                        && browserUi.load_state === "complete"
+                if (identityTabId.length > 0
+                        && typeof browserUi.page_document_identity_for === "function") {
+                    browserUi.page_document_identity_for(
+                        identityIndex, identityTabId, value.document, identityInputEpoch)
+                }
                 var baseline = historyDocument === value.document ? historySequence : 0
                 if (value.sequence > baseline) sameDocumentTraversalPending = true
                 historyDocument = value.document
                 historySequence = value.sequence
+                if (notification
+                        && notification.serial === sameDocumentNotificationSerial) {
+                    pendingSameDocumentNotification = null
+                    if (notification.destination === webView.url.toString()
+                            && notification.index === tabIndex
+                            && notification.tabId === String(browserUi.tab_id_for_index(tabIndex))) {
+                        if (typeof browserUi.complete_same_document_url_change_for === "function") {
+                            browserUi.complete_same_document_url_change_for(
+                                notification.index, notification.tabId,
+                                notification.destination,
+                                identityMatches ? value.document : "",
+                                notification.inputEpoch)
+                        }
+                    }
+                }
+            } else {
+                settleUnprovenSameDocumentChange(epoch, destination)
             }
             reconcileHistory()
             if (historyProbeAgain) { historyProbeAgain = false; Qt.callLater(synchronizeHistory) }
@@ -102,6 +141,7 @@ Item {
         historyProbePending = false
         historyProbeAgain = false
         sameDocumentTraversalPending = false
+        pendingSameDocumentNotification = null
     }
     function reconcileHistory() {
         var snapshot
@@ -215,7 +255,7 @@ Item {
             }
             if (tabsModel && tabIndex >= 0 && tabIndex < tabsModel.count) tabsModel.setProperty(tabIndex, "url", destination)
             if (traversal && !engineMoves && webView.url.toString() === destination) {
-                browserUi.navigation_url_changed_for(tabIndex, destination)
+                noteSameDocument(destination)
                 browserUi.navigation_committed_for(tabIndex, destination, webView.title)
                 browserUi.navigation_completed_for(tabIndex)
                 browserUi.content_navigated(tabIndex, destination, engineHistoryIndex, true)
@@ -229,7 +269,60 @@ Item {
         navigationPending = true
         engineTraversalPending = !!engineTraversal && !traversalPending
     }
-    function noteSameDocument() {
+    function reportUrlChange(index, destination) {
+        if (index >= 0 && typeof browserUi.navigation_url_changed_for === "function") {
+            browserUi.navigation_url_changed_for(index, destination)
+        } else {
+            browserUi.navigation_url_changed(destination)
+        }
+    }
+    function settleUnprovenSameDocumentChange(epoch, probedDestination) {
+        var notification = pendingSameDocumentNotification
+        if (!notification || notification.serial !== sameDocumentNotificationSerial
+                || notification.probeEpoch !== epoch
+                || notification.destination !== probedDestination
+                || notification.destination !== webView.url.toString()
+                || notification.index !== tabIndex
+                || notification.tabId !== String(browserUi.tab_id_for_index(tabIndex))) {
+            return
+        }
+        pendingSameDocumentNotification = null
+        if (typeof browserUi.complete_same_document_url_change_for === "function") {
+            browserUi.complete_same_document_url_change_for(
+                notification.index, notification.tabId,
+                notification.destination, "", notification.inputEpoch)
+        }
+    }
+    function noteSameDocument(destination) {
+        if (typeof destination !== "string" || destination.length === 0) {
+            Qt.callLater(synchronizeHistory)
+            return
+        }
+        var index = tabIndex
+        var tabId = index >= 0 ? String(browserUi.tab_id_for_index(index)) : ""
+        var notification = {
+            serial: ++sameDocumentNotificationSerial,
+            probeEpoch: historyProbeEpoch,
+            destination: destination,
+            index: index,
+            tabId: tabId,
+            inputEpoch: Number(browserUi.input_epoch) || 0,
+            document: historyDocument
+        }
+        if (nativeUrl.length > 0 || index < 0 || tabId.length === 0
+                || typeof webView.runJavaScript !== "function"
+                || typeof browserWindow.browserScriptWorld !== "number"
+                || typeof browserUi.begin_same_document_url_change_for !== "function"
+                || webView.loading || navigationPending
+                || browserUi.load_state !== "complete" || historyDocument.length === 0) {
+            pendingSameDocumentNotification = null
+            reportUrlChange(index, destination)
+            Qt.callLater(synchronizeHistory)
+            return
+        }
+        pendingSameDocumentNotification = notification
+        browserUi.begin_same_document_url_change_for(
+            index, tabId, destination, historyDocument, notification.inputEpoch)
         Qt.callLater(synchronizeHistory)
     }
     function noteCommit() {

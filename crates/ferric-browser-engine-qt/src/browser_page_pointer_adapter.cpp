@@ -6,6 +6,7 @@
 #include <QtGui/QGuiApplication>
 #include <QtGui/QMouseEvent>
 #include <QtQuick/QQuickWindow>
+#include <array>
 #include <cmath>
 #include <limits>
 
@@ -113,6 +114,14 @@ void FerricPagePointerAdapter::setInputBlocked(bool blocked)
         advanceSurface(false, QStringLiteral("prompt-owned-input"));
 }
 
+void FerricPagePointerAdapter::setDoubleClickEnabled(bool enabled)
+{
+    if (doubleClickEnabled_ == enabled)
+        return;
+    doubleClickEnabled_ = enabled;
+    emit doubleClickEnabledChanged();
+}
+
 void FerricPagePointerAdapter::advanceSurface(bool targetChanged, const QString &reason)
 {
     dispatchWatchdog_.stop();
@@ -191,14 +200,57 @@ void FerricPagePointerAdapter::dispatch(const QString &requestId,
         || !std::isfinite(x) || !std::isfinite(y) || x < 0.0 || y < 0.0
         || x >= targetItem_->width() || y >= targetItem_->height()
         || (action != QStringLiteral("hover") && action != QStringLiteral("left")
-            && action != QStringLiteral("right") && action != QStringLiteral("middle"))) {
+            && action != QStringLiteral("right") && action != QStringLiteral("middle")
+            && action != QStringLiteral("double"))) {
         acknowledge(requestId, sessionId, serialText, revisionText, QStringLiteral("rejected"));
         return;
+    }
+    if (action == QStringLiteral("double") && !doubleClickEnabled_) {
+        acknowledge(requestId, sessionId, serialText, revisionText,
+                    QStringLiteral("unavailable"));
+        return;
+    }
+
+    // In-scene Hint/Grid overlays can still own keyboard focus. A native
+    // button gesture must focus the page just as a direct mouse press would;
+    // trusted events alone do not satisfy focus-sensitive page API gates.
+    if (action != QStringLiteral("hover")) {
+        const QPointer<QQuickItem> focusTarget = targetItem_;
+        const QPointer<QWindow> focusWindow = targetWindow_;
+        focusTarget->forceActiveFocus(Qt::MouseFocusReason);
+        if (!focusTarget || !focusWindow || targetItem_ != focusTarget
+            || targetWindow_ != focusWindow || !validTarget()
+            || serial != surfaceSerial_ || revision != surfaceRevision_) {
+            acknowledge(requestId, sessionId, serialText, revisionText, QStringLiteral("rejected"));
+            return;
+        }
     }
 
     const QPointF targetLocal(x, y);
     const QPointF windowPosition = targetItem_->mapToScene(targetLocal);
+    const std::array<QPointF, 4> localCorners = {
+        QPointF(0, 0), QPointF(targetItem_->width(), 0),
+        QPointF(0, targetItem_->height()),
+        QPointF(targetItem_->width(), targetItem_->height())
+    };
+    std::array<QPointF, 4> sceneCorners;
+    bool mappingFinite = std::isfinite(windowPosition.x()) && std::isfinite(windowPosition.y());
+    for (std::size_t index = 0; index < localCorners.size(); ++index) {
+        sceneCorners[index] = targetItem_->mapToScene(localCorners[index]);
+        mappingFinite = mappingFinite && std::isfinite(sceneCorners[index].x())
+            && std::isfinite(sceneCorners[index].y());
+    }
+    const QRect windowGeometry = targetWindow_->geometry();
+    const qreal devicePixelRatio = targetWindow_->devicePixelRatio();
+    if (!mappingFinite || !std::isfinite(devicePixelRatio) || devicePixelRatio <= 0.0
+        || windowPosition.x() < 0.0 || windowPosition.y() < 0.0
+        || windowPosition.x() >= windowGeometry.width()
+        || windowPosition.y() >= windowGeometry.height()) {
+        acknowledge(requestId, sessionId, serialText, revisionText, QStringLiteral("rejected"));
+        return;
+    }
     const QPoint global = targetWindow_->mapToGlobal(windowPosition.toPoint());
+    const bool doubleClick = action == QStringLiteral("double");
     const Qt::MouseButton button = action == QStringLiteral("right")
         ? Qt::RightButton
         : action == QStringLiteral("middle") ? Qt::MiddleButton : Qt::LeftButton;
@@ -219,25 +271,80 @@ void FerricPagePointerAdapter::dispatch(const QString &requestId,
     const bool moved = dispatchTarget && dispatchWindow
         && dispatchTarget->window() == dispatchWindow.data()
         && QCoreApplication::sendEvent(dispatchWindow.data(), &move);
-    bool delivered = moved;
-    if (click && moved && dispatchTarget && dispatchWindow) {
+    const auto sameTarget = [&] {
+        return dispatchTarget && dispatchWindow && targetItem_ == dispatchTarget
+            && targetWindow_ == dispatchWindow
+            && dispatchTarget->window() == dispatchWindow.data();
+    };
+    const auto currentSurface = [&] {
+        if (!sameTarget() || !enabled_ || inputBlocked_ || !validTarget()
+            || surfaceSerial_ != serial || surfaceRevision_ != revision
+            || pendingRequestId_ != requestId || pendingSessionId_ != sessionId
+            || dispatchWindow->geometry() != windowGeometry
+            || dispatchWindow->devicePixelRatio() != devicePixelRatio
+            || dispatchWindow->mapToGlobal(windowPosition.toPoint()) != global)
+            return false;
+        // Compare the effective mapping, including ancestor and custom transforms.
+        // The selected point alone can stay fixed while a view rotates or scales.
+        for (std::size_t index = 0; index < localCorners.size(); ++index) {
+            const QPointF current = dispatchTarget->mapToScene(localCorners[index]);
+            if (current.x() != sceneCorners[index].x() || current.y() != sceneCorners[index].y())
+                return false;
+        }
+        const QPointF current = dispatchTarget->mapToScene(targetLocal);
+        return current.x() == windowPosition.x() && current.y() == windowPosition.y();
+    };
+    bool pressAttempted = false;
+    bool delivered = moved && currentSurface();
+    if (click && delivered) {
         QMouseEvent press(QEvent::MouseButtonPress, windowPosition, windowPosition, global,
                           button, button,
                           Qt::NoModifier, Qt::MouseEventSynthesizedByApplication);
         QMouseEvent release(QEvent::MouseButtonRelease, windowPosition, windowPosition,
                             global, button, Qt::NoButton, Qt::NoModifier,
                             Qt::MouseEventSynthesizedByApplication);
-        const bool pressed = QCoreApplication::sendEvent(dispatchWindow.data(), &press);
-        const bool targetUnchanged = dispatchTarget && dispatchWindow
-            && targetItem_ == dispatchTarget && targetWindow_ == dispatchWindow
-            && dispatchTarget->window() == dispatchWindow.data();
-        const bool released = targetUnchanged
+        // The move can synchronously change chrome, ownership or geometry.
+        // Never begin a button gesture after an observed invalidation.
+        pressAttempted = currentSurface();
+        const bool pressed = pressAttempted
+            && QCoreApplication::sendEvent(dispatchWindow.data(), &press);
+        // Only clean up a gesture we attempted, on its unchanged receiver.
+        const bool released = pressAttempted && sameTarget()
             && QCoreApplication::sendEvent(dispatchWindow.data(), &release);
-        delivered = pressed && released;
+        delivered = pressed && released && currentSurface();
+        if (delivered && doubleClick) {
+            if (!currentSurface()) {
+                delivered = false;
+            } else {
+                QMouseEvent secondPress(QEvent::MouseButtonPress, windowPosition,
+                                        windowPosition, global, button, button,
+                                        Qt::NoModifier,
+                                        Qt::MouseEventSynthesizedByApplication);
+                const bool secondPressAttempted = currentSurface();
+                const bool secondPressed = secondPressAttempted
+                    && QCoreApplication::sendEvent(dispatchWindow.data(), &secondPress);
+                QMouseEvent doubleClickEvent(QEvent::MouseButtonDblClick, windowPosition,
+                                             windowPosition, global, button, button,
+                                             Qt::NoModifier,
+                                             Qt::MouseEventSynthesizedByApplication);
+                const bool doubleClicked = secondPressed && currentSurface()
+                    && QCoreApplication::sendEvent(dispatchWindow.data(), &doubleClickEvent);
+                QMouseEvent secondRelease(QEvent::MouseButtonRelease, windowPosition,
+                                          windowPosition, global, button, Qt::NoButton,
+                                          Qt::NoModifier,
+                                          Qt::MouseEventSynthesizedByApplication);
+                const bool secondReleased = secondPressAttempted && sameTarget()
+                    && QCoreApplication::sendEvent(dispatchWindow.data(), &secondRelease);
+                delivered = secondPressed && doubleClicked && secondReleased
+                    && currentSurface();
+            }
+        }
     }
     dispatching_ = false;
     acknowledge(requestId, sessionId, serialText, revisionText,
-                delivered ? QStringLiteral("delivered") : QStringLiteral("rejected"));
+                delivered ? QStringLiteral("delivered")
+                          : pressAttempted ? QStringLiteral("uncertain")
+                                           : QStringLiteral("rejected"));
 }
 
 bool FerricPagePointerAdapter::eventFilter(QObject *watched, QEvent *event)

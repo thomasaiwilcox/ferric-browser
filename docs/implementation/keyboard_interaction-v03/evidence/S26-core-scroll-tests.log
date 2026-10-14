@@ -1,0 +1,11 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.09s
+     Running unittests src/lib.rs (target/debug/deps/ferric_browser_core-05468200799c2821)
+
+running 5 tests
+test input::tests::default_bindings_cover_documented_navigation_and_copy_actions ... ok
+test input::tests::default_bindings_include_half_page_control_keys ... ok
+test input::tests::default_bindings_follow_qutebrowser_compatibility_baseline ... ok
+test input::tests::default_bindings_include_choose_and_indexable_first_input_hint ... ok
+test input::tests::default_bindings_select_and_clear_scroll_targets ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 135 filtered out; finished in 0.01s

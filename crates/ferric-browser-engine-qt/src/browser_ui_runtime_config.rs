@@ -1,16 +1,19 @@
+use super::browser_ui_state::PendingSelectorAction;
+use super::selector_validation::selector_validation_items;
 use super::{
-    ConfigReadOperation, ConfigReloadWorker, ConfigWriteWorker, ConfigurationLayers, CxxQtType,
-    Duration, HyprlandResponse, HyprlandWorker, Instant, NetworkPolicyWorker, ParseInput,
-    ParsedCommand, PathBuf, Pin, PortalProbeWorker, PrintWorker, ProfileDeleteWorker,
+    Config, ConfigReadOperation, ConfigReloadWorker, ConfigWriteWorker, ConfigurationLayers,
+    CxxQtType, Duration, HyprlandResponse, HyprlandWorker, Instant, NetworkPolicyWorker,
+    ParseInput, ParsedCommand, PathBuf, Pin, PortalProbeWorker, PrintWorker, ProfileDeleteWorker,
     ProfileListWorker, ProfileMutationResult, ProfilePreviewWorker, QString,
-    ReducedMotionProbeWorker, SiteExperiment, SystemFontScaleProbeWorker, UserscriptManagerResult,
-    UserscriptManagerWorker, Value, cleanup_print_artifact, configured_bindings, desktop_portals,
-    desktop_preferences, parse_chain, parse_ipc_mode, profile_from_list_values, qobject,
-    safe_ipc_url, save_runtime_overrides_atomic,
+    ReducedMotionProbeWorker, RuntimeOverrides, SiteExperiment, SystemFontScaleProbeWorker,
+    UserscriptManagerResult, UserscriptManagerWorker, Value, cleanup_print_artifact,
+    configured_bindings, desktop_portals, desktop_preferences, parse_chain, parse_ipc_mode,
+    profile_from_list_values, qobject, safe_ipc_url,
 };
 
 impl qobject::BrowserUi {
     pub(super) fn poll_config(mut self: Pin<&mut Self>) {
+        self.as_mut().expire_selector_validation();
         let reduced_motion_result = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
@@ -124,8 +127,31 @@ impl qobject::BrowserUi {
                 .pending_profile_configuration
                 .take();
             if let Some(pending) = pending {
-                self.as_mut()
-                    .finish_configure_profile(pending, result.map_err(|error| error.to_string()));
+                match result.map_err(|error| error.to_string()) {
+                    Ok(effect) => {
+                        // The Rust active base still contains safe defaults
+                        // during bootstrap. Validate the authored startup input,
+                        // not that prior active projection.
+                        let base = serde_json::from_str::<Config>(
+                            &self.as_ref().rust().config_base_json.to_string(),
+                        )
+                        .unwrap_or_default();
+                        let cli = serde_json::from_str::<RuntimeOverrides>(
+                            &self.as_ref().rust().cli_overrides_json.to_string(),
+                        )
+                        .unwrap_or_default();
+                        let layers = ConfigurationLayers {
+                            base,
+                            profile: effect.profile_overrides.clone(),
+                            runtime: effect.runtime_overrides.clone(),
+                            command_line: cli,
+                            temporary: self.as_ref().rust().temporary_overrides.clone(),
+                        };
+                        self.as_mut()
+                            .queue_profile_selector_validation(pending, effect, layers);
+                    }
+                    Err(error) => self.as_mut().finish_configure_profile(pending, Err(error)),
+                }
             } else {
                 self.as_mut()
                     .set_status_text(QString::from("Profile bootstrap result was stale"));
@@ -515,11 +541,15 @@ impl qobject::BrowserUi {
             match result {
                 Ok(result) if result.operation == ConfigReadOperation::Check => {
                     let source_count = result.loaded.sources.len();
-                    self.as_mut().set_status_text(QString::from(format!(
-                        "Configuration valid ({} source file{})",
+                    if let Err(error) = self.as_mut().queue_config_check_validation(
+                        result.loaded.config,
+                        result.profiles_config,
                         source_count,
-                        if source_count == 1 { "" } else { "s" }
-                    )));
+                    ) {
+                        self.as_mut().set_status_text(QString::from(format!(
+                            "Configuration selector check failed: {error}"
+                        )));
+                    }
                 }
                 Ok(result) => {
                     let new_base = match serde_json::to_value(&result.loaded.config) {
@@ -562,10 +592,36 @@ impl qobject::BrowserUi {
                         command_line: self.as_ref().rust().cli_overrides.clone(),
                         temporary: self.as_ref().rust().temporary_overrides.clone(),
                     };
-                    if let Err(error) = self.as_mut().commit_runtime_config(
+                    let validation_items = selector_validation_items(&layers);
+                    let validation_fingerprint =
+                        serde_json::to_string(&validation_items).unwrap_or_default();
+                    let sources = result.loaded.sources;
+                    let profiles_path = result.profiles_path;
+                    if !validation_items.is_empty()
+                        && validation_fingerprint
+                            != self.as_ref().rust().active_selector_fingerprint
+                    {
+                        self.as_mut().begin_selector_validation(
+                            validation_fingerprint,
+                            validation_items,
+                            PendingSelectorAction::Reload {
+                                candidate,
+                                layers,
+                                status: "Configuration reloaded".into(),
+                                path: path.clone(),
+                                base_json,
+                                profile_overrides,
+                                sources,
+                                profiles_path,
+                            },
+                        );
+                        return;
+                    }
+                    if let Err(error) = self.as_mut().commit_reloaded_config(
                         candidate,
-                        layers,
+                        layers.clone(),
                         "Configuration reloaded",
+                        validation_fingerprint,
                     ) {
                         self.set_status_text(QString::from(format!(
                             "Configuration reload rejected: {error}"
@@ -577,11 +633,11 @@ impl qobject::BrowserUi {
                         let this = rust.as_mut().get_mut();
                         this.base_config = new_base;
                         this.profile_overrides = profile_overrides.clone();
-                        let mut sources = result.loaded.sources;
-                        if let Some(profiles_path) = result.profiles_path {
-                            sources.push(profiles_path);
+                        let mut watched_sources = sources;
+                        if let Some(profiles_path) = profiles_path {
+                            watched_sources.push(profiles_path);
                         }
-                        this.config_watch.set_sources(&path, &sources);
+                        this.config_watch.set_sources(&path, &watched_sources);
                     }
                     self.as_mut().set_config_base_json(QString::from(base_json));
                     self.as_mut().set_profile_overrides_json(QString::from(
@@ -773,17 +829,18 @@ impl qobject::BrowserUi {
         }
         let persistent_storage = self.as_ref().rust().profile_persistence.is_durable()
             && self.as_ref().rust().storage_roots.is_some();
-        if persistent_storage {
-            let path = self
-                .as_ref()
-                .rust()
-                .storage_roots
-                .as_ref()
-                .map(|roots| roots.state.join("runtime-overrides.toml"))
-                .ok_or_else(|| "runtime storage is unavailable".to_owned())?;
-            save_runtime_overrides_atomic(&path, &persistent)
-                .map_err(|error| format!("could not save runtime overrides: {error}"))?;
-        }
+        let persist_path = if persistent_storage {
+            Some(
+                self.as_ref()
+                    .rust()
+                    .storage_roots
+                    .as_ref()
+                    .map(|roots| roots.state.join("runtime-overrides.toml"))
+                    .ok_or_else(|| "runtime storage is unavailable".to_owned())?,
+            )
+        } else {
+            None
+        };
         let layers = ConfigurationLayers {
             base: serde_json::from_value(self.as_ref().rust().base_config.clone())
                 .map_err(|error| format!("base configuration is invalid: {error}"))?,
@@ -792,15 +849,28 @@ impl qobject::BrowserUi {
             command_line: self.as_ref().rust().cli_overrides.clone(),
             temporary: temporary_layer,
         };
-        let result = self.as_mut().commit_runtime_config(
+        let status = if binding_command.is_some() {
+            "Binding saved".to_owned()
+        } else {
+            "Binding removed".to_owned()
+        };
+        let Some(result) = self.as_mut().validate_or_queue_runtime_config(
             candidate,
             layers,
-            if binding_command.is_some() {
-                "Binding saved"
-            } else {
-                "Binding removed"
-            },
-        )?;
+            status,
+            persistent.clone(),
+            persist_path,
+        )?
+        else {
+            return Ok(serde_json::json!({
+                "status": "pending-validation",
+                "mode": mode_name,
+                "keychain": keychain,
+                "command": binding_command,
+                "unbound": parsed_binding.is_none(),
+                "scope": if persistent_storage { "persistent" } else { "memory-only" }
+            }));
+        };
         self.as_mut()
             .rust_mut()
             .as_mut()
@@ -808,6 +878,7 @@ impl qobject::BrowserUi {
             .runtime_overrides = persistent;
         Ok(serde_json::json!({
             "status": "accepted",
+            "persistence": self.as_ref().rust().runtime_config_persistence,
             "mode": mode_name,
             "keychain": keychain,
             "command": binding_command,

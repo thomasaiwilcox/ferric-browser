@@ -25,7 +25,8 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
             }
             serde_json::json!({"button": button})
         }
-        "grid" | "grid-hover" | "grid-back" | "grid-reset" | "grid-help" | "grid-cancel" => {
+        "grid" | "grid-double-click" | "grid-hover" | "grid-back" | "grid-reset" | "grid-help"
+        | "grid-cancel" => {
             if !command.arguments.is_empty() {
                 return Err(format!("{} does not accept arguments", command.name));
             }

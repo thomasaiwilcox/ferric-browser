@@ -1,8 +1,9 @@
 .pragma library
+.import "PageInteractionScripts.js" as PageInteractionScripts
 
 // Browser-owned page scripts are versioned resources. The build manifest hashes
 // this file with the QML module, so script changes are explicit and auditable.
-var VERSION = "13"
+var VERSION = "21"
 
 // Page userscripts are trusted local content, but their failure boundary is
 // browser policy. Keeping the wrappers here prevents QML from assembling page
@@ -15,77 +16,6 @@ function pageUserscriptRun(source) {
 function pageUserscriptInstall(source) {
     return "(function(){try{" + String(source)
         + "\n}catch(error){}})()"
-}
-
-function boundedCount(value) {
-    return Math.max(1, Math.min(9999, Number(value) || 1))
-}
-
-function scrollTargetRuntime() {
-    return "function ftRoot(){return document.scrollingElement||document.documentElement||null;}"
-        + "function ftParent(node){if(!node)return null;const root=node.getRootNode&&node.getRootNode();return node.parentElement||(root&&root.host)||null;}"
-        + "function ftContains(parent,node){for(let current=node;current;current=ftParent(current))if(current===parent)return true;return false;}"
-        + "function ftAxisScrollable(element,axis){if(!element||element.nodeType!==1)return false;const owner=element.ownerDocument,view=owner&&owner.defaultView;if(!view)return false;const root=ftRoot();if(owner===document&&element===root)return axis==='x'?element.scrollWidth>view.innerWidth:element.scrollHeight>view.innerHeight;const style=view.getComputedStyle(element);if(axis==='x')return ['auto','scroll','overlay'].indexOf(style.overflowX)>=0&&element.scrollWidth>element.clientWidth;if(axis==='y')return ['auto','scroll','overlay'].indexOf(style.overflowY)>=0&&element.scrollHeight>element.clientHeight;return false;}"
-        + "function ftIntersect(a,b){const left=Math.max(a.left,b.left),top=Math.max(a.top,b.top),right=Math.min(a.right,b.right),bottom=Math.min(a.bottom,b.bottom);return {left:left,top:top,right:right,bottom:bottom,width:Math.max(0,right-left),height:Math.max(0,bottom-top)};}"
-        + "function ftOverflowClips(value){return value==='auto'||value==='scroll'||value==='overlay'||value==='hidden'||value==='clip';}"
-        // Root overflow (or body overflow when the HTML root's overflow is visible) is
-        // applied to the viewport, not that element's possibly empty box.
-        // https://www.w3.org/TR/css-overflow-3/#overflow-propagation
-        + "function ftViewportOverflow(node,view){const doc=node.ownerDocument,root=doc&&doc.documentElement;if(node===root)return true;if(!root||node!==doc.body||node.localName!=='body'||root.localName!=='html'||node.parentElement!==root)return false;const rs=view.getComputedStyle(root),bs=view.getComputedStyle(node);return rs.overflowX==='visible'&&rs.overflowY==='visible'&&rs.contain==='none'&&bs.contain==='none'&&bs.display!=='none';}"
-        + "function ftClippedRect(element,raw,view){let left=Math.max(0,raw.left),top=Math.max(0,raw.top),right=Math.min(view.innerWidth,raw.right),bottom=Math.min(view.innerHeight,raw.bottom);for(let node=ftParent(element);node&&right>left&&bottom>top;node=ftParent(node)){const nodeView=node.ownerDocument&&node.ownerDocument.defaultView||view;if(ftViewportOverflow(node,nodeView))continue;const style=nodeView.getComputedStyle(node),rect=node.getBoundingClientRect();if(ftOverflowClips(style.overflowX)){left=Math.max(left,rect.left);right=Math.min(right,rect.right);}if(ftOverflowClips(style.overflowY)){top=Math.max(top,rect.top);bottom=Math.min(bottom,rect.bottom);}}return {left:left,top:top,right:right,bottom:bottom,width:Math.max(0,right-left),height:Math.max(0,bottom-top)};}"
-        + "function ftLocalVisible(element,view){if(!element||element.nodeType!==1||!view)return null;const owner=element.ownerDocument,raw=element.getBoundingClientRect();if(!(raw.width>0&&raw.height>0))return null;for(let node=element;node;node=ftParent(node)){if(node.inert||(node.hasAttribute&&node.hasAttribute('inert')))return null;const nodeView=node.ownerDocument&&node.ownerDocument.defaultView||view,style=nodeView.getComputedStyle(node);if(style.display==='none'||style.visibility==='hidden'||style.visibility==='collapse'||Number(style.opacity)===0||style.pointerEvents==='none')return null;}const clipped=ftClippedRect(element,raw,view);if(!(clipped.width>0&&clipped.height>0))return null;const points=[[clipped.left+clipped.width/2,clipped.top+clipped.height/2],[clipped.left+Math.min(4,clipped.width/2),clipped.top+Math.min(4,clipped.height/2)],[clipped.right-Math.min(4,clipped.width/2),clipped.bottom-Math.min(4,clipped.height/2)]];const hit=points.some(function(point){let target=owner.elementFromPoint(point[0],point[1]);for(let depth=0;target&&target.shadowRoot&&depth<8;depth++){const inner=target.shadowRoot.elementFromPoint(point[0],point[1]);if(!inner||inner===target)break;target=inner;}return ftContains(element,target);});return hit?{raw:raw,clipped:clipped}:null;}"
-        + "function ftMeaningfullyVisible(element){try{if(!element||element.nodeType!==1||!element.isConnected)return false;let view=element.ownerDocument&&element.ownerDocument.defaultView,local=ftLocalVisible(element,view);if(!view||!local)return false;let rect=local.clipped;for(let depth=0;view!==window&&depth<16;depth++){const childView=view,frame=childView.frameElement;if(!frame||!frame.isConnected||frame.contentWindow!==childView)return false;const parentView=frame.ownerDocument&&frame.ownerDocument.defaultView;if(!parentView)return false;const frameLocal=ftLocalVisible(frame,parentView);if(!frameLocal)return false;const raw=frameLocal.raw;rect=ftIntersect({left:rect.left+raw.left,top:rect.top+raw.top,right:rect.right+raw.left,bottom:rect.bottom+raw.top},frameLocal.clipped);if(!(rect.width>0&&rect.height>0))return false;view=parentView;}if(view!==window)return false;rect=ftIntersect(rect,{left:0,top:0,right:window.innerWidth,bottom:window.innerHeight});return rect.width>0&&rect.height>0;}catch(error){return false;}}"
-        + "function ftReachableFromTopDocument(element,capturedDocument){try{if(!element||element.nodeType!==1||!element.isConnected||element.ownerDocument!==capturedDocument)return false;let view=capturedDocument&&capturedDocument.defaultView;if(!view)return false;for(let depth=0;view!==window&&depth<16;depth++){const childView=view,frame=childView.frameElement;if(!frame||!frame.isConnected||frame.contentWindow!==childView)return false;const parentView=frame.ownerDocument&&frame.ownerDocument.defaultView;if(!parentView)return false;view=parentView;}return view===window;}catch(error){return false;}}"
-        + "function ftAutoState(){return {version:1,policy:'auto',elementRef:null,ownerDocumentRef:null};}"
-        + "function ftWriteState(next){window.__ferric_browserScrollTargetState=next;return next;}"
-        + "function ftState(){try{const raw=window.__ferric_browserScrollTargetState;if(raw===undefined)return ftWriteState(ftAutoState());if(!raw||typeof raw!=='object'||raw.version!==1)return ftWriteState(ftAutoState());if((raw.policy==='auto'||raw.policy==='document')&&raw.elementRef===null&&raw.ownerDocumentRef===null)return raw;if(raw.policy==='element'&&raw.elementRef!=null&&raw.ownerDocumentRef!=null)return raw;return ftWriteState(ftAutoState());}catch(error){const fallback=ftAutoState();try{ftWriteState(fallback);}catch(ignored){}return fallback;}}"
-        + "function ftSetPolicy(policy,element){if(policy==='auto'||policy==='document')return {ok:true,policy:ftWriteState({version:1,policy:policy,elementRef:null,ownerDocumentRef:null}).policy};if(policy!=='element'||!element||element.nodeType!==1)return {ok:false,error:'stale-target'};if(typeof WeakRef!=='function'){ftWriteState(ftAutoState());return {ok:false,error:'weak-reference-unavailable'};}try{const elementRef=new WeakRef(element),ownerDocumentRef=new WeakRef(element.ownerDocument);ftWriteState({version:1,policy:'element',elementRef:elementRef,ownerDocumentRef:ownerDocumentRef});return {ok:true,policy:'element'};}catch(error){return {ok:false,error:'script-error'};}}"
-        + "function ftValidateElementState(state){if(!state||state.policy!=='element'||typeof WeakRef!=='function')return null;let element=null,capturedDocument=null,failed=false;try{const deref=WeakRef.prototype.deref;if(typeof deref!=='function')return null;try{element=deref.call(state.elementRef);}catch(error){failed=true;}try{capturedDocument=deref.call(state.ownerDocumentRef);}catch(error){failed=true;}}catch(error){return null;}if(failed||!element||!capturedDocument||capturedDocument.nodeType!==9)return null;if(!ftReachableFromTopDocument(element,capturedDocument)||!(ftAxisScrollable(element,'x')||ftAxisScrollable(element,'y'))||!ftMeaningfullyVisible(element))return null;return element;}"
-        + "function ftAutomaticTarget(axis){let node=document.activeElement,depth=0;while(node&&node!==document.body&&node!==document.documentElement&&depth<256){if(ftAxisScrollable(node,axis))return node;const shadow=node.shadowRoot&&node.shadowRoot.activeElement;if(shadow){node=shadow;}else{node=ftParent(node);}depth++;}return ftRoot();}"
-        + "function ftEffectiveTarget(axis){const current=ftState();if(current.policy==='document')return {target:ftRoot(),policy:'document'};if(current.policy==='element'){const element=ftValidateElementState(current);if(!element){ftSetPolicy('auto');return {target:ftAutomaticTarget(axis),policy:'auto'};}if(!ftAxisScrollable(element,axis))return {target:element,policy:'element',no_op:'unsupported-axis'};return {target:element,policy:'element'};}return {target:ftAutomaticTarget(axis),policy:'auto'};}"
-}
-
-function scroll(kind, direction, half, count) {
-    return "(function(){"
-        + "try{"
-        + scrollTargetRuntime()
-        + "var kind=" + JSON.stringify(String(kind)) + ";"
-        + "var direction=" + JSON.stringify(String(direction)) + ";"
-        + "var half=" + (half ? "true" : "false") + ";"
-        + "var count=" + String(boundedCount(count)) + ";"
-        + "if(!['up','down','left','right','top','bottom'].includes(direction))return {ok:false,error:'script-error'};"
-        + "var axis=(direction==='up'||direction==='down'||direction==='top'||direction==='bottom')?'y':'x';"
-        + "var resolved=ftEffectiveTarget(axis),target=resolved.target;"
-        + "if(!target)return {ok:false,error:'no-scroll-root'};"
-        + "if(resolved.no_op)return {ok:true,policy:resolved.policy,no_op:resolved.no_op};"
-        + "var root=ftRoot(),isRoot=target===root;"
-        + "var width=isRoot?window.innerWidth:target.clientWidth;"
-        + "var height=isRoot?window.innerHeight:target.clientHeight;"
-        + "if(kind==='scroll-to'){"
-        + "var top=direction==='top'?0:Math.max(0,target.scrollHeight-height);"
-        + "target.scrollTo(target.scrollLeft||0,top);"
-        + "}else{"
-        + "var step=kind==='scroll-page'?(half?0.5:0.9):0.15;"
-        + "var dx=(direction==='left'?-1:direction==='right'?1:0)*Math.max(40,width*step)*count;"
-        + "var dy=(direction==='up'?-1:direction==='down'?1:0)*Math.max(40,height*step)*count;"
-        + "target.scrollBy(dx,dy);}"
-        + "return {ok:true,policy:resolved.policy};"
-        + "}catch(error){return {ok:false,error:'script-error'};}})()"
-}
-
-function scrollTargetPolicy(policy) {
-    if (policy !== "auto" && policy !== "document")
-        return "(function(){return {ok:false,error:'script-error'};})()"
-    return "(function(){try{" + scrollTargetRuntime()
-        + "return ftSetPolicy(" + JSON.stringify(policy) + ");"
-        + "}catch(error){return {ok:false,error:'script-error'};}})()"
-}
-
-function scrollTargetStatus() {
-    return "(function(){try{" + scrollTargetRuntime()
-        + "let current=ftState();if(current.policy==='element'&&!ftValidateElementState(current)){ftSetPolicy('auto');current=ftState();}"
-        + "return {ok:true,policy:current.policy};"
-        + "}catch(error){return {ok:false,error:'script-error'};}})()"
 }
 
 function scrollPosition() {
@@ -223,7 +153,8 @@ function focusObserverSource() {
         + "window.__ferric_browserFocusObserverInstalled=true;"
         // This state lives in ApplicationWorld. Only real popstate events
         // distinguish traversal from a new pushState with the same URL.
-        + "if(window===window.top){const historyState={document:String(performance.timeOrigin)+':'+String(Math.random()),sequence:0};"
+        + "if(window===window.top){const documentId=window.crypto&&typeof window.crypto.randomUUID==='function'?window.crypto.randomUUID():String(performance.timeOrigin)+':'+String(Math.random())+':'+String(Math.random());"
+        + "const historyState={document:documentId,sequence:0};"
         + "window.__ferric_browserHistoryTraversal=historyState;"
         + "window.addEventListener('popstate',function(event){if(event.isTrusted)historyState.sequence++;},true);}"
         + "var sequence=0;var userGestureUntil=0;var identities=new WeakMap();var nextIdentity=0;var watchedElement=null;var watchedParent=null;"
@@ -289,132 +220,91 @@ function shutdownPageProbe() {
         + "} return 'clean'; })()"
 }
 
-function hintSelector(family) {
-    if (family === true || family === "links") {
-        return "a[href],area[href],link[href],[role='link'][href]"
-    }
-    if (family === "inputs")
-        return "textarea,select,input:not([type='hidden']),[contenteditable]:not([contenteditable='false'])"
-    if (family === "buttons")
-        return "button,[role='button'],[role='option'],[role='tab'],[role='checkbox'],[role='switch'],[role^='menuitem']"
-    if (family === "images")
-        return "img"
-    if (family === "media")
-        return "audio,video"
-    if (family === "scrollables")
-        return "*"
-    return "a,area,textarea,select,input:not([type='hidden']),button,frame,iframe,img,audio,video,link,summary,"
-        + "[contenteditable]:not([contenteditable='false']),[onclick],[onmousedown],"
-        + "[role='link'],[role='option'],[role='button'],[role='tab'],[role='checkbox'],"
-        + "[role='switch'],[role='menuitem'],[role='menuitemcheckbox'],"
-        + "[role='menuitemradio'],[role='treeitem'],[aria-haspopup],[ng-click],[ngClick],"
-        + "[data-ng-click],[x-ng-click],[tabindex]:not([tabindex='-1'])"
+
+// The imported resource is independently versioned and covered by the build
+// manifest. Every compatibility entry point fails closed if that contract is
+// unavailable or mismatched.
+var PAGE_INTERACTION_VERSION = "4"
+
+function interactionFailureScript(code) {
+    return "(function(){return {ok:false,error:" + JSON.stringify(code) + "};})()"
 }
 
-function hintCollector(family) {
-    var selector = hintSelector(family)
-    var linkSelector = hintSelector(true)
-    return "(function(){"
-        + scrollTargetRuntime()
-        + "const out=[];const seen=new Set();const activeIds=new Set();const selector=" + JSON.stringify(selector) + ";"
-        + "const linkSelector=" + JSON.stringify(linkSelector) + ";"
-        + "const family=" + JSON.stringify(family || "all") + ";"
-        + "let state=window.__ferric_browserHintState;if(!state){state={weak:new WeakMap(),elements:new Map(),next:1,revision:1,dirty:true,roots:new WeakSet(),observers:[],windows:[],resize:null};window.__ferric_browserHintState=state;}if(!state.windows)state.windows=[];const elements=state.elements;window.__ferric_browserHintElements=elements;"
-        + "function dirty(){state.dirty=true;state.revision=Math.min(Number.MAX_SAFE_INTEGER,state.revision+1);}if(!state.tracking){state.tracking=true;state.dirtyHandler=dirty;if(typeof ResizeObserver==='function')state.resize=new ResizeObserver(dirty);}"
-        + "function track(root){if(state.roots.has(root))return;state.roots.add(root);try{const observer=new MutationObserver(dirty);observer.observe(root,{subtree:true,childList:true,attributes:true,characterData:true});state.observers.push(observer);}catch(error){}const doc=root.nodeType===9?root:root.ownerDocument,view=doc&&doc.defaultView;if(view&&state.windows.indexOf(view)<0){try{view.addEventListener('scroll',dirty,true);view.addEventListener('resize',dirty,true);state.windows.push(view);}catch(error){}}}"
-        + "function parentOf(node){if(!node)return null;const root=node.getRootNode&&node.getRootNode();return node.parentElement||(root&&root.host)||null;}"
-        + "function linkedSurface(el,r){for(let node=parentOf(el);node;node=parentOf(node))if(node.matches&&node.matches(linkSelector))return node;const doc=el.ownerDocument,points=[[r.left+r.width/2,r.top+r.height/2],[r.left+Math.min(4,r.width/2),r.top+Math.min(4,r.height/2)],[r.right-Math.min(4,r.width/2),r.bottom-Math.min(4,r.height/2)]];for(const point of points)for(const hit of doc.elementsFromPoint(point[0],point[1]))for(let node=hit;node;node=parentOf(node))if(node.matches&&node.matches(linkSelector)){const q=node.getBoundingClientRect();if(q.left<=r.left+1&&q.top<=r.top+1&&q.right>=r.right-1&&q.bottom>=r.bottom-1)return node;}return null;}"
-        + "function inert(el){for(let node=el;node;node=parentOf(node))if(node.inert||(node.hasAttribute&&node.hasAttribute('inert')))return true;return false;}"
-        + "function composedContains(parent,node){for(let current=node;current;){if(current===parent)return true;const root=current.getRootNode&&current.getRootNode();current=current.parentElement||(root&&root.host)||null;}return false;}"
-        + "function hit(el,r){const doc=el.ownerDocument,isLink=el.matches&&el.matches(linkSelector),href=isLink?String(el.href||el.getAttribute('href')||''):'';const points=[[r.left+r.width/2,r.top+r.height/2],[r.left+Math.min(4,r.width/2),r.top+Math.min(4,r.height/2)],[r.right-Math.min(4,r.width/2),r.bottom-Math.min(4,r.height/2)]];return points.some(function(p){let node=doc.elementFromPoint(p[0],p[1]);while(node&&node.shadowRoot){const inner=node.shadowRoot.elementFromPoint(p[0],p[1]);if(!inner||inner===node)break;node=inner;}if(composedContains(el,node))return true;if(!isLink)return false;for(let current=node;current;current=parentOf(current))if(current!==el&&current.matches&&current.matches(linkSelector)&&String(current.href||current.getAttribute('href')||'')===href)return true;return false;});}"
-        + "function hasPreferredLink(el,r){if(!el.matches(linkSelector))return false;const scope=parentOf(el);if(!scope||!scope.querySelectorAll)return false;const href=String(el.href||el.getAttribute('href')||''),area=r.width*r.height;for(const candidate of scope.querySelectorAll(linkSelector)){if(candidate===el||String(candidate.href||candidate.getAttribute('href')||'')!==href)continue;const q=candidate.getBoundingClientRect(),view=candidate.ownerDocument&&candidate.ownerDocument.defaultView,s=view&&view.getComputedStyle(candidate);if(q.width>0&&q.height>0&&q.width*q.height+1<area&&s&&s.display!=='none'&&s.visibility!=='hidden'&&s.pointerEvents!=='none'&&Number(s.opacity)!==0&&hit(candidate,q))return true;}return false;}"
-        + "const clipped=ftClippedRect;"
-        + "function intersect(a,b){const left=Math.max(a.left,b.left),top=Math.max(a.top,b.top),right=Math.min(a.right,b.right),bottom=Math.min(a.bottom,b.bottom);return {left:left,top:top,right:right,bottom:bottom,width:Math.max(0,right-left),height:Math.max(0,bottom-top)};}"
-        + "function add(el,ox,oy,framePath,topClip){if(out.length>=5000||seen.has(el))return;seen.add(el);"
-        + "const ownerView=el.ownerDocument&&el.ownerDocument.defaultView;if(!ownerView)return;const s=ownerView.getComputedStyle(el),r=clipped(el,el.getBoundingClientRect(),ownerView);const vw=ownerView.innerWidth,vh=ownerView.innerHeight,topRect=intersect({left:r.left+ox,top:r.top+oy,right:r.right+ox,bottom:r.bottom+oy},topClip),x=topRect.left,y=topRect.top;"
-        + "const scrollable=ftAxisScrollable(el,'x')||ftAxisScrollable(el,'y');if(family==='scrollables'&&(!scrollable||!ftMeaningfullyVisible(el)))return;"
-        + "if(s.display==='none'||s.visibility==='hidden'||s.pointerEvents==='none'||Number(s.opacity)===0||el.disabled||el.getAttribute('aria-disabled')==='true'||inert(el)||r.width<=0||r.height<=0||topRect.width<=0||topRect.height<=0||hasPreferredLink(el,r)||!hit(el,r))return;"
-        + "if(r.bottom<=0||r.right<=0||r.top>=vh||r.left>=vw||topRect.right<=0||topRect.bottom<=0||x>=window.innerWidth||y>=window.innerHeight)return;"
-        + "let kind=family==='scrollables'?'scrollable':'aria';if(family!=='scrollables'){if(el.matches(linkSelector))kind='link';else if(el.matches('button,[role=button]'))kind='button';"
-        + "else if(el.matches('input'))kind='input';else if(el.matches('select'))kind='select';"
-        + "else if(el.matches('textarea'))kind='textarea';else if(el.isContentEditable)kind='contenteditable';else if(el.matches('img'))kind='image';else if(el.matches('audio,video'))kind='media';else if(scrollable)kind='scrollable';}"
-        + "if(family==='all'&&(kind==='image'||kind==='media')&&linkedSurface(el,r))return;"
-        + "const text=String(el.getAttribute('aria-label')||el.getAttribute('title')||el.innerText||el.value||'').replace(/[\\u0000-\\u001f\\u007f-\\u009f]+/g,' ').replace(/\\s+/g,' ').trim().slice(0,512);"
-        + "let href=kind==='link'?String(el.href||el.getAttribute('href')||''):(kind==='image'||kind==='media'?String(el.currentSrc||el.src||''):null);if(href===''||href&&href.length>8192||href&&/[\\u0000-\\u001f\\u007f-\\u009f]/.test(href))href=null;if(kind==='link'&&href===null)kind='aria';"
-        + "let elementId=state.weak.get(el);if(!elementId){elementId=state.next++;state.weak.set(el,elementId);}elements.set(elementId,{element:el,framePath:framePath});activeIds.add(elementId);if(state.resize)try{state.resize.observe(el);}catch(error){}"
-        + "out.push({element_id:elementId,kind:kind,frame_path:framePath,text:text,href:href,geometry:{x:x,y:y,width:topRect.width,height:topRect.height}});}"
-        + "function visit(root,framePath,ox,oy,depth,topClip){if(out.length>=5000||depth>8)return;track(root);"
-        + "root.querySelectorAll(selector).forEach(function(el){add(el,ox,oy,framePath,topClip);});if(out.length>=5000)return;"
-        + "root.querySelectorAll('*').forEach(function(el){if(family==='all'&&(ftAxisScrollable(el,'x')||ftAxisScrollable(el,'y')))add(el,ox,oy,framePath,topClip);if(el.shadowRoot)visit(el.shadowRoot,framePath,ox,oy,depth+1,topClip);});"
-        + "if(root.nodeType!==9)return;root.querySelectorAll('iframe,frame').forEach(function(frame,index){if(out.length>=5000||depth>=8)return;"
-        + "const fs=getComputedStyle(frame),raw=frame.getBoundingClientRect(),fr=clipped(frame,raw,frame.ownerDocument.defaultView),ownerView=frame.ownerDocument&&frame.ownerDocument.defaultView;"
-        + "const vw=ownerView?ownerView.innerWidth:window.innerWidth,vh=ownerView?ownerView.innerHeight:window.innerHeight,frameClip=intersect({left:fr.left+ox,top:fr.top+oy,right:fr.right+ox,bottom:fr.bottom+oy},topClip);"
-        + "if(fs.display==='none'||fs.visibility==='hidden'||fs.pointerEvents==='none'||Number(fs.opacity)===0||inert(frame)||fr.width<=0||fr.height<=0||frameClip.width<=0||frameClip.height<=0||fr.bottom<=0||fr.right<=0||fr.top>=vh||fr.left>=vw||!hit(frame,fr))return;"
-        + "try{if(frame.contentDocument)visit(frame.contentDocument,framePath+'.'+index,ox+raw.x,oy+raw.y,depth+1,frameClip);}catch(error){}});}"
-        + "visit(document,'0',0,0,0,{left:0,top:0,right:innerWidth,bottom:innerHeight});for(const id of Array.from(elements.keys()))if(!activeIds.has(id)){const record=elements.get(id);if(state.resize&&record)try{state.resize.unobserve(record.element);}catch(error){}elements.delete(id);}state.dirty=false;return {candidates:out,revision:state.revision,viewport:{width:innerWidth,height:innerHeight}};})()"
+function interactionScript(name, args) {
+    var asset
+    try {
+        asset = PageInteractionScripts
+    } catch (error) {
+        return interactionFailureScript("script-resource-unavailable")
+    }
+    if (!asset || asset.VERSION !== PAGE_INTERACTION_VERSION)
+        return interactionFailureScript("script-version-mismatch")
+    var builder = asset[name]
+    if (typeof builder !== "function")
+        return interactionFailureScript("script-resource-unavailable")
+    try {
+        return builder.apply(null, args)
+    } catch (error) {
+        return interactionFailureScript("script-error")
+    }
+}
+
+function scroll(kind, direction, half, count) {
+    return interactionScript("scroll", [kind, direction, half, count])
+}
+
+function scrollTargetPolicy(policy) {
+    return interactionScript("scrollTargetPolicy", [policy])
+}
+
+function scrollTargetStatus() {
+    return interactionScript("scrollTargetStatus", [])
+}
+
+function hintCollector(family, proxyTargets, selectorSnapshot, scopeLeaseId, includeFacets, budget) {
+    return interactionScript("hintCollector", [family, proxyTargets, selectorSnapshot, scopeLeaseId, includeFacets, budget])
 }
 
 function hintDirtyRevision() {
-    return "(function(){const s=window.__ferric_browserHintState;return s&&s.tracking?{dirty:s.dirty,revision:s.revision}:{dirty:false,revision:0};})()"
+    return interactionScript("hintDirtyRevision", [])
 }
 
-function hintStopTracking() {
-    return "(function(){const s=window.__ferric_browserHintState;if(!s)return true;if(s.dirtyHandler)for(const view of s.windows||[])try{view.removeEventListener('scroll',s.dirtyHandler,true);view.removeEventListener('resize',s.dirtyHandler,true);}catch(error){}for(const o of s.observers)o.disconnect();if(s.resize)s.resize.disconnect();if(s.elements&&typeof s.elements.clear==='function')s.elements.clear();try{delete window.__ferric_browserHintElements;}catch(error){window.__ferric_browserHintElements=null;}s.observers=[];s.windows=[];s.roots=new WeakSet();s.tracking=false;s.dirty=false;return true;})()"
+function hintStopTracking(scopeLeaseId) {
+    return interactionScript("hintStopTracking", [scopeLeaseId])
 }
 
-function hintFresh(candidate) {
-    var selector = hintSelector("all")
-    var linkSelector = hintSelector(true)
-    return "(function(){try{" + scrollTargetRuntime()
-        + "const elementId=" + Number(candidate.element_id) + ",path=" + JSON.stringify(candidate.frame_path || "0")
-        + ",candidateKind=" + JSON.stringify(candidate.kind || "") + ";"
-        + "const selector=" + JSON.stringify(selector) + ",linkSelector=" + JSON.stringify(linkSelector) + ";"
-        + "const state=window.__ferric_browserHintState,elements=state&&state.elements,record=elements&&elements.get(elementId);"
-        + "if(!record||record.framePath!==path||!record.element||!record.element.isConnected)return {visible:false,element_id:elementId};"
-        + "const el=record.element;const maybeScrollable=ftAxisScrollable(el,'x')||ftAxisScrollable(el,'y');if(!el.matches(selector)&&!maybeScrollable)return {visible:false,element_id:elementId};if(candidateKind==='scrollable'&&(!maybeScrollable||!ftMeaningfullyVisible(el)))return {visible:false,element_id:elementId};"
-        + "const ownerView=el.ownerDocument&&el.ownerDocument.defaultView;if(!ownerView)return {visible:false,element_id:elementId};"
-        + "function parentOf(node){if(!node)return null;const root=node.getRootNode&&node.getRootNode();return node.parentElement||(root&&root.host)||null;}"
-        + "function inert(node){for(let p=node;p;p=parentOf(p))if(p.inert||(p.hasAttribute&&p.hasAttribute('inert')))return true;return false;}"
-        + "function contains(parent,node){for(let current=node;current;current=parentOf(current))if(current===parent)return true;return false;}"
-        + "const clipped=ftClippedRect;"
-        + "function intersect(a,b){const left=Math.max(a.left,b.left),top=Math.max(a.top,b.top),right=Math.min(a.right,b.right),bottom=Math.min(a.bottom,b.bottom);return {left:left,top:top,right:right,bottom:bottom,width:Math.max(0,right-left),height:Math.max(0,bottom-top)};}"
-        + "function hit(node,rect){const doc=node.ownerDocument,isLink=node.matches&&node.matches(linkSelector),href=isLink?String(node.href||node.getAttribute('href')||''):'';const points=[[rect.left+rect.width/2,rect.top+rect.height/2],[rect.left+Math.min(4,rect.width/2),rect.top+Math.min(4,rect.height/2)],[rect.right-Math.min(4,rect.width/2),rect.bottom-Math.min(4,rect.height/2)]];return points.some(function(p){let target=doc.elementFromPoint(p[0],p[1]);while(target&&target.shadowRoot){const inner=target.shadowRoot.elementFromPoint(p[0],p[1]);if(!inner||inner===target)break;target=inner;}if(contains(node,target))return true;if(!isLink)return false;for(let current=target;current;current=parentOf(current))if(current!==node&&current.matches&&current.matches(linkSelector)&&String(current.href||current.getAttribute('href')||'')===href)return true;return false;});}"
-        + "const s=ownerView.getComputedStyle(el),local=clipped(el,el.getBoundingClientRect(),ownerView);let r=local,view=ownerView;"
-        + "if(s.display==='none'||s.visibility==='hidden'||s.pointerEvents==='none'||Number(s.opacity)===0||el.disabled||el.getAttribute('aria-disabled')==='true'||inert(el)||local.width<=0||local.height<=0||!hit(el,local))return {visible:false,element_id:elementId};"
-        + "try{while(view&&view!==window){const frame=view.frameElement;if(!frame||!frame.isConnected)return {visible:false,element_id:elementId};const parentView=frame.ownerDocument&&frame.ownerDocument.defaultView;if(!parentView)return {visible:false,element_id:elementId};const fs=parentView.getComputedStyle(frame),raw=frame.getBoundingClientRect(),fr=clipped(frame,raw,parentView);if(fs.display==='none'||fs.visibility==='hidden'||fs.pointerEvents==='none'||Number(fs.opacity)===0||inert(frame)||fr.width<=0||fr.height<=0||!hit(frame,fr))return {visible:false,element_id:elementId};r=intersect({left:r.left+raw.x,top:r.top+raw.y,right:r.right+raw.x,bottom:r.bottom+raw.y},fr);if(r.width<=0||r.height<=0)return {visible:false,element_id:elementId};view=parentView;}}catch(error){return {visible:false,element_id:elementId};}"
-        + "if(view!==window)return {visible:false,element_id:elementId};"
-        + "let kind=candidateKind==='scrollable'?'scrollable':'aria';if(candidateKind!=='scrollable'){if(el.matches(linkSelector))kind='link';else if(el.matches('button,[role=button]'))kind='button';"
-        + "else if(el.matches('input'))kind='input';else if(el.matches('select'))kind='select';else if(el.matches('textarea'))kind='textarea';else if(el.isContentEditable)kind='contenteditable';else if(el.matches('img'))kind='image';else if(el.matches('audio,video'))kind='media';else if(maybeScrollable)kind='scrollable';}"
-        + "const text=String(el.getAttribute('aria-label')||el.getAttribute('title')||el.innerText||el.value||'').replace(/[\\u0000-\\u001f\\u007f-\\u009f]+/g,' ').replace(/\\s+/g,' ').trim().slice(0,512);"
-        + "let href=kind==='link'?String(el.href||el.getAttribute('href')||''):(kind==='image'||kind==='media'?String(el.currentSrc||el.src||''):null);if(href===''||href&&href.length>8192||href&&/[\\u0000-\\u001f\\u007f-\\u009f]/.test(href))href=null;if(kind==='link'&&href===null)kind='aria';"
-        + "return {visible:r.width>0&&r.height>0&&r.bottom>0&&r.right>0&&r.top<window.innerHeight&&r.left<window.innerWidth,element_id:elementId,kind:kind,frame_path:path,"
-        + "text:text,"
-        + "href:href,geometry:{x:r.left,y:r.top,width:r.width,height:r.height}};"
-        + "}catch(error){return {visible:false,element_id:" + Number(candidate.element_id) + "};}})()"
+function hintAcquireScopeLease(request, candidate, selectorSnapshot) {
+    return interactionScript("hintAcquireScopeLease", [request, candidate, selectorSnapshot])
 }
 
-function hintFocus(elementId) {
-    return "(function(){const elements=window.__ferric_browserHintElements,record=elements&&elements.get("
-        + Number(elementId) + ");const el=record&&record.element;"
-        + "if(!el||!el.isConnected||!el.matches('input,select,textarea,[contenteditable]:not([contenteditable=false])'))return false;"
-        + "function parentOf(node){if(!node)return null;const root=node.getRootNode&&node.getRootNode();return node.parentElement||(root&&root.host)||null;}function contains(parent,node){for(let current=node;current;current=parentOf(current))if(current===parent)return true;return false;}function actionable(node){const view=node.ownerDocument&&node.ownerDocument.defaultView;if(!view)return false;const s=view.getComputedStyle(node),r=node.getBoundingClientRect();if(s.display==='none'||s.visibility==='hidden'||s.pointerEvents==='none'||Number(s.opacity)===0||node.disabled||node.getAttribute('aria-disabled')==='true'||r.width<=0||r.height<=0)return false;for(let p=node;p;p=parentOf(p))if(p.inert||(p.hasAttribute&&p.hasAttribute('inert')))return false;const points=[[r.left+r.width/2,r.top+r.height/2],[r.left+Math.min(4,r.width/2),r.top+Math.min(4,r.height/2)],[r.right-Math.min(4,r.width/2),r.bottom-Math.min(4,r.height/2)]];return points.some(function(point){return contains(node,node.ownerDocument.elementFromPoint(point[0],point[1]));});}if(!actionable(el))return false;"
-        + "const ownerView=el.ownerDocument&&el.ownerDocument.defaultView;if(ownerView&&typeof ownerView.__ferric_browserAuthorizeExplicitFocus==='function')ownerView.__ferric_browserAuthorizeExplicitFocus();"
-        + "el.focus();return true;})()"
+function hintClearScopeLease(scopeLeaseId) {
+    return interactionScript("hintClearScopeLease", [scopeLeaseId])
 }
 
-function hintClick(elementId) {
-    var selector = hintSelector(false)
-    return "(function(){const selector=" + JSON.stringify(selector) + ",elements=window.__ferric_browserHintElements,record=elements&&elements.get("
-        + Number(elementId) + ");const el=record&&record.element;"
-        + "if(!el||!el.isConnected||!el.matches(selector)||typeof el.click!=='function')return false;function parentOf(node){if(!node)return null;const root=node.getRootNode&&node.getRootNode();return node.parentElement||(root&&root.host)||null;}function contains(parent,node){for(let current=node;current;current=parentOf(current))if(current===parent)return true;return false;}const view=el.ownerDocument&&el.ownerDocument.defaultView;if(!view)return false;const s=view.getComputedStyle(el),r=el.getBoundingClientRect();if(s.display==='none'||s.visibility==='hidden'||s.pointerEvents==='none'||Number(s.opacity)===0||el.disabled||el.getAttribute('aria-disabled')==='true'||r.width<=0||r.height<=0)return false;for(let p=el;p;p=parentOf(p))if(p.inert||(p.hasAttribute&&p.hasAttribute('inert')))return false;const points=[[r.left+r.width/2,r.top+r.height/2],[r.left+Math.min(4,r.width/2),r.top+Math.min(4,r.height/2)],[r.right-Math.min(4,r.width/2),r.bottom-Math.min(4,r.height/2)]];if(!points.some(function(point){return contains(el,el.ownerDocument.elementFromPoint(point[0],point[1]));}))return false;el.click();return true;})()"
+function spatialScopeGeometry(scopeLeaseId) {
+    return interactionScript("spatialScopeGeometry", [scopeLeaseId])
+}
+
+function hintFresh(candidate, selectorSnapshot) {
+    return interactionScript("hintFresh", [candidate, selectorSnapshot])
+}
+
+function hintPointerPreflight(candidate, viewWidth, viewHeight, selectorSnapshot) {
+    return interactionScript("hintPointerPreflight", [candidate, viewWidth, viewHeight, selectorSnapshot])
+}
+
+function hintFocus(candidate, selectorSnapshot) {
+    return interactionScript("hintFocus", [candidate, selectorSnapshot])
+}
+
+function hintClick(candidate, selectorSnapshot) {
+    return interactionScript("hintClick", [candidate, selectorSnapshot])
 }
 
 function hintSetScrollTarget(elementId, framePath) {
-    return "(function(){try{" + scrollTargetRuntime()
-        + "const elementId=" + Number(elementId) + ",path=" + JSON.stringify(String(framePath || "0")) + ";"
-        + "const hintState=window.__ferric_browserHintState,elements=hintState&&hintState.elements,record=elements&&elements.get(elementId);"
-        + "if(!record||record.framePath!==path)return {ok:false,error:'stale-target'};"
-        + "const element=record.element;if(!element||!ftReachableFromTopDocument(element,element.ownerDocument)||!ftMeaningfullyVisible(element)||!(ftAxisScrollable(element,'x')||ftAxisScrollable(element,'y')))return {ok:false,error:'stale-target'};"
-        + "return ftSetPolicy('element',element);"
-        + "}catch(error){return {ok:false,error:'script-error'};}})()"
+    return interactionScript("hintSetScrollTarget", [elementId, framePath])
+}
+
+function hintFrameHost(lease, viewport, point) {
+    return PageInteractionScripts.hintFrameHost(lease, viewport, point)
 }

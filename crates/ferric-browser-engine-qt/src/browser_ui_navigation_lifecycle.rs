@@ -128,7 +128,8 @@ impl qobject::BrowserUi {
         let url = match canonical_engine_url(url) {
             Ok(url) => QString::from(url),
             Err(error) => {
-                self.set_status_text(QString::from(format!("Engine URL rejected: {error}")));
+                self.as_mut()
+                    .set_status_text(QString::from(format!("Engine URL rejected: {error}")));
                 return;
             }
         };
@@ -168,7 +169,238 @@ impl qobject::BrowserUi {
         self.set_status_text(QString::from("URL changed"));
     }
 
-    pub(super) fn navigation_url_changed_for(mut self: Pin<&mut Self>, index: i32, url: QString) {
+    pub(super) fn page_document_identity_for(
+        mut self: Pin<&mut Self>,
+        index: i32,
+        tab_id: &QString,
+        document_id: &QString,
+        epoch: i32,
+    ) {
+        let Some(target) = self.as_ref().get_ref().target_for_index(index) else {
+            return;
+        };
+        if tab_id.to_string() != target.tab.to_string() || epoch != self.as_ref().rust().input_epoch
+        {
+            return;
+        }
+        let document_id = document_id.to_string();
+        let identity_changed = self
+            .as_ref()
+            .rust()
+            .page_document_identities
+            .get(target.tab)
+            .is_some_and(|known| known != document_id);
+        if identity_changed
+            && self
+                .as_ref()
+                .rust()
+                .pending_same_document_pass_through
+                .as_ref()
+                .is_some_and(|pending| pending.tab == target.tab)
+        {
+            self.as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .pending_same_document_pass_through = None;
+        }
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .page_document_identities
+            .establish(target.tab, &document_id);
+    }
+
+    pub(super) fn begin_same_document_url_change_for(
+        mut self: Pin<&mut Self>,
+        index: i32,
+        tab_id: &QString,
+        url: QString,
+        document_id: &QString,
+        epoch: i32,
+    ) {
+        let url = match canonical_engine_url(url) {
+            Ok(url) => QString::from(url),
+            Err(error) => {
+                self.as_mut()
+                    .set_status_text(QString::from(format!("Engine URL rejected: {error}")));
+                self.as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .pending_same_document_pass_through = None;
+                return;
+            }
+        };
+        let document_id = document_id.to_string();
+        let supplied_tab_id = tab_id.to_string();
+        let target = self.as_ref().get_ref().target_for_index(index);
+        let identity_proven = target.is_some_and(|target| {
+            supplied_tab_id == target.tab.to_string()
+                && epoch == self.as_ref().rust().input_epoch
+                && self
+                    .as_ref()
+                    .rust()
+                    .page_document_identities
+                    .proves(target.tab, &document_id)
+        });
+        let active_target = target.is_some_and(|target| {
+            self.as_ref().rust().tab == Some(target.tab)
+                && self.as_ref().rust().active_tab_index == index
+        });
+        let previous_pending = self
+            .as_ref()
+            .rust()
+            .pending_same_document_pass_through
+            .clone();
+        let can_extend_pending = identity_proven
+            && active_target
+            && self.as_ref().rust().core_mode == super::Mode::Normal
+            && previous_pending.as_ref().is_some_and(|pending| {
+                Some(pending.tab) == target.map(|target| target.tab)
+                    && pending.document_id == document_id
+                    && pending.suspended_input_epoch == epoch
+            });
+        let should_suspend = super::page_document_identity::can_suspend_user_pass_through(
+            self.as_ref().rust().core_mode,
+            identity_proven,
+        ) && active_target;
+
+        self.as_mut()
+            .navigation_url_changed_for_identity(index, url.clone());
+
+        if should_suspend {
+            let Some(target) = target else {
+                return;
+            };
+            if self.as_ref().rust().core_mode == super::Mode::Normal
+                && self.as_ref().rust().current_url.to_string() == url.to_string()
+            {
+                let suspended_input_epoch = self.as_ref().rust().input_epoch;
+                self.as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .pending_same_document_pass_through =
+                    Some(super::PendingSameDocumentPassThrough {
+                        tab: target.tab,
+                        document_id,
+                        url: url.to_string(),
+                        event_input_epoch: epoch,
+                        suspended_input_epoch,
+                    });
+                return;
+            }
+        }
+
+        if can_extend_pending
+            && self.as_ref().rust().input_epoch == epoch
+            && self.as_ref().rust().current_url.to_string() == url.to_string()
+        {
+            if let Some(mut pending) = previous_pending {
+                pending.url = url.to_string();
+                pending.event_input_epoch = epoch;
+                self.as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .pending_same_document_pass_through = Some(pending);
+            }
+        } else if target.is_some_and(|target| {
+            self.as_ref()
+                .rust()
+                .pending_same_document_pass_through
+                .as_ref()
+                .is_some_and(|pending| pending.tab == target.tab)
+        }) {
+            self.as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .pending_same_document_pass_through = None;
+        }
+    }
+
+    pub(super) fn complete_same_document_url_change_for(
+        mut self: Pin<&mut Self>,
+        index: i32,
+        tab_id: &QString,
+        url: &QString,
+        document_id: &QString,
+        epoch: i32,
+    ) {
+        let canonical_url = match canonical_engine_url(QString::from(url.to_string())) {
+            Ok(url) => url,
+            Err(_) => return,
+        };
+        let document_id = document_id.to_string();
+        let supplied_tab_id = tab_id.to_string();
+        let Some(target) = self.as_ref().get_ref().target_for_index(index) else {
+            return;
+        };
+        let pending = self
+            .as_ref()
+            .rust()
+            .pending_same_document_pass_through
+            .clone();
+        let event_matches = pending.as_ref().is_some_and(|pending| {
+            pending.tab == target.tab
+                && pending.url == canonical_url
+                && pending.event_input_epoch == epoch
+        });
+        if !event_matches {
+            return;
+        }
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .pending_same_document_pass_through = None;
+
+        let Some(pending) = pending else {
+            return;
+        };
+        let proven = supplied_tab_id == target.tab.to_string()
+            && document_id == pending.document_id
+            && self
+                .as_ref()
+                .rust()
+                .page_document_identities
+                .proves(target.tab, &document_id)
+            && self.as_ref().rust().tab == Some(target.tab)
+            && self.as_ref().rust().active_tab_index == index
+            && self.as_ref().rust().input_epoch == pending.suspended_input_epoch
+            && self.as_ref().rust().core_mode == super::Mode::Normal
+            && self.as_ref().rust().current_url.to_string() == canonical_url;
+        if !proven {
+            return;
+        }
+        let Some(window) = self.as_ref().rust().window else {
+            return;
+        };
+        if self
+            .as_mut()
+            .reduce_event(Event::PushMode {
+                window,
+                mode: super::Mode::PassThrough,
+            })
+            .is_err()
+        {
+            return;
+        }
+        self.as_mut().set_core_mode(super::Mode::PassThrough);
+        self.as_mut().set_mode(QString::from(super::ipc_mode_name(
+            super::Mode::PassThrough,
+        )));
+        self.set_status_text(QString::from("Keys go to the page · Ctrl+Esc: Normal"));
+    }
+
+    pub(super) fn navigation_url_changed_for(self: Pin<&mut Self>, index: i32, url: QString) {
+        self.navigation_url_changed_for_identity(index, url);
+    }
+
+    fn navigation_url_changed_for_identity(mut self: Pin<&mut Self>, index: i32, url: QString) {
         let url = match canonical_engine_url(url) {
             Ok(url) => QString::from(url),
             Err(error) => {
@@ -449,6 +681,8 @@ impl qobject::BrowserUi {
             this.pending_journey_traversals.clear();
             this.pending_journey_reopen = None;
             this.pending_navigation_urls.clear();
+            this.page_document_identities.clear();
+            this.pending_same_document_pass_through = None;
             this.pending_redirect_tabs.clear();
             this.pending_redirect_hops.clear();
             this.popup_journey_targets.clear();
@@ -627,6 +861,8 @@ impl qobject::BrowserUi {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
             this.tab_ids.retain(|candidate| *candidate != tab);
+            this.page_document_identities.invalidate(tab);
+            this.pending_same_document_pass_through = None;
             this.content_histories.remove(&tab);
             if let Some((_, _, original_closed, Some(temporary_tab))) = experiment_closing {
                 if original_closed {

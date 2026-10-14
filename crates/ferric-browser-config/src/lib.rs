@@ -14,6 +14,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use ferric_browser_core::{MixedPolicyLayer, resolve_mixed_key_policy};
 use serde::{Deserialize, Serialize};
 
 mod appearance;
@@ -21,6 +22,7 @@ mod browser_config;
 mod config_model;
 mod routing;
 mod runtime_config;
+mod selector_config;
 mod settings;
 mod validation;
 
@@ -35,6 +37,7 @@ pub use config_model::*;
 pub use routing::*;
 use routing::{parse_context_pattern, parse_site_pattern};
 pub use runtime_config::*;
+pub use selector_config::*;
 #[cfg(test)]
 use settings::SETTING_METADATA;
 pub use settings::*;
@@ -93,11 +96,32 @@ pub fn validate_site_rule(rule: &SiteRule) -> Result<(), ConfigError> {
             rule.id
         )));
     }
+    let mut selector_rule_bytes = 0_usize;
     for (key, value) in &rule.set {
         let valid = match key.as_str() {
             "input.entry_mode" => value
                 .as_str()
                 .is_some_and(|value| matches!(value, "normal" | "insert" | "pass-through")),
+            "input.shortcut_policy" => value
+                .as_str()
+                .is_some_and(|value| matches!(value, "browser-first" | "mixed")),
+            "input.page_keys" => value.as_array().is_some_and(|values| {
+                values.iter().all(toml::Value::is_str)
+                    && validate_mixed_policy_layer(
+                        None,
+                        Some(
+                            values
+                                .iter()
+                                .filter_map(toml::Value::as_str)
+                                .map(str::to_owned)
+                                .collect(),
+                        ),
+                    )
+                    .is_ok()
+            }),
+            "hints.proxy_targets" => value
+                .as_str()
+                .is_some_and(|value| matches!(value, "off" | "validated")),
             "content.javascript" | "content.images" | "content.force_dark" => {
                 value.as_bool().is_some()
             }
@@ -112,6 +136,10 @@ pub fn validate_site_rule(rule: &SiteRule) -> Result<(), ConfigError> {
                         .as_integer()
                         .is_some_and(|value| (1..=5).contains(&value))
             }
+            _ if selector_setting_family(key).is_some() => value
+                .clone()
+                .try_into::<HintSelectorPolicy>()
+                .is_ok_and(|policy| policy.validate().is_ok()),
             _ => false,
         };
         if !setting_supports_site_scope(key) || !valid {
@@ -120,8 +148,36 @@ pub fn validate_site_rule(rule: &SiteRule) -> Result<(), ConfigError> {
                 rule.id
             )));
         }
+        if selector_setting_family(key).is_some() {
+            let policy = value
+                .clone()
+                .try_into::<HintSelectorPolicy>()
+                .map_err(|error| {
+                    ConfigError::Validation(format!(
+                        "site rule {} has an invalid selector policy for {key}: {error}",
+                        rule.id
+                    ))
+                })?;
+            selector_rule_bytes = selector_rule_bytes.saturating_add(policy.selector_bytes());
+            if selector_rule_bytes > MAX_SELECTOR_RULE_BYTES {
+                return Err(ConfigError::Validation(format!(
+                    "site rule {} exceeds the 16 KiB selector string limit",
+                    rule.id
+                )));
+            }
+        }
     }
     Ok(())
+}
+
+fn validate_mixed_policy_layer(
+    shortcut_policy: Option<&str>,
+    page_keys: Option<Vec<String>>,
+) -> Result<(), String> {
+    let layer = MixedPolicyLayer::new(shortcut_policy, page_keys);
+    resolve_mixed_key_policy(None, Some(&layer), None, None)
+        .map(|_| ())
+        .map_err(|error| error.to_string())
 }
 
 fn set_private_permissions(path: &Path) -> std::io::Result<()> {

@@ -1,0 +1,227 @@
+{
+  "schema_version": 1,
+  "slice_id": "S10",
+  "status": "implemented_unqualified",
+  "commit": "42228e20f2c7f532f2263acb0785c0a308d90bce",
+  "environment": {
+    "os": "Linux 7.2.3-arch1-3 x86_64",
+    "qt": "6.11.2",
+    "compiler": "GCC 16.2.1",
+    "rustc": "1.98.0 (88d9e12ae 2026-08-18)",
+    "build": "Rust dev/test with local Qt 6.11.2; offline workspace checks",
+    "native_test": "Qt Quick/WebEngine offscreen fixtures and CTest native_insert executable",
+    "wayland": "WAYLAND_DISPLAY was available; no physical Wayland prompt or keyboard qualification was run",
+    "scope": "Prompt lifecycle and bounded state are implemented; no full BrowserUi/WebEngine/native-dialog fixture verifies stale application-level restoration."
+  },
+  "changed_files": [
+    "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeBase.qml",
+    "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeChrome.qml",
+    "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeRequests.qml",
+    "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeServices.qml",
+    "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeSurface.qml",
+    "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml",
+    "crates/ferric-browser-engine-qt/qml/components/FerricFileDialogSurfaces.qml",
+    "crates/ferric-browser-engine-qt/qml/components/FerricPopupWindow.qml",
+    "crates/ferric-browser-engine-qt/qml/components/FerricStartPage.qml",
+    "crates/ferric-browser-engine-qt/src/browser_ui_configuration.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_ipc_dispatch.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_native_prompts.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_profile_setup.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_query_diagnostics.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_site.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+    "crates/ferric-browser-engine-qt/src/lib.rs",
+    "crates/ferric-browser-engine-qt/src/mixed_policy_runtime.rs",
+    "crates/ferric-browser-engine-qt/src/native_prompt_lease.rs",
+    "crates/ferric-browser-engine-qt/src/tests/command_protocol.rs",
+    "crates/ferric-browser-engine-qt/src/tests/presentation_boundaries.rs",
+    "crates/ferric-browser-engine-qt/tests/native-insert/tst_native_insert.cpp",
+    "crates/ferric-browser-engine-qt/tests/qml/tst_chrome_interactions.qml",
+    "docs/DEVELOPMENT_SPEC.md",
+    "evidence/S10-plan.md",
+    "evidence/S10.json",
+    "evidence/logs/S10/clippy.log",
+    "evidence/logs/S10/engine-initial-failure.log",
+    "evidence/logs/S10/engine.log",
+    "evidence/logs/S10/format.log",
+    "evidence/logs/S10/xtask-check.log",
+    "progress.json"
+  ],
+  "baseline_comparison": {
+    "report": "evidence/logs/S10/engine-initial-failure.log",
+    "result": "The initial chooser keyboard fixture failed because the engine chooser did not accept the keyboard selection, and the downstream shutdown-focus assertion also failed. After switching the fixture to the Qt Quick dialog path and focusing its acceptance control, the final run passed all 119 QML tests and the native_insert CTest target."
+  },
+  "test_results": [
+    {
+      "test_id": "T024",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "42228e20f2c7f532f2263acb0785c0a308d90bce",
+      "log": "evidence/logs/S10/engine.log",
+      "observations": [
+        "The native_insert CTest target passed; its production event-filter regressions cover keydown/up ownership, repeats, overlap, lost release and epoch-change routing."
+      ]
+    },
+    {
+      "test_id": "T025",
+      "level": "qml-component",
+      "result": "passed",
+      "command": "cargo xtask check --locked --offline",
+      "commit": "42228e20f2c7f532f2263acb0785c0a308d90bce",
+      "log": "evidence/logs/S10/xtask-check.log",
+      "observations": [
+        "All 119 QML tests passed, including the existing mode chrome, recovery, prompt keyboard and interaction regressions."
+      ]
+    },
+    {
+      "test_id": "T025",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "42228e20f2c7f532f2263acb0785c0a308d90bce",
+      "log": "evidence/logs/S10/engine.log",
+      "observations": [
+        "The native_insert CTest executable passed with 100% of its reported tests passing."
+      ]
+    },
+    {
+      "test_id": "T028",
+      "level": "qml-component",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "42228e20f2c7f532f2263acb0785c0a308d90bce",
+      "log": "evidence/logs/S10/engine.log",
+      "observations": [
+        "The Qt Quick FileDialog fixture accepts a keyboard-entered filename and keyboard activation, then cancels a reopened chooser with Escape. The fixture uses DontUseNativeDialog and does not claim OS-native dialog coverage."
+      ]
+    },
+    {
+      "test_id": "T028",
+      "level": "native-qt-offscreen",
+      "result": "not_run",
+      "command": "cargo xtask test engine",
+      "commit": "42228e20f2c7f532f2263acb0785c0a308d90bce",
+      "log": null,
+      "reason": "The offscreen suite does not compose a live BrowserUi, WebEngine tab and prompt stack to verify nested prompt restoration against owner, epoch and configuration changes. The chooser keyboard case and native key-routing guard have separate component/fixture evidence."
+    },
+    {
+      "test_id": "T028",
+      "level": "native-wayland",
+      "result": "not_run",
+      "command": "Native Wayland prompt journey",
+      "commit": "42228e20f2c7f532f2263acb0785c0a308d90bce",
+      "log": null,
+      "reason": "No physical Wayland keyboard journey through an operating-system-native prompt was run."
+    },
+    {
+      "test_id": "T029",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask check --locked --offline",
+      "commit": "42228e20f2c7f532f2263acb0785c0a308d90bce",
+      "log": "evidence/logs/S10/xtask-check.log",
+      "observations": [
+        "Lease unit tests cover LIFO completion, out-of-order/stale completion, bounded depth, owner identity, epoch/configuration/policy mismatches, and exclusion of transient mode restore candidates."
+      ]
+    },
+    {
+      "test_id": "T029",
+      "level": "native-qt-offscreen",
+      "result": "not_run",
+      "command": "cargo xtask test engine",
+      "commit": "42228e20f2c7f532f2263acb0785c0a308d90bce",
+      "log": null,
+      "reason": "No live BrowserUi prompt fixture exercises stale completion after tab/document/configuration/manual-mode changes or composes the full completion callback lifecycle; those application-level paths remain unqualified."
+    },
+    {
+      "test_id": "T045",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask check --locked --offline",
+      "commit": "42228e20f2c7f532f2263acb0785c0a308d90bce",
+      "log": "evidence/logs/S10/xtask-check.log",
+      "observations": [
+        "All workspace Rust unit tests passed, including 421 engine tests; all workspace doctests passed."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask check --locked --offline",
+      "commit": "42228e20f2c7f532f2263acb0785c0a308d90bce",
+      "log": "evidence/logs/S10/xtask-check.log",
+      "observations": [
+        "All 119 QML/WebEngine fixture tests passed."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "42228e20f2c7f532f2263acb0785c0a308d90bce",
+      "log": "evidence/logs/S10/engine.log",
+      "observations": [
+        "The native_insert CTest target passed, 1/1."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo fmt --all -- --check",
+      "commit": "42228e20f2c7f532f2263acb0785c0a308d90bce",
+      "log": "evidence/logs/S10/format.log",
+      "observations": [
+        "Formatting check passed on the committed source tree."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo clippy --workspace --all-targets --locked --offline -- -D warnings",
+      "commit": "42228e20f2c7f532f2263acb0785c0a308d90bce",
+      "log": "evidence/logs/S10/clippy.log",
+      "observations": [
+        "Strict workspace Clippy passed with warnings denied; the log contains existing Qt/GCC header warnings emitted by the C++ build."
+      ]
+    },
+    {
+      "test_id": "T029",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "ctest --test-dir target/application-tests -R '^application_offscreen$' --verbose",
+      "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+      "log": "evidence/completion-application-functional-final.log",
+      "observations": [
+        "Real confirm dialogs accept/cancel using focused keyboard controls. Nested application leases restore in LIFO order; stale completion after configuration publication cannot restore. Native chooser coverage is separate.",
+        "This follow-up records bounded local coverage; missing physical, live-site, chooser and human evidence remains unqualified."
+      ]
+    }
+  ],
+  "capability_decision": null,
+  "capability_report": null,
+  "review_kind": "self-review",
+  "scope_amendments": [],
+  "remaining_risks": [
+    "No offscreen end-to-end fixture composes BrowserUi, a WebEngine tab and real prompt lifecycle signals to prove nested/stale restoration behavior across tab, document, configuration and manual mode changes.",
+    "No physical Wayland keyboard journey or operating-system-native prompt journey was run."
+  ],
+  "not_run_reasons": [
+    "T028 native-qt-offscreen: the tested chooser and key-routing cases do not compose prompt nesting with BrowserUi owner/epoch/configuration restore decisions.",
+    "T028 native-wayland: no physical keyboard journey through an operating-system-native prompt was run.",
+    "T029 native-qt-offscreen: no live application prompt fixture drives stale completion after tab/document/configuration/manual-mode changes."
+  ],
+  "next_ready_slices": [
+    "S11"
+  ],
+  "completion_followup": {
+    "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+    "report": "evidence/completion-report.md",
+    "status": "implemented_unqualified",
+    "scope": "New composed application observations supplement historical component evidence; no missing qualification level is inferred."
+  }
+}

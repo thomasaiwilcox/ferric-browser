@@ -2,17 +2,17 @@
 
 use super::{
     ActionTargetConfig, BTreeMap, BTreeSet, BlockingConfig, CURRENT_SCHEMA_VERSION, ContentConfig,
-    ContextsConfig, Deserialize, DesktopConfig, DiscoveryConfig, DownloadsConfig, HintsConfig,
-    HistoryConfig, HyprlandConfig, InputConfig, IpcConfig, LinksConfig, LoggingConfig,
-    MAX_INCLUDE_DEPTH, MAX_RUNTIME_SETTINGS, MAX_RUNTIME_VALUE_BYTES, MAX_TOTAL_BYTES,
-    NavigationConfig, Path, PathBuf, PermissionRuleConfig, PermissionsConfig, PrivacyConfig,
-    ProfileDefinition, ProfilesConfig, RUNTIME_SCHEMA_VERSION, Serialize, SessionConfig,
-    SiteDoctorConfig, SiteRule, SpellcheckConfig, SwitcherConfig, SystemTime, TabsConfig,
-    ThemeConfig, ToolsConfig, UNIX_EPOCH, UiConfig, Write, default_search_engines, fs, io_error,
-    runtime_site_rule_id, set_private_file_mode, set_private_permissions,
-    setting_supports_site_scope, validate, validate_contexts, validate_profile_definition,
-    validate_profiles, validate_runtime_binding, validate_runtime_key, validate_runtime_overrides,
-    validate_runtime_site_pattern,
+    ContextsConfig, Deserialize, DesktopConfig, DiscoveryConfig, DownloadsConfig,
+    HintSelectorPolicy, HintsConfig, HistoryConfig, HyprlandConfig, InputConfig, IpcConfig,
+    LinksConfig, LoggingConfig, MAX_INCLUDE_DEPTH, MAX_RUNTIME_SETTINGS, MAX_RUNTIME_VALUE_BYTES,
+    MAX_TOTAL_BYTES, NavigationConfig, Path, PathBuf, PermissionRuleConfig, PermissionsConfig,
+    PrivacyConfig, ProfileDefinition, ProfilesConfig, RUNTIME_SCHEMA_VERSION, Serialize,
+    SessionConfig, SiteDoctorConfig, SiteRule, SpellcheckConfig, SwitcherConfig, SystemTime,
+    TabsConfig, ThemeConfig, ToolsConfig, UNIX_EPOCH, UiConfig, Write, default_search_engines, fs,
+    io_error, runtime_site_rule_id, selector_setting_family, set_private_file_mode,
+    set_private_permissions, setting_supports_site_scope, validate, validate_contexts,
+    validate_profile_definition, validate_profiles, validate_runtime_binding, validate_runtime_key,
+    validate_runtime_overrides, validate_runtime_site_pattern, validate_selector_policy_map,
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -213,13 +213,17 @@ impl RuntimeOverrides {
             && !value.is_bool()
             && !value.is_str()
             && !value.is_array()
+            && !(value.is_table() && selector_setting_family(key).is_some())
         {
             return Err(ConfigError::Validation(
                 "runtime override value must be a TOML scalar or array".into(),
             ));
         }
-        self.settings.insert(key.to_owned(), value);
-        validate_runtime_overrides(self)
+        let mut candidate = self.clone();
+        candidate.settings.insert(key.to_owned(), value);
+        validate_runtime_overrides(&candidate)?;
+        *self = candidate;
+        Ok(())
     }
 
     /// Parses the value portion of a `KEY=VALUE` command argument. TOML
@@ -286,28 +290,33 @@ impl RuntimeOverrides {
                 "configuration key {key} does not support site scope"
             )));
         }
-        let index = if let Some(index) = self
+        let mut candidate = self.clone();
+        let index = if let Some(index) = candidate
             .site_rules
             .iter()
             .position(|rule| rule.pattern == pattern)
         {
             index
         } else {
-            if self.site_rules.len() >= MAX_RUNTIME_SETTINGS {
+            if candidate.site_rules.len() >= MAX_RUNTIME_SETTINGS {
                 return Err(ConfigError::Validation(
                     "at most 256 runtime site rules are supported".into(),
                 ));
             }
-            self.site_rules.push(SiteRule {
+            candidate.site_rules.push(SiteRule {
                 id: runtime_site_rule_id(pattern),
                 pattern: pattern.to_owned(),
                 priority: i32::MAX,
                 set: BTreeMap::new(),
             });
-            self.site_rules.len() - 1
+            candidate.site_rules.len() - 1
         };
-        self.site_rules[index].set.insert(key.to_owned(), value);
-        validate_runtime_overrides(self)
+        candidate.site_rules[index]
+            .set
+            .insert(key.to_owned(), value);
+        validate_runtime_overrides(&candidate)?;
+        *self = candidate;
+        Ok(())
     }
 
     /// Removes one generated setting and deletes an empty generated rule.
@@ -387,18 +396,36 @@ pub fn load_runtime_overrides(path: impl AsRef<Path>) -> Result<RuntimeOverrides
     Ok(overrides)
 }
 
+/// Outcome after the atomic replacement has published the new file.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RuntimeOverrideWriteOutcome {
+    Durable,
+    /// The new file is visible, but crash durability could not be confirmed.
+    DurabilityUncertain(String),
+}
+
 /// Atomically writes generated runtime overrides with private permissions.
 /// The user configuration file is never opened or rewritten.
 ///
 /// # Errors
 ///
 /// Returns an error when validation, serialization, directory preparation, or
-/// the synchronized atomic write fails.
+/// any operation before replacement fails. A final directory-sync failure is
+/// returned as a committed outcome because the new file is already visible.
 pub fn save_runtime_overrides_atomic(
     path: impl AsRef<Path>,
     overrides: &RuntimeOverrides,
-) -> Result<(), ConfigError> {
-    let path = path.as_ref();
+) -> Result<RuntimeOverrideWriteOutcome, ConfigError> {
+    write_runtime_overrides(path.as_ref(), overrides, |parent| {
+        fs::File::open(parent).and_then(|directory| directory.sync_all())
+    })
+}
+
+fn write_runtime_overrides(
+    path: &Path,
+    overrides: &RuntimeOverrides,
+    sync_directory: impl FnOnce(&Path) -> std::io::Result<()>,
+) -> Result<RuntimeOverrideWriteOutcome, ConfigError> {
     validate_runtime_overrides(overrides)?;
     let bytes = toml::to_string_pretty(overrides)
         .map_err(|error| {
@@ -433,9 +460,10 @@ pub fn save_runtime_overrides_atomic(
             .and_then(|()| file.sync_all())
             .map_err(|error| io_error(&temporary, &error))?;
         fs::rename(&temporary, path).map_err(|error| io_error(path, &error))?;
-        fs::File::open(parent)
-            .and_then(|directory| directory.sync_all())
-            .map_err(|error| io_error(parent, &error))
+        Ok(match sync_directory(parent) {
+            Ok(()) => RuntimeOverrideWriteOutcome::Durable,
+            Err(error) => RuntimeOverrideWriteOutcome::DurabilityUncertain(error.to_string()),
+        })
     })();
     if result.is_err() {
         let _ = fs::remove_file(&temporary);
@@ -568,12 +596,41 @@ fn set_config_value(
         .copied()
         .ok_or_else(|| ConfigError::Validation(format!("configuration key is empty: {key}")))?;
     if parts.len() == 1 {
-        if !table.contains_key(part) {
+        if !table.contains_key(part) && selector_setting_family(key).is_none() {
             return Err(ConfigError::Validation(format!(
                 "configuration key not found: {key}"
             )));
         }
-        table.insert(part.to_owned(), replacement.clone());
+        let value = if selector_setting_family(key).is_some() {
+            let incoming = replacement
+                .clone()
+                .try_into::<HintSelectorPolicy>()
+                .map_err(|error| {
+                    ConfigError::Validation(format!(
+                        "selector policy for {key} has the wrong type: {error}"
+                    ))
+                })?;
+            let inherited = table
+                .get(part)
+                .cloned()
+                .map(toml::Value::try_into::<HintSelectorPolicy>)
+                .transpose()
+                .map_err(|error| {
+                    ConfigError::Validation(format!(
+                        "inherited selector policy for {key} has the wrong type: {error}"
+                    ))
+                })?;
+            let merged = HintSelectorPolicy::overlay(inherited.as_ref(), incoming)
+                .map_err(ConfigError::Validation)?;
+            toml::Value::try_from(merged).map_err(|error| {
+                ConfigError::Validation(format!(
+                    "could not encode selector policy for {key}: {error}"
+                ))
+            })?
+        } else {
+            replacement.clone()
+        };
+        table.insert(part.to_owned(), value);
         return Ok(());
     }
     let child = table
@@ -640,6 +697,7 @@ pub fn load(path: impl AsRef<Path>) -> Result<LoadedConfig, ConfigError> {
             path: root.clone(),
             message: error.to_string(),
         })?;
+    validate_selector_policy_map(&config.hints.selectors).map_err(ConfigError::Validation)?;
     validate(&config)?;
     Ok(LoadedConfig {
         config,
@@ -846,5 +904,47 @@ fn merge(destination: &mut toml::Value, source: &toml::Value) {
                 destination.insert(key.clone(), value.clone());
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod persistence_tests {
+    use super::*;
+
+    #[test]
+    fn directory_sync_failure_is_a_committed_outcome() {
+        let directory =
+            std::env::temp_dir().join(format!("ferric-config-sync-fault-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("runtime.toml");
+        let mut overrides = RuntimeOverrides::default();
+        overrides.set_literal("content.zoom", "1.25").unwrap();
+        let outcome = write_runtime_overrides(&path, &overrides, |_| {
+            Err(std::io::Error::other("injected directory sync failure"))
+        })
+        .unwrap();
+        assert!(matches!(
+            outcome,
+            RuntimeOverrideWriteOutcome::DurabilityUncertain(_)
+        ));
+        assert_eq!(load_runtime_overrides(&path).unwrap(), overrides);
+        assert_eq!(fs::read_dir(&directory).unwrap().count(), 1);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn rejected_replacement_keeps_destination_and_cleans_temporary_file() {
+        let directory =
+            std::env::temp_dir().join(format!("ferric-config-rename-fault-{}", std::process::id()));
+        let path = directory.join("runtime.toml");
+        fs::create_dir_all(&path).unwrap();
+        fs::write(path.join("old"), b"old effective state").unwrap();
+        let result = write_runtime_overrides(&path, &RuntimeOverrides::default(), |_| {
+            panic!("directory sync must not run after failed replacement")
+        });
+        assert!(result.is_err());
+        assert_eq!(fs::read(path.join("old")).unwrap(), b"old effective state");
+        assert_eq!(fs::read_dir(&directory).unwrap().count(), 1);
+        fs::remove_dir_all(directory).unwrap();
     }
 }

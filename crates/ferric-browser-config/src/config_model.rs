@@ -109,3 +109,15 @@ pub enum HintUnmatchedPolicy {
     Dim,
     Show,
 }
+
+/// Controls whether validated editor/control pairs may appear in hints.
+///
+/// `Validated` is intentionally opt-in; it does not grant page selectors
+/// permission to nominate arbitrary receivers.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum HintProxyTargets {
+    #[default]
+    Off,
+    Validated,
+}

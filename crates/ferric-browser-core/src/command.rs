@@ -695,7 +695,15 @@ impl CommandRegistry {
                 vec![Mode::Normal, Mode::Command],
                 CountPolicy::Supported { maximum: 5_000 },
                 false,
-                "Label visible page links and controls for validated activation.",
+                "Label visible page targets for validated activation or explicit Region and Surface actions.",
+            ),
+            definition(
+                "target-search",
+                &[],
+                vec![Mode::Normal, Mode::Command],
+                CountPolicy::NotSupported,
+                false,
+                "Search visible page targets from local keyboard or UI input, optionally scoped to links, controls, regions, surfaces, or all; enter the query in the native palette and confirm a result explicitly.",
             ),
             definition(
                 "grid",
@@ -720,6 +728,14 @@ impl CommandRegistry {
                 CountPolicy::NotSupported,
                 false,
                 "Request one native pointer click at the spatial crosshair.",
+            ),
+            definition(
+                "grid-double-click",
+                &[],
+                vec![Mode::Grid],
+                CountPolicy::NotSupported,
+                false,
+                "Request one qualification-gated native double-click at the spatial crosshair.",
             ),
             definition(
                 "grid-hover",
@@ -2643,6 +2659,28 @@ impl CommandRegistry {
                 "hint --rapid --target tab-bg links".into(),
                 "hint --target choose all".into(),
                 "hint --first --index 3 inputs".into(),
+                "hint regions".into(),
+                "hint surfaces".into(),
+            ];
+        }
+        if let Some(command) = registry
+            .definitions
+            .iter_mut()
+            .find(|definition| definition.name == "target-search")
+        {
+            command.effect = EffectClass::Query;
+            command.arguments = vec![ArgumentDefinition {
+                name: "scope".into(),
+                kind: ArgumentKind::Enum,
+                required: false,
+            }];
+            command.examples = vec![
+                "target-search".into(),
+                "target-search links".into(),
+                "target-search controls".into(),
+                "target-search regions".into(),
+                "target-search surfaces".into(),
+                "target-search all".into(),
             ];
         }
         if let Some(command) = registry
@@ -3375,6 +3413,13 @@ impl CommandRegistry {
                 "grid-click middle".into(),
             ];
         }
+        if let Some(command) = registry
+            .definitions
+            .iter_mut()
+            .find(|definition| definition.name == "grid-double-click")
+        {
+            command.examples = vec!["grid-double-click".into()];
+        }
         registry.expansions = [
             ("o", "open"),
             ("t", "tab-open"),
@@ -3630,7 +3675,11 @@ mod tests {
             .remove(0);
         assert_eq!(registry.resolve(&command.name).unwrap().name, "open");
         assert!(registry.validate(&command, Mode::Normal).is_ok());
-        assert_eq!(registry.definitions().len(), 143);
+        assert_eq!(registry.definitions().len(), 145);
+        let target_search = registry.resolve("target-search").unwrap();
+        assert_eq!(target_search.effect, EffectClass::Query);
+        assert_eq!(target_search.count, CountPolicy::NotSupported);
+        assert_eq!(target_search.arguments[0].kind, ArgumentKind::Enum);
         let open = registry.resolve("open").unwrap();
         assert_ne!(open.action, ActionId::from_raw(0));
         assert_eq!(open.effect, EffectClass::Navigation);

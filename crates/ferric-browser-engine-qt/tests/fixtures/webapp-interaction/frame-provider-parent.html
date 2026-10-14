@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Independent frame provider fixture</title>
+<style>
+  html, body { margin: 0; width: 640px; height: 480px; }
+  iframe { position: absolute; width: 180px; height: 120px; border: 0; }
+  #same { left: 12px; top: 12px; }
+  #duplicate-a { left: 32px; top: 160px; }
+  #duplicate-b { left: 360px; top: 160px; }
+  #sandboxed { left: 220px; top: 12px; }
+  #removable { left: 12px; top: 320px; }
+  #navigating { left: 360px; top: 320px; }
+</style>
+<iframe id="same" name="same-frame" src="frame-provider-child.html?kind=same"></iframe>
+<iframe id="duplicate-a" name="duplicate-frame" src="http://localhost:8766/frame-provider-child.html?kind=duplicate"></iframe>
+<iframe id="duplicate-b" name="duplicate-frame" src="http://localhost:8766/frame-provider-child.html?kind=duplicate"></iframe>
+<iframe id="sandboxed" name="sandboxed-frame" sandbox="allow-scripts" src="http://localhost:8766/frame-provider-child.html?kind=sandboxed"></iframe>
+<iframe id="removable" name="removable-frame" src="http://localhost:8766/frame-provider-child.html?kind=removable"></iframe>
+<iframe id="navigating" name="navigating-frame" src="http://localhost:8766/frame-provider-child.html?kind=before-navigation"></iframe>

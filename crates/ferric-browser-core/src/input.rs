@@ -278,6 +278,7 @@ impl BindingTrie {
                 binding(Mode::Grid, &["Enter"], "grid-click left"),
                 binding(Mode::Grid, &["Shift+Enter"], "grid-click right"),
                 binding(Mode::Grid, &["Ctrl+Enter"], "grid-click middle"),
+                binding(Mode::Grid, &["Alt+Enter"], "grid-double-click"),
                 binding(Mode::Grid, &["Space"], "grid-hover"),
                 binding(Mode::Grid, &["Backspace"], "grid-back"),
                 binding(Mode::Grid, &["0"], "grid-reset"),
@@ -362,6 +363,19 @@ impl BindingResolver {
     #[must_use]
     pub fn is_pending(&self) -> bool {
         !self.prefix.is_empty() || !self.count_digits.is_empty()
+    }
+
+    /// Returns whether a decimal count has started and still owns its next
+    /// Normal-mode continuation.
+    #[must_use]
+    pub fn has_pending_count(&self) -> bool {
+        !self.count_digits.is_empty()
+    }
+
+    /// Returns whether a binding keychain prefix still owns its continuation.
+    #[must_use]
+    pub fn has_pending_keychain(&self) -> bool {
+        !self.prefix.is_empty()
     }
 
     pub fn reset(&mut self) {
@@ -589,6 +603,8 @@ mod tests {
             resolver.feed("y", 0),
             BindingOutcome::Pending { .. }
         ));
+        assert!(resolver.has_pending_keychain());
+        assert!(!resolver.has_pending_count());
         assert_eq!(
             resolver.feed("y", 1),
             BindingOutcome::Execute {
@@ -600,6 +616,8 @@ mod tests {
             resolver.feed("3", 0),
             BindingOutcome::Pending { count: 3, .. }
         ));
+        assert!(resolver.has_pending_count());
+        assert!(!resolver.has_pending_keychain());
         assert_eq!(
             resolver.feed("H", 10),
             BindingOutcome::Execute {
@@ -907,5 +925,21 @@ mod tests {
                 "missing qutebrowser-compatible binding {keys:?}"
             );
         }
+    }
+
+    #[test]
+    fn double_click_binding_is_an_explicit_grid_only_chord() {
+        let trie = BindingTrie::default_v1(CommandRegistry::default_v1()).unwrap();
+        let definitions = trie.definitions();
+        let binding = definitions
+            .iter()
+            .find(|binding| binding.mode == Mode::Grid && binding.keys == ["Alt+Enter"])
+            .expect("Grid double-click chord");
+        assert_eq!(binding.command, "grid-double-click");
+        assert!(
+            !definitions
+                .iter()
+                .any(|binding| { binding.mode == Mode::Normal && binding.keys == ["Alt+Enter"] })
+        );
     }
 }

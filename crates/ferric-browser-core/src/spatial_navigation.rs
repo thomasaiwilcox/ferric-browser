@@ -12,6 +12,7 @@ use crate::{IdSource, SpatialRequestId, SpatialSessionId, Target, WindowId};
 
 pub const MAX_SPATIAL_DEPTH: u8 = 8;
 pub const SPATIAL_PRECISION_LIMIT: f64 = 1.0;
+pub const SPATIAL_SCOPE_GEOMETRY_TOLERANCE: f64 = 0.5;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LogicalPoint {
@@ -37,6 +38,55 @@ pub struct LogicalRect {
     pub y: f64,
     pub width: f64,
     pub height: f64,
+}
+
+/// Maps a top-document CSS rectangle into WebEngineView-local Qt logical
+/// coordinates using the measured viewport scale.  DPR and window placement
+/// are deliberately handled later by the native adapter.
+#[must_use]
+pub fn map_css_rect_to_view_local(
+    css_rect: LogicalRect,
+    css_viewport_width: f64,
+    css_viewport_height: f64,
+    view_local_width: f64,
+    view_local_height: f64,
+) -> Option<LogicalRect> {
+    let css_rect = LogicalRect::new(css_rect.x, css_rect.y, css_rect.width, css_rect.height)?;
+    let css_viewport = LogicalRect::new(0.0, 0.0, css_viewport_width, css_viewport_height)?;
+    let view_local = LogicalRect::new(0.0, 0.0, view_local_width, view_local_height)?;
+    if css_rect.x < 0.0
+        || css_rect.y < 0.0
+        || css_rect.x + css_rect.width > css_viewport.width
+        || css_rect.y + css_rect.height > css_viewport.height
+    {
+        return None;
+    }
+    let scale_x = view_local.width / css_viewport.width;
+    let scale_y = view_local.height / css_viewport.height;
+    if !scale_x.is_finite()
+        || !scale_y.is_finite()
+        || !(0.2..=5.0).contains(&scale_x)
+        || !(0.2..=5.0).contains(&scale_y)
+    {
+        return None;
+    }
+    let mapped = LogicalRect::new(
+        css_rect.x * scale_x,
+        css_rect.y * scale_y,
+        css_rect.width * scale_x,
+        css_rect.height * scale_y,
+    )?;
+    (mapped.x + mapped.width <= view_local.width && mapped.y + mapped.height <= view_local.height)
+        .then_some(mapped)
+}
+
+fn rect_is_within(rect: LogicalRect, bounds: LogicalRect) -> bool {
+    LogicalRect::new(rect.x, rect.y, rect.width, rect.height).is_some()
+        && LogicalRect::new(bounds.x, bounds.y, bounds.width, bounds.height).is_some()
+        && rect.x >= bounds.x
+        && rect.y >= bounds.y
+        && rect.x + rect.width <= bounds.x + bounds.width
+        && rect.y + rect.height <= bounds.y + bounds.height
 }
 
 impl LogicalRect {
@@ -172,6 +222,7 @@ pub enum PointerButton {
 pub enum SpatialAction {
     Hover,
     Click(PointerButton),
+    DoubleClick,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -250,11 +301,55 @@ pub struct SpatialProjection {
     pub session_id: SpatialSessionId,
     pub selection_revision: u64,
     pub lifecycle: SpatialLifecycle,
+    /// The full captured `WebEngineView` surface, always rooted at `(0, 0)`.
+    pub viewport_rect: LogicalRect,
+    /// The selected interaction area; equal to `viewport_rect` for legacy Grid.
+    pub interaction_rect: LogicalRect,
+    /// Compatibility alias for `interaction_rect`.
     pub root_rect: LogicalRect,
     pub current_rect: LogicalRect,
     pub crosshair: LogicalPoint,
     pub depth: u8,
     pub help_visible: bool,
+}
+
+/// The exact weak page-scope lease identity that authorized scoped Grid.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SpatialScope {
+    pub lease_id: String,
+    pub element_id: u32,
+    pub frame_path: String,
+    pub kind: crate::HintKind,
+    pub configuration_revision: u64,
+    pub selector_policy_revision: u64,
+    pub scroll_revision: u64,
+    pub css_viewport_width_bits: u64,
+    pub css_viewport_height_bits: u64,
+    pub zoom_factor_bits: u64,
+}
+
+impl SpatialScope {
+    #[must_use]
+    pub fn is_valid(&self) -> bool {
+        !self.lease_id.is_empty()
+            && self.lease_id.len() <= 128
+            && self.element_id > 0
+            && !self.frame_path.is_empty()
+            && self.frame_path.len() <= 256
+            && matches!(
+                self.kind,
+                crate::HintKind::Region
+                    | crate::HintKind::ScrollableRegion
+                    | crate::HintKind::Surface
+                    | crate::HintKind::FocusableSurface
+            )
+            && f64::from_bits(self.css_viewport_width_bits).is_finite()
+            && f64::from_bits(self.css_viewport_height_bits).is_finite()
+            && f64::from_bits(self.css_viewport_width_bits) > 0.0
+            && f64::from_bits(self.css_viewport_height_bits) > 0.0
+            && f64::from_bits(self.zoom_factor_bits).is_finite()
+            && f64::from_bits(self.zoom_factor_bits) > 0.0
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -294,6 +389,7 @@ pub enum SpatialError {
     DispatchPending,
     NoDispatchPending,
     InvalidRequestPoint,
+    InvalidScope,
     AtDepthLimit,
     PrecisionLimit,
     RevisionExhausted,
@@ -311,6 +407,7 @@ impl fmt::Display for SpatialError {
             Self::DispatchPending => "a spatial dispatch is already pending",
             Self::NoDispatchPending => "no spatial dispatch is pending",
             Self::InvalidRequestPoint => "spatial dispatch point is outside the surface",
+            Self::InvalidScope => "spatial scope identity or geometry is invalid",
             Self::AtDepthLimit => "spatial refinement depth limit reached",
             Self::PrecisionLimit => "spatial precision limit reached",
             Self::RevisionExhausted => "spatial selection revision exhausted",
@@ -328,7 +425,8 @@ enum SessionState {
     },
     Selecting {
         owner: SpatialOwner,
-        root: LogicalRect,
+        viewport: LogicalRect,
+        interaction: LogicalRect,
         current: LogicalRect,
         history: Vec<LogicalRect>,
         revision: u64,
@@ -336,7 +434,8 @@ enum SessionState {
     },
     DispatchPending {
         owner: SpatialOwner,
-        root: LogicalRect,
+        viewport: LogicalRect,
+        interaction: LogicalRect,
         current: LogicalRect,
         history: Vec<LogicalRect>,
         revision: u64,
@@ -356,6 +455,7 @@ enum SessionState {
 pub struct SpatialSession {
     id: SpatialSessionId,
     target: SpatialTarget,
+    scope: Option<SpatialScope>,
     state: SessionState,
 }
 
@@ -365,6 +465,17 @@ impl SpatialSession {
         Self {
             id: ids.spatial_session(),
             target,
+            scope: None,
+            state: SessionState::AwaitingSurface { target },
+        }
+    }
+
+    #[must_use]
+    pub fn new_scoped(ids: &mut IdSource, target: SpatialTarget, scope: SpatialScope) -> Self {
+        Self {
+            id: ids.spatial_session(),
+            target,
+            scope: Some(scope),
             state: SessionState::AwaitingSurface { target },
         }
     }
@@ -377,6 +488,42 @@ impl SpatialSession {
     #[must_use]
     pub const fn target(&self) -> SpatialTarget {
         self.target
+    }
+
+    #[must_use]
+    pub fn scope(&self) -> Option<&SpatialScope> {
+        self.scope.as_ref()
+    }
+
+    #[must_use]
+    pub fn surface_owner(&self) -> Option<SpatialOwner> {
+        match self.state {
+            SessionState::Selecting { owner, .. } | SessionState::DispatchPending { owner, .. } => {
+                Some(owner)
+            }
+            SessionState::AwaitingSurface { .. } | SessionState::Inactive { .. } => None,
+        }
+    }
+
+    #[must_use]
+    pub fn scope_geometry_matches(&self, actual: LogicalRect, edge_tolerance: f64) -> bool {
+        if self.scope.is_none()
+            || !edge_tolerance.is_finite()
+            || edge_tolerance < 0.0
+            || LogicalRect::new(actual.x, actual.y, actual.width, actual.height).is_none()
+        {
+            return false;
+        }
+        let Some(expected) = self
+            .projection()
+            .map(|projection| projection.interaction_rect)
+        else {
+            return false;
+        };
+        (expected.x - actual.x).abs() <= edge_tolerance
+            && (expected.y - actual.y).abs() <= edge_tolerance
+            && (expected.x + expected.width - actual.x - actual.width).abs() <= edge_tolerance
+            && (expected.y + expected.height - actual.y - actual.height).abs() <= edge_tolerance
     }
 
     #[must_use]
@@ -418,12 +565,50 @@ impl SpatialSession {
         owner: SpatialOwner,
         root: LogicalRect,
     ) -> Result<SpatialProjection, SpatialError> {
+        let interaction = if self.scope.is_some() {
+            self.projection()
+                .ok_or(SpatialError::InvalidScope)?
+                .interaction_rect
+        } else {
+            root
+        };
+        self.observe_surface_in_scope(owner, root, interaction)
+    }
+
+    /// Installs a scoped interaction rectangle inside the full view viewport.
+    /// The scope identity is fixed when the session is created.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SpatialError::InvalidScope`] if the session scope is invalid or the
+    /// interaction rectangle is outside the viewport.
+    pub fn observe_scoped_surface(
+        &mut self,
+        owner: SpatialOwner,
+        viewport: LogicalRect,
+        interaction: LogicalRect,
+    ) -> Result<SpatialProjection, SpatialError> {
+        if !self.scope.as_ref().is_some_and(SpatialScope::is_valid)
+            || !rect_is_within(interaction, viewport)
+        {
+            return Err(SpatialError::InvalidScope);
+        }
+        self.observe_surface_in_scope(owner, viewport, interaction)
+    }
+
+    fn observe_surface_in_scope(
+        &mut self,
+        owner: SpatialOwner,
+        viewport: LogicalRect,
+        interaction: LogicalRect,
+    ) -> Result<SpatialProjection, SpatialError> {
         if !owner.surface.is_valid() {
             return Err(SpatialError::InvalidSurface);
         }
-        if root.x != 0.0
-            || root.y != 0.0
-            || LogicalRect::new(root.x, root.y, root.width, root.height).is_none()
+        if viewport.x != 0.0
+            || viewport.y != 0.0
+            || LogicalRect::new(viewport.x, viewport.y, viewport.width, viewport.height).is_none()
+            || !rect_is_within(interaction, viewport)
         {
             return Err(SpatialError::InvalidGeometry);
         }
@@ -431,8 +616,9 @@ impl SpatialSession {
             SessionState::AwaitingSurface { target } if *target == owner.target => {
                 self.state = SessionState::Selecting {
                     owner,
-                    root,
-                    current: root,
+                    viewport,
+                    interaction,
+                    current: interaction,
                     history: Vec::new(),
                     revision: 1,
                     help_visible: false,
@@ -442,18 +628,20 @@ impl SpatialSession {
             SessionState::AwaitingSurface { .. } => Err(SpatialError::TargetMismatch),
             SessionState::Selecting {
                 owner: current_owner,
-                root: current_root,
+                viewport: current_viewport,
+                interaction: current_interaction,
                 ..
             }
             | SessionState::DispatchPending {
                 owner: current_owner,
-                root: current_root,
+                viewport: current_viewport,
+                interaction: current_interaction,
                 ..
             } => {
                 if *current_owner != owner {
                     return Err(SpatialError::SurfaceMismatch);
                 }
-                if *current_root != root {
+                if *current_viewport != viewport || *current_interaction != interaction {
                     return Err(SpatialError::SurfaceMismatch);
                 }
                 self.projection().ok_or(SpatialError::NoSurface)
@@ -464,44 +652,51 @@ impl SpatialSession {
 
     #[must_use]
     pub fn projection(&self) -> Option<SpatialProjection> {
-        let (root, current, revision, help_visible, lifecycle, depth) = match &self.state {
-            SessionState::Selecting {
-                root,
-                current,
-                revision,
-                help_visible,
-                history,
-                ..
-            } => (
-                *root,
-                *current,
-                *revision,
-                *help_visible,
-                SpatialLifecycle::Selecting,
-                u8::try_from(history.len()).unwrap_or(MAX_SPATIAL_DEPTH),
-            ),
-            SessionState::DispatchPending {
-                root,
-                current,
-                revision,
-                help_visible,
-                history,
-                ..
-            } => (
-                *root,
-                *current,
-                *revision,
-                *help_visible,
-                SpatialLifecycle::DispatchPending,
-                u8::try_from(history.len()).unwrap_or(MAX_SPATIAL_DEPTH),
-            ),
-            _ => return None,
-        };
+        let (viewport, interaction, current, revision, help_visible, lifecycle, depth) =
+            match &self.state {
+                SessionState::Selecting {
+                    viewport,
+                    interaction,
+                    current,
+                    revision,
+                    help_visible,
+                    history,
+                    ..
+                } => (
+                    *viewport,
+                    *interaction,
+                    *current,
+                    *revision,
+                    *help_visible,
+                    SpatialLifecycle::Selecting,
+                    u8::try_from(history.len()).unwrap_or(MAX_SPATIAL_DEPTH),
+                ),
+                SessionState::DispatchPending {
+                    viewport,
+                    interaction,
+                    current,
+                    revision,
+                    help_visible,
+                    history,
+                    ..
+                } => (
+                    *viewport,
+                    *interaction,
+                    *current,
+                    *revision,
+                    *help_visible,
+                    SpatialLifecycle::DispatchPending,
+                    u8::try_from(history.len()).unwrap_or(MAX_SPATIAL_DEPTH),
+                ),
+                _ => return None,
+            };
         Some(SpatialProjection {
             session_id: self.id,
             selection_revision: revision,
             lifecycle,
-            root_rect: root,
+            viewport_rect: viewport,
+            interaction_rect: interaction,
+            root_rect: interaction,
             current_rect: current,
             crosshair: current.center(),
             depth,
@@ -592,7 +787,7 @@ impl SpatialSession {
     /// pending, or the session is inactive.
     pub fn reset(&mut self) -> Result<SpatialProjection, SpatialError> {
         let SessionState::Selecting {
-            root,
+            interaction,
             current,
             history,
             revision,
@@ -608,7 +803,7 @@ impl SpatialSession {
         };
         if !history.is_empty() {
             history.clear();
-            *current = *root;
+            *current = *interaction;
             *revision = revision
                 .checked_add(1)
                 .ok_or(SpatialError::RevisionExhausted)?;
@@ -652,28 +847,31 @@ impl SpatialSession {
         ids: &mut IdSource,
         action: SpatialAction,
     ) -> Result<SpatialDispatchRequest, SpatialError> {
-        let (owner, root, current, history, revision, help_visible) = match &self.state {
-            SessionState::Selecting {
-                owner,
-                root,
-                current,
-                history,
-                revision,
-                help_visible,
-            } => (
-                *owner,
-                *root,
-                *current,
-                history.clone(),
-                *revision,
-                *help_visible,
-            ),
-            SessionState::AwaitingSurface { .. } => return Err(SpatialError::NoSurface),
-            SessionState::DispatchPending { .. } => return Err(SpatialError::DispatchPending),
-            SessionState::Inactive { .. } => return Err(SpatialError::Inactive),
-        };
+        let (owner, viewport, interaction, current, history, revision, help_visible) =
+            match &self.state {
+                SessionState::Selecting {
+                    owner,
+                    viewport,
+                    interaction,
+                    current,
+                    history,
+                    revision,
+                    help_visible,
+                } => (
+                    *owner,
+                    *viewport,
+                    *interaction,
+                    *current,
+                    history.clone(),
+                    *revision,
+                    *help_visible,
+                ),
+                SessionState::AwaitingSurface { .. } => return Err(SpatialError::NoSurface),
+                SessionState::DispatchPending { .. } => return Err(SpatialError::DispatchPending),
+                SessionState::Inactive { .. } => return Err(SpatialError::Inactive),
+            };
         let point = current.center();
-        if !root.contains(point) {
+        if !viewport.contains(point) || !interaction.contains(point) {
             return Err(SpatialError::InvalidRequestPoint);
         }
         let request = SpatialDispatchRequest {
@@ -686,7 +884,8 @@ impl SpatialSession {
         };
         self.state = SessionState::DispatchPending {
             owner,
-            root,
+            viewport,
+            interaction,
             current,
             history,
             revision,
@@ -721,7 +920,12 @@ impl SpatialSession {
         }
         if let (SpatialAction::Hover, SpatialDispatchOutcome::Delivered) = (request.action, outcome)
         {
-            let SessionState::DispatchPending { root, .. } = self.state else {
+            let SessionState::DispatchPending {
+                viewport,
+                interaction,
+                ..
+            } = self.state
+            else {
                 unreachable!();
             };
             let Some(next_revision) = request.selection_revision.checked_add(1) else {
@@ -732,8 +936,9 @@ impl SpatialSession {
             };
             self.state = SessionState::Selecting {
                 owner,
-                root,
-                current: root,
+                viewport,
+                interaction,
+                current: interaction,
                 history: Vec::new(),
                 revision: next_revision,
                 help_visible: false,
@@ -799,6 +1004,111 @@ mod tests {
         assert!((actual.y - expected.y).abs() <= tolerance);
         assert!((actual.width - expected.width).abs() <= tolerance);
         assert!((actual.height - expected.height).abs() <= tolerance);
+    }
+
+    fn region_scope() -> SpatialScope {
+        SpatialScope {
+            lease_id: "hint-scope-41".to_owned(),
+            element_id: 7,
+            frame_path: "0".to_owned(),
+            kind: crate::HintKind::Region,
+            configuration_revision: 3,
+            selector_policy_revision: 9,
+            scroll_revision: 0,
+            css_viewport_width_bits: 1000.0_f64.to_bits(),
+            css_viewport_height_bits: 700.0_f64.to_bits(),
+            zoom_factor_bits: 1.0_f64.to_bits(),
+        }
+    }
+
+    #[test]
+    fn measured_css_mapping_scales_once_into_view_local_coordinates() {
+        let css = LogicalRect::new(100.0, 40.0, 200.0, 120.0).expect("CSS rect");
+        assert_eq!(
+            map_css_rect_to_view_local(css, 800.0, 600.0, 1000.0, 750.0),
+            Some(LogicalRect::new(125.0, 50.0, 250.0, 150.0).expect("view rect"))
+        );
+        assert_eq!(
+            map_css_rect_to_view_local(css, 800.0, 600.0, 640.0, 480.0),
+            Some(LogicalRect::new(80.0, 32.0, 160.0, 96.0).expect("zoomed view rect"))
+        );
+    }
+
+    #[test]
+    fn measured_css_mapping_rejects_unbounded_or_outside_geometry() {
+        let outside = LogicalRect::new(90.0, 0.0, 20.0, 10.0).expect("outside rect");
+        assert_eq!(
+            map_css_rect_to_view_local(outside, 100.0, 100.0, 100.0, 100.0),
+            None
+        );
+        let valid = LogicalRect::new(10.0, 10.0, 20.0, 20.0).expect("valid rect");
+        assert_eq!(
+            map_css_rect_to_view_local(valid, 100.0, 100.0, 600.0, 600.0),
+            None
+        );
+        assert_eq!(
+            map_css_rect_to_view_local(valid, 100.0, 100.0, f64::NAN, 100.0),
+            None
+        );
+    }
+
+    #[test]
+    fn scoped_grid_keeps_viewport_separate_and_resets_to_nonzero_region() {
+        let mut ids = IdSource::new();
+        let target = target(&mut ids);
+        let mut session = SpatialSession::new_scoped(&mut ids, target, region_scope());
+        let viewport = LogicalRect::new(0.0, 0.0, 1000.0, 700.0).expect("viewport");
+        let interaction = LogicalRect::new(100.0, 80.0, 600.0, 450.0).expect("region");
+        let owner = SpatialOwner::new(target, SurfaceStamp::new(2, 5).expect("surface stamp"));
+        let projection = session
+            .observe_scoped_surface(owner, viewport, interaction)
+            .expect("scoped surface");
+        assert_eq!(projection.viewport_rect, viewport);
+        assert_eq!(projection.interaction_rect, interaction);
+        assert_eq!(projection.root_rect, interaction);
+        assert_eq!(projection.current_rect, interaction);
+        assert!(session.scope_geometry_matches(
+            LogicalRect::new(100.25, 79.75, 599.75, 450.25).expect("tolerated region"),
+            SPATIAL_SCOPE_GEOMETRY_TOLERANCE,
+        ));
+        assert!(!session.scope_geometry_matches(
+            LogicalRect::new(100.51, 80.0, 600.0, 450.0).expect("moved region"),
+            SPATIAL_SCOPE_GEOMETRY_TOLERANCE,
+        ));
+
+        session.refine(GridCell::Nine).expect("refine");
+        session.back().expect("back");
+        session.refine(GridCell::One).expect("refine again");
+        let reset = session.reset().expect("reset");
+        assert_eq!(reset.current_rect, interaction);
+        let request = session
+            .request(&mut ids, SpatialAction::Hover)
+            .expect("scope hover");
+        assert_eq!(request.point, interaction.center());
+        assert_eq!(
+            session.acknowledge(request.request_id, owner, SpatialDispatchOutcome::Delivered),
+            SpatialAck::HoverReset
+        );
+        let hovered = session.projection().expect("projection after hover");
+        assert_eq!(hovered.viewport_rect, viewport);
+        assert_eq!(hovered.interaction_rect, interaction);
+        assert_eq!(hovered.current_rect, interaction);
+    }
+
+    #[test]
+    fn scoped_grid_rejects_invalid_lease_and_out_of_view_region() {
+        let mut ids = IdSource::new();
+        let target = target(&mut ids);
+        let mut invalid_scope = region_scope();
+        invalid_scope.lease_id.clear();
+        let mut session = SpatialSession::new_scoped(&mut ids, target, invalid_scope);
+        let viewport = LogicalRect::new(0.0, 0.0, 100.0, 100.0).expect("viewport");
+        let outside = LogicalRect::new(90.0, 20.0, 20.0, 30.0).expect("outside");
+        let owner = SpatialOwner::new(target, SurfaceStamp::new(1, 1).expect("surface stamp"));
+        assert_eq!(
+            session.observe_scoped_surface(owner, viewport, outside),
+            Err(SpatialError::InvalidScope)
+        );
     }
 
     #[test]
@@ -920,6 +1230,29 @@ mod tests {
     }
 
     #[test]
+    fn double_click_is_one_pending_spatial_request_and_one_terminal_action() {
+        let mut ids = IdSource::new();
+        let mut session = ready(&mut ids);
+        let SessionState::Selecting { owner, .. } = session.state else {
+            unreachable!();
+        };
+        let request = session
+            .request(&mut ids, SpatialAction::DoubleClick)
+            .expect("double-click request");
+        assert_eq!(request.action, SpatialAction::DoubleClick);
+        assert_eq!(session.pending_request(), Some(request));
+        assert_eq!(
+            session.request(&mut ids, SpatialAction::DoubleClick),
+            Err(SpatialError::DispatchPending)
+        );
+        assert_eq!(
+            session.acknowledge(request.request_id, owner, SpatialDispatchOutcome::Delivered),
+            SpatialAck::Inactive(SpatialCancelReason::ActionDelivered)
+        );
+        assert!(!session.is_active());
+    }
+
+    #[test]
     fn pending_dispatch_blocks_selection_and_duplicate_commits() {
         let mut ids = IdSource::new();
         let mut session = ready(&mut ids);
@@ -984,8 +1317,8 @@ mod tests {
         let mut ids = IdSource::new();
         let mut session = ready(&mut ids);
         let request = session
-            .request(&mut ids, SpatialAction::Click(PointerButton::Middle))
-            .expect("click request");
+            .request(&mut ids, SpatialAction::DoubleClick)
+            .expect("double-click request");
         session.expire_dispatch();
         assert_eq!(
             session.cancel_reason(),

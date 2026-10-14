@@ -1,0 +1,55 @@
+********* Start testing of ApplicationTests *********
+Config: Using QtTest library 6.11.2, Qt 6.11.2 (x86_64-little_endian-lp64 shared (dynamic) release build; by GCC 16.2.1 20260810), omarchy 4.0.4
+PASS   : ApplicationTests::initTestCase()
+QINFO  : ApplicationTests::fullscreenApiOutcomes(Qt-feature-disabled) loading production QML
+QWARN  : ApplicationTests::fullscreenApiOutcomes(Qt-feature-disabled) QRhiGles2: Failed to create temporary context
+QWARN  : ApplicationTests::fullscreenApiOutcomes(Qt-feature-disabled) QRhiGles2: Failed to create context
+QWARN  : ApplicationTests::fullscreenApiOutcomes(Qt-feature-disabled) Failed to create RHI for backend: OpenGL
+QINFO  : ApplicationTests::fullscreenApiOutcomes(Qt-feature-disabled) production QML created
+QWARN  : ApplicationTests::fullscreenApiOutcomes(Qt-feature-disabled) GPUInfo not initialized on GpuInfoUpdate
+QINFO  : ApplicationTests::fullscreenApiOutcomes(Qt-feature-disabled) waiting for URL "about:blank"
+[2449515:2449515:1013/115001.872071:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 6 rejected by interface blink.mojom.WidgetHost
+[2449515:2449515:1013/115001.872099:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 7 rejected by interface blink.mojom.WidgetHost
+[2449515:2449515:1013/115001.872172:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+QINFO  : ApplicationTests::fullscreenApiOutcomes(Qt-feature-disabled) fixture loaded "http://127.0.0.1:35497/fixture.html" "Ready"
+QINFO  : ApplicationTests::fullscreenApiOutcomes(Qt-feature-disabled) page API focus true "Pointer click dispatched; page response is not verified"
+QWARN  : ApplicationTests::fullscreenApiOutcomes(Qt-feature-disabled) QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+QWARN  : ApplicationTests::fullscreenApiOutcomes(Qt-feature-disabled) qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_196(0x5619c20a13a0, "ferric_browserWindow") is not a function
+PASS   : ApplicationTests::fullscreenApiOutcomes(Qt-feature-disabled)
+QINFO  : ApplicationTests::fullscreenApiOutcomes(Qt-feature-enabled) loading production QML
+QINFO  : ApplicationTests::fullscreenApiOutcomes(Qt-feature-enabled) production QML created
+QINFO  : ApplicationTests::fullscreenApiOutcomes(Qt-feature-enabled) waiting for URL "about:blank"
+[2449515:2449515:1013/115006.651935:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 6 rejected by interface blink.mojom.WidgetHost
+[2449515:2449515:1013/115006.697669:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 7 rejected by interface blink.mojom.WidgetHost
+[2449515:2449515:1013/115006.697737:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+QINFO  : ApplicationTests::fullscreenApiOutcomes(Qt-feature-enabled) fixture loaded "http://127.0.0.1:46555/fixture.html" "Ready"
+FAIL!  : ApplicationTests::fullscreenApiOutcomes(Qt-feature-enabled) Compared values are not the same
+   Actual   (page("window.allClicks").toInt()): 0
+   Expected (1)                               : 1
+   Loc: [/home/tom/Projects/RustBrowser/crates/ferric-browser-engine-qt/tests/application/tst_application.cpp(809)]
+QWARN  : ApplicationTests::fullscreenApiOutcomes(Qt-feature-enabled) QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+QWARN  : ApplicationTests::fullscreenApiOutcomes(Qt-feature-enabled) qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_393(0x5619c3876c40, "ferric_browserWindow") is not a function
+QINFO  : ApplicationTests::clipboardPermissionOutcomes(denied) loading production QML
+QINFO  : ApplicationTests::clipboardPermissionOutcomes(denied) production QML created
+QINFO  : ApplicationTests::clipboardPermissionOutcomes(denied) waiting for URL "about:blank"
+[2449515:2449515:1013/115032.187928:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+QINFO  : ApplicationTests::clipboardPermissionOutcomes(denied) fixture loaded "http://127.0.0.1:43901/fixture.html" "Ready"
+QINFO  : ApplicationTests::clipboardPermissionOutcomes(denied) page API focus true "Blocked unsupported permission request"
+QWARN  : ApplicationTests::clipboardPermissionOutcomes(denied) QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+QWARN  : ApplicationTests::clipboardPermissionOutcomes(denied) qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_590(0x5619c3744340, "ferric_browserWindow") is not a function
+PASS   : ApplicationTests::clipboardPermissionOutcomes(denied)
+QINFO  : ApplicationTests::clipboardPermissionOutcomes(allowed) loading production QML
+QINFO  : ApplicationTests::clipboardPermissionOutcomes(allowed) production QML created
+[2449515:2449515:1013/115035.733118:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+QINFO  : ApplicationTests::clipboardPermissionOutcomes(allowed) waiting for URL "about:blank"
+QINFO  : ApplicationTests::clipboardPermissionOutcomes(allowed) fixture loaded "about:blank" "Ready"
+QINFO  : ApplicationTests::clipboardPermissionOutcomes(allowed) page API focus true "Blocked unsupported permission request"
+FAIL!  : ApplicationTests::clipboardPermissionOutcomes(allowed) Compared values are not the same
+   Actual   (page("window.apiOutcome").toString())                          : "denied"
+   Expected (permission == "allow" ? QString("allowed") : QString("denied")): "allowed"
+   Loc: [/home/tom/Projects/RustBrowser/crates/ferric-browser-engine-qt/tests/application/tst_application.cpp(851)]
+QWARN  : ApplicationTests::clipboardPermissionOutcomes(allowed) QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+QWARN  : ApplicationTests::clipboardPermissionOutcomes(allowed) qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_787(0x5619c3c11be0, "ferric_browserWindow") is not a function
+PASS   : ApplicationTests::cleanupTestCase()
+Totals: 4 passed, 2 failed, 0 skipped, 0 blacklisted, 62118ms
+********* Finished testing of ApplicationTests *********

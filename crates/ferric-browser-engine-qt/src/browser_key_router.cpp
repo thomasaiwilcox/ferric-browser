@@ -116,6 +116,12 @@ void FerricBrowserKeyRouter::acceptCurrentEvent()
         accepted_ = true;
 }
 
+void FerricBrowserKeyRouter::pageOwnsCurrentEvent()
+{
+    if (dispatching_)
+        pageOwnedCurrentEvent_ = true;
+}
+
 bool FerricBrowserKeyRouter::eventFilter(QObject *watched, QEvent *event)
 {
     // Re-dispatch only the original release, synchronously through Qt. The
@@ -144,6 +150,11 @@ bool FerricBrowserKeyRouter::eventFilter(QObject *watched, QEvent *event)
             return false;
         const auto *keyEvent = static_cast<QKeyEvent *>(event);
         const quint64 identity = keyIdentity(keyEvent);
+        if (pageOwnedKeys_.contains(identity)) {
+            if (!keyEvent->isAutoRepeat())
+                pageOwnedKeys_.remove(identity);
+            return false;
+        }
         if (entryKeys_.contains(identity) && keyEvent->isAutoRepeat()) {
             event->accept();
             return true;
@@ -187,6 +198,15 @@ bool FerricBrowserKeyRouter::eventFilter(QObject *watched, QEvent *event)
             }
             return true;
         }
+        // Auto-repeat releases are part of the held gesture. Keep ownership
+        // until the real release so a consumer that accepted the press also
+        // receives the matching release exactly once.
+        if (keyEvent->isAutoRepeat()) {
+            if (!acceptedKeys_.contains(identity))
+                return false;
+            event->accept();
+            return true;
+        }
         if (!acceptedKeys_.contains(identity))
             return false;
         acceptedKeys_.remove(identity);
@@ -217,6 +237,13 @@ bool FerricBrowserKeyRouter::eventFilter(QObject *watched, QEvent *event)
         }
         entryKeys_.remove(identity);
     }
+    if (keyPress && pageOwnedKeys_.contains(identity)) {
+        if (keyEvent->isAutoRepeat())
+            return false;
+        // A fresh press replaces a lost page-owned release and is classified
+        // against the current policy as a new physical gesture.
+        pageOwnedKeys_.remove(identity);
+    }
     if (keyPress && forwardedKeys_.contains(identity)) {
         if (keyEvent->isAutoRepeat())
             return false;
@@ -233,13 +260,21 @@ bool FerricBrowserKeyRouter::eventFilter(QObject *watched, QEvent *event)
         return false;
 
     accepted_ = false;
+    pageOwnedCurrentEvent_ = false;
     dispatching_ = true;
     emit keyPressed(
-        keyEvent->text(), keyEvent->key(), int(keyEvent->modifiers()), keyEvent->isAutoRepeat());
+        keyEvent->text(),
+        keyEvent->key(),
+        int(keyEvent->modifiers()),
+        keyEvent->isAutoRepeat(),
+        keyEvent->isAutoRepeat() && acceptedKeys_.contains(identity));
     dispatching_ = false;
 
     const bool handled = accepted_;
+    if (pageOwnedCurrentEvent_ && keyPress && !keyEvent->isAutoRepeat())
+        pageOwnedKeys_.insert(identity);
     accepted_ = false;
+    pageOwnedCurrentEvent_ = false;
     if (handled)
     {
         if (keyPress && !keyEvent->isAutoRepeat()) {

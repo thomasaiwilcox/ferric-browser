@@ -8,9 +8,9 @@ use super::{
     BindingResolver, CxxQtType, Event, GridCell, LogicalRect, Mode, Pin, PointerButton, QString,
     QStringList, SpatialAck, SpatialAction, SpatialCancelReason, SpatialDispatchOutcome,
     SpatialError, SpatialLifecycle, SpatialOwner, SpatialSession, SpatialTarget, SurfaceStamp,
-    current_target, qobject,
+    current_target, map_css_rect_to_view_local, qobject,
 };
-use ferric_browser_core::{SpatialRequestId, SpatialSessionId};
+use ferric_browser_core::{SPATIAL_SCOPE_GEOMETRY_TOLERANCE, SpatialRequestId, SpatialSessionId};
 use serde_json::json;
 
 fn default_spatial_labels() -> QStringList {
@@ -47,9 +47,14 @@ impl qobject::BrowserUi {
         self.as_mut().set_spatial_visible(false);
         self.as_mut().set_spatial_selecting(false);
         self.as_mut().set_spatial_session_id(QString::default());
+        self.as_mut().set_spatial_scope_lease_id(QString::default());
         self.as_mut()
             .set_spatial_dispatch_request(QString::default());
         self.as_mut().set_spatial_labels(default_spatial_labels());
+        self.as_mut().set_spatial_viewport_x(0.0);
+        self.as_mut().set_spatial_viewport_y(0.0);
+        self.as_mut().set_spatial_viewport_width(0.0);
+        self.as_mut().set_spatial_viewport_height(0.0);
         self.as_mut().set_spatial_root_x(0.0);
         self.as_mut().set_spatial_root_y(0.0);
         self.as_mut().set_spatial_root_width(0.0);
@@ -64,7 +69,7 @@ impl qobject::BrowserUi {
         self.as_mut().set_spatial_help_visible(false);
     }
 
-    fn publish_spatial_projection(mut self: Pin<&mut Self>) {
+    pub(super) fn publish_spatial_projection(mut self: Pin<&mut Self>) {
         let definitions = self
             .as_ref()
             .rust()
@@ -105,6 +110,11 @@ impl qobject::BrowserUi {
                 .cancel_spatial_navigation(SpatialCancelReason::DispatchUncertain);
             return;
         };
+        let viewport = projection.viewport_rect;
+        self.as_mut().set_spatial_viewport_x(viewport.x);
+        self.as_mut().set_spatial_viewport_y(viewport.y);
+        self.as_mut().set_spatial_viewport_width(viewport.width);
+        self.as_mut().set_spatial_viewport_height(viewport.height);
         self.as_mut().set_spatial_visible(true);
         self.as_mut()
             .set_spatial_selecting(matches!(projection.lifecycle, SpatialLifecycle::Selecting));
@@ -197,6 +207,7 @@ impl qobject::BrowserUi {
         self.as_mut().set_mode(QString::from("grid"));
         self.as_mut()
             .set_spatial_session_id(QString::from(session_id));
+        self.as_mut().set_spatial_scope_lease_id(QString::default());
         self.as_mut()
             .set_spatial_dispatch_request(QString::default());
         self.as_mut().set_spatial_selecting(false);
@@ -307,6 +318,124 @@ impl qobject::BrowserUi {
         }
     }
 
+    pub(super) fn spatial_scope_geometry_validated(
+        mut self: Pin<&mut Self>,
+        request_id: &QString,
+        geometry_json: &QString,
+        serial: &QString,
+        revision: &QString,
+        view_width: f64,
+        view_height: f64,
+        zoom_factor: f64,
+    ) -> bool {
+        let request_id = request_id.to_string();
+        let geometry = serde_json::from_str::<serde_json::Value>(&geometry_json.to_string());
+        let stamp = SurfaceStamp::new(
+            serial.to_string().parse::<u64>().unwrap_or_default(),
+            revision.to_string().parse::<u64>().unwrap_or_default(),
+        );
+        let valid = geometry.is_ok_and(|geometry| {
+            let number = |name: &str| geometry.get(name).and_then(serde_json::Value::as_f64);
+            let string = |name: &str| geometry.get(name).and_then(serde_json::Value::as_str);
+            let integer = |name: &str| geometry.get(name).and_then(serde_json::Value::as_u64);
+            if geometry.get("ok") != Some(&serde_json::Value::Bool(true)) {
+                return false;
+            }
+            let (Some(css_x), Some(css_y), Some(css_width), Some(css_height)) = (
+                geometry
+                    .get("geometry")
+                    .and_then(|rect| rect.get("x"))
+                    .and_then(serde_json::Value::as_f64),
+                geometry
+                    .get("geometry")
+                    .and_then(|rect| rect.get("y"))
+                    .and_then(serde_json::Value::as_f64),
+                geometry
+                    .get("geometry")
+                    .and_then(|rect| rect.get("width"))
+                    .and_then(serde_json::Value::as_f64),
+                geometry
+                    .get("geometry")
+                    .and_then(|rect| rect.get("height"))
+                    .and_then(serde_json::Value::as_f64),
+            ) else {
+                return false;
+            };
+            let (Some(css_viewport_width), Some(css_viewport_height)) =
+                (number("viewport_width"), number("viewport_height"))
+            else {
+                return false;
+            };
+            let Some(css_rect) = LogicalRect::new(css_x, css_y, css_width, css_height) else {
+                return false;
+            };
+            let Some(interaction) = map_css_rect_to_view_local(
+                css_rect,
+                css_viewport_width,
+                css_viewport_height,
+                view_width,
+                view_height,
+            ) else {
+                return false;
+            };
+            let Some(stamp) = stamp else {
+                return false;
+            };
+            let binding = self.as_ref();
+            let rust = binding.rust();
+            let Some(session) = rust.spatial_session.as_ref() else {
+                return false;
+            };
+            let Some(scope) = session.scope() else {
+                return false;
+            };
+            let Some(owner) = session.surface_owner() else {
+                return false;
+            };
+            let target_is_current = rust.window == Some(owner.target.window)
+                && current_target(rust.state.as_ref(), rust.tab) == Some(owner.target.target);
+            let request_matches = if request_id.is_empty() {
+                session.lifecycle() == Some(SpatialLifecycle::Selecting)
+            } else {
+                session
+                    .pending_request()
+                    .is_some_and(|request| request.request_id.to_string() == request_id)
+            };
+            let view_matches = session.projection().is_some_and(|projection| {
+                (projection.viewport_rect.width - view_width).abs()
+                    <= SPATIAL_SCOPE_GEOMETRY_TOLERANCE
+                    && (projection.viewport_rect.height - view_height).abs()
+                        <= SPATIAL_SCOPE_GEOMETRY_TOLERANCE
+            });
+            scope.is_valid()
+                && rust.core_mode == Mode::Grid
+                && request_matches
+                && target_is_current
+                && view_matches
+                && owner.surface == stamp
+                && rust.hint_configuration_revision == scope.configuration_revision
+                && rust.spatial_scope_lease_id.to_string() == scope.lease_id
+                && scope.scroll_revision == integer("scroll_revision").unwrap_or(u64::MAX)
+                && scope.css_viewport_width_bits == css_viewport_width.to_bits()
+                && scope.css_viewport_height_bits == css_viewport_height.to_bits()
+                && scope.zoom_factor_bits == zoom_factor.to_bits()
+                && string("lease_id") == Some(scope.lease_id.as_str())
+                && integer("element_id") == Some(u64::from(scope.element_id))
+                && string("frame_path") == Some(scope.frame_path.as_str())
+                && string("kind") == Some(super::hint_kind_name(scope.kind))
+                && string("selector_revision")
+                    == Some(format!("{:016x}", scope.selector_policy_revision).as_str())
+                && integer("configuration_revision") == Some(scope.configuration_revision)
+                && session.scope_geometry_matches(interaction, SPATIAL_SCOPE_GEOMETRY_TOLERANCE)
+        });
+        if !valid {
+            self.as_mut()
+                .cancel_spatial_navigation(SpatialCancelReason::GeometryChanged);
+            return false;
+        }
+        true
+    }
+
     fn spatial_dispatch_action(mut self: Pin<&mut Self>, action: SpatialAction) -> bool {
         let request = {
             let mut rust = self.as_mut().rust_mut();
@@ -325,6 +454,7 @@ impl qobject::BrowserUi {
             SpatialAction::Click(PointerButton::Left) => "left",
             SpatialAction::Click(PointerButton::Right) => "right",
             SpatialAction::Click(PointerButton::Middle) => "middle",
+            SpatialAction::DoubleClick => "double",
         };
         let payload = json!({
             "request_id": request.request_id.to_string(),
@@ -332,6 +462,13 @@ impl qobject::BrowserUi {
             "serial": request.owner.surface.serial.to_string(),
             "revision": request.owner.surface.revision.to_string(),
             "selection_revision": request.selection_revision,
+            "scope_lease_id": self
+                .as_ref()
+                .rust()
+                .spatial_session
+                .as_ref()
+                .and_then(SpatialSession::scope)
+                .map(|scope| scope.lease_id.as_str()),
             "x": request.point.x,
             "y": request.point.y,
             "action": action_name,
@@ -364,6 +501,7 @@ impl qobject::BrowserUi {
             | SpatialError::SurfaceMismatch
             | SpatialError::NoDispatchPending
             | SpatialError::InvalidRequestPoint
+            | SpatialError::InvalidScope
             | SpatialError::RevisionExhausted => {
                 self.as_mut()
                     .cancel_spatial_navigation(SpatialCancelReason::DispatchRejected);
@@ -459,6 +597,18 @@ impl qobject::BrowserUi {
                         .spatial_dispatch_action(SpatialAction::Click(button)),
                 )
             }
+            "grid-double-click" => {
+                if !arguments.is_empty() {
+                    self.set_status_text(QString::from(
+                        "grid-double-click does not accept arguments",
+                    ));
+                    return Some(false);
+                }
+                Some(
+                    self.as_mut()
+                        .spatial_dispatch_action(SpatialAction::DoubleClick),
+                )
+            }
             "grid-hover" => {
                 if !arguments.is_empty() {
                     self.set_status_text(QString::from("grid-hover does not accept arguments"));
@@ -490,6 +640,17 @@ impl qobject::BrowserUi {
                     self.set_status_text(QString::from("grid-reset does not accept arguments"));
                     return Some(false);
                 }
+                let status = if self
+                    .as_ref()
+                    .rust()
+                    .spatial_session
+                    .as_ref()
+                    .is_some_and(|session| session.scope().is_some())
+                {
+                    "Grid reset to scope"
+                } else {
+                    "Grid reset to full page"
+                };
                 let result = self
                     .as_mut()
                     .rust_mut()
@@ -499,10 +660,7 @@ impl qobject::BrowserUi {
                     .as_mut()
                     .ok_or(SpatialError::Inactive)
                     .and_then(|session| session.reset().map(|_| ()));
-                Some(
-                    self.as_mut()
-                        .finish_spatial_operation(result, "Grid reset to full page"),
-                )
+                Some(self.as_mut().finish_spatial_operation(result, status))
             }
             "grid-help" => {
                 if !arguments.is_empty() {

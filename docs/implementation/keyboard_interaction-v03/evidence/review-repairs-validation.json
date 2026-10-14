@@ -1,0 +1,97 @@
+{
+  "kind": "keyboard-interaction-review-repair-validation",
+  "date": "2026-10-13",
+  "source_commit": "5410c038409a835d271a08b42e96ea6dd434d6f9",
+  "review_kind": "self-review",
+  "release_qualified": false,
+  "environment": {
+    "os": "Linux 7.2.3-arch1-3 x86_64",
+    "qt": "6.11.2",
+    "rustc": "1.98.0",
+    "rendering": "offscreen software; Qt-generated input; disposable profiles"
+  },
+  "results": [
+    {
+      "gate": "repository",
+      "result": "passed",
+      "exit_code": 0,
+      "command": "QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc target/release/xtask check",
+      "log": "evidence/review-repairs-check.log",
+      "observations": "889 Rust and 161 QML cases; architecture, generated docs, artifacts and license checks."
+    },
+    {
+      "gate": "clippy",
+      "result": "passed",
+      "exit_code": 0,
+      "command": "cargo clippy --workspace --all-targets --locked --offline -- -D warnings",
+      "log": "evidence/review-repairs-clippy.log",
+      "observations": "Strict workspace Clippy passed."
+    },
+    {
+      "gate": "format",
+      "result": "passed",
+      "exit_code": 0,
+      "command": "cargo fmt --all -- --check",
+      "log": "evidence/review-repairs-fmt.log",
+      "observations": "Workspace formatting passed."
+    },
+    {
+      "gate": "native-components",
+      "result": "passed",
+      "exit_code": 0,
+      "command": "ctest --test-dir target/native-insert --verbose",
+      "log": "evidence/review-repairs-native-full.log",
+      "observations": "69 passed, including ten observed-invalidation regressions."
+    },
+    {
+      "gate": "application-targeted",
+      "result": "passed",
+      "exit_code": 0,
+      "command": "QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME= QT_QUICK_BACKEND=software QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu target/application-tests/application_tests selectorDiscoveryUsesProductionPolicy selectorReloadActivatesAtBoundary selectorReloadRejectsInvalidAndStaleCandidates selectorReloadTimeoutPreservesConfiguration",
+      "log": "evidence/review-repairs-application-targeted.log",
+      "observations": "Eight new rows plus init/cleanup: 10 passed."
+    },
+    {
+      "gate": "application",
+      "result": "passed",
+      "exit_code": 0,
+      "command": "ctest --test-dir target/application-tests --verbose",
+      "log": "evidence/review-repairs-application-full.log",
+      "observations": "All three CTest jobs passed: 56 functional cases, separate DPR2 cases and 1000 lifetime cycles; functional stress slot skipped and run separately. QObject baseline 3368 -> 3368; retained maps/observers/windows/scopes/tracking empty."
+    },
+    {
+      "gate": "cli-ipc",
+      "result": "passed",
+      "exit_code": 0,
+      "command": "python3 crates/ferric-browser-engine-qt/tests/application/run_ipc_probe.py",
+      "log": "evidence/review-repairs-ipc.log",
+      "observations": "Restricted-chain rejection preserved URL; actual Mixed routing explanations passed."
+    },
+    {
+      "gate": "pack-validator-tests",
+      "result": "passed",
+      "exit_code": 0,
+      "command": "python3 docs/implementation/keyboard_interaction-v03/tools/test_validate_pack.py",
+      "log": "evidence/review-repairs-pack-tests.log",
+      "observations": "14 validator regressions passed."
+    }
+  ],
+  "reproductions": {
+    "native_before": "evidence/review-repairs-native-red.log",
+    "native_after": "evidence/review-repairs-native-green.log",
+    "production_selector_before": "evidence/review-repairs-selector-startup-red.log",
+    "reload_before": "evidence/review-repairs-selector-reload-red.log",
+    "canonical_fixture_before": "evidence/review-repairs-selector-red.log",
+    "canonical_fixture_note": "First named case reproduced the schema mismatch; this historical invocation also contained an unavailable second test name. It is not counted as two defect reproductions.",
+    "canonical_fixture_after": "evidence/review-repairs-selector-green.log"
+  },
+  "qualification_limits": [
+    "Physical/compositor Wayland input not newly qualified.",
+    "Live sites, platform IME/choosers and human/screen-reader qualification remain outstanding.",
+    "DOM/native observation interval remains non-atomic.",
+    "No fresh performance qualification claim.",
+    "Existing QML teardown context warnings retained; no user-visible failure established."
+  ],
+  "integrity_validation": "evidence/review-repairs-pack-validation.json",
+  "strict_completion_audit": "evidence/review-repairs-strict-completion.json"
+}

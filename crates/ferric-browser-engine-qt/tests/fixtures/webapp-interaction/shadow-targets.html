@@ -1,0 +1,14 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Synthetic open-root and slot targets</title>
+<style>body{margin:0}button,input{display:block;width:180px;height:32px}#host,#slot-host{display:block;width:240px;margin:12px}</style>
+<div id="host"></div>
+<div id="slot-host"><button id="slotted" slot="control" onclick="this.dataset.clicks=String(Number(this.dataset.clicks||0)+1)">Slotted control</button></div>
+<script>
+const host=document.getElementById('host');
+host.attachShadow({mode:'open'}).innerHTML='<style>button,input{display:block;width:180px;height:32px}</style><button id="shadow-button" aria-label="Shadow button">Activate</button><input id="shadow-input" aria-label="Shadow input">';
+host.shadowRoot.getElementById('shadow-button').addEventListener('click',event=>{event.currentTarget.dataset.clicks=String(Number(event.currentTarget.dataset.clicks||0)+1)});
+const slots=document.getElementById('slot-host');
+slots.attachShadow({mode:'open'}).innerHTML='<div id="nested"><slot name="control"></slot></div>';
+document.body.dataset.ready='true';
+</script>

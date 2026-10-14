@@ -1,0 +1,367 @@
+{
+  "schema_version": 1,
+  "slice_id": "S04",
+  "status": "implemented_unqualified",
+  "commit": "55ec1bdf3a4bcba7d8cd427a9c31c2614dec08e4",
+  "environment": {
+    "os": "Linux x86_64",
+    "qt": "6.11.2",
+    "chromium": "140.0.7339.225",
+    "renderer": "offscreen software",
+    "window": "640x480 synthetic QML/WebEngine fixtures; CSS-to-Qt mapping exercised at zoom 0.5, 1, and 2",
+    "build": "Qt release + Rust dev/test; GCC 16.2.1; local fixtures only"
+  },
+  "changed_files": [
+    "crates/ferric-browser-core/src/guide.rs",
+    "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeBase.qml",
+    "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeChrome.qml",
+    "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimePresentation.qml",
+    "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeSurface.qml",
+    "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml",
+    "crates/ferric-browser-engine-qt/qml/scripts/BrowserScripts.js",
+    "crates/ferric-browser-engine-qt/src/browser_key_router.cpp",
+    "crates/ferric-browser-engine-qt/src/browser_ui_command_dispatch.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_hint_pointer.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_hint_selection.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_input.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_ipc.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_navigation.rs",
+    "crates/ferric-browser-engine-qt/src/hint_policy.rs",
+    "crates/ferric-browser-engine-qt/src/lib.rs",
+    "crates/ferric-browser-engine-qt/src/tests/presentation_boundaries.rs",
+    "crates/ferric-browser-engine-qt/tests/native-insert/CMakeLists.txt",
+    "crates/ferric-browser-engine-qt/tests/native-insert/tst_native_insert.cpp",
+    "crates/ferric-browser-engine-qt/tests/qml/tst_hint_geometry.qml",
+    "docs/TESTING.md",
+    "docs/architecture/qml-json-contracts.md",
+    "docs/implementation/keyboard_interaction-v03/SHA256SUMS.txt",
+    "docs/implementation/keyboard_interaction-v03/evidence/S04-plan.md",
+    "docs/implementation/keyboard_interaction-v03/tools/test_validate_pack.py",
+    "docs/user/commands.md"
+  ],
+  "baseline_comparison": null,
+  "test_results": [
+    {
+      "test_id": "T010",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask check",
+      "commit": "55ec1bdf3a4bcba7d8cd427a9c31c2614dec08e4",
+      "log": "evidence/logs/S04/xtask-check-final.log",
+      "observations": [
+        "Rust tests cover local permit ownership, release-before-preflight, one-shot dispatch, timeout, terminal cleanup, and rejection of generic or remote command chains."
+      ]
+    },
+    {
+      "test_id": "T010",
+      "level": "native-qt-offscreen",
+      "result": "not_run",
+      "command": "Not executed; no end-to-end direct UI/key-to-Rust-permit-to-QML native handoff fixture was available.",
+      "commit": "55ec1bdf3a4bcba7d8cd427a9c31c2614dec08e4",
+      "log": null,
+      "reason": "The native fixture invokes the production pointer adapter directly and does not prove the full local command/key authorization handoff."
+    },
+    {
+      "test_id": "T011",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu target/native-insert/native_insert pointerOnlyControlReceivesOneNativeClick",
+      "commit": "55ec1bdf3a4bcba7d8cd427a9c31c2614dec08e4",
+      "log": "evidence/logs/S04/pointer-observation.log",
+      "observations": [
+        "The pointer-only custom control received pointerdown, mousedown, pointerup, mouseup, and click once, in order."
+      ]
+    },
+    {
+      "test_id": "T011",
+      "level": "native-wayland",
+      "result": "not_run",
+      "command": "Not executed; no physical Wayland pointer session was available.",
+      "commit": "55ec1bdf3a4bcba7d8cd427a9c31c2614dec08e4",
+      "log": null,
+      "reason": "Offscreen QTest injection is not physical Wayland input evidence."
+    },
+    {
+      "test_id": "T012",
+      "level": "native-qt-offscreen",
+      "result": "not_run",
+      "command": "Not executed; the full native activation regression matrix was not run through the explicit pointer path.",
+      "commit": "55ec1bdf3a4bcba7d8cd427a9c31c2614dec08e4",
+      "log": null,
+      "reason": "Links and target-blank behavior, buttons, editable controls, open roots, and same-origin frame default actions were not all exercised through this new native dispatch path."
+    },
+    {
+      "test_id": "T013",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask check",
+      "commit": "55ec1bdf3a4bcba7d8cd427a9c31c2614dec08e4",
+      "log": "evidence/logs/S04/xtask-check-final.log",
+      "observations": [
+        "QML/WebEngine fixtures verify retained-node identity, replacement and overlay-cover rejection, same-origin frame geometry, and CSS-to-Qt mapping at zoom 0.5, 1, and 2. Rust tests verify expired preflight is terminal."
+      ]
+    },
+    {
+      "test_id": "T013",
+      "level": "native-qt-offscreen",
+      "result": "not_run",
+      "command": "Not executed; integrated owner/configuration/surface race stress was not run across native dispatch.",
+      "commit": "55ec1bdf3a4bcba7d8cd427a9c31c2614dec08e4",
+      "log": null,
+      "reason": "The unit and WebEngine fixtures cover observed invalidation and expiry, but not the full integrated native race stress or the post-preflight interval."
+    },
+    {
+      "test_id": "T014",
+      "level": "native-qt-offscreen",
+      "result": "not_run",
+      "command": "QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu target/native-insert/native_insert pointerOnlyControlReceivesOneNativeClick",
+      "commit": "55ec1bdf3a4bcba7d8cd427a9c31c2614dec08e4",
+      "log": "evidence/logs/S04/pointer-observation.log",
+      "reason": "The run observed isTrusted=true and user activation for the recorded pointer events, but did not exercise fullscreen, popup, clipboard, or chooser outcomes; it supports no general trust or capability claim."
+    },
+    {
+      "test_id": "T014",
+      "level": "native-wayland",
+      "result": "not_run",
+      "command": "Not executed; no physical Wayland activation-restriction run was available.",
+      "commit": "55ec1bdf3a4bcba7d8cd427a9c31c2614dec08e4",
+      "log": null,
+      "reason": "Physical Wayland input and permission-gated engine APIs remain unqualified."
+    },
+    {
+      "test_id": "T020",
+      "level": "webengine-fixture",
+      "result": "not_run",
+      "command": "cargo xtask check",
+      "commit": "55ec1bdf3a4bcba7d8cd427a9c31c2614dec08e4",
+      "log": "evidence/logs/S04/xtask-check-final.log",
+      "reason": "The existing direct map-teardown fixture passes, but the complete callback-owner and destination-scope-lease handoff assertion remains unimplemented and unproven."
+    },
+    {
+      "test_id": "T045",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask check",
+      "commit": "55ec1bdf3a4bcba7d8cd427a9c31c2614dec08e4",
+      "log": "evidence/logs/S04/xtask-check-final.log",
+      "observations": [
+        "All 405 ferric-browser-engine-qt tests pass, including legacy command and interaction regression coverage."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask check",
+      "commit": "55ec1bdf3a4bcba7d8cd427a9c31c2614dec08e4",
+      "log": "evidence/logs/S04/xtask-check-final.log",
+      "observations": [
+        "The complete Qt Quick/WebEngine suite passes 109/109."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "55ec1bdf3a4bcba7d8cd427a9c31c2614dec08e4",
+      "log": "evidence/logs/S04/engine.log",
+      "observations": [
+        "The engine test task passed, including the native-insert CTest target; the dedicated one-click observation is recorded separately."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask check",
+      "commit": "55ec1bdf3a4bcba7d8cd427a9c31c2614dec08e4",
+      "log": "evidence/logs/S04/xtask-check-final.log",
+      "observations": [
+        "Command and IPC tests pass; the release artifact manifest validates 38 inputs and the license policy validates 11 locked dependencies."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask docs",
+      "commit": "55ec1bdf3a4bcba7d8cd427a9c31c2614dec08e4",
+      "log": "evidence/logs/S04/docs-generation.log",
+      "observations": [
+        "Authored Guide help regenerates the checked-in command documentation."
+      ]
+    },
+    {
+      "test_id": "T010",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "ctest --test-dir target/application-tests -R '^application_offscreen$' --verbose",
+      "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+      "log": "evidence/completion-application-functional-final.log",
+      "observations": [
+        "Real BrowserUi generic entry rejects Pointer Hint; local Qt keyboard entry and explicit palette handoffs work. The standalone CLI rejects the entire restricted chain before sending any member. This is Qt-generated local input, not physical Wayland evidence.",
+        "This follow-up records bounded local coverage; missing physical, live-site, chooser and human evidence remains unqualified."
+      ]
+    },
+    {
+      "test_id": "T011",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "ctest --test-dir target/application-tests -R '^application_offscreen$' --verbose",
+      "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+      "log": "evidence/completion-application-functional-final.log",
+      "observations": [
+        "Real Pointer Hint confirms a basic control and sends one trusted click; no fallback transport is observed.",
+        "This follow-up records bounded local coverage; missing physical, live-site, chooser and human evidence remains unqualified."
+      ]
+    },
+    {
+      "test_id": "T012",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "ctest --test-dir target/application-tests -R '^application_offscreen$' --verbose",
+      "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+      "log": "evidence/completion-application-functional-final.log",
+      "observations": [
+        "Real native pointer actions cover input, contenteditable, same-document link, same-origin frame, open shadow root and one popup transport.",
+        "This follow-up records bounded local coverage; missing physical, live-site, chooser and human evidence remains unqualified."
+      ]
+    },
+    {
+      "test_id": "T013",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "ctest --test-dir target/application-tests -R '^application_offscreen$' --verbose",
+      "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+      "log": "evidence/completion-application-functional-final.log",
+      "observations": [
+        "Observed resize, removal, tab switch, navigation, deactivation, configuration change, renderer termination/reload and expired preflight cancel safely. Twenty post-preflight pointerover replacement trials each deliver one trusted click to the replacement, demonstrating the admitted non-atomic interval.",
+        "This follow-up records bounded local coverage; missing physical, live-site, chooser and human evidence remains unqualified."
+      ]
+    },
+    {
+      "test_id": "T014",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "ctest --test-dir target/application-tests -R '^application_offscreen$' --verbose",
+      "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+      "log": "evidence/completion-application-functional-final.log",
+      "observations": [
+        "Offscreen process-local clipboard allow/deny and fullscreen feature enabled/disabled outcomes are observed through real policy/Qt requests; popup without activation is denied. Native chooser and physical Wayland outcomes are not qualified. Fullscreen is explicitly enabled only in the allowed fixture.",
+        "This follow-up records bounded local coverage; missing physical, live-site, chooser and human evidence remains unqualified."
+      ]
+    }
+  ],
+  "capability_decision": null,
+  "capability_report": null,
+  "review_kind": "self-review",
+  "scope_amendments": [
+    {
+      "path": "crates/ferric-browser-engine-qt/src/browser_ui_input.rs, browser_ui_command_dispatch.rs, browser_ui_ipc.rs",
+      "reason": "Keep the direct local entry points distinct from generic execution and reject remote, alias-expanded, replayed, or scripted Pointer paths before effects."
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/src/browser_ui_hint_pointer.rs",
+      "reason": "Own the bounded local pointer request lifecycle and terminal cleanup without expanding the serialized Hint schema or selection module past its line budget."
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/src/browser_ui_navigation.rs",
+      "reason": "Move the generic Hint handler out of the module at its 1,000-line budget so the pre-effect Pointer chain guard fits."
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/src/lib.rs and qml/components/*",
+      "reason": "Add bounded native-action properties and callback invokables, QML preflight/dispatch timers, exact target checks, and result/invalidation routing."
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/src/browser_key_router.cpp",
+      "reason": "Retain accepted gesture ownership through repeat releases so the initiating local key path remains well-defined."
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/tests/native-insert and tests/qml/tst_hint_geometry.qml",
+      "reason": "Exercise the existing production pointer adapter and add geometry/preflight fixtures for the implemented path."
+    },
+    {
+      "path": "crates/ferric-browser-core/src/guide.rs and docs/user/commands.md",
+      "reason": "Publish the explicit local-only syntax and Enter-release behavior through authored Guide source and generated documentation."
+    },
+    {
+      "path": "docs/architecture/qml-json-contracts.md and src/tests/presentation_boundaries.rs",
+      "reason": "Document and check the bounded opaque preflight/result JSON transport and its call counts."
+    },
+    {
+      "path": "docs/implementation/keyboard_interaction-v03/tools/test_validate_pack.py and SHA256SUMS.txt",
+      "reason": "Fix the existing negative-test fixture so it clears inherited S00 evidence when testing completion without evidence, and refresh the integrity entry."
+    }
+  ],
+  "remaining_risks": [
+    "The DOM preflight and native pointer delivery are not atomic; the page or render target can change in the interval. Uncertain outcomes terminate without retry, DOM click fallback, or navigation fallback.",
+    "Physical Wayland pointer input was not exercised.",
+    "Fullscreen, popup, clipboard, and chooser behavior remains untested; the offscreen isTrusted/user-activation observation does not establish general browser trust or permission behavior.",
+    "The full target-family/default-action regression matrix was not run through the new pointer dispatch path.",
+    "T020's complete callback-owner and destination-scope-lease handoff remains unqualified.",
+    "All browser fixtures were synthetic and local; no live-site, IME, or real editable web-application qualification was performed."
+  ],
+  "not_run_reasons": [
+    "T010 native-qt-offscreen: the integrated direct UI/key-to-Rust-permit-to-QML handoff was not exercised end to end.",
+    "T011 native-wayland: no physical Wayland pointer session was available.",
+    "T012 native-qt-offscreen: the full native activation/default-action family matrix remains untested through explicit pointer dispatch.",
+    "T013 native-qt-offscreen: integrated owner/configuration/surface race stress and the unobservable post-preflight interval remain unqualified.",
+    "T014 native-qt-offscreen and native-wayland: permission-gated APIs and physical Wayland activation were not exercised.",
+    "T020 webengine-fixture: the complete destination-scope-lease handoff remains for a dependent slice."
+  ],
+  "next_ready_slices": [
+    "S05",
+    "S07"
+  ],
+  "additional_checks": [
+    {
+      "name": "workspace Clippy with warnings denied",
+      "command": "cargo clippy --workspace --all-targets --locked -- -D warnings",
+      "result": "passed",
+      "log": "evidence/logs/S04/clippy.log"
+    },
+    {
+      "name": "Rust formatting",
+      "command": "cargo fmt --all -- --check",
+      "result": "passed",
+      "log": "evidence/logs/S04/fmt.log"
+    },
+    {
+      "name": "patch whitespace validation",
+      "command": "git diff --check",
+      "result": "passed",
+      "log": "evidence/logs/S04/diff-check.log"
+    },
+    {
+      "name": "pack validator self-tests",
+      "command": "python3 docs/implementation/keyboard_interaction-v03/tools/test_validate_pack.py",
+      "result": "passed",
+      "log": "evidence/logs/S04/validator-self-test-final.log"
+    },
+    {
+      "name": "pack integrity validation",
+      "command": "python3 docs/implementation/keyboard_interaction-v03/tools/validate_pack.py --root docs/implementation/keyboard_interaction-v03 --integrity",
+      "result": "passed",
+      "log": "evidence/logs/S04/pack-integrity-final.log"
+    },
+    {
+      "name": "pack integrity and evidence validation",
+      "command": "python3 docs/implementation/keyboard_interaction-v03/tools/validate_pack.py --root docs/implementation/keyboard_interaction-v03 --integrity --evidence",
+      "result": "passed",
+      "log": "evidence/logs/S04/pack-validation-final.log"
+    }
+  ],
+  "completion_followup": {
+    "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+    "report": "evidence/completion-report.md",
+    "status": "implemented_unqualified",
+    "scope": "New composed application observations supplement historical component evidence; no missing qualification level is inferred."
+  },
+  "review_repair_followup": {
+    "commit": "5410c038409a835d271a08b42e96ea6dd434d6f9",
+    "report": "evidence/review-repairs-report.md",
+    "validation": "evidence/review-repairs-validation.json",
+    "scope": "Bounded local regression and composed application evidence; qualification status unchanged."
+  }
+}

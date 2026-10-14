@@ -1,0 +1,41 @@
+{
+  "ok": false,
+  "errors": [
+    "S01: implementation not complete (implemented_unqualified)",
+    "S02: implementation not complete (implemented_unqualified)",
+    "S03: implementation not complete (implemented_unqualified)",
+    "S04: implementation not complete (implemented_unqualified)",
+    "S05: implementation not complete (implemented_unqualified)",
+    "S06: implementation not complete (implemented_unqualified)",
+    "S07: implementation not complete (implemented_unqualified)",
+    "S08: implementation not complete (implemented_unqualified)",
+    "S09: implementation not complete (implemented_unqualified)",
+    "S10: implementation not complete (implemented_unqualified)",
+    "S11: implementation not complete (implemented_unqualified)",
+    "S12: implementation not complete (implemented_unqualified)",
+    "S13: implementation not complete (implemented_unqualified)",
+    "S14: implementation not complete (implemented_unqualified)",
+    "S15: implementation not complete (implemented_unqualified)",
+    "S16: implementation not complete (implemented_unqualified)",
+    "S17: implementation not complete (implemented_unqualified)",
+    "S18: implementation not complete (implemented_unqualified)",
+    "S19: implementation not complete (implemented_unqualified)",
+    "S20: implementation not complete (blocked_environment)",
+    "S21: implementation not complete (blocked_environment)",
+    "S27: implementation not complete (implemented_unqualified)"
+  ],
+  "warnings": [],
+  "counts": {
+    "contracts": 24,
+    "invariants": 26,
+    "slices": 28,
+    "planned_tests": 57,
+    "source_items": 55
+  },
+  "checks": {
+    "integrity": false,
+    "evidence_records": true,
+    "strict_completion": true
+  },
+  "scope": "pack records only; not Ferric correctness"
+}

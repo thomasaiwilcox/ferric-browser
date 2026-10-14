@@ -1,0 +1,25 @@
+cmake_minimum_required(VERSION 3.20)
+project(ferric_application_tests LANGUAGES CXX)
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_CXX_STANDARD 17)
+find_package(SQLite3 REQUIRED)
+find_package(Qt6 REQUIRED COMPONENTS Quick QuickControls2 WebEngineQuick Network DBus Test)
+get_filename_component(REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../.." ABSOLUTE)
+set(FERRIC_ENGINE_LIBRARY "${REPO_ROOT}/target/release/libferric_browser_engine_qt.a" CACHE FILEPATH "Cargo-built production engine")
+add_executable(application_tests tst_application.cpp tst_application.h)
+target_link_libraries(application_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" Qt6::Quick Qt6::QuickControls2 Qt6::WebEngineQuick Qt6::Network Qt6::DBus Qt6::Test SQLite3::SQLite3 ${CMAKE_DL_LIBS} pthread)
+enable_testing()
+add_test(NAME application_offscreen COMMAND application_tests)
+set_tests_properties(application_offscreen PROPERTIES TIMEOUT 480 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+
+add_test(NAME application_offscreen_dpr2 COMMAND application_tests scopedGridNativeCoordinates)
+set_tests_properties(application_offscreen_dpr2 PROPERTIES TIMEOUT 90 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QT_SCALE_FACTOR=2;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+
+add_test(NAME application_lifetime COMMAND application_tests productionHintLifetimeCycles)
+set_tests_properties(application_lifetime PROPERTIES TIMEOUT 300 ENVIRONMENT "FERRIC_APP_STRESS=1;QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu --js-flags=--expose-gc")
+
+add_test(NAME application_frame_dpr2 COMMAND application_tests crossOriginConsentHints)
+set_tests_properties(application_frame_dpr2 PROPERTIES TIMEOUT 120 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QT_SCALE_FACTOR=2;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+
+add_test(NAME application_frame_lifetime COMMAND application_tests crossOriginFrameLifetimeCycles)
+set_tests_properties(application_frame_lifetime PROPERTIES TIMEOUT 700 ENVIRONMENT "QTEST_FUNCTION_TIMEOUT=600000;FERRIC_APP_STRESS=1;QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu --js-flags=--expose-gc")

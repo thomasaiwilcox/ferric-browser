@@ -1,0 +1,660 @@
+{
+  "schema_version": 1,
+  "fixture_root": "crates/ferric-browser-engine-qt/tests/fixtures/webapp-interaction",
+  "note": "Planned assertions only; no Ferric tests were run while preparing this pack.",
+  "tests": [
+    {
+      "id": "T001",
+      "title": "Pinned baseline and architecture inventory",
+      "required_levels": [
+        "static-inspection"
+      ],
+      "fixture": "baseline-audit",
+      "assertion": "Record actual HEAD, dirty files, supported tools, baseline failures and existing identity/provenance/resource APIs. No production changes.",
+      "status": "not_run"
+    },
+    {
+      "id": "T002",
+      "title": "Open shadow roots: discovery through final action",
+      "required_levels": [
+        "webengine-fixture",
+        "native-qt-offscreen"
+      ],
+      "fixture": "shadow-targets.html",
+      "assertion": "An open-root button activates once and input focus settles on the retained input; demonstrate baseline failure or record non-reproduction.",
+      "status": "not_run"
+    },
+    {
+      "id": "T003",
+      "title": "Nested slots and composed ancestry",
+      "required_levels": [
+        "webengine-fixture"
+      ],
+      "fixture": "shadow-targets.html",
+      "assertion": "Slotted/open-root descendants share clipping and hit rules; inert/disabled ancestors and malformed/deep ancestry reject safely.",
+      "status": "not_run"
+    },
+    {
+      "id": "T004",
+      "title": "Same-origin frame projection and replacement",
+      "required_levels": [
+        "webengine-fixture"
+      ],
+      "fixture": "frame-targets.html",
+      "assertion": "Nested frame borders, scroll offsets and clipping are respected; a reused frame path with a new document invalidates the old target.",
+      "status": "not_run"
+    },
+    {
+      "id": "T005",
+      "title": "Hidden, detached and newly covered controls",
+      "required_levels": [
+        "webengine-fixture"
+      ],
+      "fixture": "adversarial-targets.html",
+      "assertion": "Hidden, opacity-zero ordinary, disabled, inert, detached, adopted or covered targets do not activate; replacement with same text does not inherit selection.",
+      "status": "not_run"
+    },
+    {
+      "id": "T006",
+      "title": "Viewport overflow regression preservation",
+      "required_levels": [
+        "webengine-fixture"
+      ],
+      "fixture": "viewport-overflow.html",
+      "assertion": "Existing YouTube body/root zero-height, containment and partial clipping regressions still pass; no site-specific branch.",
+      "status": "not_run"
+    },
+    {
+      "id": "T007",
+      "title": "Same-URL sibling is not final authority",
+      "required_levels": [
+        "webengine-fixture"
+      ],
+      "fixture": "adversarial-targets.html",
+      "assertion": "Discovery deduplication cannot authorise pointer delivery to a covering same-URL sibling. Semantic action retains the exact selected object.",
+      "status": "not_run"
+    },
+    {
+      "id": "T008",
+      "title": "Actual focus rather than optimistic success",
+      "required_levels": [
+        "webengine-fixture"
+      ],
+      "fixture": "focus-refusal.html",
+      "assertion": "Final focus checks the intended deep active element; a handler moving focus or refusing focus does not produce false focus-success.",
+      "status": "not_run"
+    },
+    {
+      "id": "T009",
+      "title": "Typed candidate payload and safe labels",
+      "required_levels": [
+        "pure-unit",
+        "webengine-fixture"
+      ],
+      "fixture": "private-labels.html",
+      "assertion": "Reject malformed IDs/geometry/extra authority fields; no control value, password, secret hidden buffer or HTML executes/leaks through labels.",
+      "status": "not_run"
+    },
+    {
+      "id": "T010",
+      "title": "Local pointer/scoped entry provenance",
+      "required_levels": [
+        "pure-unit",
+        "native-qt-offscreen"
+      ],
+      "fixture": "local-authority",
+      "assertion": "Local physical UI handoff works; IPC, CLI, aliases wrapping remote calls, macro/repeat/userscript/generic action-executor paths cannot mint or replay permits.",
+      "status": "not_run"
+    },
+    {
+      "id": "T011",
+      "title": "Pointer-only custom control",
+      "required_levels": [
+        "native-qt-offscreen",
+        "native-wayland"
+      ],
+      "fixture": "pointer-controls.html",
+      "assertion": "Explicit pointer action produces the qualified move/down/up/click sequence once; default semantic click is unchanged; no fallback double activation.",
+      "status": "not_run"
+    },
+    {
+      "id": "T012",
+      "title": "Native activation regression types",
+      "required_levels": [
+        "native-qt-offscreen"
+      ],
+      "fixture": "pointer-controls.html",
+      "assertion": "Links/target blank, regular buttons, inputs, contenteditable, open roots and same-origin frames retain default actions; explicit pointer never also runs URL or DOM transport.",
+      "status": "not_run"
+    },
+    {
+      "id": "T013",
+      "title": "Pointer preflight races and expiry",
+      "required_levels": [
+        "webengine-fixture",
+        "native-qt-offscreen"
+      ],
+      "fixture": "adversarial-targets.html",
+      "assertion": "Reject observed owner/config/surface/overlay changes and expired preflights; stress the unobservable interval and document residual uncertainty, never claim atomicity.",
+      "status": "not_run"
+    },
+    {
+      "id": "T014",
+      "title": "Engine activation restrictions",
+      "required_levels": [
+        "native-qt-offscreen",
+        "native-wayland"
+      ],
+      "fixture": "activation-restrictions.html",
+      "assertion": "Observe isTrusted and allowed/denied fullscreen/popup/clipboard/chooser outcomes without altering engine permission policy; no general trust claim.",
+      "status": "not_run"
+    },
+    {
+      "id": "T015",
+      "title": "ACE-like paired EditorFocus",
+      "required_levels": [
+        "webengine-fixture",
+        "native-qt-offscreen"
+      ],
+      "fixture": "editor-proxies.html",
+      "assertion": "Opt-in validated visible editor/unique receiver pair focuses the exact eligible invisible proxy; false class-only and ambiguous signatures reject.",
+      "status": "not_run"
+    },
+    {
+      "id": "T016",
+      "title": "Bootstrap-like LabelControl",
+      "required_levels": [
+        "webengine-fixture",
+        "native-qt-offscreen"
+      ],
+      "fixture": "associated-controls.html",
+      "assertion": "Exact visible label/control association toggles an enabled checkbox/radio once; it is not an editor proxy; disabled/inert/control replacement rejects.",
+      "status": "not_run"
+    },
+    {
+      "id": "T017",
+      "title": "Proxy exclusion and identity",
+      "required_levels": [
+        "webengine-fixture"
+      ],
+      "fixture": "editor-proxies.html",
+      "assertion": "No password/file/type-hidden/read-only/disabled/inert/display-none receiver; representative/receiver swap or cross-document pair rejects; selectors cannot grant exception.",
+      "status": "not_run"
+    },
+    {
+      "id": "T018",
+      "title": "Editor native entry modes and composition",
+      "required_levels": [
+        "native-qt-offscreen",
+        "native-wayland"
+      ],
+      "fixture": "editor-proxies.html",
+      "assertion": "i/I, Enter/Shift+Enter, Escape, lost releases and supported IMEs preserve typing; live framework qualification reports exact library version separately.",
+      "status": "not_run"
+    },
+    {
+      "id": "T019",
+      "title": "Script extraction parity and isolation",
+      "required_levels": [
+        "pure-unit",
+        "webengine-fixture"
+      ],
+      "fixture": "runtime-assets",
+      "assertion": "Manifest/hash/package parity, legacy facade behaviour, ApplicationWorld isolation, resource missing/version mismatch and exception failure paths all pass.",
+      "status": "not_run"
+    },
+    {
+      "id": "T020",
+      "title": "Operation/map lifetime and handoff",
+      "required_levels": [
+        "webengine-fixture"
+      ],
+      "fixture": "scoped-hint.html",
+      "assertion": "No hint-map destruction before callback; acquire destination lease before source cleanup; weak refs, observers and callbacks terminate exactly once.",
+      "status": "not_run"
+    },
+    {
+      "id": "T021",
+      "title": "Mixed key parser and effective policy",
+      "required_levels": [
+        "pure-unit"
+      ],
+      "fixture": "key-policy",
+      "assertion": "Reject multi-key/modifier-only/duplicate/reserved entries and more than 64; preserve existing token conventions; exact replace/inherit precedence and atomic errors.",
+      "status": "not_run"
+    },
+    {
+      "id": "T022",
+      "title": "Early QML-special key ownership",
+      "required_levels": [
+        "native-qt-offscreen",
+        "native-wayland"
+      ],
+      "fixture": "shortcut-conflicts.html",
+      "assertion": "Configured /, ?, f and Ctrl+f reach page once; : and recovery controls remain browser-owned; unconfigured sites retain baseline.",
+      "status": "not_run"
+    },
+    {
+      "id": "T023",
+      "title": "Count/keychain semantics",
+      "required_levels": [
+        "pure-unit",
+        "native-qt-offscreen"
+      ],
+      "fixture": "shortcut-conflicts.html",
+      "assertion": "Mapped first g/digit can go to page; active browser chain/count retains continuations; misses/timeouts/config changes never replay buffered tokens to page.",
+      "status": "not_run"
+    },
+    {
+      "id": "T024",
+      "title": "Physical gesture regression",
+      "required_levels": [
+        "native-qt-offscreen"
+      ],
+      "fixture": "key-ownership.html",
+      "assertion": "Native keydown/up, repeats, overlaps, entry-key isolation, lost releases, delayed WebEngine copies and epoch changes never double-dispatch or become a new browser command.",
+      "status": "not_run"
+    },
+    {
+      "id": "T025",
+      "title": "Escape, mode labels and primary/secondary parity",
+      "required_levels": [
+        "qml-component",
+        "native-qt-offscreen"
+      ],
+      "fixture": "mode-chrome",
+      "assertion": "Existing Ctrl+v/Ctrl+Shift+v/;v/i/I and recovery/emergency semantics plus both window status/help surfaces remain correct.",
+      "status": "not_run"
+    },
+    {
+      "id": "T026",
+      "title": "SPA identity and real navigation",
+      "required_levels": [
+        "webengine-fixture",
+        "native-qt-offscreen"
+      ],
+      "fixture": "spa-routes.html",
+      "assertion": "Positive same-document proof preserves only user-entered persistent mode; new document/reload/death exits; one-shot cancels route changes; uncertainty keeps safe baseline.",
+      "status": "not_run"
+    },
+    {
+      "id": "T027",
+      "title": "Configuration/focus change during held input",
+      "required_levels": [
+        "native-qt-offscreen"
+      ],
+      "fixture": "key-ownership.html",
+      "assertion": "New gesture gets new effective route/config; an existing gesture keeps its routing owner; no manual redirect to an old or newly active DOM recipient.",
+      "status": "not_run"
+    },
+    {
+      "id": "T028",
+      "title": "Native prompt leases and nesting",
+      "required_levels": [
+        "native-qt-offscreen",
+        "native-wayland"
+      ],
+      "fixture": "native-prompts.html",
+      "assertion": "Keyboard-only chooser accept/cancel and supported nested prompts restore only the matching suspended epoch/owner; native input is not stolen by Mixed policy.",
+      "status": "not_run"
+    },
+    {
+      "id": "T029",
+      "title": "Prompt stale completion and one-shot cancellation",
+      "required_levels": [
+        "native-qt-offscreen"
+      ],
+      "fixture": "native-prompts.html",
+      "assertion": "Tab/document/config/manual-mode change invalidates restoration; out-of-order completions fail safely; never resurrect Hint/Grid/Pass Next Key.",
+      "status": "not_run"
+    },
+    {
+      "id": "T030",
+      "title": "Selector prepare/validate/commit",
+      "required_levels": [
+        "pure-unit",
+        "webengine-fixture"
+      ],
+      "fixture": "selector-validation",
+      "assertion": "Malformed CSS, unavailable engine, startup, stale validation callback and rejected persistence before replacement leave the full old effective config intact; no regex-only success. Replacement followed by failed directory sync publishes aligned memory and reports committed durability-uncertain.",
+      "status": "not_run"
+    },
+    {
+      "id": "T031",
+      "title": "Selector layering and disabled families",
+      "required_levels": [
+        "pure-unit",
+        "webengine-fixture"
+      ],
+      "fixture": "custom-selectors.html",
+      "assertion": "Global/profile/site extend/replace, empty replace, 16/32-selector and byte limits, rule order and default all independence match C09.",
+      "status": "not_run"
+    },
+    {
+      "id": "T032",
+      "title": "Custom selector fresh/final policy",
+      "required_levels": [
+        "webengine-fixture"
+      ],
+      "fixture": "custom-selectors.html",
+      "assertion": "Added custom target remains eligible through fresh/final action using captured policy; removed policy cancels; invalid kinds never gain URL/proxy/native capability.",
+      "status": "not_run"
+    },
+    {
+      "id": "T033",
+      "title": "Selector/traversal resource stress",
+      "required_levels": [
+        "webengine-fixture",
+        "performance"
+      ],
+      "fixture": "large-targets.html",
+      "assertion": "Large/dynamic roots and expensive selectors expose bounded/truncated status; caps do not pretend synchronous CSS evaluation can be interrupted.",
+      "status": "not_run"
+    },
+    {
+      "id": "T034",
+      "title": "Region and surface classification",
+      "required_levels": [
+        "webengine-fixture"
+      ],
+      "fixture": "regions-surfaces.html",
+      "assertion": "Named/structural regions and visible surfaces are capped/deduplicated; generic div/hidden canvas floods are not candidates; default f unchanged.",
+      "status": "not_run"
+    },
+    {
+      "id": "T035",
+      "title": "Cross-origin/closed-root boundaries",
+      "required_levels": [
+        "webengine-fixture",
+        "native-wayland"
+      ],
+      "fixture": "cross-origin-surface.html",
+      "assertion": "Only outer iframe/surface is inspectable by parent; semantic within rejects; explicit raw native Grid is separately qualified; no false child semantic support.",
+      "status": "not_run"
+    },
+    {
+      "id": "T036",
+      "title": "Scoped registry lease transfer",
+      "required_levels": [
+        "pure-unit",
+        "webengine-fixture"
+      ],
+      "fixture": "scoped-hint.html",
+      "assertion": "Source session retains records until destination weak scope lease validates; cancellation/replacement clears without leaks; one page-target session per window.",
+      "status": "not_run"
+    },
+    {
+      "id": "T037",
+      "title": "Scoped hints and scroll independence",
+      "required_levels": [
+        "webengine-fixture"
+      ],
+      "fixture": "scoped-hint.html",
+      "assertion": "Descendants only, no empty-scope full-page fallback; hint/search actions do not change focus/scroll; explicit Set scroll target uses existing axis/invalidation semantics.",
+      "status": "not_run"
+    },
+    {
+      "id": "T038",
+      "title": "Scoped Grid coordinate spaces",
+      "required_levels": [
+        "pure-unit",
+        "native-qt-offscreen",
+        "native-wayland"
+      ],
+      "fixture": "geometry-spaces.html",
+      "assertion": "Nonzero scope, nested borders, zoom, DPR and window offsets map exactly once into ViewLocal coordinates; reject unsupported transforms instead of guessing.",
+      "status": "not_run"
+    },
+    {
+      "id": "T039",
+      "title": "Grid scope lifecycle and hover",
+      "required_levels": [
+        "native-qt-offscreen",
+        "native-wayland"
+      ],
+      "fixture": "geometry-spaces.html",
+      "assertion": "0/Backspace/Space reset within scope; reflow/owner/config changes invalidate; ordinary repaint does not cancel; full-view Grid regression remains.",
+      "status": "not_run"
+    },
+    {
+      "id": "T040",
+      "title": "Target Search existing matcher reuse",
+      "required_levels": [
+        "pure-unit",
+        "webengine-fixture",
+        "qml-component"
+      ],
+      "fixture": "target-search.html",
+      "assertion": "Same candidate/query ranking as existing Hint text mode, visible-only labels, explicit confirmation, correct defaults and no durable switcher cache.",
+      "status": "not_run"
+    },
+    {
+      "id": "T041",
+      "title": "Virtualised target meaning and selection",
+      "required_levels": [
+        "webengine-fixture",
+        "qml-component"
+      ],
+      "fixture": "virtualized-list.html",
+      "assertion": "Removed/recycled row or changed action meaning clears selection; index or same label never silently selects another record; offscreen content not claimed searchable.",
+      "status": "not_run"
+    },
+    {
+      "id": "T042",
+      "title": "Diagnostic privacy and provenance",
+      "required_levels": [
+        "pure-unit",
+        "webengine-fixture"
+      ],
+      "fixture": "private-labels.html",
+      "assertion": "Only on-demand bounded rule/error/focus facts; no raw key logging, input values, tokenised URLs or page-label persistence; private export requires consent.",
+      "status": "not_run"
+    },
+    {
+      "id": "T043",
+      "title": "Comparable performance samples",
+      "required_levels": [
+        "performance"
+      ],
+      "fixture": "large-targets.html",
+      "assertion": "10 warm-ups and 100 measured samples; 500 at three zoom levels plus 1000/5000; stage timings and raw p95 calculation; specified common-case regression threshold.",
+      "status": "not_run"
+    },
+    {
+      "id": "T044",
+      "title": "Teardown and weak-reference stress",
+      "required_levels": [
+        "webengine-fixture",
+        "performance"
+      ],
+      "fixture": "scoped-hint.html",
+      "assertion": "1000 start/cancel cycles and forced GC leave no growing retained maps/listeners/observers; legitimate connected weak targets stay usable in qualified engine.",
+      "status": "not_run"
+    },
+    {
+      "id": "T045",
+      "title": "Whole legacy interaction regression",
+      "required_levels": [
+        "pure-unit",
+        "webengine-fixture",
+        "native-qt-offscreen"
+      ],
+      "fixture": "legacy-suite",
+      "assertion": "Existing hints/rapid/counts/caret/search/macros/Grid/scroll/Insert/pass-through tests remain; new capability restrictions do not delete legacy legitimate paths.",
+      "status": "not_run"
+    },
+    {
+      "id": "T046",
+      "title": "Native double-click order",
+      "required_levels": [
+        "native-qt-offscreen",
+        "native-wayland"
+      ],
+      "fixture": "pointer-gestures.html",
+      "assertion": "One explicit native double-click path with expected engine sequence; no duplicate Ferric navigation or DOM fallback; uncertain dispatch never retries.",
+      "status": "not_run"
+    },
+    {
+      "id": "T047",
+      "title": "Drag feasibility and teardown experiment",
+      "required_levels": [
+        "native-qt-offscreen",
+        "native-wayland"
+      ],
+      "fixture": "drag-probe.html",
+      "assertion": "Prove in-view press/move/release plus cancellation/capture/receiver-loss cleanup through public adapter; state the supported widget categories or no-go.",
+      "status": "not_run"
+    },
+    {
+      "id": "T048",
+      "title": "Bounded pointer drag implementation",
+      "required_levels": [
+        "native-qt-offscreen",
+        "native-wayland"
+      ],
+      "fixture": "pointer-gestures.html",
+      "assertion": "Two points selected before press; 12-step/200ms path, 1000ms watchdog; sliders/pointer-driven canvas only where qualified; no file/cross-window/modifier drag.",
+      "status": "not_run"
+    },
+    {
+      "id": "T049",
+      "title": "Drag cancellation can have site effects",
+      "required_levels": [
+        "native-qt-offscreen",
+        "native-wayland"
+      ],
+      "fixture": "pointer-gestures.html",
+      "assertion": "Release clears native button state or receiver-gone bookkeeping without events in replacement view; drop may commit and is disclosed; no retry/fictional rollback.",
+      "status": "not_run"
+    },
+    {
+      "id": "T050",
+      "title": "Framework adapter capability/conflict report",
+      "required_levels": [
+        "webengine-fixture"
+      ],
+      "fixture": "framework-probes",
+      "assertion": "Evaluate each named framework/version and supported public API; focus independent of extract/apply; writeback conflict, undo, permission and no-partial-mutation proof or no-go.",
+      "status": "not_run"
+    },
+    {
+      "id": "T051",
+      "title": "Public accessibility-provider capability",
+      "required_levels": [
+        "static-inspection",
+        "native-wayland"
+      ],
+      "fixture": "accessibility-probe",
+      "assertion": "Prove public names/roles/bounds/actions and screen-reader coexistence or no-go; no semantic canvas/closed-root claim based on API existence alone.",
+      "status": "not_run"
+    },
+    {
+      "id": "T052",
+      "title": "Independent child-frame capability",
+      "required_levels": [
+        "static-inspection",
+        "webengine-fixture"
+      ],
+      "fixture": "frame-provider-probe",
+      "assertion": "Compile/runtime Qt gates, isolated per-frame collection, geometry/identity/destruction/return-data bounds are proved or recorded unavailable; no parent DOM bypass.",
+      "status": "not_run"
+    },
+    {
+      "id": "T053",
+      "title": "Alternative hint ergonomics evaluation",
+      "required_levels": [
+        "performance"
+      ],
+      "fixture": "label-corpus",
+      "assertion": "Compare stable defaults and text search to numeric/scattered/word prototype with gestures/time/errors/churn; no default change or human-study claim from automation.",
+      "status": "not_run"
+    },
+    {
+      "id": "T054",
+      "title": "Wheel-only task evaluation",
+      "required_levels": [
+        "static-inspection"
+      ],
+      "fixture": "wheel-gap-report",
+      "assertion": "Identify a real task not solved by explicit scrolling/page keys; either no-go/no need, or future bounded ADR requirements; no new wheel implementation authorised.",
+      "status": "not_run"
+    },
+    {
+      "id": "T055",
+      "title": "Registry/CLI/IPC/resource documentation parity",
+      "required_levels": [
+        "pure-unit"
+      ],
+      "fixture": "generated-contracts",
+      "assertion": "New arguments/settings/help and invalid combinations agree across registry/codecs/runtime; local-only paths reject remotely; manifests/hashes/docs regenerate cleanly.",
+      "status": "not_run"
+    },
+    {
+      "id": "T056",
+      "title": "Installed-release live task qualification",
+      "required_levels": [
+        "native-wayland",
+        "live-site"
+      ],
+      "fixture": "live-task-matrix",
+      "assertion": "Disposable authorised Docs/Sheets/Slides, mail/chat, advanced editor, GitHub/Reddit, YouTube, board/canvas/frame tasks record platform and real outcome, not inferred support.",
+      "status": "not_run"
+    },
+    {
+      "id": "T057",
+      "title": "Fresh integrated release gates",
+      "required_levels": [
+        "pure-unit",
+        "webengine-fixture",
+        "native-qt-offscreen"
+      ],
+      "fixture": "integration",
+      "assertion": "Rerun applicable full gates on integrated HEAD and report baseline failures, unsupported research and unrun native cases without claiming universal readiness.",
+      "status": "not_run"
+    },
+    {
+      "id": "T058",
+      "title": "Hint admission and bounded discovery",
+      "required_levels": [
+        "webengine-fixture"
+      ],
+      "fixture": "tst_hint_quality.qml",
+      "assertion": "Slotted non-controls receive no hints; legitimate descendants remain reachable; the sibling-link fixture completes within existing work limits.",
+      "status": "not_run"
+    },
+    {
+      "id": "T059",
+      "title": "Hint refresh and reserved label lifetime",
+      "required_levels": [
+        "pure-unit",
+        "native-qt-offscreen"
+      ],
+      "fixture": "hintRefreshRetainsInput",
+      "assertion": "Passive refresh preserves input and meaning-stable selection without activation; retired labels are not reused, label width stays fixed, and late collection cannot replace a held explicit pointer confirmation.",
+      "status": "not_run"
+    },
+    {
+      "id": "T060",
+      "title": "Hint names focus and projected fragments",
+      "required_levels": [
+        "pure-unit",
+        "webengine-fixture"
+      ],
+      "fixture": "tst_hint_quality.qml",
+      "assertion": "Bounded names exclude editable values; focus-only widgets receive exact focus; scaled frames and fragments map correctly.",
+      "status": "not_run"
+    },
+    {
+      "id": "T061",
+      "title": "Anchored hint presentation and collision reachability",
+      "required_levels": [
+        "qml-component",
+        "native-qt-offscreen",
+        "performance"
+      ],
+      "fixture": "tst_hint_presentation.qml",
+      "assertion": "Stationary markers stay anchored; all distinct overlapping actions remain reachable; hover cannot redirect keyboard activation; layout stays bounded.",
+      "status": "not_run"
+    }
+  ]
+}

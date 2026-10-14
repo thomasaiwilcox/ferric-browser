@@ -5,8 +5,8 @@
 
 use crate::single_flight::{Poll as WorkerPoll, SingleFlightWorker, SubmitError};
 use ferric_browser_config::{
-    LoadedConfig, RuntimeOverrides, load, load_contexts, load_profile_runtime_overrides,
-    load_profiles, profile_config_path,
+    LoadedConfig, ProfilesConfig, RuntimeOverrides, load, load_contexts,
+    load_profile_runtime_overrides, load_profiles, profile_config_path,
 };
 #[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
@@ -20,6 +20,7 @@ pub(super) struct ConfigReloadResult {
     pub(super) loaded: LoadedConfig,
     pub(super) profile_overrides: RuntimeOverrides,
     pub(super) profiles_path: Option<PathBuf>,
+    pub(super) profiles_config: Option<ProfilesConfig>,
     pub(super) operation: ConfigReadOperation,
 }
 
@@ -122,6 +123,7 @@ impl ConfigReloadWorker {
                             loaded,
                             profile_overrides,
                             profiles_path: profiles_path.exists().then_some(profiles_path),
+                            profiles_config: None,
                             operation: ConfigReadOperation::Reload,
                         })
                     }),
@@ -136,15 +138,18 @@ impl ConfigReloadWorker {
                             })?;
                         }
                         let profiles_path = directory.join("profiles.toml");
-                        if profiles_path.exists() {
-                            load_profiles(&profiles_path).map_err(|error| {
+                        let profiles_config = profiles_path
+                            .exists()
+                            .then(|| load_profiles(&profiles_path))
+                            .transpose()
+                            .map_err(|error| {
                                 format!("profiles configuration is invalid: {error}")
                             })?;
-                        }
                         Ok(ConfigReloadResult {
                             loaded,
                             profile_overrides: RuntimeOverrides::default(),
                             profiles_path: profiles_path.exists().then_some(profiles_path),
+                            profiles_config,
                             operation: ConfigReadOperation::Check,
                         })
                     }),

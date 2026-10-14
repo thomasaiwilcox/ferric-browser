@@ -1,0 +1,31 @@
+    Checking ferric-browser-config v0.1.0 (/home/tom/Projects/RustBrowser/crates/ferric-browser-config)
+   Compiling ferric-browser-engine-qt v0.1.0 (/home/tom/Projects/RustBrowser/crates/ferric-browser-engine-qt)
+error: redundant closure
+   --> crates/ferric-browser-config/src/runtime_config.rs:597:22
+    |
+597 |                 .map(|value| value.try_into::<HintSelectorPolicy>())
+    |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: replace the closure with the method itself: `toml::Value::try_into::<HintSelectorPolicy>`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#redundant_closure_for_method_calls
+    = note: `-D clippy::redundant-closure-for-method-calls` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::redundant_closure_for_method_calls)]`
+
+error: this function could have a `#[must_use]` attribute
+   --> crates/ferric-browser-config/src/selector_config.rs:134:8
+    |
+134 | pub fn selector_setting_family(key: &str) -> Option<HintSelectorFamily> {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#must_use_candidate
+    = note: `-D clippy::must-use-candidate` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::must_use_candidate)]`
+help: add the attribute
+    |
+134 + #[must_use]
+135 | pub fn selector_setting_family(key: &str) -> Option<HintSelectorFamily> {
+    |
+
+error: could not compile `ferric-browser-config` (lib) due to 2 previous errors
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `ferric-browser-config` (lib) due to 2 previous errors
+error: could not compile `ferric-browser-config` (lib test) due to 2 previous errors

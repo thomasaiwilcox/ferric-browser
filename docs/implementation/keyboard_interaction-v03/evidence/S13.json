@@ -1,0 +1,254 @@
+{
+  "schema_version": 1,
+  "slice_id": "S13",
+  "status": "implemented_unqualified",
+  "commit": "514d6e80dd611b2a37c6d8fd5055e49d1d48ebb1",
+  "environment": {
+    "os": "Linux thinkpad 7.2.3-arch1-3 x86_64; Omarchy 4.0.4",
+    "qt": "6.11.2",
+    "chromium": "QtWebEngine 6.11.2 / Chrome 140.0.0.0",
+    "compiler": "GCC 16.2.1",
+    "rustc": "1.98.0 (88d9e12ae 2026-08-18)",
+    "cargo": "1.98.0 (797e8a9bc 2026-08-05)",
+    "build": "Rust dev/test with locked offline workspace checks and local Qt 6.11.2",
+    "webengine_fixture": "Qt Quick/WebEngine offscreen software runner; 640x480 CSS viewport, devicePixelRatio 1",
+    "native_test": "Qt offscreen native_insert CTest, passed 1/1",
+    "wayland": "No physical Wayland keyboard journey was run",
+    "scope": "Explicit regions/surfaces families, Rust-owned closed capabilities, retained identity and bounded visible collection; Hint/Search/Grid within remain disabled pending S14/S15."
+  },
+  "changed_files": [
+    "crates/ferric-browser-core/src/command.rs",
+    "crates/ferric-browser-core/src/completion.rs",
+    "crates/ferric-browser-core/src/guide.rs",
+    "crates/ferric-browser-core/src/hints.rs",
+    "crates/ferric-browser-core/src/lib.rs",
+    "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimePresentation.qml",
+    "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeRequests.qml",
+    "crates/ferric-browser-engine-qt/qml/components/FerricContextMenu.qml",
+    "crates/ferric-browser-engine-qt/qml/scripts/PageInteractionScripts.js",
+    "crates/ferric-browser-engine-qt/src/browser_ui_hint_selection.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_navigation.rs",
+    "crates/ferric-browser-engine-qt/src/hint_payload.rs",
+    "crates/ferric-browser-engine-qt/src/hint_policy.rs",
+    "crates/ferric-browser-engine-qt/tests/fixtures/webapp-interaction/cross-origin-surface.html",
+    "crates/ferric-browser-engine-qt/tests/fixtures/webapp-interaction/regions-surfaces.html",
+    "crates/ferric-browser-engine-qt/tests/qml/tst_webapp_interaction.qml",
+    "crates/ferric-browser-ipc/src/command_argument_validation.rs",
+    "crates/ferric-browser-ipc/src/command_codec_content.rs",
+    "crates/ferric-browser-ipc/src/command_invocation.rs",
+    "docs/user/commands.md",
+    "evidence/S13-plan.md",
+    "evidence/S13.json",
+    "evidence/logs/S13/clippy.log",
+    "evidence/logs/S13/diff-check.log",
+    "evidence/logs/S13/docs-generation.log",
+    "evidence/logs/S13/engine-tests-initial-failure.log",
+    "evidence/logs/S13/engine-tests-initial.log",
+    "evidence/logs/S13/engine-tests.log",
+    "evidence/logs/S13/format-check.log",
+    "evidence/logs/S13/format.log",
+    "evidence/logs/S13/t034-classification.log",
+    "evidence/logs/S13/xtask-check-initial-docs-stale.log",
+    "evidence/logs/S13/xtask-check.log",
+    "progress.json",
+    "evidence/logs/S13/pack-evidence.log"
+  ],
+  "baseline_comparison": null,
+  "test_results": [
+    {
+      "test_id": "T009",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask check --locked --offline",
+      "commit": "514d6e80dd611b2a37c6d8fd5055e49d1d48ebb1",
+      "log": "evidence/logs/S13/xtask-check.log",
+      "observations": [
+        "Workspace Rust tests passed, including strict typed hint payload parsing, facet-family validation, and IPC round-trip/rejection cases."
+      ]
+    },
+    {
+      "test_id": "T009",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "514d6e80dd611b2a37c6d8fd5055e49d1d48ebb1",
+      "log": "evidence/logs/S13/engine-tests.log",
+      "observations": [
+        "Existing private-label and literal-label fixtures passed; the new region/surface labels expose only visible aria/title text and do not add page-selected authority fields."
+      ]
+    },
+    {
+      "test_id": "T017",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "514d6e80dd611b2a37c6d8fd5055e49d1d48ebb1",
+      "log": "evidence/logs/S13/engine-tests.log",
+      "observations": [
+        "Proxy exclusions and paired identity regressions passed; selectors and facet candidates do not grant a proxy receiver exception."
+      ]
+    },
+    {
+      "test_id": "T034",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "514d6e80dd611b2a37c6d8fd5055e49d1d48ebb1",
+      "log": "evidence/logs/S13/engine-tests.log",
+      "observations": [
+        "Production collector fixtures verified structural/named region classification, scrollable regions, visible canvas/video surfaces, exact focus eligibility, generic-div exclusion, hidden/offscreen exclusion, and unchanged all-family kinds.",
+        "Both families cap at 256 and report truncation when eligible candidates are omitted; exactly 256 eligible candidates return truncated=false. The traversal remains bounded to 50,000 inspected nodes."
+      ]
+    },
+    {
+      "test_id": "T034",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME= QT_QUICK_BACKEND=software target/qml-tests/qml_tests -input crates/ferric-browser-engine-qt/tests/qml WebAppInteraction::test_T034_region_and_surface_classification",
+      "commit": "514d6e80dd611b2a37c6d8fd5055e49d1d48ebb1",
+      "log": "evidence/logs/S13/t034-classification.log",
+      "observations": [
+        "Focused classification, freshness, focus, and explicit scroll-target fixture passed after fixture surfaces were placed inside the 640x480 viewport."
+      ]
+    },
+    {
+      "test_id": "T035",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "514d6e80dd611b2a37c6d8fd5055e49d1d48ebb1",
+      "log": "evidence/logs/S13/engine-tests.log",
+      "observations": [
+        "The parent represents a visible cross-origin iframe exterior at frame path 0; its child document is inaccessible, and closed-root/cross-origin child semantics are absent."
+      ]
+    },
+    {
+      "test_id": "T035",
+      "level": "native-wayland",
+      "result": "not_run",
+      "command": "Not attempted: no physical Wayland keyboard journey was run",
+      "commit": "514d6e80dd611b2a37c6d8fd5055e49d1d48ebb1",
+      "log": null,
+      "reason": "No physical Wayland journey was available in this run. Qt offscreen tests and native_insert CTest do not qualify Wayland keyboard input or native Grid interaction.",
+      "observations": []
+    },
+    {
+      "test_id": "T045",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask check --locked --offline",
+      "commit": "514d6e80dd611b2a37c6d8fd5055e49d1d48ebb1",
+      "log": "evidence/logs/S13/xtask-check.log",
+      "observations": [
+        "All workspace suites and doctests passed: CLI 90, application 16, config 55, core 132, engine 430, IPC 29, runtime 5, storage 85, and xtask 17 tests."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "514d6e80dd611b2a37c6d8fd5055e49d1d48ebb1",
+      "log": "evidence/logs/S13/engine-tests.log",
+      "observations": [
+        "All 129 QML/WebEngine tests passed."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "514d6e80dd611b2a37c6d8fd5055e49d1d48ebb1",
+      "log": "evidence/logs/S13/engine-tests.log",
+      "observations": [
+        "The native_insert CTest target passed 1/1 under Qt offscreen."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask docs",
+      "commit": "514d6e80dd611b2a37c6d8fd5055e49d1d48ebb1",
+      "log": "evidence/logs/S13/docs-generation.log",
+      "observations": [
+        "Generated docs/user/commands.md from the updated command guide."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask check --locked --offline",
+      "commit": "514d6e80dd611b2a37c6d8fd5055e49d1d48ebb1",
+      "log": "evidence/logs/S13/xtask-check.log",
+      "observations": [
+        "QML lint, generated-doc freshness, architecture boundaries, release artifact manifest, license policy, formatting, workspace tests, and doctests passed."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo fmt --all -- --check",
+      "commit": "514d6e80dd611b2a37c6d8fd5055e49d1d48ebb1",
+      "log": "evidence/logs/S13/format-check.log",
+      "observations": [
+        "Rust formatting passed."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo clippy --workspace --all-targets --locked --offline -- -D warnings",
+      "commit": "514d6e80dd611b2a37c6d8fd5055e49d1d48ebb1",
+      "log": "evidence/logs/S13/clippy.log",
+      "observations": [
+        "Strict workspace Clippy passed with warnings denied."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "git diff --check",
+      "commit": "514d6e80dd611b2a37c6d8fd5055e49d1d48ebb1",
+      "log": "evidence/logs/S13/diff-check.log",
+      "observations": [
+        "The implementation diff contained no whitespace errors."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "python3 docs/implementation/keyboard_interaction-v03/tools/validate_pack.py --integrity --evidence",
+      "commit": "514d6e80dd611b2a37c6d8fd5055e49d1d48ebb1",
+      "log": "evidence/logs/S13/pack-evidence.log",
+      "observations": [
+        "Pack integrity and S13 evidence/progress schema validation passed."
+      ]
+    }
+  ],
+  "capability_decision": null,
+  "capability_report": null,
+  "review_kind": "self-review",
+  "scope_amendments": [
+    "qml/components/FerricBrowserRuntimeRequests.qml and qml/components/FerricContextMenu.qml: carry disabled capability state into the shared menu and reject mnemonic activation of disabled entries, closing a keyboard shortcut route around intentionally unavailable future actions."
+  ],
+  "remaining_risks": [
+    "T035 native Wayland keyboard interaction was not exercised; offscreen Qt evidence is not a substitute.",
+    "No composed BrowserUi acceptance journey exercised the local palette permit, displayed capability list, selection, and final page action as one end-to-end interaction.",
+    "Hint/Search/Grid within actions remain disabled until scoped interaction support is implemented and qualified in S14/S15.",
+    "S12 site-configuration lifecycle and comparable renderer performance findings remain unqualified and are retained as separate limitations."
+  ],
+  "not_run_reasons": [
+    "T035 native-wayland: no physical Wayland keyboard journey was run; offscreen WebEngine and CTest evidence do not qualify it.",
+    "Composed BrowserUi palette-to-action acceptance: no fixture currently composes local palette entry, action presentation, and final page action."
+  ],
+  "next_ready_slices": [
+    "S14"
+  ]
+}

@@ -1,0 +1,167 @@
+{
+  "schema_version": 1,
+  "slice_id": "S11",
+  "status": "implemented_unqualified",
+  "commit": "df7e9ec24be36e8640e43cd2b73da9a02e22763e",
+  "environment": {
+    "os": "Linux 7.2.3-arch1-3 x86_64",
+    "qt": "6.11.2",
+    "compiler": "GCC 16.2.1",
+    "rustc": "1.98.0 (88d9e12ae 2026-08-18)",
+    "build": "Rust dev/test with local Qt 6.11.2; offline workspace checks",
+    "native_test": "Qt Quick/WebEngine offscreen fixtures and CTest native_insert executable",
+    "wayland": "WAYLAND_DISPLAY was available; no physical Wayland or live BrowserUi selector journey was run",
+    "scope": "Typed selector preparation and engine syntax validation are implemented; S12 will consume the validated policies in discovery, and the composed BrowserUi commit lifecycle remains unqualified."
+  },
+  "changed_files": [
+    "crates/ferric-browser-config/src/browser_config.rs",
+    "crates/ferric-browser-config/src/lib.rs",
+    "crates/ferric-browser-config/src/runtime_config.rs",
+    "crates/ferric-browser-config/src/selector_config.rs",
+    "crates/ferric-browser-config/src/settings.rs",
+    "crates/ferric-browser-config/src/tests.rs",
+    "crates/ferric-browser-config/src/validation.rs",
+    "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeSurface.qml",
+    "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml",
+    "crates/ferric-browser-engine-qt/qml/components/FerricSelectorValidationSurface.qml",
+    "crates/ferric-browser-engine-qt/src/browser_ui_configuration.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_context_commands.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_runtime_config.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_runtime_settings.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_selector_config.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_state.rs",
+    "crates/ferric-browser-engine-qt/src/configuration_workers.rs",
+    "crates/ferric-browser-engine-qt/src/lib.rs",
+    "crates/ferric-browser-engine-qt/src/selector_validation.rs",
+    "crates/ferric-browser-engine-qt/src/tests.rs",
+    "crates/ferric-browser-engine-qt/src/tests/components_and_workers.rs",
+    "crates/ferric-browser-engine-qt/tests/qml/tst_selector_validation.qml",
+    "crates/ferric-browser/src/main.rs",
+    "docs/user/configuration.md",
+    "evidence/S11-plan.md",
+    "evidence/S11.json",
+    "evidence/logs/S11/clippy-initial-failure.log",
+    "evidence/logs/S11/clippy-intermediate-failure.log",
+    "evidence/logs/S11/clippy.log",
+    "evidence/logs/S11/docs-generation.log",
+    "evidence/logs/S11/engine-tests.log",
+    "evidence/logs/S11/format.log",
+    "evidence/logs/S11/xtask-check-final.log",
+    "evidence/logs/S11/xtask-check.log",
+    "progress.json"
+  ],
+  "baseline_comparison": {
+    "report": "evidence/logs/S11/xtask-check.log",
+    "result": "The first full check failed only because browser_ui_configuration.rs exceeded the 1,000-line implementation budget. Moving execute_runtime_config_command into browser_ui_runtime_settings.rs brought both modules under budget; the final full check passed. Initial strict Clippy findings are retained in clippy-initial-failure.log and clippy-intermediate-failure.log; all were fixed before the final strict pass."
+  },
+  "test_results": [
+    {
+      "test_id": "T030",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask check --locked --offline",
+      "commit": "df7e9ec24be36e8640e43cd2b73da9a02e22763e",
+      "log": "evidence/logs/S11/xtask-check-final.log",
+      "observations": [
+        "All workspace Rust tests and doctests passed, including 51 config tests and 425 engine tests.",
+        "Selector policy tests cover family keys, limits, stable overlays, and callback decisions for success, rejection, stale generation, and stale config revision."
+      ]
+    },
+    {
+      "test_id": "T030",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "df7e9ec24be36e8640e43cd2b73da9a02e22763e",
+      "log": "evidence/logs/S11/engine-tests.log",
+      "observations": [
+        "The installed WebEngine accepted a valid CSS selector and rejected malformed CSS through document.querySelector on the browser-owned local validation document.",
+        "All 123 QML/WebEngine tests passed; native_insert CTest passed 1/1."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask docs",
+      "commit": "df7e9ec24be36e8640e43cd2b73da9a02e22763e",
+      "log": "evidence/logs/S11/docs-generation.log",
+      "observations": [
+        "Generated commands, configuration, bindings, and actions documentation."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask check --locked --offline",
+      "commit": "df7e9ec24be36e8640e43cd2b73da9a02e22763e",
+      "log": "evidence/logs/S11/xtask-check-final.log",
+      "observations": [
+        "The final generated-contract and release artifact manifest checks passed."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo fmt --all -- --check",
+      "commit": "df7e9ec24be36e8640e43cd2b73da9a02e22763e",
+      "log": "evidence/logs/S11/format.log",
+      "observations": [
+        "Formatting and git diff whitespace checks passed."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo clippy --workspace --all-targets --locked --offline -- -D warnings",
+      "commit": "df7e9ec24be36e8640e43cd2b73da9a02e22763e",
+      "log": "evidence/logs/S11/clippy.log",
+      "observations": [
+        "Strict workspace Clippy passed with Rust warnings denied; the log includes Qt/GCC header diagnostics from the C++ build."
+      ]
+    },
+    {
+      "test_id": "T030",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "ctest --test-dir target/application-tests -R '^application_offscreen$' --verbose",
+      "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+      "log": "evidence/completion-application-functional-final.log",
+      "observations": [
+        "Real startup selector acceptance/rejection, malformed runtime CSS, stale and unavailable parser callbacks, plus rejected durable-write configuration/fingerprint/permit preservation are exercised. Directory-sync committed uncertainty has deterministic config-layer fault evidence.",
+        "This follow-up records bounded local coverage; missing physical, live-site, chooser and human evidence remains unqualified."
+      ]
+    }
+  ],
+  "capability_decision": null,
+  "capability_report": null,
+  "review_kind": "self-review",
+  "scope_amendments": [],
+  "remaining_risks": [
+    "No live BrowserUi fixture composes startup, selector-engine unavailability, timeout, stale callback, and persistent runtime-setting failure to prove the full old-effective-config invariant across each path.",
+    "If durable runtime override writing fails after validation and in-memory commit, the accepted config remains active in memory and an actionable persistence error is shown; durable storage may remain at the prior value.",
+    "Validated selector policies are not yet consumed by discovery and activation; that integration belongs to S12."
+  ],
+  "not_run_reasons": [
+    "T030 composed BrowserUi lifecycle: no offscreen integration fixture drives startup rejection, engine unavailability, timeout, and stale callback through the real commit/persistence boundary.",
+    "T030 physical Wayland: no manual keyboard journey was run."
+  ],
+  "next_ready_slices": [
+    "S12"
+  ],
+  "completion_followup": {
+    "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+    "report": "evidence/completion-report.md",
+    "status": "implemented_unqualified",
+    "scope": "New composed application observations supplement historical component evidence; no missing qualification level is inferred."
+  },
+  "review_repair_followup": {
+    "commit": "5410c038409a835d271a08b42e96ea6dd434d6f9",
+    "report": "evidence/review-repairs-report.md",
+    "validation": "evidence/review-repairs-validation.json",
+    "scope": "Bounded local regression and composed application evidence; qualification status unchanged."
+  }
+}

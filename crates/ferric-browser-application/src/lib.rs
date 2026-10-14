@@ -8,7 +8,7 @@
 
 use std::collections::BTreeMap;
 
-use ferric_browser_config::{Config, ConfigError, RuntimeOverrides};
+use ferric_browser_config::{Config, ConfigError, ConfigurationApplyBoundary, RuntimeOverrides};
 use ferric_browser_core::{
     CommandContext, CommandSource, DispatchTarget, JourneyGraph, PrivacyKind, ProfileId,
     ProfileState, ShutdownState, TabId, TabState, Target, WindowId, WindowState,
@@ -26,7 +26,7 @@ mod profile_open;
 mod storage;
 
 use configuration::ConfigurationState;
-pub use configuration::{ConfigurationLayers, ConfigurationSnapshot};
+pub use configuration::{ConfigurationLayers, ConfigurationSnapshot, PreparedConfigurationUpdate};
 pub use ferric_browser_storage::StorageCommand as StorageRequest;
 use profile::ActiveProfile;
 use profile::ProfileActivation;
@@ -242,8 +242,8 @@ impl BrowserApplication {
         self.configuration.activate_layers(layers)
     }
 
-    /// Atomically updates every configuration layer and preserves pending
-    /// startup/restart-scoped changes.
+    /// Atomically updates live settings and preserves pending reload-,
+    /// startup- and restart-scoped changes.
     ///
     /// # Errors
     ///
@@ -254,6 +254,62 @@ impl BrowserApplication {
         layers: ConfigurationLayers,
     ) -> Result<ConfigurationSnapshot, ConfigError> {
         self.configuration.update_layers(layers)
+    }
+
+    /// Prepares a runtime update without publishing it or its revision.
+    ///
+    /// # Errors
+    /// Returns a validation error for invalid configuration layers.
+    pub fn prepare_configuration_update(
+        &self,
+        layers: ConfigurationLayers,
+    ) -> Result<PreparedConfigurationUpdate, ConfigError> {
+        self.prepare_configuration_at(layers, ConfigurationApplyBoundary::RuntimeUpdate)
+    }
+
+    /// Prepares live, navigation and reload settings, retaining startup/restart values.
+    ///
+    /// # Errors
+    /// Returns a validation error without changing the active configuration.
+    pub fn prepare_configuration_reload(
+        &self,
+        layers: ConfigurationLayers,
+    ) -> Result<PreparedConfigurationUpdate, ConfigError> {
+        self.prepare_configuration_at(layers, ConfigurationApplyBoundary::Reload)
+    }
+
+    fn prepare_configuration_at(
+        &self,
+        layers: ConfigurationLayers,
+        boundary: ConfigurationApplyBoundary,
+    ) -> Result<PreparedConfigurationUpdate, ConfigError> {
+        let mut state = self.configuration.clone();
+        state.update_layers_at(layers, boundary)?;
+        Ok(PreparedConfigurationUpdate {
+            expected_revision: self.configuration.revision(),
+            state,
+        })
+    }
+
+    /// Checks freshness, performs persistence, then publishes without another
+    /// fallible operation. The callback must not reenter the application.
+    ///
+    /// # Errors
+    /// Returns an error without publishing when preparation is stale or the
+    /// persistence callback rejects the update.
+    pub fn publish_configuration_update(
+        &mut self,
+        prepared: PreparedConfigurationUpdate,
+        persist: impl FnOnce() -> Result<(), ConfigError>,
+    ) -> Result<ConfigurationSnapshot, ConfigError> {
+        if self.configuration.revision() != prepared.expected_revision {
+            return Err(ConfigError::Validation(
+                "prepared configuration became stale".into(),
+            ));
+        }
+        persist()?;
+        self.configuration = prepared.state;
+        Ok(self.configuration.snapshot())
     }
 
     /// Replaces the effective configuration for compatibility bootstrap paths.
@@ -839,5 +895,153 @@ mod tests {
         assert_eq!(terminated, accepted);
         assert!(!application.storage_is_open());
         fs::remove_dir_all(root).expect("remove test storage directory");
+    }
+}
+
+#[cfg(test)]
+mod configuration_transaction_tests {
+    use super::*;
+
+    fn changed_layers() -> ConfigurationLayers {
+        let mut layers = ConfigurationLayers::new(Config::default());
+        layers.runtime.set_literal("content.zoom", "1.25").unwrap();
+        layers
+    }
+
+    #[test]
+    fn reload_activates_selectors_and_retains_startup_restart_deferral() {
+        use ferric_browser_config::{HintSelectorFamily, HintSelectorMode, HintSelectorPolicy};
+        let mut app = BrowserApplication::new(Config::default());
+        let mut base = Config::default();
+        for family in HintSelectorFamily::ALL {
+            base.hints.selectors.insert(
+                family,
+                HintSelectorPolicy {
+                    mode: HintSelectorMode::Replace,
+                    selectors: vec![],
+                },
+            );
+        }
+        base.ui.font_size_pt = 17.0;
+        base.ipc.enabled = false;
+        base.navigation.start_pages = vec!["rb://blank".into()];
+        let layers = ConfigurationLayers::new(base);
+        let live = app.prepare_configuration_update(layers.clone()).unwrap();
+        assert!(live.snapshot().effective.hints.selectors.is_empty());
+        assert_eq!(
+            live.snapshot()
+                .pending_changes
+                .iter()
+                .filter(|p| p.apply_time == "reload")
+                .count(),
+            7
+        );
+        let old = app.configuration_snapshot();
+        let reload = app.prepare_configuration_reload(layers).unwrap();
+        assert_eq!(app.configuration_snapshot(), old);
+        let published = app.publish_configuration_update(reload, || Ok(())).unwrap();
+        assert_eq!(published.effective.hints.selectors.len(), 7);
+        assert!((published.effective.ui.font_size_pt - 17.0).abs() < f64::EPSILON);
+        assert!(published.effective.ipc.enabled);
+        assert_eq!(
+            published.effective.navigation.start_pages,
+            Config::default().navigation.start_pages
+        );
+        assert_eq!(published.pending_changes.len(), 2);
+        assert!(
+            published
+                .pending_changes
+                .iter()
+                .all(|p| p.apply_time != "reload")
+        );
+        // Removal stays pending at runtime, then restores inheritance at reload.
+        let defaults = ConfigurationLayers::new(Config::default());
+        let removal = app.prepare_configuration_update(defaults.clone()).unwrap();
+        assert_eq!(removal.snapshot().effective.hints.selectors.len(), 7);
+        assert_eq!(removal.snapshot().pending_changes.len(), 7);
+        let removal = app.prepare_configuration_reload(defaults).unwrap();
+        let published = app
+            .publish_configuration_update(removal, || Ok(()))
+            .unwrap();
+        assert!(published.effective.hints.selectors.is_empty());
+        assert_eq!(published.pending_changes, []);
+    }
+
+    #[test]
+    fn reload_preparation_rejects_invalid_stale_and_failed_publication() {
+        let mut app = BrowserApplication::new(Config::default());
+        let before = app.configuration_snapshot();
+        let mut invalid = Config::default();
+        invalid.ui.font_size_pt = -1.0;
+        assert!(
+            app.prepare_configuration_reload(ConfigurationLayers::new(invalid))
+                .is_err()
+        );
+        assert_eq!(app.configuration_snapshot(), before);
+        let prepared = app.prepare_configuration_reload(changed_layers()).unwrap();
+        assert!(
+            app.publish_configuration_update(prepared, || Err(ConfigError::Validation(
+                "write failed".into()
+            )))
+            .is_err()
+        );
+        assert_eq!(app.configuration_snapshot(), before);
+        let prepared = app.prepare_configuration_reload(changed_layers()).unwrap();
+        app.update_configuration(changed_layers()).unwrap();
+        let updated = app.configuration_snapshot();
+        assert!(
+            app.publish_configuration_update(prepared, || panic!("stale reload must not persist"))
+                .is_err()
+        );
+        assert_eq!(app.configuration_snapshot(), updated);
+    }
+
+    #[test]
+    fn persistence_rejection_preserves_full_configuration_and_revision() {
+        let mut app = BrowserApplication::new(Config::default());
+        let old = app.configuration_snapshot();
+        let prepared = app.prepare_configuration_update(changed_layers()).unwrap();
+        assert_eq!(app.configuration_snapshot(), old);
+        let result = app.publish_configuration_update(prepared, || {
+            Err(ConfigError::Validation(
+                "injected persistence rejection".into(),
+            ))
+        });
+        assert!(result.is_err());
+        assert_eq!(app.configuration_snapshot(), old);
+    }
+
+    #[test]
+    fn stale_preparation_is_rejected_before_persistence() {
+        let mut app = BrowserApplication::new(Config::default());
+        let prepared = app.prepare_configuration_update(changed_layers()).unwrap();
+        app.update_configuration(ConfigurationLayers::new(Config::default()))
+            .unwrap();
+        let old = app.configuration_snapshot();
+        assert!(
+            app.publish_configuration_update(prepared, || {
+                panic!("stale candidate must not persist")
+            })
+            .is_err()
+        );
+        assert_eq!(app.configuration_snapshot(), old);
+    }
+
+    #[test]
+    fn successful_publication_commits_once_after_persistence() {
+        let mut app = BrowserApplication::new(Config::default());
+        let prepared = app.prepare_configuration_update(changed_layers()).unwrap();
+        let expected = prepared.snapshot();
+        let mut persisted = false;
+        let published = app
+            .publish_configuration_update(prepared, || {
+                persisted = true;
+                Ok(())
+            })
+            .unwrap();
+        assert!(persisted);
+        assert_eq!(published, expected);
+        assert_eq!(published.revision, 1);
+        assert_eq!(app.configuration_snapshot(), published);
     }
 }

@@ -57,6 +57,10 @@ mod browser_ui_downloads_permissions;
 mod browser_ui_edit_commands;
 mod browser_ui_external_actions;
 mod browser_ui_guide;
+mod browser_ui_hint_pointer;
+pub use browser_ui_hint_pointer::reject_external_hint_interaction_chain;
+mod browser_ui_hint_proxy_configuration;
+mod browser_ui_hint_selection;
 mod browser_ui_input;
 #[allow(clippy::too_many_lines)]
 mod browser_ui_ipc;
@@ -70,6 +74,7 @@ mod browser_ui_ipc_userscripts;
 mod browser_ui_journey_commands;
 mod browser_ui_library;
 mod browser_ui_maintenance;
+mod browser_ui_native_prompts;
 mod browser_ui_navigation;
 mod browser_ui_navigation_lifecycle;
 mod browser_ui_persistence;
@@ -87,6 +92,9 @@ mod browser_ui_query_switcher;
 mod browser_ui_repeat_macros;
 mod browser_ui_runtime;
 mod browser_ui_runtime_config;
+mod browser_ui_runtime_settings;
+mod browser_ui_scope_handoff;
+mod browser_ui_selector_config;
 mod browser_ui_sessions;
 mod browser_ui_site;
 mod browser_ui_spatial;
@@ -95,6 +103,7 @@ mod browser_ui_state;
 mod browser_ui_storage_writes;
 mod browser_ui_tab_state;
 mod browser_ui_tabs;
+mod browser_ui_target_search;
 mod browser_ui_ui_actions;
 mod browser_ui_web_actions;
 mod chrome_preferences;
@@ -133,13 +142,16 @@ mod logging;
 mod macro_policy;
 mod macro_projection;
 mod maintenance;
+mod mixed_policy_runtime;
 mod native_files;
+mod native_prompt_lease;
 mod navigation_lifecycle;
 mod navigation_policy;
 mod network_policy;
 mod open_policy;
 mod operation_policy;
 mod operation_projection;
+mod page_document_identity;
 mod presentation_text;
 mod process_output;
 mod profile_management;
@@ -148,6 +160,7 @@ mod renderer_lifecycle;
 mod runtime_bridge;
 mod runtime_facts;
 mod runtime_guard;
+mod selector_validation;
 mod settings_presentation;
 mod shutdown_control;
 mod single_flight;
@@ -191,8 +204,9 @@ use binding_policy::{
 #[cfg(test)]
 use browser_ui_state::PermissionLifetimeKey;
 use browser_ui_state::{
-    ContextSnapshot, PendingContextRoute, PendingProfileConfiguration, PermissionDecisionKey,
-    ProfilePersistence, SessionCheckpoint, SwitcherQueryCache, permission_session_key,
+    ContextSnapshot, PendingContextRoute, PendingProfileConfiguration, PendingSelectorValidation,
+    PermissionDecisionKey, ProfilePersistence, SessionCheckpoint, SwitcherQueryCache,
+    permission_session_key,
 };
 use chrome_preferences::ChromePreferences;
 use command_options::{
@@ -231,7 +245,8 @@ use feature_preferences::FeaturePreferences;
 use focus_policy::{FocusObservation, focus_mode_transition};
 use hint_payload::{hint_json, hint_kind_name, parse_hint_candidate, parse_hint_payload};
 use hint_policy::{
-    external_hint_target, hint_uses_url_action, parse_hint_options, rapid_hint_keeps_mode,
+    HintScopeBinding, LocalInteractionAuthority, LocalInteractionPermit, external_hint_target,
+    hint_uses_url_action, parse_hint_options, rapid_hint_keeps_mode,
 };
 use input_validation::{
     is_bounded_journey_query, is_bounded_untrusted_text, validate_jseval_script,
@@ -256,6 +271,7 @@ use native_files::{
     atomic_write_private, bounded_header, resolve_browser_roots, scalar_cursor_to_utf16,
     set_private_directory_permissions, utf16_cursor_to_scalar,
 };
+use native_prompt_lease::NativePromptLeases;
 use navigation_policy::{
     configured_search_url, journey_transition_after_load,
     navigation_context as navigation_context_from_config_and_quickmarks,
@@ -266,6 +282,7 @@ use operation_policy::{
     action_audit_record, action_operation_id, operation_is_terminal, operation_status_kind,
 };
 use operation_projection::{operations_query_value, remember_operation_stderr};
+use page_document_identity::{PageDocumentIdentities, PendingSameDocumentPassThrough};
 #[cfg(test)]
 use presentation_text::MAX_PAGE_TITLE_BYTES;
 use presentation_text::{
@@ -557,17 +574,31 @@ mod qobject {
         #[qproperty(bool, external_navigation_visible)]
         #[qproperty(QString, hint_values)]
         #[qproperty(bool, hint_visible)]
+        #[qproperty(bool, target_search_active)]
+        #[qproperty(QString, target_search_scope)]
+        #[qproperty(QString, target_search_query)]
+        #[qproperty(bool, hint_pointer_mode)]
+        #[qproperty(bool, hint_pointer_pending)]
+        #[qproperty(QString, hint_pointer_state)]
+        #[qproperty(QString, hint_pointer_dispatch_request)]
         #[qproperty(bool, hint_links_only)]
         #[qproperty(bool, hint_rapid)]
+        #[qproperty(QString, hint_target)]
         #[qproperty(QString, hint_family)]
+        #[qproperty(bool, hint_proxy_targets_enabled)]
         #[qproperty(QString, hint_unmatched_policy)]
         #[qproperty(bool, hint_chrome_available)]
         #[qproperty(f64, hint_marker_scale)]
         #[qproperty(bool, spatial_visible)]
         #[qproperty(bool, spatial_selecting)]
         #[qproperty(QString, spatial_session_id)]
+        #[qproperty(QString, spatial_scope_lease_id)]
         #[qproperty(QString, spatial_dispatch_request)]
         #[qproperty(QStringList, spatial_labels)]
+        #[qproperty(f64, spatial_viewport_x)]
+        #[qproperty(f64, spatial_viewport_y)]
+        #[qproperty(f64, spatial_viewport_width)]
+        #[qproperty(f64, spatial_viewport_height)]
         #[qproperty(f64, spatial_root_x)]
         #[qproperty(f64, spatial_root_y)]
         #[qproperty(f64, spatial_root_width)]
@@ -595,6 +626,7 @@ mod qobject {
         #[qproperty(bool, clipboard_request_sensitive)]
         #[qproperty(bool, clipboard_request_primary)]
         #[qproperty(QString, config_json)]
+        #[qproperty(QString, selector_validation_request)]
         #[qproperty(QVariant, settings_rows)]
         #[qproperty(QString, runtime_setting_error)]
         #[qproperty(QString, chrome_font_family)]
@@ -801,6 +833,13 @@ mod qobject {
         ) -> bool;
 
         #[qinvokable]
+        fn complete_selector_validation(
+            self: Pin<&mut BrowserUi>,
+            generation: &QString,
+            result: &QString,
+        ) -> bool;
+
+        #[qinvokable]
         fn publish_live_window_registry(
             self: Pin<&mut BrowserUi>,
             ids: &QStringList,
@@ -993,6 +1032,32 @@ mod qobject {
         fn begin_hint_session(self: Pin<&mut BrowserUi>, candidates_json: &QString) -> QString;
 
         #[qinvokable]
+        fn cancel_target_search(self: Pin<&mut BrowserUi>);
+
+        #[qinvokable]
+        fn complete_hint_scope_handoff(
+            self: Pin<&mut BrowserUi>,
+            lease_id: &QString,
+            receipt_json: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn complete_grid_scope_handoff(
+            self: Pin<&mut BrowserUi>,
+            lease_id: &QString,
+            receipt_json: &QString,
+            geometry_json: &QString,
+            serial: &QString,
+            revision: &QString,
+            view_width: f64,
+            view_height: f64,
+            zoom_factor: f64,
+        ) -> bool;
+
+        #[qinvokable]
+        fn hint_selector_policy(self: Pin<&mut BrowserUi>, family: &QString) -> QString;
+
+        #[qinvokable]
         fn update_hint_interaction(
             self: Pin<&mut BrowserUi>,
             action: &QString,
@@ -1013,6 +1078,48 @@ mod qobject {
             fresh_candidate_json: &QString,
             action_id: &QString,
         ) -> QString;
+
+        #[qinvokable]
+        fn hint_pointer_confirmation_pressed(self: Pin<&mut BrowserUi>) -> QString;
+
+        #[qinvokable]
+        fn hint_pointer_confirmation_released(
+            self: Pin<&mut BrowserUi>,
+            surface_serial: &QString,
+            surface_revision: &QString,
+            view_width: f64,
+            view_height: f64,
+        ) -> QString;
+
+        #[qinvokable]
+        fn complete_hint_pointer_preflight(
+            self: Pin<&mut BrowserUi>,
+            request_id: &QString,
+            preflight_json: &QString,
+            surface_serial: &QString,
+            surface_revision: &QString,
+            view_width: f64,
+            view_height: f64,
+        ) -> bool;
+
+        #[qinvokable]
+        fn hint_pointer_dispatch_ack(
+            self: Pin<&mut BrowserUi>,
+            request_id: &QString,
+            session_id: &QString,
+            surface_serial: &QString,
+            surface_revision: &QString,
+            outcome: &QString,
+        );
+
+        #[qinvokable]
+        fn hint_pointer_invalidated(self: Pin<&mut BrowserUi>, reason: &QString);
+
+        #[qinvokable]
+        fn hint_pointer_timeout(self: Pin<&mut BrowserUi>);
+
+        #[qinvokable]
+        fn cancel_hint_palette(self: Pin<&mut BrowserUi>);
 
         #[qinvokable]
         fn confirm_rapid_hint_tabs(self: Pin<&mut BrowserUi>) -> bool;
@@ -1329,6 +1436,9 @@ mod qobject {
         fn refresh_site_status(self: Pin<&mut BrowserUi>) -> QString;
 
         #[qinvokable]
+        fn refresh_interaction_status(self: Pin<&mut BrowserUi>) -> QString;
+
+        #[qinvokable]
         fn site_report(self: Pin<&mut BrowserUi>, include_host: bool) -> QString;
 
         #[qinvokable]
@@ -1407,6 +1517,42 @@ mod qobject {
         );
 
         #[qinvokable]
+        fn new_prompt_view_identity(self: Pin<&mut BrowserUi>) -> QString;
+
+        #[qinvokable]
+        fn register_prompt_view_identity(
+            self: Pin<&mut BrowserUi>,
+            index: i32,
+            view_identity: &QString,
+        );
+
+        #[qinvokable]
+        fn unregister_prompt_view_identity(
+            self: Pin<&mut BrowserUi>,
+            index: i32,
+            view_identity: &QString,
+        );
+
+        #[qinvokable]
+        fn begin_native_prompt_lease(
+            self: Pin<&mut BrowserUi>,
+            index: i32,
+            category: &QString,
+        ) -> QString;
+
+        #[qinvokable]
+        fn complete_native_prompt_lease(self: Pin<&mut BrowserUi>, lease_id: &QString) -> bool;
+
+        #[qinvokable]
+        fn finish_native_prompt_focus_probe(self: Pin<&mut BrowserUi>, lease_id: &QString) -> bool;
+
+        #[qinvokable]
+        fn has_native_prompt_lease(self: Pin<&mut BrowserUi>) -> bool;
+
+        #[qinvokable]
+        fn invalidate_native_prompt_leases(self: Pin<&mut BrowserUi>);
+
+        #[qinvokable]
         fn select_site_rule_settings(self: Pin<&mut BrowserUi>, url: &QString) -> bool;
 
         #[qinvokable]
@@ -1420,6 +1566,35 @@ mod qobject {
 
         #[qinvokable]
         fn navigation_url_changed_for(self: Pin<&mut BrowserUi>, index: i32, url: QString);
+
+        #[qinvokable]
+        fn page_document_identity_for(
+            self: Pin<&mut BrowserUi>,
+            index: i32,
+            tab_id: &QString,
+            document_id: &QString,
+            epoch: i32,
+        );
+
+        #[qinvokable]
+        fn begin_same_document_url_change_for(
+            self: Pin<&mut BrowserUi>,
+            index: i32,
+            tab_id: &QString,
+            url: QString,
+            document_id: &QString,
+            epoch: i32,
+        );
+
+        #[qinvokable]
+        fn complete_same_document_url_change_for(
+            self: Pin<&mut BrowserUi>,
+            index: i32,
+            tab_id: &QString,
+            url: &QString,
+            document_id: &QString,
+            epoch: i32,
+        );
 
         #[qinvokable]
         fn navigation_committed(self: Pin<&mut BrowserUi>, url: QString, title: QString);
@@ -1472,6 +1647,9 @@ mod qobject {
         fn handle_key(self: Pin<&mut BrowserUi>, key: &QString) -> bool;
 
         #[qinvokable]
+        fn mixed_key_route(self: Pin<&mut BrowserUi>, key: &QString) -> QString;
+
+        #[qinvokable]
         fn begin_spatial_navigation(self: Pin<&mut BrowserUi>) -> bool;
 
         #[qinvokable]
@@ -1481,6 +1659,18 @@ mod qobject {
             height: f64,
             serial: &QString,
             revision: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn spatial_scope_geometry_validated(
+            self: Pin<&mut BrowserUi>,
+            request_id: &QString,
+            geometry_json: &QString,
+            serial: &QString,
+            revision: &QString,
+            view_width: f64,
+            view_height: f64,
+            zoom_factor: f64,
         ) -> bool;
 
         #[qinvokable]
@@ -1583,24 +1773,25 @@ use ferric_browser_application::{
 use ferric_browser_config::{
     ActionTargetConfig, Config, ContextsConfig, HyprlandConfig, LoggingConfig, RuntimeOverrides,
     ThemePalette, load_theme_palette, matching_context_routes, matching_site_rules,
-    save_contexts_atomic, save_runtime_overrides_atomic, setting_metadata, setting_metadata_all,
-    setting_supported_scopes, setting_supports_site_scope, theme_contrast_report,
+    save_contexts_atomic, setting_metadata, setting_metadata_all, setting_supported_scopes,
+    setting_supports_site_scope, theme_contrast_report,
 };
 #[cfg(test)]
 use ferric_browser_core::ActionSubject;
 use ferric_browser_core::{
     ActionDefinition, ActionRegistry, ActionSource, BindingOutcome, BindingResolver, BindingTrie,
     CleanLinkResult, CommandInvocation, CommandRegistry, CommandSource, CompletionCandidate,
-    CompletionCategory, DEFAULT_COMPLETION_LIMIT, Diagnostic, DispatchTarget, Effect, EngineEffect,
-    Event, ExistenceState, GridCell, HintAutoFollow as CoreHintAutoFollow, HintInteraction,
-    HintInteractionInput, HintInteractionOutcome, HintKind, HintSession, HintTarget, IdSource,
-    JourneyEdgeKind, JourneyNodeId, LoadingState, LogicalRect, Mode, NavigationContext,
-    NavigationError, NavigationSource, ParseInput, ParsedCommand, PointerButton, PrivacyKind,
-    ResourceLifecycle, SearchCase, SpatialAck, SpatialAction, SpatialCancelReason,
-    SpatialDispatchOutcome, SpatialError, SpatialLifecycle, SpatialOwner, SpatialSession,
-    SpatialTarget, SurfaceStamp, TabId, TabTransfer, Target, ValidatedUrl, WindowId,
-    assign_labels_with_options, canonical_origin, clean_link, complete, parse_chain,
-    refresh_labels, resolve_input, switcher_rank, tokenize_switcher_query,
+    CompletionCategory, DEFAULT_COMPLETION_LIMIT, Diagnostic, DispatchTarget, Effect,
+    EffectiveMixedKeyPolicy, EngineEffect, Event, ExistenceState, GridCell,
+    HintAutoFollow as CoreHintAutoFollow, HintInteraction, HintInteractionInput,
+    HintInteractionOutcome, HintSession, HintTarget, HintTransport, IdSource, JourneyEdgeKind,
+    JourneyNodeId, LoadingState, LogicalRect, Mode, NavigationContext, NavigationError,
+    NavigationSource, ParseInput, ParsedCommand, PointerButton, PrivacyKind, ResourceLifecycle,
+    SearchCase, SpatialAck, SpatialAction, SpatialCancelReason, SpatialDispatchOutcome,
+    SpatialError, SpatialLifecycle, SpatialOwner, SpatialScope, SpatialSession, SpatialTarget,
+    SurfaceStamp, TabId, TabTransfer, Target, ValidatedUrl, WindowId, assign_labels_with_options,
+    canonical_origin, clean_link, complete, hint_intent_for_candidate, map_css_rect_to_view_local,
+    parse_chain, resolve_input, switcher_rank, tokenize_switcher_query,
 };
 use ferric_browser_ipc::{
     EventNotification, PublicError, Request, Response, has_pending_requests,
@@ -1683,6 +1874,7 @@ pub struct BrowserUiRust {
     tab: Option<TabId>,
     registry: CommandRegistry,
     bindings: Option<BindingResolver>,
+    mixed_policy: EffectiveMixedKeyPolicy,
     core_mode: Mode,
     binding_clock: Instant,
     pending_engine_action: Option<String>,
@@ -1696,6 +1888,8 @@ pub struct BrowserUiRust {
     pending_history_clear: Option<(Option<i64>, Option<String>)>,
     pending_journey_reopen: Option<(String, String, Option<TabId>, String)>,
     pending_navigation_urls: BTreeMap<TabId, String>,
+    page_document_identities: PageDocumentIdentities,
+    pending_same_document_pass_through: Option<PendingSameDocumentPassThrough>,
     pending_redirect_tabs: BTreeSet<TabId>,
     pending_redirect_hops: BTreeMap<TabId, u8>,
     popup_journey_targets: Vec<(String, Target, String, bool)>,
@@ -1862,9 +2056,18 @@ pub struct BrowserUiRust {
     pending_external_navigation: Option<PendingExternalNavigation>,
     hint_values: QString,
     hint_visible: bool,
+    target_search_active: bool,
+    target_search_scope: QString,
+    target_search_query: QString,
+    hint_pointer_mode: bool,
+    hint_pointer_pending: bool,
+    hint_pointer_state: QString,
+    hint_pointer_dispatch_request: QString,
     hint_links_only: bool,
     hint_rapid: bool,
     hint_family: QString,
+    hint_target: QString,
+    hint_proxy_targets_enabled: bool,
     hint_unmatched_policy: QString,
     hint_chrome_available: bool,
     hint_marker_scale: f64,
@@ -1877,8 +2080,13 @@ pub struct BrowserUiRust {
     spatial_visible: bool,
     spatial_selecting: bool,
     spatial_session_id: QString,
+    spatial_scope_lease_id: QString,
     spatial_dispatch_request: QString,
     spatial_labels: QStringList,
+    spatial_viewport_x: f64,
+    spatial_viewport_y: f64,
+    spatial_viewport_width: f64,
+    spatial_viewport_height: f64,
     spatial_root_x: f64,
     spatial_root_y: f64,
     spatial_root_width: f64,
@@ -1927,9 +2135,20 @@ pub struct BrowserUiRust {
     userscript_cancellations: Arc<Mutex<BTreeMap<String, Arc<AtomicBool>>>>,
     hint_session: Option<HintSession>,
     hint_interaction: Option<HintInteraction>,
-    hint_consumed: BTreeSet<(String, u32)>,
+    pending_hint_scope_handoff: Option<HintScopeBinding>,
+    active_hint_scope: Option<HintScopeBinding>,
+    next_hint_scope_lease_id: u64,
+    hint_consumed: BTreeSet<(String, String, u32)>,
+    hint_configuration_revision: u64,
+    runtime_config_persistence: &'static str,
+    pending_hint_palette_permit: Option<LocalInteractionPermit>,
+    pending_grid_scope_permit: Option<LocalInteractionPermit>,
+    hint_pointer_source: Option<CommandSource>,
+    hint_pointer_action: Option<browser_ui_hint_pointer::HintPointerAction>,
+    hint_local_interaction_authority: LocalInteractionAuthority,
     hint_ids: IdSource,
     config_json: QString,
+    selector_validation_request: QString,
     settings_rows: QVariant,
     runtime_setting_error: QString,
     chrome_font_family: QString,
@@ -2024,7 +2243,12 @@ pub struct BrowserUiRust {
     blocking_active_evidence: blocking_evidence::BlockingEvidence,
     focus_observations: BTreeMap<(i32, String), FocusObservation>,
     focus_suppressions: BTreeMap<(i32, String), i32>,
+    prompt_view_identities: BTreeMap<TabId, String>,
+    native_prompt_leases: NativePromptLeases,
+    native_prompt_transition: bool,
     config: Value,
+    config_revision: u64,
+    policy_revision: u64,
     portal_capabilities: PortalCapabilities,
     theme_palette: ThemePalette,
     base_config: Value,
@@ -2046,6 +2270,10 @@ pub struct BrowserUiRust {
     font_scale_probe_worker: Option<SystemFontScaleProbeWorker>,
     network_policy_reload_pending: bool,
     pending_profile_configuration: Option<PendingProfileConfiguration>,
+    pending_selector_validation: Option<PendingSelectorValidation>,
+    selector_generation: u64,
+    selector_config_revision: u64,
+    active_selector_fingerprint: String,
     profile_list_worker: Option<ProfileListWorker>,
     profile_preview_worker: Option<ProfilePreviewWorker>,
     userscript_manager_worker: Option<UserscriptManagerWorker>,
@@ -2373,6 +2601,7 @@ impl Default for BrowserUiRust {
             tab,
             registry,
             bindings,
+            mixed_policy: EffectiveMixedKeyPolicy::default(),
             core_mode: Mode::Normal,
             binding_clock: Instant::now(),
             pending_engine_action: None,
@@ -2387,6 +2616,8 @@ impl Default for BrowserUiRust {
             pending_history_clear: None,
             pending_journey_reopen: None,
             pending_navigation_urls: BTreeMap::new(),
+            page_document_identities: PageDocumentIdentities::default(),
+            pending_same_document_pass_through: None,
             pending_redirect_tabs: BTreeSet::new(),
             pending_redirect_hops: BTreeMap::new(),
             popup_journey_targets: Vec::new(),
@@ -2555,9 +2786,18 @@ impl Default for BrowserUiRust {
             pending_external_navigation: None,
             hint_values: QString::default(),
             hint_visible: false,
+            target_search_active: false,
+            target_search_scope: QString::from("all"),
+            target_search_query: QString::default(),
+            hint_pointer_mode: false,
+            hint_pointer_pending: false,
+            hint_pointer_state: QString::from("terminal"),
+            hint_pointer_dispatch_request: QString::default(),
             hint_links_only: false,
             hint_rapid: false,
+            hint_target: QString::from("current"),
             hint_family: QString::from("all"),
+            hint_proxy_targets_enabled: false,
             hint_unmatched_policy: QString::from("hide"),
             hint_chrome_available: true,
             hint_marker_scale: 1.0,
@@ -2570,10 +2810,15 @@ impl Default for BrowserUiRust {
             spatial_visible: false,
             spatial_selecting: false,
             spatial_session_id: QString::default(),
+            spatial_scope_lease_id: QString::default(),
             spatial_dispatch_request: QString::default(),
             spatial_labels: (1..=9)
                 .map(|cell| QString::from(cell.to_string()))
                 .collect(),
+            spatial_viewport_x: 0.0,
+            spatial_viewport_y: 0.0,
+            spatial_viewport_width: 0.0,
+            spatial_viewport_height: 0.0,
             spatial_root_x: 0.0,
             spatial_root_y: 0.0,
             spatial_root_width: 0.0,
@@ -2621,11 +2866,22 @@ impl Default for BrowserUiRust {
             userscript_cancellations: Arc::new(Mutex::new(BTreeMap::new())),
             hint_session: None,
             hint_interaction: None,
+            pending_hint_scope_handoff: None,
+            active_hint_scope: None,
+            next_hint_scope_lease_id: 0,
             hint_consumed: BTreeSet::new(),
+            hint_configuration_revision: 0,
+            runtime_config_persistence: "memory-only",
+            pending_hint_palette_permit: None,
+            pending_grid_scope_permit: None,
+            hint_pointer_source: None,
+            hint_pointer_action: None,
+            hint_local_interaction_authority: LocalInteractionAuthority::default(),
             hint_ids: IdSource::new(),
             config_json: QString::from(
                 serde_json::to_string(&Config::default()).unwrap_or_else(|_| "{}".into()),
             ),
+            selector_validation_request: QString::default(),
             settings_rows,
             runtime_setting_error: QString::default(),
             chrome_font_family: QString::from(chrome_preferences.font_family),
@@ -2738,7 +2994,12 @@ impl Default for BrowserUiRust {
             blocking_active_evidence: blocking_evidence::BlockingEvidence::default(),
             focus_observations: BTreeMap::new(),
             focus_suppressions: BTreeMap::new(),
+            prompt_view_identities: BTreeMap::new(),
+            native_prompt_leases: NativePromptLeases::default(),
+            native_prompt_transition: false,
             config: serde_json::to_value(Config::default()).unwrap_or(Value::Null),
+            config_revision: 0,
+            policy_revision: 0,
             portal_capabilities: PortalCapabilities::pending(),
             theme_palette,
             base_config: serde_json::to_value(Config::default()).unwrap_or(Value::Null),
@@ -2760,6 +3021,10 @@ impl Default for BrowserUiRust {
             font_scale_probe_worker: None,
             network_policy_reload_pending: false,
             pending_profile_configuration: None,
+            pending_selector_validation: None,
+            selector_generation: 0,
+            selector_config_revision: 0,
+            active_selector_fingerprint: String::new(),
             profile_list_worker: None,
             profile_preview_worker: None,
             userscript_manager_worker: None,

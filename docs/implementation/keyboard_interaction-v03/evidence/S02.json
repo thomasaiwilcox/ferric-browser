@@ -1,0 +1,229 @@
+{
+  "schema_version": 1,
+  "slice_id": "S02",
+  "status": "implemented_unqualified",
+  "commit": "35baefd4fa1851dd01e71a68ec5a0d381dc4e9b5",
+  "environment": {
+    "os": "Linux x86_64",
+    "qt": "6.11.2",
+    "chromium": "140.0.7339.225",
+    "renderer": "offscreen software",
+    "window": "640x480 CSS source viewport at zoom 1 for functional fixtures",
+    "build": "Qt release + Rust dev/test; synthetic local fixtures only"
+  },
+  "changed_files": [
+    "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimePresentation.qml",
+    "crates/ferric-browser-engine-qt/qml/scripts/BrowserScripts.js",
+    "crates/ferric-browser-engine-qt/src/hint_payload.rs",
+    "crates/ferric-browser-engine-qt/src/tests/command_protocol.rs",
+    "crates/ferric-browser-engine-qt/src/tests/components_and_workers.rs",
+    "crates/ferric-browser-engine-qt/src/tests/presentation_boundaries.rs",
+    "crates/ferric-browser-engine-qt/tests/fixtures/webapp-interaction/adversarial-targets.html",
+    "crates/ferric-browser-engine-qt/tests/native-insert/tst_native_insert.cpp",
+    "crates/ferric-browser-engine-qt/tests/qml/tst_hint_geometry.qml",
+    "crates/ferric-browser-engine-qt/tests/qml/tst_webapp_interaction.qml"
+  ],
+  "baseline_comparison": {
+    "pinned_commit": "4337056f632de0c710943fa6df76c67cf14b8b47",
+    "current_production_start": "e9a576fd375927733b200f91a6387dea4698840d",
+    "report": "evidence/S02-reproduction.md",
+    "result": "S01 recorded eleven failing WebEngine hint assertions and one native shadow-focus failure before the S02 production fix; the repaired suite and focused native test now pass."
+  },
+  "test_results": [
+    {
+      "test_id": "T002",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask check",
+      "commit": "35baefd4fa1851dd01e71a68ec5a0d381dc4e9b5",
+      "log": "evidence/logs/S02/xtask-check.log",
+      "observations": [
+        "Open-shadow click activates once and retained deep focus succeeds only when the intended deep active element is focused."
+      ]
+    },
+    {
+      "test_id": "T002",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "ctest --test-dir /tmp/ferric-native-insert --output-on-failure",
+      "commit": "35baefd4fa1851dd01e71a68ec5a0d381dc4e9b5",
+      "log": "evidence/logs/S02/native-ctest.log",
+      "observations": [
+        "Native offscreen insert suite passed, including the shadow-focus path."
+      ]
+    },
+    {
+      "test_id": "T003",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask check",
+      "commit": "35baefd4fa1851dd01e71a68ec5a0d381dc4e9b5",
+      "log": "evidence/logs/S02/xtask-check.log",
+      "observations": [
+        "Assigned-slot clipping, inert ancestry, and excessive ancestry fixtures pass."
+      ]
+    },
+    {
+      "test_id": "T004",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask check",
+      "commit": "35baefd4fa1851dd01e71a68ec5a0d381dc4e9b5",
+      "log": "evidence/logs/S02/xtask-check.log",
+      "observations": [
+        "Frame content-origin projection, adopted-element rejection, and replacement-document invalidation pass."
+      ]
+    },
+    {
+      "test_id": "T005",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask check",
+      "commit": "35baefd4fa1851dd01e71a68ec5a0d381dc4e9b5",
+      "log": "evidence/logs/S02/xtask-check.log",
+      "observations": [
+        "Hidden, opacity-zero, disabled, inert, detached, covered, and same-text replacement targets are rejected."
+      ]
+    },
+    {
+      "test_id": "T006",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask check",
+      "commit": "35baefd4fa1851dd01e71a68ec5a0d381dc4e9b5",
+      "log": "evidence/logs/S02/xtask-check.log",
+      "observations": [
+        "Existing root/body overflow and clipping regressions pass without site-specific branches; a pointerless scroll region remains selectable and scrolls under the scroll-specific policy."
+      ]
+    },
+    {
+      "test_id": "T007",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask check",
+      "commit": "35baefd4fa1851dd01e71a68ec5a0d381dc4e9b5",
+      "log": "evidence/logs/S02/xtask-check.log",
+      "observations": [
+        "A same-URL covering sibling cannot authorize pointer delivery to the retained target."
+      ]
+    },
+    {
+      "test_id": "T008",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask check",
+      "commit": "35baefd4fa1851dd01e71a68ec5a0d381dc4e9b5",
+      "log": "evidence/logs/S02/xtask-check.log",
+      "observations": [
+        "Normal focus succeeds, redirected focus reports failure because the deep active element differs from the retained target, and a visible pointerless input remains a valid focus target."
+      ]
+    },
+    {
+      "test_id": "T009",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask check",
+      "commit": "35baefd4fa1851dd01e71a68ec5a0d381dc4e9b5",
+      "log": "evidence/logs/S02/xtask-check.log",
+      "observations": [
+        "Candidate key allowlists, exact geometry keys, positive finite dimensions, UTF-8 byte bounds, and overlong labels are covered by the workspace tests."
+      ]
+    },
+    {
+      "test_id": "T009",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask check",
+      "commit": "35baefd4fa1851dd01e71a68ec5a0d381dc4e9b5",
+      "log": "evidence/logs/S02/xtask-check.log",
+      "observations": [
+        "Control values are not used as hint labels and label text is treated as literal text."
+      ]
+    },
+    {
+      "test_id": "T020",
+      "level": "webengine-fixture",
+      "result": "not_run",
+      "command": "cargo xtask check",
+      "commit": "35baefd4fa1851dd01e71a68ec5a0d381dc4e9b5",
+      "log": "evidence/logs/S02/xtask-check.log",
+      "reason": "The direct map/listener teardown fixture passes, but the complete callback-owner and destination-lease handoff contract is not exercised by S02.",
+      "observations": [
+        "The direct test_T020_map_teardown path passes in the logged 107-test suite."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask check",
+      "commit": "35baefd4fa1851dd01e71a68ec5a0d381dc4e9b5",
+      "log": "evidence/logs/S02/xtask-check.log",
+      "observations": [
+        "All workspace Rust tests pass, including 396 ferric-browser-engine-qt tests."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask check",
+      "commit": "35baefd4fa1851dd01e71a68ec5a0d381dc4e9b5",
+      "log": "evidence/logs/S02/xtask-check.log",
+      "observations": [
+        "Complete Qt Quick/WebEngine suite: 107 passed, 0 failed."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "ctest --test-dir /tmp/ferric-native-insert --output-on-failure",
+      "commit": "35baefd4fa1851dd01e71a68ec5a0d381dc4e9b5",
+      "log": "evidence/logs/S02/native-ctest.log",
+      "observations": [
+        "Native offscreen CTest passed 1/1."
+      ]
+    }
+  ],
+  "capability_decision": null,
+  "capability_report": null,
+  "review_kind": "self-review",
+  "scope_amendments": [],
+  "remaining_risks": [
+    "The full T020 callback-owner and destination-lease handoff remains for a dependent slice.",
+    "No live-site, Wayland editable-input, physical desktop, or IME qualification was performed."
+  ],
+  "not_run_reasons": [
+    "T020's complete callback-owner and destination-lease handoff matrix was outside the exercised S02 fixture contract."
+  ],
+  "next_ready_slices": [
+    "S03",
+    "S07"
+  ],
+  "additional_checks": [
+    {
+      "name": "workspace Clippy with warnings denied",
+      "command": "cargo clippy --workspace --all-targets --locked -- -D warnings",
+      "result": "passed",
+      "log": "evidence/logs/S02/clippy.log"
+    },
+    {
+      "name": "Rust formatting",
+      "command": "cargo fmt --all -- --check",
+      "result": "passed",
+      "log": "evidence/logs/S02/fmt-check.log"
+    },
+    {
+      "name": "patch whitespace validation",
+      "command": "git diff --check",
+      "result": "passed",
+      "log": "evidence/logs/S02/diff-check.log"
+    },
+    {
+      "name": "generated JavaScript syntax",
+      "result": "passed",
+      "log": "evidence/logs/S02/script-syntax.log"
+    }
+  ]
+}

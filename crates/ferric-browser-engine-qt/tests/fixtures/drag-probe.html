@@ -1,0 +1,65 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Ferric bounded pointer gesture probe</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; width: 640px; height: 480px; font: 14px sans-serif; }
+  .probe { position: absolute; border: 2px solid #334155; background: #dbeafe; }
+  #pointer-pad { left: 24px; top: 24px; width: 220px; height: 92px; }
+  #capture-pad { left: 24px; top: 136px; width: 220px; height: 82px; background: #dcfce7; }
+  #canvas-like { left: 280px; top: 24px; width: 260px; height: 176px; background: #fef3c7; }
+  #range { position: absolute; left: 24px; top: 244px; width: 240px; }
+  #drag-source { left: 24px; top: 316px; width: 120px; height: 80px; background: #fce7f3; }
+  #drop-target { left: 340px; top: 316px; width: 240px; height: 100px; background: #e0e7ff; }
+</style>
+<div id="pointer-pad" class="probe">Pointer-driven widget</div>
+<div id="capture-pad" class="probe">Pointer capture widget</div>
+<canvas id="canvas-like" class="probe" width="260" height="176">Canvas-like surface</canvas>
+<input id="range" type="range" min="0" max="100" value="10">
+<div id="drag-source" class="probe" draggable="true">HTML drag source</div>
+<div id="drop-target" class="probe">HTML drop target</div>
+<script>
+  window.dragProbe = {events: [], draws: 0, dropCommits: 0};
+  const eventTypes = [
+    'pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'gotpointercapture',
+    'lostpointercapture', 'mousedown', 'mousemove', 'mouseup', 'dragstart', 'drag',
+    'dragenter', 'dragover', 'drop', 'dragend', 'input', 'change'
+  ];
+  for (const type of eventTypes) {
+    document.addEventListener(type, event => {
+      const target = event.target;
+      const pointerId = Number.isInteger(event.pointerId) ? event.pointerId : 0;
+      const captureTarget = pointerId && typeof target.hasPointerCapture === 'function'
+        ? target.hasPointerCapture(pointerId) : false;
+      dragProbe.events.push({
+        type,
+        target: target && target.id || '',
+        button: Number.isInteger(event.button) ? event.button : -1,
+        buttons: Number.isInteger(event.buttons) ? event.buttons : 0,
+        pointerId,
+        pointerType: event.pointerType || '',
+        x: Number.isFinite(event.clientX) ? event.clientX : -1,
+        y: Number.isFinite(event.clientY) ? event.clientY : -1,
+        trusted: event.isTrusted,
+        captureTarget,
+        transferTypes: event.dataTransfer ? Array.from(event.dataTransfer.types) : []
+      });
+      if (type === 'pointerdown' && target.id === 'capture-pad') {
+        target.setPointerCapture(event.pointerId);
+      }
+      if (type === 'pointermove' && target.id === 'canvas-like') {
+        dragProbe.draws++;
+      }
+      if (type === 'dragstart' && target.id === 'drag-source') {
+        event.dataTransfer.setData('text/plain', 'local-fixture-item');
+      }
+      if (type === 'dragover' && target.id === 'drop-target') {
+        event.preventDefault();
+      }
+      if (type === 'drop' && target.id === 'drop-target') {
+        event.preventDefault();
+        dragProbe.dropCommits++;
+      }
+    }, true);
+  }
+</script>

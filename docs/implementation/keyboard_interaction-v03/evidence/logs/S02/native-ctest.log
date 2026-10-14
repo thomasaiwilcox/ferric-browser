@@ -1,0 +1,7 @@
+Test project /tmp/ferric-native-insert
+    Start 1: native_insert
+1/1 Test #1: native_insert ....................   Passed   12.92 sec
+
+100% tests passed out of 1
+
+Total Test time (real) =  12.92 sec

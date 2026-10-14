@@ -1,0 +1,327 @@
+{
+  "schema_version": 1,
+  "slice_id": "S17",
+  "status": "implemented_unqualified",
+  "commit": "3e961cb5438518f9cbd20af7e0881cc2056fba9e",
+  "environment": {
+    "os": "Linux 7.2.3-arch1-3 x86_64",
+    "cpu": "Intel Core i5-7200U @ 2.50 GHz",
+    "qt": "6.11.2",
+    "chromium": "QtWebEngine 6.11.2 / Chrome 140.0.0.0",
+    "compiler": "GCC 16.2.1 20260810",
+    "rustc": "1.98.0 (88d9e12ae 2026-08-18)",
+    "cargo": "1.98.0 (797e8a9bc 2026-08-05)",
+    "build": "Locked offline Rust workspace; unchanged Qt 6.11.2 toolchain and dependency graph.",
+    "measurement_runner": "Qt Quick/WebEngine offscreen software runner; 640x480 CSS viewport; devicePixelRatio 1; QtWebEngine Chrome 140.0.0.0.",
+    "scope": "Synchronous visible Hint-target collection, candidate handoff, Rust decode/label/ranking, overlay layout/visibility, mutation refresh and scope teardown."
+  },
+  "changed_files": [
+    "crates/ferric-browser-core/src/spatial_navigation.rs",
+    "crates/ferric-browser-engine-qt/qml/components/FerricHintOverlay.qml",
+    "crates/ferric-browser-engine-qt/qml/scripts/PageInteractionScripts.js",
+    "crates/ferric-browser-engine-qt/src/browser_ui_hint_selection.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_navigation.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_scope_handoff.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_spatial.rs",
+    "crates/ferric-browser-engine-qt/src/hint_policy.rs",
+    "crates/ferric-browser-engine-qt/src/tests.rs",
+    "crates/ferric-browser-engine-qt/src/tests/performance.rs",
+    "crates/ferric-browser-engine-qt/tests/qml-perf/tst_hint_performance.qml",
+    "crates/ferric-browser-engine-qt/tests/qml-runner/CMakeLists.txt",
+    "crates/ferric-browser-engine-qt/tests/qml-runner/main.cpp",
+    "crates/ferric-browser-engine-qt/tests/qml/tst_webapp_interaction.qml",
+    "docs/TESTING.md",
+    "docs/implementation/keyboard_interaction-v03/evidence/S17-plan.md",
+    "docs/implementation/keyboard_interaction-v03/evidence/S17.json",
+    "docs/implementation/keyboard_interaction-v03/progress.json",
+    "evidence/logs/S17-adapter.log",
+    "evidence/logs/S17-cache-chain-profile-smoke.log",
+    "evidence/logs/S17-cache-correctness.log",
+    "evidence/logs/S17-cache-runner-build.log",
+    "evidence/logs/S17-check-final.log",
+    "evidence/logs/S17-clippy-engine-lints.log",
+    "evidence/logs/S17-clippy-final.log",
+    "evidence/logs/S17-clippy.log",
+    "evidence/logs/S17-current-cache-profile-smoke.log",
+    "evidence/logs/S17-current-final-profiled.log",
+    "evidence/logs/S17-current-final-unprofiled.log",
+    "evidence/logs/S17-current-full-unprofiled.log",
+    "evidence/logs/S17-current-mutation-smoke.log",
+    "evidence/logs/S17-current-preliminary.log",
+    "evidence/logs/S17-current-profile-smoke.log",
+    "evidence/logs/S17-current-profile-substages-smoke.log",
+    "evidence/logs/S17-diff-check-final.log",
+    "evidence/logs/S17-diff-check.log",
+    "evidence/logs/S17-docs.log",
+    "evidence/logs/S17-engine-final.log",
+    "evidence/logs/S17-engine-instrumentation.log",
+    "evidence/logs/S17-engine-post-clippy-fixes.log",
+    "evidence/logs/S17-engine-pre-clippy-fixes.log",
+    "evidence/logs/S17-fmt-final.log",
+    "evidence/logs/S17-fmt.log",
+    "evidence/logs/S17-overlay-map-smoke.log",
+    "evidence/logs/S17-overlay-optimized-smoke.log",
+    "evidence/logs/S17-pack-validation.log",
+    "evidence/logs/S17-qml-profiler-smoke.log",
+    "evidence/logs/S17-rust-performance-final.log",
+    "evidence/logs/S17-rust-performance.log",
+    "evidence/logs/S17-s01-full-unprofiled.log",
+    "evidence/logs/S17-s01-mutation-unprofiled.log",
+    "evidence/logs/S17-s01-preliminary.log",
+    "evidence/logs/S17-s01-profile-smoke.log",
+    "evidence/logs/S17-wayland.log",
+    "evidence/logs/S17-workspace-test.log"
+  ],
+  "baseline_comparison": "Implementation started from S16 evidence commit 2e534260ce5d95f336817db92ec065f3a5ab9c8b. Performance baseline is the dedicated S01 worktree at af154a203f43f9973e0a1a14902d35d7d6b54d4f; matching workloads use the same QtWebEngine, Chromium, viewport, DPR, host and offscreen software runner. The full baseline run ends at the S17-only dirty-revision assertion, absent at S01; the baseline mutation follow-up omitting that assertion completed successfully. No dependency or toolchain changes.",
+  "test_results": [
+    {
+      "test_id": "T019",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "3e961cb5438518f9cbd20af7e0881cc2056fba9e",
+      "log": "evidence/logs/S17-engine-post-clippy-fixes.log",
+      "observations": [
+        "Extracted script resource and ApplicationWorld isolation checks passed."
+      ]
+    },
+    {
+      "test_id": "T020",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "3e961cb5438518f9cbd20af7e0881cc2056fba9e",
+      "log": "evidence/logs/S17-engine-post-clippy-fixes.log",
+      "observations": [
+        "Scope-lease and proxy-pair teardown checks passed; the forced-GC stress case also returned element, observer and window counts to zero."
+      ]
+    },
+    {
+      "test_id": "T033",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "3e961cb5438518f9cbd20af7e0881cc2056fba9e",
+      "log": "evidence/logs/S17-engine-post-clippy-fixes.log",
+      "observations": [
+        "A target hidden and restored between separate collection calls was omitted and rediscovered, confirming style caches expire with the synchronous collection pass."
+      ]
+    },
+    {
+      "test_id": "T043",
+      "level": "performance",
+      "result": "passed",
+      "command": "QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME= QT_QUICK_BACKEND=software target/qml-tests/qml_tests -input crates/ferric-browser-engine-qt/tests/qml-perf",
+      "commit": "3e961cb5438518f9cbd20af7e0881cc2056fba9e",
+      "log": "evidence/logs/S17-current-final-unprofiled.log",
+      "observations": [
+        "All 11 benchmark cases completed with 10 warm-ups and 100 measured samples per case, retaining raw durations, viewport, DPR and user-agent.",
+        "At 500 targets, host callback p95 at 80/100/125% zoom was 81.72/74.31/73.68 ms versus S01 74.65/64.32/68.78 ms; each common-case difference is below C17\u2019s 10 ms investigation threshold.",
+        "The 5,000-target host callback p95 was 1,196.45 ms versus 1,109.04 ms at S01. The 1,000 and 5,000 cases remain separate scale comparisons.",
+        "The 500-marker overlay time-to-visible p95 was 225.14/225.26/216.42 ms at 80/100/125% zoom, above the 200 ms reference ambition. Layout-compute p95 was 173.83/174.02/167.23 ms; this target remains unqualified."
+      ]
+    },
+    {
+      "test_id": "T043",
+      "level": "performance",
+      "result": "passed",
+      "command": "QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME= QT_QUICK_BACKEND=software target/qml-tests/qml_tests -input crates/ferric-browser-engine-qt/tests/qml-perf",
+      "commit": "3e961cb5438518f9cbd20af7e0881cc2056fba9e",
+      "log": "evidence/logs/S17-current-final-profiled.log",
+      "observations": [
+        "Instrumented 500-target p95 at 100% zoom: local visibility 43.3 ms, local hit testing 16.5 ms, clipping 10.6 ms; 1,500 style-cache hits and 499 ancestor-chain cache hits at the median sample.",
+        "At 5,000 targets, instrumented local-visibility p95 was 932.6 ms and local-hit-test p95 640.5 ms. Instrumented timings are reported separately from unprofiled comparisons because the test-only phase clock adds overhead."
+      ]
+    },
+    {
+      "test_id": "T043",
+      "level": "performance",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true cargo test -p ferric-browser-engine-qt --lib s17_rust_hint_pipeline_performance -- --ignored --nocapture",
+      "commit": "3e961cb5438518f9cbd20af7e0881cc2056fba9e",
+      "log": "evidence/logs/S17-rust-performance-final.log",
+      "observations": [
+        "The opt-in Rust sampler completed 10 warm-ups and 100 samples for 500, 1,000 and 5,000 candidates. At 5,000 targets, p95 decode/labels/setup/ranking/snapshot was 101.307/3.162/1.675/69.240/0.127 ms."
+      ]
+    },
+    {
+      "test_id": "T044",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "3e961cb5438518f9cbd20af7e0881cc2056fba9e",
+      "log": "evidence/logs/S17-engine-post-clippy-fixes.log",
+      "observations": [
+        "1,000 scope start/cancel cycles with forced GC passed; the connected weak target remained usable and final element/observer/window counts were zero."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask check",
+      "commit": "3e961cb5438518f9cbd20af7e0881cc2056fba9e",
+      "log": "evidence/logs/S17-check-final.log",
+      "observations": [
+        "The final locked/offline workspace Rust tests passed, including the engine crate; 141 Qt Quick/WebEngine tests passed, native_insert CTest passed 1/1, the release artifact manifest checked 38 inputs, and license policy checked 11 dependencies."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask check",
+      "commit": "3e961cb5438518f9cbd20af7e0881cc2056fba9e",
+      "log": "evidence/logs/S17-check-final.log",
+      "observations": [
+        "The final locked/offline workspace Rust tests passed, including the engine crate; 141 Qt Quick/WebEngine tests passed, native_insert CTest passed 1/1, the release artifact manifest checked 38 inputs, and license policy checked 11 dependencies."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask check",
+      "commit": "3e961cb5438518f9cbd20af7e0881cc2056fba9e",
+      "log": "evidence/logs/S17-check-final.log",
+      "observations": [
+        "The final locked/offline workspace Rust tests passed, including the engine crate; 141 Qt Quick/WebEngine tests passed, native_insert CTest passed 1/1, the release artifact manifest checked 38 inputs, and license policy checked 11 dependencies."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "static-inspection",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo clippy --workspace --all-targets --locked --offline -- -D warnings",
+      "commit": "3e961cb5438518f9cbd20af7e0881cc2056fba9e",
+      "log": "evidence/logs/S17-clippy-final.log",
+      "observations": [
+        "Strict Clippy passed after behavior-preserving fixes to S16 scoped-handoff documentation and internal Rust idioms."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "static-inspection",
+      "result": "passed",
+      "command": "cargo fmt --all -- --check",
+      "commit": "3e961cb5438518f9cbd20af7e0881cc2056fba9e",
+      "log": "evidence/logs/S17-fmt-final.log",
+      "observations": [
+        "Rust formatting check passed after the internal handoff cleanup."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test adapter",
+      "commit": "3e961cb5438518f9cbd20af7e0881cc2056fba9e",
+      "log": "evidence/logs/S17-adapter.log",
+      "observations": [
+        "Offscreen Qt/QML adapter smoke passed within its bounded 10-second lifetime."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "native-wayland",
+      "result": "not_run",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test wayland",
+      "commit": "3e961cb5438518f9cbd20af7e0881cc2056fba9e",
+      "log": "evidence/logs/S17-wayland.log",
+      "reason": "Nested Wayland startup passed, but editable-page input qualification was not run because the Weston compositor does not support the virtual-keyboard protocol required by wtype.",
+      "observations": [
+        "The Wayland command reported \u201cnested native Wayland startup smoke passed\u201d; native input qualification remained not-run."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "static-inspection",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask docs",
+      "commit": "3e961cb5438518f9cbd20af7e0881cc2056fba9e",
+      "log": "evidence/logs/S17-docs.log",
+      "observations": [
+        "Generated command, configuration, binding and action documentation without stale-file differences."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "static-inspection",
+      "result": "passed",
+      "command": "python3 tools/validate_pack.py --integrity && python3 tools/test_validate_pack.py",
+      "commit": "3e961cb5438518f9cbd20af7e0881cc2056fba9e",
+      "log": "evidence/logs/S17-pack-validation.log",
+      "observations": [
+        "Pack integrity and all 12 validator tests passed after adding S17 evidence."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "static-inspection",
+      "result": "passed",
+      "command": "git diff --check",
+      "commit": "3e961cb5438518f9cbd20af7e0881cc2056fba9e",
+      "log": "evidence/logs/S17-diff-check-final.log",
+      "observations": [
+        "Whitespace and patch integrity check passed."
+      ]
+    },
+    {
+      "test_id": "T044",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "ctest --test-dir target/application-tests --verbose (DPR/lifetime cases passed; earlier functional fixture failures are retained)",
+      "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+      "log": "evidence/completion-application-final-dpr-lifetime.log",
+      "observations": [
+        "One thousand real Hint cycles with forced GC leave zero retained DOM elements, observers, windows and scopes; Qt object count returns exactly to its process baseline.",
+        "This follow-up records bounded local coverage; missing physical, live-site, chooser and human evidence remains unqualified."
+      ]
+    },
+    {
+      "test_id": "T043",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QT_SCALE_FACTOR=1 QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc target/qml-tests/qml_tests -input crates/ferric-browser-engine-qt/tests/qml-perf HintPerformance::test_T043_overlay_time_to_visible",
+      "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+      "log": "evidence/completion-overlay-optimized.log",
+      "observations": [
+        "Ten warmups/100 samples per zoom; optimized overlay p95 187.21/183.43/176.18 ms, below the 200 ms reference ambition. Both paired collector comparisons remain within the common callback threshold. See completion-performance-pair1.json, pair2.json, overlay-comparison.json and raw metadata/logs."
+      ]
+    }
+  ],
+  "capability_decision": null,
+  "capability_report": null,
+  "review_kind": "self-review",
+  "scope_amendments": [
+    {
+      "path": "docs/TESTING.md",
+      "reason": "Document the opt-in QML and Rust performance sampler, raw p95 method, instrumentation overhead and host-callback boundary so future runs remain comparable."
+    },
+    {
+      "path": "crates/ferric-browser-core/src/spatial_navigation.rs, crates/ferric-browser-engine-qt/src/browser_ui_scope_handoff.rs, crates/ferric-browser-engine-qt/src/browser_ui_spatial.rs, crates/ferric-browser-engine-qt/src/hint_policy.rs, crates/ferric-browser-engine-qt/src/browser_ui_hint_selection.rs, crates/ferric-browser-engine-qt/src/browser_ui_navigation.rs",
+      "reason": "The strict workspace Clippy gate exposed two API documentation issues and six behavior-preserving internal naming/idiom lints in S16 scoped handoff code. The fixes are included to leave the required strict gate passing."
+    },
+    {
+      "path": "evidence/S17.json",
+      "reason": "Normalize the pre-existing S17 evidence levels to the pack validator taxonomy without changing commands, results, commits, or logs; the integrated T045 gate is represented by its pure-unit, WebEngine fixture, and native Qt offscreen coverage."
+    }
+  ],
+  "remaining_risks": [
+    "Native Wayland editable-page input remains unqualified because the nested Weston compositor lacks the virtual-keyboard protocol needed by wtype; only startup smoke passed.",
+    "Host callback timing includes page-script return and QML payload conversion, not transport alone. The 5,000-target scenario remains approximately 1.20 seconds p95 and is retained as a scale measurement.",
+    "The full S01 baseline benchmark log ends at an S17-only mutation dirty-revision assertion that does not exist in S01; the separate baseline mutation run without that assertion passed."
+  ],
+  "not_run_reasons": [
+    "T045 native-wayland editable-page input: the nested Weston compositor does not support the virtual-keyboard protocol required by wtype; startup smoke passed but keyboard input could not be qualified."
+  ],
+  "next_ready_slices": [
+    "S18"
+  ],
+  "completion_followup": {
+    "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+    "report": "evidence/completion-report.md",
+    "scope": "Measured overlay allocation reduction; no new label/provider capability or budget change.",
+    "performance_disposition": "Both controlled common callback comparisons stay within the combined regression threshold. The active-outline allocation reduction meets 200 ms overlay p95 at all zooms in fresh measurements. Historical raw failures and older results remain preserved."
+  }
+}

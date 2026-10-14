@@ -18,7 +18,9 @@ captured browser target. It does not inspect page state or use a privileged
 WebChannel. Display-free clients can request the same effective map through
 `bindings.query`, and `bindings.explain` resolves a supplied keychain with its
 current mode, optional count, exact/prefix result, continuations, timeout,
-conflicts, source layer, and reserved Escape constraint.
+conflicts, source layer, reserved Escape constraint, and the actual first-key
+routing owner/reason with Mixed-policy source and matching site-rule ID where
+available. It describes QML-special routing as well as the binding trie.
 
 After the existing chord delay, incomplete valid keychains also appear in a
 bounded non-modal continuation overlay. It is visual-only, leaves focus with

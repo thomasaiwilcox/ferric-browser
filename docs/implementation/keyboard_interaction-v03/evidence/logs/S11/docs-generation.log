@@ -1,0 +1,3 @@
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.11s
+     Running `target/debug/xtask docs`
+generated docs/user/commands.md, configuration.md, bindings.md, and actions.md

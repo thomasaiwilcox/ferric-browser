@@ -1,0 +1,189 @@
+{
+  "schema_version": 1,
+  "slice_id": "S09",
+  "status": "implemented_unqualified",
+  "commit": "8465e5bd3eb9c2dfca6ec81a58abc9a2786e607c",
+  "environment": {
+    "os": "Linux 7.2.3-arch1-3 x86_64",
+    "qt": "6.11.2",
+    "compiler": "GCC 16.2.1",
+    "build": "Rust dev/test with local Qt 6.11.2; offline workspace checks",
+    "native_test": "Qt Quick/WebEngine offscreen fixture; CTest native_insert executable",
+    "wayland": "WAYLAND_DISPLAY=wayland-1 was present; no Wayland or physical-keyboard qualification was run",
+    "scope": "ApplicationWorld document identity, QML same-document qualification, BrowserUi restore leases and cleanup; no full native BrowserUi navigation lifecycle fixture"
+  },
+  "changed_files": [
+    "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeChrome.qml",
+    "crates/ferric-browser-engine-qt/qml/components/FerricBrowserWindow.qml",
+    "crates/ferric-browser-engine-qt/qml/components/FerricNativeTabContent.qml",
+    "crates/ferric-browser-engine-qt/qml/scripts/BrowserScripts.js",
+    "crates/ferric-browser-engine-qt/src/browser_ui_navigation_lifecycle.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_profile_setup.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_sessions.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_tab_state.rs",
+    "crates/ferric-browser-engine-qt/src/lib.rs",
+    "crates/ferric-browser-engine-qt/src/page_document_identity.rs",
+    "crates/ferric-browser-engine-qt/src/renderer_lifecycle.rs",
+    "crates/ferric-browser-engine-qt/src/tests/presentation_boundaries.rs",
+    "crates/ferric-browser-engine-qt/src/view_lifecycle.rs",
+    "crates/ferric-browser-engine-qt/tests/qml/tst_native_tab_content.qml",
+    "crates/ferric-browser-engine-qt/tests/qml/tst_webapp_interaction.qml",
+    "docs/implementation/keyboard_interaction-v03/evidence/S09-plan.md",
+    "docs/implementation/keyboard_interaction-v03/evidence/S09.json",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S09/baseline-engine.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S09/clippy.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S09/engine.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S09/qml.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S09/xtask-check.log",
+    "docs/implementation/keyboard_interaction-v03/progress.json"
+  ],
+  "baseline_comparison": {
+    "report": "evidence/logs/S09/baseline-engine.log",
+    "result": "Before the navigation lifecycle change, the three new NativeTabContent identity/restore component cases failed while the other 114 QML tests passed. After the change, the full QML suite passed with 118 tests."
+  },
+  "test_results": [
+    {
+      "test_id": "T024",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "8465e5bd3eb9c2dfca6ec81a58abc9a2786e607c",
+      "log": "evidence/logs/S09/engine.log",
+      "observations": [
+        "The native_insert CTest executable passed. Existing production event-filter regressions cover page-owned keydown, repeat and release routing across policy/epoch changes, overlapping keys, stale-release replacement, and browser-owned repeat routing after a page mapping change."
+      ]
+    },
+    {
+      "test_id": "T026",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "8465e5bd3eb9c2dfca6ec81a58abc9a2786e607c",
+      "log": "evidence/logs/S09/engine.log",
+      "observations": [
+        "The ApplicationWorld document identity is isolated from MainWorld, remains stable through history.pushState and fragment changes, and differs after replacement with a new document.",
+        "Qt emitted no main-frame navigation request for the pushState and fragment URL changes in the fixture."
+      ]
+    },
+    {
+      "test_id": "T026",
+      "level": "qml-component",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "8465e5bd3eb9c2dfca6ec81a58abc9a2786e607c",
+      "log": "evidence/logs/S09/engine.log",
+      "observations": [
+        "A same-document notification carries the expected tab, document token, destination URL, and input epoch. A document mismatch completes without a restorable identity, and a deferred probe callback is ignored after navigation start."
+      ]
+    },
+    {
+      "test_id": "T026",
+      "level": "native-qt-offscreen",
+      "result": "not_run",
+      "command": "cargo xtask test engine ran the native_insert fixture, which does not instantiate BrowserUi and a WebEngine tab to exercise the complete pass-through restore lifecycle.",
+      "commit": "8465e5bd3eb9c2dfca6ec81a58abc9a2786e607c",
+      "log": null,
+      "reason": "The tests do not end-to-end verify actual persistent Pass Through restoration, Pass Next Key cancellation, reload, renderer death, and tab-switch reset through the BrowserUi navigation callbacks."
+    },
+    {
+      "test_id": "T027",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "8465e5bd3eb9c2dfca6ec81a58abc9a2786e607c",
+      "log": "evidence/logs/S09/engine.log",
+      "observations": [
+        "The existing native fixture preserves the owner of held page and browser gestures across policy and input-epoch changes. It does not change focus to a different WebEngine recipient and test the next physical gesture there."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask check --locked --offline",
+      "commit": "8465e5bd3eb9c2dfca6ec81a58abc9a2786e607c",
+      "log": "evidence/logs/S09/xtask-check.log",
+      "observations": [
+        "All workspace Rust tests passed, including 413 engine unit tests, along with config, core, runtime, storage, application, and xtask suites."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask check --locked --offline",
+      "commit": "8465e5bd3eb9c2dfca6ec81a58abc9a2786e607c",
+      "log": "evidence/logs/S09/xtask-check.log",
+      "observations": [
+        "All 118 QML/WebEngine tests passed, including the existing hint, focus, recovery, and interaction regressions."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "8465e5bd3eb9c2dfca6ec81a58abc9a2786e607c",
+      "log": "evidence/logs/S09/engine.log",
+      "observations": [
+        "The native_insert CTest executable passed with 100% of its reported tests passing."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo fmt --all -- --check; cargo xtask check --locked --offline; cargo clippy --workspace --all-targets --locked --offline -- -D warnings",
+      "commit": "8465e5bd3eb9c2dfca6ec81a58abc9a2786e607c",
+      "log": "evidence/logs/S09/clippy.log",
+      "observations": [
+        "Formatting and strict workspace Clippy passed with warnings denied. The xtask check also passed generated-contract validation, the release artifact manifest (38 checked-in inputs), and license policy (11 locked dependencies)."
+      ]
+    },
+    {
+      "test_id": "T026",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "ctest --test-dir target/application-tests -R '^application_offscreen$' --verbose",
+      "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+      "log": "evidence/completion-application-functional-final.log",
+      "observations": [
+        "Real BrowserUi preserves user pass-through after same-document navigation and resets on a new document.",
+        "This follow-up records bounded local coverage; missing physical, live-site, chooser and human evidence remains unqualified."
+      ]
+    },
+    {
+      "test_id": "T027",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "ctest --test-dir target/application-tests -R '^application_offscreen$' --verbose",
+      "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+      "log": "evidence/completion-application-functional-final.log",
+      "observations": [
+        "A held page-owned f receives its trusted native release after policy publication. The next f starts browser Hint under the newly published policy.",
+        "This follow-up records bounded local coverage; missing physical, live-site, chooser and human evidence remains unqualified."
+      ]
+    }
+  ],
+  "capability_decision": null,
+  "capability_report": null,
+  "review_kind": "self-review",
+  "scope_amendments": [],
+  "remaining_risks": [
+    "The full BrowserUi same-document pass-through restore and real navigation/reload/renderer/tab-switch exits are not qualified by a native end-to-end fixture.",
+    "T027's held-gesture owner regression does not switch focus to a different WebEngine recipient and verify the next fresh physical gesture.",
+    "No Wayland, physical keyboard, or IME qualification was run."
+  ],
+  "not_run_reasons": [
+    "T026 native-qt-offscreen: the current native_insert fixture exercises gesture ownership but does not compose BrowserUi navigation identity, BrowserUi mode restoration, and a live WebEngine tab."
+  ],
+  "next_ready_slices": [
+    "S10"
+  ],
+  "completion_followup": {
+    "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+    "report": "evidence/completion-report.md",
+    "status": "implemented_unqualified",
+    "scope": "New composed application observations supplement historical component evidence; no missing qualification level is inferred."
+  }
+}

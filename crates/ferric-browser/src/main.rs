@@ -1027,8 +1027,9 @@ fn check_config(path: Option<&str>) -> Result<(), String> {
                 .map_err(|error| format!("profiles configuration is invalid: {error}"))?;
         }
         println!(
-            "configuration valid ({} source file{})",
+            "configuration structure valid ({} source file{}{}); selector syntax not checked (no WebEngine in CLI)",
             loaded.sources.len(),
+            if loaded.sources.len() == 1 { "" } else { "s" },
             if contexts_path.exists() {
                 "; contexts.toml valid"
             } else {
@@ -1036,7 +1037,9 @@ fn check_config(path: Option<&str>) -> Result<(), String> {
             }
         );
     } else {
-        println!("built-in configuration defaults valid");
+        println!(
+            "built-in configuration structure valid; selector syntax not checked (no WebEngine in CLI)"
+        );
     }
     Ok(())
 }

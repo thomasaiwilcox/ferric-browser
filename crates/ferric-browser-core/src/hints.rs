@@ -3,6 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 const DEFAULT_HINT_CHARS: &str = "asdfghjkl";
 pub const MAX_HINT_CANDIDATES: usize = 5_000;
+pub const MAX_HINT_REGIONS: usize = 256;
+pub const MAX_HINT_SURFACES: usize = 256;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HintKind {
@@ -16,6 +18,159 @@ pub enum HintKind {
     Media,
     Scrollable,
     Aria,
+    Focusable,
+    EditorFocus,
+    LabelControl,
+    Region,
+    ScrollableRegion,
+    Surface,
+    FocusableSurface,
+    Frame,
+}
+
+/// A semantic user intent selected after Ferric validates candidate facts.
+/// The page payload cannot name an intent or a transport directly.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HintIntent {
+    OpenUrl,
+    Focus,
+    Activate,
+    SetScrollTarget,
+    PointerClick,
+    HintWithin,
+    SearchWithin,
+    GridWithin,
+    ActionPalette,
+}
+
+/// The closed execution path allowed for a validated hint intent.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HintTransport {
+    ValidatedUrlAction,
+    ExactDomFocus,
+    SemanticDomClick,
+    ScrollTargetPolicy,
+    NativePointerAdapter,
+    ScopedHintSession,
+    ScopedSearchSession,
+    SpatialSession,
+    LocalHintPalette,
+}
+
+impl HintIntent {
+    #[must_use]
+    pub const fn transport(self) -> HintTransport {
+        match self {
+            Self::OpenUrl => HintTransport::ValidatedUrlAction,
+            Self::Focus => HintTransport::ExactDomFocus,
+            Self::Activate => HintTransport::SemanticDomClick,
+            Self::SetScrollTarget => HintTransport::ScrollTargetPolicy,
+            Self::PointerClick => HintTransport::NativePointerAdapter,
+            Self::HintWithin => HintTransport::ScopedHintSession,
+            Self::SearchWithin => HintTransport::ScopedSearchSession,
+            Self::GridWithin => HintTransport::SpatialSession,
+            Self::ActionPalette => HintTransport::LocalHintPalette,
+        }
+    }
+}
+
+/// Resolves ordinary hint activation from Rust-validated facts and policy.
+///
+/// The caller computes `uses_url_action` from the selected kind and configured
+/// Hint target. It is never copied from page candidate JSON.
+#[must_use]
+pub const fn hint_intent_for_candidate(kind: HintKind, uses_url_action: bool) -> HintIntent {
+    if hint_kind_is_region_or_surface(kind) {
+        return HintIntent::ActionPalette;
+    }
+    if uses_url_action || matches!(kind, HintKind::Link) {
+        return HintIntent::OpenUrl;
+    }
+    match kind {
+        HintKind::Input
+        | HintKind::Select
+        | HintKind::Textarea
+        | HintKind::ContentEditable
+        | HintKind::EditorFocus
+        | HintKind::Focusable => HintIntent::Focus,
+        HintKind::Scrollable => HintIntent::SetScrollTarget,
+        HintKind::Region
+        | HintKind::ScrollableRegion
+        | HintKind::Surface
+        | HintKind::FocusableSurface
+        | HintKind::Frame => HintIntent::ActionPalette,
+        HintKind::Link => HintIntent::OpenUrl,
+        HintKind::Button
+        | HintKind::Image
+        | HintKind::Media
+        | HintKind::Aria
+        | HintKind::LabelControl => HintIntent::Activate,
+    }
+}
+
+/// Actions that Rust may describe for an explicitly selected region or surface.
+/// The page candidate contains a typed kind only; it cannot name one of these.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HintCapability {
+    HintWithin,
+    SearchWithin,
+    GridWithin,
+    SetScrollTarget,
+    Focus,
+    HintInsideFrame,
+}
+
+impl HintCapability {
+    #[must_use]
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::HintWithin => "hint-within",
+            Self::SearchWithin => "search-within",
+            Self::GridWithin => "grid-within",
+            Self::SetScrollTarget => "set-scroll-target",
+            Self::Focus => "focus",
+            Self::HintInsideFrame => "hint-inside-frame",
+        }
+    }
+
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::HintWithin => "Hint within",
+            Self::SearchWithin => "Search within",
+            Self::GridWithin => "Grid within",
+            Self::SetScrollTarget => "Set scroll target",
+            Self::Focus => "Focus",
+            Self::HintInsideFrame => "Hint inside frame",
+        }
+    }
+}
+
+/// Closed Rust-owned action table for the explicit Region and Surface facets.
+#[must_use]
+pub const fn hint_capabilities(kind: HintKind) -> &'static [HintCapability] {
+    use HintCapability::{Focus, GridWithin, HintWithin, SearchWithin, SetScrollTarget};
+
+    match kind {
+        HintKind::Region => &[HintWithin, SearchWithin, GridWithin],
+        HintKind::ScrollableRegion => &[HintWithin, SearchWithin, GridWithin, SetScrollTarget],
+        HintKind::Surface => &[GridWithin],
+        HintKind::FocusableSurface => &[GridWithin, Focus],
+        HintKind::Frame => &[HintCapability::HintInsideFrame, GridWithin, Focus],
+        _ => &[],
+    }
+}
+
+#[must_use]
+pub const fn hint_kind_is_region_or_surface(kind: HintKind) -> bool {
+    matches!(
+        kind,
+        HintKind::Region
+            | HintKind::ScrollableRegion
+            | HintKind::Surface
+            | HintKind::FocusableSurface
+            | HintKind::Frame
+    )
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -61,6 +216,19 @@ impl HintGeometry {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct HintPoint {
+    pub x: f64,
+    pub y: f64,
+}
+
+/// Bounded presentation facts; these never authorize an activation point.
+#[derive(Clone, Debug, PartialEq)]
+pub struct HintPresentationGeometry {
+    pub anchor: HintPoint,
+    pub fragments: Vec<HintGeometry>,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HintTarget {
     pub tab: TabId,
@@ -71,11 +239,17 @@ pub struct HintTarget {
 #[derive(Clone, Debug, PartialEq)]
 pub struct HintCandidate {
     pub element_id: u32,
+    /// Exact retained receiver/control for `EditorFocus` and `LabelControl` pairs.
+    /// Ordinary hints must keep this absent.
+    pub related_element_id: Option<u32>,
     pub kind: HintKind,
     pub frame_path: String,
+    /// Browser-owned native frame/document lease; empty for the top collector.
+    pub frame_owner: String,
     pub text: String,
     pub href: Option<String>,
     pub geometry: HintGeometry,
+    pub presentation: Option<HintPresentationGeometry>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -123,15 +297,50 @@ impl std::error::Error for HintError {}
 pub struct HintSession {
     pub id: HintSessionId,
     pub target: HintTarget,
+    pub configuration_revision: u64,
+    pub selector_policy_revision: u64,
+    pub discovery_provenance: Vec<String>,
     pub hints: Vec<LabeledHint>,
 }
 
 impl HintSession {
     #[must_use]
     pub fn new(ids: &mut IdSource, target: HintTarget, hints: Vec<LabeledHint>) -> Self {
+        Self::new_with_configuration_revision(ids, target, hints, 0)
+    }
+
+    #[must_use]
+    pub fn new_with_configuration_revision(
+        ids: &mut IdSource,
+        target: HintTarget,
+        hints: Vec<LabeledHint>,
+        configuration_revision: u64,
+    ) -> Self {
+        Self::new_with_selector_policy(
+            ids,
+            target,
+            hints,
+            configuration_revision,
+            configuration_revision,
+            Vec::new(),
+        )
+    }
+
+    #[must_use]
+    pub fn new_with_selector_policy(
+        ids: &mut IdSource,
+        target: HintTarget,
+        hints: Vec<LabeledHint>,
+        configuration_revision: u64,
+        selector_policy_revision: u64,
+        discovery_provenance: Vec<String>,
+    ) -> Self {
         Self {
             id: ids.hint_session(),
             target,
+            configuration_revision,
+            selector_policy_revision,
+            discovery_provenance,
             hints,
         }
     }
@@ -276,8 +485,10 @@ pub fn refresh_labels(
         .map(|hint| {
             (
                 (
+                    hint.candidate.frame_owner.as_str(),
                     hint.candidate.frame_path.as_str(),
                     hint.candidate.element_id,
+                    hint.candidate.related_element_id,
                 ),
                 hint.label.as_str(),
             )
@@ -286,9 +497,12 @@ pub fn refresh_labels(
     let mut used = BTreeSet::new();
     let mut labels = vec![String::new(); candidates.len()];
     for (index, candidate) in candidates.iter().enumerate() {
-        if let Some(label) =
-            previous_labels.get(&(candidate.frame_path.as_str(), candidate.element_id))
-            && used.insert((*label).to_owned())
+        if let Some(label) = previous_labels.get(&(
+            candidate.frame_owner.as_str(),
+            candidate.frame_path.as_str(),
+            candidate.element_id,
+            candidate.related_element_id,
+        )) && used.insert((*label).to_owned())
         {
             (*label).clone_into(&mut labels[index]);
         }
@@ -336,8 +550,10 @@ fn sort_candidates(candidates: &mut [HintCandidate]) {
             .y
             .total_cmp(&right.geometry.y)
             .then_with(|| left.geometry.x.total_cmp(&right.geometry.x))
+            .then_with(|| left.frame_owner.cmp(&right.frame_owner))
             .then_with(|| left.frame_path.cmp(&right.frame_path))
             .then_with(|| left.element_id.cmp(&right.element_id))
+            .then_with(|| left.related_element_id.cmp(&right.related_element_id))
             .then_with(|| left.text.cmp(&right.text))
     });
 }
@@ -365,6 +581,7 @@ fn encode_label(mut index: usize, width: usize, alphabet: &[u8]) -> String {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HintInteractionInput {
     Character(char),
+    SetText(String),
     EnterTextMode,
     Backspace,
     Clear,
@@ -395,10 +612,53 @@ pub struct HintInteractionSnapshot {
     pub active_label: Option<String>,
     pub remaining: usize,
     pub total: usize,
+    pub refresh_required: bool,
 }
 
-/// Testable keyboard interaction state for an immutable set of hint labels.
-/// Filtering never mutates or reassigns labels.
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct HintMeaning {
+    kind: HintKind,
+    href: Option<String>,
+    action_name: Option<String>,
+}
+
+impl HintMeaning {
+    fn of(candidate: &HintCandidate) -> Self {
+        Self {
+            kind: candidate.kind,
+            href: candidate.href.clone(),
+            action_name: (candidate.kind != HintKind::Link).then(|| candidate.text.clone()),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum HintBindingState {
+    Available,
+    Consumed,
+    Retired,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct HintLabelBinding {
+    label: String,
+    meaning: HintMeaning,
+    state: HintBindingState,
+}
+
+type HintIdentity = (String, String, u32, Option<u32>);
+
+fn hint_identity(candidate: &HintCandidate) -> HintIdentity {
+    (
+        candidate.frame_owner.clone(),
+        candidate.frame_path.clone(),
+        candidate.element_id,
+        candidate.related_element_id,
+    )
+}
+
+/// Keyboard state and bounded label reservations for one user interaction.
+/// Passive refresh never replays user input or grants activation authority.
 #[derive(Clone, Debug, PartialEq)]
 pub struct HintInteraction {
     hints: Vec<LabeledHint>,
@@ -408,13 +668,35 @@ pub struct HintInteraction {
     prefix: String,
     query: String,
     matches: Vec<usize>,
-    active: usize,
+    active: Option<usize>,
+    bindings: BTreeMap<HintIdentity, HintLabelBinding>,
+    reserved_labels: BTreeSet<String>,
+    label_width: usize,
+    next_label_index: usize,
+    refresh_required: bool,
+    initial_activation_available: bool,
 }
 
 impl HintInteraction {
     #[must_use]
     pub fn new(hints: Vec<LabeledHint>, alphabet: String, auto_follow: HintAutoFollow) -> Self {
         let matches = (0..hints.len()).collect();
+        let active = (!hints.is_empty()).then_some(0);
+        let label_width = hints.first().map_or(1, |hint| hint.label.len());
+        let bindings = hints
+            .iter()
+            .map(|hint| {
+                (
+                    hint_identity(&hint.candidate),
+                    HintLabelBinding {
+                        label: hint.label.clone(),
+                        meaning: HintMeaning::of(&hint.candidate),
+                        state: HintBindingState::Available,
+                    },
+                )
+            })
+            .collect();
+        let reserved_labels = hints.iter().map(|hint| hint.label.clone()).collect();
         Self {
             hints,
             alphabet,
@@ -423,13 +705,133 @@ impl HintInteraction {
             prefix: String::new(),
             query: String::new(),
             matches,
-            active: 0,
+            active,
+            bindings,
+            reserved_labels,
+            label_width,
+            next_label_index: 0,
+            refresh_required: false,
+            initial_activation_available: true,
         }
     }
 
     #[must_use]
+    pub fn hints(&self) -> &[LabeledHint] {
+        &self.hints
+    }
+
+    /// Reconciles a validated snapshot without an activation-producing transition.
+    ///
+    /// # Errors
+    /// Rejects invalid geometry or a snapshot exceeding the candidate limit.
+    pub fn refresh(&mut self, mut candidates: Vec<HintCandidate>) -> Result<(), HintError> {
+        if candidates.len() > MAX_HINT_CANDIDATES {
+            return Err(HintError::TooManyCandidates {
+                count: candidates.len(),
+                maximum: MAX_HINT_CANDIDATES,
+            });
+        }
+        for (index, candidate) in candidates.iter().enumerate() {
+            if !candidate.geometry.is_valid() {
+                return Err(HintError::InvalidGeometry { index });
+            }
+        }
+        let selected = self.active_label().map(str::to_owned);
+        sort_candidates(&mut candidates);
+        let mut refreshed = Vec::with_capacity(candidates.len());
+        self.refresh_required = false;
+        self.initial_activation_available = false;
+        for candidate in candidates {
+            let identity = hint_identity(&candidate);
+            let meaning = HintMeaning::of(&candidate);
+            let previous = self.bindings.get(&identity);
+            if previous.is_some_and(|binding| binding.state == HintBindingState::Consumed) {
+                continue;
+            }
+            let label = if let Some(binding) = previous.filter(|binding| {
+                binding.state == HintBindingState::Available && binding.meaning == meaning
+            }) {
+                binding.label.clone()
+            } else {
+                if let Some(binding) = self.bindings.get_mut(&identity) {
+                    binding.state = HintBindingState::Retired;
+                }
+                let Some(label) = self.reserve_label() else {
+                    self.refresh_required = true;
+                    continue;
+                };
+                self.bindings.insert(
+                    identity,
+                    HintLabelBinding {
+                        label: label.clone(),
+                        meaning,
+                        state: HintBindingState::Available,
+                    },
+                );
+                label
+            };
+            refreshed.push(LabeledHint { label, candidate });
+        }
+        self.hints = refreshed;
+        if self.mode == HintInputMode::Text {
+            self.rank_text_matches();
+        } else {
+            self.filter_label_matches();
+        }
+        self.active = selected.and_then(|label| {
+            self.matches
+                .iter()
+                .position(|index| self.hints[*index].label == label)
+        });
+        Ok(())
+    }
+
+    fn reserve_label(&mut self) -> Option<String> {
+        let capacity = self
+            .alphabet
+            .len()
+            .saturating_pow(u32::try_from(self.label_width).ok()?)
+            .min(MAX_HINT_CANDIDATES);
+        if self.reserved_labels.len() >= capacity {
+            return None;
+        }
+        while self.next_label_index < capacity {
+            let label = encode_label(
+                self.next_label_index,
+                self.label_width,
+                self.alphabet.as_bytes(),
+            );
+            self.next_label_index += 1;
+            if self.reserved_labels.insert(label.clone()) {
+                return Some(label);
+            }
+        }
+        None
+    }
+
+    /// A rapid action consumes its binding, not a reusable label slot.
+    pub fn consume(&mut self, candidate: &HintCandidate) {
+        if let Some(binding) = self.bindings.get_mut(&hint_identity(candidate)) {
+            binding.state = HintBindingState::Consumed;
+        }
+        let identity = hint_identity(candidate);
+        self.hints
+            .retain(|hint| hint_identity(&hint.candidate) != identity);
+        self.prefix.clear();
+        if self.mode == HintInputMode::Text {
+            self.rank_text_matches();
+        } else {
+            self.filter_label_matches();
+        }
+        self.active = None;
+    }
+
+    #[must_use]
     pub fn initial_activation(&self) -> Option<&str> {
-        (self.auto_follow == HintAutoFollow::Always && self.matches.len() == 1)
+        (self.initial_activation_available
+            && self.mode == HintInputMode::Label
+            && self.auto_follow == HintAutoFollow::Always
+            && self.matches.len() == 1)
             .then(|| self.active_label())
             .flatten()
     }
@@ -448,6 +850,7 @@ impl HintInteraction {
             active_label: self.active_label().map(str::to_owned),
             remaining: self.matches.len(),
             total: self.hints.len(),
+            refresh_required: self.refresh_required,
         }
     }
 
@@ -455,13 +858,17 @@ impl HintInteraction {
         match input {
             HintInteractionInput::Cancel => HintInteractionOutcome::Cancel,
             HintInteractionInput::RotateCollision => HintInteractionOutcome::RotateCollision,
+            HintInteractionInput::SetText(query) => {
+                self.set_text(&query);
+                HintInteractionOutcome::Updated
+            }
             HintInteractionInput::SelectLabel(label) => {
                 if let Some(index) = self
                     .matches
                     .iter()
                     .position(|hint| self.hints[*hint].label == label)
                 {
-                    self.active = index;
+                    self.active = Some(index);
                     HintInteractionOutcome::Updated
                 } else {
                     HintInteractionOutcome::NoMatches
@@ -491,13 +898,18 @@ impl HintInteraction {
             }
             HintInteractionInput::Next => {
                 if !self.matches.is_empty() {
-                    self.active = (self.active + 1) % self.matches.len();
+                    self.active = Some(
+                        self.active
+                            .map_or(0, |active| (active + 1) % self.matches.len()),
+                    );
                 }
                 HintInteractionOutcome::Updated
             }
             HintInteractionInput::Previous => {
                 if !self.matches.is_empty() {
-                    self.active = (self.active + self.matches.len() - 1) % self.matches.len();
+                    self.active = Some(self.active.map_or(self.matches.len() - 1, |active| {
+                        (active + self.matches.len() - 1) % self.matches.len()
+                    }));
                 }
                 HintInteractionOutcome::Updated
             }
@@ -518,11 +930,17 @@ impl HintInteraction {
             return HintInteractionOutcome::InvalidCharacter(character);
         }
         let old_prefix = self.prefix.clone();
+        let old_active = self.active_label().map(str::to_owned);
         self.prefix.push(character);
         self.filter_label_matches();
         if self.matches.is_empty() {
             self.prefix = old_prefix;
             self.filter_label_matches();
+            self.active = old_active.and_then(|label| {
+                self.matches
+                    .iter()
+                    .position(|index| self.hints[*index].label == label)
+            });
             return HintInteractionOutcome::NoMatches;
         }
         let should_activate = match self.auto_follow {
@@ -562,6 +980,17 @@ impl HintInteraction {
         }
     }
 
+    fn set_text(&mut self, query: &str) {
+        self.mode = HintInputMode::Text;
+        self.prefix.clear();
+        self.query = query
+            .chars()
+            .filter(|character| !character.is_control())
+            .take(256)
+            .collect();
+        self.rank_text_matches();
+    }
+
     fn filter_label_matches(&mut self) {
         self.matches = self
             .hints
@@ -569,7 +998,7 @@ impl HintInteraction {
             .enumerate()
             .filter_map(|(index, hint)| hint.label.starts_with(&self.prefix).then_some(index))
             .collect();
-        self.active = 0;
+        self.active = (!self.matches.is_empty()).then_some(0);
     }
 
     fn rank_text_matches(&mut self) {
@@ -594,12 +1023,12 @@ impl HintInteraction {
             .collect::<Vec<_>>();
         ranked.sort_by(|left, right| right.0.cmp(&left.0).then_with(|| left.1.cmp(&right.1)));
         self.matches = ranked.into_iter().map(|(_, index)| index).collect();
-        self.active = 0;
+        self.active = (!self.matches.is_empty()).then_some(0);
     }
 
     fn active_label(&self) -> Option<&str> {
         self.matches
-            .get(self.active)
+            .get(self.active?)
             .map(|index| self.hints[*index].label.as_str())
     }
 }
@@ -611,10 +1040,13 @@ mod tests {
     fn candidate(x: f64, y: f64, text: &str) -> HintCandidate {
         HintCandidate {
             element_id: 1,
+            related_element_id: None,
             kind: HintKind::Link,
             frame_path: "0".into(),
+            frame_owner: String::new(),
             text: text.into(),
             href: None,
+            presentation: None,
             geometry: HintGeometry {
                 x,
                 y,
@@ -622,6 +1054,123 @@ mod tests {
                 height: 10.0,
             },
         }
+    }
+
+    #[test]
+    fn frame_document_owners_keep_labels_and_consumption_separate() {
+        let mut left = candidate(10.0, 10.0, "Accept");
+        left.frame_owner = "frame-left-document".into();
+        let mut right = left.clone();
+        right.frame_owner = "frame-right-document".into();
+        let mut hints = assign_labels(vec![left.clone(), right.clone()]).unwrap();
+        assert_ne!(hints[0].label, hints[1].label);
+        let labels = hints
+            .iter()
+            .map(|hint| (hint.candidate.frame_owner.clone(), hint.label.clone()))
+            .collect::<BTreeMap<_, _>>();
+        hints = refresh_labels(
+            vec![right.clone(), left.clone()],
+            &hints,
+            DEFAULT_HINT_CHARS,
+            1,
+        )
+        .unwrap();
+        for hint in &hints {
+            assert_eq!(hint.label, labels[&hint.candidate.frame_owner]);
+        }
+        assert_ne!(hint_identity(&left), hint_identity(&right));
+        let mut navigated = left.clone();
+        navigated.frame_owner = "frame-left-new-document".into();
+        assert_ne!(hint_identity(&left), hint_identity(&navigated));
+    }
+
+    #[test]
+    fn hint_intents_resolve_through_the_closed_transport_table() {
+        assert_eq!(
+            hint_intent_for_candidate(HintKind::Link, false),
+            HintIntent::OpenUrl
+        );
+        assert_eq!(
+            hint_intent_for_candidate(HintKind::Image, false),
+            HintIntent::Activate
+        );
+        assert_eq!(
+            hint_intent_for_candidate(HintKind::Image, true),
+            HintIntent::OpenUrl
+        );
+        assert_eq!(
+            hint_intent_for_candidate(HintKind::Input, false).transport(),
+            HintTransport::ExactDomFocus
+        );
+        assert_eq!(
+            hint_intent_for_candidate(HintKind::EditorFocus, false).transport(),
+            HintTransport::ExactDomFocus
+        );
+        assert_eq!(
+            hint_intent_for_candidate(HintKind::LabelControl, false).transport(),
+            HintTransport::SemanticDomClick
+        );
+        assert_eq!(
+            hint_intent_for_candidate(HintKind::Button, false).transport(),
+            HintTransport::SemanticDomClick
+        );
+        assert_eq!(
+            hint_intent_for_candidate(HintKind::Scrollable, false).transport(),
+            HintTransport::ScrollTargetPolicy
+        );
+        assert_eq!(
+            hint_intent_for_candidate(HintKind::Region, false).transport(),
+            HintTransport::LocalHintPalette
+        );
+        assert_eq!(
+            hint_intent_for_candidate(HintKind::Surface, false).transport(),
+            HintTransport::LocalHintPalette
+        );
+        assert_eq!(
+            hint_intent_for_candidate(HintKind::FocusableSurface, true),
+            HintIntent::ActionPalette
+        );
+        assert_eq!(
+            HintIntent::PointerClick.transport(),
+            HintTransport::NativePointerAdapter
+        );
+        assert_eq!(
+            HintIntent::HintWithin.transport(),
+            HintTransport::ScopedHintSession
+        );
+        assert_eq!(
+            HintIntent::SearchWithin.transport(),
+            HintTransport::ScopedSearchSession
+        );
+        assert_eq!(
+            HintIntent::GridWithin.transport(),
+            HintTransport::SpatialSession
+        );
+    }
+
+    #[test]
+    fn region_surface_capabilities_are_a_closed_rust_owned_table() {
+        use HintCapability::{Focus, GridWithin, HintWithin, SearchWithin, SetScrollTarget};
+
+        assert_eq!(
+            hint_capabilities(HintKind::Region),
+            &[HintWithin, SearchWithin, GridWithin]
+        );
+        assert_eq!(
+            hint_capabilities(HintKind::ScrollableRegion),
+            &[HintWithin, SearchWithin, GridWithin, SetScrollTarget]
+        );
+        assert_eq!(hint_capabilities(HintKind::Surface), &[GridWithin]);
+        assert_eq!(
+            hint_capabilities(HintKind::FocusableSurface),
+            &[GridWithin, Focus]
+        );
+        assert_eq!(hint_capabilities(HintKind::Link), []);
+        assert!(hint_kind_is_region_or_surface(HintKind::Region));
+        assert!(hint_kind_is_region_or_surface(HintKind::FocusableSurface));
+        assert!(!hint_kind_is_region_or_surface(HintKind::Button));
+        assert_eq!(MAX_HINT_REGIONS, 256);
+        assert_eq!(MAX_HINT_SURFACES, 256);
     }
 
     #[test]
@@ -876,6 +1425,39 @@ mod tests {
     }
 
     #[test]
+    fn target_search_sets_one_bounded_query_without_auto_activation() {
+        let mut match_candidate = candidate(0.0, 0.0, "Needle control");
+        match_candidate.element_id = 1;
+        let mut other_candidate = candidate(20.0, 0.0, "Other target");
+        other_candidate.element_id = 2;
+        let hints = assign_labels(vec![match_candidate, other_candidate]).unwrap();
+        let mut model =
+            HintInteraction::new(hints.clone(), "asdfghjkl".into(), HintAutoFollow::Always);
+        let mut existing_text_mode =
+            HintInteraction::new(hints, "asdfghjkl".into(), HintAutoFollow::Never);
+
+        assert_eq!(model.initial_activation(), None);
+        existing_text_mode.handle(HintInteractionInput::EnterTextMode);
+        for character in "needle".chars() {
+            existing_text_mode.handle(HintInteractionInput::Character(character));
+        }
+        assert_eq!(
+            model.handle(HintInteractionInput::SetText("needle\n".into())),
+            HintInteractionOutcome::Updated
+        );
+        let snapshot = model.snapshot();
+        assert_eq!(
+            snapshot.matching_labels,
+            existing_text_mode.snapshot().matching_labels
+        );
+        assert_eq!(snapshot.mode, HintInputMode::Text);
+        assert_eq!(snapshot.query, "needle");
+        assert_eq!(snapshot.remaining, 1);
+        assert!(snapshot.active_label.is_some());
+        assert_eq!(model.initial_activation(), None);
+    }
+
+    #[test]
     fn text_mode_handles_unicode_multi_token_queries_and_stable_ties() {
         let mut first = candidate(0.0, 0.0, "Crème Rust documentation");
         first.element_id = 1;
@@ -950,5 +1532,175 @@ mod tests {
             ),
             Err(HintError::CandidateNotVisible)
         ));
+    }
+
+    #[test]
+    fn hint_session_captures_selector_revision_and_provenance() {
+        let mut ids = IdSource::new();
+        let target = HintTarget {
+            tab: ids.tab(),
+            generation: 1,
+            document: ids.document(),
+        };
+        let hints =
+            assign_labels(vec![candidate(0.0, 0.0, "custom button")]).expect("valid custom hint");
+        let session = HintSession::new_with_selector_policy(
+            &mut ids,
+            target,
+            hints,
+            12,
+            0x1234,
+            vec!["effective-config".into(), "site-rule:docs".into()],
+        );
+
+        assert_eq!(session.configuration_revision, 12);
+        assert_eq!(session.selector_policy_revision, 0x1234);
+        assert_eq!(
+            session.discovery_provenance,
+            ["effective-config", "site-rule:docs"]
+        );
+    }
+
+    #[test]
+    fn hint_session_captures_configuration_revision() {
+        let mut ids = IdSource::new();
+        let target = HintTarget {
+            tab: ids.tab(),
+            generation: 1,
+            document: ids.document(),
+        };
+        let hints = assign_labels(vec![candidate(0.0, 0.0, "link")]).expect("labels");
+        let session = HintSession::new_with_configuration_revision(&mut ids, target, hints, 9);
+        assert_eq!(session.configuration_revision, 9);
+    }
+    fn numbered(count: u32) -> Vec<HintCandidate> {
+        (1..=count)
+            .map(|id| {
+                let mut c = candidate(f64::from(id) * 20.0, 0.0, "Control");
+                c.element_id = id;
+                c
+            })
+            .collect()
+    }
+
+    #[test]
+    fn passive_refresh_preserves_input_selection_and_width() {
+        let candidates = numbered(10);
+        let hints = assign_labels_with_options(candidates.clone(), "asdfghjkl", 1).unwrap();
+        let mut model = HintInteraction::new(hints, "asdfghjkl".into(), HintAutoFollow::Never);
+        model.handle(HintInteractionInput::Character('a'));
+        model.handle(HintInteractionInput::Next);
+        let before = model.snapshot();
+        model.refresh(candidates[..9].to_vec()).unwrap();
+        let after = model.snapshot();
+        assert_eq!(before.prefix, after.prefix);
+        assert_eq!(before.active_label, after.active_label);
+        assert!(model.hints().iter().all(|hint| hint.label.len() == 2));
+        model.handle(HintInteractionInput::SetText("control".into()));
+        model.refresh(candidates).unwrap();
+        assert_eq!(model.snapshot().mode, HintInputMode::Text);
+        assert_eq!(model.snapshot().query, "control");
+    }
+
+    #[test]
+    fn retired_labels_are_not_reused_and_changed_meaning_clears_selection() {
+        let candidates = numbered(2);
+        let hints = assign_labels_with_options(candidates.clone(), "asdfghjkl", 2).unwrap();
+        let old = hints[0].label.clone();
+        let mut model = HintInteraction::new(hints, "asdfghjkl".into(), HintAutoFollow::Never);
+        let mut replacement = candidates[0].clone();
+        replacement.element_id = 3;
+        model
+            .refresh(vec![replacement, candidates[1].clone()])
+            .unwrap();
+        assert!(model.snapshot().active_label.is_none());
+        assert!(model.hints().iter().all(|hint| hint.label != old));
+        assert_eq!(
+            model.handle(HintInteractionInput::Activate),
+            HintInteractionOutcome::NoMatches
+        );
+        // An unchanged offscreen binding can return; a changed destination cannot.
+        model.refresh(candidates.clone()).unwrap();
+        assert_eq!(model.hints()[0].label, old);
+        model.handle(HintInteractionInput::SelectLabel(old.clone()));
+        let mut changed = candidates[0].clone();
+        changed.href = Some("https://fixture.test/new".into());
+        model.refresh(vec![changed, candidates[1].clone()]).unwrap();
+        assert!(model.snapshot().active_label.is_none());
+        assert!(model.hints().iter().all(|hint| hint.label != old));
+    }
+
+    #[test]
+    fn exhausted_label_space_defers_new_targets_and_consumed_bindings_stay_retired() {
+        let candidates = numbered(9);
+        let hints = assign_labels_with_options(candidates.clone(), "asdfghjkl", 1).unwrap();
+        let mut model = HintInteraction::new(hints, "asdfghjkl".into(), HintAutoFollow::Never);
+        model.consume(&candidates[0]);
+        model.refresh(numbered(10)).unwrap();
+        assert!(model.snapshot().refresh_required);
+        assert_eq!(model.hints().len(), 8);
+        assert!(
+            model
+                .hints()
+                .iter()
+                .all(|hint| hint.candidate.element_id != 1 && hint.candidate.element_id != 10)
+        );
+    }
+    #[test]
+    fn background_refresh_has_no_entry_activation_for_any_policy() {
+        for policy in [
+            HintAutoFollow::Always,
+            HintAutoFollow::UniqueMatch,
+            HintAutoFollow::FullMatch,
+            HintAutoFollow::Never,
+        ] {
+            let hints = assign_labels_with_options(numbered(2), "asdfghjkl", 1).unwrap();
+            let mut model = HintInteraction::new(hints, "asdfghjkl".into(), policy);
+            model.refresh(numbered(1)).unwrap();
+            assert!(model.initial_activation().is_none());
+        }
+    }
+
+    #[test]
+    fn consumption_removes_input_reachability_before_refresh() {
+        let candidates = numbered(2);
+        let hints = assign_labels_with_options(candidates.clone(), "asdfghjkl", 1).unwrap();
+        let mut model = HintInteraction::new(hints, "asdfghjkl".into(), HintAutoFollow::FullMatch);
+        model.consume(&candidates[0]);
+        assert_eq!(
+            model.handle(HintInteractionInput::Character('a')),
+            HintInteractionOutcome::NoMatches
+        );
+    }
+
+    #[test]
+    fn exhausted_repurposed_binding_cannot_regain_its_old_label() {
+        let candidates = numbered(9);
+        let hints = assign_labels_with_options(candidates.clone(), "asdfghjkl", 1).unwrap();
+        let mut model = HintInteraction::new(hints, "asdfghjkl".into(), HintAutoFollow::Never);
+        let mut changed = candidates.clone();
+        changed[0].href = Some("https://fixture.test/changed".into());
+        model.refresh(changed).unwrap();
+        assert_eq!(model.hints().len(), 8);
+        model.refresh(candidates).unwrap();
+        assert_eq!(model.hints().len(), 8);
+        assert!(model.snapshot().refresh_required);
+    }
+
+    #[test]
+    fn eighty_one_to_eighty_two_retains_all_existing_two_character_bindings() {
+        let hints = assign_labels_with_options(numbered(81), "asdfghjkl", 1).unwrap();
+        let original = hints.iter().map(|h| h.label.clone()).collect::<Vec<_>>();
+        let mut model = HintInteraction::new(hints, "asdfghjkl".into(), HintAutoFollow::Never);
+        model.refresh(numbered(82)).unwrap();
+        assert_eq!(
+            model
+                .hints()
+                .iter()
+                .map(|h| h.label.clone())
+                .collect::<Vec<_>>(),
+            original
+        );
+        assert!(model.snapshot().refresh_required);
     }
 }

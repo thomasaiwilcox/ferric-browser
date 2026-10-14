@@ -9,7 +9,35 @@ fn defaults_are_the_starter_configuration() {
     assert_eq!(config.tabs.undo_limit, 100);
     assert_eq!(config.hints.chars, "asdfghjkl");
     assert_eq!(config.hints.min_chars, 1);
+    assert_eq!(config.hints.proxy_targets, HintProxyTargets::Off);
     assert!((config.hints.marker_scale - 1.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn s18_opt_in_interaction_example_uses_only_supported_site_rule_settings() {
+    let source = include_str!(
+        "../../../docs/implementation/keyboard_interaction-v03/examples/new-settings.toml"
+    );
+    let config = toml::from_str::<Config>(source).expect("S18 interaction example parses");
+    validate(&config).expect("S18 interaction example uses supported settings");
+    assert_eq!(config.site_rules.len(), 1);
+    assert_eq!(config.site_rules[0].id, "test-app-shortcuts");
+    assert_eq!(
+        config.site_rules[0]
+            .set
+            .get("input.shortcut_policy")
+            .and_then(toml::Value::as_str),
+        Some("mixed")
+    );
+    assert_eq!(
+        config.site_rules[0].set["input.page_keys"],
+        toml::Value::Array(vec![
+            toml::Value::String("/".into()),
+            toml::Value::String("?".into()),
+            toml::Value::String("f".into()),
+            toml::Value::String("Ctrl+f".into()),
+        ])
+    );
 }
 
 #[test]
@@ -52,6 +80,403 @@ fn hint_configuration_is_defaulted_and_bounded() {
     let effective = apply_runtime_overrides(&Config::default(), &overrides).expect("apply hints");
     assert!((effective.hints.marker_scale - 1.25).abs() < f64::EPSILON);
     assert_eq!(effective.hints.auto_follow, HintAutoFollow::UniqueMatch);
+}
+
+fn selector_policy(mode: HintSelectorMode, selectors: &[&str]) -> HintSelectorPolicy {
+    HintSelectorPolicy {
+        mode,
+        selectors: selectors.iter().map(|value| (*value).into()).collect(),
+    }
+}
+
+#[test]
+fn selector_families_are_typed_closed_and_default_to_inheritance() {
+    assert!(Config::default().hints.selectors.is_empty());
+    let config = toml::from_str::<Config>(
+        r#"
+schema_version = 3
+[hints.selectors.all]
+mode = "extend"
+selectors = ["[data-ferric]", "button[data-ferric]"]
+"#,
+    )
+    .expect("typed family policy");
+    validate(&config).expect("valid selector policy");
+    assert_eq!(
+        config.hints.selectors[&HintSelectorFamily::All],
+        selector_policy(
+            HintSelectorMode::Extend,
+            &["[data-ferric]", "button[data-ferric]"]
+        )
+    );
+    assert!(
+        toml::from_str::<Config>(
+            "schema_version = 3\n[hints.selectors.custom]\nmode='extend'\nselectors=[]\n"
+        )
+        .is_err()
+    );
+    assert!(selector_setting_family("hints.selectors.links").is_some());
+    assert!(selector_setting_family("hints.selectors.links.extra").is_none());
+}
+
+#[test]
+fn selector_structure_enforces_count_bytes_controls_and_uniqueness() {
+    let invalid_policies = vec![
+        selector_policy(
+            HintSelectorMode::Extend,
+            &[
+                "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q",
+            ],
+        ),
+        HintSelectorPolicy {
+            mode: HintSelectorMode::Replace,
+            selectors: vec!["x".repeat(MAX_SELECTOR_BYTES + 1)],
+        },
+        selector_policy(HintSelectorMode::Extend, &["[data-x]", "[data-x]"]),
+        selector_policy(HintSelectorMode::Extend, &["[data-\u{0007}x]"]),
+        selector_policy(HintSelectorMode::Replace, &[""]),
+    ];
+    for policy in invalid_policies {
+        assert!(policy.validate().is_err(), "accepted {policy:?}");
+    }
+
+    let maximum = HintSelectorPolicy {
+        mode: HintSelectorMode::Replace,
+        selectors: vec!["x".repeat(MAX_SELECTOR_BYTES)],
+    };
+    maximum
+        .validate()
+        .expect("the maximum UTF-8 byte length is valid");
+}
+
+#[test]
+fn resolved_selector_bytes_are_bounded_across_families() {
+    let policy_for = |prefix: char| HintSelectorPolicy {
+        mode: HintSelectorMode::Replace,
+        selectors: (0..MAX_SELECTORS_PER_FAMILY)
+            .map(|index| {
+                let stem = format!("{prefix}{index}");
+                format!("{stem}{}", "x".repeat(MAX_SELECTOR_BYTES - stem.len()))
+            })
+            .collect(),
+    };
+    let mut config = Config::default();
+    config
+        .hints
+        .selectors
+        .insert(HintSelectorFamily::All, policy_for('a'));
+    config
+        .hints
+        .selectors
+        .insert(HintSelectorFamily::Links, policy_for('b'));
+    validate(&config).expect("exact 32 KiB policy is allowed");
+    config.hints.selectors.insert(
+        HintSelectorFamily::Inputs,
+        selector_policy(HintSelectorMode::Extend, &["input"]),
+    );
+    assert!(validate(&config).is_err(), "accepted a policy over 32 KiB");
+}
+
+#[test]
+fn selector_layers_allow_32_resolved_strings_but_keep_16_per_entry() {
+    let base_selectors = (0..MAX_SELECTORS_PER_FAMILY)
+        .map(|index| format!("[data-base-{index}]"))
+        .collect::<Vec<_>>();
+    let runtime_selectors = (0..MAX_SELECTORS_PER_FAMILY)
+        .map(|index| format!("[data-runtime-{index}]"))
+        .collect::<Vec<_>>();
+    let base_policy = HintSelectorPolicy {
+        mode: HintSelectorMode::Extend,
+        selectors: base_selectors,
+    };
+    let runtime_policy = HintSelectorPolicy {
+        mode: HintSelectorMode::Extend,
+        selectors: runtime_selectors,
+    };
+    base_policy.validate().expect("base entry has 16 selectors");
+    runtime_policy
+        .validate()
+        .expect("runtime entry has 16 selectors");
+
+    let mut config = Config::default();
+    config
+        .hints
+        .selectors
+        .insert(HintSelectorFamily::Buttons, base_policy);
+    let mut overrides = RuntimeOverrides::default();
+    overrides
+        .set_setting(
+            "hints.selectors.buttons",
+            toml::Value::try_from(runtime_policy).expect("serialize runtime entry"),
+        )
+        .expect("set runtime selector entry");
+    let effective = apply_runtime_overrides(&config, &overrides)
+        .expect("two valid entries may resolve to 32 selectors");
+    assert_eq!(
+        effective.hints.selectors[&HintSelectorFamily::Buttons]
+            .selectors
+            .len(),
+        MAX_RESOLVED_SELECTORS_PER_FAMILY
+    );
+    let mut overflow = RuntimeOverrides::default();
+    overflow
+        .set_setting(
+            "hints.selectors.buttons",
+            toml::Value::try_from(selector_policy(
+                HintSelectorMode::Extend,
+                &["[data-overflow]"],
+            ))
+            .expect("serialize overflow selector"),
+        )
+        .expect("set overflow selector");
+    assert!(
+        apply_runtime_overrides(&effective, &overflow).is_err(),
+        "a resolved family exceeded 32 selectors"
+    );
+
+    let too_many = HintSelectorPolicy {
+        mode: HintSelectorMode::Extend,
+        selectors: (0..=MAX_SELECTORS_PER_FAMILY)
+            .map(|index| format!("[data-entry-{index}]"))
+            .collect(),
+    };
+    assert!(too_many.validate().is_err(), "a single entry exceeded 16");
+}
+
+#[test]
+fn effective_selector_resolution_obeys_site_order_and_family_independence() {
+    let site_policy = |mode, selector: &str| {
+        toml::Value::try_from(selector_policy(mode, &[selector])).expect("encode site policy")
+    };
+    let mut config = Config::default();
+    config.hints.selectors.insert(
+        HintSelectorFamily::All,
+        selector_policy(HintSelectorMode::Extend, &[".global"]),
+    );
+    config.site_rules = vec![
+        SiteRule {
+            id: "first-layer".into(),
+            pattern: "https://example.test/*".into(),
+            priority: 1,
+            set: BTreeMap::from([(
+                "hints.selectors.all".into(),
+                site_policy(HintSelectorMode::Extend, ".first"),
+            )]),
+        },
+        SiteRule {
+            id: "replace-layer".into(),
+            pattern: "https://example.test/*".into(),
+            priority: 2,
+            set: BTreeMap::from([(
+                "hints.selectors.all".into(),
+                site_policy(HintSelectorMode::Replace, ".replacement"),
+            )]),
+        },
+        SiteRule {
+            id: "last-layer".into(),
+            pattern: "https://example.test/*".into(),
+            priority: 3,
+            set: BTreeMap::from([(
+                "hints.selectors.all".into(),
+                site_policy(HintSelectorMode::Extend, ".last"),
+            )]),
+        },
+    ];
+    for rule in &config.site_rules {
+        for (key, value) in &rule.set {
+            assert!(setting_supports_site_scope(key), "{key} lacks site scope");
+            assert!(selector_setting_family(key).is_some(), "{key} lacks family");
+            let _: HintSelectorPolicy = value
+                .clone()
+                .try_into()
+                .expect("site selector policy decodes");
+        }
+        validate_site_rule(rule).expect("individual selector site rule validates");
+    }
+    validate(&config).expect("site selector rules validate");
+
+    let resolved = resolve_hint_selector_policies(&config, "https://example.test/page")
+        .expect("effective selector policies resolve");
+    let all = &resolved[&HintSelectorFamily::All];
+    assert_eq!(
+        all.policy,
+        Some(selector_policy(
+            HintSelectorMode::Replace,
+            &[".replacement", ".last"]
+        ))
+    );
+    assert_eq!(
+        all.provenance,
+        [
+            "effective-config",
+            "site-rule:first-layer",
+            "site-rule:replace-layer",
+            "site-rule:last-layer"
+        ]
+    );
+    assert_eq!(
+        resolved[&HintSelectorFamily::Buttons].provenance,
+        ["built-in"]
+    );
+    assert_eq!(resolved[&HintSelectorFamily::Buttons].policy, None);
+}
+
+#[test]
+fn empty_replace_resolves_as_an_explicit_disabled_family() {
+    let mut config = Config::default();
+    config.hints.selectors.insert(
+        HintSelectorFamily::Scrollables,
+        HintSelectorPolicy {
+            mode: HintSelectorMode::Replace,
+            selectors: Vec::new(),
+        },
+    );
+    validate(&config).expect("empty replacement is valid");
+    let resolved = resolve_hint_selector_policies(&config, "https://example.test/")
+        .expect("disabled family resolves");
+    assert_eq!(
+        resolved[&HintSelectorFamily::Scrollables].policy,
+        Some(HintSelectorPolicy {
+            mode: HintSelectorMode::Replace,
+            selectors: Vec::new(),
+        })
+    );
+}
+
+#[test]
+fn selector_layers_extend_stably_and_replace_inherited_values() {
+    let mut base = Config::default();
+    base.hints.selectors.insert(
+        HintSelectorFamily::All,
+        selector_policy(HintSelectorMode::Extend, &["[data-base]", "[data-shared]"]),
+    );
+    let mut profile = RuntimeOverrides::default();
+    profile
+        .set_setting(
+            "hints.selectors.all",
+            toml::Value::try_from(selector_policy(
+                HintSelectorMode::Extend,
+                &["[data-shared]", "[data-profile]"],
+            ))
+            .expect("selector policy value"),
+        )
+        .expect("profile selector policy");
+    let mut runtime = RuntimeOverrides::default();
+    runtime
+        .set_setting(
+            "hints.selectors.all",
+            toml::Value::try_from(selector_policy(
+                HintSelectorMode::Replace,
+                &["[data-runtime]"],
+            ))
+            .expect("selector policy value"),
+        )
+        .expect("runtime replacement");
+    let mut command_line = RuntimeOverrides::default();
+    command_line
+        .set_setting(
+            "hints.selectors.all",
+            toml::Value::try_from(selector_policy(
+                HintSelectorMode::Extend,
+                &["[data-cli]", "[data-runtime]"],
+            ))
+            .expect("selector policy value"),
+        )
+        .expect("command-line extension");
+    let effective = resolve_runtime_override_layers(
+        &base,
+        &profile,
+        &runtime,
+        &command_line,
+        &RuntimeOverrides::default(),
+    )
+    .expect("layered selector policy");
+    assert_eq!(
+        effective.hints.selectors[&HintSelectorFamily::All],
+        selector_policy(HintSelectorMode::Replace, &["[data-runtime]", "[data-cli]"])
+    );
+
+    let only_extend = resolve_runtime_override_layers(
+        &base,
+        &profile,
+        &RuntimeOverrides::default(),
+        &RuntimeOverrides::default(),
+        &RuntimeOverrides::default(),
+    )
+    .expect("extended selector policy");
+    assert_eq!(
+        only_extend.hints.selectors[&HintSelectorFamily::All],
+        selector_policy(
+            HintSelectorMode::Extend,
+            &["[data-base]", "[data-shared]", "[data-profile]"]
+        )
+    );
+}
+
+#[test]
+fn site_selector_entries_are_typed_bounded_and_transactional() {
+    let mut overrides = RuntimeOverrides::default();
+    overrides
+        .set_site_literal(
+            "https://example.test/*",
+            "hints.selectors.buttons",
+            "{ mode = 'replace', selectors = ['button[data-site]'] }",
+        )
+        .expect("valid site selector policy");
+    let before = overrides.clone();
+    assert!(
+        overrides
+            .set_site_literal(
+                "https://example.test/*",
+                "hints.selectors.buttons",
+                "{ mode = 'extend', selectors = ['[data-site]', '[data-site]'] }",
+            )
+            .is_err()
+    );
+    assert_eq!(overrides, before);
+}
+
+#[test]
+fn one_site_rule_caps_selector_bytes_across_all_families() {
+    let policy = |prefix: char| HintSelectorPolicy {
+        mode: HintSelectorMode::Replace,
+        selectors: (0..9)
+            .map(|index| {
+                let start = format!("{prefix}{index}");
+                format!("{start}{}", "x".repeat(MAX_SELECTOR_BYTES - start.len()))
+            })
+            .collect(),
+    };
+    let rule = SiteRule {
+        id: "bounded-selectors".into(),
+        pattern: "https://example.test/*".into(),
+        priority: 0,
+        set: BTreeMap::from([
+            (
+                "hints.selectors.all".into(),
+                toml::Value::try_from(policy('a')).expect("encode all policy"),
+            ),
+            (
+                "hints.selectors.buttons".into(),
+                toml::Value::try_from(policy('b')).expect("encode button policy"),
+            ),
+        ]),
+    };
+    assert!(
+        validate_site_rule(&rule).is_err(),
+        "accepted a 32 KiB site rule"
+    );
+}
+
+#[test]
+fn selector_setting_registry_lists_the_closed_family_contract() {
+    for family in HintSelectorFamily::ALL {
+        let key = format!("hints.selectors.{}", family.as_str());
+        let metadata = setting_metadata(&key).expect("selector family metadata");
+        assert_eq!(metadata.value_type, "selector-policy");
+        assert_eq!(metadata.prerequisite, "webengine-css-parser");
+        assert!(metadata.supported_scopes.contains(&"site"));
+    }
 }
 
 #[test]
@@ -325,6 +750,62 @@ fn site_rules_reject_unsafe_or_unknown_settings() {
 }
 
 #[test]
+fn mixed_input_settings_validate_atomically_at_global_and_site_scopes() {
+    let mut config = Config::default();
+    config.input.shortcut_policy = InputShortcutPolicy::Mixed;
+    config.input.page_keys = vec!["g".into(), "Ctrl+f".into()];
+    validate(&config).expect("valid Mixed input policy");
+
+    config.input.page_keys.push("gg".into());
+    assert!(validate(&config).is_err(), "keychains are not single keys");
+    config.input.page_keys = vec!["g".into(), "g".into()];
+    assert!(validate(&config).is_err(), "duplicates are rejected");
+    config.input.page_keys = vec![":".into()];
+    assert!(validate(&config).is_err(), "reserved keys are rejected");
+    config.input.page_keys = (0x0100..0x0100 + 65)
+        .filter_map(char::from_u32)
+        .map(|key| key.to_string())
+        .collect();
+    assert!(validate(&config).is_err(), "the 64-key bound is enforced");
+
+    let mut rule = SiteRule {
+        id: "docs".into(),
+        pattern: "https://docs.example.test/*".into(),
+        priority: 0,
+        set: BTreeMap::from([
+            (
+                "input.shortcut_policy".into(),
+                toml::Value::String("mixed".into()),
+            ),
+            (
+                "input.page_keys".into(),
+                toml::Value::Array(vec![toml::Value::String("/".into())]),
+            ),
+        ]),
+    };
+    validate_site_rule(&rule).expect("valid site-scoped Mixed settings");
+    rule.set.insert(
+        "input.page_keys".into(),
+        toml::Value::Array(vec![toml::Value::String("Ctrl+Shift+v".into())]),
+    );
+    assert!(
+        validate_site_rule(&rule).is_err(),
+        "reserved recovery key rejected"
+    );
+
+    let policy = setting_metadata("input.shortcut_policy").expect("policy registry row");
+    assert_eq!(policy.default_value, "browser-first");
+    assert_eq!(policy.supported_scopes, ["global", "profile", "site"]);
+    assert_eq!(policy.apply_time, "live");
+    assert_eq!(
+        setting_metadata("input.page_keys")
+            .expect("page key registry row")
+            .value_type,
+        "list<logical-key>"
+    );
+}
+
+#[test]
 fn setting_registry_resolves_static_and_dynamic_settings() {
     let registry = SettingRegistry::default_v1();
     assert!(
@@ -358,6 +839,15 @@ fn setting_registry_resolves_static_and_dynamic_settings() {
         assert_eq!(setting.supported_scopes, ["global", "profile"]);
         assert_eq!(setting.apply_time, "live");
     }
+    let proxy_setting = registry
+        .resolve("hints.proxy_targets")
+        .expect("proxy-target hint setting metadata");
+    assert_eq!(proxy_setting.default_value, "off");
+    assert_eq!(
+        proxy_setting.supported_scopes,
+        ["global", "profile", "site"]
+    );
+    assert_eq!(proxy_setting.apply_time, "live");
 }
 
 #[test]
@@ -374,9 +864,77 @@ fn site_scope_capability_is_explicit_and_bounded() {
     assert!(setting_supports_site_scope("content.javascript"));
     assert!(setting_supports_site_scope("content.zoom"));
     assert!(setting_supports_site_scope("input.entry_mode"));
+    assert!(setting_supports_site_scope("hints.proxy_targets"));
     assert!(!setting_supports_site_scope("blocking.enabled"));
     assert!(!setting_supports_site_scope("ui.font_family"));
     assert!(!setting_supports_site_scope("proxy.global"));
+}
+
+#[test]
+fn proxy_target_policy_is_typed_opt_in_and_uses_site_precedence() {
+    let parsed =
+        toml::from_str::<Config>("schema_version = 3\n[hints]\nproxy_targets = 'validated'\n")
+            .expect("typed proxy target policy");
+    validate(&parsed).expect("typed proxy target policy validates");
+    assert_eq!(parsed.hints.proxy_targets, HintProxyTargets::Validated);
+    assert!(
+        toml::from_str::<Config>("schema_version = 3\n[hints]\nproxy_targets = 'anything'\n")
+            .is_err()
+    );
+
+    let mut runtime = RuntimeOverrides::default();
+    runtime
+        .set_literal("hints.proxy_targets", "validated")
+        .expect("runtime proxy-target policy");
+    let effective = apply_runtime_overrides(&Config::default(), &runtime)
+        .expect("runtime proxy-target override applies");
+    assert_eq!(effective.hints.proxy_targets, HintProxyTargets::Validated);
+
+    let mut config = Config {
+        hints: HintsConfig {
+            proxy_targets: HintProxyTargets::Validated,
+            ..HintsConfig::default()
+        },
+        site_rules: vec![
+            SiteRule {
+                id: "docs-default".into(),
+                pattern: "https://example.test/*".into(),
+                priority: 1,
+                set: BTreeMap::from([(
+                    "hints.proxy_targets".into(),
+                    toml::Value::String("off".into()),
+                )]),
+            },
+            SiteRule {
+                id: "docs-enabled".into(),
+                pattern: "https://example.test/editor/*".into(),
+                priority: 2,
+                set: BTreeMap::from([(
+                    "hints.proxy_targets".into(),
+                    toml::Value::String("validated".into()),
+                )]),
+            },
+        ],
+        ..Config::default()
+    };
+    assert!(setting_supports_site_scope("hints.proxy_targets"));
+    for rule in &config.site_rules {
+        validate_site_rule(rule).expect("individual proxy-target site rule validates");
+    }
+    validate(&config).expect("site-scoped proxy target policy validates");
+    assert_eq!(
+        hint_proxy_targets_for_url(&config, "https://example.test/editor/one"),
+        HintProxyTargets::Validated
+    );
+    assert_eq!(
+        hint_proxy_targets_for_url(&config, "https://example.test/ordinary"),
+        HintProxyTargets::Off
+    );
+    config.site_rules[1].set.insert(
+        "hints.proxy_targets".into(),
+        toml::Value::String("invalid".into()),
+    );
+    assert!(validate(&config).is_err());
 }
 
 #[test]
@@ -1194,5 +1752,78 @@ fn one_key_mode_supports_bindings_but_not_automatic_entry() {
                 "pass-through-once"
             )
             .is_err()
+    );
+}
+
+#[test]
+fn runtime_override_can_add_the_first_supported_selector_family() {
+    let mut overrides = RuntimeOverrides::default();
+    overrides
+        .set_literal(
+            "hints.selectors.all",
+            "{mode='extend',selectors=['button[data-local]']}",
+        )
+        .unwrap();
+    let applied = apply_runtime_overrides(&Config::default(), &overrides).unwrap();
+    assert_eq!(
+        applied.hints.selectors[&HintSelectorFamily::All],
+        selector_policy(HintSelectorMode::Extend, &["button[data-local]"])
+    );
+    overrides.unset_setting("hints.selectors.all").unwrap();
+    assert_eq!(
+        apply_runtime_overrides(&Config::default(), &overrides).unwrap(),
+        Config::default()
+    );
+    assert!(
+        overrides
+            .set_literal(
+                "hints.selectors.unknown",
+                "{mode='extend',selectors=['button']}"
+            )
+            .is_err()
+    );
+}
+
+#[test]
+fn schema_metadata_matches_the_actual_default() {
+    let metadata = setting_metadata("schema_version").unwrap();
+    assert_eq!(
+        metadata.default_value,
+        Config::default().schema_version.to_string()
+    );
+}
+
+#[test]
+fn reload_boundary_applies_rule_lists_and_defers_them_at_runtime() {
+    let current = toml::Value::try_from(Config::default()).unwrap();
+    let mut config = Config::default();
+    config.site_rules.push(SiteRule {
+        id: "zoom".into(),
+        pattern: "https://example.test/*".into(),
+        priority: 0,
+        set: BTreeMap::from([("content.zoom".into(), toml::Value::Float(1.25))]),
+    });
+    config.permission_rules.push(PermissionRuleConfig {
+        id: "clipboard".into(),
+        profile: "default".into(),
+        origin: "https://example.test".into(),
+        permission: "clipboard".into(),
+        decision: PermissionDecision::Allow,
+    });
+    validate(&config).unwrap();
+    let candidate = toml::Value::try_from(config).unwrap();
+    let live = apply_config_changes(
+        &current,
+        &candidate,
+        ConfigurationApplyBoundary::RuntimeUpdate,
+    );
+    assert_eq!(live, current);
+    assert_eq!(pending_config_changes(&live, &candidate).len(), 2);
+    let reload = apply_config_changes(&current, &candidate, ConfigurationApplyBoundary::Reload);
+    assert_eq!(reload, candidate);
+    assert_eq!(pending_config_changes(&reload, &candidate), []);
+    assert_eq!(
+        apply_config_changes(&reload, &current, ConfigurationApplyBoundary::Reload),
+        current
     );
 }

@@ -1,0 +1,337 @@
+{
+  "schema_version": 1,
+  "slice_id": "S15",
+  "status": "implemented_unqualified",
+  "commit": "b5f43f27d2437a1864be0dabd95ecc94dff88857",
+  "environment": {
+    "os": "Linux 7.2.3-arch1-3 x86_64",
+    "qt": "6.11.2",
+    "chromium": "QtWebEngine 6.11.2 / Chrome 140.0.0.0",
+    "compiler": "GCC 16.2.1",
+    "rustc": "1.98.0 (88d9e12ae 2026-08-18)",
+    "cargo": "1.98.0 (797e8a9bc 2026-08-05)",
+    "build": "Locked offline Rust workspace with local Qt 6.11.2; no toolchain or dependency changes",
+    "webengine_fixture": "Qt Quick/WebEngine offscreen software runner; 640x480 CSS viewport, devicePixelRatio 1; Chromium forced-GC hook enabled",
+    "native_test": "Qt offscreen QML suite plus native_insert CTest, passed 1/1",
+    "wayland": "Nested Wayland browser startup smoke passed; editable-page input qualification was not run because Weston does not expose the virtual-keyboard protocol required by wtype.",
+    "scope": "Region/surface GridWithin with scoped SpatialSession and measured CSS-to-ViewLocal mapping; full-view Grid remains supported"
+  },
+  "changed_files": [
+    "crates/ferric-browser-core/src/lib.rs",
+    "crates/ferric-browser-core/src/spatial_navigation.rs",
+    "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeChrome.qml",
+    "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimePresentation.qml",
+    "crates/ferric-browser-engine-qt/qml/components/FerricSpatialGridOverlay.qml",
+    "crates/ferric-browser-engine-qt/qml/scripts/BrowserScripts.js",
+    "crates/ferric-browser-engine-qt/qml/scripts/PageInteractionScripts.js",
+    "crates/ferric-browser-engine-qt/src/browser_ui_hint_selection.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_navigation.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_scope_handoff.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_spatial.rs",
+    "crates/ferric-browser-engine-qt/src/hint_policy.rs",
+    "crates/ferric-browser-engine-qt/src/lib.rs",
+    "crates/ferric-browser-engine-qt/src/tests/presentation_boundaries.rs",
+    "crates/ferric-browser-engine-qt/tests/fixtures/webapp-interaction/geometry-spaces.html",
+    "crates/ferric-browser-engine-qt/tests/qml/tst_chrome_interactions.qml",
+    "crates/ferric-browser-engine-qt/tests/qml/tst_webapp_interaction.qml",
+    "docs/architecture/qml-json-contracts.md",
+    "docs/implementation/keyboard_interaction-v03/evidence/S15-plan.md",
+    "docs/implementation/keyboard_interaction-v03/evidence/S15.json",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S15-engine-lib.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S15-engine-qml.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S15-xtask-check.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S15-wayland.log",
+    "docs/implementation/keyboard_interaction-v03/progress.json",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S15-pack-validation.log"
+  ],
+  "baseline_comparison": "Implementation started from 700a8092831369d1f5bdbe6781321988a5a2ae09 on implementation/keyboard-interaction-v03. No dependency or toolchain changes.",
+  "test_results": [
+    {
+      "test_id": "T010",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "b5f43f27d2437a1864be0dabd95ecc94dff88857",
+      "log": "evidence/logs/S15-engine-qml.log",
+      "observations": [
+        "Rust admission tests passed for Region/surface GridWithin capability selection, the local one-use permit, and exact owner/session/receipt handoff; the generic action executor remains unable to enter local pointer paths."
+      ]
+    },
+    {
+      "test_id": "T010",
+      "level": "native-qt-offscreen",
+      "result": "not_run",
+      "command": "No composed BrowserUi local palette-to-scoped-page dispatch journey was available.",
+      "commit": "b5f43f27d2437a1864be0dabd95ecc94dff88857",
+      "log": null,
+      "reason": "The QML and native-insert suites do not compose the real palette, GridWithin handoff, and final scoped page action in one native BrowserUi journey."
+    },
+    {
+      "test_id": "T035",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "b5f43f27d2437a1864be0dabd95ecc94dff88857",
+      "log": "evidence/logs/S15-engine-qml.log",
+      "observations": [
+        "The parent-visible outer surface of a cross-origin iframe remains available for raw Grid while child-frame internals are not exposed; the existing closed-root boundary test also passed."
+      ]
+    },
+    {
+      "test_id": "T035",
+      "level": "native-wayland",
+      "result": "not_run",
+      "command": "CARGO_NET_OFFLINE=true cargo xtask test wayland",
+      "commit": "b5f43f27d2437a1864be0dabd95ecc94dff88857",
+      "log": "evidence/logs/S15-wayland.log",
+      "reason": "The generic startup smoke passed, but wtype could not access the compositor virtual-keyboard protocol, and the command does not implement the scoped cross-origin journey."
+    },
+    {
+      "test_id": "T036",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "b5f43f27d2437a1864be0dabd95ecc94dff88857",
+      "log": "evidence/logs/S15-engine-qml.log",
+      "observations": [
+        "The Rust validator accepted an exact receipt and current owner/session and rejected altered receipt fields, replay, owner drift, session drift, lease replacement, selector revision drift, family changes, and mode changes."
+      ]
+    },
+    {
+      "test_id": "T036",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "b5f43f27d2437a1864be0dabd95ecc94dff88857",
+      "log": "evidence/logs/S15-engine-qml.log",
+      "observations": [
+        "The weak lease transfer fixture retained candidate records through validation, released source aliases/listeners during teardown, and collected scoped descendants."
+      ]
+    },
+    {
+      "test_id": "T038",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask check",
+      "commit": "b5f43f27d2437a1864be0dabd95ecc94dff88857",
+      "log": "evidence/logs/S15-xtask-check.log",
+      "observations": [
+        "Core tests passed for measured CSS mapping into ViewLocal coordinates, bounded/outside geometry rejection, and scoped-grid separation of viewport, interaction root, and current cell."
+      ]
+    },
+    {
+      "test_id": "T038",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "b5f43f27d2437a1864be0dabd95ecc94dff88857",
+      "log": "evidence/logs/S15-engine-qml.log",
+      "observations": [
+        "Nested same-origin iframe borders and measured CSS/browser zoom mapped a nonzero region; unsupported transforms were rejected."
+      ]
+    },
+    {
+      "test_id": "T038",
+      "level": "native-qt-offscreen",
+      "result": "not_run",
+      "command": "No composed native pointer-adapter test of scoped CSS geometry, DPR, and window offsets was available.",
+      "commit": "b5f43f27d2437a1864be0dabd95ecc94dff88857",
+      "log": null,
+      "reason": "The WebEngine offscreen fixture covers CSS/frame geometry only; it does not feed the scoped result through the native pointer adapter."
+    },
+    {
+      "test_id": "T038",
+      "level": "native-wayland",
+      "result": "not_run",
+      "command": "CARGO_NET_OFFLINE=true cargo xtask test wayland",
+      "commit": "b5f43f27d2437a1864be0dabd95ecc94dff88857",
+      "log": "evidence/logs/S15-wayland.log",
+      "reason": "The generic compositor smoke does not exercise scoped coordinate mapping, native DPR/window offsets, or a scoped Grid key journey."
+    },
+    {
+      "test_id": "T039",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask check",
+      "commit": "b5f43f27d2437a1864be0dabd95ecc94dff88857",
+      "log": "evidence/logs/S15-xtask-check.log",
+      "observations": [
+        "Core tests passed for Backspace/reset and hover return to the scoped root, scoped history behavior, and invalid geometry/lease rejection."
+      ]
+    },
+    {
+      "test_id": "T039",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "b5f43f27d2437a1864be0dabd95ecc94dff88857",
+      "log": "evidence/logs/S15-engine-qml.log",
+      "observations": [
+        "Scope scroll revision and reflow were observed, transformed geometry was rejected, and ordinary repaint behavior remained covered by the existing Grid suite. The offscreen fixture dispatches a scroll event explicitly after assigning scrollTop because offscreen WebEngine does not emit one for that assignment alone."
+      ]
+    },
+    {
+      "test_id": "T039",
+      "level": "native-qt-offscreen",
+      "result": "not_run",
+      "command": "No composed native scoped Grid key/reset/hover journey was available.",
+      "commit": "b5f43f27d2437a1864be0dabd95ecc94dff88857",
+      "log": null,
+      "reason": "The offscreen Qt suite does not drive scoped native key gestures through BrowserUi and the live page owner."
+    },
+    {
+      "test_id": "T039",
+      "level": "native-wayland",
+      "result": "not_run",
+      "command": "CARGO_NET_OFFLINE=true cargo xtask test wayland",
+      "commit": "b5f43f27d2437a1864be0dabd95ecc94dff88857",
+      "log": "evidence/logs/S15-wayland.log",
+      "reason": "The generic nested-compositor smoke does not exercise scoped Grid keys, reflow, owner changes, or hover/reset lifecycle."
+    },
+    {
+      "test_id": "T045",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "b5f43f27d2437a1864be0dabd95ecc94dff88857",
+      "log": "evidence/logs/S15-engine-qml.log",
+      "observations": [
+        "All 433 engine Rust unit tests passed, including existing full-view Grid and interaction policy regressions."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "b5f43f27d2437a1864be0dabd95ecc94dff88857",
+      "log": "evidence/logs/S15-engine-qml.log",
+      "observations": [
+        "All 138 QML tests passed, including existing Hint/Grid, scrolling, activation, and WebEngine interaction coverage."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "b5f43f27d2437a1864be0dabd95ecc94dff88857",
+      "log": "evidence/logs/S15-engine-qml.log",
+      "observations": [
+        "The Qt offscreen suite passed and native_insert CTest passed 1/1. These results preserve the tested legacy paths but do not constitute the missing scoped palette-to-page journey."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask check",
+      "commit": "b5f43f27d2437a1864be0dabd95ecc94dff88857",
+      "log": "evidence/logs/S15-xtask-check.log",
+      "observations": [
+        "The repository check passed all workspace Rust tests, QML lint and UI tests, release-manifest and license checks, formatting, and generated resource/documentation checks."
+      ]
+    },
+    {
+      "test_id": "T010",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "ctest --test-dir target/application-tests -R '^application_offscreen$' --verbose",
+      "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+      "log": "evidence/completion-application-functional-final.log",
+      "observations": [
+        "Real BrowserUi generic entry rejects Pointer Hint; local Qt keyboard entry and explicit palette handoffs work. The standalone CLI rejects the entire restricted chain before sending any member. This is Qt-generated local input, not physical Wayland evidence.",
+        "This follow-up records bounded local coverage; missing physical, live-site, chooser and human evidence remains unqualified."
+      ]
+    },
+    {
+      "test_id": "T036",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "ctest --test-dir target/application-tests -R '^application_offscreen$' --verbose",
+      "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+      "log": "evidence/completion-application-functional-final.log",
+      "observations": [
+        "Real palette selection transfers captured scope leases through source Hint teardown into Hint/Search/Grid using production receipt validation.",
+        "This follow-up records bounded local coverage; missing physical, live-site, chooser and human evidence remains unqualified."
+      ]
+    },
+    {
+      "test_id": "T038",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "ctest --test-dir target/application-tests -R '^application_offscreen$' --verbose",
+      "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+      "log": "evidence/completion-application-functional-final.log",
+      "observations": [
+        "Real scoped Grid native points are checked at 80/100/125 percent zoom and DPR 1/2 with nonzero scope, border and window offsets.",
+        "This follow-up records bounded local coverage; missing physical, live-site, chooser and human evidence remains unqualified."
+      ]
+    },
+    {
+      "test_id": "T039",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "ctest --test-dir target/application-tests -R '^application_offscreen$' --verbose",
+      "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+      "log": "evidence/completion-application-functional-final.log",
+      "observations": [
+        "Real Grid reset/back/hover and reflow cancellation preserve the intended scope lifecycle.",
+        "This follow-up records bounded local coverage; missing physical, live-site, chooser and human evidence remains unqualified."
+      ]
+    },
+    {
+      "test_id": "T038",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "ctest --test-dir target/application-tests --verbose (application_offscreen_dpr2)",
+      "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+      "log": "evidence/completion-application-final-dpr-lifetime.log",
+      "observations": [
+        "The separate QT_SCALE_FACTOR=2 process passed all 80/100/125 percent zoom coordinate cases. The default process covers DPR 1."
+      ]
+    }
+  ],
+  "capability_decision": null,
+  "capability_report": null,
+  "review_kind": "self-review",
+  "scope_amendments": [
+    {
+      "path": "crates/ferric-browser-engine-qt/src/browser_ui_hint_selection.rs and crates/ferric-browser-engine-qt/src/browser_ui_navigation.rs",
+      "reason": "The existing local palette flow must mint and route a GridWithin one-use permit through exact receipt and current owner/session validation; this is the required call chain for scoped Grid admission."
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/qml/scripts/PageInteractionScripts.js and crates/ferric-browser-engine-qt/qml/scripts/BrowserScripts.js",
+      "reason": "Candidate-bound geometry measurement, scroll/reflow lifecycle revisions, and the script version update are necessary to transfer and validate the selected page scope."
+    },
+    {
+      "path": "crates/ferric-browser-core/src/lib.rs and crates/ferric-browser-engine-qt/src/lib.rs",
+      "reason": "Export and register the scoped core model and Qt invokables so the planned spatial and palette handoff can use the same validated implementation."
+    },
+    {
+      "path": "docs/architecture/qml-json-contracts.md",
+      "reason": "Allowlist the bounded opaque geometry JSON strings used by the script boundary and keep generated-contract checks aligned with the new handoff."
+    }
+  ],
+  "remaining_risks": [
+    "No composed BrowserUi local palette-to-scoped-page action journey is available; the native handoff and dispatch sequence remains unqualified.",
+    "The native pointer adapter's DPR and window-offset behavior was not re-exercised with scoped geometry; no end-to-end native mapping claim is made.",
+    "Generic nested Wayland smoke does not qualify S15 scoped Grid key, reflow, reset, hover, or cancellation behavior.",
+    "The WebEngine scroll fixture dispatches an explicit scroll event after changing scrollTop because offscreen WebEngine does not emit one for that scripted assignment alone."
+  ],
+  "not_run_reasons": [
+    "T010 native-qt-offscreen: no composed BrowserUi local palette, GridWithin selection, and scoped page dispatch journey is available.",
+    "T035 native-wayland: the available Wayland command is a generic nested-compositor smoke and does not exercise the scoped cross-origin journey or physical keyboard route.",
+    "T038 native-qt-offscreen/native-wayland: no native pointer-adapter journey maps scoped CSS geometry through DPR and window offsets.",
+    "T039 native-qt-offscreen/native-wayland: no scoped Grid key/reset/hover journey exercises live page ownership and geometry on a native surface."
+  ],
+  "next_ready_slices": [
+    "S16"
+  ],
+  "completion_followup": {
+    "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+    "report": "evidence/completion-report.md",
+    "status": "implemented_unqualified",
+    "scope": "New composed application observations supplement historical component evidence; no missing qualification level is inferred."
+  }
+}

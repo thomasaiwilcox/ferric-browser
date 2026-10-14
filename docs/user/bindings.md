@@ -131,6 +131,7 @@ See [Webpage shortcuts](webpage-shortcuts.md) for examples and the existing emer
 | `grid` | `8` | `grid-refine 8` |
 | `grid` | `9` | `grid-refine 9` |
 | `grid` | `?` | `grid-help` |
+| `grid` | `Alt+Enter` | `grid-double-click` |
 | `grid` | `Backspace` | `grid-back` |
 | `grid` | `Ctrl+Enter` | `grid-click middle` |
 | `grid` | `Enter` | `grid-click left` |

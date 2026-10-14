@@ -1,0 +1,21 @@
+********* Start testing of ApplicationTests *********
+Config: Using QtTest library 6.11.2, Qt 6.11.2 (x86_64-little_endian-lp64 shared (dynamic) release build; by GCC 16.2.1 20260810), omarchy 4.0.4
+PASS   : ApplicationTests::initTestCase()
+QINFO  : ApplicationTests::rendererLossCancelsHeldConfirmation() loading production QML
+QWARN  : ApplicationTests::rendererLossCancelsHeldConfirmation() QRhiGles2: Failed to create temporary context
+QWARN  : ApplicationTests::rendererLossCancelsHeldConfirmation() QRhiGles2: Failed to create context
+QWARN  : ApplicationTests::rendererLossCancelsHeldConfirmation() Failed to create RHI for backend: OpenGL
+QINFO  : ApplicationTests::rendererLossCancelsHeldConfirmation() production QML created
+QWARN  : ApplicationTests::rendererLossCancelsHeldConfirmation() GPUInfo not initialized on GpuInfoUpdate
+QINFO  : ApplicationTests::rendererLossCancelsHeldConfirmation() waiting for URL "about:blank"
+[2457448:2457448:1013/115930.063760:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 6 rejected by interface blink.mojom.WidgetHost
+[2457448:2457448:1013/115930.063793:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 7 rejected by interface blink.mojom.WidgetHost
+[2457448:2457448:1013/115930.069773:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+QINFO  : ApplicationTests::rendererLossCancelsHeldConfirmation() fixture loaded "http://127.0.0.1:33999/fixture.html" "Ready"
+FAIL!  : ApplicationTests::rendererLossCancelsHeldConfirmation() '!evaluate("testWindow.browserUi.hint_pointer_mode").toBool()' returned FALSE. ()
+   Loc: [/home/tom/Projects/RustBrowser/crates/ferric-browser-engine-qt/tests/application/tst_application.cpp(802)]
+QWARN  : ApplicationTests::rendererLossCancelsHeldConfirmation() QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+QWARN  : ApplicationTests::rendererLossCancelsHeldConfirmation() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_196(0x556856c3e5b0, "ferric_browserWindow") is not a function
+PASS   : ApplicationTests::cleanupTestCase()
+Totals: 2 passed, 1 failed, 0 skipped, 0 blacklisted, 8158ms
+********* Finished testing of ApplicationTests *********

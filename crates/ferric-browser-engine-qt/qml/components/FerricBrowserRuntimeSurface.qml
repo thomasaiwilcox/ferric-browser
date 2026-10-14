@@ -1160,56 +1160,24 @@ FerricBrowserRuntimeChrome {
     }
 
     function logicalGridKeyText(event) {
-        if (!event) {
-            return ""
-        }
-        var control = !!(event.modifiers & Qt.ControlModifier)
-        var shift = !!(event.modifiers & Qt.ShiftModifier)
-        var alt = !!(event.modifiers & Qt.AltModifier)
-        var meta = !!(event.modifiers & Qt.MetaModifier)
-        if (alt || meta) {
-            return ""
-        }
-        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-            if (control && !shift) {
-                return "Ctrl+Enter"
-            }
-            if (shift && !control) {
-                return "Shift+Enter"
-            }
-            return !control && !shift ? "Enter" : ""
-        }
-        if (control || shift) {
-            if (shift && event.key === Qt.Key_Slash && event.text === "?") {
-                return "?"
-            }
-            return ""
-        }
-        if (event.key >= Qt.Key_0 && event.key <= Qt.Key_9) {
-            return String.fromCharCode(event.key)
-        }
-        if (event.key === Qt.Key_Space) {
-            return "Space"
-        }
-        if (event.key === Qt.Key_Backspace) {
-            return "Backspace"
-        }
-        if (event.key === Qt.Key_Escape) {
-            return "Escape"
-        }
-        return event.text === "?" ? "?" : ""
+        return KeyboardPresentation.logicalGridKeyText(event)
     }
 
     function handleBrowserKey(ui, host, event) {
         if (!ui || !event) {
             return false
         }
+        // Observable native prompts and Qt-owned menus receive the original
+        // event before media, Mixed policy, or browser bindings inspect it.
+        if (window.nativePromptActiveFor(ui)) {
+            return false
+        }
         var nativeView = host && host.activeView !== undefined ? host.activeView : (ui === browserUi ? window.activeWebView() : null)
-        if (ui.mode === "normal" && nativeView && nativeView.nativeUrl === "rb://start"
-                && nativeView.startPage && nativeView.startPage.handleNavigation(event)) return true
         var logicalText = window.logicalNormalKeyText(event)
         var handled = false
         var passing = ui.mode === "pass-through" || ui.mode === "pass-through-once"
+        var mixedRoute = ui.mode === "normal"
+                ? ui.mixed_key_route(logicalText) : "browser"
         if (passing && event.key === Qt.Key_Escape
                 && event.modifiers === Qt.ControlModifier) {
             ui.escape()
@@ -1218,6 +1186,24 @@ FerricBrowserRuntimeChrome {
             handled = true
         } else if (passing) {
             return false
+        } else if (ui.mode === "normal"
+                   && !event.browserOwnedRepeat
+                   && mixedRoute === "page") {
+            var pageRouter = host && host.browserKeyRouterObject
+            if (pageRouter && pageRouter.pageOwnsCurrentEvent) {
+                pageRouter.pageOwnsCurrentEvent()
+            }
+            return false
+        } else if (ui.mode === "normal"
+                   && (mixedRoute === "active-count"
+                       || mixedRoute === "active-keychain")) {
+            ui.handle_key(logicalText)
+            window.completeBrowserKeyAction(ui, host)
+            handled = true
+        } else if (event.browserOwnedRepeat && ui.mode !== "normal") {
+            // A browser-owned press may change modes. Its held repeat cannot
+            // become a new page gesture in the new mode.
+            handled = true
         } else if (event.key === Qt.Key_Escape) {
             if (ui.mode === "grid" && event.modifiers !== Qt.NoModifier) {
                 // Unsupported modified Escape is consumed while Grid owns the
@@ -1227,6 +1213,11 @@ FerricBrowserRuntimeChrome {
             } else {
                 ui.escape()
             }
+            handled = true
+        } else if (ui.mode === "normal" && nativeView
+                   && nativeView.nativeUrl === "rb://start"
+                   && nativeView.startPage
+                   && nativeView.startPage.handleNavigation(event)) {
             handled = true
         } else if (ui.mode === "grid") {
             // Grid owns the whole triggering gesture. Auto-repeat is consumed
@@ -1253,6 +1244,12 @@ FerricBrowserRuntimeChrome {
                 ui.enter_search(logicalText === "?")
             }
             handled = true
+        } else if (ui === browserUi && ui.mode === "hint"
+                   && ui.hint_pointer_mode
+                   && ui.hint_pointer_state !== "selecting") {
+            // Enter release owns preflight. While it is pending, Escape above
+            // cancels and all other target input is consumed.
+            handled = true
         } else if (ui === browserUi && ui.mode === "hint") {
             var control = (event.modifiers & Qt.ControlModifier) !== 0
             var shift = (event.modifiers & Qt.ShiftModifier) !== 0
@@ -1267,7 +1264,11 @@ FerricBrowserRuntimeChrome {
                        || event.key === Qt.Key_Up) {
                 window.applyHintInteraction("previous", "")
             } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                window.applyHintInteraction("activate", "")
+                if (ui.hint_pointer_mode) {
+                    if (!event.isAutoRepeat) window.beginHintPointerConfirmation()
+                } else {
+                    window.applyHintInteraction("activate", "")
+                }
             } else if (control && event.key === Qt.Key_Space) {
                 window.applyHintInteraction("rotate", "")
             } else if (logicalText === "/" && window.hintState.mode === "label") {
@@ -1322,6 +1323,16 @@ FerricBrowserRuntimeChrome {
             }
         }
         return handled
+    }
+
+    function handleBrowserKeyRelease(ui, host, key, modifiers) {
+        if (ui === browserUi && ui.mode === "hint" && ui.hint_pointer_mode
+                && ui.hint_pointer_state === "awaiting-confirmation-release"
+                && (key === Qt.Key_Return || key === Qt.Key_Enter)) {
+            window.releaseHintPointerConfirmation()
+            return true
+        }
+        return false
     }
 
     FerricPermissionPrompt {
@@ -1487,6 +1498,12 @@ FerricBrowserRuntimeChrome {
     }
 
     function completeProfileBootstrap() {
+        window.refreshSpellcheckInventory(browserUi)
+        browserProfile.spellCheckEnabled = window.spellcheckEnabled(browserUi)
+        browserProfile.spellCheckLanguages = window.spellcheckLanguages(browserUi)
+        browserProfile.isPushServiceEnabled = window.pushServiceEnabled(
+                    browserUi, window.temporaryProfile)
+        window.refreshChromeAppearance()
         engineUpdateNoticeTimer.start()
         if (!window.temporaryProfile && !window.recoveryAvailable) {
             browserUi.clear_current_session_checkpoints()
@@ -1554,6 +1571,10 @@ FerricBrowserRuntimeChrome {
                 window.completeProfileBootstrap()
             }
         }
+    }
+
+    FerricSelectorValidationSurface {
+        browserUi: window.primaryBrowserUi
     }
 
     Component.onCompleted: {

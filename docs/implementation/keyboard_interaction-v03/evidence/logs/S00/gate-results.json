@@ -1,0 +1,82 @@
+[
+  {
+    "name": "pack-integrity",
+    "command": "python3 tools/validate_pack.py --integrity",
+    "cwd": "docs/implementation/keyboard_interaction-v03",
+    "exit_code": 0,
+    "elapsed_seconds": 0.118,
+    "log": "evidence/logs/S00/pack-integrity.log"
+  },
+  {
+    "name": "pack-negative",
+    "command": "python3 tools/test_validate_pack.py",
+    "cwd": "docs/implementation/keyboard_interaction-v03",
+    "exit_code": 0,
+    "elapsed_seconds": 0.372,
+    "log": "evidence/logs/S00/pack-negative.log"
+  },
+  {
+    "name": "fmt",
+    "command": "cargo fmt --all -- --check",
+    "cwd": ".",
+    "exit_code": 0,
+    "elapsed_seconds": 2.332,
+    "log": "evidence/logs/S00/fmt.log"
+  },
+  {
+    "name": "clippy",
+    "command": "cargo clippy --workspace --all-targets --locked --offline -- -D warnings",
+    "cwd": ".",
+    "exit_code": 0,
+    "elapsed_seconds": 191.229,
+    "log": "evidence/logs/S00/clippy.log"
+  },
+  {
+    "name": "workspace",
+    "command": "cargo test --workspace --locked --offline",
+    "cwd": ".",
+    "exit_code": 0,
+    "elapsed_seconds": 294.154,
+    "log": "evidence/logs/S00/workspace.log"
+  },
+  {
+    "name": "check",
+    "command": "cargo xtask check --locked --offline",
+    "cwd": ".",
+    "exit_code": 0,
+    "elapsed_seconds": 300.659,
+    "log": "evidence/logs/S00/check.log"
+  },
+  {
+    "name": "engine",
+    "command": "cargo xtask test engine",
+    "cwd": ".",
+    "exit_code": 0,
+    "elapsed_seconds": 227.009,
+    "log": "evidence/logs/S00/engine.log"
+  },
+  {
+    "name": "adapter",
+    "command": "cargo xtask test adapter",
+    "cwd": ".",
+    "exit_code": 0,
+    "elapsed_seconds": 247.939,
+    "log": "evidence/logs/S00/adapter.log"
+  },
+  {
+    "name": "wayland",
+    "command": "cargo xtask test wayland",
+    "cwd": ".",
+    "exit_code": 0,
+    "elapsed_seconds": 240.725,
+    "log": "evidence/logs/S00/wayland.log"
+  },
+  {
+    "name": "diff-check",
+    "command": "git diff --check",
+    "cwd": ".",
+    "exit_code": 2,
+    "elapsed_seconds": 0.008,
+    "log": "evidence/logs/S00/diff-check.log"
+  }
+]

@@ -1,0 +1,1105 @@
+{
+  "schema_version": 1,
+  "baseline": "4337056f632de0c710943fa6df76c67cf14b8b47",
+  "default_execution": "serial_dependency_order",
+  "publishing_authorized": false,
+  "production_research_promotion": "explicit_gate_only",
+  "slices": [
+    {
+      "id": "S00",
+      "title": "Baseline, dependency and symbol audit",
+      "kind": "foundation",
+      "depends_on": [],
+      "contracts": [
+        "C01",
+        "C02",
+        "C03",
+        "C23",
+        "C24"
+      ],
+      "test_ids": [
+        "T001",
+        "T045"
+      ],
+      "locks": [
+        "baseline-audit"
+      ],
+      "source_items": [
+        "A-01",
+        "A-03",
+        "A-17",
+        "B-10",
+        "B-12"
+      ],
+      "card": "slices/S00.md",
+      "outputs": [
+        "Baseline/environment report",
+        "Current symbol and build-resource map",
+        "Initial progress/evidence ledger"
+      ],
+      "initial_status": "not_started"
+    },
+    {
+      "id": "S01",
+      "title": "Compatibility harness and suspect-defect reproduction",
+      "kind": "foundation",
+      "depends_on": [
+        "S00"
+      ],
+      "contracts": [
+        "C02",
+        "C04",
+        "C17",
+        "C22"
+      ],
+      "test_ids": [
+        "T002",
+        "T003",
+        "T004",
+        "T005",
+        "T006",
+        "T008",
+        "T043"
+      ],
+      "locks": [
+        "fixture-harness"
+      ],
+      "source_items": [
+        "A-02",
+        "A-16",
+        "F-01",
+        "F-04",
+        "F-06"
+      ],
+      "card": "slices/S01.md",
+      "outputs": [
+        "Red/non-reproduction report",
+        "Local fixtures and runner integration",
+        "Initial benchmark sample set"
+      ],
+      "initial_status": "not_started"
+    },
+    {
+      "id": "S02",
+      "title": "Shared composed validation and final-action correctness",
+      "kind": "implementation",
+      "depends_on": [
+        "S01"
+      ],
+      "contracts": [
+        "C03",
+        "C04",
+        "C07",
+        "C18"
+      ],
+      "test_ids": [
+        "T002",
+        "T003",
+        "T004",
+        "T005",
+        "T006",
+        "T007",
+        "T008",
+        "T009",
+        "T020",
+        "T045"
+      ],
+      "locks": [
+        "dom-runtime",
+        "hint-schema"
+      ],
+      "source_items": [
+        "F-01",
+        "F-07",
+        "A-03",
+        "A-18",
+        "B-10"
+      ],
+      "card": "slices/S02.md",
+      "outputs": [
+        "Focused correctness patch",
+        "Shared-predicate tests",
+        "Before/after or non-reproduction note"
+      ],
+      "initial_status": "not_started"
+    },
+    {
+      "id": "S03",
+      "title": "Action intent, typed provenance and palette handoff",
+      "kind": "implementation",
+      "depends_on": [
+        "S02"
+      ],
+      "contracts": [
+        "C04",
+        "C05",
+        "C06",
+        "C14",
+        "C23"
+      ],
+      "test_ids": [
+        "T009",
+        "T010",
+        "T020",
+        "T055"
+      ],
+      "locks": [
+        "hint-schema",
+        "pointer-boundary",
+        "generated-contracts"
+      ],
+      "source_items": [
+        "A-05",
+        "A-08",
+        "A-09",
+        "F-02",
+        "B-10"
+      ],
+      "card": "slices/S03.md",
+      "outputs": [
+        "Typed intent/provenance contract",
+        "Narrow ADR amendment",
+        "Negative routing tests"
+      ],
+      "initial_status": "not_started"
+    },
+    {
+      "id": "S04",
+      "title": "Explicit native-pointer hint activation",
+      "kind": "implementation",
+      "depends_on": [
+        "S03"
+      ],
+      "contracts": [
+        "C04",
+        "C05",
+        "C06",
+        "C15",
+        "C22"
+      ],
+      "test_ids": [
+        "T010",
+        "T011",
+        "T012",
+        "T013",
+        "T014",
+        "T020",
+        "T045",
+        "T055"
+      ],
+      "locks": [
+        "dom-runtime",
+        "hint-schema",
+        "pointer-boundary",
+        "generated-contracts"
+      ],
+      "source_items": [
+        "F-02",
+        "A-11",
+        "B-10"
+      ],
+      "card": "slices/S04.md",
+      "outputs": [
+        "Native hint action",
+        "Event-order/race evidence",
+        "UI/help and limitations"
+      ],
+      "initial_status": "not_started"
+    },
+    {
+      "id": "S05",
+      "title": "Validated EditorFocus and LabelControl pairs",
+      "kind": "implementation",
+      "depends_on": [
+        "S02",
+        "S03"
+      ],
+      "contracts": [
+        "C04",
+        "C07",
+        "C18"
+      ],
+      "test_ids": [
+        "T015",
+        "T016",
+        "T017",
+        "T018",
+        "T020",
+        "T045",
+        "T055"
+      ],
+      "locks": [
+        "dom-runtime",
+        "hint-schema",
+        "config-commit",
+        "generated-contracts"
+      ],
+      "source_items": [
+        "F-03",
+        "A-07",
+        "A-12"
+      ],
+      "card": "slices/S05.md",
+      "outputs": [
+        "Paired candidate support",
+        "Typed opt-in setting",
+        "Proxy and label native fixtures"
+      ],
+      "initial_status": "not_started"
+    },
+    {
+      "id": "S06",
+      "title": "Incremental versioned script asset extraction",
+      "kind": "implementation",
+      "depends_on": [
+        "S02",
+        "S04",
+        "S05"
+      ],
+      "contracts": [
+        "C04",
+        "C08",
+        "C17"
+      ],
+      "test_ids": [
+        "T019",
+        "T020",
+        "T045",
+        "T055"
+      ],
+      "locks": [
+        "dom-runtime",
+        "resource-manifests"
+      ],
+      "source_items": [
+        "F-07",
+        "A-05",
+        "A-16"
+      ],
+      "card": "slices/S06.md",
+      "outputs": [
+        "Readable versioned assets",
+        "Compatible facade",
+        "Resource parity evidence"
+      ],
+      "initial_status": "not_started"
+    },
+    {
+      "id": "S07",
+      "title": "Pure exact-key Mixed policy model",
+      "kind": "implementation",
+      "depends_on": [
+        "S00",
+        "S01"
+      ],
+      "contracts": [
+        "C03",
+        "C10"
+      ],
+      "test_ids": [
+        "T021",
+        "T023",
+        "T055"
+      ],
+      "locks": [
+        "key-policy-model",
+        "generated-contracts"
+      ],
+      "source_items": [
+        "A-06",
+        "A-18"
+      ],
+      "card": "slices/S07.md",
+      "outputs": [
+        "Pure resolver and tests",
+        "Deferred setting publication note"
+      ],
+      "initial_status": "not_started"
+    },
+    {
+      "id": "S08",
+      "title": "Native Mixed ownership before QML special keys",
+      "kind": "implementation",
+      "depends_on": [
+        "S03",
+        "S07"
+      ],
+      "contracts": [
+        "C03",
+        "C05",
+        "C10",
+        "C18"
+      ],
+      "test_ids": [
+        "T021",
+        "T022",
+        "T023",
+        "T024",
+        "T025",
+        "T027",
+        "T045",
+        "T055"
+      ],
+      "locks": [
+        "native-key-router",
+        "key-policy-model",
+        "config-commit",
+        "generated-contracts"
+      ],
+      "source_items": [
+        "A-06",
+        "A-18",
+        "F-04"
+      ],
+      "card": "slices/S08.md",
+      "outputs": [
+        "Integrated Mixed policy",
+        "Native routing regression evidence",
+        "Generated configuration/help"
+      ],
+      "initial_status": "not_started"
+    },
+    {
+      "id": "S09",
+      "title": "Same-document pass-through lifecycle qualification",
+      "kind": "implementation",
+      "depends_on": [
+        "S08"
+      ],
+      "contracts": [
+        "C03",
+        "C10",
+        "C11",
+        "C12"
+      ],
+      "test_ids": [
+        "T024",
+        "T026",
+        "T027",
+        "T045"
+      ],
+      "locks": [
+        "native-key-router",
+        "navigation-lifecycle"
+      ],
+      "source_items": [
+        "A-06",
+        "A-07"
+      ],
+      "card": "slices/S09.md",
+      "outputs": [
+        "Lifecycle tests and any narrow change",
+        "Per-case capability result"
+      ],
+      "initial_status": "not_started"
+    },
+    {
+      "id": "S10",
+      "title": "Native prompt leases and bounded context",
+      "kind": "implementation",
+      "depends_on": [
+        "S03",
+        "S08",
+        "S09"
+      ],
+      "contracts": [
+        "C10",
+        "C11",
+        "C12",
+        "C18"
+      ],
+      "test_ids": [
+        "T024",
+        "T025",
+        "T028",
+        "T029",
+        "T045"
+      ],
+      "locks": [
+        "native-key-router",
+        "navigation-lifecycle",
+        "native-prompt-lifecycle"
+      ],
+      "source_items": [
+        "A-07",
+        "A-14",
+        "F-04"
+      ],
+      "card": "slices/S10.md",
+      "outputs": [
+        "Lease implementation and hook inventory",
+        "Keyboard-only prompt evidence",
+        "Bounded context projection"
+      ],
+      "initial_status": "not_started"
+    },
+    {
+      "id": "S11",
+      "title": "Selector configuration prepare/validate/commit boundary",
+      "kind": "implementation",
+      "depends_on": [
+        "S00",
+        "S06"
+      ],
+      "contracts": [
+        "C08",
+        "C09",
+        "C18"
+      ],
+      "test_ids": [
+        "T030",
+        "T055"
+      ],
+      "locks": [
+        "config-commit",
+        "resource-manifests"
+      ],
+      "source_items": [
+        "F-05",
+        "A-05",
+        "B-10"
+      ],
+      "card": "slices/S11.md",
+      "outputs": [
+        "Prepared config boundary",
+        "Engine parser validation harness",
+        "Atomicity/CLI tests"
+      ],
+      "initial_status": "not_started"
+    },
+    {
+      "id": "S12",
+      "title": "Site-scoped selectors through discovery and activation",
+      "kind": "implementation",
+      "depends_on": [
+        "S06",
+        "S11"
+      ],
+      "contracts": [
+        "C04",
+        "C09",
+        "C17"
+      ],
+      "test_ids": [
+        "T009",
+        "T030",
+        "T031",
+        "T032",
+        "T033",
+        "T045",
+        "T055"
+      ],
+      "locks": [
+        "config-commit",
+        "dom-runtime",
+        "hint-schema",
+        "generated-contracts"
+      ],
+      "source_items": [
+        "F-05",
+        "F-06",
+        "A-08"
+      ],
+      "card": "slices/S12.md",
+      "outputs": [
+        "Typed selectors end-to-end",
+        "Config examples/generated help",
+        "Scoped and negative tests"
+      ],
+      "initial_status": "not_started"
+    },
+    {
+      "id": "S13",
+      "title": "Regions and surfaces on the existing registry",
+      "kind": "implementation",
+      "depends_on": [
+        "S03",
+        "S05",
+        "S06",
+        "S12"
+      ],
+      "contracts": [
+        "C04",
+        "C07",
+        "C13",
+        "C18"
+      ],
+      "test_ids": [
+        "T009",
+        "T017",
+        "T034",
+        "T035",
+        "T045",
+        "T055"
+      ],
+      "locks": [
+        "dom-runtime",
+        "hint-schema",
+        "generated-contracts"
+      ],
+      "source_items": [
+        "A-08",
+        "A-13",
+        "F-01",
+        "F-03"
+      ],
+      "card": "slices/S13.md",
+      "outputs": [
+        "Region/Surface families",
+        "Typed capabilities",
+        "Visible-only classification tests"
+      ],
+      "initial_status": "not_started"
+    },
+    {
+      "id": "S14",
+      "title": "Shared scope leases and scoped Hints",
+      "kind": "implementation",
+      "depends_on": [
+        "S13"
+      ],
+      "contracts": [
+        "C04",
+        "C05",
+        "C13",
+        "C14",
+        "C18"
+      ],
+      "test_ids": [
+        "T010",
+        "T020",
+        "T035",
+        "T036",
+        "T037",
+        "T044"
+      ],
+      "locks": [
+        "dom-runtime",
+        "hint-schema",
+        "scope-contracts"
+      ],
+      "source_items": [
+        "A-08",
+        "A-09",
+        "A-10"
+      ],
+      "card": "slices/S14.md",
+      "outputs": [
+        "Scope lease contract",
+        "Scoped Hints action",
+        "Lifecycle/GC regressions"
+      ],
+      "initial_status": "not_started"
+    },
+    {
+      "id": "S15",
+      "title": "Region-scoped Grid model and native mapping",
+      "kind": "implementation",
+      "depends_on": [
+        "S04",
+        "S10",
+        "S14"
+      ],
+      "contracts": [
+        "C05",
+        "C06",
+        "C14",
+        "C15"
+      ],
+      "test_ids": [
+        "T010",
+        "T035",
+        "T036",
+        "T038",
+        "T039",
+        "T045",
+        "T055"
+      ],
+      "locks": [
+        "grid-model",
+        "pointer-boundary",
+        "scope-contracts",
+        "generated-contracts"
+      ],
+      "source_items": [
+        "A-09",
+        "A-11",
+        "F-02"
+      ],
+      "card": "slices/S15.md",
+      "outputs": [
+        "Scoped SpatialSession",
+        "Qualified mapping and passive overlay",
+        "Native scope lifecycle evidence"
+      ],
+      "initial_status": "not_started"
+    },
+    {
+      "id": "S16",
+      "title": "Visible Target Search as a Hint text-mode view",
+      "kind": "implementation",
+      "depends_on": [
+        "S06",
+        "S12",
+        "S14"
+      ],
+      "contracts": [
+        "C04",
+        "C05",
+        "C14",
+        "C16",
+        "C18"
+      ],
+      "test_ids": [
+        "T010",
+        "T020",
+        "T037",
+        "T040",
+        "T041",
+        "T042",
+        "T045",
+        "T055"
+      ],
+      "locks": [
+        "hint-schema",
+        "search-presentation",
+        "generated-contracts"
+      ],
+      "source_items": [
+        "A-10",
+        "F-08"
+      ],
+      "card": "slices/S16.md",
+      "outputs": [
+        "Direct-entry Target Search",
+        "Shared matcher/palette tests",
+        "Privacy and virtualisation evidence"
+      ],
+      "initial_status": "not_started"
+    },
+    {
+      "id": "S17",
+      "title": "Measured hot-path optimisation and teardown",
+      "kind": "implementation",
+      "depends_on": [
+        "S06",
+        "S12",
+        "S15",
+        "S16"
+      ],
+      "contracts": [
+        "C04",
+        "C08",
+        "C17",
+        "C18"
+      ],
+      "test_ids": [
+        "T019",
+        "T020",
+        "T033",
+        "T043",
+        "T044",
+        "T045"
+      ],
+      "locks": [
+        "dom-runtime",
+        "hint-schema",
+        "search-presentation",
+        "resource-manifests"
+      ],
+      "source_items": [
+        "F-06",
+        "F-07",
+        "A-16"
+      ],
+      "card": "slices/S17.md",
+      "outputs": [
+        "Comparable raw measurements",
+        "Only justified optimisations",
+        "Resource lifetime report"
+      ],
+      "initial_status": "not_started"
+    },
+    {
+      "id": "S18",
+      "title": "Interaction diagnostics and optional data profiles",
+      "kind": "implementation",
+      "depends_on": [
+        "S08",
+        "S10",
+        "S12",
+        "S15",
+        "S16",
+        "S17"
+      ],
+      "contracts": [
+        "C10",
+        "C12",
+        "C18",
+        "C22"
+      ],
+      "test_ids": [
+        "T025",
+        "T042",
+        "T055",
+        "T056"
+      ],
+      "locks": [
+        "diagnostic-projection",
+        "config-commit",
+        "generated-contracts"
+      ],
+      "source_items": [
+        "A-14",
+        "A-15",
+        "A-20"
+      ],
+      "card": "slices/S18.md",
+      "outputs": [
+        "Interaction status/provenance",
+        "Redacted diagnostic tests",
+        "Optional profile examples and task notes"
+      ],
+      "initial_status": "not_started"
+    },
+    {
+      "id": "S19",
+      "title": "Native double-click capability and explicit action",
+      "kind": "gated_implementation",
+      "depends_on": [
+        "S04",
+        "S10",
+        "S15"
+      ],
+      "contracts": [
+        "C05",
+        "C06",
+        "C15",
+        "C19"
+      ],
+      "test_ids": [
+        "T010",
+        "T014",
+        "T046",
+        "T045",
+        "T055"
+      ],
+      "locks": [
+        "pointer-boundary",
+        "grid-model",
+        "generated-contracts"
+      ],
+      "source_items": [
+        "A-11",
+        "F-02"
+      ],
+      "card": "slices/S19.md",
+      "outputs": [
+        "Double-click capability report/ADR",
+        "Conditional explicit action",
+        "Native event-order evidence"
+      ],
+      "initial_status": "not_started"
+    },
+    {
+      "id": "S20",
+      "title": "Bounded in-view drag feasibility gate",
+      "kind": "research",
+      "depends_on": [
+        "S04",
+        "S10",
+        "S15"
+      ],
+      "contracts": [
+        "C05",
+        "C06",
+        "C15",
+        "C19"
+      ],
+      "test_ids": [
+        "T047",
+        "T049"
+      ],
+      "locks": [
+        "pointer-boundary",
+        "gesture-research"
+      ],
+      "source_items": [
+        "A-11",
+        "B-10"
+      ],
+      "card": "slices/S20.md",
+      "outputs": [
+        "Drag capability decision",
+        "Probe fixture and event/cleanup results",
+        "Proposed bounded-gesture ADR"
+      ],
+      "initial_status": "not_started"
+    },
+    {
+      "id": "S21",
+      "title": "Conditional bounded drag implementation",
+      "kind": "gated_implementation",
+      "depends_on": [
+        "S20"
+      ],
+      "contracts": [
+        "C05",
+        "C06",
+        "C15",
+        "C19"
+      ],
+      "test_ids": [
+        "T010",
+        "T048",
+        "T049",
+        "T055"
+      ],
+      "locks": [
+        "pointer-boundary",
+        "grid-model",
+        "generated-contracts"
+      ],
+      "source_items": [
+        "A-11",
+        "B-10"
+      ],
+      "card": "slices/S21.md",
+      "outputs": [
+        "Conditional drag UI/state machine",
+        "Native teardown evidence",
+        "User limitations"
+      ],
+      "initial_status": "not_started",
+      "condition": {
+        "slice": "S20",
+        "decision": "go"
+      }
+    },
+    {
+      "id": "S22",
+      "title": "Framework editor capability and writeback design",
+      "kind": "research",
+      "depends_on": [
+        "S05",
+        "S06",
+        "S18"
+      ],
+      "contracts": [
+        "C07",
+        "C18",
+        "C20"
+      ],
+      "test_ids": [
+        "T018",
+        "T050"
+      ],
+      "locks": [
+        "editor-research"
+      ],
+      "source_items": [
+        "A-12",
+        "F-03"
+      ],
+      "card": "slices/S22.md",
+      "outputs": [
+        "Per-framework capability matrix",
+        "Conflict/permission contract",
+        "Prototype evidence only"
+      ],
+      "initial_status": "not_started"
+    },
+    {
+      "id": "S23",
+      "title": "Independent child-frame provider spike",
+      "kind": "research",
+      "depends_on": [
+        "S14",
+        "S18"
+      ],
+      "contracts": [
+        "C04",
+        "C08",
+        "C15",
+        "C18",
+        "C20"
+      ],
+      "test_ids": [
+        "T035",
+        "T052"
+      ],
+      "locks": [
+        "frame-research"
+      ],
+      "source_items": [
+        "A-13",
+        "B-10"
+      ],
+      "card": "slices/S23.md",
+      "outputs": [
+        "Frame capability report",
+        "Isolated prototype tests",
+        "Integration/stop recommendation"
+      ],
+      "initial_status": "not_started"
+    },
+    {
+      "id": "S24",
+      "title": "Accessibility-provider and assistive-technology spike",
+      "kind": "research",
+      "depends_on": [
+        "S14",
+        "S18"
+      ],
+      "contracts": [
+        "C04",
+        "C18",
+        "C20"
+      ],
+      "test_ids": [
+        "T035",
+        "T051"
+      ],
+      "locks": [
+        "accessibility-research"
+      ],
+      "source_items": [
+        "A-13",
+        "B-10"
+      ],
+      "card": "slices/S24.md",
+      "outputs": [
+        "Accessibility capability and coexistence report",
+        "Bounded integration contract"
+      ],
+      "initial_status": "not_started"
+    },
+    {
+      "id": "S25",
+      "title": "Optional labels versus existing text search",
+      "kind": "research",
+      "depends_on": [
+        "S16",
+        "S17"
+      ],
+      "contracts": [
+        "C16",
+        "C17",
+        "C18",
+        "C21"
+      ],
+      "test_ids": [
+        "T040",
+        "T043",
+        "T053",
+        "T058",
+        "T059",
+        "T060",
+        "T061"
+      ],
+      "locks": [
+        "ergonomics-research"
+      ],
+      "source_items": [
+        "F-08",
+        "A-10"
+      ],
+      "card": "slices/S25.md",
+      "outputs": [
+        "Ergonomic evaluation corpus/results",
+        "Optional strategy recommendation only"
+      ],
+      "initial_status": "not_started"
+    },
+    {
+      "id": "S26",
+      "title": "Wheel-only task gap evaluation",
+      "kind": "research",
+      "depends_on": [
+        "S17",
+        "S18"
+      ],
+      "contracts": [
+        "C03",
+        "C14",
+        "C19"
+      ],
+      "test_ids": [
+        "T037",
+        "T054"
+      ],
+      "locks": [
+        "wheel-research"
+      ],
+      "source_items": [
+        "A-11"
+      ],
+      "card": "slices/S26.md",
+      "outputs": [
+        "Wheel gap decision report"
+      ],
+      "initial_status": "not_started"
+    },
+    {
+      "id": "S27",
+      "title": "Integrated release audit and task qualification",
+      "kind": "release",
+      "depends_on": [
+        "S18",
+        "S19",
+        "S21",
+        "S22",
+        "S23",
+        "S24",
+        "S25",
+        "S26"
+      ],
+      "contracts": [
+        "C01",
+        "C02",
+        "C03",
+        "C22",
+        "C23",
+        "C24"
+      ],
+      "test_ids": [
+        "T009",
+        "T010",
+        "T024",
+        "T025",
+        "T033",
+        "T038",
+        "T041",
+        "T042",
+        "T043",
+        "T044",
+        "T045",
+        "T055",
+        "T056",
+        "T057"
+      ],
+      "locks": [
+        "integration-release",
+        "generated-contracts"
+      ],
+      "source_items": [
+        "A-15",
+        "A-16",
+        "A-17",
+        "A-18",
+        "A-19",
+        "A-20",
+        "F-04",
+        "B-12"
+      ],
+      "card": "slices/S27.md",
+      "outputs": [
+        "Integrated validation report",
+        "Live task matrix",
+        "Source/invariant coverage review",
+        "Release/readiness summary"
+      ],
+      "initial_status": "not_started"
+    }
+  ]
+}

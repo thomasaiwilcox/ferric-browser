@@ -1,0 +1,164 @@
+{
+  "schema_version": 1,
+  "slice_id": "S06",
+  "status": "implemented_unqualified",
+  "commit": "6dca67ada36745d492dbe25a12942fc44670a092",
+  "environment": {
+    "os": "Linux x86_64, kernel 7.2.3-arch1-3",
+    "qt": "6.11.2",
+    "chromium": "140.0.7339.225 (Qt WebEngine version previously probed in this same environment)",
+    "renderer": "Qt Quick offscreen software renderer",
+    "window": "640x480 local QML/WebEngine fixtures and native QQuickView fixture",
+    "build": "Rust dev/test, Qt release, GCC 16.2.1, offline workspace; local fixtures only"
+  },
+  "changed_files": [
+    "crates/ferric-browser-engine-qt/qml/scripts/BrowserScripts.js",
+    "crates/ferric-browser-engine-qt/qml/scripts/PageInteractionScripts.js",
+    "crates/ferric-browser-engine-qt/src/tests.rs",
+    "crates/ferric-browser-engine-qt/src/tests/action_runtime.rs",
+    "crates/ferric-browser-engine-qt/src/tests/command_protocol.rs",
+    "crates/ferric-browser-engine-qt/src/tests/components_and_workers.rs",
+    "crates/ferric-browser-engine-qt/src/tests/presentation_boundaries.rs",
+    "crates/ferric-browser-engine-qt/tests/native-insert/tst_native_insert.cpp",
+    "crates/ferric-browser-engine-qt/tests/qml/tst_webapp_interaction.qml",
+    "docs/implementation/keyboard_interaction-v03/evidence/S06-plan.md",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S06/clippy.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S06/engine-fixtures.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S06/fmt.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S06/resource-parity.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S06/rust-resource-contract.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S06/xtask-check.log",
+    "docs/implementation/keyboard_interaction-v03/progress.json"
+  ],
+  "baseline_comparison": null,
+  "test_results": [
+    {
+      "test_id": "T019",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo test -p ferric-browser-engine-qt --locked --offline browser_owned_script_resource_has_a_versioned_bounded_contract",
+      "commit": "6dca67ada36745d492dbe25a12942fc44670a092",
+      "log": "evidence/logs/S06/rust-resource-contract.log",
+      "observations": [
+        "The facade and extracted asset expose independent versions; the generated build manifest lists PageInteractionScripts.js and the generated QRC contains its packaged alias.",
+        "The focused resource contract test passed."
+      ]
+    },
+    {
+      "test_id": "T019",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "Python SHA-256 comparison of the source asset and generated manifest entry plus generated-QRC alias check",
+      "commit": "6dca67ada36745d492dbe25a12942fc44670a092",
+      "log": "evidence/logs/S06/resource-parity.log",
+      "observations": [
+        "The asset SHA-256 matched the generated manifest entry, and the QRC included qml/scripts/PageInteractionScripts.js."
+      ]
+    },
+    {
+      "test_id": "T019",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "6dca67ada36745d492dbe25a12942fc44670a092",
+      "log": "evidence/logs/S06/engine-fixtures.log",
+      "observations": [
+        "The production QML facade imported the extracted resource and existing Hint/scroll interaction fixtures passed.",
+        "The new test confirmed Hint registry state exists in ApplicationWorld and is absent from MainWorld."
+      ]
+    },
+    {
+      "test_id": "T019",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "6dca67ada36745d492dbe25a12942fc44670a092",
+      "log": "evidence/logs/S06/engine-fixtures.log",
+      "observations": [
+        "The native_insert CTest executable passed with the production facade and extracted asset loaded in ApplicationWorld.",
+        "The new failure-boundary cases returned script-version-mismatch, script-resource-unavailable, and script-error for a mismatched version, missing builder, and thrown builder."
+      ]
+    },
+    {
+      "test_id": "T020",
+      "level": "webengine-fixture",
+      "result": "not_run",
+      "command": "cargo xtask test engine",
+      "commit": "6dca67ada36745d492dbe25a12942fc44670a092",
+      "log": "evidence/logs/S06/engine-fixtures.log",
+      "reason": "The suite exercises direct map/proxy teardown but not the complete callback-owner and destination-scope-lease handoff contract.",
+      "observations": [
+        "test_T020_map_teardown and test_T020_proxy_pair_teardown passed; they confirm teardown behavior but do not prove destination lease acquisition before source cleanup."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask check --locked --offline",
+      "commit": "6dca67ada36745d492dbe25a12942fc44670a092",
+      "log": "evidence/logs/S06/xtask-check.log",
+      "observations": [
+        "Workspace Rust tests passed, including all 410 ferric-browser-engine-qt tests; QML/WebEngine, release-input manifest, and license-policy checks also passed."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "6dca67ada36745d492dbe25a12942fc44670a092",
+      "log": "evidence/logs/S06/engine-fixtures.log",
+      "observations": [
+        "All 114 QML/WebEngine tests passed, including the existing Hint/scroll fixtures and the new ApplicationWorld isolation test."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "6dca67ada36745d492dbe25a12942fc44670a092",
+      "log": "evidence/logs/S06/engine-fixtures.log",
+      "observations": [
+        "CTest reported native_insert 1/1 passed. The test executable includes the new extracted-resource failure-boundary cases."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask check --locked --offline",
+      "commit": "6dca67ada36745d492dbe25a12942fc44670a092",
+      "log": "evidence/logs/S06/xtask-check.log",
+      "observations": [
+        "Resource manifest/QRC parity and repository documentation, release manifest (38 inputs), license policy (11 dependencies), and workspace test checks passed. No command or settings registry entries were added."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo clippy --workspace --all-targets --locked --offline -- -D warnings",
+      "commit": "6dca67ada36745d492dbe25a12942fc44670a092",
+      "log": "evidence/logs/S06/clippy.log",
+      "observations": [
+        "Strict workspace Clippy passed with warnings denied."
+      ]
+    }
+  ],
+  "capability_decision": null,
+  "capability_report": null,
+  "review_kind": "self-review",
+  "scope_amendments": [],
+  "remaining_risks": [
+    "The complete Hint callback-owner and destination-scope-lease handoff remains unproven; the existing direct teardown tests pass but do not cover transfer ordering.",
+    "No new runtime-installation or cache optimization was introduced; performance measurement and any installation work remain in S17."
+  ],
+  "not_run_reasons": [
+    "T020 webengine-fixture: no current fixture proves the complete callback-owner and destination-scope-lease handoff."
+  ],
+  "next_ready_slices": [
+    "S09"
+  ]
+}

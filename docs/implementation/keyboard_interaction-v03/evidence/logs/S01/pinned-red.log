@@ -1,0 +1,33 @@
+********* Start testing of ferric_qml_tests *********
+Config: Using QtTest library 6.11.2, Qt 6.11.2 (x86_64-little_endian-lp64 shared (dynamic) release build; by GCC 16.2.1 20260810), omarchy 4.0.4
+PASS   : ferric_qml_tests::WebAppInteraction::initTestCase()
+FAIL!  : ferric_qml_tests::WebAppInteraction::test_T002_shadow_click() 'Final shadow click rejected' returned FALSE. ()
+   Loc: [/tmp/ferric-keyboard-v03-pinned/crates/ferric-browser-engine-qt/tests/qml/tst_webapp_interaction.qml(58)]
+FAIL!  : ferric_qml_tests::WebAppInteraction::test_T002_shadow_focus() 'Final shadow focus rejected' returned FALSE. ()
+   Loc: [/tmp/ferric-keyboard-v03-pinned/crates/ferric-browser-engine-qt/tests/qml/tst_webapp_interaction.qml(65)]
+PASS   : ferric_qml_tests::WebAppInteraction::test_T003_slot_and_inert()
+FAIL!  : ferric_qml_tests::WebAppInteraction::test_T004_adopted_element() 'A retained object adopted into a different document is stale' returned FALSE. ()
+   Loc: [/tmp/ferric-keyboard-v03-pinned/crates/ferric-browser-engine-qt/tests/qml/tst_webapp_interaction.qml(100)]
+FAIL!  : ferric_qml_tests::WebAppInteraction::test_T004_frame_border_projection() Owner CSS x includes the frame border
+   Actual   (): 50
+   Expected (): 57
+   Loc: [/tmp/ferric-keyboard-v03-pinned/crates/ferric-browser-engine-qt/tests/qml/tst_webapp_interaction.qml(82)]
+PASS   : ferric_qml_tests::WebAppInteraction::test_T004_frame_replaced()
+FAIL!  : ferric_qml_tests::WebAppInteraction::test_T005_disabled_fieldset() 'Disabled fieldset descendants are ineligible' returned FALSE. ()
+   Loc: [/tmp/ferric-keyboard-v03-pinned/crates/ferric-browser-engine-qt/tests/qml/tst_webapp_interaction.qml(125)]
+PASS   : ferric_qml_tests::WebAppInteraction::test_T005_ineligible(hidden)
+PASS   : ferric_qml_tests::WebAppInteraction::test_T005_ineligible(opacity)
+PASS   : ferric_qml_tests::WebAppInteraction::test_T005_ineligible(disabled)
+PASS   : ferric_qml_tests::WebAppInteraction::test_T005_ineligible(inert)
+PASS   : ferric_qml_tests::WebAppInteraction::test_T005_ineligible(detached)
+PASS   : ferric_qml_tests::WebAppInteraction::test_T005_ineligible(covered)
+PASS   : ferric_qml_tests::WebAppInteraction::test_T005_ineligible(replacement)
+FAIL!  : ferric_qml_tests::WebAppInteraction::test_T005_transparent_ancestor() 'Ancestor opacity excludes ordinary targets' returned FALSE. ()
+   Loc: [/tmp/ferric-keyboard-v03-pinned/crates/ferric-browser-engine-qt/tests/qml/tst_webapp_interaction.qml(130)]
+PASS   : ferric_qml_tests::WebAppInteraction::test_T006_viewport_overflow()
+PASS   : ferric_qml_tests::WebAppInteraction::test_T008_normal_focus()
+FAIL!  : ferric_qml_tests::WebAppInteraction::test_T008_observed_focus() 'Redirected focus must not report success' returned FALSE. ()
+   Loc: [/tmp/ferric-keyboard-v03-pinned/crates/ferric-browser-engine-qt/tests/qml/tst_webapp_interaction.qml(146)]
+PASS   : ferric_qml_tests::WebAppInteraction::cleanupTestCase()
+Totals: 13 passed, 7 failed, 0 skipped, 0 blacklisted, 8931ms
+********* Finished testing of ferric_qml_tests *********

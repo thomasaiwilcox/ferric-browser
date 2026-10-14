@@ -1,0 +1,174 @@
+{
+  "schema_version": 1,
+  "note": "Active implementation ledger. Test results live in per-slice evidence; the matrix remains the immutable plan. Subsequent review repairs are recorded in evidence/review-repairs-report.md; qualification statuses remain unchanged.",
+  "slices": [
+    {
+      "id": "S00",
+      "status": "complete",
+      "evidence": "evidence/S00.json",
+      "capability_decision": null
+    },
+    {
+      "id": "S01",
+      "status": "implemented_unqualified",
+      "evidence": "evidence/S01.json",
+      "capability_decision": null
+    },
+    {
+      "id": "S02",
+      "status": "implemented_unqualified",
+      "evidence": "evidence/S02.json",
+      "capability_decision": null
+    },
+    {
+      "id": "S03",
+      "status": "implemented_unqualified",
+      "evidence": "evidence/S03.json",
+      "capability_decision": null
+    },
+    {
+      "id": "S04",
+      "status": "implemented_unqualified",
+      "evidence": "evidence/S04.json",
+      "capability_decision": null
+    },
+    {
+      "id": "S05",
+      "status": "implemented_unqualified",
+      "evidence": "evidence/S05.json",
+      "capability_decision": null
+    },
+    {
+      "id": "S06",
+      "status": "implemented_unqualified",
+      "evidence": "evidence/S06.json",
+      "capability_decision": null
+    },
+    {
+      "id": "S07",
+      "status": "implemented_unqualified",
+      "evidence": "evidence/S07.json",
+      "capability_decision": null
+    },
+    {
+      "id": "S08",
+      "status": "implemented_unqualified",
+      "evidence": "evidence/S08.json",
+      "capability_decision": null
+    },
+    {
+      "id": "S09",
+      "status": "implemented_unqualified",
+      "evidence": "evidence/S09.json",
+      "capability_decision": null
+    },
+    {
+      "id": "S10",
+      "status": "implemented_unqualified",
+      "evidence": "evidence/S10.json",
+      "capability_decision": null
+    },
+    {
+      "id": "S11",
+      "status": "implemented_unqualified",
+      "evidence": "evidence/S11.json",
+      "capability_decision": null
+    },
+    {
+      "id": "S12",
+      "status": "implemented_unqualified",
+      "evidence": "evidence/S12.json",
+      "capability_decision": null
+    },
+    {
+      "id": "S13",
+      "status": "implemented_unqualified",
+      "evidence": "evidence/S13.json",
+      "capability_decision": null
+    },
+    {
+      "id": "S14",
+      "status": "implemented_unqualified",
+      "evidence": "evidence/S14.json",
+      "capability_decision": null
+    },
+    {
+      "id": "S15",
+      "status": "implemented_unqualified",
+      "evidence": "evidence/S15.json",
+      "capability_decision": null
+    },
+    {
+      "id": "S16",
+      "status": "implemented_unqualified",
+      "evidence": "evidence/S16.json",
+      "capability_decision": null
+    },
+    {
+      "id": "S17",
+      "status": "implemented_unqualified",
+      "evidence": "evidence/S17.json",
+      "capability_decision": null
+    },
+    {
+      "id": "S18",
+      "status": "implemented_unqualified",
+      "evidence": "evidence/S18.json",
+      "capability_decision": null
+    },
+    {
+      "id": "S19",
+      "status": "implemented_unqualified",
+      "evidence": "evidence/S19.json",
+      "capability_decision": null
+    },
+    {
+      "id": "S20",
+      "status": "blocked_environment",
+      "evidence": "evidence/S20.json",
+      "capability_decision": null
+    },
+    {
+      "id": "S21",
+      "status": "blocked_environment",
+      "evidence": "evidence/S21.json",
+      "capability_decision": null
+    },
+    {
+      "id": "S22",
+      "status": "research_no_go",
+      "evidence": "evidence/S22.json",
+      "capability_decision": "no_go"
+    },
+    {
+      "id": "S23",
+      "status": "research_no_go",
+      "evidence": "evidence/S23.json",
+      "capability_decision": "no_go"
+    },
+    {
+      "id": "S24",
+      "status": "research_no_go",
+      "evidence": "evidence/S24.json",
+      "capability_decision": "no_go"
+    },
+    {
+      "id": "S25",
+      "status": "research_no_go",
+      "evidence": "evidence/S25.json",
+      "capability_decision": "no_go"
+    },
+    {
+      "id": "S26",
+      "status": "complete",
+      "evidence": "evidence/S26.json",
+      "capability_decision": "no_need"
+    },
+    {
+      "id": "S27",
+      "status": "implemented_unqualified",
+      "evidence": "evidence/S27.json",
+      "capability_decision": null
+    }
+  ]
+}

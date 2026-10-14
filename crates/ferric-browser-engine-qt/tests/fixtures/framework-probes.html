@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Ferric S22 framework API probe</title>
+  <style>
+    body { font: 14px sans-serif; margin: 0; }
+    .probe { min-height: 96px; margin: 8px; border: 1px solid #888; }
+    #monaco { height: 120px; }
+  </style>
+  <script src="/vendor/ace.js"></script>
+  <script src="/vendor/monaco/vs/loader.js"></script>
+  <script>
+    window.__s22MonacoReady = new Promise(function(resolve, reject) {
+      window.MonacoEnvironment = {
+        getWorkerUrl: function() {
+          return "data:text/javascript, self.MonacoEnvironment = { baseUrl: 'http://127.0.0.1:8765/vendor/monaco/' }; importScripts('http://127.0.0.1:8765/vendor/monaco/vs/base/worker/workerMain.js');";
+        }
+      };
+      window.require.config({ paths: {
+        vs: "http://127.0.0.1:8765/vendor/monaco/vs"
+      }});
+      window.require(["vs/editor/editor.main"], resolve, reject);
+    });
+  </script>
+
+</head>
+<body data-ready="false">
+  <div id="ace" class="probe" aria-label="Ace probe"></div>
+  <div id="codemirror" class="probe" aria-label="CodeMirror probe"></div>
+  <div id="monaco" class="probe" aria-label="Monaco probe"></div>
+  <div id="prosemirror" class="probe" aria-label="ProseMirror probe"></div>
+  <div id="tiptap" class="probe" aria-label="Tiptap probe"></div>
+  <p>Quill probe unavailable pending a patched release for GHSA-v3m3-f69x-jf25.</p>
+  <script type="module" src="/framework-probe.js"></script>
+
+</body>
+</html>

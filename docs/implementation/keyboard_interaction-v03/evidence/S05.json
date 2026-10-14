@@ -1,0 +1,215 @@
+{
+  "schema_version": 1,
+  "slice_id": "S05",
+  "status": "implemented_unqualified",
+  "commit": "13df261addf9eff70d619afbed4113141991cd5e",
+  "environment": {
+    "os": "Linux x86_64",
+    "qt": "6.11.2",
+    "chromium": "140.0.7339.225 (installed qWebEngineChromiumVersion API probe)",
+    "renderer": "Qt Quick offscreen software renderer",
+    "window": "640x480 synthetic QML/WebEngine fixtures; native QQuickView offscreen fixture",
+    "build": "Qt release + Rust dev/test; GCC 16.2.1; local fixtures only"
+  },
+  "changed_files": [
+    "crates/ferric-browser-config/src/browser_config.rs",
+    "crates/ferric-browser-config/src/config_model.rs",
+    "crates/ferric-browser-config/src/lib.rs",
+    "crates/ferric-browser-config/src/routing.rs",
+    "crates/ferric-browser-config/src/settings.rs",
+    "crates/ferric-browser-config/src/tests.rs",
+    "crates/ferric-browser-config/src/validation.rs",
+    "crates/ferric-browser-core/src/guide.rs",
+    "crates/ferric-browser-core/src/hints.rs",
+    "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimePresentation.qml",
+    "crates/ferric-browser-engine-qt/qml/scripts/BrowserScripts.js",
+    "crates/ferric-browser-engine-qt/src/browser_ui_configuration.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_hint_pointer.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_hint_proxy_configuration.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_hint_selection.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_navigation.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_profile_setup.rs",
+    "crates/ferric-browser-engine-qt/src/hint_payload.rs",
+    "crates/ferric-browser-engine-qt/src/lib.rs",
+    "crates/ferric-browser-engine-qt/src/settings_presentation.rs",
+    "crates/ferric-browser-engine-qt/src/tests/presentation_boundaries.rs",
+    "crates/ferric-browser-engine-qt/tests/fixtures/webapp-interaction/proxy-targets.html",
+    "crates/ferric-browser-engine-qt/tests/native-insert/tst_native_insert.cpp",
+    "crates/ferric-browser-engine-qt/tests/qml/tst_webapp_interaction.qml",
+    "crates/xtask/src/main.rs",
+    "docs/implementation/keyboard_interaction-v03/evidence/S05-plan.md",
+    "docs/user/commands.md",
+    "docs/user/configuration.md",
+    "fuzz/fuzz_targets/hints.rs"
+  ],
+  "baseline_comparison": null,
+  "test_results": [
+    {
+      "test_id": "T015",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "13df261addf9eff70d619afbed4113141991cd5e",
+      "log": "evidence/logs/S05/test-engine.log",
+      "observations": [
+        "Validated opt-in collects only the visible structural editor and its unique eligible receiver; the off path excludes the pair.",
+        "Freshness and final focus use the retained receiver identity; receiver replacement is rejected and editor buffer content is absent from the payload."
+      ]
+    },
+    {
+      "test_id": "T015",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "13df261addf9eff70d619afbed4113141991cd5e",
+      "log": "evidence/logs/S05/test-engine.log",
+      "observations": [
+        "The production BrowserScripts collector and focus helper execute in ApplicationWorld and focus the exact retained editor receiver."
+      ]
+    },
+    {
+      "test_id": "T016",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "13df261addf9eff70d619afbed4113141991cd5e",
+      "log": "evidence/logs/S05/test-engine.log",
+      "observations": [
+        "Visible native labels paired with enabled hidden checkbox and radio controls activate once and reach the expected checked state; normally visible controls remain deduplicated.",
+        "Disabled and inert controls are excluded, and retargeting the label invalidates the retained pair."
+      ]
+    },
+    {
+      "test_id": "T016",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "13df261addf9eff70d619afbed4113141991cd5e",
+      "log": "evidence/logs/S05/test-engine.log",
+      "observations": [
+        "The native Qt fixture verifies one label click, one associated control click, one change event, and the resulting checked state."
+      ]
+    },
+    {
+      "test_id": "T017",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "13df261addf9eff70d619afbed4113141991cd5e",
+      "log": "evidence/logs/S05/test-engine.log",
+      "observations": [
+        "Ambiguous, class-only, password, file, read-only, display-none, and inert editor receivers plus disabled/inert controls remain excluded; replaced receiver and retargeted label identities fail freshness."
+      ]
+    },
+    {
+      "test_id": "T018",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "13df261addf9eff70d619afbed4113141991cd5e",
+      "log": "evidence/logs/S05/test-engine.log",
+      "observations": [
+        "The native fixture exercises i/I, Shift+Enter and Enter while transient Insert is active and sends QInputMethodEvent preedit/commit events; the existing native suite retains Escape and lost-release regressions.",
+        "The composition event is Qt test injection, not qualification of a live input-method provider or editor framework build."
+      ]
+    },
+    {
+      "test_id": "T018",
+      "level": "native-wayland",
+      "result": "not_run",
+      "command": "No physical Wayland keyboard/IME run was available in this session.",
+      "commit": "13df261addf9eff70d619afbed4113141991cd5e",
+      "log": null,
+      "reason": "The offscreen Qt fixture and prior nested-Wayland startup smoke do not provide physical key or live IME evidence."
+    },
+    {
+      "test_id": "T020",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "13df261addf9eff70d619afbed4113141991cd5e",
+      "log": "evidence/logs/S05/test-engine.log",
+      "observations": [
+        "The paired-map teardown fixture confirms retained representative/receiver records and observers are cleared and stale actions fail afterward.",
+        "The complete callback-owner and destination-scope-lease handoff remains outside this direct teardown fixture and is unproven; this is why S05 remains implemented_unqualified."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask check",
+      "commit": "13df261addf9eff70d619afbed4113141991cd5e",
+      "log": "evidence/logs/S05/xtask-check.log",
+      "observations": [
+        "The complete workspace test suite passes, including hint candidate parsing/identity, core intent mapping, and typed configuration precedence and validation."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "13df261addf9eff70d619afbed4113141991cd5e",
+      "log": "evidence/logs/S05/test-engine.log",
+      "observations": [
+        "All 113 Qt Quick/WebEngine tests pass, including the full pre-existing interaction suite and new proxy fixtures."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "commit": "13df261addf9eff70d619afbed4113141991cd5e",
+      "log": "evidence/logs/S05/test-engine.log",
+      "observations": [
+        "The engine task's native-insert CTest target passes with all 51 native tests."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo test -p ferric-browser-config --locked --offline",
+      "commit": "13df261addf9eff70d619afbed4113141991cd5e",
+      "log": "evidence/logs/S05/config-tests.log",
+      "observations": [
+        "All 44 config tests pass, covering the off default, typed values, runtime override, profile/config layering, site precedence, and invalid policy rejection."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask docs",
+      "commit": "13df261addf9eff70d619afbed4113141991cd5e",
+      "log": "evidence/logs/S05/docs-generation.log",
+      "observations": [
+        "The user configuration and command docs regenerate with the opt-in setting."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo xtask check",
+      "commit": "13df261addf9eff70d619afbed4113141991cd5e",
+      "log": "evidence/logs/S05/xtask-check.log",
+      "observations": [
+        "xtask check confirms generated-document parity, architecture boundaries, QML lint, and the workspace test suite."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo clippy --workspace --all-targets --locked --offline -- -D warnings",
+      "commit": "13df261addf9eff70d619afbed4113141991cd5e",
+      "log": "evidence/logs/S05/clippy.log",
+      "observations": [
+        "Strict workspace Clippy passes; compiler output contains only warnings originating in the installed Qt headers."
+      ]
+    }
+  ]
+}

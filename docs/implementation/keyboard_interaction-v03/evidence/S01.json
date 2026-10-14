@@ -1,0 +1,191 @@
+{
+  "schema_version": 1,
+  "slice_id": "S01",
+  "status": "implemented_unqualified",
+  "commit": "af154a203f43f9973e0a1a14902d35d7d6b54d4f",
+  "environment": {
+    "os": "Linux x86_64",
+    "qt": "6.11.2",
+    "chromium": "140.0.7339.225",
+    "renderer": "offscreen software",
+    "window": "640x480 CSS source viewport at zoom 1 for functional fixtures; benchmark zoom 0.8/1/1.25 recorded per sample set",
+    "build": "Qt release + Rust dev/test baseline; synthetic local fixtures only"
+  },
+  "changed_files": [
+    "crates/ferric-browser-engine-qt/tests/fixtures/webapp-interaction/README.md",
+    "crates/ferric-browser-engine-qt/tests/fixtures/webapp-interaction/adversarial-targets.html",
+    "crates/ferric-browser-engine-qt/tests/fixtures/webapp-interaction/frame-targets.html",
+    "crates/ferric-browser-engine-qt/tests/fixtures/webapp-interaction/performance-targets.html",
+    "crates/ferric-browser-engine-qt/tests/fixtures/webapp-interaction/shadow-targets.html",
+    "crates/ferric-browser-engine-qt/tests/fixtures/webapp-interaction/viewport-overflow.html",
+    "crates/ferric-browser-engine-qt/tests/native-insert/tst_native_insert.cpp",
+    "crates/ferric-browser-engine-qt/tests/qml-perf/tst_hint_performance.qml",
+    "crates/ferric-browser-engine-qt/tests/qml/tst_webapp_interaction.qml",
+    "docs/TESTING.md"
+  ],
+  "baseline_comparison": {
+    "pinned_commit": "4337056f632de0c710943fa6df76c67cf14b8b47",
+    "current_production_start": "e9a576fd375927733b200f91a6387dea4698840d",
+    "report": "evidence/S01-reproduction.md",
+    "result": "Eleven WebEngine failures and one native shadow-focus failure reproduced before production edits."
+  },
+  "test_results": [
+    {
+      "test_id": "T002",
+      "level": "webengine-fixture",
+      "result": "failed",
+      "command": "QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME= QT_QUICK_BACKEND=software target/qml-tests/qml_tests -input crates/ferric-browser-engine-qt/tests/qml",
+      "commit": "af154a203f43f9973e0a1a14902d35d7d6b54d4f",
+      "log": "evidence/logs/S01/current-qml.log",
+      "observations": [
+        "Baseline reproduction; all 80 prior QML tests remain green. Overall totals: 95 passed, 11 failed."
+      ]
+    },
+    {
+      "test_id": "T003",
+      "level": "webengine-fixture",
+      "result": "failed",
+      "command": "QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME= QT_QUICK_BACKEND=software target/qml-tests/qml_tests -input crates/ferric-browser-engine-qt/tests/qml",
+      "commit": "af154a203f43f9973e0a1a14902d35d7d6b54d4f",
+      "log": "evidence/logs/S01/current-qml.log",
+      "observations": [
+        "Baseline reproduction; all 80 prior QML tests remain green. Overall totals: 95 passed, 11 failed."
+      ]
+    },
+    {
+      "test_id": "T004",
+      "level": "webengine-fixture",
+      "result": "failed",
+      "command": "QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME= QT_QUICK_BACKEND=software target/qml-tests/qml_tests -input crates/ferric-browser-engine-qt/tests/qml",
+      "commit": "af154a203f43f9973e0a1a14902d35d7d6b54d4f",
+      "log": "evidence/logs/S01/current-qml.log",
+      "observations": [
+        "Baseline reproduction; all 80 prior QML tests remain green. Overall totals: 95 passed, 11 failed."
+      ]
+    },
+    {
+      "test_id": "T005",
+      "level": "webengine-fixture",
+      "result": "failed",
+      "command": "QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME= QT_QUICK_BACKEND=software target/qml-tests/qml_tests -input crates/ferric-browser-engine-qt/tests/qml",
+      "commit": "af154a203f43f9973e0a1a14902d35d7d6b54d4f",
+      "log": "evidence/logs/S01/current-qml.log",
+      "observations": [
+        "Baseline reproduction; all 80 prior QML tests remain green. Overall totals: 95 passed, 11 failed."
+      ]
+    },
+    {
+      "test_id": "T006",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME= QT_QUICK_BACKEND=software target/qml-tests/qml_tests -input crates/ferric-browser-engine-qt/tests/qml",
+      "commit": "af154a203f43f9973e0a1a14902d35d7d6b54d4f",
+      "log": "evidence/logs/S01/current-qml.log",
+      "observations": [
+        "Baseline reproduction; all 80 prior QML tests remain green. Overall totals: 95 passed, 11 failed."
+      ]
+    },
+    {
+      "test_id": "T008",
+      "level": "webengine-fixture",
+      "result": "failed",
+      "command": "QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME= QT_QUICK_BACKEND=software target/qml-tests/qml_tests -input crates/ferric-browser-engine-qt/tests/qml",
+      "commit": "af154a203f43f9973e0a1a14902d35d7d6b54d4f",
+      "log": "evidence/logs/S01/current-qml.log",
+      "observations": [
+        "Baseline reproduction; all 80 prior QML tests remain green. Overall totals: 95 passed, 11 failed."
+      ]
+    },
+    {
+      "test_id": "T002",
+      "level": "native-qt-offscreen",
+      "result": "failed",
+      "command": "cmake -S crates/ferric-browser-engine-qt/tests/native-insert -B target/native-insert; cmake --build target/native-insert --parallel 2; ctest --test-dir target/native-insert --output-on-failure",
+      "commit": "af154a203f43f9973e0a1a14902d35d7d6b54d4f",
+      "log": "evidence/logs/S01/current-native.log",
+      "observations": [
+        "49 passed, one new shadow-focus assertion failed before original Qt text entry; existing native cases remain green."
+      ]
+    },
+    {
+      "test_id": "T043",
+      "level": "performance",
+      "result": "not_run",
+      "command": "QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME= QT_QUICK_BACKEND=software target/qml-tests/qml_tests -input /tmp/ferric-keyboard-v03-pinned/crates/ferric-browser-engine-qt/tests/qml-perf",
+      "commit": "4337056f632de0c710943fa6df76c67cf14b8b47",
+      "log": "evidence/logs/S01/pinned-performance.log",
+      "reason": "600 renderer samples were acquired, but full comparable stage qualification is not complete: concurrent compilation and missing transfer/Rust/overlay stage timings. These samples are exploratory, not a performance pass."
+    },
+    {
+      "test_id": "T007",
+      "level": "webengine-fixture",
+      "result": "failed",
+      "command": "QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME= QT_QUICK_BACKEND=software target/qml-tests/qml_tests -input crates/ferric-browser-engine-qt/tests/qml",
+      "commit": "af154a203f43f9973e0a1a14902d35d7d6b54d4f",
+      "log": "evidence/logs/S01/current-qml.log"
+    },
+    {
+      "test_id": "T009",
+      "level": "webengine-fixture",
+      "result": "failed",
+      "command": "QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME= QT_QUICK_BACKEND=software target/qml-tests/qml_tests -input crates/ferric-browser-engine-qt/tests/qml",
+      "commit": "af154a203f43f9973e0a1a14902d35d7d6b54d4f",
+      "log": "evidence/logs/S01/current-qml.log"
+    },
+    {
+      "test_id": "T020",
+      "level": "webengine-fixture",
+      "result": "not_run",
+      "command": "QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME= QT_QUICK_BACKEND=software target/qml-tests/qml_tests -input crates/ferric-browser-engine-qt/tests/qml",
+      "commit": "af154a203f43f9973e0a1a14902d35d7d6b54d4f",
+      "log": "evidence/logs/S01/current-qml.log",
+      "reason": "Direct post-action map/listener teardown passes, but this does not exercise the full callback-owner and destination lease-handoff contract."
+    }
+  ],
+  "capability_decision": null,
+  "capability_report": null,
+  "review_kind": "self-review",
+  "scope_amendments": [
+    {
+      "path": "crates/ferric-browser-engine-qt/tests/qml-perf/tst_hint_performance.qml",
+      "reason": "Keep the explicit 10-warmup/100-sample benchmark outside ordinary functional test discovery while reusing the real Qt Quick/WebEngine runner."
+    }
+  ],
+  "remaining_risks": [
+    "The positive target assertions are intentionally red at baseline; S02 must repair and pass them before a dependent production capability starts.",
+    "T043 is incomplete: idle comparable baseline and separately measured transfer/Rust labels/ranking/QML overlay stages remain required.",
+    "This fixture set is not exhaustive nested-frame, depth, paired-target or callback-owner proof; S02 must extend it where required.",
+    "Wayland editable input and physical desktop/IME/live-site qualification remain unavailable or not_run."
+  ],
+  "not_run_reasons": [
+    "No live site or disposable external account/document has been exercised.",
+    "The renderer sample set overlaps compilation and combines discovery stages; it is exploratory, not a comparable T043 pass."
+  ],
+  "next_ready_slices": [
+    "S02",
+    "S07"
+  ],
+  "measurements": {
+    "raw": "evidence/logs/S01/pinned-performance.json",
+    "qualification": "exploratory only; C17/T043 gaps retained"
+  },
+  "repository_gates": {
+    "baseline_source_unchanged": "S00 records full Rust/CLI, Clippy, repository, resource/doc, engine/native, adapter and Wayland outcomes before this test-only slice. No production source is modified by S01.",
+    "current_qt_tests": "evidence/logs/S01/current-results.json"
+  },
+  "dependency_handoff": "The reproduction harness and initial renderer samples are implemented. S02 may repair the proved baseline defects; this handoff does not qualify a new native/target capability or T043.",
+  "additional_checks": [
+    {
+      "name": "frame replacement positive readiness",
+      "current_log": "evidence/logs/S01/current-frame-replacement.log",
+      "pinned_log": "evidence/logs/S01/pinned-frame-replacement.log",
+      "result": "passed",
+      "test_source_sha256": "928f8ac070911e77920da6cfe4b2bb0fb7d88e3198832148b408d0b10ac5b6a9",
+      "note": "Worktree update after af154a2 strengthens only frame readiness; full original red runs stay tied to af154a2.",
+      "commands": [
+        "QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME= QT_QUICK_BACKEND=software target/qml-tests/qml_tests -input crates/ferric-browser-engine-qt/tests/qml/tst_webapp_interaction.qml WebAppInteraction::test_T004_frame_replaced",
+        "QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME= QT_QUICK_BACKEND=software target/qml-tests/qml_tests -input /tmp/ferric-keyboard-v03-pinned/crates/ferric-browser-engine-qt/tests/qml/tst_webapp_interaction.qml WebAppInteraction::test_T004_frame_replaced"
+      ]
+    }
+  ]
+}

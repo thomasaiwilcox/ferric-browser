@@ -1,14 +1,14 @@
 //! Browser behavior configuration records.
 
 use super::{
-    CollisionPolicy, Deserialize, EntryMode, ExternalLinks, HintAutoFollow, HintUnmatchedPolicy,
-    LastClose, LogLevel, PermissionDecision, PortalMode, Serialize, SessionRestore,
-    default_builtin, default_checkpoint, default_command_limit, default_count_limit,
-    default_hint_chars, default_hint_marker_scale, default_hint_min_chars,
-    default_keychain_timeout, default_languages, default_lists, default_log_size, default_new_tab,
-    default_overlay_delay, default_related_position, default_retained_files, default_retention,
-    default_search_engine, default_start_pages, default_true, default_undo_limit,
-    default_update_interval, default_zoom,
+    BTreeMap, CollisionPolicy, Deserialize, EntryMode, ExternalLinks, HintAutoFollow,
+    HintProxyTargets, HintSelectorFamily, HintSelectorPolicy, HintUnmatchedPolicy, LastClose,
+    LogLevel, PermissionDecision, PortalMode, Serialize, SessionRestore, default_builtin,
+    default_checkpoint, default_command_limit, default_count_limit, default_hint_chars,
+    default_hint_marker_scale, default_hint_min_chars, default_keychain_timeout, default_languages,
+    default_lists, default_log_size, default_new_tab, default_overlay_delay,
+    default_related_position, default_retained_files, default_retention, default_search_engine,
+    default_start_pages, default_true, default_undo_limit, default_update_interval, default_zoom,
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -26,6 +26,10 @@ pub struct HintsConfig {
     pub rapid_unmatched: HintUnmatchedPolicy,
     #[serde(default = "default_hint_marker_scale")]
     pub marker_scale: f64,
+    #[serde(default)]
+    pub proxy_targets: HintProxyTargets,
+    #[serde(default)]
+    pub selectors: BTreeMap<HintSelectorFamily, HintSelectorPolicy>,
 }
 
 impl Default for HintsConfig {
@@ -37,6 +41,8 @@ impl Default for HintsConfig {
             unmatched: HintUnmatchedPolicy::default(),
             rapid_unmatched: HintUnmatchedPolicy::default(),
             marker_scale: default_hint_marker_scale(),
+            proxy_targets: HintProxyTargets::default(),
+            selectors: BTreeMap::new(),
         }
     }
 }
@@ -46,6 +52,10 @@ impl Default for HintsConfig {
 pub struct InputConfig {
     #[serde(default)]
     pub entry_mode: EntryMode,
+    #[serde(default)]
+    pub shortcut_policy: InputShortcutPolicy,
+    #[serde(default)]
+    pub page_keys: Vec<String>,
     #[serde(default = "default_true")]
     pub auto_insert: bool,
     #[serde(default = "default_keychain_timeout")]
@@ -58,9 +68,32 @@ impl Default for InputConfig {
     fn default() -> Self {
         Self {
             entry_mode: EntryMode::default(),
+            shortcut_policy: InputShortcutPolicy::default(),
+            page_keys: Vec::new(),
             auto_insert: true,
             keychain_timeout_ms: default_keychain_timeout(),
             count_limit: default_count_limit(),
+        }
+    }
+}
+
+/// Persistent shortcut ownership policy for Normal-mode input.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum InputShortcutPolicy {
+    /// Preserve Ferric's existing Normal-mode bindings.
+    #[default]
+    BrowserFirst,
+    /// Route only the exact configured logical keys to the current page.
+    Mixed,
+}
+
+impl InputShortcutPolicy {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::BrowserFirst => "browser-first",
+            Self::Mixed => "mixed",
         }
     }
 }

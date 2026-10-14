@@ -1,0 +1,36 @@
+{
+  "baseline_commit": "3e961cb5438518f9cbd20af7e0881cc2056fba9e",
+  "current_commit": "f447da99f01eb666ca0f3be2d334b3eda0411466",
+  "files": [
+    {
+      "path": "crates/ferric-browser-engine-qt/qml/scripts/BrowserScripts.js",
+      "baseline_sha256": "ca7499e37b4389ee75117432385965b68538fe4fd11fc5203431a70eb7d701ac",
+      "current_sha256": "ca7499e37b4389ee75117432385965b68538fe4fd11fc5203431a70eb7d701ac",
+      "identical": true
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/qml/components/FerricHintOverlay.qml",
+      "baseline_sha256": "abc88ac63077aae7de57cbc28f1b19a1c8f3f082ef428a4695f6ec892982a963",
+      "current_sha256": "abc88ac63077aae7de57cbc28f1b19a1c8f3f082ef428a4695f6ec892982a963",
+      "identical": true
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/tests/qml-perf/tst_hint_performance.qml",
+      "baseline_sha256": "3a0a0319e9eec871dfc0b0d1680bb829d7b2c35cd99b90a0cfb12aec493f883f",
+      "current_sha256": "3a0a0319e9eec871dfc0b0d1680bb829d7b2c35cd99b90a0cfb12aec493f883f",
+      "identical": true
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/tests/fixtures/webapp-interaction/performance-targets.html",
+      "baseline_sha256": "704ad29dac4cfdccb70cf40c96f8f68ac5083842abc19a5d2af690c37c7a517d",
+      "current_sha256": "704ad29dac4cfdccb70cf40c96f8f68ac5083842abc19a5d2af690c37c7a517d",
+      "identical": true
+    },
+    {
+      "path": "crates/ferric-browser-engine-qt/qml/scripts/PageInteractionScripts.js",
+      "baseline_sha256": "3cee030f9cb692a1b633b0754d91ea44bd4ffaa29203526786139a722e4b2a98",
+      "current_sha256": "3cee030f9cb692a1b633b0754d91ea44bd4ffaa29203526786139a722e4b2a98",
+      "identical": true
+    }
+  ]
+}

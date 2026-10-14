@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Scoped Hint fixture</title>
+<style>
+  body { margin: 0; font: 14px sans-serif; }
+  #scope { display: block; width: 520px; height: 220px; overflow: auto; padding: 12px; }
+  #scope button, #outside { margin: 4px; }
+  #same-origin-frame { display: block; width: 240px; height: 70px; border: 0; }
+</style>
+<body data-ready="true">
+  <button id="outside">Outside target</button>
+  <section id="scope" role="button" aria-label="Scoped region">
+    <button id="inside">Inside button</button>
+    <a id="inside-link" href="https://example.test/inside">Inside link</a>
+    <div id="shadow-host"></div>
+    <iframe id="same-origin-frame" srcdoc="<!doctype html><html><body><button>Frame child</button></body></html>"></iframe>
+    <div style="height:300px"></div>
+  </section>
+  <script>
+    const root = document.getElementById('shadow-host').attachShadow({ mode: 'open' });
+    const button = document.createElement('button');
+    button.textContent = 'Shadow child';
+    root.appendChild(button);
+    const frame = document.createElement('iframe');
+    frame.style = 'display:block;width:180px;height:60px;border:0';
+    frame.srcdoc = '<!doctype html><html><body><button>Shadow frame child</button></body></html>';
+    root.appendChild(frame);
+  </script>
+</body>
+</html>

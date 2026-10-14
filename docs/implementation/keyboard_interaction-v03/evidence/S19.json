@@ -1,0 +1,260 @@
+{
+  "schema_version": 1,
+  "slice_id": "S19",
+  "status": "implemented_unqualified",
+  "commit": "491923178b39fe0035fe4c6ea01a1da78cfb7dbe",
+  "environment": {
+    "os": "Linux 7.2.3-arch1-3 x86_64",
+    "cpu": "Intel Core i5-7200U @ 2.50 GHz",
+    "qt": "6.11.2",
+    "chromium": "QtWebEngine 6.11.2 / Chrome 140.0.0.0",
+    "compiler": "GCC 16.2.1 20260810",
+    "rustc": "1.98.0 (88d9e12ae 2026-08-18)",
+    "cargo": "1.98.0 (797e8a9bc 2026-08-05)",
+    "build": "Locked offline workspace; unchanged Qt 6.11.2 toolchain and dependency graph.",
+    "measurement_runner": "Qt Quick/WebEngine offscreen software runner; 640x480 CSS viewport; devicePixelRatio 1; QtWebEngine Chrome 140.0.0.0.",
+    "scope": "Explicit Grid double-click request through the public Qt pointer adapter; local-source boundary; unavailable production gate until Wayland qualification."
+  },
+  "changed_files": [
+    "crates/ferric-browser-core/src/command.rs",
+    "crates/ferric-browser-core/src/dispatcher.rs",
+    "crates/ferric-browser-core/src/guide.rs",
+    "crates/ferric-browser-core/src/input.rs",
+    "crates/ferric-browser-core/src/spatial_navigation.rs",
+    "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeChrome.qml",
+    "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeSurface.qml",
+    "crates/ferric-browser-engine-qt/qml/components/FerricSpatialGridOverlay.qml",
+    "crates/ferric-browser-engine-qt/qml/scripts/KeyboardPresentation.js",
+    "crates/ferric-browser-engine-qt/src/browser_page_pointer_adapter.cpp",
+    "crates/ferric-browser-engine-qt/src/browser_page_pointer_adapter.h",
+    "crates/ferric-browser-engine-qt/src/browser_ui_guide.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_spatial.rs",
+    "crates/ferric-browser-engine-qt/tests/native-insert/tst_native_insert.cpp",
+    "crates/ferric-browser-engine-qt/tests/qml/tst_chrome_interactions.qml",
+    "crates/ferric-browser-ipc/src/command_codec_spatial.rs",
+    "crates/ferric-browser-ipc/src/command_schema.rs",
+    "docs/DEVELOPMENT_SPEC.md",
+    "docs/TESTING.md",
+    "docs/architecture/ADR-0013-spatial-grid-navigation.md",
+    "docs/architecture/ADR-0016-qualification-gated-double-click.md",
+    "docs/implementation/keyboard_interaction-v03/evidence/S19-plan.md",
+    "docs/implementation/keyboard_interaction-v03/evidence/S19.json",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S19-adapter-smoke.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S19-check.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S19-clippy.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S19-core-targeted.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S19-docs.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S19-doubleclick-offscreen.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S19-engine.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S19-format-diff.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S19-pack-tests.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S19-pack-validation.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S19-wayland.log",
+    "docs/implementation/keyboard_interaction-v03/progress.json",
+    "docs/requirements.csv",
+    "docs/user/bindings.md",
+    "docs/user/commands.md"
+  ],
+  "baseline_comparison": "Implementation started from S18 evidence tip 0528d7ec55472cb4de697772bb9d5ff49bdbabd7. No dependency, lockfile, or toolchain changes. The initial full-suite run exposed the Qt window-wide click counter reusing the preceding fixture's identical coordinates; the final fixture isolates the target beyond the configured double-click distance and passes in the full suite.",
+  "test_results": [
+    {
+      "test_id": "T046",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS='--disable-gpu --js-flags=--expose-gc' target/native-insert/native_insert pointerAdapterDoubleClickSequence",
+      "commit": "491923178b39fe0035fe4c6ea01a1da78cfb7dbe",
+      "log": "evidence/logs/S19-doubleclick-offscreen.log",
+      "observations": [
+        "One enabled production-adapter request produced two trusted DOM click events followed by one trusted dblclick; click detail values were 1 and 2, and dblclick detail was 2.",
+        "Transient user activation was active for each recorded DOM event. The fixture observed two click handlers, one double-click handler, an unchanged document URL, one delivered acknowledgement, and rejection of a duplicate request ID.",
+        "The default-disabled adapter path returned unavailable and produced no DOM events. These facts apply only to the tested offscreen Qt/WebEngine build."
+      ]
+    },
+    {
+      "test_id": "T046",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "491923178b39fe0035fe4c6ea01a1da78cfb7dbe",
+      "log": "evidence/logs/S19-engine.log",
+      "observations": [
+        "The final integrated engine run passed 144 Qt Quick/WebEngine tests and native_insert CTest 1/1, including the double-click adapter case."
+      ]
+    },
+    {
+      "test_id": "T046",
+      "level": "native-wayland",
+      "result": "not_run",
+      "command": "CARGO_NET_OFFLINE=true cargo xtask test wayland",
+      "commit": "491923178b39fe0035fe4c6ea01a1da78cfb7dbe",
+      "log": "evidence/logs/S19-wayland.log",
+      "reason": "The nested Weston compositor lacks the virtual-keyboard protocol required by wtype. Startup smoke passed, but native editable-page input and double-click qualification could not run.",
+      "observations": [
+        "Startup-only Wayland smoke is not treated as physical input qualification."
+      ]
+    },
+    {
+      "test_id": "T010",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true cargo test -p ferric-browser-core --lib double_click --locked --offline -- --nocapture",
+      "commit": "491923178b39fe0035fe4c6ea01a1da78cfb7dbe",
+      "log": "evidence/logs/S19-core-targeted.log",
+      "observations": [
+        "The one-pending terminal request and Grid-only chord tests passed; aliases could not replay grid-double-click through CLI, IPC, switcher, userscript, or macro sources."
+      ]
+    },
+    {
+      "test_id": "T010",
+      "level": "native-qt-offscreen",
+      "result": "not_run",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "491923178b39fe0035fe4c6ea01a1da78cfb7dbe",
+      "log": "evidence/logs/S19-engine.log",
+      "reason": "The current fixtures do not compose a physical local Grid key, BrowserUi owner/permit handoff, QML request, and native adapter dispatch. The direct adapter fixture does not establish that full local UI authority journey."
+    },
+    {
+      "test_id": "T014",
+      "level": "native-qt-offscreen",
+      "result": "not_run",
+      "command": "QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS='--disable-gpu --js-flags=--expose-gc' target/native-insert/native_insert pointerAdapterDoubleClickSequence",
+      "commit": "491923178b39fe0035fe4c6ea01a1da78cfb7dbe",
+      "log": "evidence/logs/S19-doubleclick-offscreen.log",
+      "reason": "The fixture records isTrusted and transient activation, but does not exercise fullscreen, popup, clipboard, or chooser outcomes; those permission-gated API results remain unqualified."
+    },
+    {
+      "test_id": "T014",
+      "level": "native-wayland",
+      "result": "not_run",
+      "command": "CARGO_NET_OFFLINE=true cargo xtask test wayland",
+      "commit": "491923178b39fe0035fe4c6ea01a1da78cfb7dbe",
+      "log": "evidence/logs/S19-wayland.log",
+      "reason": "Physical Wayland input could not run because the nested Weston compositor lacks the virtual-keyboard protocol required by wtype; permission-gated outcomes were not exercised."
+    },
+    {
+      "test_id": "T045",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask check",
+      "commit": "491923178b39fe0035fe4c6ea01a1da78cfb7dbe",
+      "log": "evidence/logs/S19-check.log",
+      "observations": [
+        "Locked workspace tests passed, including 441 core tests and the engine crate tests; one pre-existing test remains ignored."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask check",
+      "commit": "491923178b39fe0035fe4c6ea01a1da78cfb7dbe",
+      "log": "evidence/logs/S19-check.log",
+      "observations": [
+        "The full Qt Quick/WebEngine fixture suite passed 144 tests."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "491923178b39fe0035fe4c6ea01a1da78cfb7dbe",
+      "log": "evidence/logs/S19-engine.log",
+      "observations": [
+        "All 144 Qt Quick/WebEngine tests and native_insert CTest 1/1 passed on the final adapter implementation. The final Ferric application also passed the bounded offscreen startup smoke recorded in S19-adapter-smoke.log."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true cargo xtask docs",
+      "commit": "491923178b39fe0035fe4c6ea01a1da78cfb7dbe",
+      "log": "evidence/logs/S19-docs.log",
+      "observations": [
+        "Generated commands, bindings, configuration, and action references from the registries."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask check",
+      "commit": "491923178b39fe0035fe4c6ea01a1da78cfb7dbe",
+      "log": "evidence/logs/S19-check.log",
+      "observations": [
+        "Command registry and IPC schema tests passed; generated user docs, requirements traceability, resource manifests, and workspace checks passed. cargo xtask docs also regenerated commands, bindings, configuration, and action references."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "static-inspection",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true cargo clippy --workspace --all-targets --locked --offline -- -D warnings; cargo fmt --all -- --check; git diff --check",
+      "commit": "491923178b39fe0035fe4c6ea01a1da78cfb7dbe",
+      "log": "evidence/logs/S19-clippy.log",
+      "observations": [
+        "Strict workspace Clippy completed with Rust -D warnings clean. Compiler output contains existing Qt/GCC generated-C++ warnings."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "static-inspection",
+      "result": "passed",
+      "command": "cargo fmt --all -- --check; git diff --check",
+      "commit": "491923178b39fe0035fe4c6ea01a1da78cfb7dbe",
+      "log": "evidence/logs/S19-format-diff.log",
+      "observations": [
+        "Rust formatting and whitespace checks passed on the final tree."
+      ]
+    },
+    {
+      "test_id": "T010",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "ctest --test-dir target/application-tests -R '^application_offscreen$' --verbose",
+      "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+      "log": "evidence/completion-application-functional-final.log",
+      "observations": [
+        "Real BrowserUi generic entry rejects Pointer Hint; local Qt keyboard entry and explicit palette handoffs work. The standalone CLI rejects the entire restricted chain before sending any member. This is Qt-generated local input, not physical Wayland evidence.",
+        "This follow-up records bounded local coverage; missing physical, live-site, chooser and human evidence remains unqualified."
+      ]
+    },
+    {
+      "test_id": "T014",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "ctest --test-dir target/application-tests -R '^application_offscreen$' --verbose",
+      "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+      "log": "evidence/completion-application-functional-final.log",
+      "observations": [
+        "Offscreen process-local clipboard allow/deny and fullscreen feature enabled/disabled outcomes are observed through real policy/Qt requests; popup without activation is denied. Native chooser and physical Wayland outcomes are not qualified. Fullscreen is explicitly enabled only in the allowed fixture.",
+        "This follow-up records bounded local coverage; missing physical, live-site, chooser and human evidence remains unqualified."
+      ]
+    }
+  ],
+  "capability_decision": null,
+  "capability_report": "docs/architecture/ADR-0016-qualification-gated-double-click.md",
+  "review_kind": "self-review",
+  "scope_amendments": [],
+  "remaining_risks": [
+    "Native Wayland double-click input and the composed local Grid-to-BrowserUi-to-adapter authority handoff remain unqualified, so the runtime gate is hardcoded false.",
+    "Fullscreen, popup, clipboard, and chooser outcomes were not exercised; observed trust and transient activation do not imply those APIs will be granted.",
+    "A page may act on both click events before handling dblclick. One request therefore means one native double-click attempt, not exactly-once page activation.",
+    "The measured event order and activation behavior apply only to Qt 6.11.2 / QtWebEngine 6.11.2 in the offscreen software runner. No live-site or broader platform claim is made."
+  ],
+  "not_run_reasons": [
+    "T010 native-qt-offscreen: no composed local Grid key, owner/permit, QML, and adapter journey is available in the current native fixture.",
+    "T014 native-qt-offscreen: permission-gated fullscreen, popup, clipboard, and chooser outcome cases were not exercised.",
+    "T014 native-wayland and T046 native-wayland: nested Weston lacks the virtual-keyboard protocol required by wtype; only bounded startup smoke passed."
+  ],
+  "next_ready_slices": [
+    "S20"
+  ],
+  "completion_followup": {
+    "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+    "report": "evidence/completion-report.md",
+    "status": "implemented_unqualified",
+    "scope": "New composed application observations supplement historical component evidence; no missing qualification level is inferred."
+  }
+}

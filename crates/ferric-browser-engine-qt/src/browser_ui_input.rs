@@ -1,9 +1,10 @@
 use super::{
-    BindingOutcome, CommandInvocation, CxxQtType, DispatchTarget, Mode, ParseInput, ParsedCommand,
-    Pin, QString, RuntimeDispatch, binding_uses_full_command_executor, elapsed_ms,
+    BindingOutcome, CommandInvocation, CommandSource, CxxQtType, DispatchTarget, Mode, ParseInput,
+    ParsedCommand, Pin, QString, RuntimeDispatch, binding_uses_full_command_executor, elapsed_ms,
     engine_action_name, modal_command_prefill, operation_is_terminal, operation_status_kind,
-    parse_chain, publish_ipc_event, qobject, valid_macro_register,
+    parse_chain, parse_hint_options, publish_ipc_event, qobject, valid_macro_register,
 };
+use crate::hint_policy::hint_requests_pointer;
 
 impl qobject::BrowserUi {
     pub(super) fn execute_command(self: Pin<&mut Self>, input: &QString) -> bool {
@@ -14,6 +15,25 @@ impl qobject::BrowserUi {
                 return false;
             }
         };
+        if commands.len() == 1 && hint_requests_pointer(&commands[0]) {
+            let options = match parse_hint_options(&commands[0]) {
+                Ok(options) => options,
+                Err(error) => {
+                    self.set_status_text(QString::from(error));
+                    return false;
+                }
+            };
+            if let Err(error) = self
+                .as_ref()
+                .rust()
+                .registry
+                .validate(&commands[0], self.as_ref().rust().core_mode)
+            {
+                self.set_status_text(QString::from(error.to_string()));
+                return false;
+            }
+            return self.set_local_pointer_hint_options(&options, CommandSource::Ui);
+        }
         self.execute_parsed_commands(commands)
     }
 
@@ -47,6 +67,34 @@ impl qobject::BrowserUi {
                     return;
                 }
                 let mut parsed = parsed_commands.remove(0);
+                if hint_requests_pointer(&parsed) {
+                    if count != 1 {
+                        self.set_status_text(QString::from(
+                            "Pointer click does not accept a key count",
+                        ));
+                        return;
+                    }
+                    let options = match parse_hint_options(&parsed) {
+                        Ok(options) => options,
+                        Err(error) => {
+                            self.set_status_text(QString::from(error));
+                            return;
+                        }
+                    };
+                    if let Err(error) = self
+                        .as_ref()
+                        .rust()
+                        .registry
+                        .validate(&parsed, self.as_ref().rust().core_mode)
+                    {
+                        self.set_status_text(QString::from(error.to_string()));
+                        return;
+                    }
+                    let _ = self
+                        .as_mut()
+                        .set_local_pointer_hint_options(&options, CommandSource::Keyboard);
+                    return;
+                }
                 let registry = self.as_ref().rust().registry.clone();
                 if parsed.name == "scroll-target" && count > 1 {
                     self.set_status_text(QString::from("scroll-target does not accept a count"));

@@ -1,14 +1,111 @@
+use super::browser_ui_hint_pointer::HintPointerAction;
+use super::hint_payload::validate_hint_candidates_for_family;
+use super::hint_policy::{
+    HintOptions, LocalInteractionOperation, LocalInteractionOwner, parse_hint_options,
+};
 use super::{
-    CommandSource, CoreHintAutoFollow, CxxQtType, DispatchTarget, Effect, EngineEffect, Event,
-    HintInteraction, HintInteractionInput, HintInteractionOutcome, HintKind, HintSession,
-    HintTarget, IpcOpenTarget, IpcRoute, JourneyEdgeKind, Mode, ParsedCommand, Pin, QString, TabId,
-    ValidatedUrl, Value, assign_labels_with_options, clean_link, current_target,
-    external_hint_target, hint_json, hint_kind_name, hint_uses_url_action, link_cleaning_policy,
-    parse_hint_candidate, parse_hint_payload, qobject, rapid_hint_keeps_mode, refresh_labels,
-    safe_ipc_url,
+    CommandRegistry, CoreHintAutoFollow, CxxQtType, Event, HintInteraction, HintInteractionInput,
+    HintInteractionOutcome, HintSession, HintTarget, Mode, ParsedCommand, Pin, QString, Value,
+    assign_labels_with_options, current_target, hint_json, parse_hint_payload, qobject,
 };
 
+use ferric_browser_config::{Config, HintSelectorFamily, resolve_hint_selector_policies};
+
+pub(super) fn effective_hint_selector_snapshot(
+    config_json: &str,
+    url: &str,
+    configuration_revision: u64,
+    family: &str,
+) -> Result<Value, String> {
+    let selector_family = HintSelectorFamily::parse(family);
+    if selector_family.is_none() && !matches!(family, "regions" | "surfaces") {
+        return Err(format!("unsupported hint selector family: {family}"));
+    }
+    let config = serde_json::from_str::<Config>(config_json)
+        .map_err(|error| format!("effective configuration is unavailable: {error}"))?;
+    let policies = resolve_hint_selector_policies(&config, url)?;
+    let revision_input = if let Some(selector_family) = selector_family {
+        serde_json::to_vec(&(configuration_revision, url, selector_family, &policies))
+    } else {
+        serde_json::to_vec(&(configuration_revision, url, family, &policies))
+    }
+    .map_err(|error| format!("selector policy could not be serialized: {error}"))?;
+    let selector_policy_revision = revision_input
+        .iter()
+        .fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+            (hash ^ u64::from(*byte)).wrapping_mul(0x0100_0000_01b3)
+        });
+    Ok(serde_json::json!({
+        "family": family,
+        "configuration_revision": configuration_revision,
+        "selector_revision": format!("{selector_policy_revision:016x}"),
+        "policies": policies,
+    }))
+}
+
 impl qobject::BrowserUi {
+    pub(super) fn dispatch_hint_command(
+        mut self: Pin<&mut Self>,
+        command: &ParsedCommand,
+        registry: &CommandRegistry,
+    ) -> bool {
+        if let Err(error) = registry.validate(command, self.as_ref().rust().core_mode) {
+            self.set_status_text(QString::from(error.to_string()));
+            return false;
+        }
+        let options = match parse_hint_options(command) {
+            Ok(options) => options,
+            Err(error) => {
+                self.set_status_text(QString::from(error));
+                return false;
+            }
+        };
+        self.as_mut().set_hint_options(
+            &options.family,
+            options.rapid,
+            &options.target,
+            options.script.as_deref(),
+            options.first,
+            options.index,
+        );
+        true
+    }
+
+    pub(super) fn note_hint_configuration_change(mut self: Pin<&mut Self>) {
+        let hint_mode_was_active = self.as_ref().rust().core_mode == Mode::Hint;
+        {
+            let mut rust = self.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            this.hint_configuration_revision = this.hint_configuration_revision.saturating_add(1);
+            this.hint_session = None;
+            this.hint_interaction = None;
+            this.pending_hint_scope_handoff = None;
+            this.active_hint_scope = None;
+            this.hint_consumed.clear();
+            this.pending_hint_action = None;
+            if let Some(action) = this.hint_pointer_action.as_mut() {
+                action.terminate();
+            }
+            this.hint_pointer_action = None;
+            this.hint_pointer_source = None;
+            this.pending_hint_palette_permit = None;
+            this.pending_grid_scope_permit = None;
+            this.hint_local_interaction_authority
+                .clear_session_requests();
+        }
+        self.as_mut().set_hint_pointer_pending(false);
+        self.as_mut()
+            .set_hint_pointer_dispatch_request(QString::default());
+        self.as_mut().set_hint_pointer_mode(false);
+        self.as_mut()
+            .set_hint_pointer_state(QString::from("terminal"));
+        if hint_mode_was_active {
+            self.as_mut().cancel_hints();
+        } else {
+            self.set_hint_visible(false);
+        }
+    }
+
     pub(super) fn set_hint_mode(mut self: Pin<&mut Self>) {
         self.as_mut()
             .set_hint_options("all", false, "current", None, false, 1);
@@ -34,6 +131,16 @@ impl qobject::BrowserUi {
         first: bool,
         index: usize,
     ) {
+        self.as_mut().set_hint_target(QString::from(target));
+        self.as_mut().set_target_search_active(false);
+        self.as_mut().set_target_search_scope(QString::from("all"));
+        self.as_mut().set_target_search_query(QString::default());
+        self.as_mut().set_hint_pointer_pending(false);
+        self.as_mut()
+            .set_hint_pointer_state(QString::from("terminal"));
+        self.as_mut()
+            .set_hint_pointer_dispatch_request(QString::default());
+        self.as_mut().set_hint_pointer_mode(target == "pointer");
         self.as_mut().set_hint_links_only(family == "links");
         self.as_mut().set_hint_family(QString::from(family));
         self.as_mut().set_hint_rapid(rapid);
@@ -53,12 +160,18 @@ impl qobject::BrowserUi {
         {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
+            this.hint_pointer_source = None;
+            this.hint_pointer_action = None;
             this.hint_script = script.map(ToOwned::to_owned);
             this.hint_first = first;
             this.hint_index = index;
             this.hint_rapid_tabs_created = 0;
             this.hint_consumed.clear();
             this.hint_interaction = None;
+            this.pending_hint_palette_permit = None;
+            this.pending_grid_scope_permit = None;
+            this.hint_local_interaction_authority
+                .clear_session_requests();
         }
         let window = self.as_ref().rust().window;
         if let Some(window) = window
@@ -78,17 +191,66 @@ impl qobject::BrowserUi {
         self.set_status_text(QString::from("Select a page element"));
     }
 
+    pub(super) fn set_local_pointer_hint_options(
+        mut self: Pin<&mut Self>,
+        options: &HintOptions,
+        source: super::CommandSource,
+    ) -> bool {
+        if options.target != "pointer"
+            || !matches!(
+                source,
+                super::CommandSource::Ui | super::CommandSource::Keyboard
+            )
+            || self.as_ref().rust().recording_macro.is_some()
+        {
+            self.set_status_text(QString::from(
+                "Pointer click requires a direct local UI or keyboard command",
+            ));
+            return false;
+        }
+        self.as_mut()
+            .set_hint_options(&options.family, false, "pointer", None, false, 1);
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .hint_pointer_source = Some(source);
+        self.as_mut()
+            .set_hint_pointer_state(QString::from("selecting"));
+        true
+    }
+
     pub(super) fn clear_hint_session_state(mut self: Pin<&mut Self>) {
+        self.as_mut().set_target_search_active(false);
+        self.as_mut().set_target_search_scope(QString::from("all"));
+        self.as_mut().set_target_search_query(QString::default());
         {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
             this.hint_session = None;
             this.hint_interaction = None;
+            this.pending_hint_scope_handoff = None;
+            this.active_hint_scope = None;
             this.hint_consumed.clear();
             this.hint_values = QString::default();
             this.pending_hint_action = None;
+            if let Some(action) = this.hint_pointer_action.as_mut() {
+                action.terminate();
+            }
+            this.hint_pointer_action = None;
+            this.hint_pointer_source = None;
+            this.pending_hint_palette_permit = None;
+            this.pending_grid_scope_permit = None;
+            this.hint_local_interaction_authority
+                .clear_session_requests();
         }
-        self.set_hint_visible(false);
+        self.as_mut().set_hint_visible(false);
+        self.as_mut().set_hint_pointer_pending(false);
+        self.as_mut()
+            .set_hint_pointer_dispatch_request(QString::default());
+        self.as_mut().set_hint_pointer_mode(false);
+        self.as_mut()
+            .set_hint_pointer_state(QString::from("terminal"));
     }
 
     pub(super) fn begin_hint_session(
@@ -98,6 +260,64 @@ impl qobject::BrowserUi {
         if self.as_ref().rust().core_mode != Mode::Hint {
             self.as_mut().set_hint_mode();
         }
+        let family = self.as_ref().rust().hint_family.to_string();
+        let target_search_scope = self.as_ref().rust().target_search_scope.to_string();
+        let target_search_active = self.as_ref().rust().target_search_active;
+        let preserved_query = if target_search_active {
+            self.as_ref().rust().target_search_query.to_string()
+        } else {
+            String::new()
+        };
+        let configuration_revision = self.as_ref().rust().hint_configuration_revision;
+        let requested_scope_lease_id = serde_json::from_str::<Value>(&candidates_json.to_string())
+            .ok()
+            .and_then(|payload| {
+                payload
+                    .get("scope_lease_id")
+                    .and_then(Value::as_str)
+                    .map(ToOwned::to_owned)
+            });
+        let snapshot = match effective_hint_selector_snapshot(
+            &self.as_ref().rust().config_json.to_string(),
+            &self.as_ref().rust().current_url.to_string(),
+            configuration_revision,
+            &family,
+        ) {
+            Ok(snapshot) => snapshot,
+            Err(error) => {
+                self.set_status_text(QString::from(format!(
+                    "Hint selectors unavailable: {error}"
+                )));
+                return QString::from(
+                    serde_json::json!({"error":"selector-policy-unavailable"}).to_string(),
+                );
+            }
+        };
+        let expected_selector_revision = snapshot
+            .get("selector_revision")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let Some(selector_policy_revision) =
+            u64::from_str_radix(expected_selector_revision, 16).ok()
+        else {
+            self.set_status_text(QString::from(
+                "Hints rejected: invalid selector policy revision",
+            ));
+            return QString::from(
+                serde_json::json!({"error":"invalid-selector-policy-revision"}).to_string(),
+            );
+        };
+        let supplied_selector_revision =
+            serde_json::from_str::<Value>(&candidates_json.to_string())
+                .ok()
+                .and_then(|payload| payload.get("selector_revision").cloned())
+                .and_then(|value| value.as_str().map(ToOwned::to_owned));
+        if supplied_selector_revision.as_deref() != Some(expected_selector_revision) {
+            self.set_status_text(QString::from(
+                "Hints rejected: selector policy changed during collection",
+            ));
+            return QString::from(serde_json::json!({"error":"stale-selector-policy"}).to_string());
+        }
         let Some(target) = current_target(
             self.as_ref().rust().state.as_ref(),
             self.as_ref().rust().tab,
@@ -105,6 +325,23 @@ impl qobject::BrowserUi {
             self.set_status_text(QString::from("Hints unavailable: tab is no longer live"));
             return QString::from(r#"{"error":"stale-target"}"#);
         };
+        let scope_is_authorized = self.as_ref().rust().active_hint_scope.as_ref().map_or(
+            requested_scope_lease_id.is_none(),
+            |scope| {
+                requested_scope_lease_id.as_deref() == Some(scope.lease_id.as_str())
+                    && scope.owner.target.tab == target.tab
+                    && scope.owner.target.generation == target.generation
+                    && scope.owner.target.document == target.document
+                    && scope.owner.configuration_revision == configuration_revision
+                    && family == "all"
+            },
+        );
+        if !scope_is_authorized {
+            self.set_status_text(QString::from(
+                "Scoped Hint collection rejected: scope lease is missing or stale",
+            ));
+            return QString::from(r#"{"error":"stale-scope"}"#);
+        }
         let mut candidates = match parse_hint_payload(&candidates_json.to_string()) {
             Ok(candidates) => candidates,
             Err(error) => {
@@ -112,12 +349,97 @@ impl qobject::BrowserUi {
                 return QString::from(serde_json::json!({"error": error}).to_string());
             }
         };
+        let candidate_validation = if target_search_active && family == "all" {
+            let ordinary = candidates
+                .iter()
+                .filter(|candidate| {
+                    !ferric_browser_core::hint_kind_is_region_or_surface(candidate.kind)
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            let regions = candidates
+                .iter()
+                .filter(|candidate| {
+                    matches!(
+                        candidate.kind,
+                        ferric_browser_core::HintKind::Region
+                            | ferric_browser_core::HintKind::ScrollableRegion
+                    )
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            let surfaces = candidates
+                .iter()
+                .filter(|candidate| {
+                    matches!(
+                        candidate.kind,
+                        ferric_browser_core::HintKind::Surface
+                            | ferric_browser_core::HintKind::FocusableSurface
+                            | ferric_browser_core::HintKind::Frame
+                    )
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            validate_hint_candidates_for_family("all", &ordinary)
+                .and_then(|()| validate_hint_candidates_for_family("regions", &regions))
+                .and_then(|()| validate_hint_candidates_for_family("surfaces", &surfaces))
+        } else {
+            validate_hint_candidates_for_family(&family, &candidates)
+        };
+        if let Err(error) = candidate_validation {
+            self.set_status_text(QString::from(format!("Hints rejected: {error}")));
+            return QString::from(
+                serde_json::json!({"error":"invalid-facet-candidates"}).to_string(),
+            );
+        }
+        if target_search_active {
+            if super::browser_ui_target_search::target_search_collection_family(
+                &target_search_scope,
+            ) != Some(family.as_str())
+            {
+                self.set_status_text(QString::from(
+                    "Target Search rejected: collector scope changed",
+                ));
+                return QString::from(r#"{"error":"stale-search-scope"}"#);
+            }
+            candidates.retain(|candidate| {
+                super::browser_ui_target_search::target_search_candidate_matches(
+                    &target_search_scope,
+                    candidate.kind,
+                )
+            });
+        }
+        if !self.as_ref().rust().hint_proxy_targets_enabled
+            && candidates.iter().any(|candidate| {
+                matches!(
+                    candidate.kind,
+                    ferric_browser_core::HintKind::EditorFocus
+                        | ferric_browser_core::HintKind::LabelControl
+                )
+            })
+        {
+            self.set_status_text(QString::from(
+                "Hints rejected: validated proxy targets are disabled",
+            ));
+            return QString::from(r#"{"error":"proxy-targets-disabled"}"#);
+        }
+        let normally_usable_control_ids = candidates
+            .iter()
+            .filter(|candidate| candidate.kind != ferric_browser_core::HintKind::LabelControl)
+            .map(|candidate| candidate.element_id)
+            .collect::<std::collections::BTreeSet<_>>();
         candidates.retain(|candidate| {
-            !self
-                .as_ref()
-                .rust()
-                .hint_consumed
-                .contains(&(candidate.frame_path.clone(), candidate.element_id))
+            candidate.kind != ferric_browser_core::HintKind::LabelControl
+                || !candidate
+                    .related_element_id
+                    .is_some_and(|control_id| normally_usable_control_ids.contains(&control_id))
+        });
+        candidates.retain(|candidate| {
+            !self.as_ref().rust().hint_consumed.contains(&(
+                candidate.frame_owner.clone(),
+                candidate.frame_path.clone(),
+                candidate.element_id,
+            ))
         });
         let config =
             serde_json::from_str::<super::Config>(&self.as_ref().rust().config_json.to_string())
@@ -128,26 +450,54 @@ impl qobject::BrowserUi {
             let mut rust = self.as_mut().rust_mut();
             rust.as_mut().get_mut().hint_ids.clone()
         };
-        let binding = self.as_ref();
-        let previous = binding
+        let auto_follow = if self.as_ref().rust().hint_pointer_mode || target_search_active {
+            CoreHintAutoFollow::Never
+        } else {
+            match config.hints.auto_follow {
+                ferric_browser_config::HintAutoFollow::Always => CoreHintAutoFollow::Always,
+                ferric_browser_config::HintAutoFollow::UniqueMatch => {
+                    CoreHintAutoFollow::UniqueMatch
+                }
+                ferric_browser_config::HintAutoFollow::FullMatch => CoreHintAutoFollow::FullMatch,
+                ferric_browser_config::HintAutoFollow::Never => CoreHintAutoFollow::Never,
+            }
+        };
+        let previous = self
+            .as_ref()
             .rust()
             .hint_session
             .as_ref()
             .filter(|session| {
-                session.target.tab == target.tab && session.target.document == target.document
+                session.target.tab == target.tab
+                    && session.target.generation == target.generation
+                    && session.target.document == target.document
+                    && session.configuration_revision == configuration_revision
+                    && session.selector_policy_revision == selector_policy_revision
             })
-            .map_or(&[][..], |session| session.hints.as_slice());
-        let labeled = match if previous.is_empty() {
-            assign_labels_with_options(candidates, &alphabet, minimum_width)
-        } else {
-            refresh_labels(candidates, previous, &alphabet, minimum_width)
-        } {
-            Ok(labeled) => labeled,
-            Err(error) => {
+            .and_then(|_| self.as_ref().rust().hint_interaction.clone());
+        let refreshing = previous.is_some();
+        let mut interaction = if let Some(mut previous) = previous {
+            if let Err(error) = previous.refresh(candidates) {
                 self.set_status_text(QString::from(format!("Hints rejected: {error}")));
-                return QString::from(serde_json::json!({"error": error.to_string()}).to_string());
+                return QString::from(serde_json::json!({"error":error.to_string()}).to_string());
             }
+            previous
+        } else {
+            let labeled = match assign_labels_with_options(candidates, &alphabet, minimum_width) {
+                Ok(labeled) => labeled,
+                Err(error) => {
+                    self.set_status_text(QString::from(format!("Hints rejected: {error}")));
+                    return QString::from(
+                        serde_json::json!({"error":error.to_string()}).to_string(),
+                    );
+                }
+            };
+            HintInteraction::new(labeled, alphabet, auto_follow)
         };
+        if target_search_active && !refreshing {
+            interaction.handle(HintInteractionInput::SetText(preserved_query));
+        }
+        let labeled = interaction.hints().to_vec();
         let hint_first = self.as_ref().rust().hint_first;
         let hint_index = self.as_ref().rust().hint_index;
         if hint_first && hint_index > labeled.len() {
@@ -160,19 +510,24 @@ impl qobject::BrowserUi {
                     .to_string(),
             );
         }
-        let auto_follow = match config.hints.auto_follow {
-            ferric_browser_config::HintAutoFollow::Always => CoreHintAutoFollow::Always,
-            ferric_browser_config::HintAutoFollow::UniqueMatch => CoreHintAutoFollow::UniqueMatch,
-            ferric_browser_config::HintAutoFollow::FullMatch => CoreHintAutoFollow::FullMatch,
-            ferric_browser_config::HintAutoFollow::Never => CoreHintAutoFollow::Never,
-        };
-        let interaction = HintInteraction::new(labeled.clone(), alphabet, auto_follow);
-        let first_label = if hint_first {
+        let first_label = if target_search_active || refreshing {
+            None
+        } else if hint_first {
             labeled.get(hint_index - 1).map(|hint| hint.label.clone())
         } else {
             interaction.initial_activation().map(ToOwned::to_owned)
         };
-        let session = HintSession::new(
+        let discovery_provenance = snapshot
+            .get("policies")
+            .and_then(|policies| policies.get(family.as_str()))
+            .and_then(|entry| entry.get("provenance"))
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(ToOwned::to_owned)
+            .collect();
+        let session = HintSession::new_with_selector_policy(
             &mut ids,
             HintTarget {
                 tab: target.tab,
@@ -180,26 +535,97 @@ impl qobject::BrowserUi {
                 document: target.document,
             },
             labeled.clone(),
+            configuration_revision,
+            selector_policy_revision,
+            discovery_provenance,
         );
+        let pointer_action = if self.as_ref().rust().hint_pointer_mode {
+            let Some(source) = self.as_ref().rust().hint_pointer_source else {
+                self.set_status_text(QString::from("Pointer Hint has no local authority"));
+                return QString::from(r#"{"error":"local-authority-required"}"#);
+            };
+            let Some(window) = self.as_ref().rust().window else {
+                self.set_status_text(QString::from("Pointer Hint has no owning window"));
+                return QString::from(r#"{"error":"window-unavailable"}"#);
+            };
+            let owner = LocalInteractionOwner {
+                window,
+                session: session.id,
+                target: session.target,
+                configuration_revision: session.configuration_revision,
+            };
+            let permit = {
+                let mut rust = self.as_mut().rust_mut();
+                rust.as_mut()
+                    .get_mut()
+                    .hint_local_interaction_authority
+                    .mint(
+                        source,
+                        owner,
+                        LocalInteractionOperation::HintPointerDispatch,
+                    )
+            };
+            let Some(permit) = permit else {
+                self.set_status_text(QString::from("Pointer Hint authority was rejected"));
+                return QString::from(r#"{"error":"local-authority-rejected"}"#);
+            };
+            Some(HintPointerAction::new(owner, source, permit))
+        } else {
+            None
+        };
+        let serialized_hints = {
+            let binding = self.as_ref();
+            let rust = binding.rust();
+            hint_json(
+                &labeled,
+                rust.hint_rapid,
+                if rust.hint_pointer_mode {
+                    "pointer"
+                } else {
+                    &rust.hint_rapid_target
+                },
+            )
+        };
         let result = serde_json::json!({
             "session_id": session.id.to_string(),
-            "hints": hint_json(&labeled),
+            "hints": serialized_hints,
             "state": hint_interaction_json(&interaction),
             "first_label": first_label,
         });
         {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
+            if !this.hint_pointer_mode {
+                this.hint_pointer_source = None;
+            }
+            this.hint_pointer_action = pointer_action;
+            this.hint_pointer_pending = false;
+            this.hint_pointer_state = QString::from(if this.hint_pointer_mode {
+                "selecting"
+            } else {
+                "terminal"
+            });
             this.hint_ids = ids;
             this.hint_session = Some(session);
             this.hint_interaction = Some(interaction);
             this.hint_values = QString::from(result["hints"].to_string());
+            this.pending_hint_palette_permit = None;
+            this.pending_grid_scope_permit = None;
+            this.hint_local_interaction_authority
+                .clear_session_requests();
         }
         self.as_mut().set_hint_visible(!hint_first);
-        self.set_status_text(QString::from(format!(
-            "{} hint(s) · type a label or click",
-            labeled.len()
-        )));
+        if target_search_active {
+            self.set_status_text(QString::from(format!(
+                "{} visible target(s) · Enter confirms",
+                labeled.len()
+            )));
+        } else {
+            self.set_status_text(QString::from(format!(
+                "{} hint(s) · type a label or click",
+                labeled.len()
+            )));
+        }
         QString::from(result.to_string())
     }
 
@@ -213,6 +639,9 @@ impl qobject::BrowserUi {
         let input = match action.as_str() {
             "character" => text.chars().next().map(HintInteractionInput::Character),
             "text-mode" => Some(HintInteractionInput::EnterTextMode),
+            "set-query" if self.as_ref().rust().target_search_active => {
+                Some(HintInteractionInput::SetText(text.clone()))
+            }
             "backspace" => Some(HintInteractionInput::Backspace),
             "clear" => Some(HintInteractionInput::Clear),
             "next" => Some(HintInteractionInput::Next),
@@ -235,6 +664,13 @@ impl qobject::BrowserUi {
             let outcome = interaction.handle(input);
             (outcome, hint_interaction_json(interaction))
         };
+        if self.as_ref().rust().target_search_active {
+            let query = state
+                .get("query")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            self.as_mut().set_target_search_query(QString::from(query));
+        }
         let update_status = matches!(
             &outcome,
             HintInteractionOutcome::Updated | HintInteractionOutcome::RotateCollision
@@ -268,6 +704,13 @@ impl qobject::BrowserUi {
         }
         if update_status {
             let state = &response["state"];
+            if self.as_ref().rust().target_search_active {
+                let remaining = state.get("remaining").and_then(Value::as_u64).unwrap_or(0);
+                self.as_mut().set_status_text(QString::from(format!(
+                    "{remaining} visible target(s) · Enter confirms"
+                )));
+                return QString::from(response.to_string());
+            }
             let typed = if state.get("mode").and_then(Value::as_str) == Some("text") {
                 format!(
                     "/{}",
@@ -293,632 +736,26 @@ impl qobject::BrowserUi {
         QString::from(response.to_string())
     }
 
-    pub(super) fn select_hint_action(
-        mut self: Pin<&mut Self>,
-        label: &QString,
-        fresh_candidate_json: &QString,
-        action_id: &QString,
-    ) -> QString {
-        let action_id = action_id.to_string();
-        if let Some(target) = match action_id.as_str() {
-            "hint.current" => Some("current"),
-            "hint.tab" => Some("tab"),
-            "hint.tab-bg" => Some("tab-bg"),
-            "hint.window" => Some("window"),
-            "hint.yank" => Some("yank"),
-            "hint.clean-yank" => Some("clean-yank"),
-            "hint.download" => Some("download"),
-            "hint.ephemeral" => Some("ephemeral"),
-            "hint.choose" => Some("choose"),
-            _ => None,
-        } {
-            target.clone_into(
-                &mut self
-                    .as_mut()
-                    .rust_mut()
-                    .as_mut()
-                    .get_mut()
-                    .hint_rapid_target,
-            );
-            return self.select_hint(label, fresh_candidate_json);
-        }
-        if !action_id.starts_with("userscript.") || action_id.len() > 256 {
-            self.set_status_text(QString::from("Hint action rejected: invalid action ID"));
-            return QString::from(r#"{"error":"invalid-action-id"}"#);
-        }
-        self.as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .pending_hint_action = Some(action_id);
-        self.select_hint(label, fresh_candidate_json)
-    }
-
-    fn open_hint_in_background_tab(
-        mut self: Pin<&mut Self>,
-        source_tab: TabId,
-        url: &ValidatedUrl,
-    ) -> Result<Value, String> {
-        let response = self.as_mut().execute_ipc_command(
-            ParsedCommand {
-                name: "open".into(),
-                arguments: vec![url.to_string()],
-            },
-            &IpcRoute {
-                selector: DispatchTarget::Tab(source_tab),
-                open_target: IpcOpenTarget::BackgroundTab,
-                profile: None,
-                context: None,
-                external_open: false,
-                source: CommandSource::Ipc,
-            },
-        )?;
-        self.as_mut()
-            .set_status_text(QString::from("Hint link opened in background"));
-        let mut result = serde_json::json!({
-            "action":"tab-bg",
-            "action_id":"browser.link.open",
-            "kind":"link"
-        });
-        if let Some(tab_id) = response.get("tab_id") {
-            result["tab_id"] = tab_id.clone();
-        }
-        Ok(result)
-    }
-
-    fn open_hint_in_foreground_tab(
-        mut self: Pin<&mut Self>,
-        source_tab: TabId,
-        url: &ValidatedUrl,
-    ) -> Result<Value, String> {
-        let (window, journey_parent) = {
+    pub(super) fn hint_selector_policy(self: Pin<&mut Self>, family: &QString) -> QString {
+        let result = {
             let binding = self.as_ref();
-            let state = binding
-                .rust()
-                .state
-                .as_ref()
-                .ok_or_else(|| "core state unavailable".to_owned())?;
-            let window = state
-                .tabs()
-                .get(&source_tab)
-                .map(|tab| tab.window)
-                .ok_or_else(|| "hint source tab is no longer live".to_owned())?;
-            (window, state.journey().current_node(source_tab))
+            let rust = binding.rust();
+            effective_hint_selector_snapshot(
+                &rust.config_json.to_string(),
+                &rust.current_url.to_string(),
+                rust.hint_configuration_revision,
+                &family.to_string(),
+            )
         };
-        // Hint selection runs while the core is deliberately in Hint mode.
-        // Do not redispatch the normal-mode-only `tab-open` command here;
-        // this is the already-authorized completion of the active hint action.
-        let effects = self
-            .as_mut()
-            .reduce_event(Event::OpenTabWithNavigation {
-                window,
-                url: url.clone(),
-                background: false,
-            })
-            .map_err(|error| error.clone())?;
-        let tab = effects
-            .iter()
-            .find_map(|effect| match effect {
-                Effect::Engine(EngineEffect::Navigate { target, .. }) => Some(target.tab),
-                _ => None,
-            })
-            .ok_or_else(|| "foreground hint tab did not produce a navigation target".to_owned())?;
-        if let Some(parent) = journey_parent {
-            self.as_mut().mark_journey_parent(&effects, parent);
-        }
-        self.as_mut().sync_tab_order_from_core();
-        self.as_mut().set_pending_engine_action(&effects);
-        self.as_mut()
-            .set_status_text(QString::from("Hint link opened in a foreground tab"));
-        Ok(serde_json::json!({
-            "action":"tab",
-            "action_id":"browser.link.open",
-            "kind":"link",
-            "tab_id":tab.to_string()
-        }))
-    }
-
-    #[allow(clippy::too_many_lines)]
-    pub(super) fn select_hint(
-        mut self: Pin<&mut Self>,
-        label: &QString,
-        fresh_candidate_json: &QString,
-    ) -> QString {
-        let fresh_value = match serde_json::from_str::<Value>(&fresh_candidate_json.to_string()) {
-            Ok(value) => value,
+        match result {
+            Ok(snapshot) => QString::from(snapshot.to_string()),
             Err(error) => {
-                self.set_status_text(QString::from(format!("Hint selection rejected: {error}")));
-                return QString::from(r#"{"error":"invalid-fresh-candidate"}"#);
-            }
-        };
-        let pending_action = self
-            .as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .pending_hint_action
-            .take();
-        let visible = fresh_value
-            .get("visible")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-        let fresh = match parse_hint_candidate(&fresh_value) {
-            Ok(candidate) => candidate,
-            Err(error) => {
-                self.set_status_text(QString::from(format!("Hint selection rejected: {error}")));
-                return QString::from(serde_json::json!({"error": error}).to_string());
-            }
-        };
-        let Some(target) = current_target(
-            self.as_ref().rust().state.as_ref(),
-            self.as_ref().rust().tab,
-        ) else {
-            self.set_status_text(QString::from("Hint selection rejected: stale tab"));
-            return QString::from(r#"{"error":"stale-target"}"#);
-        };
-        let selected = {
-            let binding = self.as_ref();
-            let Some(session) = binding.rust().hint_session.as_ref() else {
-                self.set_status_text(QString::from("Hint session has expired"));
-                return QString::from(r#"{"error":"no-session"}"#);
-            };
-            session
-                .select(
-                    &label.to_string(),
-                    HintTarget {
-                        tab: target.tab,
-                        generation: target.generation,
-                        document: target.document,
-                    },
-                    &fresh.frame_path,
-                    visible,
-                    fresh.geometry,
-                )
-                .cloned()
-        };
-        let selected = match selected {
-            Ok(candidate)
-                if candidate.element_id == fresh.element_id
-                    && candidate.kind == fresh.kind
-                    && candidate.frame_path == fresh.frame_path
-                    && candidate.text == fresh.text
-                    && candidate.href == fresh.href =>
-            {
-                candidate
-            }
-            Ok(_) => {
-                self.set_status_text(QString::from("Hint selection rejected: target changed"));
-                return QString::from(r#"{"error":"target-changed"}"#);
-            }
-            Err(error) => {
-                self.set_status_text(QString::from(format!("Hint selection rejected: {error}")));
-                return QString::from(serde_json::json!({"error": error.to_string()}).to_string());
-            }
-        };
-        let choose = self.as_ref().rust().hint_rapid_target == "choose" && pending_action.is_none();
-        let uses_url_action = hint_uses_url_action(
-            selected.kind,
-            self.as_ref().rust().hint_rapid,
-            &self.as_ref().rust().hint_rapid_target,
-            pending_action.is_some(),
-        );
-        let result = if choose {
-            serde_json::json!({
-                "action":"choose",
-                "kind":hint_kind_name(selected.kind),
-                "label":label.to_string(),
-                "has_url":selected.href.is_some(),
-            })
-        } else if uses_url_action {
-            let Some(href) = selected.href.as_deref() else {
-                self.set_status_text(QString::from("Hint link has no destination"));
-                return QString::from(r#"{"error":"link-without-destination"}"#);
-            };
-            let url = match ValidatedUrl::parse(href) {
-                Ok(url) => url,
-                Err(error) => {
-                    self.set_status_text(QString::from(format!("Hint link rejected: {error}")));
-                    return QString::from(r#"{"error":"invalid-link"}"#);
-                }
-            };
-            if let Some(action_id) = pending_action {
-                let response = match self
-                    .as_mut()
-                    .execute_registered_userscript_action_for_hint(&action_id, url.as_str())
-                {
-                    Ok(response) => response,
-                    Err(error) => {
-                        self.set_status_text(QString::from(format!(
-                            "Hint userscript action rejected: {error}"
-                        )));
-                        return QString::from(
-                            serde_json::json!({"error":"userscript-action-rejected"}).to_string(),
-                        );
-                    }
-                };
-                self.as_mut().set_status_text(QString::from(format!(
-                    "Hint userscript action started: {action_id}"
+                self.set_status_text(QString::from(format!(
+                    "Hint selectors unavailable: {error}"
                 )));
-                let mut result = serde_json::json!({
-                    "action":"userscript",
-                    "action_id":action_id,
-                    "kind":"link"
-                });
-                if let Some(operation_id) = response.get("operation_id") {
-                    result["operation_id"] = operation_id.clone();
-                }
-                result
-            } else if self.as_ref().rust().hint_rapid {
-                match self.as_ref().rust().hint_rapid_target.as_str() {
-                    "yank" => {
-                        let copied = safe_ipc_url(url.as_str());
-                        let mut rust = self.as_mut().rust_mut();
-                        let this = rust.as_mut().get_mut();
-                        this.clipboard_request = QString::from(&copied);
-                        this.clipboard_request_sensitive = false;
-                        this.clipboard_request_primary = false;
-                        self.as_mut()
-                            .set_status_text(QString::from("Hint link copied"));
-                        serde_json::json!({
-                            "action":"yank",
-                            "action_id":"browser.link.copy",
-                            "kind":"link"
-                        })
-                    }
-                    "clean-yank" => {
-                        let rules = link_cleaning_policy::active_rules(
-                            self.as_ref().rust().storage_roots.as_ref(),
-                        );
-                        let cleaned = match clean_link(url.as_str(), &rules) {
-                            Ok(result) => result,
-                            Err(error) => {
-                                self.set_status_text(QString::from(format!(
-                                    "Clean hint link rejected: {error}"
-                                )));
-                                return QString::from(r#"{"error":"clean-link-rejected"}"#);
-                            }
-                        };
-                        let copied = safe_ipc_url(&cleaned.cleaned);
-                        let mut rust = self.as_mut().rust_mut();
-                        let this = rust.as_mut().get_mut();
-                        this.clipboard_request = QString::from(&copied);
-                        this.clipboard_request_sensitive = false;
-                        this.clipboard_request_primary = false;
-                        self.as_mut()
-                            .set_status_text(QString::from(if cleaned.changed {
-                                "Clean hint link copied"
-                            } else {
-                                "Hint link copied; no cleaning changes applied"
-                            }));
-                        serde_json::json!({
-                            "action":"clean-yank",
-                            "action_id":"browser.link.clean-copy",
-                            "kind":"link",
-                            "changed":cleaned.changed,
-                            "url":copied
-                        })
-                    }
-                    "tab-bg" => {
-                        if self.as_ref().rust().hint_rapid_tabs_created >= 20 {
-                            self.set_status_text(QString::from(
-                                "Rapid hint tab limit reached; confirm before continuing",
-                            ));
-                            return QString::from(r#"{"error":"rapid-tab-limit"}"#);
-                        }
-                        let result =
-                            match self.as_mut().open_hint_in_background_tab(target.tab, &url) {
-                                Ok(result) => result,
-                                Err(error) => {
-                                    self.set_status_text(QString::from(format!(
-                                        "Rapid background hint rejected: {error}"
-                                    )));
-                                    return QString::from(
-                                        r#"{"error":"background-navigation-rejected"}"#,
-                                    );
-                                }
-                            };
-                        self.as_mut()
-                            .rust_mut()
-                            .as_mut()
-                            .get_mut()
-                            .hint_rapid_tabs_created += 1;
-                        result
-                    }
-                    "userscript" => {
-                        let Some(script) = self.as_ref().rust().hint_script.clone() else {
-                            self.set_status_text(QString::from(
-                                "Hint userscript target has no configured script",
-                            ));
-                            return QString::from(r#"{"error":"userscript-not-selected"}"#);
-                        };
-                        let response = match self.as_mut().execute_userscript_for_hint(
-                            &script,
-                            target,
-                            url.as_str(),
-                        ) {
-                            Ok(response) => response,
-                            Err(error) => {
-                                self.set_status_text(QString::from(format!(
-                                    "Hint userscript rejected: {error}"
-                                )));
-                                return QString::from(r#"{"error":"userscript-rejected"}"#);
-                            }
-                        };
-                        self.as_mut().set_status_text(QString::from(format!(
-                            "Rapid hint userscript started: {script}"
-                        )));
-                        let mut result = serde_json::json!({
-                            "action":"userscript",
-                            "action_id":format!("userscript.{script}.run"),
-                            "kind":"link",
-                            "userscript":script
-                        });
-                        if let Some(operation_id) = response.get("operation_id") {
-                            result["operation_id"] = operation_id.clone();
-                        }
-                        result
-                    }
-                    "download" => {
-                        let mut result = self.as_mut().queue_download_request(
-                            target,
-                            url.as_str(),
-                            "Rapid hint download queued",
-                        );
-                        result["action"] = Value::String("download".into());
-                        result["action_id"] = Value::String("browser.link.download".into());
-                        result["kind"] = Value::String("link".into());
-                        result
-                    }
-                    _ => {
-                        self.set_status_text(QString::from("Rapid hint target state is invalid"));
-                        return QString::from(r#"{"error":"rapid-target-invalid-state"}"#);
-                    }
-                }
-            } else if self.as_ref().rust().hint_rapid_target == "yank" {
-                let copied = safe_ipc_url(url.as_str());
-                let mut rust = self.as_mut().rust_mut();
-                let this = rust.as_mut().get_mut();
-                this.clipboard_request = QString::from(&copied);
-                this.clipboard_request_sensitive = false;
-                this.clipboard_request_primary = false;
-                serde_json::json!({
-                    "action":"yank",
-                    "action_id":"browser.link.copy",
-                    "kind":hint_kind_name(selected.kind)
-                })
-            } else if self.as_ref().rust().hint_rapid_target == "clean-yank" {
-                let rules =
-                    link_cleaning_policy::active_rules(self.as_ref().rust().storage_roots.as_ref());
-                let cleaned = match clean_link(url.as_str(), &rules) {
-                    Ok(result) => result,
-                    Err(error) => {
-                        self.set_status_text(QString::from(format!(
-                            "Clean hint link rejected: {error}"
-                        )));
-                        return QString::from(r#"{"error":"clean-link-rejected"}"#);
-                    }
-                };
-                let copied = safe_ipc_url(&cleaned.cleaned);
-                let mut rust = self.as_mut().rust_mut();
-                let this = rust.as_mut().get_mut();
-                this.clipboard_request = QString::from(&copied);
-                this.clipboard_request_sensitive = false;
-                this.clipboard_request_primary = false;
-                serde_json::json!({
-                    "action":"clean-yank",
-                    "action_id":"browser.link.clean-copy",
-                    "kind":hint_kind_name(selected.kind),
-                    "changed":cleaned.changed,
-                    "url":copied
-                })
-            } else if self.as_ref().rust().hint_rapid_target == "tab-bg" {
-                match self.as_mut().open_hint_in_background_tab(target.tab, &url) {
-                    Ok(result) => result,
-                    Err(error) => {
-                        self.set_status_text(QString::from(format!(
-                            "Background hint rejected: {error}"
-                        )));
-                        return QString::from(r#"{"error":"background-navigation-rejected"}"#);
-                    }
-                }
-            } else if self.as_ref().rust().hint_rapid_target == "tab" {
-                match self.as_mut().open_hint_in_foreground_tab(target.tab, &url) {
-                    Ok(result) => result,
-                    Err(error) => {
-                        self.set_status_text(QString::from(format!(
-                            "Hint tab navigation rejected: {error}"
-                        )));
-                        return QString::from(r#"{"error":"tab-navigation-rejected"}"#);
-                    }
-                }
-            } else if self.as_ref().rust().hint_rapid_target == "window" {
-                let profile = self.as_ref().rust().profile_name.clone();
-                self.as_mut()
-                    .rust_mut()
-                    .as_mut()
-                    .get_mut()
-                    .pending_engine_action = Some(format!(
-                    "new-window\tfalse\t{}\t{}",
-                    profile,
-                    safe_ipc_url(url.as_str())
-                ));
-                self.as_mut()
-                    .set_status_text(QString::from("Hint link queued for a same-profile window"));
-                serde_json::json!({
-                    "action":"window",
-                    "action_id":"browser.link.open",
-                    "kind":"link",
-                    "target":"window",
-                    "url":safe_ipc_url(url.as_str())
-                })
-            } else if let Some(target_name) =
-                external_hint_target(&self.as_ref().rust().hint_rapid_target).map(ToOwned::to_owned)
-            {
-                let response = match self.as_mut().execute_send_command(&ParsedCommand {
-                    name: "send".into(),
-                    arguments: vec![target_name.clone(), url.to_string()],
-                }) {
-                    Ok(response) => response,
-                    Err(error) => {
-                        self.set_status_text(QString::from(format!(
-                            "Hint external target rejected: {error}"
-                        )));
-                        return QString::from(
-                            serde_json::json!({"error":"external-target-rejected"}).to_string(),
-                        );
-                    }
-                };
-                self.as_mut()
-                    .set_status_text(QString::from(format!("Hint link sent to {target_name}")));
-                let mut result = serde_json::json!({
-                    "action":"external-send",
-                    "action_id":"browser.link.send",
-                    "kind":"link",
-                    "target":target_name
-                });
-                if let Some(operation_id) = response.get("operation_id") {
-                    result["operation_id"] = operation_id.clone();
-                }
-                result
-            } else if self.as_ref().rust().hint_rapid_target == "ephemeral" {
-                self.as_mut()
-                    .rust_mut()
-                    .as_mut()
-                    .get_mut()
-                    .pending_engine_action =
-                    Some(format!("ephemeral-window\t{}", safe_ipc_url(url.as_str())));
-                self.as_mut().set_status_text(QString::from(
-                    "Hint link queued for a fresh ephemeral window",
-                ));
-                serde_json::json!({
-                    "action":"ephemeral",
-                    "action_id":"browser.link.open-ephemeral",
-                    "kind":"link",
-                    "url":safe_ipc_url(url.as_str())
-                })
-            } else if self.as_ref().rust().hint_rapid_target == "userscript" {
-                let Some(script) = self.as_ref().rust().hint_script.clone() else {
-                    self.set_status_text(QString::from(
-                        "Hint userscript target has no configured script",
-                    ));
-                    return QString::from(r#"{"error":"userscript-not-selected"}"#);
-                };
-                let response =
-                    match self
-                        .as_mut()
-                        .execute_userscript_for_hint(&script, target, url.as_str())
-                    {
-                        Ok(response) => response,
-                        Err(error) => {
-                            self.set_status_text(QString::from(format!(
-                                "Hint userscript rejected: {error}"
-                            )));
-                            return QString::from(r#"{"error":"userscript-rejected"}"#);
-                        }
-                    };
-                self.as_mut()
-                    .set_status_text(QString::from(format!("Hint userscript started: {script}")));
-                let mut result = serde_json::json!({
-                    "action":"userscript",
-                    "action_id":format!("userscript.{script}.run"),
-                    "kind":"link",
-                    "userscript":script
-                });
-                if let Some(operation_id) = response.get("operation_id") {
-                    result["operation_id"] = operation_id.clone();
-                }
-                result
-            } else if self.as_ref().rust().hint_rapid_target == "download" {
-                let result = self.as_mut().queue_download_request(
-                    target,
-                    url.as_str(),
-                    "Rapid hint download queued",
-                );
-                let mut result = result;
-                result["action"] = Value::String("download".into());
-                result["action_id"] = Value::String("browser.link.download".into());
-                result["kind"] = Value::String("link".into());
-                result
-            } else {
-                let effects = match self
-                    .as_mut()
-                    .reduce_event(Event::StartNavigation { target, url })
-                {
-                    Ok(effects) => effects,
-                    Err(error) => {
-                        self.set_status_text(QString::from(format!(
-                            "Hint navigation rejected: {error}"
-                        )));
-                        return QString::from(r#"{"error":"navigation-rejected"}"#);
-                    }
-                };
-                self.as_mut()
-                    .mark_journey_transition(&effects, JourneyEdgeKind::Hint, "hint");
-                self.as_mut().set_pending_engine_action(&effects);
-                serde_json::json!({
-                    "action":"navigate",
-                    "action_id":"browser.link.open",
-                    "kind":"link"
-                })
+                QString::default()
             }
-        } else if selected.kind == HintKind::Scrollable {
-            serde_json::json!({
-                "action":"scroll-target",
-                "kind":"scrollable",
-                "element_id":selected.element_id,
-                "frame_path":fresh.frame_path,
-            })
-        } else if matches!(
-            selected.kind,
-            HintKind::Input | HintKind::Select | HintKind::Textarea | HintKind::ContentEditable
-        ) {
-            serde_json::json!({
-                "action":"focus",
-                "kind": hint_kind_name(selected.kind),
-                "element_id": selected.element_id,
-                "frame_path": fresh.frame_path,
-                "x": fresh.geometry.x + (fresh.geometry.width / 2.0),
-                "y": fresh.geometry.y + (fresh.geometry.height / 2.0)
-            })
-        } else {
-            serde_json::json!({
-                "action":"click",
-                "kind": hint_kind_name(selected.kind),
-                "element_id": selected.element_id,
-                "frame_path": fresh.frame_path,
-                "x": fresh.geometry.x + (fresh.geometry.width / 2.0),
-                "y": fresh.geometry.y + (fresh.geometry.height / 2.0)
-            })
-        };
-        let keeps_hint_mode = rapid_hint_keeps_mode(
-            self.as_ref().rust().hint_rapid,
-            result.get("action").and_then(Value::as_str),
-        );
-        // Page-backed activations still need the retained Hint record after
-        // this Rust callback returns. QML closes the session after the
-        // asynchronous page script has consumed that record.
-        let awaits_page_activation = matches!(
-            result.get("action").and_then(Value::as_str),
-            Some("focus" | "scroll-target" | "click")
-        );
-        let palette_open = result.get("action").and_then(Value::as_str) == Some("choose");
-        if keeps_hint_mode {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.hint_consumed
-                .insert((selected.frame_path.clone(), selected.element_id));
-            this.hint_interaction = None;
-            this.pending_hint_action = None;
-        } else if !palette_open && !awaits_page_activation {
-            self.as_mut().clear_hint_session_state();
-            let window = self.as_ref().rust().window;
-            if let Some(window) = window {
-                let _ = self.as_mut().reduce_event(Event::PopMode { window });
-            }
-            self.as_mut().set_core_mode(Mode::Normal);
-            self.as_mut().set_mode(QString::from("normal"));
         }
-        QString::from(result.to_string())
     }
 
     pub(super) fn confirm_rapid_hint_tabs(mut self: Pin<&mut Self>) -> bool {
@@ -956,6 +793,7 @@ impl qobject::BrowserUi {
         self.set_status_text(QString::from("Hints cancelled"));
     }
 }
+
 fn hint_interaction_json(interaction: &HintInteraction) -> Value {
     let snapshot = interaction.snapshot();
     serde_json::json!({
@@ -969,5 +807,354 @@ fn hint_interaction_json(interaction: &HintInteraction) -> Value {
         "active_label": snapshot.active_label,
         "remaining": snapshot.remaining,
         "total": snapshot.total,
+        "refresh_required": snapshot.refresh_required,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use ferric_browser_config::{HintSelectorMode, HintSelectorPolicy, SiteRule};
+    use ferric_browser_core::{DocumentId, HintKind, HintSessionId, IdSource, TabId, WindowId};
+
+    use super::super::browser_ui_scope_handoff::{
+        HintScopeHandoffContext, hint_scope_handoff_is_valid,
+    };
+    use super::super::hint_kind_name;
+    use super::super::hint_policy::HintScopePurpose;
+    use super::*;
+
+    fn scope_handoff_fixture() -> (
+        super::super::hint_policy::HintScopeBinding,
+        HintSession,
+        Value,
+        LocalInteractionOwner,
+    ) {
+        let mut ids = IdSource::default();
+        let target = HintTarget {
+            tab: TabId::from_display("tabid-31").expect("tab ID"),
+            generation: 12,
+            document: DocumentId::from_display("documentid-41").expect("document ID"),
+        };
+        let configuration_revision = 23;
+        let selector_policy_revision = 0x0123_4567_89ab_cdef;
+        let session = HintSession::new_with_selector_policy(
+            &mut ids,
+            target,
+            Vec::new(),
+            configuration_revision,
+            selector_policy_revision,
+            Vec::new(),
+        );
+        let owner = LocalInteractionOwner {
+            window: WindowId::from_display("windowid-51").expect("window ID"),
+            session: session.id,
+            target,
+            configuration_revision,
+        };
+        let binding = super::super::hint_policy::HintScopeBinding {
+            purpose: super::super::hint_policy::HintScopePurpose::Hint,
+            source_family: "regions".into(),
+            lease_id: "hint-scope-current".into(),
+            owner,
+            element_id: 17,
+            frame_path: "0.2.1".into(),
+            kind: HintKind::ScrollableRegion,
+            selector_policy_revision,
+            parent_scope_lease_id: Some("hint-scope-parent".into()),
+        };
+        let receipt = serde_json::json!({
+            "ok": true,
+            "lease_id": binding.lease_id,
+            "element_id": binding.element_id,
+            "frame_path": binding.frame_path,
+            "kind": "scrollable-region",
+            "selector_revision": format!("{selector_policy_revision:016x}"),
+            "configuration_revision": configuration_revision,
+            "parent_scope_lease_id": binding.parent_scope_lease_id,
+        });
+        (binding, session, receipt, owner)
+    }
+
+    #[test]
+    fn selector_snapshot_binds_configuration_family_and_site_policy() {
+        let config = Config::default();
+        let config_json = serde_json::to_string(&config).expect("serialize default config");
+        let all =
+            effective_hint_selector_snapshot(&config_json, "https://example.test/page", 7, "all")
+                .expect("default selector snapshot");
+        let repeated =
+            effective_hint_selector_snapshot(&config_json, "https://example.test/page", 7, "all")
+                .expect("repeat selector snapshot");
+        let buttons = effective_hint_selector_snapshot(
+            &config_json,
+            "https://example.test/page",
+            7,
+            "buttons",
+        )
+        .expect("button selector snapshot");
+        let next_configuration =
+            effective_hint_selector_snapshot(&config_json, "https://example.test/page", 8, "all")
+                .expect("new config revision snapshot");
+        assert_eq!(all["selector_revision"], repeated["selector_revision"]);
+        assert_ne!(all["selector_revision"], buttons["selector_revision"]);
+        assert_ne!(
+            all["selector_revision"],
+            next_configuration["selector_revision"]
+        );
+
+        let mut site_config = config;
+        site_config.site_rules.push(SiteRule {
+            id: "custom-buttons".into(),
+            pattern: "https://example.test/*".into(),
+            priority: 1,
+            set: BTreeMap::from([(
+                "hints.selectors.buttons".into(),
+                toml::Value::try_from(HintSelectorPolicy {
+                    mode: HintSelectorMode::Replace,
+                    selectors: vec![".custom-button".into()],
+                })
+                .expect("serialize site policy"),
+            )]),
+        });
+        let site_json = serde_json::to_string(&site_config).expect("serialize site config");
+        let scoped =
+            effective_hint_selector_snapshot(&site_json, "https://example.test/page", 7, "buttons")
+                .expect("site selector snapshot");
+        assert_ne!(buttons["selector_revision"], scoped["selector_revision"]);
+        assert_eq!(
+            scoped["policies"]["buttons"]["policy"]["selectors"][0],
+            ".custom-button"
+        );
+        assert_eq!(
+            scoped["policies"]["buttons"]["provenance"][0],
+            "site-rule:custom-buttons"
+        );
+    }
+
+    #[test]
+    fn scoped_handoff_requires_exact_receipt_and_current_owner_session() {
+        let (binding, session, receipt, owner) = scope_handoff_fixture();
+        let selector_revision = binding.selector_policy_revision;
+        let parent_scope_id = binding.parent_scope_lease_id.as_deref();
+        let context = HintScopeHandoffContext {
+            owner: Some(owner),
+            scope_lease_id: parent_scope_id,
+            selector_policy_revision: Some(selector_revision),
+            session: Some(&session),
+            family: "regions",
+            mode: Mode::Hint,
+        };
+        assert!(hint_scope_handoff_is_valid(
+            &binding,
+            &binding.lease_id,
+            &receipt,
+            context,
+        ));
+
+        let invalid_receipt_values = [
+            ("ok", serde_json::json!(false)),
+            ("lease_id", serde_json::json!("hint-scope-other")),
+            ("element_id", serde_json::json!(18)),
+            ("frame_path", serde_json::json!("0.2.2")),
+            ("kind", serde_json::json!("region")),
+            ("selector_revision", serde_json::json!("0000000000000001")),
+            ("configuration_revision", serde_json::json!(24)),
+            ("parent_scope_lease_id", Value::Null),
+        ];
+        for (field, value) in invalid_receipt_values {
+            let mut invalid_receipt = receipt.clone();
+            invalid_receipt[field] = value;
+            assert!(
+                !hint_scope_handoff_is_valid(
+                    &binding,
+                    &binding.lease_id,
+                    &invalid_receipt,
+                    context,
+                ),
+                "mismatched receipt field {field} must be rejected"
+            );
+        }
+        let mut missing_field = receipt.clone();
+        missing_field
+            .as_object_mut()
+            .expect("receipt object")
+            .remove("kind");
+        assert!(!hint_scope_handoff_is_valid(
+            &binding,
+            &binding.lease_id,
+            &missing_field,
+            context,
+        ));
+        let mut extra_field = receipt.clone();
+        extra_field["unexpected"] = serde_json::json!("field");
+        assert!(!hint_scope_handoff_is_valid(
+            &binding,
+            &binding.lease_id,
+            &extra_field,
+            context,
+        ));
+        assert!(!hint_scope_handoff_is_valid(
+            &binding,
+            "hint-scope-other",
+            &receipt,
+            context,
+        ));
+
+        let mut other_document_owner = owner;
+        other_document_owner.target.document =
+            DocumentId::from_display("documentid-42").expect("other document ID");
+        let mut other_config_owner = owner;
+        other_config_owner.configuration_revision += 1;
+        let mut other_window_owner = owner;
+        other_window_owner.window = WindowId::from_display("windowid-52").expect("other window ID");
+
+        let mut other_session_id = session.clone();
+        other_session_id.id =
+            HintSessionId::from_display("hintsessionid-53").expect("other session ID");
+        let mut other_session_target = session.clone();
+        other_session_target.target.document =
+            DocumentId::from_display("documentid-43").expect("other session document ID");
+        let mut other_session_config = session.clone();
+        other_session_config.configuration_revision += 1;
+        let stale_contexts = [
+            HintScopeHandoffContext {
+                owner: Some(other_document_owner),
+                ..context
+            },
+            HintScopeHandoffContext {
+                owner: Some(other_config_owner),
+                ..context
+            },
+            HintScopeHandoffContext {
+                owner: Some(other_window_owner),
+                ..context
+            },
+            HintScopeHandoffContext {
+                scope_lease_id: Some("hint-scope-replaced"),
+                ..context
+            },
+            HintScopeHandoffContext {
+                selector_policy_revision: None,
+                ..context
+            },
+            HintScopeHandoffContext {
+                selector_policy_revision: Some(selector_revision + 1),
+                ..context
+            },
+            HintScopeHandoffContext {
+                session: None,
+                ..context
+            },
+            HintScopeHandoffContext {
+                session: Some(&other_session_id),
+                ..context
+            },
+            HintScopeHandoffContext {
+                session: Some(&other_session_target),
+                ..context
+            },
+            HintScopeHandoffContext {
+                session: Some(&other_session_config),
+                ..context
+            },
+            HintScopeHandoffContext {
+                family: "all",
+                ..context
+            },
+            HintScopeHandoffContext {
+                mode: Mode::Normal,
+                ..context
+            },
+        ];
+        for stale_context in stale_contexts {
+            assert!(!hint_scope_handoff_is_valid(
+                &binding,
+                &binding.lease_id,
+                &receipt,
+                stale_context,
+            ));
+        }
+
+        let mut top_level_binding = binding.clone();
+        top_level_binding.parent_scope_lease_id = None;
+        let mut top_level_receipt = receipt;
+        top_level_receipt["parent_scope_lease_id"] = Value::Null;
+        assert!(hint_scope_handoff_is_valid(
+            &top_level_binding,
+            &binding.lease_id,
+            &top_level_receipt,
+            HintScopeHandoffContext {
+                scope_lease_id: None,
+                ..context
+            },
+        ));
+    }
+
+    #[test]
+    fn grid_scope_handoff_is_limited_to_region_and_surface_families() {
+        let (mut binding, session, mut receipt, owner) = scope_handoff_fixture();
+        binding.purpose = HintScopePurpose::Grid;
+        binding.source_family = "surfaces".into();
+        binding.kind = HintKind::Surface;
+        binding.parent_scope_lease_id = None;
+        receipt["kind"] = Value::String("surface".into());
+        receipt["parent_scope_lease_id"] = Value::Null;
+        let surface_context = HintScopeHandoffContext {
+            owner: Some(owner),
+            scope_lease_id: None,
+            selector_policy_revision: Some(binding.selector_policy_revision),
+            session: Some(&session),
+            family: "surfaces",
+            mode: Mode::Hint,
+        };
+        assert!(hint_scope_handoff_is_valid(
+            &binding,
+            &binding.lease_id,
+            &receipt,
+            surface_context,
+        ));
+
+        binding.kind = HintKind::Button;
+        receipt["kind"] = Value::String(hint_kind_name(binding.kind).into());
+        assert!(!hint_scope_handoff_is_valid(
+            &binding,
+            &binding.lease_id,
+            &receipt,
+            surface_context,
+        ));
+    }
+
+    #[test]
+    fn search_within_handoff_accepts_target_search_all_and_rejects_family_drift() {
+        let (mut binding, session, receipt, owner) = scope_handoff_fixture();
+        binding.purpose = HintScopePurpose::Search;
+        binding.source_family = "all".into();
+        let context = HintScopeHandoffContext {
+            owner: Some(owner),
+            scope_lease_id: binding.parent_scope_lease_id.as_deref(),
+            selector_policy_revision: Some(binding.selector_policy_revision),
+            session: Some(&session),
+            family: "all",
+            mode: Mode::Hint,
+        };
+        assert!(hint_scope_handoff_is_valid(
+            &binding,
+            &binding.lease_id,
+            &receipt,
+            context,
+        ));
+
+        let wrong_family = HintScopeHandoffContext {
+            family: "regions",
+            ..context
+        };
+        assert!(!hint_scope_handoff_is_valid(
+            &binding,
+            &binding.lease_id,
+            &receipt,
+            wrong_family,
+        ));
+    }
 }

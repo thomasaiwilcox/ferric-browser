@@ -181,6 +181,8 @@ impl qobject::BrowserUi {
             this.tab_ids = tab_ids;
             this.popup_tab_ids.clear();
             this.popup_journey_targets.clear();
+            this.page_document_identities.clear();
+            this.pending_same_document_pass_through = None;
             this.tab = Some(selected_tab);
             this.pending_engine_action = None;
             this.pending_engine_actions.clear();
@@ -312,6 +314,8 @@ impl qobject::BrowserUi {
             this.tab_ids = restored_tabs.clone();
             this.popup_tab_ids.clear();
             this.popup_journey_targets.clear();
+            this.page_document_identities.clear();
+            this.pending_same_document_pass_through = None;
             this.tab = Some(selected_tab);
             if !append {
                 this.scroll_positions.clear();

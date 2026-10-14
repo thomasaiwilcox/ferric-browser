@@ -757,7 +757,7 @@ fn ipc_query_boundaries_reject_unknown_and_mistyped_fields() {
 #[test]
 fn qml_idle_path_is_event_driven_and_devtools_are_lazy() {
     let qml = QML_SOURCE;
-    let script = include_str!("../../qml/scripts/BrowserScripts.js");
+    let script = BROWSER_SCRIPT_SOURCE;
     assert!(qml.contains("onRuntime_work_available: window.scheduleRuntimeWork(0)"));
     assert!(qml.contains("id: runtimeWorkTimer"));
     assert!(qml.contains("repeat: false"));

@@ -1,0 +1,4 @@
+$ git branch -vv
+* implementation/keyboard-interaction-v03 e9a576f Merge pull request #10 from thomasaiwilcox/feat/native-start-page-guide
+  main                                    e9a576f [origin/main] Merge pull request #10 from thomasaiwilcox/feat/native-start-page-guide
+  feature/versioned-browsing              08cc2bb [origin/feature/versioned-browsing] feat: checkpoint versioned browsing implementation and backend handoff

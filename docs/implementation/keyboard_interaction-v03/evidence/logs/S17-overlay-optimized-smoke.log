@@ -1,0 +1,14 @@
+********* Start testing of ferric_qml_tests *********
+Config: Using QtTest library 6.11.2, Qt 6.11.2 (x86_64-little_endian-lp64 shared (dynamic) release build; by GCC 16.2.1 20260810), omarchy 4.0.4
+INFO   : ferric_qml_tests::HintPerformance::initTestCase() entering
+PASS   : ferric_qml_tests::HintPerformance::initTestCase()
+INFO   : ferric_qml_tests::HintPerformance::test_T043_overlay_time_to_visible() entering
+QINFO  : ferric_qml_tests::HintPerformance::test_T043_overlay_time_to_visible(overlay-500-100-smoke) qml: FERRIC_OVERLAY_PERFORMANCE_JSON {"scenario":"overlay-500-100-smoke","count":500,"zoom":1,"warmups":10,"time_to_visible_ms":[220.202006],"layout_compute_ms":[162.577045],"renderer":"Qt Quick offscreen software","viewport":{"width":640,"height":480}}
+PASS   : ferric_qml_tests::HintPerformance::test_T043_overlay_time_to_visible(overlay-500-100-smoke)
+INFO   : ferric_qml_tests::HintPerformance::test_T043_samples() entering
+WARNING: ferric_qml_tests::HintPerformance::test_T043_samples() no data supplied for test_T043_samples() by test_T043_samples_data()
+   Loc: [qrc:/qt-project.org/imports/QtTest/TestSchedule.qml(24)]
+INFO   : ferric_qml_tests::HintPerformance::cleanupTestCase() entering
+PASS   : ferric_qml_tests::HintPerformance::cleanupTestCase()
+Totals: 3 passed, 0 failed, 0 skipped, 0 blacklisted, 906ms
+********* Finished testing of ferric_qml_tests *********

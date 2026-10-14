@@ -1,7 +1,14 @@
 #include "../../src/browser_key_router.h"
+#include "../../src/browser_page_pointer_adapter.h"
 #include <QtCore/QFile>
+#include <QtCore/QFileInfo>
 #include <QtCore/QElapsedTimer>
+#include <QtCore/QJsonDocument>
+#include <QtCore/QPointer>
 #include <QtCore/QTemporaryDir>
+#include <QtCore/QTimer>
+#include <QtGui/QKeyEvent>
+#include <QtGui/QMouseEvent>
 #include <QtGui/QInputMethodEvent>
 #include <QtQml/QQmlEngine>
 #include <QtQml/QQmlContext>
@@ -10,6 +17,161 @@
 #include <QtTest/QSignalSpy>
 #include <QtTest/QTest>
 #include <QtWebEngineQuick/qtwebenginequickglobal.h>
+#include <algorithm>
+#include <memory>
+#include <functional>
+
+// Test-only held-pointer experiment. Production Ferric currently exposes only
+// discrete pointer actions; this helper deliberately stays inside the native
+// fixture and exercises QQuickWindow's public hit-testing path.
+class DragProbeTransaction final : public QObject {
+public:
+    DragProbeTransaction(FerricPagePointerAdapter *adapter, QQuickItem *item,
+                         QWindow *window, QObject *parent = nullptr)
+        : QObject(parent), adapter_(adapter), item_(item), window_(window)
+    {
+        if (window_)
+            window_->installEventFilter(this);
+        if (QCoreApplication::instance())
+            QCoreApplication::instance()->installEventFilter(this);
+        watchdog_.setSingleShot(true);
+        watchdog_.setInterval(1000);
+        connect(&watchdog_, &QTimer::timeout, this, [this] { cancel(QStringLiteral("watchdog")); });
+        if (adapter_) {
+            connect(adapter_, &FerricPagePointerAdapter::surfaceChanged, this, [this] {
+                if (active_ && (adapter_->surfaceSerial() != serial_
+                                || adapter_->surfaceRevision() != revision_
+                                || adapter_->inputBlocked()
+                                || adapter_->targetItem() != item_
+                                || adapter_->targetWindow() != window_))
+                    cancel(QStringLiteral("surface-changed"));
+            });
+        }
+    }
+
+    ~DragProbeTransaction() override
+    {
+        if (window_)
+            window_->removeEventFilter(this);
+        if (QCoreApplication::instance())
+            QCoreApplication::instance()->removeEventFilter(this);
+    }
+
+    bool begin(const QPointF &startItemPosition, const QPointF &destinationItemPosition)
+    {
+        if (active_ || !adapter_ || !item_ || !window_
+            || adapter_->targetItem() != item_ || adapter_->targetWindow() != window_
+            || item_->window() != window_ || !item_->isVisible() || !window_->isVisible())
+            return false;
+        const QRectF itemBounds(QPointF(0, 0), QSizeF(item_->width(), item_->height()));
+        if (!itemBounds.contains(startItemPosition) || !itemBounds.contains(destinationItemPosition))
+            return false;
+        serial_ = adapter_->surfaceSerial();
+        revision_ = adapter_->surfaceRevision();
+        lastPosition_ = item_->mapToScene(startItemPosition);
+        destination_ = item_->mapToScene(destinationItemPosition);
+        if (!sendMouse(QEvent::MouseMove, lastPosition_, Qt::NoButton, Qt::NoButton))
+            return false;
+        lastPositionAtStart_ = lastPosition_;
+        active_ = true;
+        held_ = sendMouse(QEvent::MouseButtonPress, lastPosition_, Qt::LeftButton,
+                          Qt::LeftButton);
+        if (!held_) {
+            active_ = false;
+            return false;
+        }
+        watchdog_.start();
+        return true;
+    }
+
+    bool moveStraight(int durationMs = 200)
+    {
+        if (!active_ || !item_)
+            return false;
+        for (int step = 1; step <= 12 && active_; ++step) {
+            const qreal fraction = qreal(step) / 12.0;
+            lastPosition_ = lastPositionAtStart_ + (destination_ - lastPositionAtStart_) * fraction;
+            if (!sendMouse(QEvent::MouseMove, lastPosition_, Qt::NoButton, Qt::LeftButton))
+                return false;
+            QTest::qWait(durationMs / 12);
+        }
+        return active_;
+    }
+
+    bool finish()
+    {
+        if (!active_ || !held_)
+            return false;
+        watchdog_.stop();
+        const bool sent = sameReceiver()
+            && sendMouse(QEvent::MouseButtonRelease, lastPosition_, Qt::LeftButton, Qt::NoButton);
+        held_ = false;
+        active_ = false;
+        return sent;
+    }
+
+    void cancel(const QString &reason)
+    {
+        if (!active_)
+            return;
+        cancelReason_ = reason;
+        watchdog_.stop();
+        if (held_ && sameReceiver()) {
+            cleanupReleaseSent_ = sendMouse(QEvent::MouseButtonRelease, lastPosition_,
+                                             Qt::LeftButton, Qt::NoButton);
+        }
+        held_ = false;
+        active_ = false;
+    }
+
+    bool active() const { return active_; }
+    bool held() const { return held_; }
+    bool cleanupReleaseSent() const { return cleanupReleaseSent_; }
+    QString cancelReason() const { return cancelReason_; }
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if ((watched == window_ || watched == QCoreApplication::instance())
+            && event->type() == QEvent::KeyPress
+            && QGuiApplication::focusWindow() == window_
+            && static_cast<QKeyEvent *>(event)->key() == Qt::Key_Escape)
+            cancel(QStringLiteral("escape"));
+        return false;
+    }
+
+private:
+    bool sameReceiver() const
+    {
+        return adapter_ && item_ && window_ && adapter_->targetItem() == item_
+            && adapter_->targetWindow() == window_ && item_->window() == window_;
+    }
+
+    bool sendMouse(QEvent::Type type, const QPointF &position, Qt::MouseButton button,
+                   Qt::MouseButtons buttons)
+    {
+        if (!window_)
+            return false;
+        const QPoint global = window_->mapToGlobal(position.toPoint());
+        QMouseEvent event(type, position, position, global, button, buttons, Qt::NoModifier,
+                          Qt::MouseEventSynthesizedByApplication);
+        return QCoreApplication::sendEvent(window_.data(), &event);
+    }
+
+    QPointer<FerricPagePointerAdapter> adapter_;
+    QPointer<QQuickItem> item_;
+    QPointer<QWindow> window_;
+    QTimer watchdog_;
+    QPointF lastPosition_;
+    QPointF lastPositionAtStart_;
+    QPointF destination_;
+    QString serial_;
+    QString revision_;
+    QString cancelReason_;
+    bool active_ = false;
+    bool held_ = false;
+    bool cleanupReleaseSent_ = false;
+};
 
 // Exercise the production application event filter on WebEngine's actual
 // Quick focus proxy. No synthetic JS keyboard events or browser automation.
@@ -24,6 +186,11 @@ class NativeInsertTest : public QObject {
     int passExits = 0;
     bool locked = false;
     bool semicolonPending = false;
+    bool mixedPageKey = false;
+    bool mixedBrowserKey = false;
+    bool nativePromptActive = false;
+    int mixedRouteCalls = 0;
+    int browserOwnedRepeats = 0;
     int fixtureGeneration = 0;
 
     QVariant js(const QString &source) {
@@ -37,6 +204,50 @@ class NativeInsertTest : public QObject {
         if (!view->property("probeDone").toBool())
             qFatal("WebEngine JavaScript callback timed out");
         return view->property("probeResult");
+    }
+    QVariant browserJs(const QString &source) {
+        view->setProperty("probeDone", false);
+        QMetaObject::invokeMethod(view, "probeBrowser", Q_ARG(QVariant, source));
+        QElapsedTimer elapsed;
+        elapsed.start();
+        while (!view->property("probeDone").toBool() && elapsed.elapsed() < 5000)
+            QTest::qWait(5);
+        if (!view->property("probeDone").toBool())
+            qFatal("ApplicationWorld callback timed out");
+        return view->property("probeResult");
+    }
+    QString productionBrowserScript() {
+        QFile script(FERRIC_SCRIPT_PATH);
+        if (!script.open(QIODevice::ReadOnly))
+            qFatal("Production BrowserScripts resource unavailable");
+        QFile interaction(QFileInfo(QStringLiteral(FERRIC_SCRIPT_PATH))
+                              .absoluteDir()
+                              .filePath(QStringLiteral("PageInteractionScripts.js")));
+        if (!interaction.open(QIODevice::ReadOnly))
+            qFatal("Production PageInteractionScripts resource unavailable");
+        QString module = QString::fromUtf8(interaction.readAll());
+        module.remove(".pragma library");
+        QString facade = QString::fromUtf8(script.readAll());
+        facade.remove(".pragma library");
+        facade.remove(".import \"PageInteractionScripts.js\" as PageInteractionScripts");
+        const QString namespaceSource =
+            QStringLiteral("var PageInteractionScripts=(function(){") + module
+            + QStringLiteral(
+                ";return {VERSION:VERSION,boundedCount:boundedCount,"
+                "scrollTargetRuntime:scrollTargetRuntime,scroll:scroll,"
+                "scrollTargetPolicy:scrollTargetPolicy,scrollTargetStatus:scrollTargetStatus,"
+                "hintSelector:hintSelector,hintProxyRuntime:hintProxyRuntime,"
+                "hintCollector:hintCollector,hintDirtyRevision:hintDirtyRevision,"
+                "hintStopTracking:hintStopTracking,hintFresh:hintFresh,"
+                "hintPointerPreflight:hintPointerPreflight,hintFocus:hintFocus,"
+                "hintClick:hintClick,hintSetScrollTarget:hintSetScrollTarget};})() ;");
+        return namespaceSource + facade;
+    }
+    QString browserScript(const QString &expression) {
+        return js(productionBrowserScript() + ";" + expression).toString();
+    }
+    QVariant browserValueScript(const QString &expression) {
+        return browserJs(productionBrowserScript() + ";eval(" + expression + ")");
     }
     void enter(bool persistent = false) {
         locked = persistent;
@@ -62,12 +273,19 @@ private slots:
         QVERIFY(files.isValid());
         QFile html(files.filePath("fixture.html"));
         QVERIFY(html.open(QIODevice::WriteOnly));
-        html.write(R"(<body tabindex="0" id="player"><form onsubmit="event.preventDefault();window.submits++">
+        html.write(R"(<body tabindex="0" id="player"><div id="native-editor" class="ace_editor" role="textbox" aria-label="Native editor">
+<div class="ace_gutter">1</div><textarea id="native-editor-receiver" class="ace_text-input">FIXTURE_PRIVATE_NATIVE_BUFFER</textarea></div>
+<label id="native-label" for="native-check">Native checkbox</label><input id="native-check" type="checkbox" style="position:absolute;opacity:0;width:0;height:0;pointer-events:none">
+<form onsubmit="event.preventDefault();window.submits++">
 <input id="single"><button>submit</button></form><textarea id="multi"></textarea>
 <input id="complete"><div id="rich" contenteditable="true"></div>
 <input id="remove"><input id="navigate">
 <script>
 window.down=0;window.up=0;window.submits=0;window.shift=false;window.keyups=[];
+window.nativeLabelClicks=0;window.nativeControlClicks=0;window.nativeControlChanges=0;
+document.getElementById('native-label').addEventListener('click',()=>nativeLabelClicks++);
+document.getElementById('native-check').addEventListener('click',()=>nativeControlClicks++);
+document.getElementById('native-check').addEventListener('change',()=>nativeControlChanges++);
 window.events=[];
 for (const type of ['keydown','keyup']) document.addEventListener(type,e=>{
 events.push({type,key:e.key,ctrl:e.ctrlKey,shift:e.shiftKey,repeat:e.repeat});});
@@ -103,6 +321,9 @@ WebEngineView {
     onLoadingChanged: function(request) { if (request.status === WebEngineView.LoadSucceededStatus) loaded++ }
     property bool probeDone: false
     property var probeResult
+    function probeBrowser(source) {
+        runJavaScript(source, WebEngineScript.ApplicationWorld, function(value) { probeResult = value; probeDone = true })
+    }
     function probe(source) {
         runJavaScript(source, function(value) { probeResult = value; probeDone = true })
     }
@@ -133,8 +354,27 @@ WebEngineView {
                 normal();
         });
         connect(&router, &FerricBrowserKeyRouter::keyPressed, this,
-                [this](const QString &, int key, int modifiers, bool) {
+                [this](const QString &, int key, int modifiers, bool, bool browserOwnedRepeat) {
             const auto mode = view->property("ferricMode").toString();
+            if (key == Qt::Key_F && browserOwnedRepeat) {
+                ++browserOwnedRepeats;
+                router.acceptCurrentEvent();
+                return;
+            }
+            // Mirrors FerricBrowserRuntimeSurface's early native-prompt
+            // ownership guard: leave the original Qt event unaccepted.
+            if (nativePromptActive)
+                return;
+            if (mode == "normal" && (key == Qt::Key_F || key == Qt::Key_G) && mixedPageKey) {
+                ++mixedRouteCalls;
+                router.pageOwnsCurrentEvent();
+                return;
+            }
+            if (mode == "normal" && key == Qt::Key_F && mixedBrowserKey) {
+                ++mixedRouteCalls;
+                router.acceptCurrentEvent();
+                return;
+            }
             if (mode == "pass-through" || mode == "pass-through-once") {
                 if (key == Qt::Key_Escape && modifiers == Qt::ControlModifier) {
                     normal();
@@ -169,6 +409,11 @@ WebEngineView {
         passExits = 0;
         locked = false;
         semicolonPending = false;
+        mixedPageKey = false;
+        mixedBrowserKey = false;
+        nativePromptActive = false;
+        mixedRouteCalls = 0;
+        browserOwnedRepeats = 0;
         const int loaded = view->property("loaded").toInt();
         QUrl url = QUrl::fromLocalFile(files.filePath("fixture.html"));
         url.setQuery(QString::number(++fixtureGeneration));
@@ -177,6 +422,82 @@ WebEngineView {
         QTRY_VERIFY(js("typeof window.down !== 'undefined'").toBool());
         js("down=0;up=0;submits=0;true");
         enter();
+    }
+    void extractedInteractionResourceFailsClosed() {
+        const QString source = productionBrowserScript();
+        const QVariantMap mismatch = browserJs(
+            source + ";PageInteractionScripts.VERSION='0';eval(hintCollector('buttons'))")
+                                         .toMap();
+        QCOMPARE(mismatch.value("error").toString(), QString("script-version-mismatch"));
+
+        const QVariantMap missing = browserJs(
+            source + ";delete PageInteractionScripts.hintCollector;eval(hintCollector('buttons'))")
+                                        .toMap();
+        QCOMPARE(missing.value("error").toString(), QString("script-resource-unavailable"));
+
+        const QVariantMap exception = browserJs(
+            source
+            + ";PageInteractionScripts.hintCollector=function(){throw new Error('fixture');};"
+              "eval(hintCollector('buttons'))")
+                                          .toMap();
+        QCOMPARE(exception.value("error").toString(), QString("script-error"));
+    }
+
+    void nativeEditorProxyFocusKeepsInsertAndComposition() {
+        const QVariant payload = browserValueScript("hintCollector('inputs',true)");
+        const QVariantList candidates = payload.toMap().value("candidates").toList();
+        QVariantMap selected;
+        for (const QVariant &candidate : candidates) {
+            const QVariantMap row = candidate.toMap();
+            if (row.value("kind").toString() == "editor-focus"
+                && row.value("text").toString() == "Native editor")
+                selected = row;
+        }
+        QVERIFY(!selected.isEmpty());
+        QVERIFY(selected.value("related_element_id").toUInt() > 0);
+        QVERIFY(!QJsonDocument::fromVariant(payload).toJson().contains("FIXTURE_PRIVATE_NATIVE_BUFFER"));
+        const QString selectedJson = QString::fromUtf8(
+            QJsonDocument::fromVariant(selected).toJson(QJsonDocument::Compact));
+        QVERIFY(browserValueScript("hintFocus(" + selectedJson + ")").toBool());
+        QCOMPARE(js("document.activeElement.id").toString(), QString("native-editor-receiver"));
+
+        QTest::keyClick(&window, Qt::Key_I);
+        QTest::keyClick(&window, Qt::Key_I, Qt::ShiftModifier);
+        auto *receiver = window.activeFocusItem();
+        QVERIFY(receiver);
+        QInputMethodEvent preedit("composing", {});
+        QCoreApplication::sendEvent(receiver, &preedit);
+        QInputMethodEvent commit;
+        commit.setCommitString("confirmed");
+        QCoreApplication::sendEvent(receiver, &commit);
+        QTest::keyClick(&window, Qt::Key_Return, Qt::ShiftModifier);
+        QTRY_VERIFY(js("document.getElementById('native-editor-receiver').value.includes('i')").toBool());
+        QTRY_VERIFY(js("window.down===1 && window.shift===true").toBool());
+        QCOMPARE(exits, 0);
+        QVERIFY(router.transientInsert());
+        QTest::keyClick(&window, Qt::Key_Return);
+        QTRY_VERIFY(js("window.down===2 && window.shift===false").toBool());
+        QCOMPARE(exits, 1);
+        QVERIFY(!router.transientInsert());
+    }
+    void nativeLabelControlProxyUsesOneNativeActivation() {
+        const QVariant payload = browserValueScript("hintCollector('inputs',true)");
+        const QVariantList candidates = payload.toMap().value("candidates").toList();
+        QVariantMap selected;
+        for (const QVariant &candidate : candidates) {
+            const QVariantMap row = candidate.toMap();
+            if (row.value("kind").toString() == "label-control"
+                && row.value("text").toString() == "Native checkbox")
+                selected = row;
+        }
+        QVERIFY(!selected.isEmpty());
+        const QString selectedJson = QString::fromUtf8(
+            QJsonDocument::fromVariant(selected).toJson(QJsonDocument::Compact));
+        QVERIFY(browserValueScript("hintClick(" + selectedJson + ")").toBool());
+        QVERIFY(js("document.getElementById('native-check').checked").toBool());
+        QCOMPARE(js("window.nativeLabelClicks").toInt(), 1);
+        QCOMPARE(js("window.nativeControlClicks").toInt(), 1);
+        QCOMPARE(js("window.nativeControlChanges").toInt(), 1);
     }
     void cleanup() {
         window.requestActivate();
@@ -295,6 +616,63 @@ WebEngineView {
         QTest::keyRelease(&window, Qt::Key_J);
         QCOMPARE(navigations, 1);
         QCOMPARE(js("events.filter(e=>e.key==='j').length").toInt(), 3);
+    }
+    void mixedPageOwnerSurvivesPolicyAndEpochChanges() {
+        focus("player");
+        normal();
+        mixedPageKey = true;
+        const int before = mixedRouteCalls;
+        QTest::keyPress(&window, Qt::Key_F);
+        QTest::keyPress(&window, Qt::Key_G);
+        QCOMPARE(mixedRouteCalls, before + 2);
+
+        mixedPageKey = false;
+        router.setInputEpoch(router.inputEpoch() + 1);
+        QKeyEvent repeatFRelease(QEvent::KeyRelease, Qt::Key_F, Qt::NoModifier, "f", true);
+        QKeyEvent repeatFPress(QEvent::KeyPress, Qt::Key_F, Qt::NoModifier, "f", true);
+        QKeyEvent repeatGRelease(QEvent::KeyRelease, Qt::Key_G, Qt::NoModifier, "g", true);
+        QKeyEvent repeatGPress(QEvent::KeyPress, Qt::Key_G, Qt::NoModifier, "g", true);
+        QCoreApplication::sendEvent(&window, &repeatFRelease);
+        QCoreApplication::sendEvent(&window, &repeatFPress);
+        QCoreApplication::sendEvent(&window, &repeatGRelease);
+        QCoreApplication::sendEvent(&window, &repeatGPress);
+        QTest::keyRelease(&window, Qt::Key_F);
+        QTest::keyRelease(&window, Qt::Key_G);
+        QCOMPARE(mixedRouteCalls, before + 2);
+        QTRY_COMPARE(js("events.filter(e=>e.key==='f'&&e.type==='keydown').length").toInt(), 2);
+        QTRY_COMPARE(js("events.filter(e=>e.key==='g'&&e.type==='keydown').length").toInt(), 2);
+        QTRY_COMPARE(js("events.filter(e=>(e.key==='f'||e.key==='g')&&e.type==='keyup').length").toInt(), 2);
+    }
+    void mixedBrowserOwnerSurvivesPageMappingChange() {
+        focus("player");
+        normal();
+        mixedBrowserKey = true;
+        QTest::keyPress(&window, Qt::Key_F);
+        QCOMPARE(mixedRouteCalls, 1);
+        mixedBrowserKey = false;
+        mixedPageKey = true;
+        QKeyEvent repeatRelease(QEvent::KeyRelease, Qt::Key_F, Qt::NoModifier, "f", true);
+        QKeyEvent repeatPress(QEvent::KeyPress, Qt::Key_F, Qt::NoModifier, "f", true);
+        QCoreApplication::sendEvent(&window, &repeatRelease);
+        QCoreApplication::sendEvent(&window, &repeatPress);
+        QTest::keyRelease(&window, Qt::Key_F);
+        QCOMPARE(browserOwnedRepeats, 1);
+        QCOMPARE(mixedRouteCalls, 1);
+        QCOMPARE(js("events.filter(e=>e.key==='f').length").toInt(), 0);
+    }
+    void nativePromptInputBypassesMixedRouting() {
+        focus("player");
+        normal();
+        mixedPageKey = true;
+        nativePromptActive = true;
+        const int before = mixedRouteCalls;
+
+        QTest::keyClick(&window, Qt::Key_F);
+
+        QCOMPARE(mixedRouteCalls, before);
+        QTRY_COMPARE(js("events.filter(e=>e.key==='f'&&e.type==='keydown').length").toInt(), 1);
+        QTRY_COMPARE(js("events.filter(e=>e.key==='f'&&e.type==='keyup').length").toInt(), 1);
+        nativePromptActive = false;
     }
     void passPersistentAndRecovery() {
         focus("player");
@@ -531,10 +909,7 @@ WebEngineView {
         QTRY_COMPARE(js("up").toInt(), 1);
     }
     void focusObserver() {
-        QFile script(FERRIC_SCRIPT_PATH);
-        QVERIFY(script.open(QIODevice::ReadOnly));
-        QString source = QString::fromUtf8(script.readAll());
-        source.remove(".pragma library");
+        const QString source = productionBrowserScript();
         // The same observer/probe resource used in Ferric's isolated world.
         const QString observer = js(source + ";focusObserverSource()").toString();
         const QString probe = js("focusProbe()").toString();
@@ -562,6 +937,322 @@ WebEngineView {
         js("document.querySelector('form').remove();true");
         QTRY_VERIFY(view->property("focusNotifications").toInt() > ancestorNotices);
         QVERIFY(!js("window.__ferric_browserFocusState.editable").toBool());
+    }
+    // T002: focus through the production isolated-world Hint pipeline, then
+    // send original Qt input through the production key router.
+    void shadowHintFocusAcceptsOriginalText() {
+        browserJs("{const host=document.createElement('div');host.id='shadow-host';host.style='position:fixed;left:0;top:0;width:240px;height:80px;z-index:100';document.body.prepend(host);host.attachShadow({mode:'open'}).innerHTML='<input id=shadow-input aria-label=Shadow style=width:180px;height:32px>'; }true");
+        QVariantMap snapshot;
+        QTRY_VERIFY(!(snapshot=browserJs(browserScript("hintCollector('inputs')")).toMap()).value("candidates").toList().isEmpty());
+        QVariantMap selectedCandidate;
+        for (const auto &value:snapshot.value("candidates").toList()) {
+            const auto candidate=value.toMap();
+            if (candidate.value("text").toString()=="Shadow")
+                selectedCandidate=candidate;
+        }
+        QVERIFY(selectedCandidate.value("element_id").toInt()>0);
+        const QString json=QString::fromUtf8(
+            QJsonDocument::fromVariant(selectedCandidate).toJson(QJsonDocument::Compact));
+        const QString fresh=browserScript("hintFresh("+json+")");
+        QVERIFY(browserJs(fresh).toMap().value("visible").toBool());
+        QVERIFY(browserJs(browserScript("hintFocus("+json+")")).toBool());
+        enter();
+        view->forceActiveFocus();
+        QTest::keyClick(&window, Qt::Key_A);
+        QTRY_COMPARE(browserJs("document.getElementById('shadow-host').shadowRoot.getElementById('shadow-input').value").toString(),QString("a"));
+        QCOMPARE(exits,0);
+        browserJs(browserScript("hintStopTracking()"));
+    }
+    // T011: exercise the production adapter against WebEngine's actual Quick
+    // target. The control reacts to pointerdown only; semantic click is not a
+    // fallback and each native transport event is observed once.
+    void pointerOnlyControlReceivesOneNativeClick() {
+        normal();
+        browserJs("window.pointerTrace=[];const target=document.createElement('div');"
+                  "target.id='pointer-only';target.setAttribute('role','button');"
+                  "target.setAttribute('aria-label','Pointer only');"
+                  "target.style='position:fixed;left:180px;top:140px;width:180px;height:50px;z-index:100';"
+                  "for(const type of ['pointerdown','mousedown','pointerup','mouseup','click'])"
+                  "target.addEventListener(type,event=>{pointerTrace.push({type,trusted:event.isTrusted,"
+                  "activation:navigator.userActivation.isActive});if(type==='pointerdown')"
+                  "target.dataset.activated=String(Number(target.dataset.activated||0)+1);});"
+                  "document.body.append(target);true");
+        QVariantMap snapshot;
+        QTRY_VERIFY(!(snapshot=browserJs(browserScript("hintCollector('buttons')")).toMap())
+                         .value("candidates").toList().isEmpty());
+        QVariantMap candidate;
+        for (const auto &value : snapshot.value("candidates").toList()) {
+            const auto item = value.toMap();
+            if (item.value("text").toString() == "Pointer only") candidate = item;
+        }
+        QVERIFY(candidate.value("element_id").toInt() > 0);
+        const QString candidateJson = QString::fromUtf8(
+            QJsonDocument::fromVariant(candidate).toJson(QJsonDocument::Compact));
+        const QString preflightScript = browserScript(
+            "hintPointerPreflight(" + candidateJson + ",640,480)");
+        const QVariantMap preflight = browserJs(preflightScript).toMap();
+        QVERIFY2(preflight.value("ok").toBool(), "retained pointer control should pass preflight");
+
+        FerricPagePointerAdapter adapter;
+        adapter.setTargetWindow(&window);
+        adapter.setTargetItem(view);
+        adapter.setEnabled(true);
+        QSignalSpy acknowledgements(&adapter, &FerricPagePointerAdapter::dispatchAcknowledged);
+        adapter.dispatch("pointer-request-1", "pointer-session-1",
+                         adapter.surfaceSerial(), adapter.surfaceRevision(),
+                         preflight.value("x").toDouble(), preflight.value("y").toDouble(),
+                         "left");
+        QCOMPARE(acknowledgements.size(), 1);
+        QCOMPARE(acknowledgements.first().at(4).toString(), QString("delivered"));
+        QTRY_COMPARE(browserJs("document.getElementById('pointer-only').dataset.activated").toString(),
+                     QString("1"));
+        const QVariantList trace = browserJs("pointerTrace").toList();
+        qInfo().noquote() << "T014 pointer event evidence:"
+                          << QJsonDocument::fromVariant(trace).toJson(QJsonDocument::Compact);
+        QCOMPARE(trace.size(), 5);
+        QCOMPARE(trace.at(0).toMap().value("type").toString(), QString("pointerdown"));
+        QCOMPARE(trace.at(1).toMap().value("type").toString(), QString("mousedown"));
+        QCOMPARE(trace.at(2).toMap().value("type").toString(), QString("pointerup"));
+        QCOMPARE(trace.at(3).toMap().value("type").toString(), QString("mouseup"));
+        QCOMPARE(trace.at(4).toMap().value("type").toString(), QString("click"));
+        QVERIFY(trace.at(0).toMap().contains("trusted"));
+        QVERIFY(trace.at(0).toMap().contains("activation"));
+        adapter.setEnabled(false);
+        browserJs(browserScript("hintStopTracking()"));
+    }
+    // T046: one production-adapter request mirrors Qt's public
+    // Press-Release-Press-DoubleClick-Release sequence and exposes the actual
+    // WebEngine DOM order rather than a two-click JS substitute.
+    void pointerAdapterInvalidation_data() {
+        QTest::addColumn<QString>("invalidation");
+        QTest::addColumn<bool>("afterPress");
+        for (const auto &kind : {"blocked", "disabled", "replacement", "resize", "deactivated"}) {
+            QTest::newRow(qPrintable(QString("move-%1").arg(kind))) << QString(kind) << false;
+            QTest::newRow(qPrintable(QString("press-%1").arg(kind))) << QString(kind) << true;
+        }
+    }
+    void pointerAdapterInvalidation() {
+        QFETCH(QString, invalidation);
+        QFETCH(bool, afterPress);
+        QQuickWindow surface;
+        surface.resize(320, 240);
+        QQuickItem target(surface.contentItem()), replacement(surface.contentItem());
+        target.setWidth(320); target.setHeight(240);
+        replacement.setWidth(320); replacement.setHeight(240);
+        surface.show(); surface.requestActivate();
+        QTRY_VERIFY(surface.isActive());
+        FerricPagePointerAdapter adapter;
+        adapter.setTargetItem(&target); adapter.setTargetWindow(&surface); adapter.setEnabled(true);
+        struct Observer : QObject {
+            QWindow *surface;
+            std::function<void()> invalidate;
+            bool afterPress;
+            int presses = 0, releases = 0;
+            bool changed = false;
+            bool eventFilter(QObject *watched, QEvent *event) override {
+                if (watched != surface) return false;
+                if (event->type() == QEvent::MouseButtonPress) ++presses;
+                if (event->type() == QEvent::MouseButtonRelease) ++releases;
+                if (!changed && event->type() == (afterPress ? QEvent::MouseButtonPress : QEvent::MouseMove)) {
+                    changed = true; invalidate();
+                }
+                return false;
+            }
+        } observer;
+        observer.surface = &surface; observer.afterPress = afterPress;
+        QQuickWindow other;
+        observer.invalidate = [&] {
+            if (invalidation == "blocked") adapter.setInputBlocked(true);
+            else if (invalidation == "disabled") adapter.setEnabled(false);
+            else if (invalidation == "replacement") adapter.setTargetItem(&replacement);
+            else if (invalidation == "resize") target.setWidth(300);
+            else { other.resize(100,100); other.show(); other.requestActivate(); QTest::qWait(30); }
+        };
+        surface.installEventFilter(&observer);
+        QSignalSpy acknowledgements(&adapter, &FerricPagePointerAdapter::dispatchAcknowledged);
+        const auto serial = adapter.surfaceSerial(), revision = adapter.surfaceRevision();
+        adapter.dispatch("invalidated-request", "invalidated-session", serial, revision, 50, 50, "left");
+        QVERIFY(observer.changed);
+        QCOMPARE(observer.presses, afterPress ? 1 : 0);
+        QCOMPARE(observer.releases, afterPress && invalidation != "replacement" ? 1 : 0);
+        QCOMPARE(acknowledgements.size(), 1);
+        QCOMPARE(acknowledgements.at(0).at(4).toString(), afterPress ? QString("uncertain") : QString("rejected"));
+        // An invalidated request cannot restart with its captured surface stamp.
+        adapter.setInputBlocked(false); target.setWidth(320); adapter.setTargetItem(&target);
+        surface.requestActivate(); QTRY_VERIFY(surface.isActive());
+        adapter.dispatch("invalidated-request", "invalidated-session", serial, revision, 50, 50, "left");
+        QCOMPARE(observer.presses, afterPress ? 1 : 0);
+        surface.removeEventFilter(&observer);
+    }
+    void pointerAdapterSceneMapping_data() {
+        QTest::addColumn<QString>("change");
+        QTest::addColumn<QString>("stage");
+        QTest::newRow("stable-transformed-view") << QString("stable") << QString("move");
+        for (const auto &kind : {"target-x", "target-y", "ancestor-x", "ancestor-y",
+                                 "target-rotation", "ancestor-scale", "window-position",
+                                 "window-size"}) {
+            for (const auto &phase : {"move", "press", "release"})
+                QTest::newRow(qPrintable(QString("%1-%2").arg(phase, kind)))
+                    << QString(kind) << QString(phase);
+        }
+    }
+    void pointerAdapterSceneMapping() {
+        QFETCH(QString, change);
+        QFETCH(QString, stage);
+        struct Receiver : QQuickItem {
+            explicit Receiver(QQuickItem *parent) : QQuickItem(parent) {
+                setAcceptedMouseButtons(Qt::LeftButton);
+            }
+            int presses = 0, releases = 0;
+            std::function<void()> afterPress, afterRelease;
+            void mousePressEvent(QMouseEvent *event) override {
+                ++presses; event->accept();
+                if (afterPress) afterPress();
+            }
+            void mouseReleaseEvent(QMouseEvent *event) override {
+                ++releases; event->accept();
+                if (afterRelease) afterRelease();
+            }
+        };
+        QQuickWindow surface;
+        surface.resize(400, 240);
+        Receiver background(surface.contentItem());
+        background.setWidth(400); background.setHeight(240);
+        QQuickItem parent(surface.contentItem());
+        parent.setWidth(100); parent.setHeight(100);
+        Receiver target(&parent);
+        target.setWidth(100); target.setHeight(100);
+        if (change == "stable") {
+            parent.setPosition(QPointF(40, 20)); parent.setScale(1.2);
+            target.setRotation(10);
+        }
+        surface.show(); surface.requestActivate(); QTRY_VERIFY(surface.isActive());
+        FerricPagePointerAdapter adapter;
+        adapter.setTargetItem(&target); adapter.setTargetWindow(&surface); adapter.setEnabled(true);
+        adapter.setDoubleClickEnabled(stage == "release");
+        bool changed = false;
+        const auto mutate = [&] {
+            if (changed || change == "stable") return;
+            changed = true;
+            if (change == "target-x") target.setX(200);
+            else if (change == "target-y") target.setY(150);
+            else if (change == "ancestor-x") parent.setX(200);
+            else if (change == "ancestor-y") parent.setY(150);
+            // These preserve the selected centre point, so checking only that
+            // point would miss the changed scene transform.
+            else if (change == "target-rotation") target.setRotation(90);
+            else if (change == "ancestor-scale") parent.setScale(2);
+            else if (change == "window-position")
+                surface.setPosition(surface.position() + QPoint(40, 25));
+            else if (change == "window-size") surface.resize(350, 220);
+        };
+        struct Observer : QObject {
+            std::function<void()> onMove;
+            bool eventFilter(QObject *, QEvent *event) override {
+                if (event->type() == QEvent::MouseMove) onMove();
+                return false;
+            }
+        } observer;
+        observer.onMove = stage == "move" ? std::function<void()>(mutate) : [] {};
+        if (stage == "press") target.afterPress = mutate;
+        if (stage == "release") target.afterRelease = mutate;
+        surface.installEventFilter(&observer);
+        QSignalSpy acknowledgements(&adapter, &FerricPagePointerAdapter::dispatchAcknowledged);
+        const auto serial = adapter.surfaceSerial(), revision = adapter.surfaceRevision();
+        adapter.dispatch("mapping-request", "mapping-session", serial, revision, 50, 50,
+                         stage == "release" ? "double" : "left");
+        const int expected = change == "stable" || stage != "move" ? 1 : 0;
+        QCOMPARE(changed, change != "stable");
+        QCOMPARE(background.presses, 0);
+        QCOMPARE(background.releases, 0);
+        QCOMPARE(target.presses, expected);
+        QCOMPARE(target.releases, expected);
+        QCOMPARE(acknowledgements.size(), 1);
+        QCOMPARE(acknowledgements.first().at(4).toString(), change == "stable" ? QString("delivered")
+                 : stage == "move" ? QString("rejected") : QString("uncertain"));
+        adapter.dispatch("mapping-request", "mapping-session", serial, revision, 50, 50, "left");
+        QCOMPARE(acknowledgements.size(), 2);
+        QCOMPARE(acknowledgements.last().at(4).toString(), QString("rejected"));
+        QCOMPARE(background.presses, 0);
+        QCOMPARE(target.presses, expected);
+        surface.removeEventFilter(&observer);
+    }
+    void pointerAdapterDoubleClickSequence() {
+        normal();
+        const QString documentUrl = browserJs("location.href").toString();
+        browserJs("window.pointerTrace=[];window.pointerClicks=0;window.pointerDoubles=0;"
+                  "const target=document.createElement('button');target.id='double-target';"
+                  "target.setAttribute('aria-label','Double target');"
+                  // Keep this away from T011's click location so Qt's window-wide
+                  // click counter starts a fresh native sequence in the full suite.
+                  "target.style='position:fixed;left:400px;top:350px;width:180px;height:50px;z-index:100';"
+                  "for(const type of ['pointerdown','mousedown','pointerup','mouseup','click','dblclick'])"
+                  "target.addEventListener(type,event=>{pointerTrace.push({type,detail:event.detail,"
+                  "trusted:event.isTrusted,activation:navigator.userActivation.isActive});"
+                  "if(type==='click')pointerClicks++;if(type==='dblclick')pointerDoubles++;});"
+                  "document.body.append(target);true");
+        QVariantMap snapshot;
+        QTRY_VERIFY(!(snapshot=browserJs(browserScript("hintCollector('buttons')")).toMap())
+                         .value("candidates").toList().isEmpty());
+        QVariantMap candidate;
+        for (const auto &value : snapshot.value("candidates").toList()) {
+            const auto item = value.toMap();
+            if (item.value("text").toString() == "Double target") candidate = item;
+        }
+        QVERIFY(candidate.value("element_id").toInt() > 0);
+        const QString candidateJson = QString::fromUtf8(
+            QJsonDocument::fromVariant(candidate).toJson(QJsonDocument::Compact));
+        const QVariantMap preflight = browserJs(browserScript(
+            "hintPointerPreflight(" + candidateJson + ",640,480)")).toMap();
+        QVERIFY2(preflight.value("ok").toBool(), "retained double-click target should pass preflight");
+
+        FerricPagePointerAdapter adapter;
+        adapter.setTargetWindow(&window);
+        adapter.setTargetItem(view);
+        adapter.setEnabled(true);
+        QVERIFY(!adapter.doubleClickEnabled());
+        QSignalSpy acknowledgements(&adapter, &FerricPagePointerAdapter::dispatchAcknowledged);
+        const QString serial = adapter.surfaceSerial();
+        const QString revision = adapter.surfaceRevision();
+        adapter.dispatch("double-request-unqualified", "double-session-1", serial, revision,
+                         preflight.value("x").toDouble(), preflight.value("y").toDouble(),
+                         "double");
+        QCOMPARE(acknowledgements.size(), 1);
+        QCOMPARE(acknowledgements.first().at(4).toString(), QString("unavailable"));
+        QCOMPARE(browserJs("pointerTrace.length").toInt(), 0);
+
+        adapter.setDoubleClickEnabled(true);
+        adapter.dispatch("double-request-1", "double-session-1", serial, revision,
+                         preflight.value("x").toDouble(), preflight.value("y").toDouble(),
+                         "double");
+        QCOMPARE(acknowledgements.size(), 2);
+        QCOMPARE(acknowledgements.at(1).at(4).toString(), QString("delivered"));
+        QTRY_VERIFY(browserJs("pointerTrace.some(event=>event.type==='dblclick')").toBool());
+        const QVariantList trace = browserJs("pointerTrace").toList();
+        qInfo().noquote() << "T046 Qt/WebEngine double-click event evidence:"
+                          << QJsonDocument::fromVariant(trace).toJson(QJsonDocument::Compact);
+        QStringList types;
+        for (const auto &value : trace) {
+            const QVariantMap event = value.toMap();
+            types.append(event.value("type").toString());
+            QVERIFY(event.value("trusted").toBool());
+            QVERIFY(event.value("activation").toBool());
+        }
+        QCOMPARE(types, QStringList({"pointerdown", "mousedown", "pointerup", "mouseup",
+                                     "click", "pointerdown", "mousedown", "pointerup",
+                                     "mouseup", "click", "dblclick"}));
+        QCOMPARE(browserJs("pointerClicks").toInt(), 2);
+        QCOMPARE(browserJs("pointerDoubles").toInt(), 1);
+        QCOMPARE(browserJs("location.href").toString(), documentUrl);
+
+        adapter.dispatch("double-request-1", "double-session-1", serial, revision,
+                         preflight.value("x").toDouble(), preflight.value("y").toDouble(),
+                         "double");
+        QCOMPARE(acknowledgements.size(), 3);
+        QCOMPARE(acknowledgements.last().at(4).toString(), QString("rejected"));
+        QCOMPARE(browserJs("pointerTrace.length").toInt(), trace.size());
+        adapter.setEnabled(false);
+        browserJs(browserScript("hintStopTracking()"));
     }
     void ordinaryText() {
         for (bool persistent : {false, true}) {
@@ -642,6 +1333,224 @@ WebEngineView {
         view->setProperty("ferricEpoch", router.inputEpoch() + 1);
         QTest::keyRelease(&window, Qt::Key_Return);
         QCOMPARE(exits, 0);
+    }
+
+    void boundedDragProbeAndCleanup() {
+        normal();
+        const int loaded = view->property("loaded").toInt();
+        QUrl probeUrl = QUrl::fromLocalFile(FERRIC_DRAG_FIXTURE_PATH);
+        probeUrl.setQuery(QString::number(++fixtureGeneration));
+        view->setProperty("url", probeUrl);
+        QTRY_VERIFY(view->property("loaded").toInt() > loaded);
+        QTRY_VERIFY(js("!!window.dragProbe").toBool());
+
+        FerricPagePointerAdapter adapter;
+        adapter.setTargetWindow(&window);
+        adapter.setTargetItem(view);
+        QSignalSpy surfaceChanges(&adapter, &FerricPagePointerAdapter::surfaceChanged);
+
+        const auto resetTrace = [this] {
+            js("dragProbe.events=[];dragProbe.draws=0;dragProbe.dropCommits=0;"
+               "document.getElementById('range').value='10';true");
+        };
+        const auto trace = [this] { return js("dragProbe.events").toList(); };
+        const auto reportTrace = [this, &trace](const char *label) {
+            qInfo().noquote() << label << QJsonDocument::fromVariant(trace()).toJson(
+                                      QJsonDocument::Compact);
+        };
+
+        // Plain pointer-driven in-view widget: endpoints are fixed before the
+        // press; the only path is 12 straight-line moves over 200 ms.
+        resetTrace();
+        DragProbeTransaction widget(&adapter, view, &window);
+        QVERIFY(widget.begin(QPointF(60, 60), QPointF(205, 90)));
+        QVERIFY(widget.moveStraight());
+        QVERIFY(widget.finish());
+        QTRY_VERIFY(js("dragProbe.events.some(e=>e.type==='pointerup')").toBool());
+        const QVariantList widgetTrace = trace();
+        reportTrace("T047 pointer-driven widget trace:");
+        QVERIFY(std::any_of(widgetTrace.cbegin(), widgetTrace.cend(), [](const QVariant &entry) {
+            const QVariantMap event = entry.toMap();
+            return event.value("type").toString() == "pointerdown"
+                && event.value("target").toString() == "pointer-pad"
+                && event.value("trusted").toBool();
+        }));
+        QVERIFY(std::any_of(widgetTrace.cbegin(), widgetTrace.cend(), [](const QVariant &entry) {
+            const QVariantMap event = entry.toMap();
+            return event.value("type").toString() == "pointerup"
+                && event.value("target").toString() == "pointer-pad"
+                && event.value("trusted").toBool();
+        }));
+        QVERIFY(std::any_of(widgetTrace.cbegin(), widgetTrace.cend(), [](const QVariant &entry) {
+            return entry.toMap().value("type").toString() == "pointermove";
+        }));
+
+        // Pointer capture is observed independently of ordinary hit-tested
+        // widgets. A captured pointer remains on the capture pad off-element.
+        resetTrace();
+        DragProbeTransaction captured(&adapter, view, &window);
+        QVERIFY(captured.begin(QPointF(60, 160), QPointF(500, 400)));
+        QVERIFY(captured.moveStraight());
+        QVERIFY(captured.finish());
+        QTRY_VERIFY(js("dragProbe.events.some(e=>e.type==='lostpointercapture')").toBool());
+        const QVariantList captureTrace = trace();
+        reportTrace("T047 captured pointer trace:");
+        QVERIFY(std::any_of(captureTrace.cbegin(), captureTrace.cend(), [](const QVariant &entry) {
+            return entry.toMap().value("type").toString() == "gotpointercapture";
+        }));
+        QVERIFY(std::any_of(captureTrace.cbegin(), captureTrace.cend(), [](const QVariant &entry) {
+            const QVariantMap event = entry.toMap();
+            return event.value("type").toString() == "pointermove"
+                && event.value("target").toString() == "capture-pad"
+                && event.value("captureTarget").toBool();
+        }));
+
+        // The canvas-like surface and native range input retain their own
+        // observable behaviour; neither result is generalized to all sites.
+        resetTrace();
+        DragProbeTransaction canvas(&adapter, view, &window);
+        QVERIFY(canvas.begin(QPointF(300, 40), QPointF(500, 160)));
+        QVERIFY(canvas.moveStraight());
+        QVERIFY(canvas.finish());
+        QTRY_VERIFY(js("dragProbe.draws>0").toBool());
+        qInfo() << "T047 canvas-like pointermove count:" << js("dragProbe.draws").toInt();
+
+        resetTrace();
+        DragProbeTransaction slider(&adapter, view, &window);
+        QVERIFY(slider.begin(QPointF(48, 255), QPointF(244, 255)));
+        QVERIFY(slider.moveStraight());
+        QVERIFY(slider.finish());
+        QTRY_VERIFY(js("dragProbe.events.some(e=>e.type==='pointerup')").toBool());
+        reportTrace("T047 range input trace:");
+        const int rangeValue = js("Number(document.getElementById('range').value)").toInt();
+        QVERIFY(rangeValue >= 90);
+        qInfo() << "T047 range value after drag:" << rangeValue;
+
+        // Native HTML drag/drop is a separate category with a visible commit
+        // counter; the test records whether release caused a local side effect.
+        resetTrace();
+        DragProbeTransaction htmlDrag(&adapter, view, &window);
+        QVERIFY(htmlDrag.begin(QPointF(80, 350), QPointF(450, 360)));
+        QVERIFY(htmlDrag.moveStraight());
+        QVERIFY(htmlDrag.finish());
+        QTest::qWait(100);
+        const int dropCommits = js("dragProbe.dropCommits").toInt();
+        QVERIFY(dropCommits >= 0 && dropCommits <= 1);
+        QVERIFY(js("dragProbe.events.some(e=>e.type==='dragstart')").toBool());
+        QCOMPARE(js("dragProbe.events.filter(e=>e.type==='pointercancel').length").toInt(), 1);
+        QCOMPARE(js("dragProbe.events.filter(e=>e.type==='drop').length").toInt(), 0);
+        QCOMPARE(dropCommits, 0);
+        reportTrace("T049 native HTML drag/drop trace:");
+        qInfo() << "T049 local drop commits after release:" << dropCommits;
+
+        const auto verifyOneCleanupRelease = [this](const char *label) {
+            QTRY_COMPARE(js("dragProbe.events.filter(e=>e.type==='pointerup').length").toInt(), 1);
+            QTRY_COMPARE(js("dragProbe.events.filter(e=>e.type==='mouseup').length").toInt(), 1);
+            QVERIFY(js("dragProbe.events.filter(e=>e.type==='pointerdown').length===1").toBool());
+            QVERIFY(js("dragProbe.events.filter(e=>e.type==='pointerup'||e.type==='mouseup')"
+                       ".every(e=>e.trusted&&e.buttons===0)").toBool());
+            qInfo() << label << "pointerdown=1 pointerup=1 mouseup=1; no drop was retried";
+        };
+
+        // Escape, prompt ownership, deactivation and watchdog expiry each
+        // clear the test-only held state and release only to the live owner.
+        resetTrace();
+        DragProbeTransaction escape(&adapter, view, &window);
+        QVERIFY(escape.begin(QPointF(48, 255), QPointF(244, 255)));
+        QVERIFY(escape.moveStraight());
+        QVERIFY(js("Number(document.getElementById('range').value)").toInt() >= 90);
+        QTest::keyClick(&window, Qt::Key_Escape);
+        QCOMPARE(escape.cancelReason(), QStringLiteral("escape"));
+        QVERIFY(!escape.active());
+        QVERIFY(!escape.held());
+        QVERIFY(escape.cleanupReleaseSent());
+        verifyOneCleanupRelease("T049 Escape cleanup:");
+        const int escapedRangeValue = js("Number(document.getElementById('range').value)").toInt();
+        QVERIFY(escapedRangeValue >= 90);
+        QVERIFY(js("dragProbe.events.some(e=>e.type==='change')").toBool());
+        qInfo() << "T049 cancellation kept the already changed range value; no rollback:"
+                << escapedRangeValue;
+
+        resetTrace();
+        DragProbeTransaction prompt(&adapter, view, &window);
+        QVERIFY(prompt.begin(QPointF(60, 60), QPointF(205, 90)));
+        adapter.setInputBlocked(true);
+        QCOMPARE(prompt.cancelReason(), QStringLiteral("surface-changed"));
+        QVERIFY(!prompt.held());
+        QVERIFY(prompt.cleanupReleaseSent());
+        verifyOneCleanupRelease("T049 prompt cleanup:");
+        adapter.setInputBlocked(false);
+
+        resetTrace();
+        DragProbeTransaction deactivated(&adapter, view, &window);
+        QVERIFY(deactivated.begin(QPointF(60, 60), QPointF(205, 90)));
+        QEvent deactivate(QEvent::WindowDeactivate);
+        QCoreApplication::sendEvent(&window, &deactivate);
+        QCOMPARE(deactivated.cancelReason(), QStringLiteral("surface-changed"));
+        QVERIFY(!deactivated.held());
+        QVERIFY(deactivated.cleanupReleaseSent());
+        verifyOneCleanupRelease("T049 deactivation cleanup:");
+        window.requestActivate();
+        QTRY_COMPARE(QGuiApplication::focusWindow(), &window);
+
+        resetTrace();
+        DragProbeTransaction timedOut(&adapter, view, &window);
+        QVERIFY(timedOut.begin(QPointF(60, 60), QPointF(205, 90)));
+        QTRY_VERIFY_WITH_TIMEOUT(!timedOut.active(), 1500);
+        QCOMPARE(timedOut.cancelReason(), QStringLiteral("watchdog"));
+        QVERIFY(!timedOut.held());
+        QVERIFY(timedOut.cleanupReleaseSent());
+        verifyOneCleanupRelease("T049 watchdog cleanup:");
+        qInfo() << "T047 surface-change signals during probe:" << surfaceChanges.size();
+
+        // Destroying the original QQuickView invalidates both QPointers. The
+        // transaction clears its held bit without sending into the replacement
+        // view; this also verifies the replacement document stays untouched.
+        auto original = std::make_unique<QQuickView>();
+        original->engine()->rootContext()->setContextProperty("nativeRouter", &router);
+        original->setSource(QUrl::fromLocalFile(files.filePath("view.qml")));
+        QCOMPARE(original->status(), QQuickView::Ready);
+        QQuickItem *originalPage = original->rootObject();
+        originalPage->setProperty("url", probeUrl);
+        original->show();
+        original->requestActivate();
+        QTRY_VERIFY(originalPage->property("loaded").toInt() > 0);
+        originalPage->setProperty("probeDone", false);
+        QMetaObject::invokeMethod(originalPage, "probe", Q_ARG(QVariant, QString("!!window.dragProbe")));
+        QTRY_VERIFY(originalPage->property("probeDone").toBool());
+        QVERIFY(originalPage->property("probeResult").toBool());
+        FerricPagePointerAdapter teardownAdapter;
+        teardownAdapter.setTargetWindow(original.get());
+        teardownAdapter.setTargetItem(originalPage);
+        auto teardown = std::make_unique<DragProbeTransaction>(
+            &teardownAdapter, originalPage, original.get());
+        QVERIFY(teardown->begin(QPointF(60, 60), QPointF(205, 90)));
+        QTest::qWait(50);
+        original.reset();
+        QVERIFY(!teardown->active());
+        QVERIFY(!teardown->held());
+        QVERIFY(!teardown->cleanupReleaseSent());
+        QVERIFY(teardown->cancelReason() == QStringLiteral("surface-changed"));
+
+        auto replacement = std::make_unique<QQuickView>();
+        replacement->engine()->rootContext()->setContextProperty("nativeRouter", &router);
+        replacement->setSource(QUrl::fromLocalFile(files.filePath("view.qml")));
+        QCOMPARE(replacement->status(), QQuickView::Ready);
+        QQuickItem *replacementPage = replacement->rootObject();
+        replacementPage->setProperty("url", probeUrl);
+        replacement->show();
+        replacement->requestActivate();
+        QTRY_VERIFY(replacementPage->property("loaded").toInt() > 0);
+        replacementPage->setProperty("probeDone", false);
+        QMetaObject::invokeMethod(replacementPage, "probe",
+                                  Q_ARG(QVariant, QString("dragProbe.events.length")));
+        QTRY_VERIFY(replacementPage->property("probeDone").toBool());
+        QCOMPARE(replacementPage->property("probeResult").toInt(), 0);
+        teardownAdapter.setTargetWindow(replacement.get());
+        teardownAdapter.setTargetItem(replacementPage);
+        qInfo() << "T049 destroyed receiver cleanup: release sent ="
+                << teardown->cleanupReleaseSent() << "; replacement DOM events ="
+                << replacementPage->property("probeResult").toInt();
     }
 };
 int main(int argc, char **argv) {

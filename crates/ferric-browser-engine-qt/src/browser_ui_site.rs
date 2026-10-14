@@ -41,6 +41,20 @@ impl qobject::BrowserUi {
         let Some(tab) = self.as_ref().get_ref().tab_for_index(index) else {
             return;
         };
+        let native_prompt_revalidation = self
+            .as_ref()
+            .rust()
+            .native_prompt_leases
+            .top()
+            .is_some_and(|lease| {
+                lease.completion_pending
+                    && lease.expected_input_epoch == epoch
+                    && lease.owner.tab == tab.to_string()
+                    && lease
+                        .focus_identity
+                        .as_ref()
+                        .is_some_and(|focus| focus.frame_path == frame_path)
+            });
         let known_url = self
             .as_ref()
             .rust()
@@ -60,6 +74,7 @@ impl qobject::BrowserUi {
             .focus_suppressions
             .get(&key)
             .is_some_and(|suppressed| sequence <= *suppressed)
+            && !native_prompt_revalidation
         {
             return;
         }
@@ -72,6 +87,7 @@ impl qobject::BrowserUi {
                 observation.epoch == epoch
                     && observation.url == url
                     && sequence <= observation.sequence
+                    && !native_prompt_revalidation
             })
         {
             return;
@@ -102,6 +118,9 @@ impl qobject::BrowserUi {
         }
         if context_ended {
             self.as_mut().escape();
+            return;
+        }
+        if native_prompt_revalidation {
             return;
         }
         let (focused_editable, user_activated) = self

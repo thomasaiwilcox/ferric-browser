@@ -29,10 +29,24 @@ fn config_editor_captures_bounded_stderr() {
 }
 
 #[test]
+fn selector_validation_uses_a_browser_owned_webengine_document() {
+    let validator = include_str!("../../qml/components/FerricSelectorValidationSurface.qml");
+    let primary = include_str!("../../qml/components/FerricBrowserRuntimeSurface.qml");
+    let secondary = include_str!("../../qml/components/FerricBrowserWindow.qml");
+    assert!(validator.contains("document.querySelector(item.selector)"));
+    assert!(validator.contains("url: \"data:text/html;charset=utf-8,"));
+    assert!(validator.contains("complete_selector_validation(token, response)"));
+    assert!(primary.contains("FerricSelectorValidationSurface {"));
+    assert!(secondary.contains("browserUi: secondaryUi"));
+    assert!(!validator.contains("activeView()"));
+    assert!(!validator.contains("window.activeWebView"));
+}
+
+#[test]
 fn external_editor_rejects_rich_contenteditable_controls() {
     let qml = [
         QML_SOURCE,
-        include_str!("../../qml/scripts/BrowserScripts.js"),
+        BROWSER_SCRIPT_SOURCE,
     ]
     .concat();
     assert!(qml.contains("e.contentEditable==='plaintext-only'"));
@@ -135,6 +149,23 @@ fn ipc_site_status_accepts_an_optional_stable_tab_target() {
 }
 
 #[test]
+fn site_ledger_uses_on_demand_redacted_interaction_status() {
+    let ledger = include_str!("../../qml/components/FerricSiteLedger.qml");
+    let runtime = include_str!("../../qml/components/FerricBrowserRuntimeServices.qml");
+    let projection = include_str!("../browser_ui_query_diagnostics.rs");
+    assert!(ledger.contains("On-demand interaction status"));
+    assert!(ledger.contains("recent_action_errors"));
+    assert!(ledger.contains("Text.PlainText"));
+    assert!(runtime.contains("browserUi.refresh_interaction_status()"));
+    assert!(projection.contains("SAFE_INTERACTION_ERROR_CATEGORIES"));
+    assert!(!projection.contains("frame_paths"));
+    assert!(!projection.contains("window_id\": rust.window"));
+    let binding_explanation = include_str!("../browser_ui_query_bindings.rs");
+    assert!(binding_explanation.contains("binding_explanation_status"));
+    assert!(binding_explanation.contains("shortcut_policy_site_rule"));
+}
+
+#[test]
 fn permission_session_key_is_scoped_to_profile_uuid_and_lifetime() {
     let first_profile = Uuid::from_u128(1);
     let second_profile = Uuid::from_u128(2);
@@ -202,7 +233,7 @@ fn ipc_site_doctor_commands_use_typed_experiment_fields() {
 #[test]
 fn page_focus_requires_a_recent_user_gesture_before_insert_mode() {
     let qml = QML_SOURCE;
-    let script = include_str!("../../qml/scripts/BrowserScripts.js");
+    let script = BROWSER_SCRIPT_SOURCE;
     assert!(script.contains("userGestureUntil=performance.now()+1500"));
     assert!(script.contains("__ferric_browserAuthorizeExplicitFocus"));
     assert!(script.contains("user_activated:!!userActivated"));
@@ -221,9 +252,14 @@ fn hint_collection_accepts_qt_variant_candidate_lists() {
 fn site_ledger_component_renders_data_and_emits_bridge_intents() {
     let qml = include_str!("../../qml/components/FerricSiteLedger.qml");
     let composition_root = QML_SOURCE;
+    let site_report = include_str!("../browser_ui_query_site.rs");
     assert!(qml.contains("signal activeOriginDataClearRequested()"));
     assert!(qml.contains("signal siteDoctorExperimentRequested(string kind)"));
     assert!(qml.contains("signal sanitizedReportCopyRequested(bool includeHost)"));
+    assert!(qml.contains("id: siteReportHost\n                text: \"Include current site host\"\n                checked: false"));
+    assert!(site_report.contains("if include_host && !private"));
+    assert!(site_report.contains("private_session_data"));
+    assert!(!site_report.contains("page_label"));
     assert!(!qml.contains("browserUi."));
     assert!(!qml.contains("browserUi:"));
     assert!(composition_root.contains("FerricSiteLedger {"));
@@ -460,7 +496,7 @@ fn hint_overlay_component_renders_candidates_and_emits_root_owned_intents() {
     assert!(!qml.contains("browserUi."));
     assert!(!qml.contains("activateHint("));
     assert!(composition_root.contains("FerricHintOverlay {"));
-    assert!(composition_root.contains("window.activateHint(label)"));
+    assert!(composition_root.contains("window.activateHint(label, \"\", true)"));
     assert!(composition_root.contains("window.showHintActions(label)"));
 }
 
@@ -725,7 +761,7 @@ fn library_manager_composes_presentation_and_forwards_every_operation_to_the_roo
 #[test]
 fn all_hints_cover_qutebrowser_control_families_and_activate_controls() {
     let qml = QML_SOURCE;
-    let script = include_str!("../../qml/scripts/BrowserScripts.js");
+    let script = BROWSER_SCRIPT_SOURCE;
     for selector in [
         "input:not([type='hidden'])",
         "summary",
@@ -740,7 +776,7 @@ fn all_hints_cover_qutebrowser_control_families_and_activate_controls() {
             "missing hint selector {selector}"
         );
     }
-    assert!(qml.contains("function hintClickScript(elementId)"));
+    assert!(qml.contains("function hintClickScript(candidate)"));
     assert!(qml.contains("result.action === \"click\""));
     assert!(script.contains("window.__ferric_browserHintElements=elements"));
     assert!(script.contains("record&&record.element"));
@@ -749,7 +785,7 @@ fn all_hints_cover_qutebrowser_control_families_and_activate_controls() {
 
 #[test]
 fn one_shot_background_hints_use_the_background_route_and_exit_hint_mode() {
-    let source = include_str!("../browser_ui_navigation.rs");
+    let source = include_str!("../browser_ui_hint_selection.rs");
     let ipc = include_str!("../browser_ui_ipc.rs");
     let ipc_preparation = include_str!("../browser_ui_ipc_preparation.rs");
     let qml = include_str!("../../qml/components/FerricBrowserRuntimePresentation.qml");
@@ -809,7 +845,7 @@ fn one_shot_background_hints_use_the_background_route_and_exit_hint_mode() {
 
 #[test]
 fn rapid_download_hints_queue_the_validated_download_and_keep_hint_mode() {
-    let source = include_str!("../browser_ui_navigation.rs");
+    let source = include_str!("../browser_ui_hint_selection.rs");
     let policy = include_str!("../hint_policy.rs");
     let rapid_dispatch = source
         .split("if self.as_ref().rust().hint_rapid {")
@@ -836,7 +872,7 @@ fn rapid_download_hints_queue_the_validated_download_and_keep_hint_mode() {
 
 #[test]
 fn foreground_hints_complete_directly_without_redispatching_a_normal_mode_command() {
-    let source = include_str!("../browser_ui_navigation.rs");
+    let source = include_str!("../browser_ui_hint_selection.rs");
     let foreground = source
         .split("fn open_hint_in_foreground_tab(")
         .nth(1)
@@ -868,12 +904,12 @@ fn foreground_hints_complete_directly_without_redispatching_a_normal_mode_comman
 
 #[test]
 fn completed_hints_pop_the_core_mode_stack_after_page_independent_actions() {
-    let source = include_str!("../browser_ui_navigation.rs");
+    let source = include_str!("../browser_ui_hint_selection.rs");
     let completion = source
         .split("let keeps_hint_mode = rapid_hint_keeps_mode(")
         .nth(1)
         .expect("hint completion policy")
-        .split("pub(super) fn confirm_rapid_hint_tabs")
+        .split("QString::from(result.to_string())")
         .next()
         .expect("hint completion boundary");
 
@@ -888,7 +924,9 @@ fn completed_hints_pop_the_core_mode_stack_after_page_independent_actions() {
         .find("set_core_mode(Mode::Normal)")
         .expect("normal mode projection");
     assert!(pop < project, "the core stack must leave Hint before projecting Normal");
-    assert!(completion.contains("Some(\"focus\" | \"scroll-target\" | \"click\")"));
+    for action in ["focus", "scroll-target", "click", "hint-within", "target-search-within", "grid-within"] {
+        assert!(completion.contains(&format!("\"{action}\"")), "page-backed handoff must retain its source: {action}");
+    }
 }
 
 #[test]

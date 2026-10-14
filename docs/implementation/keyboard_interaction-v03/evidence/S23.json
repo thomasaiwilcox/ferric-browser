@@ -1,0 +1,137 @@
+{
+  "schema_version": 1,
+  "slice_id": "S23",
+  "status": "research_no_go",
+  "commit": "8f087133eb3fb760517ae7dd81211eec6ff34c18",
+  "environment": {
+    "os": "Linux 7.2.3-arch1-3 x86_64",
+    "cpu": "Intel Core i5-7200U @ 2.50 GHz",
+    "qt": "Qt 6.11.2; QtWebEngine 6.11.2; declared package minimum Qt 6.11.2",
+    "chromium": "QtWebEngine Chromium 140.0.7339.225",
+    "compiler": "GCC 16.2.1 20260810",
+    "rustc": "1.98.0 (88d9e12ae 2026-08-18)",
+    "cargo": "1.98.0 (797e8a9bc 2026-08-05)",
+    "build": "Locked offline Rust workspace; public QWebEngineFrame C++ syntax check used installed Qt headers; no Rust runtime dependency or production source change.",
+    "measurement_runner": "Opt-in Qt Quick/WebEngine QML test at 640x480, offscreen software backend; local HTTP fixture on 127.0.0.1:8766 and cross-origin alias localhost:8766.",
+    "compositor": "Nested Weston startup smoke passed; wtype could not access the virtual-keyboard protocol, so native Wayland input was not sent.",
+    "scope": "Research-only provider prototype. No parent cross-origin DOM traversal, page bridge, private Qt API, DevTools path, or production semantic child-frame feature."
+  },
+  "changed_files": [
+    "crates/ferric-browser-engine-qt/tests/fixtures/webapp-interaction/frame-provider-parent.html",
+    "crates/ferric-browser-engine-qt/tests/fixtures/webapp-interaction/frame-provider-child.html",
+    "crates/ferric-browser-engine-qt/tests/fixtures/webapp-interaction/frame-provider-next.html",
+    "crates/ferric-browser-engine-qt/tests/frame-probes/run_probe.py",
+    "crates/ferric-browser-engine-qt/tests/frame-probes/tst_frame_probes.qml",
+    "docs/implementation/keyboard_interaction-v03/evidence/S23-plan.md",
+    "docs/implementation/keyboard_interaction-v03/evidence/S23-frame-capability-report.md",
+    "docs/implementation/keyboard_interaction-v03/evidence/S23.json",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S23/engine.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S23/frame-probe.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S23/pack-validation.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S23/static-inspection.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S23/wayland.log",
+    "docs/implementation/keyboard_interaction-v03/progress.json",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S23/check.log"
+  ],
+  "baseline_comparison": "Research began from S22 evidence commit 026bebb. This commit adds only an isolated public-API probe and synthetic fixtures. Existing parent cross-origin isolation remains unchanged; no production runtime code was altered.",
+  "test_results": [
+    {
+      "test_id": "T035",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "8f087133eb3fb760517ae7dd81211eec6ff34c18",
+      "log": "evidence/logs/S23/engine.log",
+      "observations": [
+        "The existing cross-origin/closed-root exterior tests passed; only the parent-visible surface was retained for cross-origin frames.",
+        "The complete gate passed 442 engine-crate tests, 144 QML/WebEngine tests, and native CTest 1/1."
+      ]
+    },
+    {
+      "test_id": "T035",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "PYTHONUNBUFFERED=1 python3 crates/ferric-browser-engine-qt/tests/frame-probes/run_probe.py",
+      "commit": "8f087133eb3fb760517ae7dd81211eec6ff34c18",
+      "log": "evidence/logs/S23/frame-probe.log",
+      "observations": [
+        "Parent-world contentDocument remained inaccessible for cross-origin and opaque sandbox children, while the browser-owned ApplicationWorld provider executed against exact public frame handles."
+      ]
+    },
+    {
+      "test_id": "T035",
+      "level": "native-wayland",
+      "result": "not_run",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test wayland",
+      "commit": "8f087133eb3fb760517ae7dd81211eec6ff34c18",
+      "log": "evidence/logs/S23/wayland.log",
+      "reason": "Nested Weston lacks the virtual-keyboard protocol required by wtype; editable-page native input and the T035 Wayland journey were not run.",
+      "observations": [
+        "The command passed only its bounded startup smoke. Startup is not counted as cross-origin action or input qualification."
+      ]
+    },
+    {
+      "test_id": "T052",
+      "level": "static-inspection",
+      "result": "passed",
+      "command": "Inspect packaging/dependencies.toml and installed QWebEngineFrame/QWebEnginePage headers; pkg-config --modversion Qt6Core Qt6WebEngineCore; g++ -std=c++20 -Werror -fsyntax-only against Qt6WebEngineCore",
+      "commit": "8f087133eb3fb760517ae7dd81211eec6ff34c18",
+      "log": "evidence/logs/S23/static-inspection.log",
+      "observations": [
+        "The package minimum is Qt 6.11.2. QWebEngineFrame C++ and QML mainFrame are documented from 6.8; QML child enumeration is documented from 6.10. The installed minimum compiled and ran successfully.",
+        "Installed public headers expose frame validity, identity equality, URL/name/size, child enumeration, and world-specific runJavaScript; no frame-created/frame-destroyed signal is present."
+      ]
+    },
+    {
+      "test_id": "T052",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "PYTHONUNBUFFERED=1 python3 crates/ferric-browser-engine-qt/tests/frame-probes/run_probe.py",
+      "commit": "8f087133eb3fb760517ae7dd81211eec6ff34c18",
+      "log": "evidence/logs/S23/frame-probe.log",
+      "observations": [
+        "Cross-origin and opaque sandbox children were queried in isolated ApplicationWorld without a page bridge; only booleans and capped counts were returned.",
+        "Navigation reset the application-world document marker; removing an iframe invalidated its captured handle and fresh enumeration omitted it.",
+        "Two distinct frame handles shared URL, htmlName and size while their outer rectangles differed; the public QML frame type had no position property."
+      ]
+    },
+    {
+      "test_id": "T052",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "python3 crates/ferric-browser-engine-qt/tests/frame-probes/run_probe.py",
+      "commit": "f447da99f01eb666ca0f3be2d334b3eda0411466",
+      "log": "evidence/completion-frame-probe.log",
+      "observations": [
+        "Exact public child handles and isolated evaluation work, but duplicate metadata cannot be deterministically associated with embedding geometry. Existing provider no-go retained."
+      ]
+    }
+  ],
+  "capability_decision": "no_go",
+  "capability_report": "evidence/S23-frame-capability-report.md",
+  "review_kind": "self-review",
+  "scope_amendments": [
+    "Added crates/ferric-browser-engine-qt/tests/frame-probes/ as an isolated module for the S23 provider experiment; its synthetic HTML files are under the canonical tests/fixtures/webapp-interaction root. The probe remains opt-in and adds no production frame authority."
+  ],
+  "remaining_risks": [
+    "The no-go is for general production cross-origin semantic targets with this public API; any narrower unique-metadata adapter would need a new exact association and geometry proof.",
+    "The installed Qt 6.11.2 minimum was compiled and exercised; unsupported older Qt versions were not built.",
+    "Frame deletion is detected through validity checks and fresh enumeration, not a public frame-destruction signal. Async completion and page teardown need explicit lifetime guards in any future integration.",
+    "The provider is browser-owned and can inspect cross-origin and opaque sandbox content; this elevated authority needs an explicit capability and consent design before production use.",
+    "Native Wayland input, live-site frames, plugin-hosted content, and nontrivial transformed frame geometry remain unqualified."
+  ],
+  "not_run_reasons": [
+    "T035/native-wayland: nested Weston lacks the virtual-keyboard protocol needed by wtype; only the startup smoke passed.",
+    "No Qt version below the package minimum 6.11.2 is a declared supported target, so older builds were not tested."
+  ],
+  "next_ready_slices": [
+    "S24",
+    "S25",
+    "S26"
+  ],
+  "completion_followup": {
+    "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+    "report": "evidence/completion-report.md",
+    "scope": "Fresh bounded experiment; capability/status unchanged."
+  }
+}

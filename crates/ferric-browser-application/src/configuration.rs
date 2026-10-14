@@ -1,6 +1,6 @@
 use ferric_browser_config::{
-    Config, ConfigError, PendingSettingChange, RuntimeOverrides, apply_immediate_config_changes,
-    pending_config_changes, resolve_runtime_override_layers,
+    Config, ConfigError, ConfigurationApplyBoundary, PendingSettingChange, RuntimeOverrides,
+    apply_config_changes, pending_config_changes, resolve_runtime_override_layers,
 };
 
 /// All precedence-bearing configuration inputs owned by the application.
@@ -48,6 +48,20 @@ pub struct ConfigurationSnapshot {
     pub effective: Config,
     pub revision: u64,
     pub pending_changes: Vec<PendingSettingChange>,
+}
+
+/// A validated update that has not changed the active application state.
+#[derive(Debug)]
+pub struct PreparedConfigurationUpdate {
+    pub(crate) expected_revision: u64,
+    pub(crate) state: ConfigurationState,
+}
+
+impl PreparedConfigurationUpdate {
+    #[must_use]
+    pub fn snapshot(&self) -> ConfigurationSnapshot {
+        self.state.snapshot()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -106,6 +120,14 @@ impl ConfigurationState {
         &mut self,
         layers: ConfigurationLayers,
     ) -> Result<ConfigurationSnapshot, ConfigError> {
+        self.update_layers_at(layers, ConfigurationApplyBoundary::RuntimeUpdate)
+    }
+
+    pub(crate) fn update_layers_at(
+        &mut self,
+        layers: ConfigurationLayers,
+        boundary: ConfigurationApplyBoundary,
+    ) -> Result<ConfigurationSnapshot, ConfigError> {
         let candidate = layers.resolve()?;
         let current = toml::Value::try_from(&self.effective).map_err(|error| {
             ConfigError::Validation(format!("could not encode active configuration: {error}"))
@@ -113,14 +135,13 @@ impl ConfigurationState {
         let candidate_value = toml::Value::try_from(&candidate).map_err(|error| {
             ConfigError::Validation(format!("could not encode candidate configuration: {error}"))
         })?;
-        let pending = pending_config_changes(&current, &candidate_value);
-        let effective = apply_immediate_config_changes(&current, &candidate_value)
-            .try_into::<Config>()
-            .map_err(|error| {
-                ConfigError::Validation(format!(
-                    "could not decode active configuration after applying live changes: {error}"
-                ))
-            })?;
+        let effective_value = apply_config_changes(&current, &candidate_value, boundary);
+        let pending = pending_config_changes(&effective_value, &candidate_value);
+        let effective = effective_value.try_into::<Config>().map_err(|error| {
+            ConfigError::Validation(format!(
+                "could not decode active configuration after applying live changes: {error}"
+            ))
+        })?;
         ferric_browser_config::validate(&effective)?;
         self.layers = layers;
         Ok(self.commit(effective, pending))

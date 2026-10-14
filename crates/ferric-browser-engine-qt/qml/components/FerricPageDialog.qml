@@ -28,6 +28,17 @@ FerricModalSurface {
 
     onDismissRequested: browserWindow.rejectPageDialog()
 
+    Keys.onPressed: function(event) {
+        if (!dialog.visible) return
+        if (event.key === Qt.Key_Escape) {
+            event.accepted = true
+            dialog.browserWindow.rejectPageDialog()
+        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+            event.accepted = true
+            dialog.browserWindow.acceptPageDialog()
+        }
+    }
+
     Shortcut {
         sequence: "Return"
         context: Qt.WindowShortcut
@@ -55,6 +66,7 @@ FerricModalSurface {
         }
         TextField {
             id: pageDialogInput
+            Keys.forwardTo: [dialog]
             Layout.fillWidth: true
             visible: dialog.browserWindow.pageDialogKind() === "prompt"
             Accessible.name: "Page dialog response"
@@ -63,6 +75,7 @@ FerricModalSurface {
         }
         TextField {
             id: pageDialogUsername
+            Keys.forwardTo: [dialog]
             Layout.fillWidth: true
             visible: dialog.browserWindow.pageDialogKind() === "authentication"
             placeholderText: "Username"
@@ -72,6 +85,7 @@ FerricModalSurface {
         }
         TextField {
             id: pageDialogPassword
+            Keys.forwardTo: [dialog]
             Layout.fillWidth: true
             visible: dialog.browserWindow.pageDialogKind() === "authentication"
             placeholderText: "Password"
@@ -94,6 +108,7 @@ FerricModalSurface {
             visible: dialog.browserWindow.pageDialogKind() !== "alert"
             browserWindow: dialog.browserWindow
             keyHint: "esc"
+            Keys.forwardTo: [dialog]
             actionLabel: dialog.browserWindow.pageDialogKind() === "beforeunload"
                          ? "Stay" : "Cancel"
             safe: true
@@ -101,6 +116,7 @@ FerricModalSurface {
         }
         FerricCommandAction {
             id: acceptButton
+            Keys.forwardTo: [dialog]
             Layout.fillWidth: true
             browserWindow: dialog.browserWindow
             keyHint: "enter"

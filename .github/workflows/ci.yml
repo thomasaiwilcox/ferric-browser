@@ -11,26 +11,49 @@ permissions:
 jobs:
   workspace:
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      QTWEBENGINE_CHROMIUM_FLAGS: --disable-gpu --js-flags=--expose-gc
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-      - name: Install Qt and validation tools
+      - name: Read qualified Qt version
+        id: qt-version
+        run: |
+          python3 - <<'PY'
+          import os
+          import tomllib
+          from pathlib import Path
+          version = tomllib.loads(Path("packaging/dependencies.toml").read_text())["qt"]["minimum_version"]
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"version={version}\n")
+          PY
+      - name: Install validation and WebEngine runtime dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y qt6-base-dev qt6-declarative-dev qt6-webengine-dev qt6-wayland-dev \
-            qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-dialogs \
-            qml6-module-qtquick-layouts qml6-module-qtquick-templates qml6-module-qtquick-window \
-            qml6-module-qtqml qml6-module-qtqml-models qml6-module-qtqml-workerscript \
-            qml6-module-qttest \
-            qml6-module-qtwebengine desktop-file-utils
+          sudo apt-get install -y desktop-file-utils libnss3 libasound2t64 libpulse0 \
+            libxkbfile1 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libxtst6 libxss1 \
+            fonts-dejavu-core
+      - name: Install qualified Qt SDK
+        uses: jurplel/install-qt-action@a9c63c7c123f3069cff414e7e482d95dfa9d8125 # v4.4.1
+        with:
+          version: ${{ steps.qt-version.outputs.version }}
+          modules: qtwebengine qtwebchannel qtpositioning
+          cache: true
+      - name: Verify selected Qt SDK
+        env:
+          EXPECTED_QT_VERSION: ${{ steps.qt-version.outputs.version }}
+        run: |
+          test "$("$QT_ROOT_DIR/bin/qmake" -query QT_VERSION)" = "$EXPECTED_QT_VERSION"
+          echo "QMAKE=$QT_ROOT_DIR/bin/qmake" >> "$GITHUB_ENV"
+          echo "CMAKE_PREFIX_PATH=$QT_ROOT_DIR" >> "$GITHUB_ENV"
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets --keep-going --locked -- -D warnings
       - run: cargo test --workspace --locked
-      - name: Lint QML syntax
-        run: /usr/lib/qt6/bin/qmllint -I /usr/lib/x86_64-linux-gnu/qt6/qml -I target/cxxqt/qml_modules crates/ferric-browser-engine-qt/qml/Main.qml
-      - run: cargo xtask check
+      - name: Repository gate including all QML lint and WebEngine tests
+        run: cargo xtask check
       - run: desktop-file-validate packaging/io.github.ferricbrowser.FerricBrowser.desktop
 
   dependency-policy:

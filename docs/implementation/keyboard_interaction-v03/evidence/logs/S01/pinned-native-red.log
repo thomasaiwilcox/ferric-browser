@@ -1,0 +1,12 @@
+********* Start testing of NativeInsertTest *********
+Config: Using QtTest library 6.11.2, Qt 6.11.2 (x86_64-little_endian-lp64 shared (dynamic) release build; by GCC 16.2.1 20260810), omarchy 4.0.4
+QWARN  : NativeInsertTest::initTestCase() QRhiGles2: Failed to create temporary context
+QWARN  : NativeInsertTest::initTestCase() QRhiGles2: Failed to create context
+QWARN  : NativeInsertTest::initTestCase() Failed to create RHI for backend: OpenGL
+QWARN  : NativeInsertTest::initTestCase() GPUInfo not initialized on GpuInfoUpdate
+PASS   : NativeInsertTest::initTestCase()
+FAIL!  : NativeInsertTest::shadowHintFocusAcceptsOriginalText() 'browserJs(browserScript(QString("hintFocus(%1)").arg(elementId))).toBool()' returned FALSE. ()
+   Loc: [/tmp/ferric-keyboard-v03-pinned/crates/ferric-browser-engine-qt/tests/native-insert/tst_native_insert.cpp(603)]
+PASS   : NativeInsertTest::cleanupTestCase()
+Totals: 2 passed, 1 failed, 0 skipped, 0 blacklisted, 1400ms
+********* Finished testing of NativeInsertTest *********

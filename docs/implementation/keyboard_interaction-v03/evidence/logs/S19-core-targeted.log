@@ -1,0 +1,11 @@
+   Compiling ferric-browser-core v0.1.0 (/home/tom/Projects/RustBrowser/crates/ferric-browser-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.38s
+     Running unittests src/lib.rs (target/debug/deps/ferric_browser_core-05468200799c2821)
+
+running 3 tests
+test spatial_navigation::tests::double_click_is_one_pending_spatial_request_and_one_terminal_action ... ok
+test dispatcher::tests::aliases_cannot_replay_double_click_from_a_remote_grid_command ... ok
+test input::tests::double_click_binding_is_an_explicit_grid_only_chord ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 137 filtered out; finished in 0.00s
+

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>S24 accessibility provider fixture</title>
+</head>
+<body>
+  <main>
+    <h1>Provider fixture</h1>
+    <button aria-label="S24 web safe action" onclick="this.dataset.actions = Number(this.dataset.actions || 0) + 1">
+      Activate fixture action
+    </button>
+    <label for="s24-input">Fixture text</label>
+    <input id="s24-input" value="sample">
+    <canvas role="img" aria-label="S24 labeled canvas" width="80" height="40"></canvas>
+    <s24-closed-control></s24-closed-control>
+  </main>
+  <script>
+    class S24ClosedControl extends HTMLElement {
+      constructor() {
+        super();
+        const root = this.attachShadow({ mode: "closed" });
+        const button = document.createElement("button");
+        button.setAttribute("aria-label", "S24 closed-root safe action");
+        button.textContent = "Closed control";
+        button.addEventListener("click", () => {
+          button.dataset.actions = Number(button.dataset.actions || 0) + 1;
+        });
+        root.append(button);
+      }
+    }
+    customElements.define("s24-closed-control", S24ClosedControl);
+  </script>
+</body>
+</html>

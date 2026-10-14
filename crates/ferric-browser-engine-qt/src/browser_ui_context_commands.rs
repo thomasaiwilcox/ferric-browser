@@ -457,7 +457,13 @@ impl qobject::BrowserUi {
             self.set_status_text(QString::from("Startup configuration is invalid"));
             return false;
         }
-        self.as_mut().set_config_json(QString::from(config_text));
+        let safe_startup_config =
+            serde_json::to_string(&Config::default()).unwrap_or_else(|_| "{}".into());
+        self.as_mut()
+            // Startup values remain inputs until profile and persisted
+            // runtime overrides have crossed the WebEngine selector gate.
+            .set_config_json(QString::from(safe_startup_config));
+        self.as_mut().note_hint_configuration_change();
         self.as_mut()
             .set_config_base_json(QString::from(base_config_text));
         self.as_mut()

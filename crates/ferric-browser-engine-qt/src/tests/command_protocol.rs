@@ -525,14 +525,15 @@ fn hint_payload_carries_unique_bounded_element_ids() {
     assert!(!hint_payload::valid_hint_frame_path("1.0"));
     assert!(!hint_payload::valid_hint_frame_path("0.1.2.3.4.5.6.7.8.9"));
 
-    let source = ADAPTER_SOURCE;
+    let source = include_str!("../browser_ui_hint_selection.rs");
     let qml = QML_SOURCE;
-    let script = include_str!("../../qml/scripts/BrowserScripts.js");
+    let script = BROWSER_SCRIPT_SOURCE;
     assert!(script.contains("__ferric_browserHintElements"));
     assert!(script.contains("element_id"));
     assert!(script.contains("frame.contentDocument"));
     assert!(qml.contains("function hintFocusScript"));
-    assert!(script.contains("record.element.isConnected"));
+    assert!(script.contains("record.ownerDocument!==el.ownerDocument"));
+    assert!(script.contains("ftReachableFromTopDocument(el,record.ownerDocument)"));
     assert!(script.contains("record.framePath!==path"));
     assert!(source.contains("candidate.element_id == fresh.element_id"));
 
@@ -589,6 +590,7 @@ fn shutdown_gate_only_blocks_mutating_ipc_methods() {
     assert!(is_mutating_ipc_method("window.focus"));
     assert!(!is_mutating_ipc_method("tabs.query"));
     assert!(!is_mutating_ipc_method("diagnostics.get"));
+    assert!(!is_mutating_ipc_method("interaction.status"));
     assert!(!is_mutating_ipc_method("events.subscribe"));
 }
 

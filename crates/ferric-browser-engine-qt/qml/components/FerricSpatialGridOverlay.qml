@@ -11,20 +11,25 @@ Item {
     property color labelBackground: "#d6e8ff"
     property color crosshairColor: "#ffd166"
     property real chromeScale: 1.0
+    property bool doubleClickEnabled: false
     visible: !!browserUi && browserUi.spatial_visible
              && browserUi.spatial_selecting
     enabled: false
     Accessible.role: Accessible.Indicator
     Accessible.name: "Grid mode, depth " + (browserUi ? browserUi.spatial_depth : 0)
     Accessible.description: browserUi && browserUi.spatial_help_visible
-                            ? "Use the displayed cell keys to refine. Enter left-clicks, Shift+Enter right-clicks, Ctrl+Enter middle-clicks, Space hovers, Backspace goes back, zero resets, and Escape cancels."
+                            ? "Use the displayed cell keys to refine. Enter left-clicks, Shift+Enter right-clicks, Ctrl+Enter middle-clicks, "
+                              + (root.doubleClickEnabled
+                                 ? "Alt+Enter double-clicks"
+                                 : "Alt+Enter requests an unavailable double-click")
+                              + ", Space hovers, Backspace goes back, zero resets, and Escape cancels."
                             : "Keyboard-controlled spatial navigation. Press question mark for help or Escape to cancel."
     Accessible.ignored: !visible
 
-    readonly property real sx: browserUi && browserUi.spatial_root_width > 0
-                               ? width / browserUi.spatial_root_width : 1
-    readonly property real sy: browserUi && browserUi.spatial_root_height > 0
-                               ? height / browserUi.spatial_root_height : 1
+    readonly property real sx: browserUi && browserUi.spatial_viewport_width > 0
+                               ? width / browserUi.spatial_viewport_width : 1
+    readonly property real sy: browserUi && browserUi.spatial_viewport_height > 0
+                               ? height / browserUi.spatial_viewport_height : 1
     readonly property real cx: browserUi ? browserUi.spatial_current_x * sx : 0
     readonly property real cy: browserUi ? browserUi.spatial_current_y * sy : 0
     readonly property real cw: browserUi ? browserUi.spatial_current_width * sx : 0
@@ -199,7 +204,7 @@ Item {
             elide: Text.ElideRight
             verticalAlignment: Text.AlignVCenter
             text: browserUi && browserUi.spatial_help_visible
-                  ? "1-9 refine · Enter left · Shift+Enter right · Ctrl+Enter middle · Space hover · Backspace back · 0 reset · Esc cancel"
+                  ? "1-9 refine · Enter left · Shift+Enter right · Ctrl+Enter middle · Alt+Enter double (" + (root.doubleClickEnabled ? "enabled" : "unavailable") + ") · Space hover · Backspace back · 0 reset · Esc cancel"
                   : "Grid · depth " + (browserUi ? browserUi.spatial_depth : 0)
                     + (root.labelsFit ? "" : " · cells " + root.labels.join(" "))
         }

@@ -1,0 +1,451 @@
+UpdateCTestConfiguration  from :/home/tom/Projects/RustBrowser/target/application-tests/DartConfiguration.tcl
+Test project /home/tom/Projects/RustBrowser/target/application-tests
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 1
+    Start 1: application_offscreen
+
+1: Test command: /home/tom/Projects/RustBrowser/target/application-tests/application_tests
+1: Working Directory: /home/tom/Projects/RustBrowser/target/application-tests
+1: Environment variables: 
+1:  QT_QPA_PLATFORM=offscreen
+1:  QT_QUICK_BACKEND=software
+1:  QT_QPA_PLATFORMTHEME=
+1:  QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu
+1: Test timeout computed to be: 180
+1: ********* Start testing of ApplicationTests *********
+1: Config: Using QtTest library 6.11.2, Qt 6.11.2 (x86_64-little_endian-lp64 shared (dynamic) release build; by GCC 16.2.1 20260810), omarchy 4.0.4
+1: PASS   : ApplicationTests::initTestCase()
+1: QINFO  : ApplicationTests::startupAndConfigPublication() loading production QML
+1: QWARN  : ApplicationTests::startupAndConfigPublication() QRhiGles2: Failed to create temporary context
+1: QWARN  : ApplicationTests::startupAndConfigPublication() QRhiGles2: Failed to create context
+1: QWARN  : ApplicationTests::startupAndConfigPublication() Failed to create RHI for backend: OpenGL
+1: QINFO  : ApplicationTests::startupAndConfigPublication() production QML created
+1: QWARN  : ApplicationTests::startupAndConfigPublication() GPUInfo not initialized on GpuInfoUpdate
+1: QINFO  : ApplicationTests::startupAndConfigPublication() waiting for URL "about:blank"
+1: [2523289:2523289:1013/133135.175809:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 6 rejected by interface blink.mojom.WidgetHost
+1: [2523289:2523289:1013/133135.175964:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 7 rejected by interface blink.mojom.WidgetHost
+1: QINFO  : ApplicationTests::startupAndConfigPublication() fixture loaded "http://127.0.0.1:43111/fixture.html" "Ready"
+1: QINFO  : ApplicationTests::startupAndConfigPublication() command rejected "set --temp content.zoom=-2" "content.zoom or session.checkpoint_seconds is outside its allowed range"
+1: QWARN  : ApplicationTests::startupAndConfigPublication() QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+1: QWARN  : ApplicationTests::startupAndConfigPublication() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_196(0x5621a9965750, "ferric_browserWindow") is not a function
+1: PASS   : ApplicationTests::startupAndConfigPublication()
+1: QINFO  : ApplicationTests::reservedCommandRecovery() loading production QML
+1: QINFO  : ApplicationTests::reservedCommandRecovery() production QML created
+1: [2523289:2523289:1013/133136.567521:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+1: QINFO  : ApplicationTests::reservedCommandRecovery() waiting for URL "about:blank"
+1: QINFO  : ApplicationTests::reservedCommandRecovery() fixture loaded "http://127.0.0.1:42539/fixture.html" "Ready"
+1: QWARN  : ApplicationTests::reservedCommandRecovery() QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+1: QWARN  : ApplicationTests::reservedCommandRecovery() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_393(0x5621ab028e40, "ferric_browserWindow") is not a function
+1: PASS   : ApplicationTests::reservedCommandRecovery()
+1: QINFO  : ApplicationTests::realHintKeyboardActivation() loading production QML
+1: QINFO  : ApplicationTests::realHintKeyboardActivation() production QML created
+1: [2523289:2523289:1013/133137.911512:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+1: QINFO  : ApplicationTests::realHintKeyboardActivation() waiting for URL "about:blank"
+1: QINFO  : ApplicationTests::realHintKeyboardActivation() fixture loaded "http://127.0.0.1:44431/fixture.html" "URL changed"
+1: QWARN  : ApplicationTests::realHintKeyboardActivation() QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+1: QWARN  : ApplicationTests::realHintKeyboardActivation() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_590(0x5621aa51b2b0, "ferric_browserWindow") is not a function
+1: PASS   : ApplicationTests::realHintKeyboardActivation()
+1: QINFO  : ApplicationTests::mixedReservedKeysAndUnmappedDelivery() loading production QML
+1: QINFO  : ApplicationTests::mixedReservedKeysAndUnmappedDelivery() production QML created
+1: [2523289:2523289:1013/133139.740460:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+1: QINFO  : ApplicationTests::mixedReservedKeysAndUnmappedDelivery() waiting for URL "about:blank"
+1: QINFO  : ApplicationTests::mixedReservedKeysAndUnmappedDelivery() fixture loaded "http://127.0.0.1:32807/fixture.html" "Ready"
+1: QWARN  : ApplicationTests::mixedReservedKeysAndUnmappedDelivery() QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+1: QWARN  : ApplicationTests::mixedReservedKeysAndUnmappedDelivery() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_787(0x5621aa143110, "ferric_browserWindow") is not a function
+1: PASS   : ApplicationTests::mixedReservedKeysAndUnmappedDelivery()
+1: QINFO  : ApplicationTests::heldPageKeyRetainsOwnerAcrossPolicyChange() loading production QML
+1: QINFO  : ApplicationTests::heldPageKeyRetainsOwnerAcrossPolicyChange() production QML created
+1: [2523289:2523289:1013/133141.392561:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+1: QINFO  : ApplicationTests::heldPageKeyRetainsOwnerAcrossPolicyChange() waiting for URL "about:blank"
+1: QINFO  : ApplicationTests::heldPageKeyRetainsOwnerAcrossPolicyChange() fixture loaded "http://127.0.0.1:33567/fixture.html" "Ready"
+1: QWARN  : ApplicationTests::heldPageKeyRetainsOwnerAcrossPolicyChange() QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+1: QWARN  : ApplicationTests::heldPageKeyRetainsOwnerAcrossPolicyChange() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_984(0x5621a9ac8bb0, "ferric_browserWindow") is not a function
+1: PASS   : ApplicationTests::heldPageKeyRetainsOwnerAcrossPolicyChange()
+1: QINFO  : ApplicationTests::nativePointerRequiresLocalEntryAndClicksOnce() loading production QML
+1: QINFO  : ApplicationTests::nativePointerRequiresLocalEntryAndClicksOnce() production QML created
+1: [2523289:2523289:1013/133143.283234:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+1: QINFO  : ApplicationTests::nativePointerRequiresLocalEntryAndClicksOnce() waiting for URL "about:blank"
+1: QINFO  : ApplicationTests::nativePointerRequiresLocalEntryAndClicksOnce() fixture loaded "http://127.0.0.1:34307/fixture.html" "URL changed"
+1: QINFO  : ApplicationTests::nativePointerRequiresLocalEntryAndClicksOnce() command rejected "open about:blank ;; hint --target pointer all" "Pointer click requires a direct local UI or keyboard command"
+1: QWARN  : ApplicationTests::nativePointerRequiresLocalEntryAndClicksOnce() QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+1: QWARN  : ApplicationTests::nativePointerRequiresLocalEntryAndClicksOnce() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_1181(0x5621ab1f1950, "ferric_browserWindow") is not a function
+1: PASS   : ApplicationTests::nativePointerRequiresLocalEntryAndClicksOnce()
+1: QINFO  : ApplicationTests::nativePointerControlFamilies(input) loading production QML
+1: QINFO  : ApplicationTests::nativePointerControlFamilies(input) production QML created
+1: [2523289:2523289:1013/133146.230659:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+1: QINFO  : ApplicationTests::nativePointerControlFamilies(input) waiting for URL "about:blank"
+1: QINFO  : ApplicationTests::nativePointerControlFamilies(input) fixture loaded "http://127.0.0.1:37165/fixture.html" "Ready"
+1: QWARN  : ApplicationTests::nativePointerControlFamilies(input) QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+1: QWARN  : ApplicationTests::nativePointerControlFamilies(input) qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_1378(0x5621aa968680, "ferric_browserWindow") is not a function
+1: PASS   : ApplicationTests::nativePointerControlFamilies(input)
+1: QINFO  : ApplicationTests::nativePointerControlFamilies(contenteditable) loading production QML
+1: QINFO  : ApplicationTests::nativePointerControlFamilies(contenteditable) production QML created
+1: QINFO  : ApplicationTests::nativePointerControlFamilies(contenteditable) waiting for URL "about:blank"
+1: [2523289:2523289:1013/133150.181222:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 6 rejected by interface blink.mojom.WidgetHost
+1: [2523289:2523289:1013/133150.181330:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 7 rejected by interface blink.mojom.WidgetHost
+1: QINFO  : ApplicationTests::nativePointerControlFamilies(contenteditable) fixture loaded "http://127.0.0.1:33729/fixture.html" "Ready"
+1: FAIL!  : ApplicationTests::nativePointerControlFamilies(contenteditable) Compared values are not the same
+1:    Actual   (page("window.lastClicked").toString()): ""
+1:    Expected (id)                                   : "editor"
+1:    Loc: [/home/tom/Projects/RustBrowser/crates/ferric-browser-engine-qt/tests/application/tst_application.cpp(528)]
+1: QWARN  : ApplicationTests::nativePointerControlFamilies(contenteditable) QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+1: QWARN  : ApplicationTests::nativePointerControlFamilies(contenteditable) qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_1575(0x5621aa0cfec0, "ferric_browserWindow") is not a function
+1: QINFO  : ApplicationTests::nativePointerControlFamilies(same-document-link) loading production QML
+1: QINFO  : ApplicationTests::nativePointerControlFamilies(same-document-link) production QML created
+1: QINFO  : ApplicationTests::nativePointerControlFamilies(same-document-link) waiting for URL "about:blank"
+1: [2523289:2523289:1013/133215.702580:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+1: QINFO  : ApplicationTests::nativePointerControlFamilies(same-document-link) fixture loaded "http://127.0.0.1:34567/fixture.html" "Ready"
+1: QWARN  : ApplicationTests::nativePointerControlFamilies(same-document-link) QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+1: QWARN  : ApplicationTests::nativePointerControlFamilies(same-document-link) qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_1772(0x5621aacbe880, "ferric_browserWindow") is not a function
+1: PASS   : ApplicationTests::nativePointerControlFamilies(same-document-link)
+1: QINFO  : ApplicationTests::nativePointerFrameAndShadow(same-origin-frame) loading production QML
+1: QINFO  : ApplicationTests::nativePointerFrameAndShadow(same-origin-frame) production QML created
+1: QINFO  : ApplicationTests::nativePointerFrameAndShadow(same-origin-frame) waiting for URL "about:blank"
+1: QINFO  : ApplicationTests::nativePointerFrameAndShadow(same-origin-frame) fixture loaded "about:blank" "Ready"
+1: QWARN  : ApplicationTests::nativePointerFrameAndShadow(same-origin-frame) QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+1: QWARN  : ApplicationTests::nativePointerFrameAndShadow(same-origin-frame) qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_1969(0x5621a9bf2660, "ferric_browserWindow") is not a function
+1: PASS   : ApplicationTests::nativePointerFrameAndShadow(same-origin-frame)
+1: QINFO  : ApplicationTests::nativePointerFrameAndShadow(open-shadow-root) loading production QML
+1: QINFO  : ApplicationTests::nativePointerFrameAndShadow(open-shadow-root) production QML created
+1: QINFO  : ApplicationTests::nativePointerFrameAndShadow(open-shadow-root) waiting for URL "about:blank"
+1: [2523289:2523289:1013/133224.297388:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+1: QINFO  : ApplicationTests::nativePointerFrameAndShadow(open-shadow-root) fixture loaded "about:blank" "URL changed"
+1: FAIL!  : ApplicationTests::nativePointerFrameAndShadow(open-shadow-root) Compared values are not the same
+1:    Actual   (page(result).toMap().value("clicks").toInt()): 0
+1:    Expected (1)                                           : 1
+1:    Loc: [/home/tom/Projects/RustBrowser/crates/ferric-browser-engine-qt/tests/application/tst_application.cpp(676)]
+1: QWARN  : ApplicationTests::nativePointerFrameAndShadow(open-shadow-root) QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+1: QWARN  : ApplicationTests::nativePointerFrameAndShadow(open-shadow-root) qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_2166(0x5621aa795240, "ferric_browserWindow") is not a function
+1: QINFO  : ApplicationTests::nativePopupActionIsOneTransport() loading production QML
+1: QINFO  : ApplicationTests::nativePopupActionIsOneTransport() production QML created
+1: QINFO  : ApplicationTests::nativePopupActionIsOneTransport() waiting for URL "about:blank"
+1: QINFO  : ApplicationTests::nativePopupActionIsOneTransport() fixture loaded "http://127.0.0.1:44319/fixture.html" "Ready"
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:305:21: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:309:21: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:360:21: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:305:21: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:309:21: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:360:21: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:305:21: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:309:21: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:360:21: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:223:9: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:240:21: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:247:21: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:254:17: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:262:17: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:286:25: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:291:25: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:297:25: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:342:25: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:348:25: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:371:17: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:22:5: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:223:9: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:240:21: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:247:21: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:254:17: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:262:17: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:286:25: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:291:25: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:297:25: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:342:25: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:348:25: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:371:17: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:22:5: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:223:9: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:240:21: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:247:21: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:254:17: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:262:17: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:286:25: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:291:25: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:297:25: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:342:25: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:348:25: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:371:17: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricShutdownDecisionDialog.qml:22:5: Unable to assign [undefined] to QColor
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricPopupWindow.qml:738: TypeError: undefined is not a function
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricPopupWindow.qml:846: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_2363(0x5621a9df7de0, "ferric_browserWindow") is not a function
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricPopupWindow.qml:890: TypeError: Property 'unregisterPopupWindow' of object Main_QMLTYPE_2363(0x5621a9df7de0, "ferric_browserWindow") is not a function
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+1: QWARN  : ApplicationTests::nativePopupActionIsOneTransport() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_2363(0x5621a9df7de0, "ferric_browserWindow") is not a function
+1: PASS   : ApplicationTests::nativePopupActionIsOneTransport()
+1: QINFO  : ApplicationTests::popupWithoutUserActivationIsDenied() loading production QML
+1: QINFO  : ApplicationTests::popupWithoutUserActivationIsDenied() production QML created
+1: QINFO  : ApplicationTests::popupWithoutUserActivationIsDenied() waiting for URL "about:blank"
+1: [2523289:2523289:1013/133254.078089:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 6 rejected by interface blink.mojom.WidgetHost
+1: [2523289:2523289:1013/133254.078122:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 7 rejected by interface blink.mojom.WidgetHost
+1: [2523289:2523289:1013/133254.078134:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+1: QINFO  : ApplicationTests::popupWithoutUserActivationIsDenied() fixture loaded "http://127.0.0.1:45013/fixture.html" "Ready"
+1: QWARN  : ApplicationTests::popupWithoutUserActivationIsDenied() QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+1: QWARN  : ApplicationTests::popupWithoutUserActivationIsDenied() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_2560(0x5621ab23cc50, "ferric_browserWindow") is not a function
+1: PASS   : ApplicationTests::popupWithoutUserActivationIsDenied()
+1: QINFO  : ApplicationTests::fullscreenApiOutcomes(Qt-feature-disabled) loading production QML
+1: QINFO  : ApplicationTests::fullscreenApiOutcomes(Qt-feature-disabled) production QML created
+1: QINFO  : ApplicationTests::fullscreenApiOutcomes(Qt-feature-disabled) waiting for URL "about:blank"
+1: QINFO  : ApplicationTests::fullscreenApiOutcomes(Qt-feature-disabled) fixture loaded "http://127.0.0.1:38943/fixture.html" "Ready"
+1: QINFO  : ApplicationTests::fullscreenApiOutcomes(Qt-feature-disabled) API dispatch "normal" "terminal" "Pointer click dispatched; page response is not verified" QVariant(QString, "{\"clicks\":1,\"outcome\":\"denied\",\"error\":\"TypeError: Fullscreen is not supported\",\"focus\":true,\"activation\":true}")
+1: QINFO  : ApplicationTests::fullscreenApiOutcomes(Qt-feature-disabled) page API focus true "Pointer click dispatched; page response is not verified"
+1: QWARN  : ApplicationTests::fullscreenApiOutcomes(Qt-feature-disabled) QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+1: QWARN  : ApplicationTests::fullscreenApiOutcomes(Qt-feature-disabled) qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_2757(0x5621a9aaef50, "ferric_browserWindow") is not a function
+1: PASS   : ApplicationTests::fullscreenApiOutcomes(Qt-feature-disabled)
+1: QINFO  : ApplicationTests::fullscreenApiOutcomes(Qt-feature-enabled) loading production QML
+1: QINFO  : ApplicationTests::fullscreenApiOutcomes(Qt-feature-enabled) production QML created
+1: QINFO  : ApplicationTests::fullscreenApiOutcomes(Qt-feature-enabled) waiting for URL "about:blank"
+1: QINFO  : ApplicationTests::fullscreenApiOutcomes(Qt-feature-enabled) fixture loaded "http://127.0.0.1:35349/fixture.html" "URL changed"
+1: QINFO  : ApplicationTests::fullscreenApiOutcomes(Qt-feature-enabled) API dispatch "normal" "terminal" "Pointer target or surface changed; no action was sent" QVariant(QString, "{\"focus\":true,\"activation\":false}")
+1: FAIL!  : ApplicationTests::fullscreenApiOutcomes(Qt-feature-enabled) Compared values are not the same
+1:    Actual   (page("window.allClicks").toInt()): 0
+1:    Expected (1)                               : 1
+1:    Loc: [/home/tom/Projects/RustBrowser/crates/ferric-browser-engine-qt/tests/application/tst_application.cpp(952)]
+1: QWARN  : ApplicationTests::fullscreenApiOutcomes(Qt-feature-enabled) QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+1: QWARN  : ApplicationTests::fullscreenApiOutcomes(Qt-feature-enabled) qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_2954(0x5621ab5d2750, "ferric_browserWindow") is not a function
+1: QINFO  : ApplicationTests::clipboardPermissionOutcomes(denied) loading production QML
+1: QINFO  : ApplicationTests::clipboardPermissionOutcomes(denied) production QML created
+1: QINFO  : ApplicationTests::clipboardPermissionOutcomes(denied) waiting for URL "about:blank"
+1: [2523289:2523289:1013/133327.326262:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 6 rejected by interface blink.mojom.WidgetHost
+1: [2523289:2523289:1013/133327.326287:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 7 rejected by interface blink.mojom.WidgetHost
+1: [2523289:2523289:1013/133327.326299:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+1: QINFO  : ApplicationTests::clipboardPermissionOutcomes(denied) fixture loaded "http://127.0.0.1:38499/fixture.html" "Ready"
+1: QINFO  : ApplicationTests::clipboardPermissionOutcomes(denied) API dispatch "normal" "terminal" "Pointer click dispatched; page response is not verified" QVariant(QString, "{\"clicks\":1,\"focus\":true,\"activation\":true}")
+1: QINFO  : ApplicationTests::clipboardPermissionOutcomes(denied) page API focus true "Denied read and write your clipboard"
+1: QWARN  : ApplicationTests::clipboardPermissionOutcomes(denied) QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+1: QWARN  : ApplicationTests::clipboardPermissionOutcomes(denied) qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_3151(0x5621abb8da10, "ferric_browserWindow") is not a function
+1: PASS   : ApplicationTests::clipboardPermissionOutcomes(denied)
+1: QINFO  : ApplicationTests::clipboardPermissionOutcomes(allowed) loading production QML
+1: QINFO  : ApplicationTests::clipboardPermissionOutcomes(allowed) production QML created
+1: QINFO  : ApplicationTests::clipboardPermissionOutcomes(allowed) waiting for URL "about:blank"
+1: QINFO  : ApplicationTests::clipboardPermissionOutcomes(allowed) fixture loaded "http://127.0.0.1:40007/fixture.html" "URL changed"
+1: QINFO  : ApplicationTests::clipboardPermissionOutcomes(allowed) API dispatch "normal" "terminal" "Pointer click dispatched; page response is not verified" QVariant(QString, "{\"clicks\":1,\"focus\":true,\"activation\":true}")
+1: QINFO  : ApplicationTests::clipboardPermissionOutcomes(allowed) page API focus true "Allowed read and write your clipboard"
+1: QWARN  : ApplicationTests::clipboardPermissionOutcomes(allowed) QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+1: QWARN  : ApplicationTests::clipboardPermissionOutcomes(allowed) qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_3348(0x5621aa0b6210, "ferric_browserWindow") is not a function
+1: PASS   : ApplicationTests::clipboardPermissionOutcomes(allowed)
+1: QINFO  : ApplicationTests::startupSelectorValidation(accepted) loading production QML
+1: QINFO  : ApplicationTests::startupSelectorValidation(accepted) production QML created
+1: QINFO  : ApplicationTests::startupSelectorValidation(accepted) waiting for URL "about:blank"
+1: [2523289:2523289:1013/133336.342492:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+1: QINFO  : ApplicationTests::startupSelectorValidation(accepted) fixture loaded "http://127.0.0.1:45141/fixture.html" "URL changed"
+1: QWARN  : ApplicationTests::startupSelectorValidation(accepted) QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+1: QWARN  : ApplicationTests::startupSelectorValidation(accepted) qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_3545(0x5621aafefe70, "ferric_browserWindow") is not a function
+1: PASS   : ApplicationTests::startupSelectorValidation(accepted)
+1: QINFO  : ApplicationTests::startupSelectorValidation(rejected) loading production QML
+1: QINFO  : ApplicationTests::startupSelectorValidation(rejected) production QML created
+1: QINFO  : ApplicationTests::startupSelectorValidation(rejected) waiting for URL "about:blank"
+1: [2523289:2523289:1013/133339.303683:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 6 rejected by interface blink.mojom.WidgetHost
+1: [2523289:2523289:1013/133339.303713:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 7 rejected by interface blink.mojom.WidgetHost
+1: [2523289:2523289:1013/133339.303782:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+1: QINFO  : ApplicationTests::startupSelectorValidation(rejected) fixture loaded "http://127.0.0.1:35145/fixture.html" "Ready"
+1: QWARN  : ApplicationTests::startupSelectorValidation(rejected) QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+1: QWARN  : ApplicationTests::startupSelectorValidation(rejected) qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_3742(0x5621aaa57e20, "ferric_browserWindow") is not a function
+1: PASS   : ApplicationTests::startupSelectorValidation(rejected)
+1: QINFO  : ApplicationTests::staleSelectorCallbackCannotPublish() loading production QML
+1: QINFO  : ApplicationTests::staleSelectorCallbackCannotPublish() production QML created
+1: QINFO  : ApplicationTests::staleSelectorCallbackCannotPublish() waiting for URL "about:blank"
+1: [2523289:2523289:1013/133342.219794:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+1: QINFO  : ApplicationTests::staleSelectorCallbackCannotPublish() fixture loaded "http://127.0.0.1:33581/fixture.html" "Ready"
+1: QWARN  : ApplicationTests::staleSelectorCallbackCannotPublish() QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+1: QWARN  : ApplicationTests::staleSelectorCallbackCannotPublish() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_3939(0x5621ab493dd0, "ferric_browserWindow") is not a function
+1: PASS   : ApplicationTests::staleSelectorCallbackCannotPublish()
+1: QINFO  : ApplicationTests::unavailableSelectorDocumentTimesOut() loading production QML
+1: QINFO  : ApplicationTests::unavailableSelectorDocumentTimesOut() production QML created
+1: QINFO  : ApplicationTests::unavailableSelectorDocumentTimesOut() waiting for URL "about:blank"
+1: QINFO  : ApplicationTests::unavailableSelectorDocumentTimesOut() fixture loaded "http://127.0.0.1:39779/fixture.html" "Ready"
+1: QWARN  : ApplicationTests::unavailableSelectorDocumentTimesOut() QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+1: QWARN  : ApplicationTests::unavailableSelectorDocumentTimesOut() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_4136(0x5621ab4fed10, "ferric_browserWindow") is not a function
+1: PASS   : ApplicationTests::unavailableSelectorDocumentTimesOut()
+1: QINFO  : ApplicationTests::productionHintLifetimeCycles() loading production QML
+1: QINFO  : ApplicationTests::productionHintLifetimeCycles() production QML created
+1: QINFO  : ApplicationTests::productionHintLifetimeCycles() waiting for URL "about:blank"
+1: [2523289:2523289:1013/133352.557553:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 6 rejected by interface blink.mojom.WidgetHost
+1: [2523289:2523289:1013/133352.557582:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 7 rejected by interface blink.mojom.WidgetHost
+1: [2523289:2523289:1013/133352.561855:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+1: QINFO  : ApplicationTests::productionHintLifetimeCycles() fixture loaded "http://127.0.0.1:33533/fixture.html" "URL changed"
+1: SKIP   : ApplicationTests::productionHintLifetimeCycles() separate opt-in application_lifetime gate
+1:    Loc: [/home/tom/Projects/RustBrowser/crates/ferric-browser-engine-qt/tests/application/tst_application.cpp(755)]
+1: QWARN  : ApplicationTests::productionHintLifetimeCycles() QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+1: QWARN  : ApplicationTests::productionHintLifetimeCycles() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_4333(0x5621a99de8e0, "ferric_browserWindow") is not a function
+1: QINFO  : ApplicationTests::scopedGridNativeCoordinates(80-percent) loading production QML
+1: QINFO  : ApplicationTests::scopedGridNativeCoordinates(80-percent) production QML created
+1: QINFO  : ApplicationTests::scopedGridNativeCoordinates(80-percent) waiting for URL "about:blank"
+1: [2523289:2523289:1013/133355.310076:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 6 rejected by interface blink.mojom.WidgetHost
+1: [2523289:2523289:1013/133355.310119:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 7 rejected by interface blink.mojom.WidgetHost
+1: [2523289:2523289:1013/133355.310132:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+1: QINFO  : ApplicationTests::scopedGridNativeCoordinates(80-percent) fixture loaded "http://127.0.0.1:34819/fixture.html" "Ready"
+1: QINFO  : ApplicationTests::scopedGridNativeCoordinates(80-percent) coordinate qualification 0.8 1 QPoint(120,90)
+1: QWARN  : ApplicationTests::scopedGridNativeCoordinates(80-percent) QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+1: QWARN  : ApplicationTests::scopedGridNativeCoordinates(80-percent) qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_4530(0x5621aaf3b7c0, "ferric_browserWindow") is not a function
+1: PASS   : ApplicationTests::scopedGridNativeCoordinates(80-percent)
+1: QINFO  : ApplicationTests::scopedGridNativeCoordinates(100-percent) loading production QML
+1: QINFO  : ApplicationTests::scopedGridNativeCoordinates(100-percent) production QML created
+1: QINFO  : ApplicationTests::scopedGridNativeCoordinates(100-percent) waiting for URL "about:blank"
+1: [2523289:2523289:1013/133358.924608:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+1: QINFO  : ApplicationTests::scopedGridNativeCoordinates(100-percent) fixture loaded "http://127.0.0.1:33757/fixture.html" "Ready"
+1: QINFO  : ApplicationTests::scopedGridNativeCoordinates(100-percent) coordinate qualification 1 1 QPoint(120,90)
+1: QWARN  : ApplicationTests::scopedGridNativeCoordinates(100-percent) QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+1: QWARN  : ApplicationTests::scopedGridNativeCoordinates(100-percent) qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_4727(0x5621aa030d10, "ferric_browserWindow") is not a function
+1: PASS   : ApplicationTests::scopedGridNativeCoordinates(100-percent)
+1: QINFO  : ApplicationTests::scopedGridNativeCoordinates(125-percent) loading production QML
+1: QINFO  : ApplicationTests::scopedGridNativeCoordinates(125-percent) production QML created
+1: QINFO  : ApplicationTests::scopedGridNativeCoordinates(125-percent) waiting for URL "about:blank"
+1: [2523289:2523289:1013/133402.875838:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 6 rejected by interface blink.mojom.WidgetHost
+1: [2523289:2523289:1013/133402.875867:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 7 rejected by interface blink.mojom.WidgetHost
+1: QINFO  : ApplicationTests::scopedGridNativeCoordinates(125-percent) fixture loaded "http://127.0.0.1:46875/fixture.html" "Ready"
+1: QINFO  : ApplicationTests::scopedGridNativeCoordinates(125-percent) coordinate qualification 1.25 1 QPoint(120,90)
+1: QWARN  : ApplicationTests::scopedGridNativeCoordinates(125-percent) QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+1: QWARN  : ApplicationTests::scopedGridNativeCoordinates(125-percent) qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_4924(0x5621ab6345b0, "ferric_browserWindow") is not a function
+1: PASS   : ApplicationTests::scopedGridNativeCoordinates(125-percent)
+1: QINFO  : ApplicationTests::mixedPageKeysAndBrowserSequence(slash) loading production QML
+1: QINFO  : ApplicationTests::mixedPageKeysAndBrowserSequence(slash) production QML created
+1: QINFO  : ApplicationTests::mixedPageKeysAndBrowserSequence(slash) waiting for URL "about:blank"
+1: [2523289:2523289:1013/133406.946412:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+1: QINFO  : ApplicationTests::mixedPageKeysAndBrowserSequence(slash) fixture loaded "http://127.0.0.1:41803/fixture.html" "Ready"
+1: QWARN  : ApplicationTests::mixedPageKeysAndBrowserSequence(slash) QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+1: QWARN  : ApplicationTests::mixedPageKeysAndBrowserSequence(slash) qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_5121(0x5621a9e4d420, "ferric_browserWindow") is not a function
+1: PASS   : ApplicationTests::mixedPageKeysAndBrowserSequence(slash)
+1: QINFO  : ApplicationTests::mixedPageKeysAndBrowserSequence(question) loading production QML
+1: QINFO  : ApplicationTests::mixedPageKeysAndBrowserSequence(question) production QML created
+1: QINFO  : ApplicationTests::mixedPageKeysAndBrowserSequence(question) waiting for URL "about:blank"
+1: [2523289:2523289:1013/133410.220292:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+1: QINFO  : ApplicationTests::mixedPageKeysAndBrowserSequence(question) fixture loaded "http://127.0.0.1:34805/fixture.html" "Ready"
+1: QWARN  : ApplicationTests::mixedPageKeysAndBrowserSequence(question) QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+1: QWARN  : ApplicationTests::mixedPageKeysAndBrowserSequence(question) qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_5318(0x5621aabd4340, "ferric_browserWindow") is not a function
+1: PASS   : ApplicationTests::mixedPageKeysAndBrowserSequence(question)
+1: QINFO  : ApplicationTests::mixedPageKeysAndBrowserSequence(hint-f) loading production QML
+1: QINFO  : ApplicationTests::mixedPageKeysAndBrowserSequence(hint-f) production QML created
+1: [2523289:2523289:1013/133413.161106:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+1: QINFO  : ApplicationTests::mixedPageKeysAndBrowserSequence(hint-f) waiting for URL "about:blank"
+1: QINFO  : ApplicationTests::mixedPageKeysAndBrowserSequence(hint-f) fixture loaded "about:blank" "URL changed"
+1: QWARN  : ApplicationTests::mixedPageKeysAndBrowserSequence(hint-f) QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+1: QWARN  : ApplicationTests::mixedPageKeysAndBrowserSequence(hint-f) qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_5515(0x5621aa08ad90, "ferric_browserWindow") is not a function
+1: PASS   : ApplicationTests::mixedPageKeysAndBrowserSequence(hint-f)
+1: QINFO  : ApplicationTests::mixedPageKeysAndBrowserSequence(control-f) loading production QML
+1: QINFO  : ApplicationTests::mixedPageKeysAndBrowserSequence(control-f) production QML created
+1: QINFO  : ApplicationTests::mixedPageKeysAndBrowserSequence(control-f) waiting for URL "about:blank"
+1: QINFO  : ApplicationTests::mixedPageKeysAndBrowserSequence(control-f) fixture loaded "http://127.0.0.1:36737/fixture.html" "Ready"
+1: QWARN  : ApplicationTests::mixedPageKeysAndBrowserSequence(control-f) QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+1: QWARN  : ApplicationTests::mixedPageKeysAndBrowserSequence(control-f) qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_5712(0x5621ab4de930, "ferric_browserWindow") is not a function
+1: PASS   : ApplicationTests::mixedPageKeysAndBrowserSequence(control-f)
+1: QINFO  : ApplicationTests::pointerConfigurationInvalidatesHeldConfirmation() loading production QML
+1: QINFO  : ApplicationTests::pointerConfigurationInvalidatesHeldConfirmation() production QML created
+1: QINFO  : ApplicationTests::pointerConfigurationInvalidatesHeldConfirmation() waiting for URL "about:blank"
+1: [2523289:2523289:1013/133420.115253:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+1: QINFO  : ApplicationTests::pointerConfigurationInvalidatesHeldConfirmation() fixture loaded "http://127.0.0.1:35971/fixture.html" "Ready"
+1: QWARN  : ApplicationTests::pointerConfigurationInvalidatesHeldConfirmation() QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+1: QWARN  : ApplicationTests::pointerConfigurationInvalidatesHeldConfirmation() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_5909(0x5621ab05ff50, "ferric_browserWindow") is not a function
+1: PASS   : ApplicationTests::pointerConfigurationInvalidatesHeldConfirmation()
+1: QINFO  : ApplicationTests::rendererLossCancelsHeldConfirmation() loading production QML
+1: QINFO  : ApplicationTests::rendererLossCancelsHeldConfirmation() production QML created
+1: QINFO  : ApplicationTests::rendererLossCancelsHeldConfirmation() waiting for URL "about:blank"
+1: [2523289:2523289:1013/133424.771891:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+1: QINFO  : ApplicationTests::rendererLossCancelsHeldConfirmation() fixture loaded "http://127.0.0.1:44465/fixture.html" "Ready"
+1: QWARN  : ApplicationTests::rendererLossCancelsHeldConfirmation() QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+1: QWARN  : ApplicationTests::rendererLossCancelsHeldConfirmation() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_6106(0x5621ab0934a0, "ferric_browserWindow") is not a function
+1: PASS   : ApplicationTests::rendererLossCancelsHeldConfirmation()
+1: QINFO  : ApplicationTests::pointerObservationIntervalExperiment() loading production QML
+1: QINFO  : ApplicationTests::pointerObservationIntervalExperiment() production QML created
+1: QINFO  : ApplicationTests::pointerObservationIntervalExperiment() waiting for URL "about:blank"
+1: [2523289:2523289:1013/133429.212734:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+1: QINFO  : ApplicationTests::pointerObservationIntervalExperiment() fixture loaded "http://127.0.0.1:35945/fixture.html" "Ready"
+1: QINFO  : ApplicationTests::pointerObservationIntervalExperiment() Interval trial 0 "{\"receiver\":\"replacement\",\"clicks\":1,\"allClicks\":1,\"over\":1,\"trusted\":true}"
+1: QINFO  : ApplicationTests::pointerObservationIntervalExperiment() Interval trial 1 "{\"receiver\":\"replacement\",\"clicks\":1,\"allClicks\":1,\"over\":1,\"trusted\":true}"
+1/3 Test #1: application_offscreen ............***Timeout 180.16 sec
+test 2
+    Start 2: application_offscreen_dpr2
+
+2: Test command: /home/tom/Projects/RustBrowser/target/application-tests/application_tests "scopedGridNativeCoordinates"
+2: Working Directory: /home/tom/Projects/RustBrowser/target/application-tests
+2: Environment variables: 
+2:  QT_QPA_PLATFORM=offscreen
+2:  QT_QUICK_BACKEND=software
+2:  QT_QPA_PLATFORMTHEME=
+2:  QT_SCALE_FACTOR=2
+2:  QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu
+2: Test timeout computed to be: 90
+2: ********* Start testing of ApplicationTests *********
+2: Config: Using QtTest library 6.11.2, Qt 6.11.2 (x86_64-little_endian-lp64 shared (dynamic) release build; by GCC 16.2.1 20260810), omarchy 4.0.4
+2: PASS   : ApplicationTests::initTestCase()
+2: QINFO  : ApplicationTests::scopedGridNativeCoordinates(80-percent) loading production QML
+2: QWARN  : ApplicationTests::scopedGridNativeCoordinates(80-percent) QRhiGles2: Failed to create temporary context
+2: QWARN  : ApplicationTests::scopedGridNativeCoordinates(80-percent) QRhiGles2: Failed to create context
+2: QWARN  : ApplicationTests::scopedGridNativeCoordinates(80-percent) Failed to create RHI for backend: OpenGL
+2: QINFO  : ApplicationTests::scopedGridNativeCoordinates(80-percent) production QML created
+2: QWARN  : ApplicationTests::scopedGridNativeCoordinates(80-percent) GPUInfo not initialized on GpuInfoUpdate
+2: QINFO  : ApplicationTests::scopedGridNativeCoordinates(80-percent) waiting for URL "about:blank"
+2: QINFO  : ApplicationTests::scopedGridNativeCoordinates(80-percent) fixture loaded "http://127.0.0.1:45783/fixture.html" "URL changed"
+2: QINFO  : ApplicationTests::scopedGridNativeCoordinates(80-percent) coordinate qualification 0.8 2 QPoint(120,90)
+2: QWARN  : ApplicationTests::scopedGridNativeCoordinates(80-percent) QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+2: QWARN  : ApplicationTests::scopedGridNativeCoordinates(80-percent) qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_196(0x5624acc68cb0, "ferric_browserWindow") is not a function
+2: PASS   : ApplicationTests::scopedGridNativeCoordinates(80-percent)
+2: QINFO  : ApplicationTests::scopedGridNativeCoordinates(100-percent) loading production QML
+2: QINFO  : ApplicationTests::scopedGridNativeCoordinates(100-percent) production QML created
+2: QINFO  : ApplicationTests::scopedGridNativeCoordinates(100-percent) waiting for URL "about:blank"
+2: [2527682:2527682:1013/133440.605165:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 6 rejected by interface blink.mojom.WidgetHost
+2: [2527682:2527682:1013/133440.605199:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 7 rejected by interface blink.mojom.WidgetHost
+2: QINFO  : ApplicationTests::scopedGridNativeCoordinates(100-percent) fixture loaded "http://127.0.0.1:37921/fixture.html" "Ready"
+2: QINFO  : ApplicationTests::scopedGridNativeCoordinates(100-percent) coordinate qualification 1 2 QPoint(120,90)
+2: QWARN  : ApplicationTests::scopedGridNativeCoordinates(100-percent) QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+2: QWARN  : ApplicationTests::scopedGridNativeCoordinates(100-percent) qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_393(0x5624ae55f580, "ferric_browserWindow") is not a function
+2: PASS   : ApplicationTests::scopedGridNativeCoordinates(100-percent)
+2: QINFO  : ApplicationTests::scopedGridNativeCoordinates(125-percent) loading production QML
+2: QINFO  : ApplicationTests::scopedGridNativeCoordinates(125-percent) production QML created
+2: QINFO  : ApplicationTests::scopedGridNativeCoordinates(125-percent) waiting for URL "about:blank"
+2: [2527682:2527682:1013/133444.519944:ERROR:../../../qtwebengine/src/3rdparty/chromium/mojo/public/cpp/bindings/lib/interface_endpoint_client.cc:732] Message 2 rejected by interface blink.mojom.Widget
+2: QINFO  : ApplicationTests::scopedGridNativeCoordinates(125-percent) fixture loaded "http://127.0.0.1:42221/fixture.html" "Ready"
+2: QINFO  : ApplicationTests::scopedGridNativeCoordinates(125-percent) coordinate qualification 1.25 2 QPoint(120,90)
+2: QWARN  : ApplicationTests::scopedGridNativeCoordinates(125-percent) QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+2: QWARN  : ApplicationTests::scopedGridNativeCoordinates(125-percent) qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_590(0x5624ae0996c0, "ferric_browserWindow") is not a function
+2: PASS   : ApplicationTests::scopedGridNativeCoordinates(125-percent)
+2: PASS   : ApplicationTests::cleanupTestCase()
+2: Totals: 5 passed, 0 failed, 0 skipped, 0 blacklisted, 13095ms
+2: ********* Finished testing of ApplicationTests *********
+2/3 Test #2: application_offscreen_dpr2 .......   Passed   13.59 sec
+test 3
+    Start 3: application_lifetime
+
+3: Test command: /home/tom/Projects/RustBrowser/target/application-tests/application_tests "productionHintLifetimeCycles"
+3: Working Directory: /home/tom/Projects/RustBrowser/target/application-tests
+3: Environment variables: 
+3:  FERRIC_APP_STRESS=1
+3:  QT_QPA_PLATFORM=offscreen
+3:  QT_QUICK_BACKEND=software
+3:  QT_QPA_PLATFORMTHEME=
+3:  QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu --js-flags=--expose-gc
+3: Test timeout computed to be: 180
+3: ********* Start testing of ApplicationTests *********
+3: Config: Using QtTest library 6.11.2, Qt 6.11.2 (x86_64-little_endian-lp64 shared (dynamic) release build; by GCC 16.2.1 20260810), omarchy 4.0.4
+3: PASS   : ApplicationTests::initTestCase()
+3: QINFO  : ApplicationTests::productionHintLifetimeCycles() loading production QML
+3: QWARN  : ApplicationTests::productionHintLifetimeCycles() QRhiGles2: Failed to create temporary context
+3: QWARN  : ApplicationTests::productionHintLifetimeCycles() QRhiGles2: Failed to create context
+3: QWARN  : ApplicationTests::productionHintLifetimeCycles() Failed to create RHI for backend: OpenGL
+3: QINFO  : ApplicationTests::productionHintLifetimeCycles() production QML created
+3: QWARN  : ApplicationTests::productionHintLifetimeCycles() GPUInfo not initialized on GpuInfoUpdate
+3: QINFO  : ApplicationTests::productionHintLifetimeCycles() waiting for URL "about:blank"
+3: QINFO  : ApplicationTests::productionHintLifetimeCycles() fixture loaded "http://127.0.0.1:39911/fixture.html" "URL changed"
+3: QINFO  : ApplicationTests::productionHintLifetimeCycles() 1000 production Hint cycles, Qt objects 3367 3367 QMap(("elements", QVariant(int, 0))("gc", QVariant(bool, true))("observers", QVariant(int, 0))("scope", QVariant(bool, false))("tracking", QVariant(bool, false))("windows", QVariant(int, 0)))
+3: QWARN  : ApplicationTests::productionHintLifetimeCycles() QQmlVMEMetaObject: Internal error - attempted to evaluate a function in an invalid context
+3: QWARN  : ApplicationTests::productionHintLifetimeCycles() qrc:/qt/qml/io/github/ferricbrowser/qml/components/FerricBrowserRuntimeChrome.qml:1214: TypeError: Property 'clearPageDialogForView' of object Main_QMLTYPE_196(0x5651e70d0f30, "ferric_browserWindow") is not a function
+3: PASS   : ApplicationTests::productionHintLifetimeCycles()
+3: PASS   : ApplicationTests::cleanupTestCase()
+3: Totals: 3 passed, 0 failed, 0 skipped, 0 blacklisted, 74962ms
+3: ********* Finished testing of ApplicationTests *********
+3/3 Test #3: application_lifetime .............   Passed   75.31 sec
+
+67% tests passed, 1 tests failed out of 3
+
+Total Test time (real) = 269.07 sec
+
+The following tests FAILED:
+	  1 - application_offscreen (Timeout)
+Errors while running CTest
+Output from these tests are in: /home/tom/Projects/RustBrowser/target/application-tests/Testing/Temporary/LastTest.log
+Use "--rerun-failed --output-on-failure" to re-run the failed cases verbosely.

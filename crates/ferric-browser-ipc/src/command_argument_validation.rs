@@ -145,7 +145,15 @@ fn validate_hint_arguments(arguments: &serde_json::Map<String, Value>) -> Result
         .is_some_and(|kind| {
             !matches!(
                 kind,
-                "links" | "all" | "inputs" | "buttons" | "images" | "media" | "scrollables"
+                "links"
+                    | "all"
+                    | "inputs"
+                    | "buttons"
+                    | "images"
+                    | "media"
+                    | "scrollables"
+                    | "regions"
+                    | "surfaces"
             )
         })
     {
@@ -186,6 +194,21 @@ fn validate_hint_arguments(arguments: &serde_json::Map<String, Value>) -> Result
     }
     let first = arguments.get("first").and_then(Value::as_bool) == Some(true);
     let rapid = arguments.get("rapid").and_then(Value::as_bool) == Some(true);
+    let region_surface = arguments
+        .get("kind")
+        .and_then(Value::as_str)
+        .is_some_and(|kind| matches!(kind, "regions" | "surfaces"));
+    if region_surface
+        && (rapid
+            || first
+            || arguments.contains_key("index")
+            || arguments.contains_key("script")
+            || target.is_some_and(|target| target != "choose"))
+    {
+        return Err(
+            "hint regions/surfaces require the action palette and do not support rapid, first, index, script, or URL targets".into(),
+        );
+    }
     if first && rapid {
         return Err("hint first and rapid modes cannot be combined".into());
     }

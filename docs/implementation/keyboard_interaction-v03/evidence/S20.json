@@ -1,0 +1,256 @@
+{
+  "schema_version": 1,
+  "slice_id": "S20",
+  "status": "blocked_environment",
+  "commit": "bd7b316e6679cf7c8cef669c8d9ec021b5ed3083",
+  "environment": {
+    "os": "Linux 7.2.3-arch1-3 x86_64",
+    "cpu": "Intel Core i5-7200U @ 2.50 GHz",
+    "qt": "6.11.2",
+    "chromium": "QtWebEngine 6.11.2 / Chrome 140.0.0.0",
+    "compiler": "GCC 16.2.1 20260810",
+    "rustc": "1.98.0 (88d9e12ae 2026-08-18)",
+    "cargo": "1.98.0 (797e8a9bc 2026-08-05)",
+    "build": "Locked offline workspace; unchanged Qt 6.11.2 toolchain and dependency graph.",
+    "measurement_runner": "Qt Quick/WebEngine offscreen software runner; 640x480 CSS viewport; devicePixelRatio 1.",
+    "compositor": "Nested Weston startup smoke; wtype could not access virtual-keyboard protocol.",
+    "scope": "Test-only public QQuickWindow held-pointer experiment; no production drag UI or adapter operation added."
+  },
+  "changed_files": [
+    "crates/ferric-browser-engine-qt/tests/fixtures/drag-probe.html",
+    "crates/ferric-browser-engine-qt/tests/native-insert/CMakeLists.txt",
+    "crates/ferric-browser-engine-qt/tests/native-insert/tst_native_insert.cpp",
+    "docs/architecture/ADR-0017-proposed-bounded-in-view-drag.md",
+    "docs/implementation/keyboard_interaction-v03/evidence/S20-plan.md",
+    "docs/implementation/keyboard_interaction-v03/evidence/S20-drag-decision.json",
+    "docs/implementation/keyboard_interaction-v03/evidence/S20-drag-report.md",
+    "docs/implementation/keyboard_interaction-v03/evidence/S20.json",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S20/adapter.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S20/check.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S20/clippy.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S20/engine-disable-gpu-flag-failure.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S20/engine-initial.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S20/engine-qualified.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S20/format-diff.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S20/native-build.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S20/native-offscreen-verbose.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S20/pack-validation.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S20/wayland.log",
+    "docs/implementation/keyboard_interaction-v03/progress.json"
+  ],
+  "baseline_comparison": "Started from S19 evidence commit aeb32d8c9c49053df878657223e2fd4072d94312. The patch adds a canonical local fixture and a test-only native-insert transaction helper; production pointer behavior is unchanged. The corrected full engine run and workspace check passed. Final native CTest was rerun after the last test-helper edit and passed 59 tests.",
+  "test_results": [
+    {
+      "test_id": "T047",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "cmake --build target/native-insert --parallel 2 && ctest --test-dir target/native-insert --verbose",
+      "commit": "bd7b316e6679cf7c8cef669c8d9ec021b5ed3083",
+      "log": "evidence/logs/S20/native-offscreen-verbose.log",
+      "observations": [
+        "The 12-step, 200 ms left-button path selected both endpoints before press and emitted trusted pointer/mouse press, move and release events to the ordinary in-view widget.",
+        "Explicit setPointerCapture kept pointer moves on the capture widget outside its bounds and emitted capture acquisition/release events.",
+        "The canvas-like surface observed pointer moves; the native range slider changed from 10 to 94.",
+        "A 1,000 ms watchdog, Escape, input blocking and window deactivation each cleared held state and sent exactly one trusted release to the live original view.",
+        "Destroying the original QQuickView cleared owner QPointers and sent no release; the replacement view observed zero DOM events."
+      ]
+    },
+    {
+      "test_id": "T047",
+      "level": "native-wayland",
+      "result": "not_run",
+      "command": "cargo xtask test wayland",
+      "commit": "bd7b316e6679cf7c8cef669c8d9ec021b5ed3083",
+      "log": "evidence/logs/S20/wayland.log",
+      "reason": "The nested Weston startup smoke passed, but wtype could not access the compositor virtual-keyboard protocol, so native pointer input was not sent.",
+      "observations": [
+        "Startup-only Wayland smoke is not treated as physical pointer qualification."
+      ]
+    },
+    {
+      "test_id": "T049",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "cmake --build target/native-insert --parallel 2 && ctest --test-dir target/native-insert --verbose",
+      "commit": "bd7b316e6679cf7c8cef669c8d9ec021b5ed3083",
+      "log": "evidence/logs/S20/native-offscreen-verbose.log",
+      "observations": [
+        "Each live-owner cancellation emitted one pointer-up and one mouse-up with trusted=true and buttons=0; no action was retried.",
+        "The range value had already changed to 94 before Escape; cleanup left it at 94 and did not claim rollback.",
+        "HTML drag produced dragstart, pointercancel and dragend, but no drop event and zero fixture drop commits. Native HTML drag-and-drop remains excluded.",
+        "After original-view destruction, no release was sent and the replacement DOM event count remained zero."
+      ]
+    },
+    {
+      "test_id": "T049",
+      "level": "native-wayland",
+      "result": "not_run",
+      "command": "cargo xtask test wayland",
+      "commit": "bd7b316e6679cf7c8cef669c8d9ec021b5ed3083",
+      "log": "evidence/logs/S20/wayland.log",
+      "reason": "The nested Weston startup smoke passed, but wtype could not access the compositor virtual-keyboard protocol, so native pointer input was not sent.",
+      "observations": [
+        "No Wayland claim is inferred from startup-only compositor evidence."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask check",
+      "commit": "bd7b316e6679cf7c8cef669c8d9ec021b5ed3083",
+      "log": "evidence/logs/S20/check.log",
+      "observations": [
+        "The locked workspace tests passed, including 441 core tests and the engine crate tests; one existing test remains ignored."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask check",
+      "commit": "bd7b316e6679cf7c8cef669c8d9ec021b5ed3083",
+      "log": "evidence/logs/S20/check.log",
+      "observations": [
+        "The full Qt Quick/WebEngine fixture suite passed 144 tests."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "cmake --build target/native-insert --parallel 2 && ctest --test-dir target/native-insert --verbose",
+      "commit": "bd7b316e6679cf7c8cef669c8d9ec021b5ed3083",
+      "log": "evidence/logs/S20/native-offscreen-verbose.log",
+      "observations": [
+        "The final native_insert suite passed 59 tests with no failures."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "static-inspection",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true cargo clippy --workspace --all-targets --locked -- -D warnings",
+      "commit": "bd7b316e6679cf7c8cef669c8d9ec021b5ed3083",
+      "log": "evidence/logs/S20/clippy.log",
+      "observations": [
+        "Strict workspace Clippy completed cleanly with Rust warnings denied; compiler output contains existing generated-Qt/GCC diagnostics."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "static-inspection",
+      "result": "passed",
+      "command": "cargo fmt --all -- --check; git diff --check",
+      "commit": "bd7b316e6679cf7c8cef669c8d9ec021b5ed3083",
+      "log": "evidence/logs/S20/format-diff.log",
+      "observations": [
+        "Formatting and whitespace checks passed."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test adapter",
+      "commit": "bd7b316e6679cf7c8cef669c8d9ec021b5ed3083",
+      "log": "evidence/logs/S20/adapter.log",
+      "observations": [
+        "The bounded offscreen Qt/QML adapter startup smoke passed."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "webengine-fixture",
+      "result": "failed",
+      "command": "cargo xtask test engine",
+      "commit": "bd7b316e6679cf7c8cef669c8d9ec021b5ed3083",
+      "log": "evidence/logs/S20/engine-initial.log",
+      "reason": "The initial invocation omitted Chromium --js-flags=--expose-gc, so existing T044 could not expose forced GC and stopped the engine task before native CTest.",
+      "observations": [
+        "This invocation-specific failure was followed by a passing corrected full engine run."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "pure-unit",
+      "result": "failed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS='--disable-gpu --js-flags=--expose-gc' cargo xtask test engine",
+      "commit": "bd7b316e6679cf7c8cef669c8d9ec021b5ed3083",
+      "log": "evidence/logs/S20/engine-disable-gpu-flag-failure.log",
+      "reason": "The global --disable-gpu flag changed the expected diagnostics GPU status in an existing unit test; CTest already scopes that flag to its own process.",
+      "observations": [
+        "The corrected command omitting global --disable-gpu passed."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "bd7b316e6679cf7c8cef669c8d9ec021b5ed3083",
+      "log": "evidence/logs/S20/engine-qualified.log",
+      "observations": [
+        "The corrected integrated engine run passed 441 core tests, all 144 Qt Quick/WebEngine tests and native_insert CTest 1/1. The native suite was rerun after the final test-helper edit; that current 59-test result is in native-offscreen-verbose.log."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "static-inspection",
+      "result": "passed",
+      "command": "python3 tools/validate_pack.py --integrity --evidence && python3 tools/test_validate_pack.py",
+      "commit": "bd7b316e6679cf7c8cef669c8d9ec021b5ed3083",
+      "log": "evidence/logs/S20/pack-validation.log",
+      "observations": [
+        "Pack integrity/evidence validation passed and all 12 negative validator tests passed. This checks pack records, not Ferric runtime correctness."
+      ]
+    },
+    {
+      "test_id": "T047",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "cmake --build target/native-insert --parallel 2 && ctest --test-dir target/native-insert --verbose",
+      "commit": "f447da99f01eb666ca0f3be2d334b3eda0411466",
+      "log": "evidence/completion-native.log",
+      "observations": [
+        "Fresh component suite passed the bounded drag experiment and cleanup. This remains a test-only public Qt helper; missing physical input is not a capability no-go."
+      ]
+    },
+    {
+      "test_id": "T049",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "cmake --build target/native-insert --parallel 2 && ctest --test-dir target/native-insert --verbose",
+      "commit": "f447da99f01eb666ca0f3be2d334b3eda0411466",
+      "log": "evidence/completion-native.log",
+      "observations": [
+        "Fresh drag cleanup/site-effect fixture passed. No production drag UI/state was introduced."
+      ]
+    }
+  ],
+  "capability_decision": null,
+  "capability_report": "evidence/S20-drag-report.md",
+  "review_kind": "self-review",
+  "scope_amendments": [],
+  "remaining_risks": [
+    "The native Wayland input level remains blocked by the nested compositor's missing virtual-keyboard protocol; no production go/no-go decision can be made yet.",
+    "The positive category observations are limited to the deterministic Qt 6.11.2 / QtWebEngine 6.11.2 offscreen fixture.",
+    "The fixture confirms that a page may change local state while the pointer is held; cleanup cannot roll back accepted site effects.",
+    "HTML drag-and-drop was excluded after observing dragstart, pointercancel and dragend without a drop in this test runner."
+  ],
+  "not_run_reasons": [
+    "T047/native-wayland and T049/native-wayland require native pointer events in nested Weston; wtype could not access the compositor virtual-keyboard protocol."
+  ],
+  "next_ready_slices": [
+    "S22",
+    "S23",
+    "S24",
+    "S25",
+    "S26"
+  ],
+  "completion_followup": {
+    "commit": "bc9284eb8a55f948f45846fa3f18635f8ae9c507",
+    "report": "evidence/completion-report.md",
+    "scope": "Fresh bounded experiment; capability/status unchanged."
+  }
+}

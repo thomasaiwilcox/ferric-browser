@@ -1,0 +1,196 @@
+{
+  "schema_version": 1,
+  "slice_id": "S18",
+  "status": "implemented_unqualified",
+  "commit": "6f55ca90a6df2dd2f164d41773094e9b2b4e59f8",
+  "environment": {
+    "os": "Linux 7.2.3-arch1-3 x86_64",
+    "cpu": "Intel Core i5-7200U @ 2.50 GHz",
+    "qt": "6.11.2",
+    "chromium": "QtWebEngine 6.11.2 / Chrome 140.0.0.0",
+    "compiler": "GCC 16.2.1 20260810",
+    "rustc": "1.98.0 (88d9e12ae 2026-08-18)",
+    "cargo": "1.98.0 (797e8a9bc 2026-08-05)",
+    "build": "Locked offline Rust workspace; unchanged Qt 6.11.2 toolchain and dependency graph.",
+    "measurement_runner": "Qt Quick/WebEngine offscreen software runner; 640x480 CSS viewport; devicePixelRatio 1; QtWebEngine Chrome 140.0.0.0.",
+    "scope": "Read-only, on-demand interaction status and binding provenance; bounded error categories; disabled-by-default supported site-rule example; local privacy/export boundaries."
+  },
+  "changed_files": [
+    "crates/ferric-browser-config/src/tests.rs",
+    "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeBase.qml",
+    "crates/ferric-browser-engine-qt/qml/components/FerricBrowserRuntimeServices.qml",
+    "crates/ferric-browser-engine-qt/qml/components/FerricSiteLedger.qml",
+    "crates/ferric-browser-engine-qt/src/browser_ui_command_dispatch.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_ipc.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_query_bindings.rs",
+    "crates/ferric-browser-engine-qt/src/browser_ui_query_diagnostics.rs",
+    "crates/ferric-browser-engine-qt/src/ipc_transport.rs",
+    "crates/ferric-browser-engine-qt/src/lib.rs",
+    "crates/ferric-browser-engine-qt/src/tests/components_and_workers.rs",
+    "crates/ferric-browser-engine-qt/src/tests/presentation_boundaries.rs",
+    "crates/ferric-browser-engine-qt/tests/qml/tst_chrome_interactions.qml",
+    "docs/DEVELOPMENT_SPEC.md",
+    "docs/TESTING.md",
+    "docs/implementation/keyboard_interaction-v03/SHA256SUMS.txt",
+    "docs/implementation/keyboard_interaction-v03/examples/new-settings.toml",
+    "docs/implementation/keyboard_interaction-v03/evidence/S18-plan.md",
+    "docs/testing/m0-24-help-map.md",
+    "docs/implementation/keyboard_interaction-v03/progress.json",
+    "docs/implementation/keyboard_interaction-v03/evidence/S18.json",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S18-check.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S18-clippy-final.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S18-clippy.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S18-config-example.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S18-diff-check.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S18-engine.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S18-fmt.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S18-pack-tests.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/logs/S18-pack-validation.log",
+    "docs/implementation/keyboard_interaction-v03/evidence/S17.json"
+  ],
+  "baseline_comparison": "Implementation started from S17 evidence tip 7af1367758f7a8afe034a8e7dbd9c770d5c4a6ed. No dependency, lockfile or toolchain changes. This diagnostic/privacy slice has no performance comparison target.",
+  "test_results": [
+    {
+      "test_id": "T025",
+      "level": "qml-component",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "6f55ca90a6df2dd2f164d41773094e9b2b4e59f8",
+      "log": "evidence/logs/S18-engine.log",
+      "observations": [
+        "Site Ledger interaction-status QML assertions passed, including bounded display fields and omission of the injected private URL/token."
+      ]
+    },
+    {
+      "test_id": "T025",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "6f55ca90a6df2dd2f164d41773094e9b2b4e59f8",
+      "log": "evidence/logs/S18-engine.log",
+      "observations": [
+        "Offscreen QML/WebEngine suite passed 142 tests; native_insert CTest passed 1/1. No physical Wayland input result is inferred."
+      ]
+    },
+    {
+      "test_id": "T042",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "6f55ca90a6df2dd2f164d41773094e9b2b4e59f8",
+      "log": "evidence/logs/S18-engine.log",
+      "observations": [
+        "Bounded allowlisted action-error summary test passed and removes action/operation identifiers and tokenized URL text."
+      ]
+    },
+    {
+      "test_id": "T042",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "6f55ca90a6df2dd2f164d41773094e9b2b4e59f8",
+      "log": "evidence/logs/S18-engine.log",
+      "observations": [
+        "Local status view and existing page-content privacy/export checks passed; page-derived labels are not persisted or exported by this view."
+      ]
+    },
+    {
+      "test_id": "T055",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask check",
+      "commit": "6f55ca90a6df2dd2f164d41773094e9b2b4e59f8",
+      "log": "evidence/logs/S18-check.log",
+      "observations": [
+        "IPC capability discovery includes the read-only interaction.status query; the source-versioned example parses and validates with supported settings; full workspace, docs, manifest and license checks passed."
+      ]
+    },
+    {
+      "test_id": "T056",
+      "level": "native-wayland",
+      "result": "not_run",
+      "command": "cargo xtask test wayland",
+      "commit": "6f55ca90a6df2dd2f164d41773094e9b2b4e59f8",
+      "reason": "Installed-release task qualification with physical Wayland keyboard input was not run. The available nested Weston path lacks the virtual-keyboard protocol required by wtype; only the prior startup smoke is recorded.",
+      "observations": [
+        "No live interaction outcome is claimed."
+      ]
+    },
+    {
+      "test_id": "T056",
+      "level": "live-site",
+      "result": "not_run",
+      "command": "Manual installed-release live-task matrix",
+      "commit": "6f55ca90a6df2dd2f164d41773094e9b2b4e59f8",
+      "reason": "No authorized disposable Docs/Sheets/Slides, mail/chat, editor, GitHub/Reddit, YouTube, or board/canvas accounts and documents were available for live qualification.",
+      "observations": [
+        "No live-site compatibility claim is made."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask check",
+      "commit": "6f55ca90a6df2dd2f164d41773094e9b2b4e59f8",
+      "log": "evidence/logs/S18-check.log",
+      "observations": [
+        "Workspace Rust tests passed, including the engine and config crates; the strict workspace Clippy gate also passed before the final small UI wording/fallback adjustment."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "6f55ca90a6df2dd2f164d41773094e9b2b4e59f8",
+      "log": "evidence/logs/S18-engine.log",
+      "observations": [
+        "Engine WebEngine fixture suite passed after the final local-status refinements."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true QTWEBENGINE_CHROMIUM_FLAGS=--js-flags=--expose-gc cargo xtask test engine",
+      "commit": "6f55ca90a6df2dd2f164d41773094e9b2b4e59f8",
+      "log": "evidence/logs/S18-engine.log",
+      "observations": [
+        "The Qt Quick/WebEngine offscreen suite passed 142 tests and native_insert CTest passed 1/1."
+      ]
+    },
+    {
+      "test_id": "T045",
+      "level": "static-inspection",
+      "result": "passed",
+      "command": "CARGO_NET_OFFLINE=true cargo clippy -p ferric-browser-engine-qt --all-targets --locked --offline -- -D warnings",
+      "commit": "6f55ca90a6df2dd2f164d41773094e9b2b4e59f8",
+      "log": "evidence/logs/S18-clippy-final.log",
+      "observations": [
+        "Final engine strict Clippy completed successfully; remaining output is Qt/C++ compiler warnings, not Rust lint failures."
+      ]
+    }
+  ],
+  "capability_decision": null,
+  "capability_report": null,
+  "review_kind": "self-review",
+  "scope_amendments": [
+    {
+      "path": "docs/implementation/keyboard_interaction-v03/evidence/S17.json",
+      "reason": "Normalize the earlier S17 evidence level labels to the current pack-validator vocabulary so the cumulative evidence ledger validates; test results, commands, commits, and logs are unchanged."
+    }
+  ],
+  "remaining_risks": [
+    "T056 live-site and physical Wayland input qualification remain not-run, so no installed-release compatibility claim is made.",
+    "The settings example is a disabled-by-default .test fixture and is not a shipped or qualified site profile.",
+    "Interaction status is on-demand and bounded; the action-error summary reports allowlisted categories from the existing in-memory action audit."
+  ],
+  "not_run_reasons": [
+    "T056 native-wayland: installed-release physical keyboard input was unavailable through the existing nested Weston path.",
+    "T056 live-site: no authorized disposable accounts/documents were available for the live task matrix."
+  ],
+  "next_ready_slices": [
+    "S19"
+  ]
+}

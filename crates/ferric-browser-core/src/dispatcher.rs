@@ -284,8 +284,6 @@ pub fn dispatch_command_for(
                 mode: Mode::Grid,
             }])
         }
-        "grid-refine" | "grid-click" | "grid-hover" | "grid-back" | "grid-reset" | "grid-help"
-        | "grid-cancel" => Err(DispatchError::UnsupportedCommand(command.into())),
         "tab-open" => {
             let (input, background) = tab_open_arguments(&parsed, command)?;
             let navigation =
@@ -441,7 +439,8 @@ pub fn dispatch_command_for(
                 .map(|_| Event::SearchNext { target, backward })
                 .collect())
         }
-        "scroll" | "scroll-page" | "scroll-to" => {
+        "grid-refine" | "grid-click" | "grid-double-click" | "grid-hover" | "grid-back"
+        | "grid-reset" | "grid-help" | "grid-cancel" | "scroll" | "scroll-page" | "scroll-to" => {
             Err(DispatchError::UnsupportedCommand(command.into()))
         }
         "window-close" | "quit" => {
@@ -944,6 +943,106 @@ mod tests {
                 Event::TraverseHistory { offset: 1, .. }
             ]
         ));
+    }
+
+    #[test]
+    fn aliases_cannot_elevate_remote_sources_into_local_grid_commands() {
+        let state = state();
+        let base = CommandRegistry::default_v1();
+        let registry = CommandRegistry::new_with_aliases(
+            base.definitions().to_vec(),
+            vec![crate::CommandAlias::from_text("local-grid", "grid").unwrap()],
+        )
+        .unwrap();
+
+        for source in [
+            CommandSource::Cli,
+            CommandSource::Ipc,
+            CommandSource::Switcher,
+            CommandSource::Userscript,
+            CommandSource::Macro,
+        ] {
+            let command = crate::parse_chain("local-grid", ParseInput::Cli)
+                .unwrap()
+                .remove(0);
+            let invocation = CommandInvocation::new(command).with_context(CommandContext {
+                source,
+                ..CommandContext::default()
+            });
+            assert!(matches!(
+                dispatch_command(
+                    &state,
+                    &registry,
+                    invocation,
+                    &NavigationContext::default(),
+                ),
+                Err(DispatchError::UnsupportedCommand(name)) if name == "grid"
+            ));
+        }
+
+        for source in [CommandSource::Keyboard, CommandSource::Ui] {
+            let command = crate::parse_chain("local-grid", ParseInput::Cli)
+                .unwrap()
+                .remove(0);
+            let invocation = CommandInvocation::new(command).with_context(CommandContext {
+                source,
+                ..CommandContext::default()
+            });
+            assert!(matches!(
+                dispatch_command(
+                    &state,
+                    &registry,
+                    invocation,
+                    &NavigationContext::default(),
+                ),
+                Ok(events) if matches!(events.as_slice(), [Event::PushMode { mode: Mode::Grid, .. }])
+            ));
+        }
+    }
+
+    #[test]
+    fn aliases_cannot_replay_double_click_from_a_remote_grid_command() {
+        let mut state = state();
+        let window = *state.windows().keys().next().expect("window");
+        reduce(
+            &mut state,
+            Event::PushMode {
+                window,
+                mode: Mode::Grid,
+            },
+        )
+        .unwrap();
+        let base = CommandRegistry::default_v1();
+        let registry = CommandRegistry::new_with_aliases(
+            base.definitions().to_vec(),
+            vec![crate::CommandAlias::from_text("local-grid-double", "grid-double-click").unwrap()],
+        )
+        .unwrap();
+
+        for source in [
+            CommandSource::Cli,
+            CommandSource::Ipc,
+            CommandSource::Switcher,
+            CommandSource::Userscript,
+            CommandSource::Macro,
+        ] {
+            let command = crate::parse_chain("local-grid-double", ParseInput::Cli)
+                .unwrap()
+                .remove(0);
+            let invocation = CommandInvocation::new(command).with_context(CommandContext {
+                source,
+                ..CommandContext::default()
+            });
+            assert!(matches!(
+                dispatch_command(
+                    &state,
+                    &registry,
+                    invocation,
+                    &NavigationContext::default(),
+                ),
+                Err(DispatchError::UnsupportedCommand(name)) if name == "grid-double-click"
+            ));
+        }
     }
 
     #[test]

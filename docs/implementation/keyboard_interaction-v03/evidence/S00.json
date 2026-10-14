@@ -1,0 +1,168 @@
+{
+  "schema_version": 1,
+  "slice_id": "S00",
+  "status": "complete",
+  "commit": "eae588867a0a451f7c95ad602aee097e8f0a020b",
+  "environment": {
+    "os": "Linux x86_64",
+    "rust": "1.98.0",
+    "cargo": "1.98.0",
+    "qt": "6.11.2",
+    "cmake": "4.4.3",
+    "native_platforms": "offscreen + nested Weston Wayland; seat qualification pending",
+    "chromium_user_agent": "140.0.0.0 (full engine patch version not yet obtained)",
+    "chromium": "140.0.7339.225 (installed qWebEngineChromiumVersion API probe)",
+    "build": "Rust dev/test; Qt release; offscreen software; nested Weston startup only",
+    "native_wayland_input": "not_run: no compositor virtual-keyboard protocol"
+  },
+  "changed_files": [
+    "docs/implementation/keyboard_interaction-v03/evidence/S00-baseline.md",
+    "docs/implementation/keyboard_interaction-v03/progress.json"
+  ],
+  "baseline_comparison": {
+    "pinned": "4337056f632de0c710943fa6df76c67cf14b8b47",
+    "actual": "e9a576fd375927733b200f91a6387dea4698840d",
+    "report": "evidence/S00-baseline.md"
+  },
+  "test_results": [
+    {
+      "test_id": "T001",
+      "level": "static-inspection",
+      "result": "passed",
+      "command": "git rev-parse HEAD; git status --short --branch; git diff --stat 4337056f632de0c710943fa6df76c67cf14b8b47 HEAD; inspect actual source anchors and installed environment",
+      "log": "evidence/S00-baseline.md"
+    },
+    {
+      "test_id": "T045",
+      "level": "pure-unit",
+      "result": "passed",
+      "command": "cargo test --workspace --locked --offline",
+      "log": "evidence/logs/S00/workspace.log"
+    },
+    {
+      "test_id": "T045",
+      "level": "webengine-fixture",
+      "result": "passed",
+      "command": "cargo xtask test engine",
+      "log": "evidence/logs/S00/engine.log"
+    },
+    {
+      "test_id": "T045",
+      "level": "native-qt-offscreen",
+      "result": "passed",
+      "command": "cargo xtask test engine (CMake/CTest native-insert stage)",
+      "log": "evidence/logs/S00/engine.log"
+    },
+    {
+      "test_id": "T045",
+      "level": "native-wayland",
+      "result": "not_run",
+      "command": "cargo xtask test wayland",
+      "reason": "Startup passed; wtype cannot access the absent Weston virtual-keyboard protocol.",
+      "log": "evidence/logs/S00/wayland.log"
+    }
+  ],
+  "capability_decision": null,
+  "capability_report": null,
+  "review_kind": "self-review",
+  "scope_amendments": [
+    {
+      "path": "docs/implementation/keyboard_interaction-v03/.gitignore",
+      "reason": "The pack checker negative tests create Python bytecode; exclude generated cache artifacts without modifying normative checked files."
+    }
+  ],
+  "remaining_risks": [
+    "Offscreen native evidence is not physical Wayland/IME qualification.",
+    "The supplied Markdown integrity pack retains its original hard-break whitespace; no normative files were rewritten."
+  ],
+  "not_run_reasons": [
+    "Actual Wayland editable-page input not-run: Weston lacks the virtual-keyboard protocol; startup-only smoke passed.",
+    "Physical desktop keyboard, platform IMEs and live journeys have not been exercised."
+  ],
+  "next_ready_slices": [
+    "S01"
+  ],
+  "repository_gates": [
+    {
+      "name": "pack-integrity",
+      "command": "python3 tools/validate_pack.py --integrity",
+      "cwd": "docs/implementation/keyboard_interaction-v03",
+      "exit_code": 0,
+      "elapsed_seconds": 0.118,
+      "log": "evidence/logs/S00/pack-integrity.log"
+    },
+    {
+      "name": "pack-negative",
+      "command": "python3 tools/test_validate_pack.py",
+      "cwd": "docs/implementation/keyboard_interaction-v03",
+      "exit_code": 0,
+      "elapsed_seconds": 0.372,
+      "log": "evidence/logs/S00/pack-negative.log"
+    },
+    {
+      "name": "fmt",
+      "command": "cargo fmt --all -- --check",
+      "cwd": ".",
+      "exit_code": 0,
+      "elapsed_seconds": 2.332,
+      "log": "evidence/logs/S00/fmt.log"
+    },
+    {
+      "name": "clippy",
+      "command": "cargo clippy --workspace --all-targets --locked --offline -- -D warnings",
+      "cwd": ".",
+      "exit_code": 0,
+      "elapsed_seconds": 191.229,
+      "log": "evidence/logs/S00/clippy.log"
+    },
+    {
+      "name": "workspace",
+      "command": "cargo test --workspace --locked --offline",
+      "cwd": ".",
+      "exit_code": 0,
+      "elapsed_seconds": 294.154,
+      "log": "evidence/logs/S00/workspace.log"
+    },
+    {
+      "name": "check",
+      "command": "cargo xtask check --locked --offline",
+      "cwd": ".",
+      "exit_code": 0,
+      "elapsed_seconds": 300.659,
+      "log": "evidence/logs/S00/check.log"
+    },
+    {
+      "name": "engine",
+      "command": "cargo xtask test engine",
+      "cwd": ".",
+      "exit_code": 0,
+      "elapsed_seconds": 227.009,
+      "log": "evidence/logs/S00/engine.log"
+    },
+    {
+      "name": "adapter",
+      "command": "cargo xtask test adapter",
+      "cwd": ".",
+      "exit_code": 0,
+      "elapsed_seconds": 247.939,
+      "log": "evidence/logs/S00/adapter.log"
+    },
+    {
+      "name": "wayland",
+      "command": "cargo xtask test wayland",
+      "cwd": ".",
+      "exit_code": 0,
+      "elapsed_seconds": 240.725,
+      "log": "evidence/logs/S00/wayland.log"
+    },
+    {
+      "name": "diff-check",
+      "command": "git diff --check",
+      "cwd": ".",
+      "exit_code": 2,
+      "elapsed_seconds": 0.008,
+      "log": "evidence/logs/S00/diff-check.log"
+    }
+  ],
+  "log_normalization": "Only trailing whitespace and terminal blank lines in command logs were normalized. All warnings, assertions and results remain."
+}

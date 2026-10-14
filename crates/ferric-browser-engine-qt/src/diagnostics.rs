@@ -1087,7 +1087,11 @@ mod tests {
                 .as_u64()
                 .is_some()
         );
-        assert_eq!(value["capabilities"]["gpu_decode"]["status"], "not-tested");
+        // Software-rendered qualification disables GPU capabilities explicitly.
+        assert!(matches!(
+            value["capabilities"]["gpu_decode"]["status"].as_str(),
+            Some("not-tested" | "unavailable")
+        ));
         assert_eq!(
             value["capabilities"]["hardware_decode"]["status"],
             "not-tested"
