@@ -1,7 +1,18 @@
 # S23 independent child-frame capability report
 
-**Decision: no-go for general cross-origin semantic targets in the current
-production path.** The public provider can execute isolated code in an exact
+**Original decision: no-go for general cross-origin semantic targets without
+an exact parent association.**
+
+The focused-frame implementation described in
+[the consent-frame repair report](../../../testing/hint-consent-frame-repair-2026-10-14.md)
+adds a narrowly gated association: the retained parent iframe must remain the
+focused element, exactly one direct native child must report document focus,
+and both document leases and the measured projection chain must remain fresh.
+Explicit entry is a separate focus-changing action; passive collection never
+focuses frames. URL/name/size/order matching remains prohibited. The original
+probe results below remain evidence for the broader no-go boundary.
+
+The original public provider can execute isolated code in an exact
 child frame and return bounded plain data, including from cross-origin and
 opaque sandboxed frames. The missing piece is a safe mapping from that native
 frame handle to the parent-visible iframe rectangle. The API exposes size and

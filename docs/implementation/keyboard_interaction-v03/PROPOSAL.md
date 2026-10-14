@@ -307,7 +307,7 @@ Scope represents one exact selected region/surface in one live document, not a r
 
 The retained scope's original identity, document/frame reachability, visibility and policy revision are checked at collection and final action. Descendants replaced by virtualisation do not inherit the old candidate's identity. If the same DOM object changes action-relevant meaning, invalidate its explicit selection and require a new confirmation.
 
-A scroll-target action hands the exact element to the **existing** setter, preserving weak state, axis rules and Auto/Document distinction. Scoped Hints/Search/Grid do not themselves change scroll ownership. A cross-origin surface rejects semantic Hint/Search within and offers scoped Grid. Closed roots remain uninspected.
+A scroll-target action hands the exact element to the **existing** setter, preserving weak state, axis rules and Auto/Document distinction. Scoped Hints/Search/Grid do not themselves change scroll ownership. Ordinary Hint/Search within remains focus-preserving and rejects cross-origin traversal. A cross-origin surface offers scoped Grid and a distinct local Hint inside frame action: explicit focus must prove the exact parent iframe/native child association before independently collecting and activating child controls. Already-focused verified frame chains may contribute semantic hints. Unverified, stale, sandbox-restricted and unsupported mappings retain their exterior only. Closed roots remain uninspected.
 
 ## C15 — Region-scoped Grid and coordinate contracts
 

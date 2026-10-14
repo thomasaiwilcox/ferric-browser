@@ -8,7 +8,11 @@
   package probe, so diagnostics do not claim a patch level.
 - Source archives, checksums, signatures, and installed-file manifests are
   generated and reviewed by release automation.
-- Cross-origin frame hint collection and activation remain incomplete.
+- Cross-origin semantic hints require a verified focused frame chain. Unfocused
+  frames offer Hint inside frame, which deliberately moves focus. Sandboxed
+  frames without script permission, unsupported transforms, ambiguous focus,
+  native pointer actions on child controls, and child region scopes remain
+  unsupported; use the exterior Focus/pass-through or Grid fallback.
 - Insert routing is covered by local Qt WebEngine fixtures, but live editor
   and platform IME qualification remains incomplete. Closed shadow roots,
   deep editable ancestry, editor focus proxies, and embedded-frame removal

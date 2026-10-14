@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Embedded consent dialogs can expose semantic hints through a verified focused
+  frame/document lease. Unfocused frames offer Hint inside frame; collection and
+  activation reject stale documents, redirected focus, covered targets and
+  unsupported geometry. Origin isolation and explicit fallback actions remain.
+
 - Visible article titles covered by a transparent card link now retain their own
   URL hints, including nested titles on scrolled feeds. Badges avoid neighboring
   title fragments, recheck cached placements after reflow, and use short edge
