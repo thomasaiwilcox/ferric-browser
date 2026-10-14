@@ -7,6 +7,24 @@ pinned local builds. This does not authorize production writeback or establish
 live-site support. A future editor-specific adapter remains a separate
 research and qualification decision.
 
+## CI dependency repair — 2026-10-14
+
+The six-framework measurements below remain historical. The current disposable
+fixture runs Ace, CodeMirror, Monaco, ProseMirror and Tiptap. Quill is explicitly
+reported unavailable and its package/assets are no longer installed or served:
+[GHSA-v3m3-f69x-jf25](https://github.com/advisories/GHSA-v3m3-f69x-jf25)
+affects the pinned 2.0.3 release and lists no patched version. Restore its probe
+only with a qualified patched release; an older version is not treated as a fix.
+The fixture asserts the unavailable advisory and absence of the Quill global.
+
+Monaco's DOMPurify dependency is overridden to 3.4.17, replacing the vulnerable
+3.4.15 pin. The current lock SHA-256 is
+`71dfc3870be393669e3294de83c34a94c9f07f6acedbde40d1b12e2038d0dc43`.
+The updated WebEngine fixture passed all three QTest cases, including
+initialization/cleanup; npm audit reported zero vulnerabilities. Raw rerun logs
+are local under ignored `target/ci-repair/`. The generic writeback no-go and
+Tiptap native-focus qualification limitation remain unchanged.
+
 ## Pinned packages and public API evidence
 
 The exact npm pins are in

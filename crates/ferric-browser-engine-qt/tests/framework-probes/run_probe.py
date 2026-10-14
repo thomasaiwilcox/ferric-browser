@@ -75,8 +75,6 @@ def main() -> int:
 
         packages = work / "node_modules"
         (vendor / "ace.js").symlink_to(packages / "ace-builds/src-min/ace.js")
-        (vendor / "quill.js").symlink_to(packages / "quill/dist/quill.js")
-        (vendor / "quill.snow.css").symlink_to(packages / "quill/dist/quill.snow.css")
         (vendor / "monaco").symlink_to(packages / "monaco-editor/min", target_is_directory=True)
         lock = PROBES / "package-lock.json"
         print("S22 npm lock sha256=" + sha256(lock), flush=True)

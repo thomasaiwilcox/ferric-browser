@@ -41,7 +41,11 @@ TestCase {
         var report = evaluate("window.__s22 || null")
         console.log("S22_T050_RESULT " + JSON.stringify(report))
         verify(report && report.status === "ready", "Framework fixture did not complete")
-        compare(report.results.length, 6)
+        compare(report.results.length, 5)
+        compare(report.unavailable.length, 1)
+        compare(report.unavailable[0].name, "quill")
+        compare(report.unavailable[0].advisory, "GHSA-v3m3-f69x-jf25")
+        compare(evaluate("typeof window.Quill"), "undefined")
         for (var i = 0; i < report.results.length; i++) {
             var framework = report.results[i]
             verify(!framework.error,

@@ -48,6 +48,7 @@ jobs:
         run: |
           test "$("$QT_ROOT_DIR/bin/qmake" -query QT_VERSION)" = "$EXPECTED_QT_VERSION"
           echo "QMAKE=$QT_ROOT_DIR/bin/qmake" >> "$GITHUB_ENV"
+          echo "CMAKE_PREFIX_PATH=$QT_ROOT_DIR" >> "$GITHUB_ENV"
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets --keep-going --locked -- -D warnings
       - run: cargo test --workspace --locked

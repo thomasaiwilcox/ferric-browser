@@ -13,8 +13,7 @@
       codemirror: "@codemirror/state 6.7.6 + @codemirror/view 6.43.14 + @codemirror/commands 6.11.1",
       monaco: "monaco-editor 0.57.0",
       prosemirror: "prosemirror-model 1.25.12 + state 1.4.4 + view 1.42.6 + history 1.5.1",
-      tiptap: "@tiptap/core + @tiptap/starter-kit 3.31.4",
-      quill: "quill 2.0.3"
+      tiptap: "@tiptap/core + @tiptap/starter-kit 3.31.4"
     };
     const expectedText = "alpha beta";
     const changedText = "gamma beta";
@@ -400,60 +399,6 @@
       };
     }
 
-    function makeQuill() {
-      const host = document.getElementById("quill");
-      let quill;
-      let revision = 0;
-      const create = function() {
-        if (quill) {
-          quill.disable();
-          if (quill.root.parentElement) quill.root.parentElement.remove();
-        }
-        quill = new window.Quill(host, {
-          theme: "snow",
-          modules: {history: {delay: 0, userOnly: false}}
-        });
-        quill.on("text-change", () => revision += 1);
-      };
-      const reset = function() {
-        quill.setContents([
-          {insert: "alpha "},
-          {insert: "beta", attributes: {bold: true}},
-          {insert: "\n"}
-        ], "silent");
-        quill.history.clear();
-        revision = 0;
-      };
-      const formatPreserved = () => quill.getContents().ops.some(op =>
-        op.insert === "beta" && op.attributes && op.attributes.bold === true);
-      create();
-      reset();
-      const Delta = window.Quill.import("delta");
-      return {
-        owner: () => quill,
-        document: () => quill.root,
-        revision: () => revision,
-        text: () => quill.getText().replace(/\n$/, ""),
-        selection: () => String(quill.getSelection() ? quill.getSelection().index : -1),
-        focus: () => { quill.focus(); return quill.hasFocus(); },
-        reset,
-        replaceInstance: () => { create(); reset(); },
-        selectEnd: () => quill.setSelection(10, 0, "silent"),
-        externalEdit: () => quill.updateContents(new Delta().retain(10).insert("!"), "api"),
-        apply: () => {
-          quill.history.cutoff();
-          const result = quill.updateContents(new Delta().delete(5).insert("gamma"), "api");
-          quill.history.cutoff();
-          return !!result;
-        },
-        undo: () => {
-          quill.history.undo();
-          return quill.getText().replace(/\n$/, "") === expectedText;
-        },
-        formatPreserved
-      };
-    }
-
     async function main() {
       try {
         await window.__s22MonacoReady;
@@ -462,8 +407,7 @@
             ["codemirror", makeCodeMirror],
             ["monaco", makeMonaco],
             ["prosemirror", makeProseMirror],
-            ["tiptap", makeTiptap],
-            ["quill", makeQuill]
+            ["tiptap", makeTiptap]
           ]) {
             try {
               await runCases(name, await make());
@@ -471,7 +415,11 @@
               recordError(name, error);
             }
           }
-        window.__s22 = {status: "ready", versions, results};
+        window.__s22 = {
+          status: "ready", versions, results,
+          unavailable: [{name: "quill", advisory: "GHSA-v3m3-f69x-jf25",
+                         reason: "No patched release; historical results are retained in S22 evidence."}]
+        };
       } catch (error) {
         recordError("fixture", error);
         window.__s22 = {status: "failed", results};

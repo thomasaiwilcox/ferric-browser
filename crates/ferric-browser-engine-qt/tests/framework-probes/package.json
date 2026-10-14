@@ -16,8 +16,7 @@
     "prosemirror-model": "1.25.12",
     "prosemirror-state": "1.4.4",
     "prosemirror-transform": "1.12.2",
-    "prosemirror-view": "1.42.6",
-    "quill": "2.0.3"
+    "prosemirror-view": "1.42.6"
   },
   "overrides": {
     "dompurify": "3.4.17"
