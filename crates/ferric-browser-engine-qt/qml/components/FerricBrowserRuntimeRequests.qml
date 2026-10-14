@@ -17,6 +17,7 @@ FerricBrowserRuntimePresentation {
     Connections {
         target: browserUi
         function onActive_tab_indexChanged() {
+            window.copyNoticeVisible = false
             window.noteTabActivity()
             if (window.hintTrackingView
                     && window.activeWebView() !== window.hintTrackingView) {
@@ -460,7 +461,7 @@ FerricBrowserRuntimePresentation {
         window.pendingClientCertificateHost = selection.host && selection.host.host
                 ? window.boundedPageDialogText(selection.host.host)
                 : "opaque or unavailable host"
-        window.captureOverlayFocus(hostWindow || window, view)
+        // Capture the native frame before transferring focus to the menu.
         certificatePrompts.openClientCertificate()
         ui.status_text = privateProfile
                 ? "Private client certificate selection"
@@ -561,7 +562,7 @@ FerricBrowserRuntimePresentation {
                     host || "opaque or unavailable host")
         window.pendingCertificateErrorDescription = window.boundedPageDialogText(
                     error.description || "The certificate could not be verified")
-        window.captureOverlayFocus(hostWindow || window, view)
+        // Capture the native frame before transferring focus to the menu.
         certificatePrompts.openCertificateError()
         ui.status_text = "TLS certificate confirmation required"
     }
@@ -687,7 +688,7 @@ FerricBrowserRuntimePresentation {
         request.stateChanged.connect(function(state) {
             window.updateWebAuthState(request, state)
         })
-        window.captureOverlayFocus(hostWindow || window, view)
+        // Capture the native frame before transferring focus to the menu.
         webAuthPrompt.open()
         ui.status_text = "WebAuthn security-key prompt"
     }
@@ -767,6 +768,7 @@ FerricBrowserRuntimePresentation {
         }
         window.pendingContextMenuRequest = null
         window.pendingContextMenuView = null
+        window.pendingContextMenuSelection = null
         window.pendingContextMenuUi = null
         window.pendingContextMenuLeaseToken = ""
         window.pendingContextMenuHost = null
@@ -821,8 +823,10 @@ FerricBrowserRuntimePresentation {
             for (var i = 0; i < ids.length; ++i) {
                 if (String(availability[i]) === "true" && String(ids[i]).length > 0
                         && String(labels[i]).length > 0) {
-                    items.push(window.contextMenuItem(String(labels[i]), "userscript-action",
-                                                       value, String(ids[i])))
+                    var item = window.contextMenuItem(String(labels[i]), "userscript-action",
+                                                       subject === "selection" ? "" : value, String(ids[i]))
+                    item.selectionSubject = subject === "selection"
+                    items.push(item)
                 }
             }
         }
@@ -873,7 +877,7 @@ FerricBrowserRuntimePresentation {
         var editFlags = Number(request.editFlags || 0)
         if (editFlags & 8 || String(request.selectedText || "").length > 0) {
             items.push(window.contextMenuItem("Copy selection", "web-copy", "",
-                                              "browser.selection.copy"))
+                                              "browser.edit.copy"))
             items.push(window.contextMenuItem("Search selection", "selection-search", "",
                                               "browser.selection.search"))
             window.appendExternalActions(items, ui, "selection", "")
@@ -887,10 +891,11 @@ FerricBrowserRuntimePresentation {
             items.push(window.contextMenuItem("Redo", "web-redo"))
         }
         if (editFlags & 4) {
-            items.push(window.contextMenuItem("Cut", "web-cut"))
+            items.push(window.contextMenuItem("Cut", "web-cut", "", "browser.edit.cut"))
         }
         if (editFlags & 16) {
-            items.push(window.contextMenuItem("Paste", "web-paste"))
+            items.push(window.contextMenuItem("Paste", "web-paste", "", "browser.edit.paste"))
+            items.push(window.contextMenuItem("Paste plain text", "web-paste-plain", "", "browser.edit.paste-plain"))
         }
         if (editFlags & 32) {
             items.push(window.contextMenuItem("Delete", "web-delete"))
@@ -921,7 +926,7 @@ FerricBrowserRuntimePresentation {
         window.pendingContextMenuHost = hostWindow || window
         window.contextMenuItems = items
         request.accepted = true
-        window.captureOverlayFocus(hostWindow || window, view)
+        // Capture the native frame before transferring focus to the menu.
         var menuHost = hostWindow || window
         var menuX = Math.round(menuHost.width / 2)
         var menuY = Math.round(menuHost.height / 2)
@@ -932,8 +937,13 @@ FerricBrowserRuntimePresentation {
             menuX = mappedPosition.x
             menuY = mappedPosition.y
         }
-        contextMenu.openAt(menuHost, menuX, menuY)
-        ui.status_text = "Context menu"
+        window.selectionProviderFor(view).capture(function(captured) {
+            if (window.pendingContextMenuRequest !== request || window.pendingContextMenuView !== view) return
+            window.pendingContextMenuSelection = captured
+            window.captureOverlayFocus(hostWindow || window, view)
+            contextMenu.openAt(menuHost, menuX, menuY)
+            ui.status_text = "Context menu"
+        })
     }
 
     function activateContextMenuItem(item) {
@@ -944,6 +954,7 @@ FerricBrowserRuntimePresentation {
             window.clearContextMenuRequest()
             return
         }
+        var source = window.pendingContextMenuSelection
         var action = item.action
         var value = item.value
         var isHintAction = action === "hint-userscript-action"
@@ -955,8 +966,31 @@ FerricBrowserRuntimePresentation {
             return
         }
         if (item.actionId && item.actionId.length > 0) {
+            if (item.selectionSubject) {
+                if (!source) { ui.status_text = "Selection source is unavailable"; return }
+                window.selectionProviderFor(view).extract(function(result) {
+                    if (!result || result.error) { ui.status_text = "Selection source changed or is unavailable"; return }
+                    ui.execute_ui_action(item.actionId, result.text)
+                }, source)
+                return
+            }
+            if (item.actionId.indexOf("browser.edit.") === 0 && view.clipboardPopupToken) {
+                if (!source) { ui.status_text = "Edit source is unavailable"; return }
+                var popupEdit = ui.popup_clipboard_edit(view.clipboardPopupToken, item.actionId.slice("browser.edit.".length))
+                if (popupEdit.length > 0) window.applyNativeEditAction(ui, view, popupEdit, source)
+                return
+            }
             if (!ui.execute_ui_action(item.actionId, value)) {
                 return
+            }
+            if (item.actionId.indexOf("browser.edit.") === 0) {
+                if (!source) { ui.take_engine_action(); ui.status_text = "Edit source is unavailable"; return }
+                window.applyNativeEditAction(ui, view, ui.take_engine_action(), source)
+                return
+            }
+            var capturedSelectionToken = ui.take_selection_request()
+            if (capturedSelectionToken.length > 0) {
+                window.readSelection(ui, view, capturedSelectionToken, source)
             }
             if (ui === browserUi) {
                 window.syncTabModel()
@@ -984,15 +1018,13 @@ FerricBrowserRuntimePresentation {
                     window.copyToClipboard(
                                 clipboardRequest,
                                 !ui.clipboard_request_sensitive,
-                                ui.clipboard_request_primary)
+                                ui.clipboard_request_primary, ui)
                 }
             } else if ((action === "web-copy" || action === "selection-search"
                         || action === "external-selection-send") && view) {
                 var selectionToken = ui.take_selection_request()
                 if (selectionToken.length > 0) {
-                    window.runBrowserScript(view, window.selectionScript(), function(value) {
-                        ui.deliver_selection(selectionToken, JSON.stringify(value))
-                    })
+                    window.readSelection(ui, view, selectionToken, source)
                 }
             }
             return
@@ -1012,8 +1044,7 @@ FerricBrowserRuntimePresentation {
             }
             ui.status_text = "Link opened"
         } else if (action === "copy-link") {
-            window.copyToClipboard(value, false)
-            ui.status_text = "Link copied"
+            if (window.copyToClipboard(value, false, false, ui)) ui.status_text = "Link copied"
         } else if (action === "download-link") {
             window.runBrowserScript(view, window.downloadLinkScript(value))
             ui.status_text = "Download requested"
@@ -1034,7 +1065,7 @@ FerricBrowserRuntimePresentation {
                     : WebEngineView.NoWebAction
             if (webAction !== WebEngineView.NoWebAction) {
                 view.triggerWebAction(webAction)
-                ui.status_text = "Edit action applied"
+                ui.status_text = "Edit action requested"
             }
         }
     }

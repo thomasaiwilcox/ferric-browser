@@ -375,6 +375,111 @@ impl qobject::BrowserUi {
         }
     }
 
+    pub(super) fn clipboard_dispatch_target(&self, command: &ParsedCommand) -> DispatchTarget {
+        if command.name == "edit" {
+            self.rust()
+                .tab
+                .map_or(DispatchTarget::Active, DispatchTarget::Tab)
+        } else {
+            DispatchTarget::Active
+        }
+    }
+
+    pub(super) fn clipboard_edit_target_current(
+        self: Pin<&mut Self>,
+        tab: &QString,
+        generation: &QString,
+        document: &QString,
+        popup_token: &QString,
+    ) -> bool {
+        let binding = self.as_ref();
+        let this = binding.rust();
+        let token = popup_token.to_string();
+        let target = if token.is_empty() {
+            super::current_target(this.state.as_ref(), this.tab)
+        } else {
+            this.popup_journey_targets
+                .iter()
+                .find(|(candidate, _, _, claimed)| candidate == &token && *claimed)
+                .map(|(_, target, _, _)| *target)
+                .filter(|target| {
+                    this.state
+                        .as_ref()
+                        .and_then(|state| state.capture_target(target.tab))
+                        == Some(*target)
+                })
+        };
+        target.is_some_and(|target| {
+            target.tab.to_string() == tab.to_string()
+                && target.generation.to_string() == generation.to_string()
+                && target.document.to_string() == document.to_string()
+        })
+    }
+
+    pub(super) fn popup_clipboard_edit(
+        mut self: Pin<&mut Self>,
+        token: &QString,
+        operation: &QString,
+    ) -> QString {
+        let operation = operation.to_string();
+        if ferric_browser_core::ClipboardEdit::parse(&operation).is_none() {
+            self.set_status_text(QString::from("Unsupported native edit operation"));
+            return QString::default();
+        }
+        let token = token.to_string();
+        let target = {
+            let binding = self.as_ref();
+            let this = binding.rust();
+            this.popup_journey_targets
+                .iter()
+                .find(|(candidate, _, _, claimed)| candidate == &token && *claimed)
+                .map(|(_, target, _, _)| *target)
+                .filter(|target| {
+                    this.state
+                        .as_ref()
+                        .and_then(|state| state.capture_target(target.tab))
+                        == Some(*target)
+                })
+        };
+        let Some(target) = target else {
+            self.set_status_text(QString::from("Popup edit destination is stale"));
+            return QString::default();
+        };
+        let navigation = self.as_ref().navigation_context();
+        let command = ParsedCommand {
+            name: "edit".into(),
+            arguments: vec![operation],
+        };
+        let mut invocation = CommandInvocation::new(command);
+        invocation.context.source = CommandSource::Ui;
+        match self.as_mut().dispatch_runtime(RuntimeDispatch {
+            invocation,
+            navigation,
+            target: DispatchTarget::Tab(target.tab),
+        }) {
+            Ok(effects) => effects
+                .iter()
+                .find_map(|effect| match effect {
+                    super::Effect::Engine(super::EngineEffect::ClipboardEdit {
+                        target,
+                        operation,
+                    }) => Some(QString::from(format!(
+                        "edit\t{}\t{}\t{}\t{}",
+                        target.tab,
+                        target.generation,
+                        target.document,
+                        operation.as_str()
+                    ))),
+                    _ => None,
+                })
+                .unwrap_or_default(),
+            Err(error) => {
+                self.set_status_text(QString::from(error));
+                QString::default()
+            }
+        }
+    }
+
     pub(super) fn take_engine_action(mut self: Pin<&mut Self>) -> QString {
         let (action, more_pending) = {
             let mut rust = self.as_mut().rust_mut();

@@ -3,7 +3,7 @@
 
 // Browser-owned page scripts are versioned resources. The build manifest hashes
 // this file with the QML module, so script changes are explicit and auditable.
-var VERSION = "21"
+var VERSION = "22"
 
 // Page userscripts are trusted local content, but their failure boundary is
 // browser policy. Keeping the wrappers here prevents QML from assembling page
@@ -40,11 +40,24 @@ function cosmeticFilter(css) {
         + "}catch(error){return false;}return true;})()"
 }
 
-function selection() {
-    return "(function(){var e=document.activeElement;"
+// Only numeric node identities, offsets and revision counters leave this probe.
+function selectionMetadata() {
+    return "(function(){var m=window.__ferric_selectionMetadata;if(!m)return {error:'selection-observer-unavailable'};return m();})()"
+}
+
+function selection(expectedRevision) {
+    return "(function(){var m=window.__ferric_selectionMetadata;if(!m)return {error:'selection-observer-unavailable'};"
+        + (expectedRevision === undefined ? "" : "if(m().revision!==" + JSON.stringify(expectedRevision) + ")return {error:'selection-changed'};")
+        + "var e=document.activeElement;for(var d=0;e&&e.shadowRoot&&e.shadowRoot.activeElement&&d<16;d++)e=e.shadowRoot.activeElement;"
+        + "if(e&&e.shadowRoot&&e.shadowRoot.activeElement)return {error:'shadow focus depth is unsupported'};"
         + "if(e&&e.matches('input[type=password],textarea[data-password],*[aria-multiline=true][data-password]'))"
         + "return {error:'password fields are not copied'};"
-        + "var s=window.getSelection(),t=s?String(s.toString()):'';"
+        + "var s=window.getSelection(),t='';"
+        + "if(e&&/^(INPUT|TEXTAREA)$/.test(e.tagName)&&typeof e.selectionStart==='number')t=String(e.value||'').slice(e.selectionStart,e.selectionEnd);"
+        + "else {if(e&&e.getRootNode&&e.getRootNode().getSelection)s=e.getRootNode().getSelection();"
+        + "if(e&&e!==document.body&&e!==document.documentElement&&!e.isContentEditable&&!e.shadowRoot&&s&&s.anchorNode&&!e.contains(s.anchorNode))return {error:'focused selection is unsupported'};"
+        + "if(s&&s.anchorNode){var root=s.anchorNode.getRootNode();if(root!==document&&root.host&&root.host.shadowRoot!==root)return {error:'closed-shadow selection is unsupported'};}"
+        + "t=s?String(s.toString()):'';}"
         + "if(t.length>1048576)return {error:'selection is too large'};"
         + "return {text:t};})()"
 }
@@ -151,6 +164,15 @@ function focusObserverSource() {
     return "(function(){"
         + "if(window.__ferric_browserFocusObserverInstalled)return;"
         + "window.__ferric_browserFocusObserverInstalled=true;"
+        + "var selectionRevision=0,selectionIdentities=new WeakMap(),selectionNextIdentity=0;"
+        + "function selectionId(node){if(!node)return 0;if(!selectionIdentities.has(node))selectionIdentities.set(node,++selectionNextIdentity);return selectionIdentities.get(node);}"
+        + "window.__ferric_selectionMetadata=function(){var e=document.activeElement;for(var depth=0;e&&e.shadowRoot&&e.shadowRoot.activeElement&&depth<16;depth++)e=e.shadowRoot.activeElement;"
+        + "var s=window.getSelection();if(e&&e.getRootNode&&e.getRootNode().getSelection)s=e.getRootNode().getSelection();"
+        + "var offsets=e&&typeof e.selectionStart==='number'?[e.selectionStart,e.selectionEnd]:[selectionId(s&&s.anchorNode),s?s.anchorOffset:0,selectionId(s&&s.focusNode),s?s.focusOffset:0];"
+        + "return {focused:document.hasFocus(),identity:selectionId(e),frame:!!e&&/^(IFRAME|FRAME)$/.test(e.tagName),revision:JSON.stringify([selectionRevision].concat(offsets))};};"
+        + "function selectionChanged(){selectionRevision++;console.debug('__ferric_browser_selection_changed');}"
+        + "document.addEventListener('selectionchange',selectionChanged,true);document.addEventListener('input',selectionChanged,true);"
+
         // This state lives in ApplicationWorld. Only real popstate events
         // distinguish traversal from a new pushState with the same URL.
         + "if(window===window.top){const documentId=window.crypto&&typeof window.crypto.randomUUID==='function'?window.crypto.randomUUID():String(performance.timeOrigin)+':'+String(Math.random())+':'+String(Math.random());"

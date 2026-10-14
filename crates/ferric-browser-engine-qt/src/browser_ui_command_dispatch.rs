@@ -1,7 +1,7 @@
 use crate::browser_ui_command_workflows::CommandDispatchControl;
 
 use super::{
-    CommandInvocation, CxxQtType, DispatchTarget, ParsedCommand, Pin, QString, RuntimeDispatch,
+    CommandInvocation, CxxQtType, ParsedCommand, Pin, QString, RuntimeDispatch,
     binding_command_parameters, is_library_command, is_link_clean_command,
     is_reopen_in_window_command, is_scroll_command, is_scroll_target_command,
     is_search_next_command, is_tab_clone_command, is_tab_detach_command, is_tab_give_command,
@@ -972,10 +972,11 @@ impl qobject::BrowserUi {
                     return false;
                 }
                 let navigation = self.as_ref().navigation_context();
+                let target = self.as_ref().clipboard_dispatch_target(&command);
                 self.as_mut().dispatch_runtime(RuntimeDispatch {
                     invocation: CommandInvocation::new(command),
                     navigation,
-                    target: DispatchTarget::Active,
+                    target,
                 })
             };
             let effects = match effects {

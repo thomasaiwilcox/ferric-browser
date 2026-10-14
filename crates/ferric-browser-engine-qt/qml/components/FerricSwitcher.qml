@@ -49,7 +49,7 @@ FerricModalSurface {
             }
         }
 
-        TextField {
+        FerricTextField {
             id: switcherInput
             Layout.fillWidth: true
             placeholderText: "Search tabs, windows, contexts, commands, actions, history, marks, sessions, downloads"

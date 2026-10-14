@@ -13,8 +13,22 @@ impl qobject::BrowserUi {
         std::mem::take(&mut this.clipboard_request)
     }
 
-    pub(super) fn write_clipboard(self: Pin<&mut Self>, value: &QString, primary: bool) -> bool {
+    pub(super) fn write_clipboard(
+        mut self: Pin<&mut Self>,
+        value: &QString,
+        primary: bool,
+    ) -> bool {
         if qobject::ferric_browser_write_clipboard(value, primary) {
+            let status = match self.as_ref().rust().status_text.to_string().as_str() {
+                "Selection copy pending" => Some("Selection copied"),
+                "Title copy pending" => Some("Title copied"),
+                "Clean URL copy pending" => Some("Clean URL copied"),
+                "URL copy pending" => Some("URL copied"),
+                _ => None,
+            };
+            if let Some(status) = status {
+                self.as_mut().set_status_text(QString::from(status));
+            }
             true
         } else {
             self.set_status_text(QString::from(if primary {
@@ -232,11 +246,10 @@ impl qobject::BrowserUi {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
             let Some(request) = this.pending_selection.as_ref() else {
-                self.set_status_text(QString::from("Selection request expired"));
+                // Cancelled/expired operations cannot overwrite newer feedback.
                 return false;
             };
             if request.token != token {
-                self.set_status_text(QString::from("Selection request is stale"));
                 return false;
             }
             this.pending_selection.take()
@@ -289,7 +302,7 @@ impl qobject::BrowserUi {
         this.clipboard_request = QString::from(text);
         this.clipboard_request_sensitive = true;
         this.clipboard_request_primary = primary;
-        self.set_status_text(QString::from("Selection copied"));
+        self.set_status_text(QString::from("Selection copy pending"));
         true
     }
 

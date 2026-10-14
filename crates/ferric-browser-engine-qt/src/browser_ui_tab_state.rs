@@ -535,6 +535,13 @@ impl qobject::BrowserUi {
                     .position(|tab| *tab == target.tab)?;
                 Some(format!("navigate\t{index}\t{}", url.as_str()))
             }
+            Effect::Engine(EngineEffect::ClipboardEdit { target, operation }) => Some(format!(
+                "edit\t{}\t{}\t{}\t{}",
+                target.tab,
+                target.generation,
+                target.document,
+                operation.as_str()
+            )),
             Effect::Engine(EngineEffect::Reload { bypass_cache, .. }) => {
                 Some(format!("reload\t{bypass_cache}"))
             }

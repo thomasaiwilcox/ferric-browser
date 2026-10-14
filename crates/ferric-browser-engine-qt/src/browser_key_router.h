@@ -56,6 +56,7 @@ signals:
         bool isAutoRepeat,
         bool browserOwnedRepeat);
     void keyReleased(int key, int modifiers);
+    void clipboardShortcutOverride(int key, int modifiers);
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -83,6 +84,7 @@ private:
     bool accepted_ = false;
     bool pageOwnedCurrentEvent_ = false;
     QPointer<QWindow> targetWindow_;
+    QSet<quint64> nativeClipboardOverrides_;
     QSet<quint64> acceptedKeys_;
     QSet<quint64> pageOwnedKeys_;
 };

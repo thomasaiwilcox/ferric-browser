@@ -159,6 +159,10 @@ FerricBrowserRuntimeChrome {
 
     function executePendingEngineAction() {
         var action = browserUi.take_engine_action()
+        if (action.indexOf("edit\t") === 0) {
+            window.applyNativeEditAction(browserUi, window.activeWebView(), action)
+            return
+        }
         if (action.indexOf("command-prefill\t") === 0) {
             commandSurface.commandText = action.slice("command-prefill\t".length)
             commandSurface.cursorPosition = commandSurface.commandText.length
@@ -1047,9 +1051,7 @@ FerricBrowserRuntimeChrome {
             if (selectionToken.length > 0) {
                 var selectionView = window.activeWebView()
                 if (selectionView) {
-                    window.runBrowserScript(selectionView, window.selectionScript(), function(value) {
-                        browserUi.deliver_selection(selectionToken, JSON.stringify(value))
-                    })
+                    window.readSelection(browserUi, selectionView, selectionToken)
                 } else {
                     browserUi.deliver_selection(selectionToken, JSON.stringify({error: "document view unavailable"}))
                 }
@@ -1278,6 +1280,8 @@ FerricBrowserRuntimeChrome {
             } else if (logicalText.length === 1) {
                 window.applyHintInteraction("character", logicalText)
             }
+            handled = true
+        } else if (ui.mode === "caret" && (logicalText === "Ctrl+x" || logicalText === "Ctrl+v" || logicalText === "Ctrl+Shift+v")) {
             handled = true
         } else if (ui.mode === "caret" && logicalText.length === 1) {
             var caretDirection = {

@@ -786,7 +786,7 @@ fn mixed_input_settings_validate_atomically_at_global_and_site_scopes() {
     validate_site_rule(&rule).expect("valid site-scoped Mixed settings");
     rule.set.insert(
         "input.page_keys".into(),
-        toml::Value::Array(vec![toml::Value::String("Ctrl+Shift+v".into())]),
+        toml::Value::Array(vec![toml::Value::String("Ctrl+Escape".into())]),
     );
     assert!(
         validate_site_rule(&rule).is_err(),

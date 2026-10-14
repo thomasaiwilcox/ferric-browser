@@ -149,7 +149,7 @@ GridLayout {
                 }
             }
         }
-        TextField {
+        FerricTextField {
             id: address
             Layout.fillWidth: true
             property bool addressEditing: false
@@ -925,6 +925,7 @@ GridLayout {
                 property int tabIndex: -1
                 property string stableTabId: ""
                 property var viewUi: browserUi
+        property var selectionSource: null
                 property var viewHost: window
                 property var viewTabs: tabs
                 property var viewModel: ({})
@@ -1685,7 +1686,7 @@ GridLayout {
                 Accessible.name: text
             }
 
-            TextField {
+            FerricTextField {
                 id: targetSearchInput
                 objectName: "targetSearchInput"
                 Layout.fillWidth: true

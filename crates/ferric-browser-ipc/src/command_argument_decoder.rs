@@ -133,6 +133,13 @@ pub(super) fn decode_command_arguments(
             Some(state) if matches!(state.as_str(), "on" | "off" | "toggle") => vec![state],
             Some(_) => return Err("command argument state must be on, off, or toggle".into()),
         },
+        "edit" => {
+            let operation = text_argument("operation")?;
+            ferric_browser_core::ClipboardEdit::parse(&operation).ok_or_else(|| {
+                "edit operation must be copy, cut, paste, or paste-plain".to_owned()
+            })?;
+            vec![operation]
+        }
         "reload" => {
             let bypass_cache = match arguments.and_then(|arguments| arguments.get("bypass_cache")) {
                 None => false,

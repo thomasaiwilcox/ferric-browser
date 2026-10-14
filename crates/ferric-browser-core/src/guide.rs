@@ -19,9 +19,14 @@ pub fn guide_article(command: &str) -> Option<GuideArticle> {
             "The start page has Top Sites, Favourites, and Guide views. Top Sites ranks recent and frequent visits; Favourites keeps eight explicitly chosen, bookmark-backed slots. Select a view to remember it for this profile. With a site grid focused, press 1–8 to open that slot, or move with arrows/hjkl and press Enter. Add the current page from the browser action menu or :favourite-add; choose a slot to replace when all eight are occupied. Private-session choices and favourites disappear when that session closes. Startup and new tabs can be configured independently.",
             "Escape closes an editor or menu and returns focus to the page. Use :open to navigate elsewhere.",
         ),
+        "edit" => (
+            "Copy, Paste and External Tools",
+            "edit copy, edit cut, edit paste, and edit paste-plain request the native edit operation in the retained focused document. Native Copy preserves supported formats; yank selection intentionally copies plain text. Standard clipboard shortcuts reach native editors by default even in Normal. Unavailable or stale sources are rejected without parent-document fallback. Requested means dispatched, not an engine acknowledgement of completion.",
+            "Focus the desired control or select text again before retrying. binding-explain Ctrl+v identifies configuration overrides of the standard paste shortcut.",
+        ),
         "mode-enter" => (
             "Getting Started and Modes",
-            "Ferric starts in Normal mode, where keys operate the browser. i enters Transient Insert: ordinary Enter reaches the page and returns to Normal; Shift+Enter keeps composing. I enters Locked Insert for repeated paragraphs. Neither shortcut chooses an arbitrary field: focus the field first, for example with gi. Ctrl+v enters Pass-through for webpage shortcuts; Ctrl+Shift+v or ;v forwards one key gesture. Caret mode navigates and selects document text without editing it. Configured bindings may replace these entry shortcuts.",
+            "Ferric starts in Normal mode, where keys operate the browser. i enters Transient Insert: ordinary Enter reaches the page and returns to Normal; Shift+Enter keeps composing. I enters Locked Insert for repeated paragraphs. Neither shortcut chooses an arbitrary field: focus the field first, for example with gi. Ctrl+v pastes and Ctrl+Shift+v pastes plain text. ;V enters Pass-through for webpage shortcuts; ;v forwards one key gesture. Caret mode navigates and selects document text without editing it. Configured bindings may replace these entry shortcuts.",
             "Escape exits Insert or Caret. Ctrl+Escape is the reserved recovery key for Pass-through; ordinary Escape is sent to the webpage.",
         ),
         "open" | "open-current" | "paste-open" | "tab-open" | "selection-search" => (

@@ -418,6 +418,24 @@ pub fn dispatch_command_for(
                 bypass_cache,
             }])
         }
+        "edit" => {
+            let operation = match parsed.arguments.as_slice() {
+                [value] => crate::ClipboardEdit::parse(value),
+                _ => None,
+            }
+            .ok_or_else(|| DispatchError::UnexpectedArguments {
+                command: command.into(),
+            })?;
+            if mode == Mode::Caret && operation != crate::ClipboardEdit::Copy {
+                return Err(DispatchError::UnexpectedArguments {
+                    command: command.into(),
+                });
+            }
+            Ok(vec![Event::ClipboardEdit {
+                target: target.ok_or(DispatchError::NoActiveTab)?,
+                operation,
+            }])
+        }
         "stop" => {
             ensure_no_arguments(&parsed, command)?;
             Ok(vec![Event::Stop {
@@ -892,6 +910,41 @@ mod tests {
                 command: "open".into()
             })
         );
+    }
+
+    #[test]
+    fn native_edit_is_typed_and_stale_targets_do_not_dispatch() {
+        let mut state = state();
+        let registry = CommandRegistry::default_v1();
+        for operation in ["copy", "cut", "paste", "paste-plain"] {
+            let events = dispatch_cli(&state, &registry, &format!("edit {operation}")).unwrap();
+            assert!(
+                matches!(&events[0], Event::ClipboardEdit {operation: value, ..} if value.as_str()==operation)
+            );
+            assert!(
+                reduce(&mut state, events[0].clone())
+                    .unwrap()
+                    .iter()
+                    .any(|effect| matches!(
+                        effect,
+                        crate::Effect::Engine(crate::EngineEffect::ClipboardEdit { .. })
+                    ))
+            );
+        }
+        let mut event = dispatch_cli(&state, &registry, "edit paste")
+            .unwrap()
+            .remove(0);
+        if let Event::ClipboardEdit { target, .. } = &mut event {
+            target.generation += 1;
+        }
+        assert!(
+            !reduce(&mut state, event)
+                .unwrap()
+                .iter()
+                .any(|effect| matches!(effect, crate::Effect::Engine(_)))
+        );
+        assert!(dispatch_cli(&state, &registry, "edit unknown").is_err());
+        assert!(dispatch_cli(&state, &registry, "edit paste secret").is_err());
     }
 
     #[test]

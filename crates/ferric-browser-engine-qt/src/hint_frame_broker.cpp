@@ -4,6 +4,7 @@
 #include <QtCore/QJsonDocument>
 #include <QtCore/QPointer>
 #include <QtCore/QTimer>
+#include <QtCore/QSet>
 #include <QtCore/QUuid>
 #include <QtQml/QJSEngine>
 #include <QtWebEngineCore/QWebEngineScript>
@@ -19,34 +20,40 @@ QVariant failure(const char *reason) {
 }
 }
 
-FerricHintFrameBroker::FerricHintFrameBroker(QObject *parent) : QObject(parent) {}
+FerricFrameBroker::FerricFrameBroker(QObject *parent, const QString &documentProperty)
+    : QObject(parent), documentProperty_(documentProperty) {}
 
-void FerricHintFrameBroker::deliver(const QJSValue &callback, const QVariant &value) {
+void FerricFrameBroker::deliver(const QJSValue &callback, const QVariant &value) {
     if (callback.isCallable()) {
         if (auto *engine = qjsEngine(this)) callback.call({engine->toScriptValue(value)});
     }
 }
 
-void FerricHintFrameBroker::evaluate(QWebEngineFrame frame, const QString &script,
+void FerricFrameBroker::evaluate(QWebEngineFrame frame, const QString &script,
                                     Completion completion) {
     if (!frame.isValid() || inFlight_ >= 128) { completion(failure("frame-operation-limit")); return; }
     ++inFlight_;
     auto completed = std::make_shared<bool>(false);
-    const QPointer<FerricHintFrameBroker> guard(this);
+    auto *timer = new QTimer(this);
+    timer->setSingleShot(true);
+    const QPointer<QTimer> deadline(timer);
+    const QPointer<FerricFrameBroker> guard(this);
     const auto generation = generation_;
-    auto finish = [guard, generation, completed, completion](const QVariant &value) {
+    auto finish = [guard, deadline, generation, completed, completion](const QVariant &value) {
         if (*completed) return;
         *completed = true;
+        if (deadline) { deadline->stop(); deadline->deleteLater(); }
         if (guard) {
             --guard->inFlight_;
             if (guard->generation_ == generation) completion(value);
         }
     };
-    QTimer::singleShot(1000, this, [finish] { finish(failure("frame-timeout")); });
+    connect(timer, &QTimer::timeout, this, [finish] { finish(failure("frame-timeout")); });
+    timer->start(1000);
     frame.runJavaScript(script, QWebEngineScript::ApplicationWorld, finish);
 }
 
-bool FerricHintFrameBroker::reachable(const QString &owner) const {
+bool FerricFrameBroker::reachable(const QString &owner) const {
     auto current = frames_.constFind(owner);
     for (int depth = 0; current != frames_.cend() && depth <= 8; ++depth) {
         if (!current->frame.isValid()) return false;
@@ -59,7 +66,7 @@ bool FerricHintFrameBroker::reachable(const QString &owner) const {
     return false;
 }
 
-void FerricHintFrameBroker::attachFrame(const QWebEngineFrame &frame, const QString &parent,
+void FerricFrameBroker::attachFrame(const QWebEngineFrame &frame, const QString &parent,
                                        Completion completion) {
     if (!frame.isValid() || frames_.size() >= 64) {
         completion(failure("frame-limit-or-invalid")); return;
@@ -68,18 +75,27 @@ void FerricHintFrameBroker::attachFrame(const QWebEngineFrame &frame, const QStr
         if (it->frame == frame && it->parent == parent) {
             const auto owner = it.key();
             const auto epoch = it->epoch;
-            evaluate(frame, QStringLiteral("window.__ferric_hintFrameDocument===") + quoted(epoch),
-                     [this, owner, completion](const QVariant &value) {
+            evaluate(frame, QStringLiteral("window.") + documentProperty_ + QStringLiteral("===") + quoted(epoch),
+                     [this, frame, parent, owner, completion](const QVariant &value) {
                 if (value.metaType().id() == QMetaType::Bool && value.toBool()
                     && reachable(owner)) completion(QVariantMap{{"owner", owner}});
-                else completion(failure("stale-frame-document"));
+                else {
+                    // A new collection may bind the same native frame's new
+                    // document. Old owner IDs remain invalid for pending actions.
+                    QSet<QString> retired{owner};
+                    for (int depth = 0; depth <= 8; ++depth)
+                        for (auto it = frames_.cbegin(); it != frames_.cend(); ++it)
+                            if (retired.contains(it->parent)) retired.insert(it.key());
+                    for (const auto &id : retired) frames_.remove(id);
+                    attachFrame(frame, parent, completion);
+                }
             });
             return;
         }
     }
     const auto owner = QStringLiteral("frame-") + QUuid::createUuid().toString(QUuid::WithoutBraces);
     const auto epoch = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    evaluate(frame, QStringLiteral("(()=>{window.__ferric_hintFrameDocument=") + quoted(epoch)
+    evaluate(frame, QStringLiteral("(()=>{window.") + documentProperty_ + QStringLiteral("=") + quoted(epoch)
              + QStringLiteral(";return true;})()"),
              [this, frame, parent, owner, epoch, completion](const QVariant &value) {
         if (value.metaType().id() != QMetaType::Bool || !value.toBool() || !frame.isValid()) {
@@ -92,12 +108,12 @@ void FerricHintFrameBroker::attachFrame(const QWebEngineFrame &frame, const QStr
     });
 }
 
-void FerricHintFrameBroker::attach(const QWebEngineFrame &frame, const QJSValue &callback) {
+void FerricFrameBroker::attach(const QWebEngineFrame &frame, const QJSValue &callback) {
     if (!frame.isMainFrame()) { deliver(callback, failure("main-frame-required")); return; }
     attachFrame(frame, {}, [this, callback](const QVariant &value) { deliver(callback, value); });
 }
 
-void FerricHintFrameBroker::focusedChild(const QString &parent, const QJSValue &callback) {
+void FerricFrameBroker::focusedChild(const QString &parent, const QJSValue &callback) {
     if (!reachable(parent)) { deliver(callback, failure("invalid-parent-frame")); return; }
     const auto children = frames_.value(parent).frame.children();
     if (children.isEmpty() || children.size() > 64) {
@@ -127,21 +143,21 @@ void FerricHintFrameBroker::focusedChild(const QString &parent, const QJSValue &
     }
 }
 
-void FerricHintFrameBroker::run(const QString &owner, const QString &script, const QJSValue &callback) {
+void FerricFrameBroker::run(const QString &owner, const QString &script, const QJSValue &callback) {
     execute(owner, script, callback, false);
 }
 
-void FerricHintFrameBroker::dispatch(const QString &owner, const QString &script, const QJSValue &callback) {
+void FerricFrameBroker::dispatch(const QString &owner, const QString &script, const QJSValue &callback) {
     execute(owner, script, callback, true);
 }
 
-void FerricHintFrameBroker::execute(const QString &owner, const QString &script,
+void FerricFrameBroker::execute(const QString &owner, const QString &script,
                                    const QJSValue &callback, bool action) {
     if (!reachable(owner) || script.size() > 1024 * 1024) {
         deliver(callback, failure("invalid-frame-operation")); return;
     }
     const auto lease = frames_.value(owner);
-    const auto wrapped = QStringLiteral("(()=>{if(window.__ferric_hintFrameDocument!==")
+    const auto wrapped = QStringLiteral("(()=>{if(window.") + documentProperty_ + QStringLiteral("!==")
         + quoted(lease.epoch) + QStringLiteral(")return {error:'stale-frame-document'};return (")
         + script + QStringLiteral(");})()");
     evaluate(lease.frame, wrapped, [this, owner, callback, action](const QVariant &value) {
@@ -153,7 +169,7 @@ void FerricHintFrameBroker::execute(const QString &owner, const QString &script,
     });
 }
 
-void FerricHintFrameBroker::clear() {
+void FerricFrameBroker::clear() {
     ++generation_;
     frames_.clear();
     inspected_.clear();

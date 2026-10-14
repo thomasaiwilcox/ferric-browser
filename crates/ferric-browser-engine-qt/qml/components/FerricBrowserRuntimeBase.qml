@@ -1632,6 +1632,7 @@ ApplicationWindow {
     property string webAuthStatusText: ""
     property var pendingContextMenuRequest: null
     property var pendingContextMenuView: null
+    property var pendingContextMenuSelection: null
     property var pendingContextMenuUi: null
     property string pendingContextMenuLeaseToken: ""
     property var pendingContextMenuHost: null
@@ -1753,6 +1754,7 @@ ApplicationWindow {
     property bool rapidHintConfirmationVisible: false
     property string copiedText: ""
     property string copiedValue: ""
+    onCopyNoticeVisibleChanged: if (!copyNoticeVisible) { copiedValue = ""; copiedText = "" }
     property bool copyNoticeSensitive: false
     property bool copyNoticeVisible: false
     readonly property bool browserChromeInputActive:
@@ -2161,6 +2163,10 @@ ApplicationWindow {
                      || browserUi.mode === "insert-locked"
                      || browserUi.mode === "pass-through"
                      || browserUi.mode === "pass-through-once")
+        onClipboardShortcutOverride: function(key, modifiers) {
+            var logical = window.logicalNormalKeyText({key: key, modifiers: modifiers, text: ""})
+            if (!window.nativePromptActiveFor(browserUi) && browserUi.clipboard_shortcut_browser_owned(logical)) browserKeyRouter.acceptCurrentEvent()
+        }
         onKeyPressed: function(text, key, modifiers, isAutoRepeat, browserOwnedRepeat) {
             var event = {
                 text: text,
@@ -2182,6 +2188,7 @@ ApplicationWindow {
     }
 
     onActiveChanged: {
+        if (!active) window.copyNoticeVisible = false
         if (!active && browserUi.hint_pointer_mode) {
             browserUi.hint_pointer_invalidated("window-inactive")
         }

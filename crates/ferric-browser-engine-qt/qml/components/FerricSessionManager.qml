@@ -37,7 +37,7 @@ FerricModalSurface {
 
         RowLayout {
             Layout.fillWidth: true
-            TextField {
+            FerricTextField {
                 id: sessionNameInput
                 Layout.fillWidth: true
                 placeholderText: "Save current session as..."

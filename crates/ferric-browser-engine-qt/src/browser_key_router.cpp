@@ -139,6 +139,32 @@ bool FerricBrowserKeyRouter::eventFilter(QObject *watched, QEvent *event)
         composing_ = false;
         compositionReceiver_.clear();
     }
+    if (enabled_ && targetWindow_ && QGuiApplication::focusWindow() == targetWindow_
+        && event->type() == QEvent::ShortcutOverride) {
+        const auto *key = static_cast<QKeyEvent *>(event);
+        const auto modifiers = key->modifiers() & ~Qt::KeypadModifier;
+        const bool clipboard = (modifiers == Qt::ControlModifier
+            && (key->key() == Qt::Key_C || key->key() == Qt::Key_X || key->key() == Qt::Key_V))
+            || (modifiers == (Qt::ControlModifier | Qt::ShiftModifier) && key->key() == Qt::Key_V);
+        if (clipboard) {
+            accepted_ = false;
+            dispatching_ = true;
+            emit clipboardShortcutOverride(key->key(), int(key->modifiers()));
+            dispatching_ = false;
+            const auto identity = keyIdentity(key);
+            const bool nativeOwned = pageOwnedKeys_.contains(identity) || forwardedKeys_.contains(identity) || nativeClipboardOverrides_.contains(identity);
+            const bool browserOwned = acceptedKeys_.contains(identity) || (!nativeOwned && accepted_);
+            accepted_ = false;
+            if (browserOwned) {
+                nativeClipboardOverrides_.remove(keyIdentity(key));
+                event->accept();
+                return true;
+            }
+            // Native shortcut activation may change focus before KeyPress.
+            // Retain the original owner instead of classifying that gesture twice.
+            if (!key->isAutoRepeat()) nativeClipboardOverrides_.insert(keyIdentity(key));
+        }
+    }
     const bool keyPress = event->type() == QEvent::KeyPress;
     const bool keyRelease = event->type() == QEvent::KeyRelease;
     const bool escapeOverride = event->type() == QEvent::ShortcutOverride
@@ -150,6 +176,7 @@ bool FerricBrowserKeyRouter::eventFilter(QObject *watched, QEvent *event)
             return false;
         const auto *keyEvent = static_cast<QKeyEvent *>(event);
         const quint64 identity = keyIdentity(keyEvent);
+        if (!keyEvent->isAutoRepeat()) nativeClipboardOverrides_.remove(identity);
         if (pageOwnedKeys_.contains(identity)) {
             if (!keyEvent->isAutoRepeat())
                 pageOwnedKeys_.remove(identity);
@@ -230,6 +257,16 @@ bool FerricBrowserKeyRouter::eventFilter(QObject *watched, QEvent *event)
     // an earlier ordinary Enter's exit policy.
     const auto *keyEvent = static_cast<QKeyEvent *>(event);
     const quint64 identity = keyIdentity(keyEvent);
+    if (keyPress && nativeClipboardOverrides_.remove(identity)) {
+        acceptedKeys_.remove(identity);
+        if (passNextKey_ || passThrough_) {
+            forwardedKeys_.insert(identity);
+            if (passNextKey_ && !passGesture_) passGesture_ = KeyGesture { identity, inputEpoch_ };
+        } else {
+            pageOwnedKeys_.insert(identity);
+        }
+        return false;
+    }
     if (keyPress && entryKeys_.contains(identity)) {
         if (keyEvent->isAutoRepeat()) {
             event->accept();
@@ -270,7 +307,10 @@ bool FerricBrowserKeyRouter::eventFilter(QObject *watched, QEvent *event)
         keyEvent->isAutoRepeat() && acceptedKeys_.contains(identity));
     dispatching_ = false;
 
-    const bool handled = accepted_;
+    // Once a browser press owns the gesture, an unmapped repeat cannot
+    // become a native edit after the count/keychain or configuration changes.
+    const bool handled = accepted_ || (keyPress && keyEvent->isAutoRepeat()
+                                      && acceptedKeys_.contains(identity));
     if (pageOwnedCurrentEvent_ && keyPress && !keyEvent->isAutoRepeat())
         pageOwnedKeys_.insert(identity);
     accepted_ = false;

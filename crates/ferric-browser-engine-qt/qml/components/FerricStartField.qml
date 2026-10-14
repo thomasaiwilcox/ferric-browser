@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 
-TextField {
+FerricTextField {
     id: field
     required property var browserWindow
     implicitHeight: Math.max(42, contentHeight + topPadding + bottomPadding)

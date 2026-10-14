@@ -13,6 +13,15 @@ pub(super) fn map_basic(
     arguments: &[String],
 ) -> Result<Option<Vec<String>>, String> {
     let mapped = match command {
+        "edit" => {
+            if subject != "edit"
+                || !arguments.is_empty()
+                || ferric_browser_core::ClipboardEdit::parse(verb).is_none()
+            {
+                return Err("native edit actions require a supported verb and no arguments".into());
+            }
+            vec![verb.into()]
+        }
         "open" => {
             let (target, input) = match arguments {
                 [input] if is_bounded_untrusted_text(input) => (None, input),

@@ -181,7 +181,7 @@ Item {
                 color: root.browserWindow.mutedTextColor
                 Accessible.name: "WebAuthn PIN guidance"
             }
-            TextField {
+            FerricTextField {
                 id: webAuthPinField
                 Layout.fillWidth: true
                 visible: root.browserWindow.pendingWebAuthState

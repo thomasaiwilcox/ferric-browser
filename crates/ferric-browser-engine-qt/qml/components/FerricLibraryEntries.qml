@@ -172,7 +172,7 @@ FocusScope {
                         color: libraryEntries.browserWindow.primaryTextColor
                         elide: Text.ElideRight
                     }
-                    TextField {
+                    FerricTextField {
                         visible: libraryRow.editing
                         Layout.fillWidth: true
                         text: libraryRow.editValue

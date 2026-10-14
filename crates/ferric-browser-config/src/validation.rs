@@ -382,10 +382,9 @@ pub fn validate(config: &Config) -> Result<(), ConfigError> {
             )));
         }
         for (keychain, command) in bindings {
-            if keychain.is_empty() || keychain.len() > 128 || keychain.chars().any(char::is_control)
-            {
+            if ferric_browser_core::binding_key_tokens(keychain).is_none() {
                 return Err(ConfigError::Validation(format!(
-                    "binding keychain in mode {mode:?} is empty, too long, or contains a control character"
+                    "binding keychain in mode {mode:?} is not a bounded canonical key sequence"
                 )));
             }
             if command.is_empty() || command.len() > 256 || command.chars().any(char::is_control) {
@@ -1003,9 +1002,9 @@ pub(super) fn validate_runtime_binding(
             "runtime binding mode {mode:?} is not supported"
         )));
     }
-    if keychain.is_empty() || keychain.len() > 128 || keychain.chars().any(char::is_control) {
+    if ferric_browser_core::binding_key_tokens(keychain).is_none() {
         return Err(ConfigError::Validation(
-            "runtime binding keychain is empty, too long, or unsafe".into(),
+            "runtime binding keychain is not a bounded canonical key sequence".into(),
         ));
     }
     if command.len() > 256 || command.chars().any(char::is_control) {

@@ -113,6 +113,7 @@ fn enum_candidates(command_prefix: &str, prefix: &str) -> Option<Vec<CompletionC
                 "fullscreen" | "caret-select" | "tab-mute" | "tab-pin" | "blocking-toggle" => {
                     &["on", "off", "toggle"]
                 }
+                "edit" => &["copy", "cut", "paste", "paste-plain"],
                 "mode-enter" => &[
                     "normal",
                     "insert",

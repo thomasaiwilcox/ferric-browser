@@ -57,13 +57,13 @@ FerricModalSurface {
 
         RowLayout {
             Layout.fillWidth: true
-            TextField {
+            FerricTextField {
                 id: profileNameInput
                 Layout.fillWidth: true
                 placeholderText: "new-profile-name"
                 Accessible.name: "New profile name"
             }
-            TextField {
+            FerricTextField {
                 id: profileLabelInput
                 Layout.fillWidth: true
                 placeholderText: "Display label"
@@ -78,14 +78,14 @@ FerricModalSurface {
 
         RowLayout {
             Layout.fillWidth: true
-            TextField {
+            FerricTextField {
                 Layout.fillWidth: true
                 text: manager.renameName
                 readOnly: true
                 placeholderText: "Select a profile to rename"
                 Accessible.name: "Profile being renamed"
             }
-            TextField {
+            FerricTextField {
                 id: profileRenameInput
                 Layout.fillWidth: true
                 text: manager.renameLabel

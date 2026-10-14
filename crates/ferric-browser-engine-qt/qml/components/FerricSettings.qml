@@ -89,7 +89,7 @@ FerricModalSurface {
                 }
             }
 
-            TextField {
+            FerricTextField {
                 Layout.fillWidth: true
                 text: settings.searchText
                 placeholderText: "Filter settings by key, description, scope, or apply time"

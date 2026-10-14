@@ -25,16 +25,21 @@ impl qobject::BrowserUi {
                 .state
                 .as_ref()
                 .ok_or_else(|| "core state unavailable".to_owned())?;
+            let selector = if command.name == "edit" && route.source == super::CommandSource::Ui {
+                rust.tab.map_or(route.selector, super::DispatchTarget::Tab)
+            } else {
+                route.selector
+            };
             RuntimeDispatch {
                 invocation: ipc_command_invocation(
                     state,
                     command,
-                    route.selector,
+                    selector,
                     route.source,
                     operation_id,
                 ),
                 navigation: binding.navigation_context_for_source(route.source),
-                target: route.selector,
+                target: selector,
             }
         };
         let effects = self.as_mut().dispatch_runtime(dispatch)?;

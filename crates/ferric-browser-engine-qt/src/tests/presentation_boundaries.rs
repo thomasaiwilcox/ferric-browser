@@ -1410,7 +1410,7 @@ fn context_menus_use_engine_actions_and_bound_spellcheck_data() {
     assert!(qml.contains("browser.download.resume"));
     assert!(qml.contains("browser.download.cancel"));
     assert!(qml.contains("browser.download.retry"));
-    assert!(qml.contains("browser.selection.copy"));
+    assert!(qml.contains("browser.edit.copy"));
     assert!(qml.contains("browser.selection.search"));
     assert!(qml.contains("browser.tab.pin"));
     assert!(qml.contains("browser.tab.mute"));
@@ -1463,7 +1463,7 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(qml.contains("BrowserScripts.pageUserscriptRun(scriptSource)"));
     assert!(qml.contains("BrowserScripts.pageUserscriptInstall(script.source)"));
     assert!(!qml.contains("function hintSelector(linksOnly)"));
-    assert!(BROWSER_SCRIPT_FACADE.contains("var VERSION = \"21\""));
+    assert!(BROWSER_SCRIPT_FACADE.contains("var VERSION = \"22\""));
     assert!(BROWSER_SCRIPT_FACADE.contains(".import \"PageInteractionScripts.js\" as PageInteractionScripts"));
     assert!(BROWSER_SCRIPT_FACADE.contains("asset.VERSION !== PAGE_INTERACTION_VERSION"));
     assert!(BROWSER_SCRIPT_FACADE.contains("script-version-mismatch"));

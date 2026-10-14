@@ -148,6 +148,10 @@ ApplicationWindow {
                      || secondaryUi.mode === "insert-locked"
                      || secondaryUi.mode === "pass-through"
                      || secondaryUi.mode === "pass-through-once")
+        onClipboardShortcutOverride: function(key, modifiers) {
+            var logical = rootWindow.logicalNormalKeyText({key: key, modifiers: modifiers, text: ""})
+            if (!rootWindow.nativePromptActiveFor(secondaryUi) && secondaryUi.clipboard_shortcut_browser_owned(logical)) secondaryKeyRouter.acceptCurrentEvent()
+        }
         onKeyPressed: function(text, key, modifiers, isAutoRepeat, browserOwnedRepeat) {
             var event = {
                 text: text,
@@ -922,6 +926,10 @@ function onContext_workspaceChanged() {
         if (!action || action.length === 0) {
             return
         }
+        if (action.indexOf("edit\t") === 0) {
+            rootWindow.applyNativeEditAction(secondaryUi, secondaryWindow.activeView, action)
+            return
+        }
         if (action.indexOf("command-prefill\t") === 0) {
             secondaryCommandBar.commandText = action.slice("command-prefill\t".length)
             secondaryCommandBar.cursorPosition = secondaryCommandBar.commandText.length
@@ -1324,12 +1332,7 @@ function onContext_workspaceChanged() {
         var selectionToken = secondaryUi.take_selection_request()
         if (selectionToken.length > 0) {
             if (secondaryWindow.activeView) {
-                rootWindow.runBrowserScript(
-                    secondaryWindow.activeView, rootWindow.selectionScript(),
-                    function(value) {
-                        secondaryUi.deliver_selection(selectionToken,
-                                                      JSON.stringify(value))
-                    })
+                rootWindow.readSelection(secondaryUi, secondaryWindow.activeView, selectionToken)
             } else {
                 secondaryUi.deliver_selection(
                     selectionToken,
@@ -1357,7 +1360,7 @@ function onContext_workspaceChanged() {
             rootWindow.copyToClipboard(
                 clipboardRequest,
                 !secondaryUi.clipboard_request_sensitive,
-                secondaryUi.clipboard_request_primary)
+                secondaryUi.clipboard_request_primary, secondaryUi)
         }
 
         secondaryWindow.applySwitcherEngineAction()
@@ -1407,7 +1410,7 @@ function onContext_workspaceChanged() {
                     }
                 }
             }
-            TextField {
+            FerricTextField {
                 id: secondaryAddress
                 Layout.fillWidth: true
                 property bool addressEditing: false
@@ -1557,6 +1560,7 @@ function onContext_workspaceChanged() {
             rootWindow.probeFocusNotification(viewUi, viewHost, secondaryView, -1, message)
         }
         property var viewUi: secondaryUi
+        property var selectionSource: null
         property var viewHost: secondaryWindow
         property var viewProfile: secondaryWindow.windowWebEngineProfile
         property var viewInterceptor: secondaryWindow.windowRequestInterceptor
@@ -2022,7 +2026,7 @@ function onContext_workspaceChanged() {
             Accessible.ignored: true
         }
 
-        TextField {
+        FerricTextField {
             id: secondarySearchLine
             anchors.left: secondarySearchPrefix.right
             anchors.right: parent.right
