@@ -4,6 +4,70 @@ use crate::cli_parse::log_level_rank;
 use crate::ipc_client::{add_cli_context, storage_diagnostics};
 
 #[test]
+fn live_diagnostics_can_outlast_the_ordinary_ipc_response_timeout() {
+    let base = std::env::temp_dir().join(format!("ferric-diag-{}", Uuid::new_v4().simple()));
+    let paths = instance_paths(&base, &base, "test");
+    fs::create_dir_all(&paths.directory).expect("disposable instance directory");
+    let listener = std::os::unix::net::UnixListener::bind(&paths.socket).expect("listener");
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("connection");
+        stream
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .expect("server timeout");
+        let hello: Request = serde_json::from_slice(
+            &read_frame(&mut stream)
+                .expect("hello frame")
+                .expect("hello"),
+        )
+        .expect("hello request");
+        assert_eq!(hello.method, "hello");
+        let response = Response::success(
+            hello.id,
+            serde_json::json!({
+                "protocol_major": PROTOCOL_MAJOR, "protocol_minor": PROTOCOL_MINOR,
+                "instance_id": "delayed-diagnostics", "capabilities": []
+            }),
+        );
+        write_frame(
+            &mut stream,
+            &serde_json::to_vec(&response).expect("hello JSON"),
+        )
+        .expect("hello response");
+        let request: Request = serde_json::from_slice(
+            &read_frame(&mut stream)
+                .expect("request frame")
+                .expect("request"),
+        )
+        .expect("diagnostics request");
+        assert_eq!(request.method, "diagnostics.get");
+        std::thread::sleep(Duration::from_millis(5_250));
+        let response = Response::success(
+            request.id,
+            serde_json::json!({"collection":{"status":"complete"},"source":"delayed-live"}),
+        );
+        write_frame(
+            &mut stream,
+            &serde_json::to_vec(&response).expect("report JSON"),
+        )
+        .expect("delayed response");
+    });
+    let response = crate::ipc_client::instance_request(
+        &paths,
+        &Request {
+            id: "delayed-report".into(),
+            method: "diagnostics.get".into(),
+            params: serde_json::Value::Null,
+        },
+    );
+    let server_result = server.join();
+    fs::remove_dir_all(base).expect("remove disposable instance");
+    server_result.expect("server completed");
+    let response = response.expect("live response after the ordinary five-second deadline");
+    assert_eq!(response.id, "delayed-report");
+    assert_eq!(response.result.expect("report")["source"], "delayed-live");
+}
+
+#[test]
 fn generated_command_usage_preserves_typed_flag_shapes() {
     let registry = CommandRegistry::default_v1();
     let open = registry.resolve("open").expect("open definition");

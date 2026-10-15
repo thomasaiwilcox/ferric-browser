@@ -21,6 +21,13 @@ impl qobject::BrowserUi {
         profile_name: &QString,
         storage_base: &QString,
     ) {
+        self.as_mut().cancel_diagnostics();
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .diagnostics_collector
+            .clear();
         let profile_label = profile_label.to_string();
         let profile_name = profile_name.to_string();
         let storage_base = storage_base.to_string();

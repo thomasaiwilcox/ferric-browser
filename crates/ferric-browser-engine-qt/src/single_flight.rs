@@ -86,6 +86,13 @@ where
         }
     }
 
+    /// Stop accepting work without waiting for an in-flight read-only job.
+    /// Its owned inputs remain on the worker; no UI object may be captured.
+    pub(crate) fn detach(mut self) {
+        self.sender.take();
+        self.join.take();
+    }
+
     #[inline]
     pub(crate) fn is_pending(&self) -> bool {
         self.pending

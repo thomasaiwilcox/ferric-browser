@@ -135,6 +135,33 @@ TestCase {
         verify(findChild(view,"diagnosticsUnavailable").visible)
         if(testArtifactDirectory.length>0)grabImage(host.contentItem).save(testArtifactDirectory+"/diagnostics-details-"+data.tag+".png")
     }
+    function test_diagnostics_preparation_keeps_close_available_and_errors_literal_data() { return sizes() }
+    function test_diagnostics_preparation_keeps_close_available_and_errors_literal(data) {
+        host.width=data.width;host.height=data.height;host.font.pointSize=data.font
+        var view=createTemporaryObject(diagnosticsFixture,host.contentItem);verify(view);verify(waitForPolish(host))
+        view.reportAvailable=false;view.reportPending=true
+        view.previewText="";view.summaryRows=[]
+        verify(waitForPolish(host))
+        if(testArtifactDirectory.length>0)grabImage(host.contentItem).save(testArtifactDirectory+"/diagnostics-pending-"+data.tag+".png")
+        compare(findChild(view,"diagnosticsRefresh").enabled,false)
+        compare(findChild(view,"diagnosticsCopy").enabled,false)
+        compare(findChild(view,"diagnosticsSave").enabled,false)
+        compare(findChild(view,"diagnosticsUnavailable").visible,false)
+        var close=findChild(view,"diagnosticsClose");verify(close.enabled)
+        var closed=createTemporaryObject(spyFixture,view,{target:view,signalName:"closeRequested"})
+        close.click();compare(closed.count,1)
+        view.reportPending=false;view.reportError="<b>fixture collector failed</b>"
+        var feedback=findChild(view,"diagnosticsCollectionFeedback");verify(feedback.visible);verify(feedback.failed)
+        compare(findChild(view,"diagnosticsRefresh").enabled,true)
+        compare(findChild(view,"diagnosticsUnavailable").visible,false)
+        var details=findChild(feedback,"managerFeedbackDetails");verify(!details.visible)
+        findChild(feedback,"managerFeedbackDetailsButton").click()
+        tryCompare(details,"visible",true);compare(details.textFormat,TextEdit.PlainText)
+        compare(details.text,"<b>fixture collector failed</b>");verify(details.selectByKeyboard)
+        verify(waitForPolish(host))
+        if(testArtifactDirectory.length>0)grabImage(host.contentItem).save(testArtifactDirectory+"/diagnostics-error-"+data.tag+".png")
+    }
+
     function test_short_forms_do_not_show_scroll_tracks() {
         var view=createTemporaryObject(scrollFixture,host.contentItem);verify(view);verify(waitForPolish(host))
         compare(view.ScrollBar.vertical.policy,ScrollBar.AlwaysOff)

@@ -166,25 +166,15 @@ impl qobject::BrowserUi {
         }
     }
 
-    pub(super) fn ipc_diagnostics(&self, params: &Value) -> Result<Value, String> {
-        query_empty_object_or_null(params, "diagnostics.get")?;
-        let mut result = diagnostics::snapshot_with_primary_selection(Some(
-            qobject::ferric_browser_primary_selection_available(),
-        ));
+    pub(super) fn capture_diagnostic_input(&self) -> diagnostic_report::ReportInput {
+        let mut result = serde_json::json!({"build":{},"runtime":{},"capabilities":{}});
         apply_qt_runtime_facts(&mut result);
-        result["crash"] = self.rust().storage_roots.as_ref().map_or_else(
-            || {
-                serde_json::json!({
-                    "schema": 1,
-                    "marker": {
-                        "status": "unavailable",
-                        "reason": "the active profile has no durable storage root",
-                        "provenance": "not-probed"
-                    }
-                })
-            },
-            crash_diagnostics,
+        diagnostics_snapshot::apply_primary_selection(
+            &mut result,
+            Some(qobject::ferric_browser_primary_selection_available()),
         );
+        result["build"]["engine_update_policy"] =
+            diagnostics::engine_update_policy(&result["build"]["qt_webengine"]);
         result["protocol"] = serde_json::json!({
             "major": ferric_browser_ipc::PROTOCOL_MAJOR,
             "minor": ferric_browser_ipc::PROTOCOL_MINOR
@@ -244,54 +234,20 @@ impl qobject::BrowserUi {
                 blocked_rules,
             );
         }
-        result["link_cleaning"] =
-            link_cleaning_policy::diagnostic_snapshot(self.rust().storage_roots.as_ref());
-        let config =
-            serde_json::from_value::<Config>(self.rust().config.clone()).unwrap_or_default();
-        let private_profile = self
-            .rust()
-            .state
-            .as_ref()
-            .and_then(|state| {
-                let tab = state.active_tab()?;
-                let profile = state.profiles().get(&tab.profile)?;
-                Some(profile.privacy.is_transient())
-            })
-            .unwrap_or(false);
+        let private_profile = self.active_profile_is_transient();
         result["maintenance_traffic"] = maintenance::snapshot(
             Some(&self.rust().config),
             !private_profile,
             self.rust().storage_roots.is_some(),
         );
-        let contrast = load_theme_palette(&config.theme)
-            .map(|palette| serde_json::to_value(theme_contrast_report(&palette)))
-            .ok()
-            .and_then(Result::ok)
-            .unwrap_or_else(|| {
-                serde_json::json!({
-                    "status": "unknown",
-                    "checks": [],
-                    "failing": [],
-                    "reason": "the configured theme palette could not be assessed"
-                })
-            });
-        result["theme"] = serde_json::json!({
-            "contrast": contrast,
-            "user_theme_remains_importable": true,
-            "security_surfaces": "opaque semantic surfaces retain readable text requirements"
-        });
-        if let (Some(roots), Some(profile_id)) =
-            (self.rust().storage_roots.as_ref(), self.rust().profile_id)
-        {
-            result["storage"]["health"] = diagnostics::storage_health(
-                roots
-                    .data
-                    .join("profiles")
-                    .join(profile_id.to_string())
-                    .join("browser.sqlite"),
-            );
+        diagnostic_report::ReportInput {
+            key: self.diagnostics_key(),
+            live: result,
+            roots: self.rust().storage_roots.clone(),
+            profile: self.rust().profile_id,
+            config: self.rust().config.clone(),
+            private: private_profile,
         }
-        Ok(result)
     }
 
     pub(super) fn ipc_events_subscribe(&self, params: &Value) -> Result<Value, String> {

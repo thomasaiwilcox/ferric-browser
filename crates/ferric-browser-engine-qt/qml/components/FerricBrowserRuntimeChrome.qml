@@ -651,6 +651,8 @@ GridLayout {
         previewText: window.diagnosticsText
         summaryRows: browserUi.diagnostics_summary
         reportAvailable: browserUi.diagnostics_available
+        reportPending: browserUi.diagnostics_pending
+        reportError: browserUi.diagnostics_error
         exportNotice: window.diagnosticsExportNotice
         exportDetail: window.diagnosticsExportDetail
         browserWindow: window

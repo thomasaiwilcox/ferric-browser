@@ -8,6 +8,8 @@ FerricModalSurface {
     required property var summaryRows
     required property bool reportAvailable
     property bool detailsExpanded: false
+    property bool reportPending: false
+    property string reportError: ""
     property string exportNotice: ""
     property string exportDetail: ""
     signal closeRequested()
@@ -31,16 +33,26 @@ FerricModalSurface {
             Layout.fillWidth: true
             Layout.preferredHeight: childrenRect.height
             spacing: 6 * diagnostics.scale
-            Button { text: "Refresh"; onClicked: diagnostics.refreshRequested() }
-            Button { objectName: "diagnosticsCopy"; text: "Copy preview"; enabled: diagnostics.reportAvailable; onClicked: diagnostics.copyRequested() }
-            Button { objectName: "diagnosticsSave"; text: "Save report"; enabled: diagnostics.reportAvailable; onClicked: diagnostics.saveRequested() }
-            Button { text: "Close"; onClicked: diagnostics.closeRequested() }
+            Button { objectName: "diagnosticsRefresh"; text: "Refresh"; enabled: !diagnostics.reportPending; onClicked: diagnostics.refreshRequested() }
+            Button { objectName: "diagnosticsCopy"; text: "Copy preview"; enabled: diagnostics.reportAvailable && !diagnostics.reportPending; onClicked: diagnostics.copyRequested() }
+            Button { objectName: "diagnosticsSave"; text: "Save report"; enabled: diagnostics.reportAvailable && !diagnostics.reportPending; onClicked: diagnostics.saveRequested() }
+            Button { objectName: "diagnosticsClose"; text: "Close"; onClicked: diagnostics.closeRequested() }
         }
         FerricScrollColumn {
             objectName: "diagnosticsBody"
             Layout.fillWidth: true
             Layout.fillHeight: true
             hostWindow: diagnostics.hostWindow
+            FerricManagerFeedback {
+                objectName: "diagnosticsCollectionFeedback"
+                Layout.fillWidth: true
+                browserWindow: diagnostics.browserWindow
+                message: diagnostics.reportPending ? "Preparing report…"
+                    : diagnostics.reportError.length > 0 ? "The report couldn't be prepared. Refresh to try again." : ""
+                detail: diagnostics.reportError
+                pending: diagnostics.reportPending
+                failed: diagnostics.reportError.length > 0
+            }
             Repeater {
                 model: diagnostics.summaryRows
                 Label {
@@ -83,7 +95,8 @@ FerricModalSurface {
             Label {
                 objectName: "diagnosticsUnavailable"
                 Layout.fillWidth: true
-                visible: !diagnostics.reportAvailable && diagnostics.exportNotice.length === 0
+                visible: !diagnostics.reportAvailable && !diagnostics.reportPending
+                         && diagnostics.reportError.length === 0 && diagnostics.exportNotice.length === 0
                 text: "A report isn't ready. Refresh to try again."
                 wrapMode: Text.Wrap
                 color: diagnostics.browserWindow.warningColor
@@ -99,12 +112,13 @@ FerricModalSurface {
             ToolButton {
                 objectName: "diagnosticsDetailsToggle"
                 text: diagnostics.detailsExpanded ? "Hide report details" : "Report details"
+                enabled: diagnostics.previewText.length > 0
                 onClicked: diagnostics.detailsExpanded = !diagnostics.detailsExpanded
             }
             TextArea {
                 objectName: "diagnosticsReportText"
                 Layout.fillWidth: true
-                visible: diagnostics.detailsExpanded
+                visible: diagnostics.detailsExpanded && diagnostics.previewText.length > 0
                 text: diagnostics.previewText
                 textFormat: TextEdit.PlainText
                 wrapMode: TextEdit.Wrap

@@ -573,6 +573,77 @@ responsiveness review in the remaining whole-window pass.
 Earlier compile diagnostics are preserved in `navigation-build-initial-*` and
 `navigation-build-initial.log`; they caught two corrected Qt/Rust type errors.
 
+## Diagnostics responsiveness batch
+
+Opening the report previously performed external capability probes, theme-file
+reads and a SQLite health check on the GUI thread. Site Ledger also built a
+full diagnostic snapshot to use a few static and live Qt fields. The previous
+native measurements recorded 211–244 ms for report creation.
+
+The current implementation captures owned, in-memory and Qt facts on the GUI
+thread, then collects the full report on a bounded worker. The panel opens with
+“Preparing report…” feedback. Close remains available; Refresh, Copy and Save
+wait for a complete report. Failures retain selectable details behind the
+shared disclosure control and offer an explicit retry. Site Ledger now uses
+only its required lightweight facts.
+
+Report ownership includes the profile session and configuration revision. One
+read can be in flight with one latest replacement; obsolete results cannot
+authorize export or replace a newly opened report. Closing clears report
+authorization. Teardown does not wait for the read-only worker. Pending review
+and IPC requests have a 15-second deadline, and the IPC wait queue is bounded.
+Concurrent IPC clients share collection and still receive a complete live
+report. The CLI's diagnostic response deadline allows the server's 15-second
+collection deadline to finish; its ordinary handshake/write bounds stay in
+place. A delayed live-server regression exceeds the ordinary five-second
+response timeout. A short-lived cache is separate from the exact report reviewed
+for export; reading diagnostics through IPC never grants export authorization.
+
+The private-history transfer panel now consistently says Close when dismissing
+the view, including after a transfer has completed.
+
+New worker tests cover blocked I/O, replacement,
+owner/configuration changes, cache expiry, failure/retry, nonblocking teardown
+and report-size limits. New production cases exercise close/reopen and settings
+changes while a regular or private report is pending. The public IPC probe now
+requires complete reports for concurrent clients.
+
+Qualification on the frozen application source:
+
+- Repository gate: 921 Rust checks passed, 2 intentionally ignored, and all
+  323 QML checks passed (`diagnostics-gate.log`). This includes a real local
+  socket response delayed beyond the ordinary five-second CLI deadline.
+- Strict workspace Clippy passed (`diagnostics-clippy.log`). The application
+  build succeeded; native tests link its frozen archive, whose original path
+  is recorded in `diagnostics-engine-path.txt`.
+- Focused production tests: 8 passed in 13.81 seconds, including embedded
+  resource parity, exact reviewed report export, regular/private report
+  close/reopen and configuration invalidation, Site Ledger and private-library
+  integration (`diagnostics-native-focused.log`).
+- Full production polish: 47 passed in 106.05 seconds
+  (`diagnostics-native-detail.log`). The panel opened in 52–57 ms across the
+  focused and full runs; complete reports were ready at 238–263 ms. These are
+  observed test-run timings, not a general performance guarantee.
+- Public CLI/IPC probe passed, including concurrent complete live diagnostic
+  reports alongside an ordinary tab query (`diagnostics-ipc.log`).
+- Adapter startup passed with a bounded ten-second disposable-profile run
+  (`diagnostics-adapter.log`).
+- Thirteen focused component checks passed. Loading and failure renders were
+  inspected at 390 pixels with 20-point text; 640- and 900-pixel variants also
+  pass. Fresh compiled library/manager captures remain readable and retain
+  accessible actions and dismissal.
+- Clipboard regressions: all 81 passed in 141.99 seconds
+  (`diagnostics-clipboard-detail.log`).
+
+The initial native lifecycle fixture supplied an unsupported `cancelled`
+counter outcome. Its report correctly contained no recorded counter. The
+fixture now uses the supported `resolved` outcome and verifies that only the
+new report contains both recorded resolutions. Failed intermediate logs remain
+under `diagnostics-native-focused-initial` and
+`diagnostics-native-lifecycle-observed`; the earlier lint finding is retained
+in `diagnostics-clippy-initial.log`. Existing Qt/GCC and offscreen WebEngine
+warnings remain visible; these results do not claim a warning-free build.
+
 ## Audit status and remaining implementation
 
 These remain part of the original goal, rather than deferred release promises:
@@ -581,7 +652,8 @@ These remain part of the original goal, rather than deferred release promises:
    summaries, disclosure and consent changes above pass fresh compiled
    qualification. The remaining diagnostics/export surfaces now have readable
    summaries, explicit report review, honest unavailable states and production
-   export evidence above. Report-creation responsiveness remains to be reviewed.
+   export evidence above. Report collection now runs off the GUI thread and
+   passes the compiled ownership, export and responsiveness checks above.
    The baseline 900×700 render
    (`site-ledger-before.png`) is retained to compare the overflow fix.
 2. **Profile/session management feedback.** Completed and qualified in this
@@ -600,8 +672,9 @@ These remain part of the original goal, rather than deferred release promises:
 4. **Status/error messages.** Audit operation IDs, stale-target terminology,
    adapter/engine wording and internal state transitions in ordinary status
    notices. Preserve useful diagnostic detail without flooding normal use.
-   Check completed-transfer dismissal labels and unavailable-storage recovery
-   guidance as part of this pass.
+   Completed-transfer dismissal now consistently says Close. Continue the
+   unavailable-storage recovery and ordinary status-message review, including
+   remaining "stale" and "worker unavailable" messages.
 5. **All prompts.** Shared overflow, safe activation, request ownership,
    origin display and scoped WebAuthn defects are fixed and qualified above.
    Actual cross-window page/authentication placement, login drafts, focus and

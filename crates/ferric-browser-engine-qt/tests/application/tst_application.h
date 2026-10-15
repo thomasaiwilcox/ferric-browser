@@ -91,6 +91,8 @@ class ApplicationTests final : public QObject {
     void productPolishLibrary();
     void productPolishPrivateLibrary();
     void productPolishDiagnosticReport();
+    void productPolishDiagnosticLifecycle_data();
+    void productPolishDiagnosticLifecycle();
     void productPolishLocalFilePaths();
     void productPolishUnavailableStorage();
     void productPolishBookmarkTransfer();

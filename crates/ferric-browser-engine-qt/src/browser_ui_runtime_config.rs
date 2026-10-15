@@ -14,6 +14,7 @@ use super::{
 impl qobject::BrowserUi {
     pub(super) fn poll_config(mut self: Pin<&mut Self>) {
         self.as_mut().expire_selector_validation();
+        self.as_mut().poll_diagnostics();
         let reduced_motion_result = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();

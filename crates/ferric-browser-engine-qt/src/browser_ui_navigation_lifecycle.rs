@@ -623,6 +623,13 @@ impl qobject::BrowserUi {
             ));
             return false;
         }
+        self.as_mut().cancel_diagnostics();
+        {
+            let mut rust = self.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            this.diagnostics_collector.clear();
+            this.pending_diagnostic_requests.clear();
+        }
         if !has_state {
             return true;
         }

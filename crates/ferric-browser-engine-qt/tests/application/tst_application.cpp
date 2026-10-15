@@ -168,7 +168,8 @@ void ApplicationTests::init() {
     engine = std::make_unique<QQmlApplicationEngine>();
     const auto testName = QString::fromLatin1(QTest::currentTestFunction());
     const bool durable = testName.startsWith("durablePersistence")
-                         || (testName.startsWith("productPolish") && testName != "productPolishPrivateLibrary");
+                         || (testName.startsWith("productPolish") && testName != "productPolishPrivateLibrary"
+                             && !(testName == "productPolishDiagnosticLifecycle" && QString::fromLatin1(QTest::currentDataTag()) == "private"));
     QString startupConfig = "{\"schema_version\":3}";
     if (testName == "productPolishSiteLedger")
         startupConfig = R"JSON({"schema_version":3,"blocking":{"enabled":true,"bypass_sites":["other-private.test"]}})JSON";
@@ -2822,6 +2823,56 @@ void ApplicationTests::productPolishLocalFilePaths() {
     }
 }
 
+void ApplicationTests::productPolishDiagnosticLifecycle_data() {
+    QTest::addColumn<bool>("privateRoot");
+    QTest::newRow("regular") << false;
+    QTest::newRow("private") << true;
+}
+
+void ApplicationTests::productPolishDiagnosticLifecycle() {
+    QFETCH(bool, privateRoot);
+    QCOMPARE(evaluate("testWindow.temporaryProfile").toBool(), privateRoot);
+    const auto path = directory.filePath("pending-report.json");
+    evaluate("testWindow.browserUi.record_request_resolution('page-dialog','resolved')");
+    // This method returns while the worker is collecting, without pumping an
+    // event loop or granting export authorization before the report is visible.
+    evaluate("testWindow.showDiagnostics()");
+    QVERIFY(evaluate("testWindow.browserUi.diagnostics_pending").toBool());
+    QVERIFY(!evaluate("testWindow.browserUi.diagnostics_available").toBool());
+    QVERIFY(!evaluate("testWindow.browserUi.export_diagnostics(" + quoted(path) + ")").toBool());
+    auto close = findVisualItem(window->contentItem(), "diagnosticsClose");
+    QVERIFY(close && close->isEnabled());
+    QVERIFY(!findVisualItem(window->contentItem(), "diagnosticsCopy")->isEnabled());
+    QVERIFY(!findVisualItem(window->contentItem(), "diagnosticsSave")->isEnabled());
+    QVERIFY(QMetaObject::invokeMethod(close, "click"));
+    QVERIFY(!evaluate("testWindow.diagnosticsVisible").toBool());
+    QVERIFY(!evaluate("testWindow.browserUi.diagnostics_pending").toBool());
+    evaluate("testWindow.browserUi.record_request_resolution('page-dialog','resolved')");
+    evaluate("testWindow.showDiagnostics()");
+    QTRY_VERIFY_WITH_TIMEOUT(evaluate("testWindow.browserUi.diagnostics_available").toBool(), 16000);
+    const auto report = QJsonDocument::fromJson(evaluate("testWindow.diagnosticsText").toString().toUtf8()).object();
+    bool latest = false;
+    for (const auto &value : report["request_resolutions"].toObject()["counts"].toArray()) {
+        const auto row = value.toObject();
+        if (row["kind"] == "page-dialog" && row["outcome"] == "resolved") latest = row["count"].toInt() == 2;
+    }
+    QVERIFY2(latest, qPrintable(QString::fromUtf8(QJsonDocument(report["request_resolutions"].toObject()).toJson())));
+    QVERIFY(!QFile::exists(path));
+    if (privateRoot) QVERIFY(evaluate("testWindow.browserUi.diagnostics_summary.join(' ').indexOf('kept in memory')>=0").toBool());
+    evaluate("testWindow.refreshDiagnostics()");
+    QVERIFY(evaluate("testWindow.browserUi.diagnostics_pending").toBool());
+    const auto nextFontSize = evaluate("testWindow.browserUi.chrome_font_size_pt + 1").toDouble();
+    QVERIFY(evaluate("testWindow.browserUi.set_runtime_setting('ui.font_size_pt'," + quoted(QString::number(nextFontSize)) + ",true)").toBool());
+    QTRY_VERIFY(!evaluate("testWindow.browserUi.diagnostics_pending").toBool());
+    QVERIFY(!evaluate("testWindow.browserUi.diagnostics_available").toBool());
+    QVERIFY(!text("diagnostics_error").isEmpty());
+    QVERIFY(!evaluate("testWindow.browserUi.export_diagnostics(" + quoted(path) + ")").toBool());
+    evaluate("testWindow.refreshDiagnostics()");
+    QTRY_VERIFY_WITH_TIMEOUT(evaluate("testWindow.browserUi.diagnostics_available").toBool(), 16000);
+    QCOMPARE(text("diagnostics_error"), QString());
+    evaluate("testWindow.closeDiagnostics()");
+}
+
 void ApplicationTests::productPolishDiagnosticReport() {
     const auto path = directory.filePath(QString::fromUtf8("reviewed résumé + 100%.json"));
     // Startup compatibility checks must not authorize export of a report that
@@ -2833,14 +2884,15 @@ void ApplicationTests::productPolishDiagnosticReport() {
     reportCreation.start();
     QVERIFY(command("diagnostics"));
     QTRY_VERIFY(evaluate("testWindow.diagnosticsVisible").toBool());
-    qInfo() << "diagnostics creation elapsed ms" << reportCreation.elapsed();
-    QVERIFY(evaluate("testWindow.browserUi.diagnostics_available").toBool());
+    qInfo() << "diagnostics panel opened elapsed ms" << reportCreation.elapsed();
+    QTRY_VERIFY(evaluate("testWindow.browserUi.diagnostics_available").toBool());
+    qInfo() << "diagnostics report ready elapsed ms" << reportCreation.elapsed();
     QVERIFY(evaluate("testWindow.browserUi.diagnostics_summary.length >= 3").toBool());
     const auto preview = evaluate("testWindow.diagnosticsText").toString();
     QVERIFY(QJsonDocument::fromJson(preview.toUtf8()).isObject());
     auto report = findVisualItem(window->contentItem(), "diagnosticsReportText");
     QVERIFY(report && !report->isVisible());
-    evaluate("testWindow.browserUi.record_request_resolution('page-dialog','cancelled')");
+    evaluate("testWindow.browserUi.record_request_resolution('page-dialog','resolved')");
     evaluate("testWindow.refreshEngineUpdateNotice()");
     QCOMPARE(evaluate("testWindow.diagnosticsText").toString(), preview);
     auto chooser = window->findChild<QObject *>("diagnosticsExportChooser");

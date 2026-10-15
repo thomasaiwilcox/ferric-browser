@@ -209,7 +209,11 @@ impl qobject::BrowserUi {
             || rust.session_save_pending
             || rust.session_checkpoint_clear_pending
             || rust.storage_flush_pending;
-        if worker_pending || operation_pending {
+        if worker_pending
+            || operation_pending
+            || rust.diagnostics_pending
+            || !rust.pending_diagnostic_requests.is_empty()
+        {
             return 50;
         }
         if rust.active_site_experiment.is_some()
@@ -233,6 +237,7 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn poll_ipc(mut self: Pin<&mut Self>) {
+        self.as_mut().flush_diagnostic_requests();
         for _ in 0..ferric_browser_ipc::MAX_PENDING_REQUESTS {
             let Some(pending) = take_pending_request() else {
                 break;
@@ -254,6 +259,18 @@ impl qobject::BrowserUi {
                 && let Err(error) = subscribe_event_stream(stream, event_types)
             {
                 response = ipc_failure(&pending.request().id, "E_IO", error);
+            }
+            if pending.request().method == "diagnostics.get"
+                && response.error.is_none()
+                && response
+                    .result
+                    .as_ref()
+                    .and_then(|value| value.pointer("/collection/status"))
+                    .and_then(serde_json::Value::as_str)
+                    .is_some_and(|status| matches!(status, "pending" | "refreshing"))
+            {
+                self.as_mut().defer_diagnostic_request(pending);
+                continue;
             }
             let _ = pending.respond(&response);
         }

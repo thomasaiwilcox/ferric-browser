@@ -17,8 +17,8 @@ FerricModalSurface {
     commandText: "Private page"
     title: "Use this page in a named profile"
     message: "The destination uses normal browsing and storage. Only this page’s address and title are copied; private cookies, permissions and browsing history stay private."
-    keyHelp: "tab/shift-tab controls  ·  enter activate  ·  esc cancel"
-    compactKeyHelp: "esc cancel"
+    keyHelp: "tab/shift-tab controls  ·  enter activate  ·  esc close"
+    compactKeyHelp: "esc close"
     dialogWidth: 720 * scale
     dialogHeight: 500 * scale
     dialogBorderColor: browserWindow.warningColor
@@ -145,7 +145,7 @@ FerricModalSurface {
             id: cancelButton
             objectName: "privateTransferCancel"
             Layout.alignment: Qt.AlignRight
-            text: transfer.transferPending ? "Close" : "Cancel"
+            text: "Close"
             Accessible.name: "Cancel private page transfer"
             onClicked: transfer.cancelRequested()
         }

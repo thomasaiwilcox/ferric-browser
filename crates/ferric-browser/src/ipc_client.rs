@@ -473,6 +473,15 @@ pub(super) fn instance_request(
         return Err("running instance uses an incompatible IPC protocol".into());
     }
 
+    // Live diagnostic collection has a 15-second server deadline. Keep the
+    // ordinary handshake/write bounds, but allow its deferred response to
+    // arrive before deciding that the running instance is unavailable.
+    if request.method == "diagnostics.get" {
+        stream
+            .set_read_timeout(Some(Duration::from_secs(20)))
+            .map_err(|error| format!("could not configure diagnostics timeout: {error}"))?;
+    }
+
     ipc_roundtrip(&mut stream, request)
 }
 

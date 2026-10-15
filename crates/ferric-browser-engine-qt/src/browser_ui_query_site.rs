@@ -212,9 +212,7 @@ impl qobject::BrowserUi {
                 })
             })
             .unwrap_or(Value::Null);
-        let mut diagnostics = diagnostics::snapshot_with_primary_selection(Some(
-            qobject::ferric_browser_primary_selection_available(),
-        ));
+        let mut diagnostics = diagnostics_snapshot::site_snapshot();
         apply_qt_runtime_facts(&mut diagnostics);
         let facts = vec![
             serde_json::json!({
@@ -420,9 +418,7 @@ impl qobject::BrowserUi {
             .and_then(|doctor| doctor.get("last_result"))
             .map(report_experiment_summary)
             .unwrap_or(Value::Null);
-        let mut diagnostics = diagnostics::snapshot_with_primary_selection(Some(
-            qobject::ferric_browser_primary_selection_available(),
-        ));
+        let mut diagnostics = diagnostics_snapshot::site_snapshot();
         apply_qt_runtime_facts(&mut diagnostics);
         let quirk_ids = compatibility::load()
             .ok()

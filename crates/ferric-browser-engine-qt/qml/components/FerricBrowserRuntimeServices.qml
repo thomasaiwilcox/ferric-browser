@@ -1333,10 +1333,14 @@ FerricBrowserRuntimeBase {
     function refreshDiagnostics() {
         window.diagnosticsExportNotice = ""
         window.diagnosticsExportDetail = ""
-        var payload = browserUi.diagnostics_json()
-        diagnosticsText = payload && payload.length > 0
-                ? payload
-                : "{\"error\":\"Diagnostics snapshot was unavailable\"}"
+        browserUi.request_diagnostics()
+    }
+
+    Connections {
+        target: browserUi
+        function onDiagnostics_previewChanged() {
+            window.diagnosticsText = String(browserUi.diagnostics_preview)
+        }
     }
 
     function refreshEngineUpdateNotice() {
@@ -1356,6 +1360,7 @@ FerricBrowserRuntimeBase {
     function closeDiagnostics() {
         var wasVisible = window.diagnosticsVisible
         window.diagnosticsVisible = false
+        browserUi.cancel_diagnostics()
         if (wasVisible) {
             window.closeInternalSurface()
         }

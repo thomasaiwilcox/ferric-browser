@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise real BrowserUi IPC using a disposable standalone browser instance."""
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 from pathlib import Path
@@ -25,7 +26,7 @@ def main():
                                    env=env, stdout=log, stderr=log)
             def invoke(*arguments, accepted=True):
                 result = subprocess.run([*prefix, *arguments], env=env, capture_output=True,
-                                        text=True, timeout=12)
+                                        text=True, timeout=30 if arguments[0] == 'diagnostics' else 12)
                 if accepted:
                     assert result.returncode == 0, (arguments, result.stdout, result.stderr)
                     if arguments[0] == 'query':
@@ -50,6 +51,17 @@ def main():
                         if time.monotonic() >= deadline:
                             raise
                         time.sleep(0.1)
+                # Both callers must receive a complete live report, not the
+                # asynchronous collector's internal pending placeholder.
+                with ThreadPoolExecutor(max_workers=2) as readers:
+                    reports = [readers.submit(invoke, 'diagnostics', '--format', 'json') for _ in range(2)]
+                    invoke('query', 'active-tab', '--format', 'json')
+                    for future in reports:
+                        report = json.loads(future.result())
+                        assert report['collection']['status'] == 'complete', report.get('collection')
+                        assert report['build']['qt_webengine']['status'] == 'available', report['build']
+                        assert 'request_resolutions' in report, 'standalone fallback was used'
+                print('concurrent diagnostic clients received complete live reports', flush=True)
                 for command in ('hint --target pointer all', 'target-search controls',
                                 'open https://example.invalid/ ;; hint --target pointer all'):
                     invoke('command', command, accepted=False)

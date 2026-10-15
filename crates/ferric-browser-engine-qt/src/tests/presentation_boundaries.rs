@@ -1103,7 +1103,9 @@ fn diagnostics_export_requires_explicit_local_save_and_never_overwrites() {
     assert!(source.contains("fn export_diagnostics"));
     assert!(source.contains("Diagnostics export requires reviewing the visible preview first"));
     assert!(source.contains("diagnostics_preview_ready = false"));
-    assert!(source.contains("diagnostics_preview_payload = available.then"));
+    assert!(source.contains("diagnostics_preview_payload = Some(report.payload)"));
+    assert!(source.contains("ticket == completion.ticket && owner == completion.key"));
+    assert!(source.contains("fn cancel_diagnostics"));
     assert!(source.contains("MAX_DIAGNOSTICS_EXPORT_BYTES"));
     assert!(source.contains("Diagnostics export requires an absolute local file path"));
     assert!(source.contains("Diagnostics export refuses to overwrite an existing file"));

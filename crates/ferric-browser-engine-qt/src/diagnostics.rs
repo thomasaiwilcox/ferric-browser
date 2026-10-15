@@ -952,12 +952,12 @@ pub(crate) fn secret_storage_policy() -> Value {
     })
 }
 
+pub use crate::diagnostics_snapshot::snapshot_with_compositor;
 /// Produces the privacy-safe, versioned diagnostic snapshot shared by the
 /// display-free CLI and the live IPC surface. Values are intentionally
 /// conservative: compiled support is not treated as runtime qualification.
 #[cfg(test)]
-use crate::diagnostics_snapshot::snapshot;
-pub use crate::diagnostics_snapshot::{snapshot_with_compositor, snapshot_with_primary_selection};
+use crate::diagnostics_snapshot::{snapshot, snapshot_with_primary_selection};
 
 #[cfg(test)]
 mod tests {

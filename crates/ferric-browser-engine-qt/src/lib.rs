@@ -116,6 +116,7 @@ mod config_watch;
 mod configuration_workers;
 mod desktop_portals;
 mod desktop_preferences;
+mod diagnostic_report;
 mod diagnostics;
 mod diagnostics_overview;
 mod diagnostics_presentation;
@@ -334,8 +335,8 @@ pub use diagnostics::{action_error_summary, storage_health as diagnostics_storag
 pub use ipc_transport::spawn_ipc_server;
 
 /// Returns the display-free diagnostic snapshot. The CLI may perform the
-/// bounded compositor probe here; live Qt diagnostics use `diagnostics::snapshot`
-/// and never synchronously query compositor IPC on the GUI thread.
+/// bounded probes here; the live Qt surface collects its report off-thread.
+/// Qt runtime facts are captured on the GUI thread before collection starts.
 #[must_use]
 pub fn diagnostics_snapshot() -> Value {
     let mut snapshot = diagnostics::snapshot_with_compositor(diagnostics::hyprland_version_fact());
@@ -542,6 +543,9 @@ mod qobject {
         #[qproperty(bool, library_pending)]
         #[qproperty(QStringList, diagnostics_summary)]
         #[qproperty(bool, diagnostics_available)]
+        #[qproperty(bool, diagnostics_pending)]
+        #[qproperty(QString, diagnostics_preview)]
+        #[qproperty(QString, diagnostics_error)]
         #[qproperty(QString, library_error)]
         #[qproperty(QString, profile_action_id)]
         #[qproperty(QString, profile_action_state)]
@@ -1520,7 +1524,10 @@ mod qobject {
         ) -> bool;
 
         #[qinvokable]
-        fn diagnostics_json(self: Pin<&mut BrowserUi>) -> QString;
+        fn request_diagnostics(self: Pin<&mut BrowserUi>) -> bool;
+
+        #[qinvokable]
+        fn cancel_diagnostics(self: Pin<&mut BrowserUi>);
 
         #[qinvokable]
         fn engine_update_notice(self: &BrowserUi) -> QStringList;
@@ -1851,7 +1858,7 @@ use ferric_browser_config::{
     ActionTargetConfig, Config, ContextsConfig, HyprlandConfig, LoggingConfig, RuntimeOverrides,
     ThemePalette, load_theme_palette, matching_context_routes, matching_site_rules,
     save_contexts_atomic, setting_metadata, setting_metadata_all, setting_supported_scopes,
-    setting_supports_site_scope, theme_contrast_report,
+    setting_supports_site_scope,
 };
 #[cfg(test)]
 use ferric_browser_core::ActionSubject;
@@ -2067,6 +2074,9 @@ pub struct BrowserUiRust {
     library_pending: bool,
     diagnostics_summary: QStringList,
     diagnostics_available: bool,
+    diagnostics_pending: bool,
+    diagnostics_preview: QString,
+    diagnostics_error: QString,
     library_error: QString,
     storage_library_refresh_again: bool,
     storage_library_read_pending: bool,
@@ -2419,6 +2429,9 @@ pub struct BrowserUiRust {
     structured_log: Option<logging::StructuredLogSink>,
     diagnostics_preview_ready: bool,
     diagnostics_preview_payload: Option<String>,
+    diagnostics_collector: diagnostic_report::DiagnosticCollector,
+    diagnostics_review: Option<(u64, diagnostic_report::ReportKey, Instant)>,
+    pending_diagnostic_requests: Vec<browser_ui_diagnostics::PendingDiagnostic>,
     request_resolution_counts: BTreeMap<(String, String), u64>,
     active_site_experiment: Option<SiteExperiment>,
     last_site_doctor_result: Option<Value>,
@@ -2828,6 +2841,9 @@ impl Default for BrowserUiRust {
             library_pending: false,
             diagnostics_summary: QStringList::default(),
             diagnostics_available: false,
+            diagnostics_pending: false,
+            diagnostics_preview: QString::default(),
+            diagnostics_error: QString::default(),
             library_error: QString::default(),
             storage_library_refresh_again: false,
             storage_library_read_pending: false,
@@ -3201,6 +3217,9 @@ impl Default for BrowserUiRust {
             structured_log: None,
             diagnostics_preview_ready: false,
             diagnostics_preview_payload: None,
+            diagnostics_collector: diagnostic_report::DiagnosticCollector::default(),
+            diagnostics_review: None,
+            pending_diagnostic_requests: Vec::new(),
             request_resolution_counts: BTreeMap::new(),
             active_site_experiment: None,
             last_site_doctor_result: None,
