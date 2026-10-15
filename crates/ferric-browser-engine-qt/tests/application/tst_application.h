@@ -87,6 +87,8 @@ class ApplicationTests final : public QObject {
     void productPolishIndependentWindowInput();
     void productPolishPermissionWindowOwnership_data();
     void productPolishPermissionWindowOwnership();
+    void productPolishOverlappingModalInput_data();
+    void productPolishOverlappingModalInput();
     void productPolishUserscriptFeedback();
     void productPolishWindowClose_data();
     void productPolishWindowClose();

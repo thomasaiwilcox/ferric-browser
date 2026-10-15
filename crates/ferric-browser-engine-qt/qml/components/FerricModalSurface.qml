@@ -38,7 +38,33 @@ FocusScope {
         || hostWindow.shutdownPromptVisible === true
         || hostWindow.shutdownPagePromptVisible === true
         || hostWindow.applicationShutdownForcePromptVisible === true)
-    readonly property bool interactive: visible && enabled && !suspended
+    readonly property var inputScope: hostWindow && hostWindow.modalInputScope ? hostWindow.modalInputScope : null
+    property var registeredInputScope: null
+    readonly property bool windowAvailable: !!hostWindow && hostWindow.runtimeReleased !== true
+                                           && hostWindow.runtimeDisposing !== true
+                                           && (!inputScope || inputScope.acceptingSurfaces === true)
+    readonly property bool wantsInput: visible && enabled && !suspended && windowAvailable
+    readonly property bool interactive: wantsInput && (!inputScope || inputScope.activeSurface === surface)
+    function syncInputScope() {
+        if (registeredInputScope && (registeredInputScope !== inputScope || !wantsInput)) {
+            if (registeredInputScope.acceptingSurfaces === true) registeredInputScope.unregisterSurface(surface)
+            registeredInputScope = null
+        }
+        if (wantsInput && displayPrepared && inputScope && registeredInputScope !== inputScope) {
+            registeredInputScope = inputScope
+            inputScope.registerSurface(surface)
+        }
+    }
+    onInputScopeChanged: syncInputScope()
+    onWantsInputChanged: syncInputScope()
+    onInteractiveChanged: {
+        if (interactive && displayPrepared) ownershipFocusTimer.restart()
+        else {
+            initialFocusTimer.stop()
+            ownershipFocusTimer.stop()
+        }
+    }
+    Component.onDestruction: if (registeredInputScope && registeredInputScope.acceptingSurfaces === true) registeredInputScope.unregisterSurface(surface)
     property real maximumSpacingScale: Infinity
     readonly property real scale: Math.min(maximumSpacingScale,
         browserWindow.chromeScale === undefined ? 1 : browserWindow.chromeScale)
@@ -77,6 +103,7 @@ FocusScope {
     Accessible.name: title.length > 0 ? title : commandText
 
     function focusInitialControl() {
+        if (!surface.interactive) return;
         // Take ownership now, before another prompt can capture the page as
         // its return target. Repeat after layout for newly visible controls.
         applyInitialFocus();
@@ -84,7 +111,7 @@ FocusScope {
     }
 
     function applyInitialFocus() {
-        if (!surface.visible || surface.suspended)
+        if (!surface.interactive)
             return;
         if (surface.initialFocusItem && surface.initialFocusItem.visible
                 && surface.initialFocusItem.enabled)
@@ -106,6 +133,14 @@ FocusScope {
 
     property var restoreFocusTarget: null
     Timer {
+        id: ownershipFocusTimer
+        interval: 0
+        // A dismissed prompt may restore an edited field in this surface.
+        // Reclaim focus only when it has not already returned to our controls.
+        onTriggered: if (surface.interactive && !surface.containsActiveFocus)
+                         surface.applyInitialFocus()
+    }
+    Timer {
         id: initialFocusTimer
         interval: 0
         onTriggered: surface.applyInitialFocus()
@@ -116,7 +151,9 @@ FocusScope {
         onTriggered: {
             var target = surface.restoreFocusTarget;
             surface.restoreFocusTarget = null;
-            if (!surface.visible && target && target.forceActiveFocus && target.visible !== false
+            if (!surface.visible && surface.windowAvailable
+                    && (!surface.inputScope || surface.inputScope.allowsFocus(target))
+                    && target && target.forceActiveFocus && target.visible !== false
                     && target.enabled !== false) {
                 target.forceActiveFocus();
             }
@@ -137,13 +174,19 @@ FocusScope {
             shortcutsButton.checked = false;
         if (visible) {
             surface.prepareForDisplay();
+            surface.syncInputScope();
+            surface.focusInitialControl();
         } else {
+            surface.syncInputScope();
             displayPrepared = false;
             surface.restorePreviousFocus();
         }
     }
-    Component.onCompleted: if (visible)
-                               prepareForDisplay()
+    Component.onCompleted: if (visible) {
+        prepareForDisplay()
+        syncInputScope()
+        focusInitialControl()
+    }
 
     Keys.onPressed: function (event) {
         if (surface.interactive && surface.dismissOnEscape && event.key === Qt.Key_Escape) {

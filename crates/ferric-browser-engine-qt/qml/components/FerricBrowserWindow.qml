@@ -8,6 +8,7 @@ import io.github.ferricbrowser 1.0
 ApplicationWindow {
     required property var rootWindow
     id: secondaryWindow
+    readonly property var modalInputScope: FerricModalInputController { hostWindow: secondaryWindow }
     readonly property alias browserKeyRouterObject: secondaryKeyRouter
     width: 1180
     height: 760

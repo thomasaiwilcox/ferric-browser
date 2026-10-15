@@ -792,6 +792,68 @@ explicit IPC window routing. Popup windows still share an existing permission
 owner; independent-profile results do not establish full popup input parity.
 The whole-application, configured-font walkthrough remains part of the goal.
 
+## Modal ownership and focus lifetime batch
+
+Status: implemented and qualified on the frozen source.
+
+A production-component probe reproduced Escape failing to dismiss a permission
+prompt over settings. Each browser window now owns a modal input controller.
+The controller follows the surfaces' actual visual ancestry, z order and
+sibling order, so a high local z value inside a lower layer cannot take input
+from the front dialog. Only the front surface registers modal shortcuts and
+reclaims focus. The policy and meaning of each decision remain unchanged.
+
+Queued mode/overlay focus returns respect that window's active modal. Covered
+surfaces stop obsolete initial-focus work. Reactivating a surface only supplies
+initial focus if focus has not already returned to one of its controls; this
+preserves edited fields and drafts after the front prompt closes. Newly opened
+surfaces still take focus synchronously after ownership registration.
+
+A disposal state prevents callbacks into a modal controller destroyed before
+its surfaces. Child choice shortcuts disable when their dialog is gone. The
+shared scroll view explicitly disconnects external focus/cursor signals and
+stops its timer during destruction. Tests reproduced both controller lifetime
+and late scroll-callback defects before these corrections.
+
+Evidence:
+
+- The separate prototype passed 24 checks before integration. The integrated,
+  dedicated ownership suite passes 13 checks, including Escape/Enter on the
+  front permission prompt, preserving an unapplied edited value, actual visual
+  ordering, enabled-state changes, queued focus returns, independent windows,
+  and repeatedly destroying windows with visible modals.
+- A stronger integration test caught initial-focus work overriding a correctly
+  captured editor after prompt dismissal. The snapshot was valid; a late
+  ownership focus timer moved focus back to Search. Conditional reactivation
+  focus and cancellation of obsolete initial-focus work fix this regression.
+- The full QML suite passes all 354 checks
+  (`modal-input-qml-corrected-full.log`).
+- Production source-UI preflight passes 21 checks (`modal-input-native-source.log`),
+  including real geolocation requests over settings and a nested userscript
+  confirmation, both Escape and safe-default Enter, preserved search drafts,
+  independent windows, permissions, script feedback, window close, page
+  prompts, nested restoration and requesting-window teardown.
+- The final repository gate passed 922 Rust tests (two ignored) and all 354
+  QML checks (`modal-input-final-gate.log`). All 58 embedded application
+  checks passed in 201.9 seconds and all 81 native clipboard checks passed in
+  222.7 seconds. Adapter startup and the standalone CLI/IPC probe also passed.
+- The frozen engine archive SHA-256 is
+  `f231fadcfea185a2e946b1c03150ed16287c8a180ebd238bc5e67f7c319f074f`;
+  source and application digests are recorded in
+  `modal-input-source-hashes.json` and `modal-input-final-artifacts.json`.
+  Rust source and Cargo/build-script configuration are unchanged from the
+  passing strict Clippy checkpoint `9d006ca`; the new code is QML and the
+  native/QML regression harnesses.
+
+The actual-font walkthrough reproduced a further compact-layout problem:
+font-based spacing consumes the permission context and makes short action
+labels wrap vertically. A separate layout prototype passes 48 permission,
+window-size and profile combinations. Production integration, other prompt
+layouts, rendered review and final qualification remain required.
+
+The manager/popup/routing, ordinary status-copy, and whole-application
+configured-font audits remain part of the original goal.
+
 ## Audit status and remaining implementation
 
 These remain part of the original goal, rather than deferred release promises:

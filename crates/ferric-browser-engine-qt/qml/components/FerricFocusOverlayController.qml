@@ -22,6 +22,10 @@ QtObject {
         return !!target && !!target.forceActiveFocus
                 && target.visible !== false && target.enabled !== false
     }
+    function focusPermitted(hostWindow, target) {
+        var scope = hostWindow ? hostWindow.modalInputScope : null
+        return !scope || scope.allowsFocus(target)
+    }
     function captureOverlayFocus(hostWindow, fallbackTarget) {
         if (browserWindow.runtimeDisposing === true) return
         var host = hostWindow || browserWindow
@@ -70,11 +74,11 @@ QtObject {
         for (var i = 0; i < pending.length; ++i) {
             var entry = pending[i]
             if (!entry.host || entry.host.runtimeReleased === true) continue
-            if (focusTargetAvailable(entry.target)) entry.target.forceActiveFocus()
-            else if (focusTargetAvailable(entry.fallback)) entry.fallback.forceActiveFocus()
+            if (focusTargetAvailable(entry.target) && focusPermitted(entry.host, entry.target)) entry.target.forceActiveFocus()
+            else if (focusTargetAvailable(entry.fallback) && focusPermitted(entry.host, entry.fallback)) entry.fallback.forceActiveFocus()
             else if (entry.host === browserWindow) {
                 var view = browserWindow.activeWebView()
-                if (focusTargetAvailable(view)) view.forceActiveFocus()
+                if (focusTargetAvailable(view) && focusPermitted(entry.host, view)) view.forceActiveFocus()
             }
         }
     }
@@ -96,6 +100,7 @@ QtObject {
         pendingModeFocusTarget = null
         // A command can open a modal immediately before leaving command mode.
         if (browserWindow.runtimeDisposing === true
+                || (browserWindow.modalInputScope && browserWindow.modalInputScope.activeSurface)
                 || focusReturnStack.some(function(entry) { return entry.host === browserWindow })) return
         if (focusTargetAvailable(target)) target.forceActiveFocus()
         else {

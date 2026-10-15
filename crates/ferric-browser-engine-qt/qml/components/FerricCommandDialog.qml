@@ -252,7 +252,7 @@ FerricModalSurface {
                     Shortcut {
                         sequences: dialog.actionShortcuts(modelData)
                         context: Qt.WindowShortcut
-                        enabled: dialog.interactive && dialog.choiceKeysActive && parent.enabled
+                        enabled: !!dialog && dialog.interactive && dialog.choiceKeysActive && parent.enabled
                                  && sequences.length > 0
                         autoRepeat: false
                         onActivated: dialog.requestAction(modelData.id)

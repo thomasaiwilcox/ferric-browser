@@ -19,6 +19,11 @@ ScrollView {
     ScrollBar.vertical.active: true
     ScrollBar.vertical.policy: content.implicitHeight > availableHeight + 1 ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
 
+    Component.onDestruction: {
+        windowFocusSignals.target = null
+        cursorFocusSignals.target = null
+        revealTimer.stop()
+    }
     function reveal(item) {
         var ancestor = item;
         while (ancestor && ancestor !== content)
@@ -58,6 +63,7 @@ ScrollView {
         onTriggered: scroll.reveal(scroll.hostWindow ? scroll.hostWindow.activeFocusItem : null)
     }
     Connections {
+        id: windowFocusSignals
         target: scroll.hostWindow
         ignoreUnknownSignals: true
         function onActiveFocusItemChanged() {
@@ -65,6 +71,7 @@ ScrollView {
         }
     }
     Connections {
+        id: cursorFocusSignals
         target: scroll.hostWindow ? scroll.hostWindow.activeFocusItem : null
         ignoreUnknownSignals: true
         function onCursorRectangleChanged() { scroll.scheduleFocus(); }

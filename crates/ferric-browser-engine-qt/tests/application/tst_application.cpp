@@ -2705,6 +2705,52 @@ void ApplicationTests::productPolishPermissionWindowOwnership() {
     child->close();
 }
 
+void ApplicationTests::productPolishOverlappingModalInput_data() {
+    QTest::addColumn<bool>("removal");
+    QTest::addColumn<bool>("enter");
+    QTest::newRow("settings-escape") << false << false;
+    QTest::newRow("settings-enter") << false << true;
+    QTest::newRow("removal-escape") << true << false;
+    QTest::newRow("removal-enter") << true << true;
+}
+void ApplicationTests::productPolishOverlappingModalInput() {
+    QFETCH(bool, removal);
+    QFETCH(bool, enter);
+    QVERIFY(command("settings"));
+    QTRY_VERIFY(evaluate("testWindow.settingsVisible").toBool());
+    evaluate("testWindow.settingsSearch='preserved draft'");
+    auto workspace = window->findChild<QObject *>("primarySettingsWorkspace");
+    QVERIFY(workspace);
+    auto search = window->findChild<QQuickItem *>("settingsSearchInput");
+    QVERIFY(search);
+    QTRY_VERIFY(search->hasActiveFocus());
+    if (removal) {
+        engine->rootContext()->setContextProperty("modalSettingsUnderTest", workspace);
+        evaluate("modalSettingsUnderTest.confirmRemoveUserscript('pending_script')");
+        QTRY_COMPARE(evaluate("testWindow.pendingUserscriptRemoval").toString(), QString("pending_script"));
+    }
+    QVERIFY(page("navigator.geolocation.getCurrentPosition(()=>window.geoResult='allowed',()=>window.geoResult='denied');true").toBool());
+    QTRY_VERIFY(evaluate("testWindow.permissionPromptVisible").toBool());
+    auto deny = findVisualItem(window->contentItem(), "commandDialogAction-deny");
+    QVERIFY(deny);
+    QTRY_VERIFY(deny->hasActiveFocus());
+    key(enter ? Qt::Key_Return : Qt::Key_Escape);
+    QTRY_VERIFY(!evaluate("testWindow.permissionPromptVisible").toBool());
+    QTRY_COMPARE(page("window.geoResult").toString(), QString("denied"));
+    QVERIFY(evaluate("testWindow.settingsVisible").toBool());
+    QCOMPARE(evaluate("testWindow.settingsSearch").toString(), QString("preserved draft"));
+    if (removal) {
+        QCOMPARE(evaluate("testWindow.pendingUserscriptRemoval").toString(), QString("pending_script"));
+        key(Qt::Key_Escape);
+        QTRY_VERIFY(evaluate("testWindow.pendingUserscriptRemoval").toString().isEmpty());
+        QVERIFY(evaluate("testWindow.settingsVisible").toBool());
+    }
+    QTRY_VERIFY(search->hasActiveFocus());
+    key(Qt::Key_Escape);
+    QTRY_VERIFY(!evaluate("testWindow.settingsVisible").toBool());
+    QTRY_VERIFY(evaluate("testWindow.browserKeyFocusActive").toBool());
+}
+
 void ApplicationTests::productPolishUserscriptFeedback() {
     QTRY_VERIFY(!evaluate("testWindow.browserUi.profile_bootstrap_pending").toBool());
     QVERIFY(command("settings"));

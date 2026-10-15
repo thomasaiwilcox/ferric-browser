@@ -10,6 +10,7 @@ import "../scripts/SpellcheckPresentation.js" as SpellcheckPresentation
 
 ApplicationWindow {
     id: window
+    readonly property var modalInputScope: FerricModalInputController { hostWindow: window }
     property bool runtimeDisposing: false
     readonly property alias scriptRunnerObject: scriptRunner
     FerricScriptRunner { id: scriptRunner }

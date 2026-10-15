@@ -7,6 +7,7 @@ import io.github.ferricbrowser 1.0
 
 ApplicationWindow {
     id: popupWindow
+    readonly property var modalInputScope: FerricModalInputController { hostWindow: popupWindow }
     required property var rootWindow
     width: 1024
     height: 720
