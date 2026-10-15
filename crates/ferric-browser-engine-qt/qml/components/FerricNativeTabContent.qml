@@ -8,6 +8,8 @@ Item {
     required property var browserUi
     required property var browserWindow
     required property var browserHost
+    Timer { id: historyRefreshTimer; interval: 0; onTriggered: content.synchronizeHistory() }
+    Timer { id: contentFocusTimer; interval: 0; onTriggered: content.focusContent() }
     property var tabsModel: null
     property string nativeUrl: ""
     property bool traversalPending: false
@@ -35,7 +37,7 @@ Item {
     Instantiator {
         id: historyCursor
         model: content.webView.history.backItems
-        onCountChanged: Qt.callLater(content.synchronizeHistory)
+        onCountChanged: historyRefreshTimer.restart()
         delegate: QtObject { required property url url; required property int offset }
     }
     Instantiator {
@@ -84,12 +86,12 @@ Item {
                 ? String(browserUi.tab_id_for_index(identityIndex)) : ""
         var identityInputEpoch = Number(browserUi.input_epoch) || 0
         historyProbePending = true
-        webView.runJavaScript(BrowserScripts.historyTraversalProbe(), browserWindow.browserScriptWorld, function(value) {
+        var launched = browserWindow.runBrowserScript(webView, BrowserScripts.historyTraversalProbe(), function(value) {
             if (epoch !== historyProbeEpoch) return
             historyProbePending = false
             if (nativeUrl.length > 0 || webView.loading) return
             if (destination !== webView.url.toString() || position !== engineHistoryIndex) {
-                Qt.callLater(synchronizeHistory)
+                historyRefreshTimer.restart()
                 return
             }
             if (value && value.url === destination && typeof value.document === "string"
@@ -133,8 +135,9 @@ Item {
                 settleUnprovenSameDocumentChange(epoch, destination)
             }
             reconcileHistory()
-            if (historyProbeAgain) { historyProbeAgain = false; Qt.callLater(synchronizeHistory) }
-        })
+            if (historyProbeAgain) { historyProbeAgain = false; historyRefreshTimer.restart() }
+        }, browserWindow.browserScriptWorld)
+        if (!launched) historyProbePending = false
     }
     function invalidateHistoryProbe() {
         historyProbeEpoch += 1
@@ -238,7 +241,7 @@ Item {
             if (destination === "rb://start") {
                 startCreated = true
                 if (startPage) startPage.refresh()
-                Qt.callLater(focusContent)
+                contentFocusTimer.restart()
             }
         } else {
             if (!traversal) navigationBaseIndex = engineHistoryIndex
@@ -295,7 +298,7 @@ Item {
     }
     function noteSameDocument(destination) {
         if (typeof destination !== "string" || destination.length === 0) {
-            Qt.callLater(synchronizeHistory)
+            historyRefreshTimer.restart()
             return
         }
         var index = tabIndex
@@ -317,13 +320,13 @@ Item {
                 || browserUi.load_state !== "complete" || historyDocument.length === 0) {
             pendingSameDocumentNotification = null
             reportUrlChange(index, destination)
-            Qt.callLater(synchronizeHistory)
+            historyRefreshTimer.restart()
             return
         }
         pendingSameDocumentNotification = notification
         browserUi.begin_same_document_url_change_for(
             index, tabId, destination, historyDocument, notification.inputEpoch)
-        Qt.callLater(synchronizeHistory)
+        historyRefreshTimer.restart()
     }
     function noteCommit() {
         if (nativeUrl.length > 0) return
@@ -331,7 +334,7 @@ Item {
         committedContent = true
         if (!engineTraversalPending) browserUi.content_navigated(tabIndex, webView.url.toString(), engineHistoryIndex, traversalPending)
         traversalPending = false
-        Qt.callLater(synchronizeHistory)
+        historyRefreshTimer.restart()
     }
     Rectangle { anchors.fill: parent; visible: content.nativeUrl.length > 0; color: content.browserWindow.backgroundColor }
     Loader {
@@ -339,7 +342,7 @@ Item {
         anchors.fill: parent
         active: content.startCreated
         visible: content.nativeUrl === "rb://start"
-        onLoaded: Qt.callLater(content.focusContent)
+        onLoaded: contentFocusTimer.restart()
         sourceComponent: FerricStartPage {
             browserUi: content.browserUi
             browserWindow: content.browserWindow

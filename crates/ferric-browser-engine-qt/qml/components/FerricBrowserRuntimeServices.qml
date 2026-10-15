@@ -47,16 +47,28 @@ FerricBrowserRuntimeBase {
     }
 
     function runBrowserScript(view, script, callback, world) {
-        if (!view || !script || (view.nativeUrl !== undefined && view.nativeUrl.length > 0)) {
+        if (window.runtimeDisposing || !view || !script
+                || (view.viewHost && view.viewHost.runtimeReleased)
+                || (view.nativeUrl !== undefined && view.nativeUrl.length > 0)) {
             return false
         }
         var executionWorld = world === undefined ? window.browserScriptWorld : world
         if (callback) {
-            view.runJavaScript(script, executionWorld, callback)
+            return window.scriptRunnerObject.run(view, view.mainFrame, script, executionWorld, callback)
         } else {
             view.runJavaScript(script, executionWorld)
         }
         return true
+    }
+
+    function runBrowserFrameScript(view, frame, script, world, callback) {
+        if (window.runtimeDisposing || !view || !frame || !frame.isValid
+                || (view.viewHost && view.viewHost.runtimeReleased)) return false
+        return window.scriptRunnerObject.run(view, frame, script, world, callback)
+    }
+
+    function cancelScriptsForView(view) {
+        window.scriptRunnerObject.cancelFor(view)
     }
 
     function closeDevTools() {
@@ -320,12 +332,12 @@ FerricBrowserRuntimeBase {
         return BrowserScripts.focusProbe()
     }
 
-    function probeFocusFrame(ui, index, frame, framePath, url) {
+    function probeFocusFrame(ui, index, frame, framePath, url, view) {
         if (!ui || !frame || !frame.isValid) {
             return
         }
         var epoch = ui.input_epoch
-        frame.runJavaScript(window.focusProbeScript(), window.browserScriptWorld, function(value) {
+        window.runBrowserFrameScript(view, frame, window.focusProbeScript(), window.browserScriptWorld, function(value) {
             var state = value || {sequence: 0, editable: false,
                                   user_activated: false, kind: "unknown"}
             ui.page_focus_observed_for(index, url, framePath,
@@ -334,7 +346,7 @@ FerricBrowserRuntimeBase {
         })
         var children = frame.children || []
         for (var i = 0; i < children.length; ++i) {
-            window.probeFocusFrame(ui, index, children[i], framePath + "." + i, url)
+            window.probeFocusFrame(ui, index, children[i], framePath + "." + i, url, view)
         }
     }
 
@@ -361,7 +373,7 @@ FerricBrowserRuntimeBase {
                 return
             }
             tracker.pending += 1
-            frame.runJavaScript(window.focusProbeScript(), window.browserScriptWorld,
+            var launched = window.runBrowserFrameScript(view, frame, window.focusProbeScript(), window.browserScriptWorld,
                 function(value) {
                     var state = value || { sequence: 0, editable: false,
                                             user_activated: false }
@@ -372,6 +384,7 @@ FerricBrowserRuntimeBase {
                     tracker.pending -= 1
                     finishIfReady()
                 })
+            if (!launched) { tracker.pending -= 1; finishIfReady() }
             var children = frame.children || []
             for (var childIndex = 0; childIndex < children.length; ++childIndex) {
                 probe(children[childIndex], framePath + "." + childIndex)
@@ -403,7 +416,7 @@ FerricBrowserRuntimeBase {
         }
         var provider = window.selectionProviderFor(view)
         if (provider) provider.capture()
-        window.probeFocusFrame(ui, index, view.mainFrame, "0", view.url.toString())
+        window.probeFocusFrame(ui, index, view.mainFrame, "0", view.url.toString(), view)
     }
 
     function cosmeticHostMatches(host, pattern) {

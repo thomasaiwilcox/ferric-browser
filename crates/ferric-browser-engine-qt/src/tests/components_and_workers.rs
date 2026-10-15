@@ -652,7 +652,7 @@ fn command_outcomes_remain_visible_and_detached_windows_pump_runtime_work() {
     assert!(library.contains("FerricModalSurface {"));
     assert!(library.contains("onDismissRequested: closeRequested()"));
     assert!(modal.contains("context: Qt.WindowShortcut"));
-    assert!(modal.contains("enabled: surface.visible && surface.dismissOnEscape"));
+    assert!(modal.contains("enabled: surface.interactive && surface.dismissOnEscape"));
 }
 
 #[test]

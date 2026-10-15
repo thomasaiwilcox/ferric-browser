@@ -6,6 +6,7 @@ Item {
     objectName: "selectorValidationSurface"
 
     required property var browserUi
+    required property var browserWindow
     property string activeGeneration: ""
     property var pendingRequest: null
     property bool documentReady: false
@@ -49,7 +50,7 @@ Item {
                 + "return JSON.stringify({ok:false,family:item.family,index:item.index,"
                 + "rule:item.rule,reason:String(error).slice(0,192)});}}"
                 + "return JSON.stringify({ok:true});})()"
-        selectorDocument.runJavaScript(script, function(result) {
+        root.browserWindow.runBrowserScript(selectorDocument, script, function(result) {
             if (root.activeGeneration !== token) {
                 return
             }
@@ -57,7 +58,7 @@ Item {
             selectorTimeout.stop()
             var response = typeof result === "string" ? result : JSON.stringify(result)
             root.browserUi.complete_selector_validation(token, response)
-        })
+        }, 0)
     }
 
     WebEngineView {

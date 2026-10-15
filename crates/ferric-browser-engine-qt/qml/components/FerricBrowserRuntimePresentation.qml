@@ -356,7 +356,7 @@ FerricBrowserRuntimeServices {
             return
         }
         var probe = BrowserScripts.formStateProbe()
-        view.runJavaScript(probe, function(result) {
+        window.runBrowserScript(view, probe, function(result) {
             if (result !== "safe") {
                 browserUi.status_text = "Tab suspension refused: editable page state is not safely empty"
                 return
@@ -365,7 +365,7 @@ FerricBrowserRuntimeServices {
                 return
             }
             window.executePendingEngineAction()
-        })
+        }, 0)
     }
 
     function tabDiscardBlockReason(index, id, view) {
@@ -411,7 +411,7 @@ FerricBrowserRuntimeServices {
             return
         }
         var probe = BrowserScripts.formStateProbe()
-        view.runJavaScript(probe, function(result) {
+        window.runBrowserScript(view, probe, function(result) {
             if (result !== "safe") {
                 browserUi.status_text = "Tab discard refused: editable page state is not safely empty"
                 return
@@ -420,7 +420,7 @@ FerricBrowserRuntimeServices {
                 return
             }
             window.executePendingEngineAction()
-        })
+        }, 0)
     }
 
     function shutdownPageProbeScript() {
@@ -446,7 +446,7 @@ FerricBrowserRuntimeServices {
                 window.finalizeQuit()
                 return
             }
-            candidates[position].runJavaScript(window.shutdownPageProbeScript(), function(result) {
+            window.runBrowserScript(candidates[position], window.shutdownPageProbeScript(), function(result) {
                 if (generation !== window.shutdownPageProbeGeneration) {
                     return
                 }
@@ -463,7 +463,7 @@ FerricBrowserRuntimeServices {
                     return
                 }
                 probe(position + 1)
-            })
+            }, 0)
         }
         probe(0)
     }

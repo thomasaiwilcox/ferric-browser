@@ -73,6 +73,16 @@ pub(super) fn safe_site_origin(url: &str) -> Option<String> {
     ferric_browser_storage::normalize_permission_origin(&origin).ok()
 }
 
+/// Qt's client-certificate selection supplies a scheme-less `QUrl` authority.
+/// Its transport is TLS; do not infer an identity from arbitrary page text.
+pub(super) fn safe_client_certificate_origin(authority: &str) -> Option<String> {
+    let host_and_port = authority.strip_prefix("//")?;
+    if host_and_port.is_empty() || host_and_port.contains(['/', '@', '?', '#', '\\']) {
+        return None;
+    }
+    safe_site_origin(&format!("https:{authority}"))
+}
+
 /// Extracts a display-safe host from a normalized origin.
 #[must_use]
 pub(super) fn safe_site_host(origin: &str) -> Option<String> {
@@ -191,5 +201,30 @@ mod tests {
             Some("https://example.test".into())
         );
         assert_eq!(safe_site_host("https://[::1]"), Some("::1".into()));
+    }
+
+    #[test]
+    fn client_certificate_identity_requires_qt_tls_authority() {
+        assert_eq!(
+            safe_client_certificate_origin("//EXAMPLE.test:8443"),
+            Some("https://example.test:8443".into())
+        );
+        assert_eq!(
+            safe_client_certificate_origin("//[::1]:443"),
+            Some("https://[::1]".into())
+        );
+        for invalid in [
+            "",
+            "//",
+            "example.test:443",
+            "https://example.test",
+            "//user:secret@example.test",
+            "//example.test/path",
+            "//example.test?token=secret",
+            "//example.test#fragment",
+            "//example.test\\other",
+        ] {
+            assert_eq!(safe_client_certificate_origin(invalid), None, "{invalid}");
+        }
     }
 }

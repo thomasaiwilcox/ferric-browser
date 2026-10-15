@@ -10,6 +10,9 @@ import "../scripts/SpellcheckPresentation.js" as SpellcheckPresentation
 
 ApplicationWindow {
     id: window
+    property bool runtimeDisposing: false
+    readonly property alias scriptRunnerObject: scriptRunner
+    FerricScriptRunner { id: scriptRunner }
     readonly property alias primaryBrowserUi: browserUi
     readonly property alias blocklistUpdaterObject: blocklistUpdater
     readonly property alias linkRuleUpdaterObject: linkRuleUpdater
@@ -672,7 +675,10 @@ ApplicationWindow {
             return false
         }
         var needsFocusProbe = ui.complete_native_prompt_lease(String(token))
-        if (needsFocusProbe) {
+        if (needsFocusProbe && (window.runtimeDisposing
+                || (view && view.viewHost && view.viewHost.runtimeReleased))) {
+            ui.finish_native_prompt_focus_probe(String(token))
+        } else if (needsFocusProbe) {
             Qt.callLater(function() {
                 if (window.probeNativePromptFocus) {
                     window.probeNativePromptFocus(ui, view, String(token))
@@ -1999,9 +2005,8 @@ ApplicationWindow {
                 window.siteDataClearOrigin = ""
                 return
             }
-            view.runJavaScript(
+            window.runBrowserScript(view,
                         BrowserScripts.siteDataClearResult(),
-                        window.browserScriptWorld,
                         function(value) {
                             if (typeof value !== "string" || value.length === 0) {
                                 return
@@ -2024,7 +2029,7 @@ ApplicationWindow {
                             } catch (error) {
                                 // Keep polling until the isolated-world result is complete.
                             }
-                        })
+                        }, window.browserScriptWorld)
         }
     }
 

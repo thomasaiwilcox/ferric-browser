@@ -2,9 +2,9 @@ use super::{
     Config, CxxQtType, FocusObservation, Instant, MAX_DIAGNOSTICS_EXPORT_BYTES, Mode,
     ParsedCommand, Path, Pin, PrivacyKind, QString, QStringList, SITE_DOCTOR_EXPERIMENT_TIMEOUT,
     SiteExperiment, Uuid, Value, atomic_write_private, diagnostics, display_url,
-    focus_mode_transition, matching_site_rules, qobject, safe_ipc_url, safe_site_origin,
-    setting_supports_site_scope, site_doctor_remaining_seconds, toml_string_array_literal,
-    userscript,
+    focus_mode_transition, matching_site_rules, qobject, safe_ipc_url, safe_site_host,
+    safe_site_origin, setting_supports_site_scope, site_doctor_remaining_seconds,
+    toml_string_array_literal, userscript,
 };
 
 impl qobject::BrowserUi {
@@ -12,6 +12,24 @@ impl qobject::BrowserUi {
     #[allow(clippy::unused_self)]
     pub(super) fn prompt_origin(&self, url: &QString) -> QString {
         QString::from(safe_site_origin(&url.to_string()).unwrap_or_default())
+    }
+
+    // Qt invokables require a QObject receiver for pure presentation helpers.
+    #[allow(clippy::unused_self)]
+    pub(super) fn prompt_host(&self, url: &QString) -> QString {
+        QString::from(
+            safe_site_origin(&url.to_string())
+                .and_then(|origin| safe_site_host(&origin))
+                .unwrap_or_default(),
+        )
+    }
+
+    #[allow(clippy::unused_self)]
+    pub(super) fn client_certificate_origin(&self, authority: &QString) -> QString {
+        QString::from(
+            super::url_safety::safe_client_certificate_origin(&authority.to_string())
+                .unwrap_or_default(),
+        )
     }
 
     // Scalar arguments preserve the existing QML bridge contract.

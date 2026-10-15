@@ -33,13 +33,13 @@ FerricCommandDialog {
     Shortcut {
         sequence: "Alt+R"
         context: Qt.WindowShortcut
-        enabled: banner.visible
+        enabled: banner.interactive
         onActivated: banner.requestAction("recover")
     }
     Shortcut {
         sequence: "Alt+D"
         context: Qt.WindowShortcut
-        enabled: banner.visible
+        enabled: banner.interactive
         onActivated: banner.requestAction("cancel")
     }
 }

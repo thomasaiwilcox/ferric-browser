@@ -17,6 +17,9 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QTcpSocket>
+#include <QSslServer>
+#include <QSslKey>
+#include <QSslSocket>
 #include <QtWebEngineCore/QWebEngineFrame>
 #include <QtWebEngineCore/QWebEngineWebAuthUxRequest>
 #include <QTemporaryDir>
@@ -2044,6 +2047,326 @@ void ApplicationTests::productPolishPagePrompts() {
     key(Qt::Key_Return);
     QTRY_VERIFY(evaluate("testWindow.pendingPageDialogRequest === null").toBool());
     QCOMPARE(page("window.polishAnswer").toBool(), true);
+}
+
+void ApplicationTests::productPolishWindowPrompts_data() {
+    QTest::addColumn<bool>("popup");
+    QTest::addColumn<bool>("authentication");
+    QTest::newRow("secondary-confirm") << false << false;
+    QTest::newRow("popup-confirm") << true << false;
+    QTest::newRow("secondary-authentication") << false << true;
+    QTest::newRow("popup-authentication") << true << true;
+}
+
+void ApplicationTests::productPolishWindowPrompts() {
+    QTest::failOnWarning(QRegularExpression(".*(invalid context|TypeError|ReferenceError).*"));
+    QFETCH(bool, popup);
+    QFETCH(bool, authentication);
+    QString entry;
+    if (popup) {
+        QVERIFY(command("bind p hint --target pointer links"));
+        key(Qt::Key_P);
+        const auto label = hintLabel("Open popup");
+        QVERIFY(!label.isEmpty());
+        typeText(label);
+        key(Qt::Key_Return);
+        QTRY_COMPARE(evaluate("testWindow.popupWindowRegistry.length").toInt(), 1);
+        entry = "testWindow.popupWindowRegistry[0]";
+        pageReceiver = entry + ".view";
+    } else {
+        QVERIFY(evaluate("testWindow.openEphemeralWindow(" + quoted(text("current_url")) + ")").toBool());
+        QTRY_VERIFY(evaluate("testWindow.browserWindowRegistry.length > 1").toBool());
+        entry = "testWindow.browserWindowRegistry[testWindow.browserWindowRegistry.length-1]";
+        pageReceiver = entry + ".host.activeView";
+    }
+    auto child = qobject_cast<QQuickWindow *>(evaluate(entry + ".host").value<QObject *>());
+    QVERIFY(child);
+    QTRY_VERIFY(evaluate(pageReceiver + " !== null && !" + pageReceiver + ".loading").toBool());
+    QTRY_VERIFY(page("document.getElementById('button') !== null").toBool());
+    child->requestActivate();
+    QTRY_VERIFY(child->isActive());
+    evaluate(pageReceiver + ".forceActiveFocus()");
+    // Mode restoration requires a known committed document, beyond the DOM
+    // fixture becoming readable. Unknown ownership deliberately retains Normal.
+    QTRY_VERIFY(QJsonDocument::fromJson(evaluate(pageReceiver + ".viewUi.refresh_interaction_status()")
+                    .toString().toUtf8()).object().value("target").toObject().value("document_known").toBool());
+    QVERIFY(evaluate(pageReceiver + ".viewUi.execute_command('mode-enter pass-through')").toBool());
+    if (authentication) {
+        page("setTimeout(function(){location.href='/polish-auth'},0);true");
+        QTRY_VERIFY(evaluate("testWindow.pendingAuthenticationRequest !== null").toBool());
+    } else {
+        page("setTimeout(function(){window.promptAnswer=confirm('From the child window')},0);true");
+        QTRY_VERIFY(evaluate("testWindow.pendingPageDialogRequest !== null").toBool());
+    }
+    auto dialog = findVisualItem(child->contentItem(), "pageDialogPopup");
+    QVERIFY2(dialog, "The requesting window must contain its page dialog");
+    QVERIFY(dialog->isVisible());
+    QCOMPARE(dialog->window(), child);
+    QCOMPARE(dialog->property("hostWindow").value<QObject *>(), child);
+    const auto artifacts = qEnvironmentVariable("FERRIC_TEST_ARTIFACT_DIR");
+    if (!artifacts.isEmpty()) {
+        QTest::qWait(50);
+        QVERIFY(child->grabWindow().save(artifacts + "/production-" + QString::fromLatin1(QTest::currentDataTag()) + ".png"));
+    }
+    // A close confirmation temporarily owns input; keeping the window must
+    // return to the existing page request rather than also dismissing it.
+    QVERIFY(!child->close());
+    QTRY_VERIFY(evaluate(entry + ".host.windowCloseConfirmationVisible").toBool());
+    QTest::keyClick(child, Qt::Key_Escape);
+    QTRY_VERIFY(!evaluate(entry + ".host.windowCloseConfirmationVisible").toBool());
+    QVERIFY(evaluate(authentication ? "testWindow.pendingAuthenticationRequest !== null"
+                                    : "testWindow.pendingPageDialogRequest !== null").toBool());
+    if (authentication) {
+        auto username = findVisualItem(child->contentItem(), "pageDialogUsername");
+        auto password = findVisualItem(child->contentItem(), "pageDialogPassword");
+        QVERIFY(username && password);
+        QTRY_VERIFY(username->hasActiveFocus());
+        QVERIFY(username->setProperty("text", QString("test-user")));
+        QVERIFY(password->setProperty("text", QString("test-pass")));
+        password->forceActiveFocus();
+        QVERIFY(!child->close());
+        QTest::keyClick(child, Qt::Key_Escape);
+        QTRY_VERIFY(!evaluate(entry + ".host.windowCloseConfirmationVisible").toBool());
+        QTRY_VERIFY(password->hasActiveFocus());
+        QCOMPARE(password->property("text").toString(), QString("test-pass"));
+        QTest::keyClick(child, Qt::Key_Return);
+        QTRY_VERIFY(evaluate("testWindow.pendingAuthenticationRequest === null").toBool());
+        QTRY_VERIFY(!evaluate(pageReceiver + ".loading").toBool());
+        QCOMPARE(page("window.authenticated").toBool(), true);
+        QCOMPARE(password->property("text").toString(), QString());
+    } else {
+        auto cancel = findVisualItem(child->contentItem(), "pageDialogCancel");
+        QVERIFY(cancel);
+        QTRY_VERIFY(cancel->hasActiveFocus());
+        QTest::keyClick(child, Qt::Key_Return);
+        QTRY_VERIFY(evaluate("testWindow.pendingPageDialogRequest === null").toBool());
+        QCOMPARE(page("window.promptAnswer").toBool(), false);
+    }
+    QTRY_VERIFY(page("document.hasFocus()").toBool());
+    // Same-document confirmation preserves pass-through. Navigation into an
+    // authentication challenge can legitimately reset the document's mode.
+    QTRY_VERIFY(!evaluate("testWindow.nativePromptActiveFor(" + pageReceiver + ".viewUi)").toBool());
+    if (!authentication)
+        QVERIFY2(evaluate(pageReceiver + ".viewUi.mode").toString() == "pass-through",
+                 qPrintable(evaluate(pageReceiver + ".viewUi.refresh_interaction_status()").toString()));
+    QVERIFY(!dialog->isVisible());
+    evaluate(entry + ".host.destroy()");
+    pageReceiver = "testWindow.activeWebView()";
+}
+
+void ApplicationTests::productPolishTlsPrompt_data() {
+    QTest::addColumn<int>("hostKind");
+    QTest::addColumn<bool>("accept");
+    for (int host = 0; host < 3; ++host) {
+        const QByteArray name = host == 0 ? "primary" : host == 1 ? "secondary" : "popup";
+        QTest::newRow((name + "-cancel").constData()) << host << false;
+        QTest::newRow((name + "-continue-session").constData()) << host << true;
+    }
+}
+
+void ApplicationTests::productPolishTlsPrompt() {
+    QFETCH(int, hostKind);
+    QFETCH(bool, accept);
+    QTest::failOnWarning(QRegularExpression(".*(invalid context|TypeError|ReferenceError).*"));
+    // A disposable key and self-signed certificate never enter a trust store.
+    const auto keyPath = directory.filePath("tls-key.pem");
+    const auto certPath = directory.filePath("tls-cert.pem");
+    QProcess openssl;
+    openssl.start("openssl", {"req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
+                             "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1",
+                             "-keyout", keyPath, "-out", certPath});
+    QVERIFY(openssl.waitForFinished(10000));
+    QCOMPARE(openssl.exitCode(), 0);
+    QFile keyFile(keyPath), certFile(certPath);
+    QVERIFY(keyFile.open(QIODevice::ReadOnly));
+    QVERIFY(certFile.open(QIODevice::ReadOnly));
+    auto config = QSslConfiguration::defaultConfiguration();
+    config.setLocalCertificate(QSslCertificate(certFile.readAll()));
+    config.setPrivateKey(QSslKey(keyFile.readAll(), QSsl::Rsa));
+    config.setPeerVerifyMode(QSslSocket::VerifyNone);
+    QSslServer tls;
+    tls.setSslConfiguration(config);
+    QVERIFY(tls.listen(QHostAddress::LocalHost));
+    int received = 0;
+    connect(&tls, &QTcpServer::pendingConnectionAvailable, &tls, [&] {
+        while (auto socket = tls.nextPendingConnection()) {
+            connect(socket, &QTcpSocket::readyRead, socket, [&, socket] {
+                auto request = socket->property("request").toByteArray() + socket->readAll();
+                socket->setProperty("request", request);
+                if (!request.contains("\r\n\r\n")) return;
+                ++received;
+                const QByteArray body = "<!doctype html><title>TLS fixture</title><script>window.tlsLoaded=true</script>";
+                socket->write("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: "
+                              + QByteArray::number(body.size()) + "\r\nConnection: close\r\n\r\n" + body);
+                socket->disconnectFromHost();
+            });
+        }
+    });
+    QString entry = "testWindow";
+    if (hostKind == 1) {
+        QVERIFY(evaluate("testWindow.openEphemeralWindow(" + quoted(text("current_url")) + ")").toBool());
+        entry = "testWindow.browserWindowRegistry[testWindow.browserWindowRegistry.length-1].host";
+        pageReceiver = entry + ".activeView";
+    } else if (hostKind == 2) {
+        QVERIFY(command("bind p hint --target pointer links"));
+        key(Qt::Key_P);
+        typeText(hintLabel("Open popup"));
+        key(Qt::Key_Return);
+        QTRY_COMPARE(evaluate("testWindow.popupWindowRegistry.length").toInt(), 1);
+        entry = "testWindow.popupWindowRegistry[0].host";
+        pageReceiver = "testWindow.popupWindowRegistry[0].view";
+    }
+    auto host = qobject_cast<QQuickWindow *>(evaluate(entry).value<QObject *>());
+    QVERIFY(host);
+    QTRY_VERIFY(page("document.getElementById('button') !== null").toBool());
+    host->requestActivate();
+    QTRY_VERIFY(host->isActive());
+    const auto origin = QString("https://127.0.0.1:%1").arg(tls.serverPort());
+    evaluate(pageReceiver + ".url=" + quoted(origin + "/tls"));
+    QTRY_VERIFY(evaluate("testWindow.pendingCertificateError !== null").toBool());
+    QCOMPARE(evaluate("testWindow.pendingCertificateErrorHost").toString(), origin);
+    auto back = findVisualItem(host->contentItem(), "commandDialogAction-back");
+    auto proceed = findVisualItem(host->contentItem(), "commandDialogAction-accept");
+    QVERIFY(back && proceed);
+    QTRY_VERIFY(back->hasActiveFocus());
+    const auto artifacts = qEnvironmentVariable("FERRIC_TEST_ARTIFACT_DIR");
+    if (!artifacts.isEmpty()) {
+        QTest::qWait(50);
+        QVERIFY(host->grabWindow().save(artifacts + "/production-tls-" + QString::fromLatin1(QTest::currentDataTag()) + ".png"));
+    }
+    // Let the signal handler return and prove the actual request is paused.
+    QTest::qWait(100);
+    QCOMPARE(received, 0);
+    QVERIFY(evaluate("testWindow.pendingCertificateError !== null").toBool());
+    if (accept) proceed->forceActiveFocus();
+    QTest::keyClick(host, Qt::Key_Return);
+    QTRY_VERIFY(evaluate("testWindow.pendingCertificateError === null").toBool());
+    QTRY_VERIFY(!evaluate(pageReceiver + ".loading").toBool());
+    if (accept) {
+        QTRY_VERIFY(received > 0);
+        QVERIFY(page("window.tlsLoaded === true").toBool());
+        const auto previous = received;
+        evaluate(pageReceiver + ".url=" + quoted(origin + "/tls-again"));
+        QTRY_VERIFY(received > previous);
+        QTRY_VERIFY(!evaluate(pageReceiver + ".loading").toBool());
+        QVERIFY(evaluate("testWindow.pendingCertificateError === null").toBool());
+        QVERIFY(page("window.tlsLoaded === true").toBool());
+    } else {
+        QCOMPARE(received, 0);
+    }
+}
+
+void ApplicationTests::productPolishIdentityWindows_data() {
+    QTest::addColumn<bool>("popup");
+    QTest::addColumn<bool>("clientCertificate");
+    QTest::newRow("secondary-client-certificate") << false << true;
+    QTest::newRow("popup-client-certificate") << true << true;
+    QTest::newRow("secondary-security-key") << false << false;
+    QTest::newRow("popup-security-key") << true << false;
+}
+
+void ApplicationTests::productPolishCertificateGuards() {
+    for (const auto &input : {QString("url:'https://user:secret@ACCOUNTS.GOOGLE.COM:443/signin?token=private',overridable:true,isMainFrame:true"),
+                              QString("url:'https://example.test/',overridable:false,isMainFrame:true"),
+                              QString("url:'https://example.test/',overridable:true,isMainFrame:false"),
+                              QString("url:'data:text/plain,unknown',overridable:true,isMainFrame:true")}) {
+        savedSelection = 0;
+        evaluate("testWindow.handleCertificateError(testWindow.browserUi,testWindow.activeWebView(),({"
+                 + input + ",rejectCertificate:function(){testProbe.savedSelection=Number(testProbe.savedSelection)+1},"
+                 "defer:function(){testProbe.savedSelection=-10},acceptCertificate:function(){testProbe.savedSelection=-20}}),testWindow)");
+        QCOMPARE(savedSelection.toInt(), 1);
+        QVERIFY(evaluate("testWindow.pendingCertificateError === null").toBool());
+    }
+    QUrl authority;
+    authority.setHost("EXAMPLE.test");
+    authority.setPort(8443);
+    QCOMPARE(evaluate("testWindow.browserUi.client_certificate_origin(" + quoted(authority.toString()) + ")").toString(),
+             QString("https://example.test:8443"));
+    QCOMPARE(evaluate("testWindow.browserUi.prompt_host('https://name:secret@EXAMPLE.test:8443/path?token=private')").toString(),
+             QString("example.test"));
+}
+
+void ApplicationTests::productPolishIdentityWindows() {
+    QFETCH(bool, popup);
+    QFETCH(bool, clientCertificate);
+    QTest::failOnWarning(QRegularExpression(".*(invalid context|TypeError|ReferenceError).*"));
+    QString entry;
+    if (popup) {
+        QVERIFY(command("bind p hint --target pointer links")); key(Qt::Key_P);
+        typeText(hintLabel("Open popup")); key(Qt::Key_Return);
+        QTRY_COMPARE(evaluate("testWindow.popupWindowRegistry.length").toInt(), 1);
+        entry = "testWindow.popupWindowRegistry[0].host";
+        pageReceiver = "testWindow.popupWindowRegistry[0].view";
+    } else {
+        QVERIFY(evaluate("testWindow.openEphemeralWindow(" + quoted(text("current_url")) + ")").toBool());
+        entry = "testWindow.browserWindowRegistry[testWindow.browserWindowRegistry.length-1].host";
+        pageReceiver = entry + ".activeView";
+    }
+    auto host = qobject_cast<QQuickWindow *>(evaluate(entry).value<QObject *>());
+    QVERIFY(host);
+    QTRY_VERIFY(page("document.getElementById('button') !== null").toBool());
+    host->requestActivate(); QTRY_VERIFY(host->isActive());
+    evaluate(pageReceiver + ".forceActiveFocus()");
+    // In-memory requests qualify chrome ownership and exactly-once decisions,
+    // independently of physical credentials and the OS certificate store.
+    const auto request = clientCertificate
+        ? "({host:'//EXAMPLE.test:8443',certificates:[{subject:'Test identity',issuer:'Test issuer'}],selectNone:function(){testProbe.savedSelection=Number(testProbe.savedSelection)+1}})"
+        : "({relyingPartyId:'example.test',userNames:[],state:0,pinRequest:{remainingAttempts:0,minPinLength:0},stateChanged:{connect:function(){}},cancel:function(){testProbe.savedSelection=Number(testProbe.savedSelection)+1}})";
+    savedSelection = 0;
+    evaluate("testWindow." + QString(clientCertificate ? "handleClientCertificateRequested(" : "handleWebAuthRequested(")
+             + pageReceiver + ".viewUi," + pageReceiver + "," + request
+             + (clientCertificate ? ",true," : ",") + entry + ")");
+    if (clientCertificate)
+        QCOMPARE(evaluate("testWindow.pendingClientCertificateHost").toString(), QString("https://example.test:8443"));
+    auto cancel = findVisualItem(host->contentItem(), clientCertificate ? "clientCertificateCancel" : "webAuthCancel");
+    QVERIFY(cancel);
+    QTRY_VERIFY(cancel->hasActiveFocus());
+    QTest::keyClick(host, Qt::Key_Escape);
+    QTRY_COMPARE(savedSelection.toInt(), 1);
+    QTRY_VERIFY(!evaluate("testWindow.nativePromptActiveFor(" + pageReceiver + ".viewUi)").toBool());
+    QTRY_VERIFY(page("document.hasFocus()").toBool());
+}
+
+void ApplicationTests::productPolishPromptTeardown_data() {
+    QTest::addColumn<bool>("popup");
+    QTest::addColumn<bool>("disposeEngine");
+    QTest::newRow("secondary-destroy") << false << false;
+    QTest::newRow("popup-destroy") << true << false;
+    QTest::newRow("secondary-engine-disposal") << false << true;
+    QTest::newRow("popup-engine-disposal") << true << true;
+}
+
+void ApplicationTests::productPolishPromptTeardown() {
+    QFETCH(bool, popup);
+    QFETCH(bool, disposeEngine);
+    QTest::failOnWarning(QRegularExpression(".*(invalid context|TypeError|ReferenceError).*"));
+    QString entry;
+    if (popup) {
+        QVERIFY(command("bind p hint --target pointer links")); key(Qt::Key_P);
+        typeText(hintLabel("Open popup")); key(Qt::Key_Return);
+        QTRY_COMPARE(evaluate("testWindow.popupWindowRegistry.length").toInt(), 1);
+        entry = "testWindow.popupWindowRegistry[0].host";
+        pageReceiver = "testWindow.popupWindowRegistry[0].view";
+    } else {
+        QVERIFY(evaluate("testWindow.openEphemeralWindow(" + quoted(text("current_url")) + ")").toBool());
+        entry = "testWindow.browserWindowRegistry[testWindow.browserWindowRegistry.length-1].host";
+        pageReceiver = entry + ".activeView";
+    }
+    QTRY_VERIFY(page("document.getElementById('button') !== null").toBool());
+    page("setTimeout(function(){confirm('Dispose while pending')},0);true");
+    QTRY_VERIFY(evaluate("testWindow.pendingPageDialogRequest !== null").toBool());
+    if (disposeEngine) {
+        savedSelection = 0;
+        QVERIFY(evaluate("testWindow.runBrowserScript(" + pageReceiver
+                         + ", '42', function(){testProbe.savedSelection=1})").toBool());
+        cleanup();
+        QCOMPARE(savedSelection.toInt(), 0);
+    } else {
+        evaluate(entry + ".destroy()");
+        QTRY_VERIFY(evaluate("testWindow.pendingPageDialogRequest === null").toBool());
+        pageReceiver = "testWindow.activeWebView()";
+    }
+    QTest::qWait(20);
 }
 
 void ApplicationTests::productPolishHttpAuthentication() {

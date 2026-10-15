@@ -28,6 +28,16 @@ FocusScope {
     property var previousFocusItem: null
     property bool restoreFocus: true
     property bool dismissOnEscape: true
+    readonly property bool suspended: !!hostWindow && (
+        hostWindow.windowCloseConfirmationVisible === true
+        || hostWindow.windowShutdownPromptVisible === true
+        || hostWindow.windowShutdownPagePromptVisible === true
+        || hostWindow.windowShutdownStoragePromptVisible === true
+        || hostWindow.shutdownConfirmationVisible === true
+        || hostWindow.shutdownPromptVisible === true
+        || hostWindow.shutdownPagePromptVisible === true
+        || hostWindow.applicationShutdownForcePromptVisible === true)
+    readonly property bool interactive: visible && !suspended
     readonly property real scale: browserWindow.chromeScale === undefined ? 1 :
                                                                             browserWindow.chromeScale
     readonly property alias panelItem: panel
@@ -58,31 +68,50 @@ FocusScope {
     Accessible.name: title.length > 0 ? title : commandText
 
     function focusInitialControl() {
-        Qt.callLater(function () {
-            if (!surface.visible) {
-                return;
-            }
-            if (surface.initialFocusItem && surface.initialFocusItem.visible
-                    && surface.initialFocusItem.enabled) {
-                surface.initialFocusItem.forceActiveFocus();
-            } else {
-                surface.forceActiveFocus();
-            }
-        });
+        // Take ownership now, before another prompt can capture the page as
+        // its return target. Repeat after layout for newly visible controls.
+        applyInitialFocus();
+        initialFocusTimer.restart();
+    }
+
+    function applyInitialFocus() {
+        if (!surface.visible || surface.suspended)
+            return;
+        if (surface.initialFocusItem && surface.initialFocusItem.visible
+                && surface.initialFocusItem.enabled)
+            surface.initialFocusItem.forceActiveFocus();
+        else
+            surface.forceActiveFocus();
     }
 
     function restorePreviousFocus() {
-        var target = surface.previousFocusItem;
+        restoreFocusTarget = surface.previousFocusItem;
         surface.previousFocusItem = null;
-        if (!surface.restoreFocus) {
+        if (!surface.restoreFocus || !surface.browserWindow
+                || surface.browserWindow.runtimeDisposing === true
+                || (surface.hostWindow && surface.hostWindow.runtimeReleased === true)) {
             return;
         }
-        Qt.callLater(function () {
+        restoreFocusTimer.restart();
+    }
+
+    property var restoreFocusTarget: null
+    Timer {
+        id: initialFocusTimer
+        interval: 0
+        onTriggered: surface.applyInitialFocus()
+    }
+    Timer {
+        id: restoreFocusTimer
+        interval: 0
+        onTriggered: {
+            var target = surface.restoreFocusTarget;
+            surface.restoreFocusTarget = null;
             if (!surface.visible && target && target.forceActiveFocus && target.visible !== false
                     && target.enabled !== false) {
                 target.forceActiveFocus();
             }
-        });
+        }
     }
 
     function prepareForDisplay() {
@@ -104,10 +133,10 @@ FocusScope {
                                prepareForDisplay()
 
     Keys.onPressed: function (event) {
-        if (surface.visible && surface.dismissOnEscape && event.key === Qt.Key_Escape) {
+        if (surface.interactive && surface.dismissOnEscape && event.key === Qt.Key_Escape) {
             event.accepted = true;
             surface.dismissRequested();
-        } else if (surface.visible && event.modifiers === Qt.NoModifier && (event.key
+        } else if (surface.interactive && event.modifiers === Qt.NoModifier && (event.key
                                                                             === Qt.Key_Return
                                                                             || event.key
                                                                             === Qt.Key_Enter)) {
@@ -125,7 +154,8 @@ FocusScope {
     Shortcut {
         sequence: "Escape"
         context: Qt.WindowShortcut
-        enabled: surface.visible && surface.dismissOnEscape
+        enabled: surface.interactive && surface.dismissOnEscape
+        autoRepeat: false
         onActivated: surface.dismissRequested()
     }
 

@@ -24,7 +24,7 @@ FerricModalSurface {
     Shortcut {
         sequence: "Y"
         context: Qt.WindowShortcut
-        enabled: preview.visible
+        enabled: preview.interactive
                  && preview.previewUi.link_preview_requires_confirmation
         onActivated: preview.navigationConfirmed()
     }

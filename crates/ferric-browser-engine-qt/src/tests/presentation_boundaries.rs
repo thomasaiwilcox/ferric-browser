@@ -239,7 +239,7 @@ fn normal_input_uses_logical_unmodified_text_and_preserves_unicode_fields() {
     assert!(qml.contains("window.pendingContextMenuRequest !== null"));
     assert!(qml.contains("browserUi.mode === \"insert\""));
     assert!(qml.contains("browserUi.mode === \"pass-through\""));
-    assert!(qml.contains("? controller.modeFocusReturnTarget"));
+    assert!(qml.contains("focusOverlayController.restoreModeFocus()"));
     assert!(!qml.contains("globalKeyHandler"));
     assert!(!qml.contains("window.handleBrowserKey(viewUi, viewHost, event)"));
     assert!(qml.contains("Accessible.role: Accessible.EditableText"));
@@ -1339,8 +1339,9 @@ fn tls_errors_are_blocked_by_default_and_only_allow_scoped_confirmation() {
     assert!(qml.contains("!error.isMainFrame"));
     assert!(qml.contains("ui, error, \"client-certificate\", \"rejectCertificate\", []"));
     assert!(qml.contains("ui, error, \"client-certificate\", \"acceptCertificate\", []"));
-    assert!(qml.contains("Accept once"));
-    assert!(qml.contains("for this request only"));
+    assert!(qml.contains("Continue for this session"));
+    assert!(qml.contains("may reuse this certificate exception during this session"));
+    assert!(qml.contains("error.defer()"));
     assert!(qml.contains("googleCertificateHost"));
     assert!(!qml.contains("ignoreCertificateErrors"));
     assert!(!qml.contains("setIgnoreCertificateErrors"));
@@ -1913,8 +1914,7 @@ fn focus_overlay_controller_owns_capture_state_and_only_restores_live_targets() 
     assert!(controller.contains("function captureOverlayFocus"));
     assert!(controller.contains("function restoreOverlayFocus"));
     assert!(controller.contains("function focusTargetAvailable"));
-    assert!(controller.contains("(controller.focusReturnStack || []).length > 0"));
-    assert!(controller.contains("Qt.callLater"));
+    assert!(!controller.contains("Qt.callLater"));
     assert!(runtime.contains("FerricFocusOverlayController"));
     assert!(runtime.contains("focusOverlayController.captureOverlayFocus"));
     assert!(runtime.contains("focusOverlayController.restoreOverlayFocus"));

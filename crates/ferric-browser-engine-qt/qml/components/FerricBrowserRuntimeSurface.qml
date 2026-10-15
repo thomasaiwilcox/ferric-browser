@@ -1590,6 +1590,7 @@ FerricBrowserRuntimeChrome {
     }
 
     FerricSelectorValidationSurface {
+        browserWindow: window
         browserUi: window.primaryBrowserUi
     }
 
@@ -1634,6 +1635,17 @@ FerricBrowserRuntimeChrome {
         window.scheduleFocusProbe(3)
     }
     Component.onDestruction: {
+        // Resolve live child requests while this creation context is callable.
+        // Descendant destructors must not call back after it has been released.
+        window.runtimeDisposing = true
+        window.scriptRunnerObject.cancelAll()
+        var children = (window.browserWindowRegistry || []).concat(window.popupWindowRegistry || [])
+        for (var i = 0; i < children.length; ++i) {
+            var host = children[i] && children[i].host
+            if (host && host !== window && host.releaseWindowResources) host.releaseWindowResources()
+        }
+        window.clearPageDialog(true)
+        window.clearSiteDataClearForView(window.siteDataClearView)
         notificationPresenter.closeAll()
         window.closeWebNotifications()
         window.cancelPendingExternalUris("External action cancelled with the window")

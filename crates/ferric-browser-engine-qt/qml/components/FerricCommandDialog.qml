@@ -92,7 +92,7 @@ FerricModalSurface {
     }
 
     function requestAction(actionId) {
-        if (!visible || decisionTaken || indexForAction(actionId) < 0) {
+        if (!interactive || decisionTaken || indexForAction(actionId) < 0) {
             return;
         }
         decisionTaken = true;
@@ -132,7 +132,7 @@ FerricModalSurface {
         interval: 0
         onTriggered: {
             var item = actionRepeater.itemAt(dialog.currentIndex);
-            if (dialog.visible && item) {
+            if (dialog.interactive && item) {
                 item.forceActiveFocus();
                 actionScroll.reveal(item);
             }
@@ -153,45 +153,45 @@ FerricModalSurface {
     Shortcut {
         sequence: "Escape"
         context: Qt.WindowShortcut
-        enabled: dialog.visible
+        enabled: dialog.interactive
         autoRepeat: false
         onActivated: dialog.cancel()
     }
     Shortcut {
         sequence: "Up"
         context: Qt.WindowShortcut
-        enabled: dialog.visible && dialog.choiceKeysActive
+        enabled: dialog.interactive && dialog.choiceKeysActive
         onActivated: dialog.moveChoice(-1)
     }
     Shortcut {
         sequence: "K"
         context: Qt.WindowShortcut
-        enabled: dialog.visible && dialog.choiceKeysActive
+        enabled: dialog.interactive && dialog.choiceKeysActive
         onActivated: dialog.moveChoice(-1)
     }
     Shortcut {
         sequence: "Down"
         context: Qt.WindowShortcut
-        enabled: dialog.visible && dialog.choiceKeysActive
+        enabled: dialog.interactive && dialog.choiceKeysActive
         onActivated: dialog.moveChoice(1)
     }
     Shortcut {
         sequence: "J"
         context: Qt.WindowShortcut
-        enabled: dialog.visible && dialog.choiceKeysActive
+        enabled: dialog.interactive && dialog.choiceKeysActive
         onActivated: dialog.moveChoice(1)
     }
     Shortcut {
         sequence: "Return"
         context: Qt.WindowShortcut
-        enabled: dialog.visible && dialog.choiceKeysActive
+        enabled: dialog.interactive && dialog.choiceKeysActive
         autoRepeat: false
         onActivated: dialog.activateCurrent()
     }
     Shortcut {
         sequence: "Enter"
         context: Qt.WindowShortcut
-        enabled: dialog.visible && dialog.choiceKeysActive
+        enabled: dialog.interactive && dialog.choiceKeysActive
         autoRepeat: false
         onActivated: dialog.activateCurrent()
     }
@@ -252,7 +252,7 @@ FerricModalSurface {
                     Shortcut {
                         sequences: dialog.actionShortcuts(modelData)
                         context: Qt.WindowShortcut
-                        enabled: dialog.visible && dialog.choiceKeysActive && parent.enabled
+                        enabled: dialog.interactive && dialog.choiceKeysActive && parent.enabled
                                  && sequences.length > 0
                         autoRepeat: false
                         onActivated: dialog.requestAction(modelData.id)

@@ -8,27 +8,35 @@ Item {
     anchors.fill: parent
 
     required property var browserWindow
+    property var hostWindow: browserWindow
 
     signal clientCertificateAccepted(int index)
     signal clientCertificateRejected()
     signal certificateAccepted()
     signal certificateRejected()
-    function openClientCertificate() {
+    function openClientCertificate(host) {
+        hostWindow = host || browserWindow;
+        parent = hostWindow.contentItem;
         clientCertificatePrompt.visible = true;
     }
     function closeClientCertificate() {
         clientCertificatePrompt.visible = false;
+        if (!certificateErrorPrompt.visible) { parent = browserWindow.contentItem; hostWindow = browserWindow; }
     }
-    function openCertificateError() {
+    function openCertificateError(host) {
+        hostWindow = host || browserWindow;
+        parent = hostWindow.contentItem;
         certificateErrorPrompt.visible = true;
     }
     function closeCertificateError() {
         certificateErrorPrompt.visible = false;
+        if (!clientCertificatePrompt.visible) { parent = browserWindow.contentItem; hostWindow = browserWindow; }
     }
 
     FerricModalSurface {
         id: clientCertificatePrompt
         browserWindow: root.browserWindow
+        hostWindow: root.hostWindow
         visible: false
         commandText: "Client certificate"
         title: "Select a client certificate"
@@ -63,7 +71,7 @@ Item {
         Shortcut {
             sequence: "Up"
             context: Qt.WindowShortcut
-            enabled: clientCertificatePrompt.visible && (
+            enabled: clientCertificatePrompt.interactive && (
                          !clientCertificatePrompt.containsActiveFocus
                          || clientCertificatePrompt.focusWithin(clientCertificateList)
                          || clientCertificateCancel.activeFocus)
@@ -72,7 +80,7 @@ Item {
         Shortcut {
             sequence: "K"
             context: Qt.WindowShortcut
-            enabled: clientCertificatePrompt.visible && (
+            enabled: clientCertificatePrompt.interactive && (
                          !clientCertificatePrompt.containsActiveFocus
                          || clientCertificatePrompt.focusWithin(clientCertificateList)
                          || clientCertificateCancel.activeFocus)
@@ -81,7 +89,7 @@ Item {
         Shortcut {
             sequence: "Down"
             context: Qt.WindowShortcut
-            enabled: clientCertificatePrompt.visible && (
+            enabled: clientCertificatePrompt.interactive && (
                          !clientCertificatePrompt.containsActiveFocus
                          || clientCertificatePrompt.focusWithin(clientCertificateList)
                          || clientCertificateCancel.activeFocus)
@@ -90,7 +98,7 @@ Item {
         Shortcut {
             sequence: "J"
             context: Qt.WindowShortcut
-            enabled: clientCertificatePrompt.visible && (
+            enabled: clientCertificatePrompt.interactive && (
                          !clientCertificatePrompt.containsActiveFocus
                          || clientCertificatePrompt.focusWithin(clientCertificateList)
                          || clientCertificateCancel.activeFocus)
@@ -100,7 +108,7 @@ Item {
             sequence: "Return"
             context: Qt.WindowShortcut
             autoRepeat: false
-            enabled: clientCertificatePrompt.visible && clientCertificatePrompt.focusWithin(
+            enabled: clientCertificatePrompt.interactive && clientCertificatePrompt.focusWithin(
                          clientCertificateList)
             onActivated: clientCertificatePrompt.activateCurrent()
         }
@@ -108,7 +116,7 @@ Item {
             sequence: "Enter"
             context: Qt.WindowShortcut
             autoRepeat: false
-            enabled: clientCertificatePrompt.visible && clientCertificatePrompt.focusWithin(
+            enabled: clientCertificatePrompt.interactive && clientCertificatePrompt.focusWithin(
                          clientCertificateList)
             onActivated: clientCertificatePrompt.activateCurrent()
         }
@@ -166,11 +174,12 @@ Item {
     FerricCommandDialog {
         id: certificateErrorPrompt
         browserWindow: root.browserWindow
+        hostWindow: root.hostWindow
         visible: false
         commandText: "Connection security"
         title: "Certificate cannot be verified"
         message: "For: " + (root.browserWindow.pendingCertificateErrorHost || "Host unavailable")
-                 + "\nOnly continue if you recognize this host and understand the risk. This exception applies to this request only."
+                 + "\nOnly continue if you recognize this host and understand the risk. The browser may reuse this certificate exception during this session. It does not change your system's trusted certificates."
         dialogWidth: 680 * scale
         dialogHeight: 440 * scale
         dialogBorderColor: root.browserWindow.warningColor
@@ -186,7 +195,7 @@ Item {
             {
                 id: "accept",
                 key: "y",
-                label: "Accept once",
+                label: "Continue for this session",
                 shortcuts: ["Y"]
             }
         ]

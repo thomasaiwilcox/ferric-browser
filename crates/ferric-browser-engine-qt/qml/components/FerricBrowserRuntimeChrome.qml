@@ -1205,11 +1205,11 @@ GridLayout {
                 }
                 onJavaScriptDialogRequested: function(request) {
                     window.handleJavaScriptDialogRequested(
-                        viewUi, webView, request, viewTransientProfile)
+                        viewUi, webView, request, viewTransientProfile, viewHost)
                 }
                 onAuthenticationDialogRequested: function(request) {
                     window.handleAuthenticationDialogRequested(
-                        viewUi, webView, request, viewTransientProfile)
+                        viewUi, webView, request, viewTransientProfile, viewHost)
                 }
                 onSelectClientCertificate: function(selection) {
                     if (viewTabs !== tabs || tabIndex === viewUi.active_tab_index) {
@@ -1267,15 +1267,18 @@ GridLayout {
                         terminationStatus, exitCode)
                 }
                 Component.onDestruction: {
-                    window.clearPageDialogForView(webView)
-                    window.clearClientCertificateForView(webView)
-                    window.clearCertificateErrorForView(webView)
-                    window.clearWebAuthForView(webView)
-                    window.clearContextMenuForView(webView)
-                    window.clearDesktopMediaForView(webView)
-                    window.clearCaptureSessionForView(webView)
-                    window.clearFileDialogForView(webView)
-                    window.clearRendererFailureForView(webView)
+                    if (!(viewHost && viewHost.runtimeReleased) && !window.runtimeDisposing) {
+                        window.cancelScriptsForView(webView)
+                        window.clearPageDialogForView(webView)
+                        window.clearClientCertificateForView(webView)
+                        window.clearCertificateErrorForView(webView)
+                        window.clearWebAuthForView(webView)
+                        window.clearContextMenuForView(webView)
+                        window.clearDesktopMediaForView(webView)
+                        window.clearCaptureSessionForView(webView)
+                        window.clearFileDialogForView(webView)
+                        window.clearRendererFailureForView(webView)
+                    }
                     if (promptIdentityUi && promptIdentityTabIndex >= 0
                             && promptIdentityUi.unregister_prompt_view_identity) {
                         promptIdentityUi.unregister_prompt_view_identity(

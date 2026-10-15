@@ -52,39 +52,39 @@ FerricModalSurface {
     Shortcut {
         sequence: "Up"
         context: Qt.WindowShortcut
-        enabled: dialog.visible && dialog.choiceKeysActive
+        enabled: dialog.interactive && dialog.choiceKeysActive
         onActivated: dialog.moveChoice(-1)
     }
     Shortcut {
         sequence: "K"
         context: Qt.WindowShortcut
-        enabled: dialog.visible && dialog.choiceKeysActive
+        enabled: dialog.interactive && dialog.choiceKeysActive
         onActivated: dialog.moveChoice(-1)
     }
     Shortcut {
         sequence: "Down"
         context: Qt.WindowShortcut
-        enabled: dialog.visible && dialog.choiceKeysActive
+        enabled: dialog.interactive && dialog.choiceKeysActive
         onActivated: dialog.moveChoice(1)
     }
     Shortcut {
         sequence: "J"
         context: Qt.WindowShortcut
-        enabled: dialog.visible && dialog.choiceKeysActive
+        enabled: dialog.interactive && dialog.choiceKeysActive
         onActivated: dialog.moveChoice(1)
     }
     Shortcut {
         sequence: "Return"
         context: Qt.WindowShortcut
         autoRepeat: false
-        enabled: dialog.visible && dialog.focusWithin(choices)
+        enabled: dialog.interactive && dialog.focusWithin(choices)
         onActivated: dialog.activateCurrent()
     }
     Shortcut {
         sequence: "Enter"
         context: Qt.WindowShortcut
         autoRepeat: false
-        enabled: dialog.visible && dialog.focusWithin(choices)
+        enabled: dialog.interactive && dialog.focusWithin(choices)
         onActivated: dialog.activateCurrent()
     }
 

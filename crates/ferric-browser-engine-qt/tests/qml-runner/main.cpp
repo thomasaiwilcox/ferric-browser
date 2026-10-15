@@ -6,6 +6,7 @@
 #include <QQmlContext>
 #include <QJSEngine>
 #include <QtQml/qqml.h>
+#include "../../src/script_runner.h"
 
 class PerformanceClock final : public QObject
 {
@@ -41,6 +42,7 @@ int main(int argc, char **argv)
     // WebEngine must configure shared OpenGL contexts before Qt Quick Test
     // constructs its QGuiApplication, including when tests run offscreen.
     QtWebEngineQuick::initialize();
+    qmlRegisterType<FerricScriptRunner>("Ferric.Testing", 1, 0, "ScriptRunner");
     qmlRegisterSingletonType<PerformanceClock>("Ferric.Testing", 1, 0, "PerformanceClock",
                                                createPerformanceClock);
     TestSetup setup;

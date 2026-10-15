@@ -81,6 +81,7 @@ TestCase {
         id: theme
         property color backgroundColor: "#181825"
         property int browserScriptWorld: 1
+        function runBrowserScript(view, script, callback, world) { view.runJavaScript(script, world, callback); return true }
     }
     Component {
         id: fixture

@@ -37,6 +37,7 @@ ApplicationWindow {
     property var pendingFileDialogView: null
     property bool pendingFileDialogWaitingForPortal: false
     property double pendingFileDialogPortalDeadlineMs: 0
+    property bool runtimeReleased: false
     property bool windowShutdownApproved: false
     property bool windowCloseConfirmationVisible: false
     property bool windowShutdownPromptVisible: false
@@ -76,6 +77,7 @@ ApplicationWindow {
 
     onClosing: function(close) {
         if (popupWindow.windowShutdownApproved) {
+            popupWindow.releaseWindowResources()
             return
         }
         close.accepted = false
@@ -107,7 +109,7 @@ ApplicationWindow {
             return
         }
         popupShutdownPageProbeTimer.restart()
-        popupView.runJavaScript(rootWindow.shutdownPageProbeScript(), function(result) {
+        rootWindow.runBrowserScript(popupView, rootWindow.shutdownPageProbeScript(), function(result) {
             if (generation !== popupWindow.windowShutdownPageProbeGeneration) {
                 return
             }
@@ -120,7 +122,7 @@ ApplicationWindow {
                     ? "This page has unsaved form or editor state."
                     : "Ferric Browser could not verify this page before closing."
             popupWindow.windowShutdownPagePromptVisible = true
-        })
+        }, 0)
     }
 
     function cancelPageStateProbe() {
@@ -662,6 +664,7 @@ ApplicationWindow {
         property int tabIndex: -1
         readonly property string clipboardPopupToken: popupWindow.popupJourneyToken
         id: popupView
+        property var viewHost: popupWindow
         property var pageUserScriptNames: []
         property string pageUserScriptReloadUrl: ""
         property string pageDialogDocumentKey: ""
@@ -734,7 +737,7 @@ ApplicationWindow {
                 if (popupWindow.popupRequestInterceptor) {
                     popupWindow.popupRequestInterceptor.clearSiteEvidence(popupView.url.host)
                 }
-                rootWindow.cancelPermissionForUi(popupWindow.popupPermissionUi)
+                if (rootWindow.pendingPermissionHost === popupWindow) rootWindow.clearPermissionPrompt(true)
                 rootWindow.installPageUserscripts(
                     popupWindow.popupPermissionUi, popupView, popupView.url.toString(),
                     popupWindow.popupPrivateProfile)
@@ -787,12 +790,12 @@ ApplicationWindow {
         onJavaScriptDialogRequested: function(request) {
             rootWindow.handleJavaScriptDialogRequested(
                 popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi,
-                popupView, request, popupWindow.popupPrivateProfile)
+                popupView, request, popupWindow.popupPrivateProfile, popupWindow)
         }
         onAuthenticationDialogRequested: function(request) {
             rootWindow.handleAuthenticationDialogRequested(
                 popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi,
-                popupView, request, popupWindow.popupPrivateProfile)
+                popupView, request, popupWindow.popupPrivateProfile, popupWindow)
         }
         onSelectClientCertificate: function(selection) {
             rootWindow.handleClientCertificateRequested(
@@ -858,6 +861,8 @@ ApplicationWindow {
             }
         }
         Component.onDestruction: {
+            if (popupWindow.runtimeReleased || rootWindow.runtimeDisposing) return
+            rootWindow.cancelScriptsForView(popupView)
             rootWindow.clearPageDialogForView(popupView)
             rootWindow.clearClientCertificateForView(popupView)
             rootWindow.clearCertificateErrorForView(popupView)
@@ -867,7 +872,7 @@ ApplicationWindow {
             rootWindow.clearCaptureSessionForView(popupView)
             popupWindow.clearFileDialogForView(popupView)
             rootWindow.clearSiteDataClearForView(popupView)
-            rootWindow.cancelPermissionForUi(popupWindow.popupPermissionUi)
+            if (rootWindow.pendingPermissionHost === popupWindow) rootWindow.clearPermissionPrompt(true)
         }
     }
 
@@ -901,7 +906,28 @@ ApplicationWindow {
         }
     }
 
-    Component.onDestruction: {
+    function releaseWindowResources() {
+        if (popupWindow.runtimeReleased) return
+        popupWindow.runtimeReleased = true
+        popupFilePortalTimer.stop()
+        popupShutdownPageProbeTimer.stop()
+        var views = [popupView]
+        for (var index = 0; index < views.length; ++index) {
+            var view = views[index]
+            if (!view || views.indexOf(view) !== index) continue
+            rootWindow.cancelScriptsForView(view)
+            rootWindow.clearPageDialogForView(view)
+            rootWindow.clearClientCertificateForView(view)
+            rootWindow.clearCertificateErrorForView(view)
+            rootWindow.clearWebAuthForView(view)
+            rootWindow.clearContextMenuForView(view)
+            rootWindow.clearDesktopMediaForView(view)
+            rootWindow.clearCaptureSessionForView(view)
+            rootWindow.clearRendererFailureForView(view)
+            rootWindow.clearSiteDataClearForView(view)
+            popupWindow.clearFileDialogForView(view)
+        }
+        if (rootWindow.pendingPermissionHost === popupWindow) rootWindow.clearPermissionPrompt(true)
         rootWindow.unregisterPopupWindow(popupWindow)
         if (!popupWindow.windowShutdownApproved
                 && popupWindow.popupPermissionUi
@@ -914,7 +940,6 @@ ApplicationWindow {
                 popupWindow.popupJourneyToken)
         }
         popupWindow.clearPopupFileDialog(true, "File selection cancelled")
-        rootWindow.cancelPermissionForUi(popupWindow.popupPermissionUi)
         if (rootWindow.pendingDesktopMediaHost === popupWindow) {
             rootWindow.clearDesktopMediaRequest(true)
         }
@@ -936,4 +961,8 @@ ApplicationWindow {
             popupWindow.popupRendererFailureSurface = null
         }
     }
+    Component.onDestruction: {
+        if (!popupWindow.runtimeReleased && !rootWindow.runtimeDisposing) releaseWindowResources()
+    }
+
 }

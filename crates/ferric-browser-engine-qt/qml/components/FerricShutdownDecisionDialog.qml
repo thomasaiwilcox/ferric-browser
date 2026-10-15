@@ -35,22 +35,20 @@ FocusScope {
     anchors.fill: parent
     z: stackingOrder
     visible: promptVisible
-    focus: visible
+    focus: false
     Accessible.role: Accessible.Dialog
     Accessible.name: title
 
     function focusChoice(index) {
         dialog.currentIndex = index === 1 ? 1 : 0
-        Qt.callLater(function() {
-            if (!dialog.visible) {
-                return
-            }
-            if (dialog.currentIndex === 1) {
-                proceedButton.forceActiveFocus()
-            } else {
-                keepButton.forceActiveFocus()
-            }
-        })
+        focusSelectedChoice()
+        choiceFocusTimer.restart()
+    }
+
+    function focusSelectedChoice() {
+        if (!visible) return
+        if (currentIndex === 1) proceedButton.forceActiveFocus()
+        else keepButton.forceActiveFocus()
     }
 
     function focusSafeChoice() {
@@ -86,17 +84,23 @@ FocusScope {
     }
 
     function restorePreviousFocus() {
-        var target = dialog.previousFocusItem
+        restoreFocusTarget = dialog.previousFocusItem
         dialog.previousFocusItem = null
-        Qt.callLater(function() {
-            if (dialog.visible) {
-                return
-            }
-            if (target && target.forceActiveFocus
-                    && target.visible !== false && target.enabled !== false) {
-                target.forceActiveFocus()
-            }
-        })
+        if (hostWindow && hostWindow.runtimeReleased !== true
+                && themeWindow && themeWindow.runtimeDisposing !== true) restoreFocusTimer.restart()
+    }
+
+    property var restoreFocusTarget: null
+    Timer { id: choiceFocusTimer; interval: 0; onTriggered: dialog.focusSelectedChoice() }
+    Timer {
+        id: restoreFocusTimer
+        interval: 0
+        onTriggered: {
+            var target = dialog.restoreFocusTarget
+            dialog.restoreFocusTarget = null
+            if (!dialog.visible && target && target.forceActiveFocus
+                    && target.visible !== false && target.enabled !== false) target.forceActiveFocus()
+        }
     }
 
     onVisibleChanged: {

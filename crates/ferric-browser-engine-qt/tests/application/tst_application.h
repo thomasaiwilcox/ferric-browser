@@ -67,6 +67,15 @@ class ApplicationTests final : public QObject {
     void clipboardOtherWindows_data();
     void clipboardOtherWindows();
     void productPolishPagePrompts();
+    void productPolishWindowPrompts_data();
+    void productPolishWindowPrompts();
+    void productPolishTlsPrompt_data();
+    void productPolishTlsPrompt();
+    void productPolishCertificateGuards();
+    void productPolishIdentityWindows_data();
+    void productPolishIdentityWindows();
+    void productPolishPromptTeardown_data();
+    void productPolishPromptTeardown();
     void productPolishHttpAuthentication();
     void productPolishFileChooser();
     void productPolishWebAuthStates();

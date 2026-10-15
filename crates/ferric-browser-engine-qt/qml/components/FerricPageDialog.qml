@@ -29,11 +29,15 @@ FerricModalSurface {
                                                                               ? acceptButton :
                                                                                 cancelButton))
 
-    function open() {
+    function open(host) {
+        hostWindow = host || browserWindow;
+        parent = hostWindow.contentItem;
         visible = true;
     }
     function close() {
         visible = false;
+        parent = browserWindow.contentItem;
+        hostWindow = browserWindow;
     }
 
     onDismissRequested: browserWindow.rejectPageDialog()
@@ -49,14 +53,14 @@ FerricModalSurface {
     Shortcut {
         sequence: "Return"
         context: Qt.WindowShortcut
-        enabled: dialog.visible && !dialog.containsActiveFocus
+        enabled: dialog.interactive && !dialog.containsActiveFocus
         autoRepeat: false
         onActivated: dialog.activateDefault()
     }
     Shortcut {
         sequence: "Enter"
         context: Qt.WindowShortcut
-        enabled: dialog.visible && !dialog.containsActiveFocus
+        enabled: dialog.interactive && !dialog.containsActiveFocus
         autoRepeat: false
         onActivated: dialog.activateDefault()
     }
@@ -69,11 +73,11 @@ FerricModalSurface {
             id: pageDialogInput
             objectName: "pageDialogInput"
             Keys.onReturnPressed: function (event) {
-                if (!event.isAutoRepeat && event.modifiers === Qt.NoModifier)
+                if (dialog.interactive && !event.isAutoRepeat && event.modifiers === Qt.NoModifier)
                     dialog.browserWindow.acceptPageDialog();
             }
             Keys.onEnterPressed: function (event) {
-                if (!event.isAutoRepeat && event.modifiers === Qt.NoModifier)
+                if (dialog.interactive && !event.isAutoRepeat && event.modifiers === Qt.NoModifier)
                     dialog.browserWindow.acceptPageDialog();
             }
             Layout.fillWidth: true
@@ -86,11 +90,11 @@ FerricModalSurface {
             id: pageDialogUsername
             objectName: "pageDialogUsername"
             Keys.onReturnPressed: function (event) {
-                if (!event.isAutoRepeat && event.modifiers === Qt.NoModifier)
+                if (dialog.interactive && !event.isAutoRepeat && event.modifiers === Qt.NoModifier)
                     dialog.browserWindow.acceptPageDialog();
             }
             Keys.onEnterPressed: function (event) {
-                if (!event.isAutoRepeat && event.modifiers === Qt.NoModifier)
+                if (dialog.interactive && !event.isAutoRepeat && event.modifiers === Qt.NoModifier)
                     dialog.browserWindow.acceptPageDialog();
             }
             Layout.fillWidth: true
@@ -104,11 +108,11 @@ FerricModalSurface {
             id: pageDialogPassword
             objectName: "pageDialogPassword"
             Keys.onReturnPressed: function (event) {
-                if (!event.isAutoRepeat && event.modifiers === Qt.NoModifier)
+                if (dialog.interactive && !event.isAutoRepeat && event.modifiers === Qt.NoModifier)
                     dialog.browserWindow.acceptPageDialog();
             }
             Keys.onEnterPressed: function (event) {
-                if (!event.isAutoRepeat && event.modifiers === Qt.NoModifier)
+                if (dialog.interactive && !event.isAutoRepeat && event.modifiers === Qt.NoModifier)
                     dialog.browserWindow.acceptPageDialog();
             }
             Layout.fillWidth: true

@@ -56,42 +56,42 @@ FerricModalSurface {
     Shortcut {
         sequence: "S"
         context: Qt.WindowShortcut
-        enabled: prompt.visible && (!prompt.containsActiveFocus || prompt.focusWithin(sourceList)
+        enabled: prompt.interactive && (!prompt.containsActiveFocus || prompt.focusWithin(sourceList)
                                     || cancelButton.activeFocus)
         onActivated: prompt.selectCategory(false)
     }
     Shortcut {
         sequence: "W"
         context: Qt.WindowShortcut
-        enabled: prompt.visible && (!prompt.containsActiveFocus || prompt.focusWithin(sourceList)
+        enabled: prompt.interactive && (!prompt.containsActiveFocus || prompt.focusWithin(sourceList)
                                     || cancelButton.activeFocus)
         onActivated: prompt.selectCategory(true)
     }
     Shortcut {
         sequence: "Up"
         context: Qt.WindowShortcut
-        enabled: prompt.visible && (!prompt.containsActiveFocus || prompt.focusWithin(sourceList)
+        enabled: prompt.interactive && (!prompt.containsActiveFocus || prompt.focusWithin(sourceList)
                                     || cancelButton.activeFocus)
         onActivated: prompt.moveChoice(-1)
     }
     Shortcut {
         sequence: "K"
         context: Qt.WindowShortcut
-        enabled: prompt.visible && (!prompt.containsActiveFocus || prompt.focusWithin(sourceList)
+        enabled: prompt.interactive && (!prompt.containsActiveFocus || prompt.focusWithin(sourceList)
                                     || cancelButton.activeFocus)
         onActivated: prompt.moveChoice(-1)
     }
     Shortcut {
         sequence: "Down"
         context: Qt.WindowShortcut
-        enabled: prompt.visible && (!prompt.containsActiveFocus || prompt.focusWithin(sourceList)
+        enabled: prompt.interactive && (!prompt.containsActiveFocus || prompt.focusWithin(sourceList)
                                     || cancelButton.activeFocus)
         onActivated: prompt.moveChoice(1)
     }
     Shortcut {
         sequence: "J"
         context: Qt.WindowShortcut
-        enabled: prompt.visible && (!prompt.containsActiveFocus || prompt.focusWithin(sourceList)
+        enabled: prompt.interactive && (!prompt.containsActiveFocus || prompt.focusWithin(sourceList)
                                     || cancelButton.activeFocus)
         onActivated: prompt.moveChoice(1)
     }
@@ -99,14 +99,14 @@ FerricModalSurface {
         sequence: "Return"
         context: Qt.WindowShortcut
         autoRepeat: false
-        enabled: prompt.visible && prompt.focusWithin(sourceList)
+        enabled: prompt.interactive && prompt.focusWithin(sourceList)
         onActivated: prompt.activateCurrent()
     }
     Shortcut {
         sequence: "Enter"
         context: Qt.WindowShortcut
         autoRepeat: false
-        enabled: prompt.visible && prompt.focusWithin(sourceList)
+        enabled: prompt.interactive && prompt.focusWithin(sourceList)
         onActivated: prompt.activateCurrent()
     }
 

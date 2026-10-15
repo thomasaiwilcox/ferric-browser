@@ -16,6 +16,8 @@ fn main() {
             "src/browser_key_router.cpp",
             "src/hint_frame_broker.h",
             "src/hint_frame_broker.cpp",
+            "src/script_runner.h",
+            "src/script_runner.cpp",
             "src/browser_page_pointer_adapter.h",
             "src/browser_page_pointer_adapter.cpp",
             "src/request_interceptor.h",

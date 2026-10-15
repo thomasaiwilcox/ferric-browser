@@ -408,6 +408,91 @@ warnings at engine teardown remain visible and require the whole-window audit.
 These checks qualify the changed primary-window workflows, not physical
 security keys, portal selection or secondary/popup page-prompt placement.
 
+## Cross-window prompt and lifecycle batch
+
+Implemented and qualified in the compiled production runner. Strict Clippy
+and the final adapter startup check pass.
+
+- Page confirmation, HTTP authentication, client identity and security-key
+  surfaces mount in the requesting secondary window or popup while retaining
+  their existing request owner and resolution policy.
+- Close confirmation temporarily suspends the underlying surface's shortcuts.
+  Cancelling close preserves the request, login draft and focused field.
+  Modal focus is acquired synchronously before another prompt can capture it;
+  layout retries and restoration use view-owned timers.
+- Child windows release their requests while the primary creation context is
+  still callable. Normal close, direct destruction and engine disposal share
+  idempotent cleanup. Root-owned cleanup precedes child destructors instead of
+  suppressing all runtime warnings. Popup permission cleanup matches its host,
+  avoiding cancellation of another window's request on a shared UI owner.
+- Secondary polling called a nonexistent file-dialog method, aborting the
+  remaining runtime work. It now calls the actual window-owned method.
+- Certificate identity uses typed canonical URL helpers. Qt client-certificate
+  authorities have no scheme; the adapter accepts their exact authority shape
+  and adds the known TLS transport before normalization. Page origins never
+  use this transport-specific conversion.
+- TLS decisions defer the actual engine request while the user reviews it.
+  Non-overridable errors, subresources, protected hosts and unavailable origins
+  remain blocked. The prompt describes session scope instead of falsely
+  promising a request-only exception: Qt retains host/certificate/error
+  allowances in memory. See [Qt's certificate decision API](https://doc.qt.io/qt-6.11/qml-webenginecertificateerror.html)
+  and [Qt's session certificate policy](https://raw.githubusercontent.com/qt/qtwebengine/6.11/src/core/net/ssl_host_state_delegate_qt.cpp).
+
+Current evidence: all 300 QML checks pass, including five behavioral focus
+controller tests. Source-QML native tests verify prompt placement, login draft
+retention and disposal with requests pending. Stress qualification reproduced
+an intermittent Pass Through assertion: its interaction snapshot showed
+`document_known: false` and `normal-mode-retained`. The test now waits for the
+committed native document identity before expecting restoration; a readable DOM
+alone does not satisfy the safety precondition. New production tests use a disposable
+local HTTPS server and generated self-signed certificate, never the system trust
+store. Client-certificate/security-key in-memory requests qualify window/input
+ownership only; they do not establish real credential or hardware support.
+
+The first compiled run passed all real HTTPS cases and prompt placements, but
+its two security-key mocks omitted Qt's always-present `pinRequest` property.
+The corrected mocks pass. The subsequent engine-disposal run exposed an actual
+native crash: Qt's view-level JavaScript callback dereferenced a missing QML
+engine during profile teardown. Core metadata and Qt 6.11's callback wrapper
+confirm the mechanism; memory exhaustion was ruled out.
+
+The current fix introduces a small native script runner over public
+`QWebEngineFrame` callbacks. It owns bounded pending results and deadlines,
+checks the owner/context before converting values, and cancels results by view
+or root lifetime. No QJSValue or raw view pointer is retained in WebEngine's
+callback. Existing script worlds and policy interpretation stay with their
+original callers. History refresh/focus retries now use component-owned timers.
+The disposal regression deliberately leaves a result pending. The rebuilt production runner passes all 40 cases, including deliberate
+engine disposal with a result pending, without TypeError/ReferenceError/invalid
+context warnings. The final repository gate passes 910 Rust tests (2 intentionally ignored) and
+309 QML checks. Three additional native window/disposal runs pass (QtTest totals
+10, 6 and 6), including immediate close without screenshot delays. All 81
+clipboard checks and the IPC probe also pass. Strict Clippy passes on the final source. Its initial failure was a
+documentation-only missing-backticks lint; the corrected comment is the only
+post-gate source difference, verified against the source hash snapshot. Adapter
+startup passes on the rebuilt final application. The preceding 910 Rust / 300 QML gate did not qualify these
+later callback changes. The expanded QML suite passed 308 before
+splitting cancellation and runner-destruction into separate regression cases.
+
+Final evidence for this checkpoint:
+
+- Repository gate: 910 Rust tests pass, 2 intentionally ignored; 309 QML pass.
+- Strict workspace Clippy and final formatting/whitespace checks: pass.
+- Actual application engine: 40 native product-polish checks pass, including
+  all 89 embedded QML/script resources, real HTTP login, six HTTPS decisions,
+  session exception reuse, safe close cancellation and pending-result disposal.
+- Three additional window/disposal runs: pass, with QtTest totals 10, 6 and 6.
+- Clipboard: 81 pass; IPC probe and bounded adapter startup: pass.
+- Native secondary-login and popup-certificate renders inspected.
+
+Current logs use `script-runner-*` under ignored `target/product-polish/`.
+Earlier failures remain in `crosswindow-*` and `script-runner-unit-first.log`.
+The qualified 37 source/test inputs have hash snapshots before and after the
+one documentation-only Clippy correction; no executable statement changed
+between those snapshots. The final application was rebuilt and its startup
+qualified after that correction. These checks establish this checkpoint's
+behavior, not completion of the remaining product audit below.
+
 ## Audit status and remaining implementation
 
 These remain part of the original goal, rather than deferred release promises:
@@ -427,31 +512,33 @@ These remain part of the original goal, rather than deferred release promises:
    workflow defects reproduced by `library-before.log` are now fixed and
    qualified above. Continue the remaining reference/help wording and
    unavailable-state audit, including read-only action affordances, normal
-   metadata-unavailable history and private-transfer completion feedback.
+   metadata-unavailable history and private-transfer completion feedback. Visible
+   target search still exposes raw kind/scope labels and a fixed 128-unit kind
+   column. Action-reference availability wording and its Enter behavior also
+   need a concrete decision.
 4. **Status/error messages.** Audit operation IDs, stale-target terminology,
    adapter/engine wording and internal state transitions in ordinary status
    notices. Preserve useful diagnostic detail without flooding normal use.
-5. **All prompts.** The shared overflow, private-transfer wrapping,
-   focused-control activation, request ownership, origin and scoped WebAuthn
-   defects are fixed and qualified above. Download/shutdown regressions pass.
-   Qualify and correct actual cross-window page/authentication/identity prompt
-   placement and focus. Hardware/security-key and native portal qualification
-   stay distinct from the in-memory/source-UI checks. Immediate Loader unload
-   passes without deferred-focus warnings; the provider-teardown warnings below
-   still need their own ownership investigation.
-6. **Whole-window finish.** Verify theme/readability, larger fonts, focus,
-   primary/secondary/popup consistency, and investigate observed lifecycle
-   warnings where they indicate real broken behavior.
-   Secondary/popup theme and popup load-handler fixes pass production tests,
-   including real installed page scripts. Remaining observations include
-   teardown callbacks whose owner context is gone. Guide/start-page unload
-   callbacks and the secondary `viewUi` reference are fixed in the current
-   batch; verify the secondary fix in the compiled run. Investigate live
-   teardown behavior rather than masking all warnings. Native
-   management commands currently require the primary window; broader access
-   and prompt ownership still need review. Page/authentication dialogs currently
-   use the primary singleton; qualify and correct secondary/popup placement and
-   focus with actual requests before claiming whole-window completion.
+5. **All prompts.** Shared overflow, safe activation, request ownership,
+   origin display and scoped WebAuthn defects are fixed and qualified above.
+   Actual cross-window page/authentication placement, login drafts, focus and
+   self-signed HTTPS decisions now pass production checks. Client-certificate
+   and security-key fixtures establish window/input ownership only; real
+   credentials, hardware keys and native portals retain separate qualification.
+   Finish the whole-window compact/large-font review and the remaining prompt
+   copy/layout review alongside the final walkthrough. The native certificate
+   render has excess empty body space and prominent scroll tracks; the HTTP
+   login confirmation still uses a generic OK label. Review these together
+   with compact and large-font layouts.
+6. **Whole-window finish.** Verify theme/readability, larger fonts and
+   primary/secondary/popup consistency in the final walkthrough. The lifecycle
+   investigation above found and fixed real context callbacks and a native
+   teardown crash; repeated qualification and the checkpoint gates pass.
+   Native management commands currently require the primary window; broader
+   access and manager ownership remain part of this audit. Page/authentication
+   and identity prompts now mount in the requesting child window while their
+   existing request owner resolves the decision. Review remaining navigation
+   tools and global feedback before claiming whole-window completion.
 7. **Final evidence.** Run repository-required gates, compiled production
    integration and a rendered whole-application walkthrough after the final
    source is frozen. Keep the installed browser and normal profiles separate

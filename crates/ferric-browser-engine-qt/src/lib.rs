@@ -1461,6 +1461,12 @@ mod qobject {
         fn prompt_origin(self: &BrowserUi, url: &QString) -> QString;
 
         #[qinvokable]
+        fn prompt_host(self: &BrowserUi, url: &QString) -> QString;
+
+        #[qinvokable]
+        fn client_certificate_origin(self: &BrowserUi, authority: &QString) -> QString;
+
+        #[qinvokable]
         fn reset_permission(
             self: Pin<&mut BrowserUi>,
             origin: &QString,

@@ -84,6 +84,7 @@ ApplicationWindow {
     property var pendingFileDialogView: null
     property bool pendingFileDialogWaitingForPortal: false
     property double pendingFileDialogPortalDeadlineMs: 0
+    property bool runtimeReleased: false
     property bool windowShutdownApproved: false
     property bool windowCloseConfirmationVisible: false
     property bool windowShutdownPromptVisible: false
@@ -199,6 +200,7 @@ ApplicationWindow {
 
     onClosing: function(close) {
         if (secondaryWindow.windowShutdownApproved) {
+            secondaryWindow.releaseWindowResources()
             return
         }
         close.accepted = false
@@ -245,7 +247,7 @@ ApplicationWindow {
             return
         }
         secondaryShutdownPageProbeTimer.restart()
-        view.runJavaScript(rootWindow.shutdownPageProbeScript(), function(result) {
+        rootWindow.runBrowserScript(view, rootWindow.shutdownPageProbeScript(), function(result) {
             if (generation !== secondaryWindow.windowShutdownPageProbeGeneration) {
                 return
             }
@@ -258,7 +260,7 @@ ApplicationWindow {
                     ? "This page has unsaved form or editor state."
                     : "Ferric Browser could not verify this page before closing."
             secondaryWindow.windowShutdownPagePromptVisible = true
-        })
+        }, 0)
     }
 
     function cancelPageStateProbe() {
@@ -1250,6 +1252,7 @@ function onContext_workspaceChanged() {
     }
 
     function scheduleRuntimeWork(delay) {
+        if (secondaryWindow.runtimeReleased) return
         var boundedDelay = Math.max(0, Math.min(60000, Number(delay) || 0))
         if (!secondaryRuntimeWorkTimer.running
                 || boundedDelay < secondaryRuntimeWorkTimer.interval) {
@@ -1259,9 +1262,10 @@ function onContext_workspaceChanged() {
     }
 
     function processRuntimeWork() {
+        if (secondaryWindow.runtimeReleased) return
         secondaryWindow.applySwitcherEngineAction()
         secondaryUi.poll_config()
-        secondaryWindow.maybeOpenPendingEngineFileDialog()
+        secondaryWindow.maybeOpenPendingFileDialog()
         secondaryUi.refresh_operations()
         secondaryUi.tick_bindings()
         secondaryUi.tick_site_doctor_experiment()
@@ -1731,11 +1735,11 @@ function onContext_workspaceChanged() {
         }
         onJavaScriptDialogRequested: function(request) {
             rootWindow.handleJavaScriptDialogRequested(
-                viewUi, secondaryView, request, viewTransientProfile)
+                viewUi, secondaryView, request, viewTransientProfile, viewHost)
         }
         onAuthenticationDialogRequested: function(request) {
             rootWindow.handleAuthenticationDialogRequested(
-                viewUi, secondaryView, request, viewTransientProfile)
+                viewUi, secondaryView, request, viewTransientProfile, viewHost)
         }
         onSelectClientCertificate: function(selection) {
             rootWindow.handleClientCertificateRequested(
@@ -2251,26 +2255,41 @@ function onContext_workspaceChanged() {
         }
     }
     FerricSelectorValidationSurface {
+        browserWindow: rootWindow
         browserUi: secondaryUi
     }
 
-    Component.onDestruction: {
+    function releaseWindowResources() {
+        if (secondaryWindow.runtimeReleased) return
+        secondaryWindow.runtimeReleased = true
+        secondaryRuntimeWorkTimer.stop()
+        secondaryFilePortalTimer.stop()
+        bookmarkTransferTimer.stop()
+        secondaryShutdownPageProbeTimer.stop()
+        secondaryCommandNoticeTimer.stop()
+        var views = [secondaryView, secondaryWindow.activeView]
+        for (var index = 0; index < views.length; ++index) {
+            var view = views[index]
+            if (!view || views.indexOf(view) !== index) continue
+            rootWindow.cancelScriptsForView(view)
+            rootWindow.clearPageDialogForView(view)
+            rootWindow.clearClientCertificateForView(view)
+            rootWindow.clearCertificateErrorForView(view)
+            rootWindow.clearWebAuthForView(view)
+            rootWindow.clearContextMenuForView(view)
+            rootWindow.clearDesktopMediaForView(view)
+            rootWindow.clearCaptureSessionForView(view)
+            rootWindow.clearRendererFailureForView(view)
+            rootWindow.clearSiteDataClearForView(view)
+            secondaryWindow.clearFileDialogForView(view)
+        }
+        if (rootWindow.pendingPermissionHost === secondaryWindow) rootWindow.clearPermissionPrompt(true)
         if (secondaryWindow.devToolsWindow) {
             secondaryWindow.devToolsWindow.close()
             secondaryWindow.devToolsWindow = null
         }
         rootWindow.unregisterBrowserWindow(secondaryUi)
-            rootWindow.clearPageDialogForView(secondaryView)
-            rootWindow.clearClientCertificateForView(secondaryView)
-            rootWindow.clearCertificateErrorForView(secondaryView)
-            rootWindow.clearWebAuthForView(secondaryView)
-            rootWindow.clearContextMenuForView(secondaryView)
-            rootWindow.clearDesktopMediaForView(secondaryView)
-            rootWindow.clearCaptureSessionForView(secondaryView)
-rootWindow.clearCaptureSessionsForHost(secondaryWindow)
-        secondaryWindow.clearFileDialogForView(secondaryView)
-        rootWindow.clearSiteDataClearForView(secondaryView)
-        rootWindow.cancelPermissionForUi(secondaryUi)
+        rootWindow.clearCaptureSessionsForHost(secondaryWindow)
         if (rootWindow.pendingDesktopMediaHost === secondaryWindow) {
             rootWindow.clearDesktopMediaRequest(true)
         }
@@ -2293,4 +2312,8 @@ rootWindow.clearCaptureSessionsForHost(secondaryWindow)
         secondaryUi.view_closed()
         secondaryUi.release_transient_resources()
     }
+    Component.onDestruction: {
+        if (!secondaryWindow.runtimeReleased && !rootWindow.runtimeDisposing) releaseWindowResources()
+    }
+
 }

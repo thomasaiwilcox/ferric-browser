@@ -9,13 +9,16 @@ Item {
     anchors.fill: parent
 
     required property var browserWindow
+    property var hostWindow: browserWindow
     property alias pin: webAuthPinField.text
 
     signal accountSelected(string account)
     signal pinSubmitted()
     signal cancelled()
     signal retryRequested()
-    function open() {
+    function open(host) {
+        hostWindow = host || browserWindow;
+        parent = hostWindow.contentItem;
         webAuthPinField.text = "";
         accountList.currentIndex = 0;
         prompt.visible = true;
@@ -23,11 +26,14 @@ Item {
     function close() {
         webAuthPinField.text = "";
         prompt.visible = false;
+        parent = browserWindow.contentItem;
+        hostWindow = browserWindow;
     }
 
     FerricModalSurface {
         id: prompt
         browserWindow: root.browserWindow
+        hostWindow: root.hostWindow
         visible: false
         commandText: "Passkeys and security keys"
         title: "Verify your identity"
@@ -77,7 +83,7 @@ Item {
         Shortcut {
             sequence: "Up"
             context: Qt.WindowShortcut
-            enabled: prompt.visible && root.browserWindow.pendingWebAuthState
+            enabled: prompt.interactive && root.browserWindow.pendingWebAuthState
                      === WebEngineWebAuthUxRequest.WebAuthUxState.SelectAccount && (
                          !prompt.containsActiveFocus || prompt.focusWithin(accountList)
                          || cancelButton.activeFocus)
@@ -86,7 +92,7 @@ Item {
         Shortcut {
             sequence: "K"
             context: Qt.WindowShortcut
-            enabled: prompt.visible && root.browserWindow.pendingWebAuthState
+            enabled: prompt.interactive && root.browserWindow.pendingWebAuthState
                      === WebEngineWebAuthUxRequest.WebAuthUxState.SelectAccount && (
                          !prompt.containsActiveFocus || prompt.focusWithin(accountList)
                          || cancelButton.activeFocus)
@@ -95,7 +101,7 @@ Item {
         Shortcut {
             sequence: "Down"
             context: Qt.WindowShortcut
-            enabled: prompt.visible && root.browserWindow.pendingWebAuthState
+            enabled: prompt.interactive && root.browserWindow.pendingWebAuthState
                      === WebEngineWebAuthUxRequest.WebAuthUxState.SelectAccount && (
                          !prompt.containsActiveFocus || prompt.focusWithin(accountList)
                          || cancelButton.activeFocus)
@@ -104,7 +110,7 @@ Item {
         Shortcut {
             sequence: "J"
             context: Qt.WindowShortcut
-            enabled: prompt.visible && root.browserWindow.pendingWebAuthState
+            enabled: prompt.interactive && root.browserWindow.pendingWebAuthState
                      === WebEngineWebAuthUxRequest.WebAuthUxState.SelectAccount && (
                          !prompt.containsActiveFocus || prompt.focusWithin(accountList)
                          || cancelButton.activeFocus)
@@ -114,7 +120,7 @@ Item {
             sequences: ["Return", "Enter"]
             context: Qt.WindowShortcut
             autoRepeat: false
-            enabled: prompt.visible && prompt.focusWithin(accountList)
+            enabled: prompt.interactive && prompt.focusWithin(accountList)
                      && root.browserWindow.pendingWebAuthState
                      === WebEngineWebAuthUxRequest.WebAuthUxState.SelectAccount
             onActivated: prompt.activateAccount()
@@ -122,7 +128,7 @@ Item {
         Shortcut {
             sequence: "R"
             context: Qt.WindowShortcut
-            enabled: prompt.visible && root.browserWindow.pendingWebAuthState
+            enabled: prompt.interactive && root.browserWindow.pendingWebAuthState
                      === WebEngineWebAuthUxRequest.WebAuthUxState.RequestFailed && (
                          !prompt.containsActiveFocus || cancelButton.activeFocus)
             autoRepeat: false

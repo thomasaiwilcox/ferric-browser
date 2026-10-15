@@ -301,7 +301,7 @@ FerricBrowserRuntimePresentation {
         return fragment >= 0 ? url.slice(0, fragment) : url
     }
 
-    function handleJavaScriptDialogRequested(ui, view, request, privateProfile) {
+    function handleJavaScriptDialogRequested(ui, view, request, privateProfile, hostWindow) {
         if (!request) {
             return
         }
@@ -335,7 +335,7 @@ FerricBrowserRuntimePresentation {
         window.pendingPageDialogView = view
         window.pendingPageDialogLeaseToken = window.beginNativePromptLease(
                     ui, view, "page-dialog")
-        window.captureOverlayFocus(window, view)
+        window.captureOverlayFocus(hostWindow || window, view)
         window.pageDialogMessage = window.boundedPageDialogText(request.message)
         var title = window.boundedPageDialogText(request.title)
         window.pageDialogTitle = title.length > 0 ? title : "Page " + kind
@@ -344,11 +344,11 @@ FerricBrowserRuntimePresentation {
         window.pageDialogDefaultText = window.boundedPageDialogText(request.defaultText)
         window.pageDialogSuppressChecked = false
         pageDialogPopup.inputText = window.pageDialogDefaultText
-        pageDialogPopup.open()
+        pageDialogPopup.open(hostWindow || window)
         ui.status_text = privateProfile ? "Private page dialog" : "Page dialog"
     }
 
-    function handleAuthenticationDialogRequested(ui, view, request, privateProfile) {
+    function handleAuthenticationDialogRequested(ui, view, request, privateProfile, hostWindow) {
         if (!request) {
             return
         }
@@ -374,7 +374,7 @@ FerricBrowserRuntimePresentation {
         window.pendingPageDialogView = view
         window.pendingPageDialogLeaseToken = window.beginNativePromptLease(
                     ui, view, "authentication")
-        window.captureOverlayFocus(window, view)
+        window.captureOverlayFocus(hostWindow || window, view)
         window.pageDialogIsAuthentication = true
         var proxyAuthentication = request.type === AuthenticationDialogRequest.AuthenticationTypeProxy
         window.pageDialogTitle = proxyAuthentication
@@ -390,7 +390,7 @@ FerricBrowserRuntimePresentation {
         window.pageDialogSuppressChecked = false
         pageDialogPopup.usernameText = ""
         pageDialogPopup.passwordText = ""
-        pageDialogPopup.open()
+        pageDialogPopup.open(hostWindow || window)
         ui.status_text = privateProfile ? "Private authentication prompt" : "Authentication prompt"
     }
 
@@ -460,11 +460,11 @@ FerricBrowserRuntimePresentation {
         window.pendingClientCertificateLeaseToken = window.beginNativePromptLease(
                     ui, view, "client-certificate")
         window.pendingClientCertificateOptions = options
-        window.pendingClientCertificateHost = selection.host && selection.host.host
-                ? window.boundedPageDialogText(selection.host.host)
-                : "opaque or unavailable host"
+        window.pendingClientCertificateHost = ui.client_certificate_origin(String(selection.host || ""))
+                || "Host unavailable"
         // Capture the native frame before transferring focus to the menu.
-        certificatePrompts.openClientCertificate()
+        window.captureOverlayFocus(hostWindow || window, view)
+        certificatePrompts.openClientCertificate(hostWindow || window)
         ui.status_text = privateProfile
                 ? "Private client certificate selection"
                 : "Client certificate selection"
@@ -542,7 +542,8 @@ FerricBrowserRuntimePresentation {
         if (window.pendingClientCertificateSelection) {
             window.clearClientCertificateRequest(true)
         }
-        var host = error.url && error.url.host ? String(error.url.host) : ""
+        var origin = ui.prompt_origin(String(error.url || ""))
+        var host = ui.prompt_host(String(error.url || ""))
         if (!error.overridable || !error.isMainFrame) {
             window.resolveQtRequest(ui, error, "client-certificate", "rejectCertificate", [])
             ui.status_text = error.isMainFrame
@@ -550,22 +551,25 @@ FerricBrowserRuntimePresentation {
                     : "TLS certificate error blocked for a subresource"
             return
         }
-        if (window.googleCertificateHost(host)) {
+        if (!host || !origin || window.googleCertificateHost(host)) {
             window.resolveQtRequest(ui, error, "client-certificate", "rejectCertificate", [])
             ui.status_text = "TLS certificate error blocked for protected host"
             return
         }
+        // Qt rejects automatically when the signal handler returns unless the
+        // decision is deferred. This only pauses; it never grants an exception.
+        error.defer()
         window.pendingCertificateError = error
         window.pendingCertificateErrorUi = ui
         window.pendingCertificateErrorView = view
         window.pendingCertificateErrorLeaseToken = window.beginNativePromptLease(
                     ui, view, "certificate-error")
-        window.pendingCertificateErrorHost = window.boundedPageDialogText(
-                    host || "opaque or unavailable host")
+        window.pendingCertificateErrorHost = origin
         window.pendingCertificateErrorDescription = window.boundedPageDialogText(
                     error.description || "The certificate could not be verified")
         // Capture the native frame before transferring focus to the menu.
-        certificatePrompts.openCertificateError()
+        window.captureOverlayFocus(hostWindow || window, view)
+        certificatePrompts.openCertificateError(hostWindow || window)
         ui.status_text = "TLS certificate confirmation required"
     }
 
@@ -577,7 +581,7 @@ FerricBrowserRuntimePresentation {
         }
         window.resolveQtRequest(ui, error, "client-certificate", "acceptCertificate", [])
         window.clearCertificateErrorRequest(false)
-        ui.status_text = "TLS certificate accepted for this request only"
+        ui.status_text = "Certificate exception allowed for this browser session"
     }
 
     function rejectCertificateError() {
@@ -691,7 +695,8 @@ FerricBrowserRuntimePresentation {
             window.updateWebAuthState(request, state)
         })
         // Capture the native frame before transferring focus to the menu.
-        webAuthPrompt.open()
+        window.captureOverlayFocus(hostWindow || window, view)
+        webAuthPrompt.open(hostWindow || window)
         ui.status_text = "WebAuthn security-key prompt"
     }
 
