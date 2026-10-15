@@ -724,6 +724,74 @@ references primary-window chrome state; independent-window keyboard behavior
 and focus return need direct regression coverage and correction. These remain
 part of the full polish goal. No whole-product completion is claimed.
 
+## Independent-window input and compact settings batch
+
+Status: qualified on the frozen source below.
+
+Saved overlay focus now belongs to the receiving window. A dismissal removes
+that window's most recent entry, preserving nested prompts and other windows'
+drafts. Command-mode focus return checks overlays in its own window only.
+Page, authentication, certificate, security-key, context-menu, file and renderer
+prompts retain their receiving host when closing. Released windows discard
+both saved and queued focus returns. Secondary keyboard routing uses its own
+chrome and prompt state instead of the primary window's open panels.
+
+Real geolocation requests from two regular profiles reproduced a permission
+queue defect: identical origins and permission types were combined across
+owners. Grouping now also checks BrowserUi, host, view and tab. Advancing to a
+new owner retires the previous focus/input lease and starts the successor's
+lease. Closing a window removes all its queued permission requests, including
+requests that have not reached the front. Existing decision and persistence
+boundaries remain unchanged.
+
+Settings and installed scripts now have separate, keyboard-accessible tabs.
+Search results lead the settings form; empty searches explain how to recover.
+Refresh and Close stay outside the scrollable form. Compact settings use less
+spacing while retaining the configured text size, shorter validation feedback,
+and full selectable technical details. Keyboard help switches to disclosure
+when its actual text width exceeds available space. Reopening a surface or
+requesting help for a setting restores focus to the appropriate control.
+
+Final checkpoint evidence:
+
+- The final repository gate passed: 922 Rust tests, 2 ignored, and all 341 QML
+  checks (`window-input-final-gate.log`). Formatting and whitespace checks pass.
+- Strict workspace Clippy passed on this source (`window-input-final-clippy.log`).
+- All 54 embedded application checks passed in 187.2 seconds
+  (`window-input-final-native.log`), including resource parity, independent
+  window shortcuts, cross-profile geolocation prompt separation/handoff,
+  queued-window closure, and the retained settings/script workflows.
+- All 81 native clipboard checks passed in 226.6 seconds
+  (`window-input-final-clipboard.log`). Adapter startup passed with a bounded
+  10-second lifetime, and the standalone CLI/IPC probe passed.
+- Real configured-font settings checks and inspected renders cover 640×480
+  at 14 pt and 390×600 at 20 pt. All 14 focused settings checks and 11 focus
+  checks passed. Source hashes and application/archive digests are recorded in
+  `window-input-source-hashes.json` and `window-input-final-artifacts.json`.
+- The original focus failures, cross-profile permission grouping, and compact
+  layout failures remain in the `*-before*` logs. Explicit routing-resumption
+  checks caught a cached binding failure after prompt dismissal
+  (`window-input-routing-resume-before.log`). Observable presentation state now
+  drives the UI guard; the runtime lease is checked on each key dispatch.
+  The final native run includes both windows returning to usable input.
+- The intermediate gate exposed an outdated structural assertion for the
+  former global context-menu expression. It now checks the owner-scoped
+  presentation boundary and passes in the final gate and strict Clippy run.
+
+A further production-component probe reproduced a same-window overlap issue:
+Escape can fail to dismiss a permission prompt while settings remains open
+underneath (`overlapping-permission-surface-probe-final.log`). A separate test
+copy under `modal-input-prototype/` now passes 24 checks for visual ordering,
+frontmost input, delayed focus returns, independent windows, and destruction
+with visible modals. That prototype also caught late scroll callbacks and
+controller-before-surface destruction; its fixes are not yet in product source.
+Integrating and qualifying this modal ownership work remains required.
+
+This batch does not finish profile/session manager access, popup management or
+explicit IPC window routing. Popup windows still share an existing permission
+owner; independent-profile results do not establish full popup input parity.
+The whole-application, configured-font walkthrough remains part of the goal.
+
 ## Audit status and remaining implementation
 
 These remain part of the original goal, rather than deferred release promises:
@@ -769,7 +837,7 @@ These remain part of the original goal, rather than deferred release promises:
    primary/secondary/popup consistency in the final walkthrough. The lifecycle
    investigation above found and fixed real context callbacks and a native
    teardown crash; repeated qualification and the checkpoint gates pass.
-   Shared settings access and ownership is being qualified above. Profile and
+   Shared settings access and ownership is qualified above. Profile and
    session manager access, popup management, and explicit IPC window routing
    remain part of this audit. Check whether primary-window surfaces affect
    another window's key routing, and use actual configured font sizes in the

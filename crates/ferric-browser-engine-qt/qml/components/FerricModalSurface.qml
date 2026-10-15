@@ -39,12 +39,19 @@ FocusScope {
         || hostWindow.shutdownPagePromptVisible === true
         || hostWindow.applicationShutdownForcePromptVisible === true)
     readonly property bool interactive: visible && enabled && !suspended
-    readonly property real scale: browserWindow.chromeScale === undefined ? 1 :
-                                                                            browserWindow.chromeScale
+    property real maximumSpacingScale: Infinity
+    readonly property real scale: Math.min(maximumSpacingScale,
+        browserWindow.chromeScale === undefined ? 1 : browserWindow.chromeScale)
     readonly property alias panelItem: panel
     readonly property alias bodyItem: body
     readonly property alias headerItem: headerScroll
     readonly property bool compactHelp: width < 600 * scale
+                                        || keyboardHelpMetrics.width > frame.width
+    TextMetrics {
+        id: keyboardHelpMetrics
+        font: surface.browserWindow.font
+        text: surface.keyHelp
+    }
     readonly property bool containsActiveFocus: {
         var item = hostWindow ? hostWindow.activeFocusItem : null;
         while (item && item !== surface)

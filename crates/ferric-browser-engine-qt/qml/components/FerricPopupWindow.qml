@@ -302,7 +302,7 @@ ApplicationWindow {
         var selectedPath = rootWindow.primaryBrowserUi.local_file_path(popupDownloadChooser.selectedFile)
         if (!download) {
             popupWindow.pendingDownloadId = ""
-            rootWindow.restoreOverlayFocus()
+            rootWindow.restoreOverlayFocus(popupWindow)
             return
         }
         var finalName = ui.accept_download_path(id, selectedPath)
@@ -319,7 +319,7 @@ ApplicationWindow {
                 delete popupWindow.pendingDownloadRequests[id]
                 popupWindow.pendingDownloadId = ""
                 popupWindow.pendingDownloadSuggestedName = ""
-                rootWindow.restoreOverlayFocus()
+                rootWindow.restoreOverlayFocus(popupWindow)
                 return
             }
             download.downloadDirectory = stagingDirectory
@@ -332,7 +332,7 @@ ApplicationWindow {
         delete popupWindow.pendingDownloadRequests[id]
         popupWindow.pendingDownloadId = ""
         popupWindow.pendingDownloadSuggestedName = ""
-        rootWindow.restoreOverlayFocus()
+        rootWindow.restoreOverlayFocus(popupWindow)
     }
 
     function cancelPendingDownload() {
@@ -346,7 +346,7 @@ ApplicationWindow {
         delete popupWindow.pendingDownloadRequests[id]
         popupWindow.pendingDownloadId = ""
         popupWindow.pendingDownloadSuggestedName = ""
-        rootWindow.restoreOverlayFocus()
+        rootWindow.restoreOverlayFocus(popupWindow)
     }
 
     function handleDownloadRequested(download) {
@@ -481,7 +481,7 @@ ApplicationWindow {
             popupFolderChooser.close()
         }
         if (hadRequest) {
-            rootWindow.restoreOverlayFocus()
+            rootWindow.restoreOverlayFocus(popupWindow)
         }
         if (cancelRequest && request) {
             rootWindow.resolveQtRequest(ui, request, "file-dialog", "dialogReject", [])
@@ -502,13 +502,13 @@ ApplicationWindow {
                 rootWindow.resolveQtRequest(ui, request, "file-dialog", "dialogReject", [])
             }
             if (request) {
-                rootWindow.restoreOverlayFocus()
+                rootWindow.restoreOverlayFocus(popupWindow)
             }
             ui.status_text = "File selection returned no local paths"
             return
         }
         rootWindow.resolveQtRequest(ui, request, "file-dialog", "dialogAccept", [paths])
-        rootWindow.restoreOverlayFocus()
+        rootWindow.restoreOverlayFocus(popupWindow)
         ui.status_text = paths.length === 1
                 ? "File selected"
                 : paths.length + " files selected"
@@ -525,13 +525,13 @@ ApplicationWindow {
                 rootWindow.resolveQtRequest(ui, request, "file-dialog", "dialogReject", [])
             }
             if (request) {
-                rootWindow.restoreOverlayFocus()
+                rootWindow.restoreOverlayFocus(popupWindow)
             }
             ui.status_text = "Folder selection returned no local path"
             return
         }
         rootWindow.resolveQtRequest(ui, request, "file-dialog", "dialogAccept", [paths])
-        rootWindow.restoreOverlayFocus()
+        rootWindow.restoreOverlayFocus(popupWindow)
         ui.status_text = "Folder selected"
     }
 
@@ -544,7 +544,7 @@ ApplicationWindow {
         popupWindow.pendingFileDialogRequest = null
         popupWindow.pendingFileDialogView = null
         rootWindow.resolveQtRequest(ui, request, "file-dialog", "dialogReject", [])
-        rootWindow.restoreOverlayFocus()
+        rootWindow.restoreOverlayFocus(popupWindow)
         ui.status_text = "File selection cancelled"
     }
 
@@ -737,7 +737,7 @@ ApplicationWindow {
                 if (popupWindow.popupRequestInterceptor) {
                     popupWindow.popupRequestInterceptor.clearSiteEvidence(popupView.url.host)
                 }
-                if (rootWindow.pendingPermissionHost === popupWindow) rootWindow.clearPermissionPrompt(true)
+                rootWindow.removePermissionGroups(function(group) { return group.host === popupWindow }, true)
                 rootWindow.installPageUserscripts(
                     popupWindow.popupPermissionUi, popupView, popupView.url.toString(),
                     popupWindow.popupPrivateProfile)
@@ -909,6 +909,7 @@ ApplicationWindow {
     function releaseWindowResources() {
         if (popupWindow.runtimeReleased) return
         popupWindow.runtimeReleased = true
+        rootWindow.discardOverlayFocus(popupWindow)
         popupFilePortalTimer.stop()
         popupShutdownPageProbeTimer.stop()
         var views = [popupView]

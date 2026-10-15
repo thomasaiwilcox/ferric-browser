@@ -73,7 +73,10 @@ ApplicationWindow {
                                                ? windowTransferView
                                                : (windowFallbackView || secondaryView)
     readonly property bool browserKeyFocusActive:
-        !rootWindow.browserChromeInputActive
+        !secondaryWindow.inputBarActive
+        && !secondaryWindow.devToolsVisible
+        && !rootWindow.presentedPromptActiveFor(secondaryUi)
+        && !(rootWindow.rendererFailureVisible && rootWindow.rendererFailureHost === secondaryWindow)
         && !secondarySettings.active
         && !(activeView && activeView.nativeUrl === "rb://start" && activeView.startPage && activeView.startPage.inputActive)
         && !windowCloseConfirmationVisible
@@ -393,7 +396,7 @@ ApplicationWindow {
             var selectedPath = rootWindow.primaryBrowserUi.local_file_path(secondaryDownloadChooser.selectedFile)
             if (!download) {
                 secondaryWindow.pendingDownloadId = ""
-                rootWindow.restoreOverlayFocus()
+                rootWindow.restoreOverlayFocus(secondaryWindow)
                 return
             }
             var finalName = secondaryUi.accept_download_path(id, selectedPath)
@@ -410,7 +413,7 @@ ApplicationWindow {
                     delete secondaryWindow.pendingDownloadRequests[id]
                     secondaryWindow.pendingDownloadId = ""
                     secondaryWindow.pendingDownloadSuggestedName = ""
-                    rootWindow.restoreOverlayFocus()
+                    rootWindow.restoreOverlayFocus(secondaryWindow)
                     return
                 }
                 download.downloadDirectory = stagingDirectory
@@ -427,7 +430,7 @@ ApplicationWindow {
             delete secondaryWindow.pendingDownloadRequests[id]
             secondaryWindow.pendingDownloadId = ""
             secondaryWindow.pendingDownloadSuggestedName = ""
-            rootWindow.restoreOverlayFocus()
+            rootWindow.restoreOverlayFocus(secondaryWindow)
         }
 
         function cancelPendingDownload() {
@@ -440,7 +443,7 @@ ApplicationWindow {
             delete secondaryWindow.pendingDownloadRequests[id]
             secondaryWindow.pendingDownloadId = ""
             secondaryWindow.pendingDownloadSuggestedName = ""
-            rootWindow.restoreOverlayFocus()
+            rootWindow.restoreOverlayFocus(secondaryWindow)
         }
 
         onDownloadRequested: function(download) {
@@ -581,7 +584,7 @@ ApplicationWindow {
         spellcheckStatus: rootWindow.spellcheckStatusText(secondaryUi)
         spellcheckDictionariesMissing: rootWindow.spellcheckDictionaryStatus(secondaryUi).missing.length > 0
         onOpening: rootWindow.captureOverlayFocus(secondaryWindow, secondaryWindow.activeView)
-        onClosed: rootWindow.restoreOverlayFocus()
+        onClosed: rootWindow.restoreOverlayFocus(secondaryWindow)
         onInstallManifestRequested: secondaryDialogSurfaces.openUserscriptManifest()
     }
 
@@ -711,7 +714,7 @@ function onContext_workspaceChanged() {
             if (secondaryUi.external_navigation_visible) {
                 rootWindow.captureOverlayFocus(secondaryWindow, secondaryWindow.activeView)
             } else {
-                rootWindow.restoreOverlayFocus()
+                rootWindow.restoreOverlayFocus(secondaryWindow)
             }
         }
     }
@@ -792,7 +795,7 @@ function onContext_workspaceChanged() {
             secondaryDialogSurfaces.closeEngineFolder()
         }
         if (hadRequest) {
-            rootWindow.restoreOverlayFocus()
+            rootWindow.restoreOverlayFocus(secondaryWindow)
         }
         if (cancelRequest && request) {
             rootWindow.resolveQtRequest(secondaryUi, request, "file-dialog", "dialogReject", [])
@@ -812,13 +815,13 @@ function onContext_workspaceChanged() {
                 rootWindow.resolveQtRequest(secondaryUi, request, "file-dialog", "dialogReject", [])
             }
             if (request) {
-                rootWindow.restoreOverlayFocus()
+                rootWindow.restoreOverlayFocus(secondaryWindow)
             }
             secondaryUi.status_text = "File selection returned no local paths"
             return
         }
         rootWindow.resolveQtRequest(secondaryUi, request, "file-dialog", "dialogAccept", [paths])
-        rootWindow.restoreOverlayFocus()
+        rootWindow.restoreOverlayFocus(secondaryWindow)
         secondaryUi.status_text = paths.length === 1
                 ? "File selected"
                 : paths.length + " files selected"
@@ -834,13 +837,13 @@ function onContext_workspaceChanged() {
                 rootWindow.resolveQtRequest(secondaryUi, request, "file-dialog", "dialogReject", [])
             }
             if (request) {
-                rootWindow.restoreOverlayFocus()
+                rootWindow.restoreOverlayFocus(secondaryWindow)
             }
             secondaryUi.status_text = "Folder selection returned no local path"
             return
         }
         rootWindow.resolveQtRequest(secondaryUi, request, "file-dialog", "dialogAccept", [paths])
-        rootWindow.restoreOverlayFocus()
+        rootWindow.restoreOverlayFocus(secondaryWindow)
         secondaryUi.status_text = "Folder selected"
     }
 
@@ -852,7 +855,7 @@ function onContext_workspaceChanged() {
         secondaryWindow.pendingFileDialogRequest = null
         secondaryWindow.pendingFileDialogView = null
         rootWindow.resolveQtRequest(secondaryUi, request, "file-dialog", "dialogReject", [])
-        rootWindow.restoreOverlayFocus()
+        rootWindow.restoreOverlayFocus(secondaryWindow)
         secondaryUi.status_text = "File selection cancelled"
     }
 
@@ -2303,6 +2306,7 @@ function onContext_workspaceChanged() {
     function releaseWindowResources() {
         if (secondaryWindow.runtimeReleased) return
         secondaryWindow.runtimeReleased = true
+        rootWindow.discardOverlayFocus(secondaryWindow)
         secondaryRuntimeWorkTimer.stop()
         secondaryFilePortalTimer.stop()
         bookmarkTransferTimer.stop()
@@ -2324,7 +2328,7 @@ function onContext_workspaceChanged() {
             rootWindow.clearSiteDataClearForView(view)
             secondaryWindow.clearFileDialogForView(view)
         }
-        if (rootWindow.pendingPermissionHost === secondaryWindow) rootWindow.clearPermissionPrompt(true)
+        rootWindow.removePermissionGroups(function(group) { return group.host === secondaryWindow }, true)
         if (secondaryWindow.devToolsWindow) {
             secondaryWindow.devToolsWindow.close()
             secondaryWindow.devToolsWindow = null

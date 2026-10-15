@@ -234,6 +234,7 @@ FerricBrowserRuntimePresentation {
     }
 
     function clearPageDialog(rejectRequest) {
+        var host = pageDialogPopup.hostWindow
         var request = window.pendingAuthenticationRequest || window.pendingPageDialogRequest
         var hadRequest = !!request
         var ui = window.pendingPageDialogUi || browserUi
@@ -256,7 +257,7 @@ FerricBrowserRuntimePresentation {
         pageDialogPopup.inputText = ""
         pageDialogPopup.close()
         if (hadRequest) {
-            window.restoreOverlayFocus()
+            window.restoreOverlayFocus(host)
         }
         window.completeNativePromptLease(ui, leaseToken, view)
         if (rejectRequest && request) {
@@ -384,6 +385,7 @@ FerricBrowserRuntimePresentation {
     }
 
     function clearClientCertificateRequest(selectNone) {
+        var host = certificatePrompts.hostWindow
         var selection = window.pendingClientCertificateSelection
         var hadSelection = !!selection
         var ui = window.pendingClientCertificateUi || browserUi
@@ -400,7 +402,7 @@ FerricBrowserRuntimePresentation {
             window.resolveQtRequest(ui, selection, "client-certificate", "selectNone", [])
         }
         if (hadSelection) {
-            window.restoreOverlayFocus()
+            window.restoreOverlayFocus(host)
         }
         window.completeNativePromptLease(ui, leaseToken, view)
         return hadSelection ? ui : null
@@ -490,6 +492,7 @@ FerricBrowserRuntimePresentation {
     }
 
     function clearCertificateErrorRequest(rejectRequest) {
+        var host = certificatePrompts.hostWindow
         var error = window.pendingCertificateError
         var hadError = !!error
         var ui = window.pendingCertificateErrorUi || browserUi
@@ -506,7 +509,7 @@ FerricBrowserRuntimePresentation {
             window.resolveQtRequest(ui, error, "client-certificate", "rejectCertificate", [])
         }
         if (hadError) {
-            window.restoreOverlayFocus()
+            window.restoreOverlayFocus(host)
         }
         window.completeNativePromptLease(ui, leaseToken, view)
         return hadError ? ui : null
@@ -616,6 +619,7 @@ FerricBrowserRuntimePresentation {
     }
 
     function clearWebAuthRequest(cancelRequest) {
+        var host = webAuthPrompt.hostWindow
         var request = window.pendingWebAuthRequest
         var hadRequest = !!request
         var ui = window.pendingWebAuthUi || browserUi
@@ -637,7 +641,7 @@ FerricBrowserRuntimePresentation {
             window.resolveQtRequest(ui, request, "webauth", "cancel", [])
         }
         if (hadRequest) {
-            window.restoreOverlayFocus()
+            window.restoreOverlayFocus(host)
         }
         window.completeNativePromptLease(ui, leaseToken, view)
         return hadRequest ? ui : null
@@ -754,6 +758,7 @@ FerricBrowserRuntimePresentation {
     }
 
     function clearContextMenuRequest(preserveHintPalettePermit) {
+        var host = window.pendingContextMenuHost
         var request = window.pendingContextMenuRequest
         var hadRequest = !!request
         var view = window.pendingContextMenuView
@@ -771,7 +776,7 @@ FerricBrowserRuntimePresentation {
         window.contextMenuItems = []
         contextMenu.close()
         if (hadRequest) {
-            window.restoreOverlayFocus()
+            window.restoreOverlayFocus(host)
         }
         window.completeNativePromptLease(requestUi || browserUi, leaseToken, view)
     }
@@ -1145,34 +1150,46 @@ FerricBrowserRuntimePresentation {
         return count
     }
 
-    function showNextPermissionPrompt() {
-        var queue = window.permissionPromptQueue
+    function clearDisplayedPermissionPrompt() {
         var wasVisible = window.permissionPromptVisible
-        if (!queue || queue.length === 0) {
-            var leaseToken = window.pendingPermissionLeaseToken
-            var leaseUi = window.permissionLeaseUi || browserUi
-            var leaseView = window.permissionLeaseView
-            window.permissionPromptVisible = false
-            window.pendingPermissionRequest = null
-            window.pendingPermissionUi = null
-            window.pendingPermissionLeaseToken = ""
-            window.pendingPermissionView = null
-            window.permissionLeaseUi = null
-            window.permissionLeaseView = null
-            window.pendingPermissionTabIndex = -1
-            window.pendingPermissionOrigin = ""
-            window.pendingPermissionName = ""
-            window.pendingPermissionPrivate = false
-            window.pendingPermissionGroupCount = 0
-            window.pendingPermissionHost = null
-            permissionPromptExpiry.stop()
-            if (wasVisible) {
-                window.restoreOverlayFocus()
-            }
-            window.completeNativePromptLease(leaseUi, leaseToken, leaseView)
-            return
+        var host = window.pendingPermissionHost || window
+        var leaseToken = window.pendingPermissionLeaseToken
+        var leaseUi = window.permissionLeaseUi || browserUi
+        var leaseView = window.permissionLeaseView
+        window.permissionPromptVisible = false
+        window.pendingPermissionRequest = null
+        window.pendingPermissionUi = null
+        window.pendingPermissionLeaseToken = ""
+        window.pendingPermissionView = null
+        window.permissionLeaseUi = null
+        window.permissionLeaseView = null
+        window.pendingPermissionTabIndex = -1
+        window.pendingPermissionOrigin = ""
+        window.pendingPermissionName = ""
+        window.pendingPermissionPrivate = false
+        window.pendingPermissionGroupCount = 0
+        window.pendingPermissionHost = null
+        permissionPromptExpiry.stop()
+        if (wasVisible) {
+            window.restoreOverlayFocus(host)
         }
-        var group = queue[0]
+        window.completeNativePromptLease(leaseUi, leaseToken, leaseView)
+    }
+
+    function showNextPermissionPrompt() {
+        var queue = window.permissionPromptQueue || []
+        var group = queue.length > 0 ? queue[0] : null
+        var wasVisible = window.permissionPromptVisible
+        // A queued prompt may belong to a different profile or window. Retire
+        // the old focus return and input lease before displaying its successor.
+        if (!group || (wasVisible && (window.permissionLeaseUi !== group.ui
+                || window.permissionLeaseView !== (group.view || null)
+                || window.pendingPermissionHost !== (group.host || window)
+                || window.pendingPermissionTabIndex !== group.tabIndex))) {
+            window.clearDisplayedPermissionPrompt()
+            wasVisible = false
+        }
+        if (!group) return
         window.pendingPermissionRequest = group.requests[0] || null
         window.pendingPermissionUi = group.ui
         window.pendingPermissionView = group.view || null
@@ -1183,7 +1200,7 @@ FerricBrowserRuntimePresentation {
         window.pendingPermissionGroupCount = group.requests.length
         window.pendingPermissionHost = group.host || window
         if (!wasVisible) {
-            window.captureOverlayFocus(window.pendingPermissionHost)
+            window.captureOverlayFocus(window.pendingPermissionHost, group.view || null)
             window.permissionLeaseUi = group.ui
             window.permissionLeaseView = group.view || null
             window.pendingPermissionLeaseToken = window.beginNativePromptLease(
@@ -1239,7 +1256,10 @@ FerricBrowserRuntimePresentation {
         var queue = (window.permissionPromptQueue || []).slice(0)
         var groupIndex = -1
         for (var i = 0; i < queue.length; ++i) {
-            if (queue[i].key === key) {
+            if (queue[i].key === key && queue[i].ui === ui
+                    && queue[i].host === (hostWindow || window)
+                    && queue[i].view === (view || null)
+                    && queue[i].tabIndex === tabIndex) {
                 groupIndex = i
                 break
             }
@@ -1425,6 +1445,7 @@ FerricBrowserRuntimePresentation {
     }
 
     function clearDesktopMediaRequest(cancelRequest) {
+        var host = window.pendingDesktopMediaHost
         var request = window.pendingDesktopMediaRequest
         var hadRequest = !!request
         var ui = window.pendingDesktopMediaUi || browserUi
@@ -1440,7 +1461,7 @@ FerricBrowserRuntimePresentation {
         window.desktopMediaPromptVisible = false
         window.desktopMediaOrigin = ""
         if (hadRequest) {
-            window.restoreOverlayFocus()
+            window.restoreOverlayFocus(host)
         }
         window.completeNativePromptLease(ui, leaseToken, view)
         if (cancelRequest && request) {
@@ -1772,6 +1793,7 @@ FerricBrowserRuntimePresentation {
     }
 
     function clearRendererFailureForView(view) {
+        var host = window.rendererFailureHost
         if (!view) {
             return
         }
@@ -1784,12 +1806,13 @@ FerricBrowserRuntimePresentation {
             window.rendererFailureUi = null
             window.rendererFailureTabIndex = -1
             if (wasVisible) {
-                window.restoreOverlayFocus()
+                window.restoreOverlayFocus(host)
             }
         }
     }
 
     function reloadRendererFailure() {
+        var host = window.rendererFailureHost
         var view = window.rendererFailureView
         var ui = window.rendererFailureUi || browserUi
         if (!view) {
@@ -1803,7 +1826,7 @@ FerricBrowserRuntimePresentation {
         window.rendererFailureVisible = false
         view.rendererFailed = false
         view.reload()
-        window.restoreOverlayFocus()
+        window.restoreOverlayFocus(host)
         ui.status_text = window.rendererFailureCount > 1
                 ? "Renderer reload requested; repeated crashes will not auto-reload"
                 : "Renderer reload requested"
@@ -1825,7 +1848,7 @@ FerricBrowserRuntimePresentation {
             view.rendererFailed = false
         }
         window.rendererFailureVisible = false
-        window.restoreOverlayFocus()
+        window.restoreOverlayFocus(host)
     }
 
     function showRendererFailureDiagnostics() {

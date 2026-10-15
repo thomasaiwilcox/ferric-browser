@@ -2611,12 +2611,109 @@ void ApplicationTests::productPolishWindowSettings() {
     child->close();
 }
 
+void ApplicationTests::productPolishIndependentWindowInput() {
+    QVERIFY(evaluate("testWindow.openEphemeralWindow('rb://blank')").toBool());
+    const auto entry = QString("testWindow.browserWindowRegistry[testWindow.browserWindowRegistry.length-1]");
+    auto child = qobject_cast<QQuickWindow *>(evaluate(entry + ".host").value<QObject *>());
+    QVERIFY(child);
+    QTRY_VERIFY(!evaluate(entry + ".ui.profile_bootstrap_pending").toBool());
+    QVERIFY(command("settings"));
+    QTRY_VERIFY(evaluate("testWindow.settingsVisible").toBool());
+    evaluate("testWindow.settingsSearch='primary draft'");
+    child->requestActivate();
+    QTRY_VERIFY(child->isActive());
+    evaluate(entry + ".host.activeView.forceActiveFocus()");
+    QVERIFY(evaluate(entry + ".host.browserKeyFocusActive").toBool());
+    QTest::keyClick(child, Qt::Key_Colon);
+    QTRY_COMPARE(evaluate(entry + ".ui.mode").toString(), QString("command"));
+    QTest::keyClick(child, Qt::Key_Escape);
+    QTRY_COMPARE(evaluate(entry + ".ui.mode").toString(), QString("normal"));
+    QVERIFY(evaluate("testWindow.settingsVisible").toBool());
+    QCOMPARE(evaluate("testWindow.settingsSearch").toString(), QString("primary draft"));
+    evaluate(entry + ".ui.enter_command()");
+    evaluate(entry + ".host.submitInteractiveCommand('settings')");
+    auto workspace = child->findChild<QObject *>("secondarySettingsWorkspace");
+    QVERIFY(workspace);
+    QTRY_VERIFY(workspace->property("settingsVisible").toBool());
+    auto search = child->findChild<QQuickItem *>("settingsSearchInput");
+    QVERIFY(search);
+    QTRY_VERIFY(search->hasActiveFocus());
+    window->requestActivate();
+    QTRY_VERIFY(window->isActive());
+    key(Qt::Key_Escape);
+    QTRY_VERIFY(!evaluate("testWindow.settingsVisible").toBool());
+    QVERIFY(workspace->property("settingsVisible").toBool());
+    child->requestActivate();
+    QTRY_VERIFY(child->isActive());
+    QTRY_VERIFY(search->hasActiveFocus());
+    QTest::keyClick(child, Qt::Key_Escape);
+    QTRY_VERIFY(!workspace->property("settingsVisible").toBool());
+    evaluate(entry + ".host.windowShutdownApproved=true");
+    child->close();
+}
+
+void ApplicationTests::productPolishPermissionWindowOwnership_data() {
+    QTest::addColumn<bool>("closeQueued");
+    QTest::newRow("handoff") << false;
+    QTest::newRow("close-queued-window") << true;
+}
+void ApplicationTests::productPolishPermissionWindowOwnership() {
+    QFETCH(bool, closeQueued);
+    QVERIFY(evaluate("testWindow.browserUi.create_profile('permission-owner','Permission owner')").toBool());
+    QTRY_COMPARE(text("profile_action_state"), QString("succeeded"));
+    evaluate("testWindow.openProfile('permission-owner','Permission owner'," + quoted(text("current_url")) + ")");
+    const auto entry = QString("testWindow.browserWindowRegistry[testWindow.browserWindowRegistry.length-1]");
+    QTRY_VERIFY(evaluate("testWindow.browserWindowRegistry.length>1").toBool());
+    auto child = qobject_cast<QQuickWindow *>(evaluate(entry + ".host").value<QObject *>());
+    QVERIFY(child);
+    QTRY_VERIFY(!evaluate(entry + ".ui.profile_bootstrap_pending").toBool());
+    const auto request = QString("navigator.geolocation.getCurrentPosition(()=>window.geoResult='allowed',()=>window.geoResult='denied');true");
+    QVERIFY(page(request).toBool());
+    QTRY_VERIFY(evaluate("testWindow.permissionPromptVisible").toBool());
+    QVERIFY(evaluate("testWindow.pendingPermissionUi===testWindow.browserUi").toBool());
+    pageReceiver = entry + ".host.activeView";
+    QTRY_VERIFY(page("document.getElementById('button')!==null").toBool());
+    QVERIFY(page(request).toBool());
+    QTRY_COMPARE(evaluate("testWindow.permissionPromptQueue.length").toInt(), 2);
+    QCOMPARE(evaluate("testWindow.pendingPermissionGroupCount").toInt(), 1);
+    if (closeQueued) {
+        evaluate(entry + ".host.windowShutdownApproved=true");
+        child->close();
+        QTRY_COMPARE(evaluate("testWindow.permissionPromptQueue.length").toInt(), 1);
+        QVERIFY(evaluate("testWindow.pendingPermissionUi===testWindow.browserUi").toBool());
+        QVERIFY(evaluate("testWindow.permissionPromptVisible").toBool());
+        evaluate("testWindow.decidePermission(false,'')");
+        QTRY_VERIFY(!evaluate("testWindow.permissionPromptVisible").toBool());
+        pageReceiver = "testWindow.activeWebView()";
+        QTRY_COMPARE(page("window.geoResult").toString(), QString("denied"));
+        return;
+    }
+    evaluate("testWindow.decidePermission(false,'')");
+    QTRY_VERIFY(evaluate("testWindow.pendingPermissionUi===" + entry + ".ui").toBool());
+    QVERIFY(evaluate("testWindow.pendingPermissionHost===" + entry + ".host").toBool());
+    QTRY_VERIFY(!evaluate("testWindow.nativePromptActiveFor(testWindow.browserUi)").toBool());
+    QTRY_VERIFY(evaluate("testWindow.browserKeyFocusActive").toBool());
+    QVERIFY(evaluate("testWindow.nativePromptActiveFor(" + entry + ".ui)").toBool());
+    QVERIFY(!evaluate(entry + ".host.browserKeyFocusActive").toBool());
+    evaluate("testWindow.decidePermission(false,'')");
+    QTRY_VERIFY(!evaluate("testWindow.permissionPromptVisible").toBool());
+    QTRY_COMPARE(page("window.geoResult").toString(), QString("denied"));
+    QTRY_VERIFY(evaluate(entry + ".host.browserKeyFocusActive").toBool());
+    pageReceiver = "testWindow.activeWebView()";
+    QTRY_COMPARE(page("window.geoResult").toString(), QString("denied"));
+    evaluate(entry + ".host.windowShutdownApproved=true");
+    child->close();
+}
+
 void ApplicationTests::productPolishUserscriptFeedback() {
     QTRY_VERIFY(!evaluate("testWindow.browserUi.profile_bootstrap_pending").toBool());
     QVERIFY(command("settings"));
     QTRY_VERIFY(evaluate("testWindow.settingsVisible").toBool());
     auto workspace = window->findChild<QObject *>("primarySettingsWorkspace");
     QVERIFY(workspace);
+    auto scriptsTab = window->findChild<QQuickItem *>("settingsScriptsTab");
+    QVERIFY(scriptsTab);
+    QVERIFY(QMetaObject::invokeMethod(scriptsTab, "click"));
     QFile source(directory.filePath("toggle_owner.js"));
     QVERIFY(source.open(QIODevice::WriteOnly));
     source.write("void 0;"); source.close();

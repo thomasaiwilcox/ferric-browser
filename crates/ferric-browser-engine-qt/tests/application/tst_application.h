@@ -84,6 +84,9 @@ class ApplicationTests final : public QObject {
     void productPolishManagementSurfaces();
     void productPolishWindowSettings_data();
     void productPolishWindowSettings();
+    void productPolishIndependentWindowInput();
+    void productPolishPermissionWindowOwnership_data();
+    void productPolishPermissionWindowOwnership();
     void productPolishUserscriptFeedback();
     void productPolishWindowClose_data();
     void productPolishWindowClose();

@@ -236,7 +236,9 @@ fn normal_input_uses_logical_unmodified_text_and_preserves_unicode_fields() {
     assert!(qml.contains("secondaryKeyRouter.acceptCurrentEvent()"));
     assert!(qml.contains("readonly property bool browserChromeInputActive:"));
     assert!(qml.contains("browserUi.external_navigation_visible"));
-    assert!(qml.contains("window.pendingContextMenuRequest !== null"));
+    assert!(qml.contains("window.presentedPromptActiveFor(browserUi)"));
+    assert!(qml.contains("window.pendingContextMenuUi === ui"));
+    assert!(qml.contains("!!window.pendingContextMenuRequest"));
     assert!(qml.contains("browserUi.mode === \"insert\""));
     assert!(qml.contains("browserUi.mode === \"pass-through\""));
     assert!(qml.contains("focusOverlayController.restoreModeFocus()"));

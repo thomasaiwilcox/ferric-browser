@@ -40,6 +40,7 @@ Item {
         if (["pending", "removing", "updating"].indexOf(operation) >= 0)
             applyScriptState(operation);
         state.settingsVisible = true;
+        surface.focusInitialControl();
     }
     function close() {
         if (!state.settingsVisible)
@@ -89,7 +90,7 @@ Item {
     }
     function applySetting(row, value) {
         if (!browserUi.set_runtime_setting(row.key, settingLiteral(row, value), state.settingsTemporary || transientProfile)) {
-            showNotice("This setting couldn't be applied. Review the value and try again.", browserUi.runtime_setting_error, true);
+            showNotice("Couldn't apply this value.", browserUi.runtime_setting_error, true);
             return false;
         }
         showNotice("Change requested for " + row.key + (state.settingsTemporary || transientProfile ? " for this session" : " for this profile"));
@@ -98,7 +99,7 @@ Item {
     }
     function resetSetting(row) {
         if (!browserUi.unset_runtime_setting(row.key, state.settingsTemporary || transientProfile)) {
-            showNotice("This setting couldn't be reset. Try again.", browserUi.runtime_setting_error, true);
+            showNotice("Couldn't reset this setting.", browserUi.runtime_setting_error, true);
             return false;
         }
         showNotice("Reset requested for " + row.key);
@@ -151,7 +152,7 @@ Item {
             showNotice(operation === "installed" ? "Userscript installed" : operation === "removed" ? "Userscript removed" : operation === "enabled" ? "Userscript enabled. It applies on the next navigation." : "Userscript disabled. It applies on the next navigation.");
         } else if (operation.indexOf("error:") === 0) {
             surface.clearUserscriptOverrides();
-            showNotice("The userscript change couldn't be completed. Review the details and try again.", operation.substring(6), true);
+            showNotice("Couldn't update the script. Try again.", operation.substring(6), true);
         }
     }
 

@@ -34,20 +34,34 @@ QtObject {
         stack.push({ host: host, target: target, fallback: fallbackTarget || null })
         focusReturnStack = stack
     }
-    function restoreOverlayFocus() {
+    function restoreOverlayFocus(hostWindow) {
         if (browserWindow.runtimeDisposing === true) {
             focusReturnStack = []; pendingFocusReturns = []
             overlayTimer.stop(); modeTimer.stop()
             return
         }
+        var host = hostWindow || browserWindow
         var stack = focusReturnStack.slice(0)
-        var entry = stack.length > 0 ? stack.pop() : null
+        var entry = null
+        // Windows dismiss overlays independently. Keep nesting within each
+        // host, without consuming another window's pending focus return.
+        for (var index = stack.length - 1; index >= 0; --index) {
+            if (stack[index].host === host) {
+                entry = stack.splice(index, 1)[0]
+                break
+            }
+        }
         focusReturnStack = stack
         if (!entry || !entry.host || entry.host.runtimeReleased === true) return
         var pending = pendingFocusReturns.slice(0)
         pending.push(entry)
         pendingFocusReturns = pending
         overlayTimer.restart()
+    }
+    function discardHost(hostWindow) {
+        focusReturnStack = focusReturnStack.filter(function(entry) { return entry.host !== hostWindow })
+        pendingFocusReturns = pendingFocusReturns.filter(function(entry) { return entry.host !== hostWindow })
+        if (pendingFocusReturns.length === 0) overlayTimer.stop()
     }
     function applyOverlayFocus() {
         var pending = pendingFocusReturns
@@ -81,7 +95,8 @@ QtObject {
         var target = pendingModeFocusTarget
         pendingModeFocusTarget = null
         // A command can open a modal immediately before leaving command mode.
-        if (browserWindow.runtimeDisposing === true || focusReturnStack.length > 0) return
+        if (browserWindow.runtimeDisposing === true
+                || focusReturnStack.some(function(entry) { return entry.host === browserWindow })) return
         if (focusTargetAvailable(target)) target.forceActiveFocus()
         else {
             var view = browserWindow.activeWebView()

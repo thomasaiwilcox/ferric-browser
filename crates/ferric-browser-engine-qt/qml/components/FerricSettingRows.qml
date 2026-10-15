@@ -7,6 +7,7 @@ Item {
     id: settingRows
     required property var browserWindow
     required property var settingsModel
+    readonly property int count: settingsList.count
     implicitHeight: settingsList.contentHeight
     signal applyRequested(var row, var value)
     signal resetRequested(var row)

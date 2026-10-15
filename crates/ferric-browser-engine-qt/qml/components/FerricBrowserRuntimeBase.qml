@@ -704,6 +704,13 @@ ApplicationWindow {
                 return true
             }
         }
+        return window.presentedPromptActiveFor(ui)
+    }
+
+    // Bindings need observable presentation properties. The opaque runtime
+    // lease query remains in nativePromptActiveFor for each dispatched key.
+    function presentedPromptActiveFor(ui) {
+        if (!ui) return false
         return (window.pendingFileDialogUi === ui
                     && (!!window.pendingFileDialogRequest
                         || window.pendingFileDialogLeaseToken.length > 0))
@@ -735,8 +742,12 @@ ApplicationWindow {
         focusOverlayController.captureOverlayFocus(hostWindow, fallbackTarget)
     }
 
-    function restoreOverlayFocus() {
-        focusOverlayController.restoreOverlayFocus()
+    function restoreOverlayFocus(hostWindow) {
+        focusOverlayController.restoreOverlayFocus(hostWindow || window)
+    }
+
+    function discardOverlayFocus(hostWindow) {
+        focusOverlayController.discardHost(hostWindow || window)
     }
 
     function captureModeFocus() {
@@ -1792,7 +1803,7 @@ ApplicationWindow {
         || window.applicationShutdownForcePromptVisible
         || window.devToolsVisible
         || window.journeyExportPreviewVisible
-        || window.rendererFailureVisible
+        || (window.rendererFailureVisible && (window.rendererFailureHost || window) === window)
         || window.recoveryAvailable
         || window.rapidHintConfirmationVisible
         || browserUi.navigation_failure_visible
@@ -1804,8 +1815,6 @@ ApplicationWindow {
         || window.profileManagerVisible
         || window.profileDeletePreviewVisible
         || window.downloadManagerVisible
-        || window.permissionPromptVisible
-        || window.desktopMediaPromptVisible
         || window.shutdownConfirmationVisible
         || window.shutdownPromptVisible
         || window.shutdownPagePromptVisible
@@ -1819,12 +1828,7 @@ ApplicationWindow {
         || window.linkPreviewVisible
         || window.siteDataClearPending
         || browserUi.external_navigation_visible
-        || window.pendingPageDialogRequest !== null
-        || window.pendingAuthenticationRequest !== null
-        || window.pendingClientCertificateSelection !== null
-        || window.pendingCertificateError !== null
-        || window.pendingWebAuthRequest !== null
-        || window.pendingContextMenuRequest !== null
+        || window.presentedPromptActiveFor(browserUi)
     property bool caretSelecting: false
     property bool blocklistInstallFailed: false
     property string blocklistInstallError: ""
