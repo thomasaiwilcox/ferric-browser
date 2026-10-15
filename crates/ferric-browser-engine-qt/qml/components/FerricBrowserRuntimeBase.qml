@@ -1544,12 +1544,9 @@ ApplicationWindow {
     property string reopenWindowConfirmationAction: ""
     property var reopenWindowConfirmationUi: null
     property var reopenWindowConfirmationHost: null
-    property string pendingDeleteName: ""
     property bool profileManagerVisible: false
-    property int profileRefreshAttempts: 0
     property bool profileDeletePreviewVisible: false
     property string profileDeleteName: ""
-    property string profileDeletePreviewText: ""
     property bool downloadManagerVisible: false
     property var downloadSamples: ({})
     property var spellcheckInventory: []
@@ -1973,9 +1970,6 @@ ApplicationWindow {
             }
             if (consumed && window.downloadManagerVisible) {
                 window.refreshDownloads()
-            }
-            if (consumed && window.sessionManagerVisible) {
-                window.refreshSessions()
             }
             if (consumed && window.libraryManagerVisible) {
                 window.refreshLibraryManager()

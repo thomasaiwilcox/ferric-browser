@@ -28,6 +28,7 @@ const ADAPTER_SOURCE: &str = concat!(
     include_str!("browser_ui_library.rs"),
     include_str!("browser_ui_journey_commands.rs"),
     include_str!("browser_ui_maintenance.rs"),
+    include_str!("browser_ui_management_feedback.rs"),
     include_str!("browser_ui_navigation.rs"),
     include_str!("browser_ui_navigation_lifecycle.rs"),
     include_str!("browser_ui_process_actions.rs"),

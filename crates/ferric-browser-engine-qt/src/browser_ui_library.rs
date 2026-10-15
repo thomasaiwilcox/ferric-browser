@@ -1,7 +1,8 @@
 use super::{
-    Arc, AtomicBool, BrowserApplication, CxxQtType, Event, JourneyReopenRecord, Ordering, Pin,
-    QString, StorageCompletion, StorageRequest, SwitcherLibraryIndexResult, SwitcherQueryCache,
-    build_switcher_library_index, elapsed_ms, qobject, safe_ipc_url, switcher_max_results, thread,
+    Arc, AtomicBool, BrowserApplication, CxxQtType, Event, FeedbackLane, FeedbackState,
+    JourneyReopenRecord, Ordering, Pin, QString, StorageCompletion, StorageRequest,
+    SwitcherLibraryIndexResult, SwitcherQueryCache, build_switcher_library_index, elapsed_ms,
+    qobject, safe_ipc_url, switcher_max_results, thread,
 };
 
 impl qobject::BrowserUi {
@@ -242,51 +243,58 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn request_session_names(mut self: Pin<&mut Self>) {
-        let request = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            if !this.session_names_dirty.get() {
-                return;
-            }
-            // Private and ephemeral sessions have no durable session catalog.
-            // Keep this explicit so a future in-memory session implementation
-            // cannot accidentally route transient metadata to disk.
-            let transient_profile = this.state.as_ref().and_then(|state| {
+        if !self.as_ref().rust().session_names_dirty.get()
+            || self.as_ref().rust().session_names_pending
+        {
+            return;
+        }
+        let context = {
+            let pinned = self.as_ref();
+            let rust = pinned.rust();
+            let transient = rust.state.as_ref().and_then(|state| {
                 let tab = state.active_tab()?;
                 state
                     .profiles()
                     .get(&tab.profile)
                     .map(|profile| profile.privacy.is_transient())
             }) == Some(true);
-            if transient_profile {
-                this.session_names.clear();
-                this.session_names_dirty.set(false);
-                return;
+            if transient {
+                None
+            } else {
+                rust.session_state_root.clone().zip(rust.profile_id)
             }
-            let Some(root) = this.session_state_root.clone() else {
-                this.session_names_dirty.set(false);
-                return;
-            };
-            let Some(profile_id) = this.profile_id else {
-                this.session_names_dirty.set(false);
-                return;
-            };
-            drop(rust);
-            Some(
-                self.as_mut()
-                    .submit_storage(StorageRequest::SessionList { root, profile_id }),
-            )
         };
-        if let Some(Err(error)) = request
-            && !matches!(
-                error,
-                ferric_browser_storage::StorageWorkerError::Busy
-                    | ferric_browser_storage::StorageWorkerError::QueueFull
-            )
+        let Some((root, profile_id)) = context else {
+            let mut rust = self.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            this.session_names.clear();
+            this.session_names_dirty.set(false);
+            drop(rust);
+            self.as_mut()
+                .set_session_names_values(super::QStringList::default());
+            self.as_mut().set_session_names_pending(false);
+            return;
+        };
+        match self
+            .as_mut()
+            .submit_storage(StorageRequest::SessionList { root, profile_id })
         {
-            self.set_status_text(QString::from(format!(
-                "Session catalog unavailable: {error}"
-            )));
+            Ok(()) => {
+                self.as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .session_names_refresh_again = false;
+                self.as_mut().set_session_names_error(QString::default());
+                self.as_mut().set_session_names_pending(true);
+            }
+            Err(error) => {
+                self.as_mut()
+                    .set_session_names_error(QString::from(error.to_string()));
+                self.as_mut().set_status_text(QString::from(format!(
+                    "Session catalog unavailable: {error}"
+                )));
+            }
         }
     }
 
@@ -413,12 +421,24 @@ impl qobject::BrowserUi {
             consumed = true;
             match result {
                 Ok(()) => {
-                    self.as_ref().rust().session_names_dirty.set(true);
+                    self.as_mut().invalidate_session_catalog();
                     self.as_mut().request_session_names();
+                    self.as_mut().publish_management_feedback(
+                        FeedbackLane::SessionDelete,
+                        FeedbackState::Succeeded,
+                        "Saved session deleted. Open tabs are kept.",
+                        "",
+                    );
                     self.as_mut()
                         .set_status_text(QString::from("Session deleted"));
                 }
                 Err(error) => {
+                    self.as_mut().publish_management_feedback(
+                        FeedbackLane::SessionDelete,
+                        FeedbackState::Failed,
+                        "The saved session couldn't be deleted. Review the details and try again.",
+                        &error,
+                    );
                     self.as_mut().set_status_text(QString::from(format!(
                         "Session deletion failed: {error}"
                     )));
@@ -437,7 +457,6 @@ impl qobject::BrowserUi {
                 Ok(()) => {
                     let mut rust = self.as_mut().rust_mut();
                     let this = rust.as_mut().get_mut();
-                    this.session_names_dirty.set(true);
                     if checkpoint_save {
                         this.checkpoint.dirty = false;
                         this.checkpoint.dirty_since_ms = None;
@@ -445,6 +464,16 @@ impl qobject::BrowserUi {
                         this.checkpoint.last_saved_ms = elapsed_ms(this.binding_clock);
                     }
                     drop(rust);
+                    self.as_mut().invalidate_session_catalog();
+                    if !checkpoint_save {
+                        self.as_mut().request_session_names();
+                        self.as_mut().publish_management_feedback(
+                            FeedbackLane::SessionSave,
+                            FeedbackState::Succeeded,
+                            "Session saved",
+                            "",
+                        );
+                    }
                     self.as_mut()
                         .set_status_text(QString::from(if checkpoint_save {
                             "Session checkpoint saved"
@@ -453,6 +482,14 @@ impl qobject::BrowserUi {
                         }));
                 }
                 Err(error) => {
+                    if !checkpoint_save {
+                        self.as_mut().publish_management_feedback(
+                            FeedbackLane::SessionSave,
+                            FeedbackState::Failed,
+                            "The session couldn't be saved. Your open tabs are kept.",
+                            &error,
+                        );
+                    }
                     self.as_mut().set_status_text(QString::from(format!(
                         "Session snapshot failed; changes retained: {error}"
                     )));
@@ -535,6 +572,8 @@ impl qobject::BrowserUi {
             } else {
                 match result {
                     Ok(snapshot) if !snapshot.entries.is_empty() => {
+                        self.as_mut()
+                            .publish_session_preview_rows(&snapshot.entries);
                         let contents = snapshot
                             .entries
                             .iter()
@@ -555,9 +594,13 @@ impl qobject::BrowserUi {
                     }
                     Ok(_) => {
                         self.as_mut()
+                            .set_session_preview(QString::from("ERROR\tSaved session is empty"));
+                        self.as_mut()
                             .set_status_text(QString::from("Saved session is empty"));
                     }
                     Err(error) => {
+                        self.as_mut()
+                            .set_session_preview(QString::from(format!("ERROR\t{error}")));
                         self.as_mut().set_status_text(QString::from(format!(
                             "Session preview rejected: {error}"
                         )));
@@ -567,17 +610,38 @@ impl qobject::BrowserUi {
         }
         if let Some(result) = session_result {
             consumed = true;
-            match result {
-                Ok(names) => {
-                    let mut rust = self.as_mut().rust_mut();
-                    let this = rust.as_mut().get_mut();
-                    this.session_names = names;
-                    this.session_names_dirty.set(false);
-                }
-                Err(error) => {
-                    self.as_mut().set_status_text(QString::from(format!(
-                        "Session catalog query failed: {error}"
-                    )));
+            let refresh_again = self.as_ref().rust().session_names_refresh_again;
+            self.as_mut().set_session_names_pending(false);
+            if refresh_again {
+                // The read started before a successful mutation. Never publish
+                // that older catalog over the mutation's newer state.
+                self.as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .session_names_refresh_again = false;
+                self.as_mut().request_session_names();
+            } else {
+                match result {
+                    Ok(names) => {
+                        let values = names
+                            .iter()
+                            .map(|name| QString::from(name.as_str()))
+                            .collect();
+                        let mut rust = self.as_mut().rust_mut();
+                        let this = rust.as_mut().get_mut();
+                        this.session_names = names;
+                        this.session_names_dirty.set(false);
+                        drop(rust);
+                        self.as_mut().set_session_names_error(QString::default());
+                        self.as_mut().set_session_names_values(values);
+                    }
+                    Err(error) => {
+                        self.as_mut().set_session_names_error(QString::from(&error));
+                        self.as_mut().set_status_text(QString::from(format!(
+                            "Session catalog query failed: {error}"
+                        )));
+                    }
                 }
             }
         }

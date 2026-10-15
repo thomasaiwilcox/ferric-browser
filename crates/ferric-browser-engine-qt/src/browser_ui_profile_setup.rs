@@ -127,6 +127,8 @@ impl qobject::BrowserUi {
                 return;
             }
         };
+        self.as_mut().clear_session_preview_rows();
+        self.as_mut().reset_management_feedback();
         let profile_id = effect.profile.id;
         let session_path = effect.session_path;
         let session_state_root = effect.session_state_root;
@@ -260,6 +262,8 @@ impl qobject::BrowserUi {
             this.private_history_next_id = -1;
             this.session_names.clear();
             this.session_names_dirty.set(true);
+            this.session_names_refresh_again = false;
+            this.profile_list_refresh_again = false;
             this.session_restore_preview_pending = false;
             this.session_restore_load_append = None;
             this.session_restore_recovery_pending = false;

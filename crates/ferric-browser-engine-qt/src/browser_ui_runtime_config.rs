@@ -2,9 +2,9 @@ use super::browser_ui_state::PendingSelectorAction;
 use super::selector_validation::selector_validation_items;
 use super::{
     Config, ConfigReadOperation, ConfigReloadWorker, ConfigWriteWorker, ConfigurationLayers,
-    CxxQtType, Duration, HyprlandResponse, HyprlandWorker, Instant, NetworkPolicyWorker,
-    ParseInput, ParsedCommand, PathBuf, Pin, PortalProbeWorker, PrintWorker, ProfileDeleteWorker,
-    ProfileListWorker, ProfileMutationResult, ProfilePreviewWorker, QString,
+    CxxQtType, Duration, FeedbackLane, FeedbackState, HyprlandResponse, HyprlandWorker, Instant,
+    NetworkPolicyWorker, ParseInput, ParsedCommand, PathBuf, Pin, PortalProbeWorker, PrintWorker,
+    ProfileDeleteWorker, ProfileListWorker, ProfileMutationResult, ProfilePreviewWorker, QString,
     ReducedMotionProbeWorker, RuntimeOverrides, SiteExperiment, SystemFontScaleProbeWorker,
     UserscriptManagerResult, UserscriptManagerWorker, Value, cleanup_print_artifact,
     configured_bindings, desktop_portals, desktop_preferences, parse_chain, parse_ipc_mode,
@@ -265,6 +265,21 @@ impl qobject::BrowserUi {
                 .as_mut()
                 .and_then(ProfileListWorker::poll)
         };
+        let profile_list_result =
+            if self.as_ref().rust().profile_list_refresh_again && profile_list_result.is_some() {
+                self.as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .profile_list_refresh_again = false;
+                self.as_mut().set_profile_values_pending(false);
+                let command_request = self.as_ref().rust().profile_list_command_pending;
+                self.as_mut()
+                    .request_profile_list_with_mode(command_request);
+                None
+            } else {
+                profile_list_result
+            };
         if let Some(result) = profile_list_result {
             let command_request = self.as_ref().rust().profile_list_command_pending;
             let pending_profile_open = self
@@ -296,6 +311,7 @@ impl qobject::BrowserUi {
             self.as_mut().set_profile_values_pending(false);
             match result {
                 Ok(values) => {
+                    self.as_mut().set_profile_list_error(QString::default());
                     let status_values = values.clone();
                     self.as_mut().set_profile_values(QString::from(values));
                     if let Some((name, url)) = pending_profile_open {
@@ -374,7 +390,7 @@ impl qobject::BrowserUi {
                     }
                 }
                 Err(error) => {
-                    self.as_mut().set_profile_values(QString::default());
+                    self.as_mut().set_profile_list_error(QString::from(&error));
                     self.as_mut().set_status_text(QString::from(format!(
                         "Profile list unavailable: {error}"
                     )));
@@ -392,10 +408,14 @@ impl qobject::BrowserUi {
         if let Some(result) = profile_preview_result {
             self.as_mut().set_profile_preview_pending(false);
             match result {
-                Ok(preview) => self
-                    .as_mut()
-                    .set_profile_preview_text(QString::from(preview)),
+                Ok(preview) => {
+                    self.as_mut().set_profile_preview_error(QString::default());
+                    self.as_mut()
+                        .set_profile_preview_text(QString::from(preview));
+                }
                 Err(error) => {
+                    self.as_mut()
+                        .set_profile_preview_error(QString::from(&error));
                     self.as_mut().set_profile_preview_text(QString::default());
                     self.as_mut().set_status_text(QString::from(format!(
                         "Profile preview unavailable: {error}"
@@ -413,26 +433,32 @@ impl qobject::BrowserUi {
         };
         if let Some(result) = profile_delete_result {
             match result {
-                Ok(ProfileMutationResult::Deleted(outcome)) => {
-                    let suffix = if outcome.cleanup_pending {
-                        " (data cleanup pending; it will resume on next startup)"
-                    } else {
-                        ""
+                Ok(result) => {
+                    let message = match result {
+                        ProfileMutationResult::Created => "Profile created",
+                        ProfileMutationResult::Renamed => "Profile display name updated",
+                        ProfileMutationResult::Deleted(ref outcome) if outcome.cleanup_pending => {
+                            "Profile removed. Remaining profile files will be cleaned up when Ferric next starts. Cookies and website storage stay on disk."
+                        }
+                        ProfileMutationResult::Deleted(_) => {
+                            "Profile metadata deleted. Cookies and website storage stay on disk."
+                        }
                     };
+                    self.as_mut().publish_management_feedback(
+                        FeedbackLane::Profile,
+                        FeedbackState::Succeeded,
+                        message,
+                        "",
+                    );
+                    self.as_mut().set_status_text(QString::from(message));
+                    self.as_mut().refresh_profiles_after_mutation();
+                }
+                Err(error) => {
+                    self.as_mut().publish_management_feedback(FeedbackLane::Profile, FeedbackState::Failed, "The profile change couldn't be completed. Review the details and try again.", &error);
                     self.as_mut().set_status_text(QString::from(format!(
-                        "Profile deleted: {}{suffix}. QtWebEngine storage was not deleted.",
-                        outcome.profile_name
+                        "Profile operation failed: {error}"
                     )));
                 }
-                Ok(ProfileMutationResult::Created) => self
-                    .as_mut()
-                    .set_status_text(QString::from("Profile created")),
-                Ok(ProfileMutationResult::Renamed) => self
-                    .as_mut()
-                    .set_status_text(QString::from("Profile label renamed")),
-                Err(error) => self
-                    .as_mut()
-                    .set_status_text(QString::from(format!("Profile operation failed: {error}"))),
             }
         }
         self.as_mut().poll_config_edit();

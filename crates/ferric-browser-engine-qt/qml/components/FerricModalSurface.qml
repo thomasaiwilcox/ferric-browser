@@ -87,6 +87,15 @@ FocusScope {
         if (surface.visible && surface.dismissOnEscape && event.key === Qt.Key_Escape) {
             event.accepted = true
             surface.dismissRequested()
+        } else if (surface.visible && event.modifiers === Qt.NoModifier
+                   && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)) {
+            var control = surface.hostWindow ? surface.hostWindow.activeFocusItem : null
+            // Use AbstractButton's public activation method so checkboxes,
+            // actions and disabled controls retain their native semantics.
+            if (control && typeof control.click === "function") {
+                event.accepted = true
+                if (!event.isAutoRepeat) control.click()
+            }
         }
     }
 

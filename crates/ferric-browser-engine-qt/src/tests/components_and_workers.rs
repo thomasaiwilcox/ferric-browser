@@ -154,7 +154,6 @@ fn site_ledger_uses_on_demand_redacted_interaction_status() {
     let runtime = include_str!("../../qml/components/FerricBrowserRuntimeServices.qml");
     let projection = include_str!("../browser_ui_query_diagnostics.rs");
     assert!(ledger.contains("On-demand interaction status"));
-    assert!(ledger.contains("recent_action_errors"));
     assert!(ledger.contains("Text.PlainText"));
     assert!(runtime.contains("browserUi.refresh_interaction_status()"));
     assert!(projection.contains("SAFE_INTERACTION_ERROR_CATEGORIES"));
@@ -256,7 +255,6 @@ fn site_ledger_component_renders_data_and_emits_bridge_intents() {
     assert!(qml.contains("signal activeOriginDataClearRequested()"));
     assert!(qml.contains("signal siteDoctorExperimentRequested(string kind)"));
     assert!(qml.contains("signal sanitizedReportCopyRequested(bool includeHost)"));
-    assert!(qml.contains("id: siteReportHost\n                text: \"Include current site host\"\n                checked: false"));
     assert!(site_report.contains("if include_host && !private"));
     assert!(site_report.contains("private_session_data"));
     assert!(!site_report.contains("page_label"));

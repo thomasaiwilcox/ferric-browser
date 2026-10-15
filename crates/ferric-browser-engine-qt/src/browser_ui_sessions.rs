@@ -1,8 +1,9 @@
 use super::{
     CleanLinkResult, ClosedTabDescriptor, ClosedTabSnapshot, ContextMember, CxxQtType, Event,
-    ExistenceState, JourneyEdgeKind, PathBuf, PendingExternalNavigation, Pin, QString, QStringList,
-    RestoreSafety, SessionSnapshot, SnapshotTabInput, SnapshotWindowInput, StorageRequest, Uuid,
-    ValidatedUrl, configured_undo_limit, current_target, elapsed_ms, is_bounded_untrusted_text,
+    ExistenceState, FeedbackLane, FeedbackState, JourneyEdgeKind, PathBuf,
+    PendingExternalNavigation, Pin, QString, QStringList, RestoreSafety, SessionSnapshot,
+    SnapshotTabInput, SnapshotWindowInput, StorageRequest, Uuid, ValidatedUrl,
+    configured_undo_limit, current_target, elapsed_ms, is_bounded_untrusted_text,
     link_preview_presentation, named_session_path, qobject, restore_entry_line,
     sanitize_untrusted_title, unix_timestamp,
 };
@@ -539,6 +540,14 @@ impl qobject::BrowserUi {
         let saved = self
             .as_mut()
             .request_session_snapshot_save(&name.to_string(), path, false);
+        if saved {
+            self.as_mut().publish_management_feedback(
+                FeedbackLane::SessionSave,
+                FeedbackState::Pending,
+                "Saving session…",
+                "",
+            );
+        }
         self.set_status_text(QString::from(if saved {
             "Session save queued"
         } else {
@@ -603,6 +612,60 @@ impl qobject::BrowserUi {
         }
     }
 
+    pub(super) fn clear_session_preview_rows(mut self: Pin<&mut Self>) {
+        self.as_mut()
+            .set_session_preview_labels(QStringList::default());
+        self.as_mut()
+            .set_session_preview_urls(QStringList::default());
+        self.as_mut()
+            .set_session_preview_pinned(QStringList::default());
+        self.as_mut()
+            .set_session_preview_muted(QStringList::default());
+    }
+
+    pub(super) fn publish_session_preview_rows(
+        mut self: Pin<&mut Self>,
+        entries: &[ferric_browser_storage::RestorePlanEntry],
+    ) {
+        self.as_mut().set_session_preview_labels(
+            entries
+                .iter()
+                .map(|entry| {
+                    QString::from(
+                        entry
+                            .url
+                            .as_deref()
+                            .and_then(super::safe_site_origin)
+                            .and_then(|origin| super::safe_site_host(&origin))
+                            .unwrap_or_else(|| match entry.url.as_deref() {
+                                Some("rb://start") => "Start page".into(),
+                                Some("rb://blank" | "about:blank") => "Blank tab".into(),
+                                _ => "Saved tab".into(),
+                            }),
+                    )
+                })
+                .collect(),
+        );
+        self.as_mut().set_session_preview_urls(
+            entries
+                .iter()
+                .map(|entry| QString::from(entry.url.as_deref().unwrap_or_default()))
+                .collect(),
+        );
+        self.as_mut().set_session_preview_pinned(
+            entries
+                .iter()
+                .map(|entry| QString::from(if entry.pinned { "true" } else { "false" }))
+                .collect(),
+        );
+        self.as_mut().set_session_preview_muted(
+            entries
+                .iter()
+                .map(|entry| QString::from(if entry.muted { "true" } else { "false" }))
+                .collect(),
+        );
+    }
+
     pub(super) fn request_session_preview(mut self: Pin<&mut Self>, name: &QString) -> bool {
         if self.as_ref().active_profile_is_transient() {
             self.set_status_text(QString::from(
@@ -629,6 +692,7 @@ impl qobject::BrowserUi {
                 this.session_restore_preview_pending = true;
                 this.session_preview = QString::default();
                 drop(rust);
+                self.as_mut().clear_session_preview_rows();
                 self.set_status_text(QString::from("Loading session preview"));
                 true
             }
@@ -655,6 +719,7 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn list_named_sessions(mut self: Pin<&mut Self>) -> QString {
+        self.as_ref().rust().session_names_dirty.set(true);
         self.as_mut().request_session_names();
         QString::from(self.as_ref().rust().session_names.join("\n"))
     }
@@ -689,6 +754,12 @@ impl qobject::BrowserUi {
         }));
         match result {
             Some(Ok(())) => {
+                self.as_mut().publish_management_feedback(
+                    FeedbackLane::SessionDelete,
+                    FeedbackState::Pending,
+                    "Deleting session…",
+                    "",
+                );
                 self.set_status_text(QString::from("Session deletion queued"));
                 true
             }

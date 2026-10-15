@@ -18,6 +18,11 @@ values, target identities, security decisions and diagnostic/export formats
 retain their existing contracts. Page-provided and user-provided content is
 rendered literally. Optional details stay selectable when useful for support.
 
+Shareable diagnostics use explicit export projections. Live execution records,
+URLs, saved site lists and untrusted server header values do not become report
+fields simply because they appear in a local inspection snapshot. Host
+inclusion remains an explicit, separately validated choice.
+
 The [polish implementation record](../implementation/product-polish-2026-10-15.md)
 tracks the broader audit and qualification; this decision does not claim the
 entire experience has already been polished or qualified.

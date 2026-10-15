@@ -108,6 +108,15 @@ TestCase {
             browserUi: ui; browserWindow: theme; browserHost: host; contentView: mockView
         }
     }
+    Component { id: lifecycleFixture; Loader { sourceComponent: fixture } }
+    function test_guide_focus_callbacks_do_not_outlive_the_view() {
+        failOnWarning(/TypeError|ReferenceError/)
+        var loader = createTemporaryObject(lifecycleFixture, host.contentItem)
+        verify(loader && loader.item)
+        loader.item.guideSurface.focusEntries()
+        loader.active = false
+        wait(0)
+    }
     function init() {
         host.width = 1000; host.height = 760; ui.multipleBindings = false; ui.twoFeatures = false
         ui.start_page_view = "guide"; ui.start_page_revision = 0; ui.navigations = 0

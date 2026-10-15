@@ -154,7 +154,6 @@ pub fn list_named_sessions(
             .flatten()
         })
         .filter(|name| validate_session_name(name).is_ok())
-        .filter(|name| name != "current")
         .collect::<Vec<_>>();
     names.sort_unstable();
     Ok(names)
@@ -244,7 +243,19 @@ pub fn delete_named_session(
     fs::remove_file(&path).map_err(|error| io_error(&path, &error))
 }
 
+fn is_checkpoint_name(name: &str) -> bool {
+    name == "current"
+        || name
+            .strip_prefix("current-")
+            .is_some_and(|id| Uuid::parse_str(id).is_ok())
+}
+
 fn validate_session_name(name: &str) -> Result<(), SessionError> {
+    if is_checkpoint_name(name) {
+        return Err(SessionError::Invalid(
+            "this session name is reserved for automatic recovery".into(),
+        ));
+    }
     if name.is_empty()
         || name.len() > MAX_SESSION_NAME_LENGTH
         || name == "."
@@ -663,6 +674,33 @@ fn io_error(path: &Path, error: &io::Error) -> SessionError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn named_sessions_exclude_and_protect_recovery_checkpoints() {
+        let directory =
+            std::env::temp_dir().join(format!("ferric-session-names-{}", Uuid::new_v4()));
+        let profile = Uuid::new_v4();
+        let folder = directory.join("sessions").join(profile.to_string());
+        fs::create_dir_all(&folder).expect("session fixture");
+        let checkpoint = format!("current-{}", Uuid::new_v4());
+        for name in ["current", checkpoint.as_str(), "work", "current-research"] {
+            fs::write(folder.join(format!("{name}.json")), b"fixture").expect("catalog entry");
+        }
+        assert_eq!(
+            list_named_sessions(&directory, profile).expect("catalog"),
+            ["current-research", "work"]
+        );
+        for name in ["current", checkpoint.as_str()] {
+            assert!(named_session_path(&directory, profile, name).is_err());
+            assert!(delete_named_session(&directory, profile, name).is_err());
+            assert!(folder.join(format!("{name}.json")).exists());
+        }
+        assert_eq!(
+            current_session_paths(&directory, profile),
+            [folder.join(format!("{checkpoint}.json"))]
+        );
+        fs::remove_dir_all(directory).expect("fixture cleanup");
+    }
 
     fn tab(url: &str, safe_get: bool, private: bool) -> SnapshotTabInput {
         SnapshotTabInput {

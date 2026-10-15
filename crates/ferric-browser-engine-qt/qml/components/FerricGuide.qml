@@ -72,7 +72,7 @@ Item {
             next = result.findIndex(function(row) { return row.identity === "mode-enter" })
         entries.currentIndex = next >= 0 ? next : result.findIndex(function(row) { return !row.heading })
         if (!currentRow) readerActive = false
-        Qt.callLater(function() { if (entries.currentIndex >= 0) entries.positionViewAtIndex(entries.currentIndex, ListView.Contain) })
+        positionCurrentTimer.restart()
     }
     function refresh() { browserUi.refresh_guide(searchText); rebuild() }
     function focusEntries() {
@@ -80,9 +80,8 @@ Item {
         readerActive = false
         entries.forceActiveFocus()
         if (entries.currentIndex < 0) move(1)
-        Qt.callLater(function() {
-            if (entries.visible && !readerActive && (entries.focus || (returning && !search.activeFocus && !sectionFilter.activeFocus && !sectionFilter.popup.visible))) entries.forceActiveFocus()
-        })
+        focusEntriesTimer.returning = returning
+        focusEntriesTimer.restart()
     }
     function focusReader() {
         if (!currentRow) return
@@ -90,7 +89,28 @@ Item {
         if (activeTextSelection) activeTextSelection.focus = false
         backToIndex.focus = false; advanced.focus = false
         articlePane.forceActiveFocus()
-        Qt.callLater(function() { if (readerActive && articlePane.visible && !inputActive) articlePane.forceActiveFocus() })
+        focusReaderTimer.restart()
+    }
+    // Owned timers cancel deferred layout/focus work when this view unloads.
+    Timer {
+        id: positionCurrentTimer
+        interval: 0
+        onTriggered: if (entries.currentIndex >= 0) entries.positionViewAtIndex(entries.currentIndex, ListView.Contain)
+    }
+    Timer {
+        id: focusEntriesTimer
+        property bool returning: false
+        interval: 0
+        onTriggered: {
+            if (entries.visible && !guide.readerActive && (entries.focus
+                    || (returning && !search.activeFocus && !sectionFilter.activeFocus && !sectionFilter.popup.visible)))
+                entries.forceActiveFocus()
+        }
+    }
+    Timer {
+        id: focusReaderTimer
+        interval: 0
+        onTriggered: if (guide.readerActive && articlePane.visible && !guide.inputActive) articlePane.forceActiveFocus()
     }
     function move(delta) {
         var next = entries.currentIndex + delta

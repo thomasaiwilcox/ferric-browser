@@ -74,6 +74,7 @@ mod browser_ui_ipc_userscripts;
 mod browser_ui_journey_commands;
 mod browser_ui_library;
 mod browser_ui_maintenance;
+mod browser_ui_management_feedback;
 mod browser_ui_native_prompts;
 mod browser_ui_navigation;
 mod browser_ui_navigation_lifecycle;
@@ -201,6 +202,7 @@ use binding_policy::{
     is_library_command, is_profile_command, is_session_command, learning_mode_request,
     modal_command_prefill, normalize_active_tab_command, parse_ipc_mode, switcher_max_results,
 };
+use browser_ui_management_feedback::{FeedbackLane, FeedbackState};
 #[cfg(test)]
 use browser_ui_state::PermissionLifetimeKey;
 use browser_ui_state::{
@@ -519,7 +521,28 @@ mod qobject {
         #[qproperty(QString, search_text)]
         #[qproperty(bool, search_backward)]
         #[qproperty(QString, session_restore_values)]
+        #[qproperty(QStringList, session_preview_labels)]
+        #[qproperty(QStringList, session_preview_urls)]
+        #[qproperty(QStringList, session_preview_pinned)]
+        #[qproperty(QStringList, session_preview_muted)]
         #[qproperty(QString, session_preview)]
+        #[qproperty(QString, profile_action_id)]
+        #[qproperty(QString, profile_action_state)]
+        #[qproperty(QString, profile_action_message)]
+        #[qproperty(QString, profile_action_detail)]
+        #[qproperty(QString, session_save_id)]
+        #[qproperty(QString, session_save_state)]
+        #[qproperty(QString, session_save_message)]
+        #[qproperty(QString, session_save_detail)]
+        #[qproperty(QString, session_delete_id)]
+        #[qproperty(QString, session_delete_state)]
+        #[qproperty(QString, session_delete_message)]
+        #[qproperty(QString, session_delete_detail)]
+        #[qproperty(QString, profile_list_error)]
+        #[qproperty(QString, profile_preview_error)]
+        #[qproperty(QStringList, session_names_values)]
+        #[qproperty(bool, session_names_pending)]
+        #[qproperty(QString, session_names_error)]
         #[qproperty(QString, profile_values)]
         #[qproperty(bool, profile_values_pending)]
         #[qproperty(QStringList, userscript_names)]
@@ -1992,7 +2015,28 @@ pub struct BrowserUiRust {
     search_text: QString,
     search_backward: bool,
     session_restore_values: QString,
+    session_preview_labels: QStringList,
+    session_preview_urls: QStringList,
+    session_preview_pinned: QStringList,
+    session_preview_muted: QStringList,
     session_preview: QString,
+    profile_action_id: QString,
+    profile_action_state: QString,
+    profile_action_message: QString,
+    profile_action_detail: QString,
+    session_save_id: QString,
+    session_save_state: QString,
+    session_save_message: QString,
+    session_save_detail: QString,
+    session_delete_id: QString,
+    session_delete_state: QString,
+    session_delete_message: QString,
+    session_delete_detail: QString,
+    profile_list_error: QString,
+    profile_preview_error: QString,
+    session_names_values: QStringList,
+    session_names_pending: bool,
+    session_names_error: QString,
     profile_values: QString,
     profile_values_pending: bool,
     userscript_names: QStringList,
@@ -2048,6 +2092,8 @@ pub struct BrowserUiRust {
     switcher_cache: Option<SwitcherQueryCache>,
     session_names: Vec<String>,
     session_names_dirty: Cell<bool>,
+    session_names_refresh_again: bool,
+    profile_list_refresh_again: bool,
     session_restore_preview_pending: bool,
     session_restore_load_append: Option<bool>,
     session_restore_recovery_pending: bool,
@@ -2722,7 +2768,28 @@ impl Default for BrowserUiRust {
             search_text: QString::default(),
             search_backward: false,
             session_restore_values: QString::default(),
+            session_preview_labels: QStringList::default(),
+            session_preview_urls: QStringList::default(),
+            session_preview_pinned: QStringList::default(),
+            session_preview_muted: QStringList::default(),
             session_preview: QString::default(),
+            profile_action_id: QString::default(),
+            profile_action_state: QString::from("idle"),
+            profile_action_message: QString::default(),
+            profile_action_detail: QString::default(),
+            session_save_id: QString::default(),
+            session_save_state: QString::from("idle"),
+            session_save_message: QString::default(),
+            session_save_detail: QString::default(),
+            session_delete_id: QString::default(),
+            session_delete_state: QString::from("idle"),
+            session_delete_message: QString::default(),
+            session_delete_detail: QString::default(),
+            profile_list_error: QString::default(),
+            profile_preview_error: QString::default(),
+            session_names_values: QStringList::default(),
+            session_names_pending: false,
+            session_names_error: QString::default(),
             profile_values: QString::default(),
             profile_values_pending: false,
             userscript_names: QStringList::default(),
@@ -2778,6 +2845,8 @@ impl Default for BrowserUiRust {
             switcher_cache: None,
             session_names: Vec::new(),
             session_names_dirty: Cell::new(true),
+            session_names_refresh_again: false,
+            profile_list_refresh_again: false,
             session_restore_preview_pending: false,
             session_restore_load_append: None,
             session_restore_recovery_pending: false,

@@ -3,6 +3,61 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
 
+// Export only diagnostic outcomes. Live experiment records also contain URLs,
+// tab identities and saved settings; those never belong in a shareable report.
+fn report_experiment_summary(value: &Value) -> Value {
+    let Some(object) = value.as_object() else {
+        return Value::Null;
+    };
+    let kind = object
+        .get("kind")
+        .and_then(Value::as_str)
+        .filter(|kind| {
+            matches!(
+                *kind,
+                "blocking-bypass"
+                    | "compiled-defaults"
+                    | "userscripts-off"
+                    | "fresh-view"
+                    | "blocker-exception"
+            )
+        })
+        .unwrap_or("unknown");
+    let state = object
+        .get("state")
+        .and_then(Value::as_str)
+        .filter(|state| matches!(*state, "pending" | "pending-confirmation" | "applied"))
+        .unwrap_or("unknown");
+    let mut result = serde_json::json!({"kind": kind, "state": state});
+    for key in ["remaining_seconds", "timeout_seconds"] {
+        if let Some(seconds) = object.get(key).and_then(Value::as_u64) {
+            result[key] = Value::from(seconds);
+        }
+    }
+    result
+}
+
+fn report_list_metadata(value: Option<&Value>) -> Value {
+    Value::Array(value.and_then(Value::as_array).into_iter().flatten().map(|entry| {
+        serde_json::json!({
+            "id": entry.get("id").and_then(Value::as_str),
+            "bytes": entry.get("bytes").and_then(Value::as_u64),
+            "etag_present": entry.get("etag_present").and_then(Value::as_bool),
+            "last_modified_present": entry.get("last_modified").is_some_and(Value::is_string)
+        })
+    }).collect())
+}
+
+fn report_status(value: Option<&Value>) -> Value {
+    match value.and_then(Value::as_str) {
+        Some(
+            status @ ("available" | "unavailable" | "unknown" | "not-configured" | "active"
+            | "inactive" | "pending"),
+        ) => Value::String(status.to_owned()),
+        _ => Value::Null,
+    }
+}
+
 impl qobject::BrowserUi {
     pub(super) fn ipc_site_status(&self, params: &Value) -> Result<Value, String> {
         let Some(state) = self.rust().state.as_ref() else {
@@ -317,7 +372,7 @@ impl qobject::BrowserUi {
                             "provenance": object.get("provenance")?,
                             "scope": object.get("scope")?,
                             "apply_time": object.get("apply_time")?,
-                            "status": object.get("value").and_then(Value::as_object).and_then(|value| value.get("status")).cloned().unwrap_or(Value::Null)
+                            "status": report_status(object.get("value").and_then(Value::as_object).and_then(|value| value.get("status")))
                         }))
                     })
                     .collect::<Vec<_>>()
@@ -357,14 +412,13 @@ impl qobject::BrowserUi {
             .get("site_doctor")
             .and_then(Value::as_object)
             .and_then(|doctor| doctor.get("active"))
-            .filter(|active| !active.is_null())
-            .cloned()
+            .map(report_experiment_summary)
             .unwrap_or(Value::Null);
         let last_experiment_result = ledger
             .get("site_doctor")
             .and_then(Value::as_object)
             .and_then(|doctor| doctor.get("last_result"))
-            .cloned()
+            .map(report_experiment_summary)
             .unwrap_or(Value::Null);
         let mut diagnostics = diagnostics::snapshot_with_primary_selection(Some(
             qobject::ferric_browser_primary_selection_available(),
@@ -404,10 +458,7 @@ impl qobject::BrowserUi {
                 "enabled": blocking.get("enabled").cloned().unwrap_or(Value::Null),
                 "security_deny_rules": security_deny_rules,
                 "loaded_list_ids": loaded_lists,
-                "list_metadata": blocking
-                    .get("list_metadata")
-                    .cloned()
-                    .unwrap_or_else(|| serde_json::json!([])),
+                "list_metadata": report_list_metadata(blocking.get("list_metadata")),
                 "active_decision_count": active_decisions,
                 "matched_rule_ids": matched_rule_ids
             },
@@ -510,5 +561,66 @@ impl qobject::BrowserUi {
 
     pub(super) fn ipc_operations_query(&self, params: &Value) -> Result<Value, String> {
         operations_query_value(self.rust(), params)
+    }
+}
+
+#[cfg(test)]
+mod report_tests {
+    use super::{report_experiment_summary, report_list_metadata, report_status};
+    use serde_json::{Value, json};
+
+    #[test]
+    fn experiment_reports_exclude_site_identity_and_saved_configuration() {
+        let summary = report_experiment_summary(&json!({
+            "id": "private-tab-correlation", "kind": "blocking-bypass", "state": "pending",
+            "url": "https://account.example/private?token=secret", "origin": "https://account.example",
+            "remaining_seconds": 12, "timeout_seconds": 30,
+            "mutation": {"before": ["https://other-private.example"], "after": ["https://account.example"]},
+            "command": ["set", "blocking.bypass_sites=['https://account.example']"],
+            "future_unreviewed_field": "sensitive"
+        }));
+        assert_eq!(
+            summary,
+            json!({"kind": "blocking-bypass", "state": "pending", "remaining_seconds": 12, "timeout_seconds": 30})
+        );
+        assert_eq!(report_experiment_summary(&Value::Null), Value::Null);
+    }
+
+    #[test]
+    fn proposal_reports_do_not_export_arbitrary_strings_or_negative_durations() {
+        assert_eq!(
+            report_experiment_summary(&json!({
+                "kind": "blocker-exception", "state": "pending-confirmation",
+                "security_effect": "https://unexpected.example?token=secret"
+            })),
+            json!({"kind": "blocker-exception", "state": "pending-confirmation"})
+        );
+        assert_eq!(
+            report_experiment_summary(&json!({
+                "kind": "https://unexpected.example", "state": "private-context", "timeout_seconds": -1
+            })),
+            json!({"kind": "unknown", "state": "unknown"})
+        );
+    }
+
+    #[test]
+    fn blocklist_reports_exclude_untrusted_server_header_text() {
+        assert_eq!(
+            report_list_metadata(Some(&json!([{
+                "id": "easylist", "bytes": 123, "etag_present": true,
+                "last_modified": "https://private.example/?token=secret",
+                "future_header": "sensitive"
+            }]))),
+            json!([{"id": "easylist", "bytes": 123, "etag_present": true, "last_modified_present": true}])
+        );
+    }
+
+    #[test]
+    fn fact_reports_exclude_free_form_browser_status_text() {
+        assert_eq!(
+            report_status(Some(&json!("Copied https://account.example/?token=secret"))),
+            Value::Null
+        );
+        assert_eq!(report_status(Some(&json!("available"))), json!("available"));
     }
 }

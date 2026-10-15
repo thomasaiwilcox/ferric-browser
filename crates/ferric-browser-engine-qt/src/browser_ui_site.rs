@@ -238,6 +238,22 @@ impl qobject::BrowserUi {
             ));
             return false;
         }
+        let current_origin = self.as_ref().rust().state.as_ref().and_then(|state| {
+            let tab = state.active_tab()?;
+            let profile = state.profiles().get(&tab.profile)?;
+            if profile.privacy.is_transient() {
+                return None;
+            }
+            tab.url.as_deref().and_then(safe_site_origin)
+        });
+        if current_origin.as_deref().is_none()
+            || proposal.get("origin").and_then(Value::as_str) != current_origin.as_deref()
+        {
+            self.set_status_text(QString::from(
+                "This page changed. Run a new site test before applying a fix.",
+            ));
+            return false;
+        }
         if self
             .as_ref()
             .rust()

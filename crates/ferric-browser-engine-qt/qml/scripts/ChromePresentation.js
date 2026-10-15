@@ -2,7 +2,7 @@
 
 // Pure chrome-presentation helpers. This resource deliberately has no bridge,
 // storage, or page access; it only projects already-validated chrome facts.
-var VERSION = "2"
+var VERSION = "3"
 
 function byteSize(bytes) {
     var value = Number(bytes)
@@ -55,7 +55,7 @@ function switcherActionLabel(action) {
 
 function settingValueLabel(key, value) {
     var choices = {
-        "ui.statusbar": { "in-mode": "While using browser modes", "always": "Always", "never": "Never" },
+        "ui.statusbar": { "in-mode": "Outside Normal mode", "always": "Always", "never": "Never" },
         "ui.reduced_motion": { "system": "Follow system", "on": "Reduce motion", "off": "Allow motion" },
         "input.entry_mode": { "normal": "Normal", "insert": "Insert", "passthrough": "Pass-through" },
         "hints.proxy_targets": { "off": "Off", "validated": "Custom editors and labels" },
@@ -86,6 +86,97 @@ function navigationFailureMessage(kind) {
     }
     return typeof messages[kind] === "string" ? messages[kind]
             : "The page couldn't be opened. Check the address or try again later."
+}
+
+function siteScopeKey(data) {
+    data = data || {}
+    var capture = data.capture || {}
+    return JSON.stringify([data.private === true, data.origin || "", capture.tab_id || "",
+        capture.document_id || "", capture.profile_id || "", data.context || ""])
+}
+
+function siteFactTitle(id) {
+    var titles = {"network.blocking": "Content blocking", "permissions": "Site permissions",
+        "engine.webengine": "Web engine", "capture": "Screen sharing",
+        "page.userscripts": "Page scripts", "compatibility.workarounds": "Compatibility adjustments"}
+    return typeof titles[id] === "string" ? titles[id] : "Site information"
+}
+
+function listCount(value) {
+    // Nested QML model roles can expose QVariantList wrappers rather than a
+    // JavaScript Array. Both provide a finite, non-negative length.
+    return value && typeof value === "object" && typeof value.length === "number"
+        && isFinite(value.length) && value.length >= 0 ? value.length : -1
+}
+
+function siteFactSummary(fact, privateSession, hasOrigin) {
+    var value = fact.value || {}
+    if (fact.id === "engine.webengine")
+        return value.status === "available" ? "Web engine available" : "Web engine status unavailable"
+    if (privateSession && fact.id !== "network.blocking")
+        return "Site details are withheld in private browsing"
+    if (fact.id === "network.blocking") {
+        var state = value.enabled === true ? "Content blocking is on" : value.enabled === false
+                ? "Content blocking is off" : "Blocking status unavailable"
+        if (privateSession) return state + " · site activity is withheld"
+        if (!hasOrigin) return state + " · no web site selected"
+        var count = value.active_site_blocked_requests
+        return state + (typeof count === "number" && isFinite(count) && count >= 0
+                ? " · " + count + (count === 1 ? " request blocked for this site" : " requests blocked for this site")
+                : " · site activity unavailable")
+    }
+    if (!hasOrigin && fact.id !== "capture") return "Available for HTTP and HTTPS pages"
+    if (fact.id === "permissions") {
+        if (value.ready !== true) return "Saved permission rules are loading"
+        var rules = listCount(value.durable_rules)
+        if (rules < 0) return "Saved permission rules unavailable"
+        return rules === 0 ? "No saved rules for this site · requests are handled when they occur"
+                : rules + (rules === 1 ? " saved rule for this site" : " saved rules for this site")
+    }
+    if (fact.id === "capture") {
+        if (value.status === "inactive") return "No sharing is recorded for this tab"
+        if (value.status === "active") return "Sharing is recorded for this tab"
+        return "Sharing status unavailable"
+    }
+    if (fact.id === "page.userscripts") {
+        if (value.status === "not-configured") return "No page scripts configured"
+        if (value.status !== "available") return "Page script information unavailable"
+        return value.matching_active_site === true
+                ? "Page scripts match this site · this does not confirm they ran"
+                : "No enabled page scripts match this site"
+    }
+    if (fact.id === "compatibility.workarounds") {
+        if (value.status !== "available" || listCount(value.active_ids) < 0)
+            return "Compatibility information unavailable"
+        return value.active_ids.length === 0 ? "No compatibility adjustments apply"
+                : value.active_ids.length + (value.active_ids.length === 1 ? " adjustment applies" : " adjustments apply")
+    }
+    return "Details available for inspection"
+}
+
+function siteExperimentLabel(kind) {
+    var labels = {"blocking-bypass": "Temporarily bypass content blocking",
+        "compiled-defaults": "Try default site settings", "userscripts-off": "Try without page scripts",
+        "fresh-view": "Open a fresh tab in this profile"}
+    return typeof labels[kind] === "string" ? labels[kind] : "Temporary site test"
+}
+
+function interactionDetails(status) {
+    status = status || {}
+    var focus = status.focus || {}, policy = status.shortcut_policy || {}
+    var prompt = status.native_prompt || {}, errors = status.recent_action_errors || {}
+    var categories = errors.categories || []
+    return "Interaction status · " + (status.mode || "mode unknown")
+        + " · focus " + (focus.category || "unknown")
+        + " · shortcut policy " + (policy.value || "unknown") + " (" + (policy.source || "source unknown") + ")"
+        + (policy.policy_site_rule ? " · policy rule " + policy.policy_site_rule : "")
+        + (policy.page_keys_site_rule ? " · page-key rule " + policy.page_keys_site_rule : "")
+        + " · page keys " + (policy.page_key_count || 0)
+        + " · native prompt " + (prompt.active ? prompt.category : "inactive")
+        + " · prompt outcome " + (prompt.last_outcome || "unknown")
+        + " · scroll policy " + ((status.scroll_policy && status.scroll_policy.status) || "unknown")
+        + " · recent action errors " + (categories.length === 0 ? "no recent action errors"
+            : categories.map(function(entry) { return entry.category + " ×" + entry.count }).join(", "))
 }
 
 function colorChannels(value) {

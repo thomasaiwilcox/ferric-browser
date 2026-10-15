@@ -71,6 +71,9 @@ class ApplicationTests final : public QObject {
     void productPolishWindowClose_data();
     void productPolishWindowClose();
     void productPolishPopupScripts();
+    void productPolishSiteLedger();
+    void productPolishSessionPreview();
+    void productPolishManagerFeedback();
     void initTestCase();
     void init();
     void cleanup();

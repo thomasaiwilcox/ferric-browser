@@ -5,6 +5,7 @@
 #include <QProcess>
 #include <QCryptographicHash>
 #include <QDir>
+#include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
 #include <QGuiApplication>
@@ -22,6 +23,14 @@
 #include <QtWebEngineQuick/qtwebenginequickglobal.h>
 #include <csignal>
 #include <unistd.h>
+
+static QQuickItem *findVisualItem(QQuickItem *parent, const QString &name) {
+    if (parent->objectName() == name) return parent;
+    for (auto child : parent->childItems()) {
+        if (auto found = findVisualItem(child, name)) return found;
+    }
+    return nullptr;
+}
 
 // Only observation and fixture orchestration live here. Policy, BrowserUi,
 // chrome, key routing and pointer dispatch all come from the production module.
@@ -141,6 +150,8 @@ void ApplicationTests::init() {
     const bool durable = testName.startsWith("durablePersistence")
                          || testName.startsWith("productPolish");
     QString startupConfig = "{\"schema_version\":3}";
+    if (testName == "productPolishSiteLedger")
+        startupConfig = R"JSON({"schema_version":3,"blocking":{"enabled":true,"bypass_sites":["other-private.test"]}})JSON";
     if (QString::fromLatin1(QTest::currentTestFunction()) ==
         "startupSelectorValidation") {
         const bool valid =
@@ -168,7 +179,9 @@ void ApplicationTests::init() {
     }
     engine->setInitialProperties(
         {{"temporaryProfile", !durable},
-         {"storageBasePath", directory.filePath("durable-test")},
+         {"storageBasePath", testName.startsWith("productPolish")
+             ? directory.filePath("durable-test/" + testName + "/" + QString::fromLatin1(QTest::currentDataTag()))
+             : directory.filePath("durable-test")},
          {"softwareRendering", true},
          {"nativeWayland", QGuiApplication::platformName() == "wayland"},
          {"startupConfigJson", startupConfig},
@@ -2116,6 +2129,187 @@ void ApplicationTests::productPolishPopupScripts() {
     QTRY_COMPARE(page("window.popup_document_idle || 0").toInt(), 1);
     evaluate("testWindow.popupWindowRegistry[0].host.destroy()");
     pageReceiver = "testWindow.activeWebView()";
+}
+
+void ApplicationTests::productPolishSiteLedger() {
+    QVERIFY(text("config_json").contains("other-private.test"));
+    page("history.replaceState(null,'','/private-path?token=secret');true");
+    QTRY_VERIFY(text("current_url").contains("token=secret"));
+    evaluate("testWindow.showSiteLedger()");
+    const auto oldSnapshot = evaluate("JSON.stringify(testWindow.siteLedgerData)").toString();
+    auto currentCopy = window->findChild<QQuickItem *>("siteReportCopyButton");
+    QVERIFY(currentCopy);
+    evaluate("testWindow.browserUi.status_text='Copied https://account.test/private?token=secret'");
+    QGuiApplication::clipboard()->setText("sentinel");
+    QVERIFY(QMetaObject::invokeMethod(currentCopy, "click"));
+    QTRY_VERIFY(QGuiApplication::clipboard()->text().startsWith("{"));
+    QVERIFY(!QGuiApplication::clipboard()->text().contains("127.0.0.1"));
+    QVERIFY(!QGuiApplication::clipboard()->text().contains("token=secret"));
+    const auto reports = evaluate(R"JS((function() {
+        var ui = testWindow.browserUi;
+        var started = JSON.parse(ui.begin_site_doctor_experiment('blocking-bypass'));
+        var active = JSON.parse(ui.site_report(false));
+        var withHost = JSON.parse(ui.site_report(true));
+        var finished = ui.finish_site_doctor_experiment(started.id, true);
+        return {active: active, withHost: withHost, finished: finished,
+            proposal: JSON.parse(ui.site_doctor_proposal()),
+            completed: JSON.parse(ui.site_report(false))};
+    })())JS").toMap();
+    QVERIFY(reports.value("finished").toBool());
+    const auto active = reports.value("active").toMap();
+    QCOMPARE(active.value("experiment").toMap().value("active").toMap().value("kind").toString(),
+             QString("blocking-bypass"));
+    const auto proposal = reports.value("proposal").toMap();
+    QCOMPARE(proposal.value("state").toString(), QString("pending-confirmation"));
+    QVERIFY(QJsonDocument::fromVariant(proposal).toJson().contains("other-private.test"));
+    for (const auto &field : {QString("active"), QString("completed"), QString("withHost")}) {
+        const auto bytes = QJsonDocument::fromVariant(reports.value(field)).toJson();
+        QVERIFY(!bytes.contains("private-path"));
+        QVERIFY(!bytes.contains("token=secret"));
+        QVERIFY(!bytes.contains("other-private.test"));
+        if (field != "withHost") QVERIFY(!bytes.contains("127.0.0.1"));
+    }
+    QCOMPARE(reports.value("withHost").toMap().value("site").toMap().value("host").toString(),
+             QString("127.0.0.1"));
+    // A background navigation must not reuse consent from an old site panel.
+    evaluate("testWindow.browserUi.navigate('rb://blank')");
+    evaluate("testWindow.executePendingEngineAction()");
+    QTRY_COMPARE(evaluate("testWindow.activeWebView().nativeUrl").toString(), QString("rb://blank"));
+    QTRY_VERIFY(evaluate("JSON.parse(testWindow.browserUi.refresh_site_status()).origin === null").toBool());
+    QVERIFY(!evaluate("testWindow.browserUi.apply_site_doctor_proposal(" +
+                     quoted(proposal.value("id").toString()) + ",true)").toBool());
+    evaluate("testWindow.siteLedgerData=JSON.parse(" + quoted(oldSnapshot) + ");testWindow.siteLedgerVisible=true");
+    auto consent = window->findChild<QQuickItem *>("siteReportHost");
+    auto copy = window->findChild<QQuickItem *>("siteReportCopyButton");
+    QVERIFY(consent); QVERIFY(copy);
+    consent->setProperty("checked", true);
+    QGuiApplication::clipboard()->setText("sentinel");
+    QVERIFY(QMetaObject::invokeMethod(copy, "click"));
+    QTest::qWait(100);
+    QCOMPARE(QGuiApplication::clipboard()->text(), QString("sentinel"));
+    auto notice = window->findChild<QQuickItem *>("siteLedgerNotice");
+    QVERIFY(notice);
+    QVERIFY(notice->property("text").toString().contains("page changed"));
+}
+
+void ApplicationTests::productPolishSessionPreview() {
+    QVERIFY(evaluate("testWindow.browserUi.save_named_session('polish-preview')").toBool());
+    QTRY_VERIFY(evaluate("testWindow.browserUi.list_named_sessions().indexOf('polish-preview')>=0").toBool());
+    evaluate("testWindow.showSessionPreview('polish-preview',false)");
+    QTRY_VERIFY(!evaluate("testWindow.sessionPreviewLoading").toBool());
+    QVERIFY(!evaluate("testWindow.sessionPreviewError").toBool());
+    auto tabs = window->findChild<QQuickItem *>("sessionPreviewTabs");
+    QVERIFY(tabs);
+    QTRY_COMPARE(tabs->property("count").toInt(), 1);
+    QCOMPARE(evaluate("testWindow.browserUi.session_preview_urls[0]").toString(), text("current_url"));
+    key(Qt::Key_Escape);
+    QTRY_VERIFY(!evaluate("testWindow.sessionPreviewVisible").toBool());
+    evaluate("testWindow.showSessionPreview('missing-session',false)");
+    QTRY_VERIFY(!evaluate("testWindow.sessionPreviewLoading").toBool());
+    QVERIFY(evaluate("testWindow.sessionPreviewError").toBool());
+    auto append = findVisualItem(window->contentItem(), "commandDialogAction-append");
+    QVERIFY(append);
+    QVERIFY(!append->isEnabled());
+    const auto before = text("current_url");
+    key(Qt::Key_A);
+    QCOMPARE(text("current_url"), before);
+    key(Qt::Key_Escape);
+    QTRY_VERIFY(!evaluate("testWindow.sessionPreviewVisible").toBool());
+}
+
+void ApplicationTests::productPolishManagerFeedback() {
+    QVERIFY(command("profiles"));
+    QTRY_VERIFY(evaluate("testWindow.profileManagerVisible").toBool());
+    QTRY_VERIFY(window->findChild<QQuickItem *>("profileNameInput"));
+    auto profileName = window->findChild<QQuickItem *>("profileNameInput");
+    auto profileLabel = window->findChild<QQuickItem *>("profileLabelInput");
+    auto create = window->findChild<QQuickItem *>("profileCreateButton");
+    QVERIFY(profileLabel && create);
+    QVERIFY(profileName->setProperty("text", "polish-worker"));
+    QVERIFY(profileLabel->setProperty("text", "Polish worker"));
+    // Include a concurrent catalog read: completion must publish the new entry.
+    QVERIFY(evaluate("testWindow.browserUi.request_profile_list()").toBool());
+    QVERIFY(QMetaObject::invokeMethod(create, "click"));
+    QCOMPARE(text("profile_action_state"), QString("pending"));
+    QCOMPARE(profileName->property("text").toString(), QString("polish-worker"));
+    QTRY_COMPARE(text("profile_action_state"), QString("succeeded"));
+    QTRY_COMPARE(profileName->property("text").toString(), QString());
+    QTRY_VERIFY(text("profile_values").contains("polish-worker"));
+    const auto firstReceipt = text("profile_action_id");
+    profileName->setProperty("text", "polish-worker");
+    profileLabel->setProperty("text", "Duplicate draft");
+    QVERIFY(QMetaObject::invokeMethod(create, "click"));
+    QVERIFY(text("profile_action_id") != firstReceipt);
+    QTRY_COMPARE(text("profile_action_state"), QString("failed"));
+    QCOMPARE(profileName->property("text").toString(), QString("polish-worker"));
+    QCOMPARE(profileLabel->property("text").toString(), QString("Duplicate draft"));
+    QVERIFY(!text("profile_action_detail").isEmpty());
+    auto profileFeedback = window->findChild<QQuickItem *>("profileFeedback");
+    QVERIFY(profileFeedback && profileFeedback->isVisible());
+    QCOMPARE(profileFeedback->property("message").toString(), text("profile_action_message"));
+    // Mutations from the command boundary also update the visible catalog.
+    QVERIFY(evaluate("testWindow.browserUi.rename_profile('polish-worker','Research')").toBool());
+    QTRY_COMPARE(text("profile_action_state"), QString("succeeded"));
+    QTRY_VERIFY(text("profile_values").contains("polish-worker\tResearch"));
+    QVERIFY(evaluate("testWindow.browserUi.delete_profile('polish-worker',true)").toBool());
+    QTRY_COMPARE(text("profile_action_state"), QString("succeeded"));
+    QTRY_VERIFY(!text("profile_values").contains("polish-worker"));
+    key(Qt::Key_Escape);
+
+    QVERIFY(command("sessions"));
+    QTRY_VERIFY(evaluate("testWindow.sessionManagerVisible").toBool());
+    QTRY_VERIFY(window->findChild<QQuickItem *>("sessionNameInput"));
+    auto sessionName = window->findChild<QQuickItem *>("sessionNameInput");
+    auto save = window->findChild<QQuickItem *>("sessionSaveButton");
+    QVERIFY(save);
+    sessionName->setProperty("text", "polish-worker");
+    QVERIFY(QMetaObject::invokeMethod(save, "click"));
+    QCOMPARE(text("session_save_state"), QString("pending"));
+    QTRY_COMPARE(text("session_save_state"), QString("succeeded"));
+    QTRY_COMPARE(sessionName->property("text").toString(), QString());
+    QTRY_VERIFY(evaluate("testWindow.browserUi.session_names_values.indexOf('polish-worker')>=0").toBool());
+    auto list = window->findChild<QQuickItem *>("sessionList");
+    QVERIFY(list);
+    QTRY_COMPARE(list->property("count").toInt(), 1);
+    QDirIterator files(evaluate("testWindow.storageBasePath").toString() + "/state/sessions",
+                       QStringList{"polish-worker.json"}, QDir::Files,
+                       QDirIterator::Subdirectories);
+    QVERIFY(files.hasNext());
+    const auto savedPath = files.next();
+    // Block rotation of the retained generation, preserving the current file.
+    QFile savedFile(savedPath);
+    QVERIFY(savedFile.open(QIODevice::ReadOnly));
+    const auto savedBytes = savedFile.readAll();
+    savedFile.close();
+    const auto previousPath = savedPath.left(savedPath.size() - 5) + ".previous";
+    QVERIFY(QDir().mkdir(previousPath));
+    sessionName->setProperty("text", "polish-worker");
+    QVERIFY(QMetaObject::invokeMethod(save, "click"));
+    QCOMPARE(text("session_save_state"), QString("pending"));
+    QTRY_COMPARE(text("session_save_state"), QString("failed"));
+    QCOMPARE(sessionName->property("text").toString(), QString("polish-worker"));
+    QVERIFY(!text("session_save_detail").isEmpty());
+    auto sessionFeedback = window->findChild<QQuickItem *>("sessionSaveFeedback");
+    QVERIFY(sessionFeedback && sessionFeedback->isVisible());
+    QCOMPARE(sessionFeedback->property("message").toString(), text("session_save_message"));
+    QVERIFY(savedFile.open(QIODevice::ReadOnly));
+    QCOMPARE(savedFile.readAll(), savedBytes);
+    savedFile.close();
+    QCOMPARE(list->property("count").toInt(), 1);
+    QVERIFY(QDir().rmdir(previousPath));
+    QVERIFY(QMetaObject::invokeMethod(save, "click"));
+    QTRY_COMPARE(text("session_save_state"), QString("succeeded"));
+    QTRY_COMPARE(sessionName->property("text").toString(), QString());
+    QVERIFY(QFileInfo::exists(savedPath));
+    QVERIFY(evaluate("testWindow.browserUi.delete_named_session('polish-worker',true)").toBool());
+    QTRY_COMPARE(text("session_delete_state"), QString("succeeded"));
+    QTRY_COMPARE(list->property("count").toInt(), 0);
+    QTRY_VERIFY(!evaluate("testWindow.browserUi.session_names_pending").toBool());
+    QTest::qWait(250);
+    QVERIFY(!evaluate("testWindow.browserUi.session_names_pending").toBool());
+    const auto artifacts = qEnvironmentVariable("FERRIC_TEST_ARTIFACT_DIR");
+    if (!artifacts.isEmpty()) QVERIFY(window->grabWindow().save(artifacts + "/production-manager-feedback.png"));
+    key(Qt::Key_Escape);
 }
 
 void ApplicationTests::clipboardOtherWindows_data() {

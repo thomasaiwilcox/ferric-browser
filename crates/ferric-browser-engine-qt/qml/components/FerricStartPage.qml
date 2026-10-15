@@ -56,7 +56,7 @@ Pane {
         if (!initialSnapshot && browserUi.start_page_ready) {
             if (!viewChosen) selectedView = browserUi.start_page_view || "guide"
             initialSnapshot = true
-            if (visible && !inputActive) Qt.callLater(function() { if (!page.inputActive) page.focusContent() })
+            if (visible && !inputActive) scheduleContentFocus(true)
         }
     }
     function refresh() { requestedRankRevision = browserUi.start_page_rank_revision; refreshTopRequested = true; browserUi.refresh_start_page() }
@@ -64,7 +64,7 @@ Pane {
         selectedView = view
         viewChosen = true
         if (remember !== false) browserUi.start_page_action("view", 0, view, "")
-        Qt.callLater(function() { if (!editor.visible && !dismissedDialog.visible) page.focusContent() })
+        scheduleContentFocus(false)
     }
     function cycleView() {
         var views = ["top-sites", "favourites", "guide"]
@@ -74,6 +74,18 @@ Pane {
         if (focused) activeControl = control
         else if (activeControl === control) activeControl = null
     }
+    function scheduleContentFocus(requireIdle) {
+        focusTimer.requireIdle = requireIdle
+        focusTimer.restart()
+    }
+    Timer {
+        id: focusTimer
+        property bool requireIdle: true
+        interval: 0
+        onTriggered: if (page.visible && !editor.visible && !dismissedDialog.visible
+                         && (!requireIdle || !page.inputActive)) page.focusContent()
+    }
+    Timer { id: refreshRequestTimer; interval: 0; onTriggered: if (page.visible) page.refresh() }
     function focusContent() {
         if (selectedView === "guide") { if (guide.readerActive) guide.focusReader(); else guide.focusEntries(); return }
         var item = tileRepeater.itemAt(selectedSlot)
@@ -123,7 +135,7 @@ Pane {
         else return false
         focusContent(); event.accepted = true; return true
     }
-    Component.onCompleted: { if (browserUi.start_page_revision > 0) rebuild(); refresh(); Qt.callLater(function() { if (!page.inputActive) page.focusContent() }) }
+    Component.onCompleted: { if (browserUi.start_page_revision > 0) rebuild(); refresh(); scheduleContentFocus(true) }
     Timer {
         interval: 5000; running: page.visible; repeat: true
         onTriggered: if (!page.browserUi.start_page_busy) page.browserUi.refresh_start_page_metadata()
@@ -139,7 +151,7 @@ Pane {
             page.requestedRankRevision = page.browserUi.start_page_rank_revision
             if (editor.visible) editor.close()
             if (dismissedDialog.visible) dismissedDialog.close()
-            if (page.visible) Qt.callLater(page.refresh)
+            if (page.visible) refreshRequestTimer.restart()
         }
     }
     readonly property color canvasColor: browserWindow.backgroundColor

@@ -1595,7 +1595,7 @@ function onContext_workspaceChanged() {
                 viewUi, secondaryView.url.toString())
         }
         Connections {
-            target: viewUi
+            target: secondaryView.viewUi
             function onSite_experiment_kindChanged() {
                 secondaryView.refreshEffectiveSiteSettings()
             }

@@ -586,36 +586,64 @@ GridLayout {
         onDismissalRequested: window.recoveryAvailable = false
     }
 
+    Connections {
+        target: browserUi
+        function onSite_experiment_activeChanged() {
+            Qt.callLater(window.refreshVisibleSiteLedger)
+        }
+    }
+
     FerricSiteLedger {
+        id: siteLedgerSurface
         browserWindow: window
         siteExperimentAvailable: !browserUi.site_experiment_active
+        experimentRemainingSeconds: browserUi.site_experiment_remaining_seconds
         onCloseRequested: {
             window.siteLedgerVisible = false
             window.closeInternalSurface()
         }
         onRefreshRequested: window.showSiteLedger()
         onActiveOriginDataClearRequested: {
-            if (browserUi.site_data_clear(window.siteLedgerData.origin, true)) {
-                window.executePendingEngineAction()
+            if (!window.siteLedgerSnapshotIsCurrent()) {
+                siteLedgerSurface.showNotice(browserUi.status_text, true)
+                return
             }
+            var accepted = browserUi.site_data_clear(window.siteLedgerData.origin, true)
+            if (accepted) window.executePendingEngineAction()
+            siteLedgerSurface.showNotice(browserUi.status_text, !accepted)
         }
         onSanitizedReportCopyRequested: function(includeHost) {
+            if (!window.siteLedgerSnapshotIsCurrent()) {
+                siteLedgerSurface.showNotice(browserUi.status_text, true)
+                return
+            }
             var report = browserUi.site_report(includeHost)
             if (report && report.length > 0) {
                 window.copyToClipboard(report, true)
                 browserUi.status_text = "Sanitized site report copied"
             }
+            siteLedgerSurface.showNotice(browserUi.status_text, !report || report.length === 0)
         }
         onSiteDoctorProposalApplyRequested: function(proposalId) {
-            if (browserUi.apply_site_doctor_proposal(proposalId, true)) {
-                window.showSiteLedger()
+            if (!window.siteLedgerSnapshotIsCurrent()) {
+                siteLedgerSurface.showNotice(browserUi.status_text, true)
+                return
             }
+            var accepted = browserUi.apply_site_doctor_proposal(proposalId, true)
+            if (accepted) window.showSiteLedger()
+            siteLedgerSurface.showNotice(browserUi.status_text, !accepted)
         }
         onSiteDoctorExperimentRequested: function(kind) {
+            if (!window.siteLedgerSnapshotIsCurrent()) {
+                siteLedgerSurface.showNotice(browserUi.status_text, true)
+                return
+            }
             var started = browserUi.begin_site_doctor_experiment(kind)
             if (started.length > 0) {
                 window.executePendingEngineAction()
             }
+            if (window.siteLedgerVisible) window.showSiteLedger()
+            siteLedgerSurface.showNotice(browserUi.status_text, started.length === 0)
         }
     }
 
@@ -828,14 +856,16 @@ GridLayout {
         namedSessionsModel: namedSessions
         onCreateProfileRequested: function(name, label) {
             if (browserUi.create_profile(name, label)) {
-                profileSessionSurfaces.clearProfileCreateInputs()
-                window.scheduleProfileRefresh()
+                profileSessionSurfaces.profileMutationAccepted("create", name, label)
+            } else {
+                profileSessionSurfaces.profileRequestRejected("This profile couldn't be created. Review the name and try again.")
             }
         }
         onRenameProfileRequested: function(name, label) {
             if (browserUi.rename_profile(name, label)) {
-                profileSessionSurfaces.clearProfileRenameInputs()
-                window.scheduleProfileRefresh()
+                profileSessionSurfaces.profileMutationAccepted("rename", name, label)
+            } else {
+                profileSessionSurfaces.profileRequestRejected("This profile couldn't be renamed. Try again.")
             }
         }
         onOpenProfileRequested: function(name, label) {
@@ -844,23 +874,27 @@ GridLayout {
         onDeleteProfileRequested: function(name) {
             if (window.profileDeletePreviewVisible) {
                 if (browserUi.delete_profile(window.profileDeleteName, true)) {
-                    window.profileDeletePreviewVisible = false
-                    window.profileManagerVisible = false
-                    window.closeInternalSurface()
+                    profileSessionSurfaces.profileMutationAccepted("delete", name, "")
+                } else {
+                    profileSessionSurfaces.profileRequestRejected("This profile couldn't be deleted. Review the details and try again.")
                 }
-            } else {
-                window.showProfileDeletePreview(name)
+                profileSessionSurfaces.returnToProfiles()
+            } else if (!window.showProfileDeletePreview(name)) {
+                profileSessionSurfaces.profileRequestRejected("The profile folders couldn't be checked. Try again.")
             }
         }
         onSaveSessionRequested: function(name) {
             if (browserUi.save_named_session(name)) {
-                window.refreshSessions()
+                profileSessionSurfaces.sessionSaveAccepted(name)
+            } else {
+                profileSessionSurfaces.sessionRequestRejected("This session couldn't be saved. Review the name and try again.")
             }
         }
         onDeleteSessionRequested: function(name) {
             if (browserUi.delete_named_session(name, true)) {
-                window.pendingDeleteName = ""
-                window.refreshSessions()
+                profileSessionSurfaces.sessionDeleteAccepted()
+            } else {
+                profileSessionSurfaces.sessionRequestRejected("This session couldn't be deleted. Try again.")
             }
         }
     }

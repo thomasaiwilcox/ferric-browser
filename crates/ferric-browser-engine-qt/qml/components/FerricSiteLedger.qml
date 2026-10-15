@@ -1,10 +1,23 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "../scripts/ChromePresentation.js" as ChromePresentation
 
 FerricModalSurface {
     id: ledger
     required property bool siteExperimentAvailable
+    property string noticeText: ""
+    property bool noticeIsWarning: false
+    property real experimentRemainingSeconds: activeTest.remaining_seconds || 0
+    readonly property var snapshot: browserWindow.siteLedgerData || ({})
+    readonly property bool privateSession: snapshot.private === true
+    readonly property var doctor: snapshot.site_doctor || ({})
+    readonly property var activeTest: doctor.active || ({})
+    readonly property var proposal: doctor.last_result || ({})
+    readonly property string scopeKey: ChromePresentation.siteScopeKey(snapshot)
+    readonly property string proposalKey: JSON.stringify([scopeKey, proposal.id || "", proposal.state || "", proposal.mutation || null])
+    readonly property bool hasSiteProposal: !privateSession && !!snapshot.origin
+        && proposal.kind === "blocker-exception" && proposal.origin === snapshot.origin
 
     signal closeRequested()
     signal refreshRequested()
@@ -13,320 +26,325 @@ FerricModalSurface {
     signal siteDoctorProposalApplyRequested(string proposalId)
     signal siteDoctorExperimentRequested(string kind)
 
+    function resetConsents() {
+        siteReportHost.checked = false
+        siteDataClearConfirmation.checked = false
+        siteDoctorProposalConfirmation.checked = false
+    }
+    function showNotice(message, warning) {
+        noticeIsWarning = warning
+        noticeText = message
+    }
+    function revealFocusedControl() {
+        var item = hostWindow ? hostWindow.activeFocusItem : null
+        var ancestor = item
+        while (ancestor && ancestor !== content) ancestor = ancestor.parent
+        if (!ancestor || !scroll.contentItem) return
+        var viewport = scroll.contentItem
+        var top = item.mapToItem(content, 0, 0).y
+        if (top + item.height <= viewport.contentY + viewport.height && top >= viewport.contentY) return
+        if (item.height > viewport.height && top < viewport.contentY
+                && top + item.height > viewport.contentY + viewport.height) return
+        var next = item.height >= viewport.height ? top : top < viewport.contentY ? top - 8 * scale
+            : top + Math.min(item.height, viewport.height) - viewport.height + 8 * scale
+        viewport.contentY = Math.max(0, Math.min(viewport.contentHeight - viewport.height, next))
+    }
+    Connections {
+        target: ledger.hostWindow
+        ignoreUnknownSignals: true
+        function onActiveFocusItemChanged() { Qt.callLater(ledger.revealFocusedControl) }
+    }
+    onScopeKeyChanged: { resetConsents(); noticeText = ""; technicalDetails.checked = false }
+    onProposalKeyChanged: siteDoctorProposalConfirmation.checked = false
+    onVisibleChanged: { resetConsents(); technicalDetails.checked = false; noticeText = "" }
+
     visible: browserWindow.siteLedgerVisible
     commandText: ":site-status"
     title: "Site Ledger"
-    message: browserWindow.siteLedgerData.private
-             ? "Private session · site identity is withheld"
-             : (browserWindow.siteLedgerData.origin || "No normalized HTTP(S) origin")
+    message: privateSession ? "Private session · site identity is withheld"
+             : (snapshot.origin || "Site information is available for HTTP and HTTPS pages")
     keyHelp: "tab/shift-tab controls  ·  enter activate  ·  esc close"
     dialogWidth: 940 * scale
     dialogHeight: 660 * scale
     stackingOrder: 70
+    initialFocusItem: closeButton
     onDismissRequested: closeRequested()
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 0
-        spacing: 8
-
+        spacing: 10 * ledger.scale
         RowLayout {
             Layout.fillWidth: true
-            Item { Layout.fillWidth: true }
-            Button {
-                text: "Refresh"
-                Accessible.name: "Refresh Site Ledger"
-                onClicked: refreshRequested()
-            }
-            Button {
-                text: "Close"
-                Accessible.name: "Close Site Ledger"
-                onClicked: closeRequested()
-            }
-        }
-
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: interactionSummary.implicitHeight + 16
-            color: browserWindow.surfaceColor
-            radius: 3
-            Accessible.name: "On-demand interaction status"
-
             Label {
-                id: interactionSummary
-                objectName: "siteLedgerInteractionSummary"
-                anchors.fill: parent
-                anchors.margins: 8
-                text: {
-                    var status = browserWindow.siteLedgerData.interaction || ({})
-                    var focus = status.focus || ({})
-                    var policy = status.shortcut_policy || ({})
-                    var prompt = status.native_prompt || ({})
-                    var errors = status.recent_action_errors || ({})
-                    var categories = errors.categories || []
-                    var rejectionText = categories.length === 0
-                            ? "no recent action errors"
-                            : categories.map(function(entry) {
-                                return entry.category + " ×" + entry.count
-                            }).join(", ")
-                    return "Interaction status · " + (status.mode || "mode unknown")
-                            + " · focus " + (focus.category || "unknown")
-                            + " · shortcut policy " + (policy.value || "unknown")
-                            + " (" + (policy.source || "source unknown") + ")"
-                            + (policy.policy_site_rule
-                               ? " · policy rule " + policy.policy_site_rule : "")
-                            + (policy.page_keys_site_rule
-                               ? " · page-key rule " + policy.page_keys_site_rule : "")
-                            + " · page keys " + (policy.page_key_count || 0)
-                            + " · native prompt " + (prompt.active ? prompt.category : "inactive")
-                            + " · prompt outcome " + (prompt.last_outcome || "unknown")
-                            + " · scroll policy " + ((status.scroll_policy && status.scroll_policy.status) || "unknown")
-                            + " · recent action errors " + rejectionText
-                }
-                color: browserWindow.secondaryTextColor
-                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+                text: "Snapshot"
+                Accessible.description: "Refresh to check for changes"
                 textFormat: Text.PlainText
-                Accessible.name: "On-demand interaction status"
-                Accessible.description: interactionSummary.text
+                color: ledger.browserWindow.mutedTextColor
+                wrapMode: Text.Wrap
             }
+            Button { text: "Refresh"; onClicked: ledger.refreshRequested() }
+            Button { id: closeButton; objectName: "siteLedgerCloseButton"; text: "Close"; onClicked: ledger.closeRequested() }
         }
-
-        RowLayout {
-            Layout.fillWidth: true
-            visible: !!(!browserWindow.siteLedgerData.private && browserWindow.siteLedgerData.origin)
-            CheckBox {
-                id: siteDataClearConfirmation
-                text: "Clear supported site data"
-                checked: false
-                Accessible.name: "Confirm supported site data clearing"
-                Accessible.description: "Clears page-origin local storage, Cache Storage, service-worker registrations, and visible cookies only; HTTP cache and other cookie-store entries remain"
-            }
-            Button {
-                text: "Clear active-origin data"
-                enabled: siteDataClearConfirmation.checked && !browserWindow.siteDataClearPending
-                Accessible.name: "Clear supported active-origin site data"
-                onClicked: {
-                    siteDataClearConfirmation.checked = false
-                    activeOriginDataClearRequested()
-                }
-            }
-            Label {
-                Layout.fillWidth: true
-                text: "Per-origin: local storage, Cache Storage, service workers; cookies are page-visible-only; HTTP cache is profile-wide and excluded"
-                color: browserWindow.secondaryTextColor
-                wrapMode: Text.WordWrap
-            }
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            CheckBox {
-                id: siteReportHost
-                text: "Include current site host"
-                checked: false
-                Accessible.name: "Include current site host in report"
-                Accessible.description: "Host disclosure is opt-in; paths and query strings are never included"
-            }
-            Button {
-                text: "Copy sanitized report"
-                Accessible.name: "Copy sanitized site report"
-                onClicked: sanitizedReportCopyRequested(siteReportHost.checked)
-            }
-            Label {
-                Layout.fillWidth: true
-                text: "URLs, cookies, tokens, DOM, and account identifiers are excluded"
-                color: browserWindow.secondaryTextColor
-                wrapMode: Text.WordWrap
-            }
-        }
-
         Label {
+            objectName: "siteLedgerNotice"
             Layout.fillWidth: true
-            text: "Tab " + (browserWindow.siteLedgerData.capture && browserWindow.siteLedgerData.capture.tab_id || "unknown")
-                  + " · document " + (browserWindow.siteLedgerData.capture && browserWindow.siteLedgerData.capture.document_id || "unknown")
-                  + " · " + (browserWindow.siteLedgerData.renderer || "renderer unknown")
-            color: browserWindow.mutedTextColor
-            elide: Text.ElideRight
+            visible: text.length > 0
+            text: ledger.noticeText
+            textFormat: Text.PlainText
+            color: ledger.noticeIsWarning ? ledger.browserWindow.warningColor : ledger.browserWindow.secondaryTextColor
+            wrapMode: Text.Wrap
+            Accessible.name: text
         }
-
-        ListView {
-            id: siteLedgerFacts
-            Layout.fillWidth: true
-            Layout.preferredHeight: Math.min(270, Math.max(66, siteLedgerFacts.contentHeight + 6))
-            clip: true
-            spacing: 6
-            model: browserWindow.siteLedgerData.facts || []
-            delegate: Rectangle {
-                width: siteLedgerFacts.width
-                height: Math.max(66, browserWindow.chromeRowHeight * 5)
-                color: browserWindow.surfaceColor
-                radius: 3
-
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 8
-                    spacing: 2
-                    Label {
-                        Layout.fillWidth: true
-                        text: modelData.id + " · " + modelData.state + " · " + modelData.capability
-                        color: browserWindow.primaryTextColor
-                        font.bold: true
-                        elide: Text.ElideRight
-                        Accessible.name: modelData.id + " fact"
-                    }
-                    Label {
-                        Layout.fillWidth: true
-                        text: modelData.provenance + " · " + modelData.scope + " · " + modelData.apply_time
-                        color: browserWindow.mutedTextColor
-                        elide: Text.ElideRight
-                    }
-                    Label {
-                        Layout.fillWidth: true
-                        text: JSON.stringify(modelData.value)
-                        color: browserWindow.secondaryTextColor
-                        elide: Text.ElideRight
-                    }
-                }
-            }
-        }
-
-        Label {
-            Layout.fillWidth: true
-            text: "Recent request decisions"
-            color: browserWindow.primaryTextColor
-            font.bold: true
-        }
-
-        ListView {
-            id: siteLedgerDecisions
+        ScrollView {
+            id: scroll
+            objectName: "siteLedgerScroll"
             Layout.fillWidth: true
             Layout.fillHeight: true
+            contentWidth: availableWidth
+            contentHeight: content.implicitHeight
+            onContentHeightChanged: Qt.callLater(ledger.revealFocusedControl)
             clip: true
-            spacing: 3
-            model: browserWindow.siteLedgerData.blocking
-                  ? (browserWindow.siteLedgerData.blocking.active_site_decisions || [])
-                  : []
-            delegate: Label {
-                width: siteLedgerDecisions.width
-                text: (modelData.decision || "unknown") + " · "
-                      + (modelData.resource_host || "unknown host") + " · "
-                      + "list " + (modelData.list_id || "unknown") + " · "
-                      + (modelData.exception_list_id
-                         ? "exception " + modelData.exception_list_id + " · " : "")
-                      + (modelData.reason || "no reason")
-                color: modelData.decision === "blocked" ? browserWindow.errorColor : browserWindow.successColor
-                elide: Text.ElideRight
-                Accessible.name: "Request decision"
-            }
-        }
-
-        Label {
-            Layout.fillWidth: true
-            text: "Safe actions: " + ((browserWindow.siteLedgerData.safe_remediation_actions || []).join(", ") || "none")
-            color: browserWindow.warningColor
-            wrapMode: Text.WordWrap
-        }
-
-        Label {
-            Layout.fillWidth: true
-            visible: browserWindow.siteLedgerData.site_doctor
-                     && browserWindow.siteLedgerData.site_doctor.active
-                     && browserWindow.siteLedgerData.site_doctor.active.kind
-            text: browserWindow.siteLedgerData.site_doctor
-                  && browserWindow.siteLedgerData.site_doctor.active
-                  ? "Active experiment: "
-                    + browserWindow.siteLedgerData.site_doctor.active.kind
-                    + " (temporary; "
-                    + (browserWindow.siteLedgerData.site_doctor.active.remaining_seconds || 0)
-                    + "s remaining; reload/navigation ends it)"
-                  : ""
-            color: browserWindow.accentColor
-            wrapMode: Text.WordWrap
-        }
-
-        Label {
-            Layout.fillWidth: true
-            visible: !!(browserWindow.siteLedgerData.site_doctor
-                     && browserWindow.siteLedgerData.site_doctor.last_result
-                     && browserWindow.siteLedgerData.site_doctor.last_result.kind)
-            text: browserWindow.siteLedgerData.site_doctor
-                  && browserWindow.siteLedgerData.site_doctor.last_result
-                  ? "Site Doctor proposal: "
-                    + browserWindow.siteLedgerData.site_doctor.last_result.kind
-                    + " · "
-                    + browserWindow.siteLedgerData.site_doctor.last_result.security_effect
-                  : ""
-            color: browserWindow.warningColor
-            wrapMode: Text.WordWrap
-            Accessible.name: "Site Doctor durable fix proposal"
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            visible: !!(browserWindow.siteLedgerData.site_doctor
-                     && browserWindow.siteLedgerData.site_doctor.last_result
-                     && browserWindow.siteLedgerData.site_doctor.last_result.kind === "blocker-exception")
-            CheckBox {
-                id: siteDoctorProposalConfirmation
-                text: "I reviewed this host-scoped exception"
-                checked: false
-                Accessible.name: "Confirm Site Doctor blocker exception"
-                Accessible.description: "This saves a generated runtime override for the current host and does not change permissions or TLS"
-            }
-            Button {
-                text: "Apply reviewed fix"
-                enabled: siteDoctorProposalConfirmation.checked
-                         && browserWindow.siteLedgerData.site_doctor.last_result.state === "pending-confirmation"
-                Accessible.name: "Apply reviewed Site Doctor fix"
-                onClicked: {
-                    siteDoctorProposalConfirmation.checked = false
-                    siteDoctorProposalApplyRequested(browserWindow.siteLedgerData.site_doctor.last_result.id)
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+            ScrollBar.vertical.active: true
+            ColumnLayout {
+                id: content
+                width: scroll.availableWidth
+                height: implicitHeight
+                spacing: 12 * ledger.scale
+                Repeater {
+                    model: ledger.snapshot.facts || []
+                    Rectangle {
+                        required property var modelData
+                        objectName: "siteFact-" + modelData.id
+                        Layout.fillWidth: true
+                        implicitHeight: factContent.implicitHeight + 20 * ledger.scale
+                        color: ledger.browserWindow.surfaceColor
+                        radius: 4 * ledger.scale
+                        ColumnLayout {
+                            id: factContent
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: 10 * ledger.scale
+                            spacing: 4 * ledger.scale
+                            Label {
+                                Layout.fillWidth: true
+                                text: ChromePresentation.siteFactTitle(modelData.id)
+                                textFormat: Text.PlainText
+                                color: ledger.browserWindow.primaryTextColor
+                                font.bold: true
+                                wrapMode: Text.Wrap
+                            }
+                            Label {
+                                objectName: "siteFactSummary-" + modelData.id
+                                Layout.fillWidth: true
+                                text: ChromePresentation.siteFactSummary(modelData, ledger.privateSession, !!ledger.snapshot.origin)
+                                textFormat: Text.PlainText
+                                color: ledger.browserWindow.secondaryTextColor
+                                wrapMode: Text.Wrap
+                            }
+                        }
+                    }
+                }
+                Label {
+                    Layout.fillWidth: true
+                    visible: (ledger.snapshot.facts || []).length === 0
+                    text: "No site information is available. Refresh to try again."
+                    color: ledger.browserWindow.secondaryTextColor
+                    wrapMode: Text.Wrap
+                }
+                Label {
+                    Layout.fillWidth: true
+                    text: "Troubleshoot this site"
+                    color: ledger.browserWindow.primaryTextColor
+                    font.bold: true
+                    wrapMode: Text.Wrap
+                }
+                Label {
+                    Layout.fillWidth: true
+                    text: ledger.privateSession ? "Site tests are unavailable in private browsing."
+                        : !ledger.snapshot.origin ? "Open a web page to use site tests."
+                        : "These tests are temporary. Reloading, navigating away or the time limit ends a test. A fresh tab uses this profile's cookies and storage."
+                    color: ledger.browserWindow.secondaryTextColor
+                    wrapMode: Text.Wrap
+                }
+                Label {
+                    objectName: "siteExperimentStatus"
+                    Layout.fillWidth: true
+                    visible: !ledger.privateSession && !!ledger.activeTest.kind
+                    text: ChromePresentation.siteExperimentLabel(ledger.activeTest.kind)
+                        + " · " + ledger.experimentRemainingSeconds + " seconds remaining"
+                    textFormat: Text.PlainText
+                    color: ledger.browserWindow.accentColor
+                    wrapMode: Text.Wrap
+                }
+                Flow {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: childrenRect.height
+                    spacing: 8 * ledger.scale
+                    visible: !ledger.privateSession && !!ledger.snapshot.origin
+                    Repeater {
+                        model: ledger.doctor.experiments || []
+                        Button {
+                            id: experimentButton
+                            required property string modelData
+                            objectName: "siteExperiment-" + modelData
+                            width: Math.min(implicitWidth, scroll.availableWidth)
+                            enabled: ledger.siteExperimentAvailable
+                            text: ChromePresentation.siteExperimentLabel(modelData)
+                            Accessible.name: text
+                            contentItem: Label {
+                                text: experimentButton.text
+                                font: experimentButton.font
+                                color: experimentButton.enabled ? ledger.browserWindow.primaryTextColor : ledger.browserWindow.mutedTextColor
+                                textFormat: Text.PlainText
+                                wrapMode: Text.Wrap
+                                horizontalAlignment: Text.AlignHCenter
+                            }
+                            onClicked: ledger.siteDoctorExperimentRequested(modelData)
+                        }
+                    }
+                }
+                Label {
+                    Layout.fillWidth: true
+                    visible: ledger.hasSiteProposal
+                    text: ledger.proposal.state === "applied" ? "The content-blocking exception was saved for this site."
+                        : "The test suggests a content-blocking exception for " + (ledger.proposal.origin || "this site")
+                          + ". Saving it allows this site's requests through content blocking. Site permissions and connection security stay unchanged."
+                    textFormat: Text.PlainText
+                    color: ledger.browserWindow.warningColor
+                    wrapMode: Text.Wrap
+                }
+                CheckBox {
+                    id: siteDoctorProposalConfirmation
+                    objectName: "siteDoctorProposalConfirmation"
+                    Layout.fillWidth: true
+                    visible: ledger.hasSiteProposal && ledger.proposal.state === "pending-confirmation"
+                    text: "I reviewed this site's blocking exception"
+                    contentItem: Label {
+                        text: siteDoctorProposalConfirmation.text
+                        font: siteDoctorProposalConfirmation.font
+                        color: ledger.browserWindow.primaryTextColor
+                        wrapMode: Text.Wrap
+                    }
+                    checked: false
+                }
+                Button {
+                    objectName: "siteDoctorApplyButton"
+                    visible: siteDoctorProposalConfirmation.visible
+                    enabled: siteDoctorProposalConfirmation.checked
+                    text: "Apply reviewed fix"
+                    onClicked: {
+                        siteDoctorProposalConfirmation.checked = false
+                        ledger.siteDoctorProposalApplyRequested(ledger.proposal.id)
+                    }
+                }
+                Label {
+                    Layout.fillWidth: true
+                    visible: !ledger.privateSession && !!ledger.snapshot.origin
+                    text: "Clear site data"
+                    color: ledger.browserWindow.primaryTextColor
+                    font.bold: true
+                }
+                Label {
+                    Layout.fillWidth: true
+                    visible: siteDataClearConfirmation.visible
+                    text: "Clears local storage, Cache Storage, service workers and page-visible cookies for this origin. HttpOnly cookies, other cookie-store entries and the HTTP cache remain. History, permissions and other sites are kept."
+                    color: ledger.browserWindow.secondaryTextColor
+                    wrapMode: Text.Wrap
+                }
+                CheckBox {
+                    id: siteDataClearConfirmation
+                    objectName: "siteDataClearConfirmation"
+                    Layout.fillWidth: true
+                    visible: !ledger.privateSession && !!ledger.snapshot.origin
+                    text: "I understand the limits of clearing this site's data"
+                    contentItem: Label {
+                        text: siteDataClearConfirmation.text
+                        font: siteDataClearConfirmation.font
+                        color: ledger.browserWindow.primaryTextColor
+                        wrapMode: Text.Wrap
+                    }
+                    checked: false
+                }
+                Button {
+                    objectName: "siteDataClearButton"
+                    visible: siteDataClearConfirmation.visible
+                    enabled: siteDataClearConfirmation.checked && !ledger.browserWindow.siteDataClearPending
+                    text: ledger.browserWindow.siteDataClearPending ? "Clearing…" : "Clear site data"
+                    onClicked: {
+                        siteDataClearConfirmation.checked = false
+                        ledger.activeOriginDataClearRequested()
+                    }
+                }
+                Label {
+                    Layout.fillWidth: true
+                    text: "Share a diagnostic report"
+                    color: ledger.browserWindow.primaryTextColor
+                    font.bold: true
+                }
+                Label {
+                    Layout.fillWidth: true
+                    text: "The report excludes full URLs, page content, cookies, tokens and account identifiers. The current site host is included only if you choose it below."
+                    color: ledger.browserWindow.secondaryTextColor
+                    wrapMode: Text.Wrap
+                }
+                CheckBox {
+                    id: siteReportHost
+                    objectName: "siteReportHost"
+                    Layout.fillWidth: true
+                    visible: !ledger.privateSession && !!ledger.snapshot.origin
+                    text: "Include current site host"
+                    checked: false
+                    contentItem: Label {
+                        text: siteReportHost.text
+                        font: siteReportHost.font
+                        color: ledger.browserWindow.primaryTextColor
+                        wrapMode: Text.Wrap
+                    }
+                    Accessible.description: "Host disclosure is opt-in; paths and query strings are never included"
+                }
+                Button {
+                    objectName: "siteReportCopyButton"
+                    text: "Copy report"
+                    onClicked: ledger.sanitizedReportCopyRequested(!ledger.privateSession && siteReportHost.checked)
+                }
+                Button {
+                    id: technicalDetails
+                    objectName: "siteTechnicalDetailsButton"
+                    text: checked ? "Hide technical details" : "Technical details"
+                    checkable: true
+                }
+                Label {
+                    id: interactionSummary
+                    objectName: "siteLedgerInteractionSummary"
+                    Layout.fillWidth: true
+                    visible: technicalDetails.checked
+                    text: ChromePresentation.interactionDetails(ledger.snapshot.interaction)
+                    textFormat: Text.PlainText
+                    color: ledger.browserWindow.secondaryTextColor
+                    wrapMode: Text.Wrap
+                    Accessible.name: "On-demand interaction status"
+                    Accessible.description: text
+                }
+                TextArea {
+                    objectName: "siteTechnicalDetails"
+                    Layout.fillWidth: true
+                    visible: technicalDetails.checked
+                    text: ledger.privateSession ? "Site and document metadata are withheld in private browsing."
+                        : JSON.stringify({capture: ledger.snapshot.capture, facts: ledger.snapshot.facts || [],
+                            requests: (ledger.snapshot.blocking || {}).active_site_decisions || [],
+                            commands: ledger.snapshot.safe_remediation_actions || []}, null, 2)
+                    readOnly: true
+                    selectByMouse: true
+                    textFormat: TextEdit.PlainText
+                    wrapMode: TextEdit.Wrap
+                    color: ledger.browserWindow.secondaryTextColor
+                    background: Rectangle { color: ledger.browserWindow.surfaceColor }
+                    Accessible.name: "Technical site information"
                 }
             }
-        }
-
-        Button {
-            Layout.alignment: Qt.AlignLeft
-            visible: browserWindow.siteLedgerData.site_doctor
-                     && browserWindow.siteLedgerData.site_doctor.experiments
-                     && browserWindow.siteLedgerData.site_doctor.experiments.indexOf("blocking-bypass") >= 0
-            enabled: siteExperimentAvailable
-            text: "Try blocker bypass once"
-            Accessible.name: "Run one-shot blocker bypass experiment"
-            onClicked: siteDoctorExperimentRequested("blocking-bypass")
-        }
-
-        Button {
-            Layout.alignment: Qt.AlignLeft
-            visible: browserWindow.siteLedgerData.site_doctor
-                     && browserWindow.siteLedgerData.site_doctor.experiments
-                     && browserWindow.siteLedgerData.site_doctor.experiments.indexOf("compiled-defaults") >= 0
-            enabled: siteExperimentAvailable
-            text: "Try compiled-default site settings once"
-            Accessible.name: "Run one-shot compiled-default site settings experiment"
-            onClicked: siteDoctorExperimentRequested("compiled-defaults")
-        }
-
-        Button {
-            Layout.alignment: Qt.AlignLeft
-            visible: browserWindow.siteLedgerData.site_doctor
-                     && browserWindow.siteLedgerData.site_doctor.experiments
-                     && browserWindow.siteLedgerData.site_doctor.experiments.indexOf("userscripts-off") >= 0
-            enabled: siteExperimentAvailable
-            text: "Try without matching userscripts once"
-            Accessible.name: "Run one-shot userscript-free experiment"
-            onClicked: siteDoctorExperimentRequested("userscripts-off")
-        }
-
-        Button {
-            Layout.alignment: Qt.AlignLeft
-            visible: browserWindow.siteLedgerData.site_doctor
-                     && browserWindow.siteLedgerData.site_doctor.experiments
-                     && browserWindow.siteLedgerData.site_doctor.experiments.indexOf("fresh-view") >= 0
-            enabled: siteExperimentAvailable
-            text: "Open fresh same-profile view once"
-            Accessible.name: "Run one-shot fresh same-profile view experiment"
-            onClicked: siteDoctorExperimentRequested("fresh-view")
         }
     }
 }

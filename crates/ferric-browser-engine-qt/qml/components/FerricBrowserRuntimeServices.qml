@@ -6,6 +6,7 @@ import QtWebEngine
 import io.github.ferricbrowser 1.0
 import "../scripts/BrowserScripts.js" as BrowserScripts
 import "../scripts/SpellcheckPresentation.js" as SpellcheckPresentation
+import "../scripts/ChromePresentation.js" as ChromePresentation
 
 FerricBrowserRuntimeBase {
     id: window
@@ -1151,30 +1152,29 @@ FerricBrowserRuntimeBase {
     }
 
     function refreshSessions() {
+        browserUi.list_named_sessions()
+        applySessionValues()
+    }
+
+    function applySessionValues() {
+        var values = browserUi.session_names_values
         namedSessions.clear()
-        var names = browserUi.list_named_sessions()
-        if (names.length === 0) {
-            return
-        }
-        var values = names.split("\n")
-        for (var i = 0; i < values.length; ++i) {
-            if (values[i].length > 0) {
-                namedSessions.append({ name: values[i] })
-            }
-        }
+        for (var i = 0; i < values.length; ++i) namedSessions.append({ name: String(values[i]) })
     }
 
     function showSessionPreview(name, append) {
         if (!browserUi.request_session_preview(name)) {
-            return
+            return false
         }
         sessionPreviewName = name
         sessionPreviewAppend = append
         sessionPreviewLoading = true
         sessionPreviewError = false
-        sessionPreviewText = "Loading validated session descriptors…"
+        sessionPreviewText = "Reading saved tabs…"
         window.openInternalSurface()
+        sessionManagerVisible = false
         sessionPreviewVisible = true
+        return true
     }
 
     function showCommandSessionPreview(payload) {
@@ -1186,7 +1186,7 @@ FerricBrowserRuntimeBase {
         sessionPreviewAppend = lines[0] === "append"
         sessionPreviewLoading = true
         sessionPreviewError = false
-        sessionPreviewText = "Loading validated session descriptors…"
+        sessionPreviewText = "Reading saved tabs…"
         window.openInternalSurface()
         sessionPreviewVisible = true
     }
@@ -1198,7 +1198,7 @@ FerricBrowserRuntimeBase {
         }
         sessionPreviewLoading = true
         sessionPreviewError = false
-        sessionPreviewText = "Loading validated session…"
+        sessionPreviewText = "Restoring saved tabs…"
         window.syncTabModel()
         window.executePendingEngineAction()
     }
@@ -1238,16 +1238,13 @@ FerricBrowserRuntimeBase {
     }
 
     function refreshProfiles() {
-        profiles.clear()
-        if (!browserUi.request_profile_list()) {
-            return
-        }
-        profileRefreshAttempts = 0
-        profileSessionSurfaces.restartProfileRefresh()
+        browserUi.request_profile_list()
+        applyProfileValues()
     }
 
     function applyProfileValues() {
         var values = browserUi.profile_values
+        profiles.clear()
         if (values.length === 0) {
             return
         }
@@ -1258,10 +1255,6 @@ FerricBrowserRuntimeBase {
                 profiles.append({ name: fields[0], label: fields[1], id: fields[2] })
             }
         }
-    }
-
-    function scheduleProfileRefresh() {
-        refreshProfiles()
     }
 
     function showSiteLedger() {
@@ -1279,15 +1272,17 @@ FerricBrowserRuntimeBase {
             var facts = siteLedgerData.facts || []
             for (var factIndex = 0; factIndex < facts.length; factIndex++) {
                 if (facts[factIndex] && facts[factIndex].id === "capture") {
-                    facts[factIndex].value = activeCapture
+                    facts[factIndex].value = siteLedgerData.private
+                            ? { status: "unavailable", reason: "withheld in private browsing" }
+                            : activeCapture
                             ? { status: activeCapture.status,
                                 origin: activeCapture.origin,
                                 provenance: "browser-owned capture ledger" }
                             : { status: "inactive",
                                 reason: "no active capture is recorded for this tab",
                                 provenance: "browser-owned capture ledger" }
-                    facts[factIndex].state = activeCapture ? "active" : "inactive"
-                    facts[factIndex].capability = activeCapture ? "available" : "not-active"
+                    facts[factIndex].state = siteLedgerData.private ? "unknown" : activeCapture ? "active" : "inactive"
+                    facts[factIndex].capability = siteLedgerData.private ? "unavailable" : activeCapture ? "available" : "not-active"
                     break
                 }
             }
@@ -1300,6 +1295,24 @@ FerricBrowserRuntimeBase {
         } catch (error) {
             browserUi.status_text = "Site Ledger response was invalid"
         }
+    }
+
+    function siteLedgerSnapshotIsCurrent() {
+        try {
+            var current = JSON.parse(browserUi.refresh_site_status())
+            if (ChromePresentation.siteScopeKey(current) === ChromePresentation.siteScopeKey(window.siteLedgerData)) {
+                return true
+            }
+            window.showSiteLedger()
+            browserUi.status_text = "This page changed. Review its updated site details before continuing."
+        } catch (error) {
+            browserUi.status_text = "Site details couldn't be checked. Refresh before continuing."
+        }
+        return false
+    }
+
+    function refreshVisibleSiteLedger() {
+        if (window.siteLedgerVisible) window.showSiteLedger()
     }
 
     function refreshDiagnostics() {
@@ -1594,13 +1607,14 @@ FerricBrowserRuntimeBase {
 
     function showProfileDeletePreview(name) {
         if (!browserUi.request_profile_delete_preview(name)) {
-            return
+            return false
         }
         profileDeleteName = name
-        profileDeletePreviewText = "Loading validated profile deletion preview…"
         window.openInternalSurface()
+        profileManagerVisible = false
         profileDeletePreviewVisible = true
         profileSessionSurfaces.restartProfileDeletePreview()
+        return true
     }
 
 }

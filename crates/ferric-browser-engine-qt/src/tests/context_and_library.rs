@@ -1115,7 +1115,6 @@ fn action_command_maps_subject_and_verb_to_a_registered_executor() {
     assert!(qml.contains("request_session_preview"));
     assert!(qml.contains("request_named_session_load"));
     assert!(qml.contains("sessionPreviewPollTimer"));
-    assert!(qml.contains("Loading validated session descriptors"));
     assert!(source.contains("request_session_preview(&name)"));
     assert!(source.contains("session_restore_load_append = Some(append)"));
     assert!(qml.contains("update_completion(commandSurface.commandText"));

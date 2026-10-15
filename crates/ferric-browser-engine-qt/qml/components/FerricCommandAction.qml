@@ -39,8 +39,11 @@ Button {
             Layout.preferredWidth: Math.max(54 * action.scale, implicitWidth)
         }
         Label {
+            objectName: "commandActionLabel"
             Layout.fillWidth: true
             text: action.actionLabel
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
             color: action.selected
                    ? action.browserWindow.selectionTextColor
                    : action.browserWindow.primaryTextColor
