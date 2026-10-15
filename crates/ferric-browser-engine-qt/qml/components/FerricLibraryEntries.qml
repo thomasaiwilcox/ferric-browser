@@ -87,6 +87,8 @@ FocusScope {
             libraryEntries.journeyReopenRequested(entry.nodeId, "current")
         } else if (["history", "bookmark", "quickmark"].indexOf(entry.entryKind) >= 0) {
             libraryEntries.openRequested(entry.entryKind, entry.entryId)
+        } else if (libraryList.currentItem) {
+            libraryList.currentItem.detailsExpanded = !libraryList.currentItem.detailsExpanded
         }
     }
 
@@ -302,6 +304,7 @@ FocusScope {
                     textFormat: TextEdit.PlainText
                     readOnly: true
                     selectByMouse: true
+                    selectByKeyboard: true
                     wrapMode: TextEdit.Wrap
                     color: libraryEntries.browserWindow.secondaryTextColor
                     background: Rectangle { color: libraryEntries.browserWindow.surfaceColor }

@@ -299,7 +299,7 @@ ApplicationWindow {
         var id = popupWindow.pendingDownloadId
         var download = popupWindow.pendingDownloadRequests[id]
         var ui = popupWindow.popupDownloadUi()
-        var selectedPath = popupDownloadChooser.selectedFile.toLocalFile()
+        var selectedPath = rootWindow.primaryBrowserUi.local_file_path(popupDownloadChooser.selectedFile)
         if (!download) {
             popupWindow.pendingDownloadId = ""
             rootWindow.restoreOverlayFocus()
@@ -450,8 +450,8 @@ ApplicationWindow {
                 ? popupFileChooser.selectedFiles
                 : [popupFileChooser.selectedFile]
         for (var i = 0; i < urls.length; ++i) {
-            var path = urls[i].toLocalFile()
-            if (!path || urls[i].scheme !== "file") {
+            var path = rootWindow.primaryBrowserUi.local_file_path(urls[i])
+            if (!path) {
                 return []
             }
             paths.push(path)
@@ -461,7 +461,7 @@ ApplicationWindow {
 
     function popupFolderDialogPaths() {
         var url = popupFolderChooser.selectedFolder
-        var path = url && url.scheme === "file" ? url.toLocalFile() : ""
+        var path = rootWindow.primaryBrowserUi.local_file_path(url || "")
         return path ? [path] : []
     }
 

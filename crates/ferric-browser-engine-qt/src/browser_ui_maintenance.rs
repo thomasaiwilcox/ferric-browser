@@ -218,7 +218,9 @@ impl qobject::BrowserUi {
         {
             return 100;
         }
-        if rust.checkpoint.dirty {
+        // Private or unavailable profiles have no checkpoint destination.
+        // Keep the draft dirty, but don't spin while there is nowhere to save.
+        if rust.checkpoint.dirty && rust.session_path.is_some() {
             let elapsed = rust.checkpoint.dirty_since_ms.map_or(0, |since| {
                 elapsed_ms(rust.binding_clock).saturating_sub(since)
             });

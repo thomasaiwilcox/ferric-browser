@@ -4,16 +4,20 @@ import QtQuick.Layouts
 
 FerricModalSurface {
     id: diagnostics
-
+    required property string previewText
+    required property var summaryRows
+    required property bool reportAvailable
+    property bool detailsExpanded: false
+    property string exportNotice: ""
+    property string exportDetail: ""
     signal closeRequested()
     signal refreshRequested()
     signal copyRequested()
     signal saveRequested()
-
     visible: browserWindow.diagnosticsVisible
     commandText: ":diagnostics"
     title: "Diagnostics"
-    message: "Read-only, privacy-safe runtime snapshot."
+    message: ""
     keyHelp: "tab/shift-tab controls  ·  esc close"
     dialogWidth: 900 * scale
     dialogHeight: 620 * scale
@@ -22,96 +26,95 @@ FerricModalSurface {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 0
-        spacing: 8
-
-        RowLayout {
+        spacing: 8 * diagnostics.scale
+        Flow {
             Layout.fillWidth: true
-            Button {
-                text: "Refresh"
-                Accessible.name: "Refresh diagnostics"
-                onClicked: diagnostics.refreshRequested()
-            }
-            Button {
-                text: "Copy preview"
-                Accessible.name: "Copy diagnostics preview"
-                onClicked: diagnostics.copyRequested()
-            }
-            Button {
-                text: "Save preview"
-                Accessible.name: "Save diagnostics preview"
-                onClicked: diagnostics.saveRequested()
-            }
-            Button {
-                text: "Close"
-                Accessible.name: "Close diagnostics"
-                onClicked: diagnostics.closeRequested()
-            }
+            Layout.preferredHeight: childrenRect.height
+            spacing: 6 * diagnostics.scale
+            Button { text: "Refresh"; onClicked: diagnostics.refreshRequested() }
+            Button { objectName: "diagnosticsCopy"; text: "Copy preview"; enabled: diagnostics.reportAvailable; onClicked: diagnostics.copyRequested() }
+            Button { objectName: "diagnosticsSave"; text: "Save report"; enabled: diagnostics.reportAvailable; onClicked: diagnostics.saveRequested() }
+            Button { text: "Close"; onClicked: diagnostics.closeRequested() }
         }
-
-        Label {
-            Layout.fillWidth: true
-            text: "Read-only, privacy-safe runtime snapshot. Probe values are bounded and may be marked unavailable or not tested."
-            color: diagnostics.browserWindow.secondaryTextColor
-            wrapMode: Text.WordWrap
-        }
-
-        Label {
-            Layout.fillWidth: true
-            text: "Qt logical-unit layout · current screen scale: "
-                  + diagnostics.browserWindow.displayScaleLabel
-            color: diagnostics.browserWindow.mutedTextColor
-            Accessible.name: "Current screen scale"
-        }
-
-        Label {
-            Layout.fillWidth: true
-            text: "Window activation: " + diagnostics.browserWindow.activationStatus
-            color: diagnostics.browserWindow.activationStatus === "unknown"
-                  ? diagnostics.browserWindow.warningColor
-                  : diagnostics.browserWindow.mutedTextColor
-            Accessible.name: "Window activation status"
-        }
-
-        Label {
-            Layout.fillWidth: true
-            visible: diagnostics.browserWindow.themeContrastWarning.length > 0
-            text: "Theme contrast warning: " + diagnostics.browserWindow.themeContrastWarning
-            color: diagnostics.browserWindow.warningColor
-            wrapMode: Text.WordWrap
-            Accessible.name: "Theme contrast warning"
-            Accessible.description: "The imported theme remains enabled, but one or more assessed chrome color pairs are below WCAG AA."
-        }
-
-        Label {
-            Layout.fillWidth: true
-            text: diagnostics.browserWindow.reducedMotionActive
-                  ? "Optional interface motion is disabled (reduced-motion setting: system or on)."
-                  : "Optional interface motion is enabled by the reduced-motion setting."
-            color: diagnostics.browserWindow.mutedTextColor
-            wrapMode: Text.WordWrap
-            Accessible.name: "Reduced motion status"
-        }
-
-        ScrollView {
-            id: diagnosticsScroll
+        FerricScrollColumn {
+            objectName: "diagnosticsBody"
             Layout.fillWidth: true
             Layout.fillHeight: true
-            clip: true
-
+            hostWindow: diagnostics.hostWindow
+            Repeater {
+                model: diagnostics.summaryRows
+                Label {
+                    required property string modelData
+                    Layout.fillWidth: true
+                    text: modelData
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: diagnostics.browserWindow.primaryTextColor
+                }
+            }
+            Label {
+                Layout.fillWidth: true
+                text: "Review report details before sharing. Unmeasured features haven't been verified."
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: diagnostics.browserWindow.secondaryTextColor
+            }
+            Label {
+                Layout.fillWidth: true
+                text: "Interface scale: " + diagnostics.browserWindow.displayScaleLabel
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: diagnostics.browserWindow.secondaryTextColor
+            }
+            Label {
+                Layout.fillWidth: true
+                text: diagnostics.browserWindow.reducedMotionActive ? "Interface animations: reduced" : "Interface animations: enabled"
+                color: diagnostics.browserWindow.secondaryTextColor
+                wrapMode: Text.Wrap
+            }
+            Label {
+                Layout.fillWidth: true
+                visible: diagnostics.browserWindow.themeContrastWarning.length > 0
+                text: "Theme contrast: " + diagnostics.browserWindow.themeContrastWarning
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: diagnostics.browserWindow.warningColor
+            }
+            Label {
+                objectName: "diagnosticsUnavailable"
+                Layout.fillWidth: true
+                visible: !diagnostics.reportAvailable && diagnostics.exportNotice.length === 0
+                text: "A report isn't ready. Refresh to try again."
+                wrapMode: Text.Wrap
+                color: diagnostics.browserWindow.warningColor
+            }
+            FerricManagerFeedback {
+                objectName: "diagnosticsExportNotice"
+                Layout.fillWidth: true
+                browserWindow: diagnostics.browserWindow
+                message: diagnostics.exportNotice
+                detail: diagnostics.exportDetail
+                failed: diagnostics.exportDetail.length > 0
+            }
+            ToolButton {
+                objectName: "diagnosticsDetailsToggle"
+                text: diagnostics.detailsExpanded ? "Hide report details" : "Report details"
+                onClicked: diagnostics.detailsExpanded = !diagnostics.detailsExpanded
+            }
             TextArea {
-                width: diagnosticsScroll.availableWidth
-                height: Math.max(diagnosticsScroll.availableHeight, contentHeight + 16)
-                text: diagnostics.browserWindow.diagnosticsText
+                objectName: "diagnosticsReportText"
+                Layout.fillWidth: true
+                visible: diagnostics.detailsExpanded
+                text: diagnostics.previewText
+                textFormat: TextEdit.PlainText
+                wrapMode: TextEdit.Wrap
                 readOnly: true
                 selectByMouse: true
-                wrapMode: TextEdit.NoWrap
+                selectByKeyboard: true
                 color: diagnostics.browserWindow.primaryTextColor
-                selectionColor: diagnostics.browserWindow.accentColor
-                selectedTextColor: diagnostics.browserWindow.backgroundColor
+                background: Rectangle { color: diagnostics.browserWindow.surfaceColor }
                 font.family: diagnostics.browserWindow.chromeFontFamily
-                Accessible.name: "Read-only diagnostics snapshot"
-                Accessible.description: "Privacy-safe runtime diagnostics in JSON format"
+                Accessible.name: "Diagnostic report preview"
             }
         }
     }

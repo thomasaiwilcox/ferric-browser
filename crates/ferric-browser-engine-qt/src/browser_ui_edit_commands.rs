@@ -612,7 +612,7 @@ impl qobject::BrowserUi {
             return Ok(serde_json::json!({"status": "accepted", "pending": true}));
         }
         let operation_id = self.as_mut().start_spawn_process(&resolved)?;
-        self.set_status_text(QString::from(format!("Spawn started: {operation_id}")));
+        self.set_status_text(QString::from("External command started"));
         Ok(serde_json::json!({
             "status": "accepted",
             "operation_id": operation_id

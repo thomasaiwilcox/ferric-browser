@@ -94,7 +94,7 @@ function libraryTitle(kind) {
 }
 
 function libraryDescription(kind) {
-    var descriptions = {history: "Pages visited in this profile.", bookmarks: "Saved pages in this profile.", quickmarks: "Named shortcuts to saved pages.", journey: "Explore how your pages connect.", actions: "Available commands and examples.", "context-routes": "Rules for opening pages in a context."}
+    var descriptions = {history: "Pages visited in this profile.", bookmarks: "Saved pages in this profile.", quickmarks: "Named shortcuts to saved pages.", journey: "Explore how your pages connect.", actions: "Action reference and examples. Open Details to inspect an entry; availability depends on the current page and browser state.", "context-routes": "Rules for opening pages in a context. Open Details to inspect a rule."}
     return descriptions[kind] || "Saved browser information."
 }
 

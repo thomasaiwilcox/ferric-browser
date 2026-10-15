@@ -190,4 +190,15 @@ TestCase {
         view.listPending=false;view.listError="disk unavailable";verify(!empty.visible)
         verify(findChild(view,"libraryLoadingFeedback").failed)
     }
+    function test_reference_enter_inspects_without_executing() {
+        var view=createView();view.libraryKind="actions"
+        records.setProperty(0,"entryKind","action")
+        var opened=createTemporaryObject(spyFixture,view,{target:view,signalName:"entryOpenRequested"})
+        var list=findChild(view,"libraryEntryList");list.forceActiveFocus()
+        keyClick(Qt.Key_Return)
+        tryCompare(findChild(view,"libraryEntryDetails"),"visible",true)
+        compare(opened.count,0)
+        verify(view.keyHelp.indexOf("enter details")>=0)
+    }
+
 }

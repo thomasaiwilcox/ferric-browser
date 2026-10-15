@@ -59,6 +59,7 @@ mod browser_ui_external_actions;
 mod browser_ui_guide;
 mod browser_ui_hint_pointer;
 pub use browser_ui_hint_pointer::reject_external_hint_interaction_chain;
+mod browser_ui_diagnostics;
 mod browser_ui_hint_proxy_configuration;
 mod browser_ui_hint_selection;
 mod browser_ui_input;
@@ -117,6 +118,7 @@ mod desktop_portals;
 mod desktop_preferences;
 mod diagnostics;
 mod diagnostics_overview;
+mod diagnostics_presentation;
 mod diagnostics_snapshot;
 mod download_files;
 mod editor_process;
@@ -417,13 +419,16 @@ mod qobject {
         include!("cxx-qt-lib/qstring.h");
         include!("cxx-qt-lib/qstringlist.h");
         include!("cxx-qt-lib/qvariant.h");
+        include!("cxx-qt-lib/qurl.h");
         include!("url_display.h");
         type QString = cxx_qt_lib::QString;
         type QStringList = cxx_qt_lib::QStringList;
         type QVariant = cxx_qt_lib::QVariant;
+        type QUrl = cxx_qt_lib::QUrl;
 
         fn ferric_browser_to_ascii_host(host: &QString) -> QString;
         fn ferric_browser_canonicalize_url(value: &QString) -> QString;
+        fn ferric_browser_local_file_path(value: &QUrl) -> QString;
         fn ferric_browser_read_clipboard() -> QString;
         fn ferric_browser_read_primary_selection() -> QString;
         fn ferric_browser_primary_selection_available() -> bool;
@@ -526,11 +531,17 @@ mod qobject {
         #[qproperty(QStringList, session_preview_pinned)]
         #[qproperty(QStringList, session_preview_muted)]
         #[qproperty(QString, session_preview)]
+        #[qproperty(QString, bookmark_transfer_id)]
+        #[qproperty(QString, bookmark_transfer_state)]
+        #[qproperty(QString, bookmark_transfer_message)]
+        #[qproperty(QString, bookmark_transfer_detail)]
         #[qproperty(QString, mark_action_id)]
         #[qproperty(QString, mark_action_state)]
         #[qproperty(QString, mark_action_message)]
         #[qproperty(QString, mark_action_detail)]
         #[qproperty(bool, library_pending)]
+        #[qproperty(QStringList, diagnostics_summary)]
+        #[qproperty(bool, diagnostics_available)]
         #[qproperty(QString, library_error)]
         #[qproperty(QString, profile_action_id)]
         #[qproperty(QString, profile_action_state)]
@@ -1461,6 +1472,9 @@ mod qobject {
         fn prompt_origin(self: &BrowserUi, url: &QString) -> QString;
 
         #[qinvokable]
+        fn local_file_path(self: &BrowserUi, url: &QUrl) -> QString;
+
+        #[qinvokable]
         fn prompt_host(self: &BrowserUi, url: &QString) -> QString;
 
         #[qinvokable]
@@ -1507,6 +1521,9 @@ mod qobject {
 
         #[qinvokable]
         fn diagnostics_json(self: Pin<&mut BrowserUi>) -> QString;
+
+        #[qinvokable]
+        fn engine_update_notice(self: &BrowserUi) -> QStringList;
 
         #[qinvokable]
         fn spellcheck_dictionaries(self: Pin<&mut BrowserUi>) -> QStringList;
@@ -1825,7 +1842,7 @@ mod qobject {
 
 use core::pin::Pin;
 use cxx_qt::{CxxQtType, Threading};
-use cxx_qt_lib::{QString, QStringList, QVariant};
+use cxx_qt_lib::{QString, QStringList, QUrl, QVariant};
 use ferric_browser_application::{
     BrowserApplication, ConfigurationLayers, ContextCommand, ProfileOpenEffect, ProfileOpenRequest,
     ProfileStorage, StorageEffect, StorageRequest, StorageTicket,
@@ -2038,11 +2055,18 @@ pub struct BrowserUiRust {
     session_preview_pinned: QStringList,
     session_preview_muted: QStringList,
     session_preview: QString,
+    mark_feedback_tickets: BTreeMap<StorageTicket, (FeedbackLane, QString)>,
+    bookmark_transfer_id: QString,
+    bookmark_transfer_state: QString,
+    bookmark_transfer_message: QString,
+    bookmark_transfer_detail: QString,
     mark_action_id: QString,
     mark_action_state: QString,
     mark_action_message: QString,
     mark_action_detail: QString,
     library_pending: bool,
+    diagnostics_summary: QStringList,
+    diagnostics_available: bool,
     library_error: QString,
     storage_library_refresh_again: bool,
     storage_library_read_pending: bool,
@@ -2792,11 +2816,18 @@ impl Default for BrowserUiRust {
             session_preview_pinned: QStringList::default(),
             session_preview_muted: QStringList::default(),
             session_preview: QString::default(),
+            mark_feedback_tickets: BTreeMap::new(),
+            bookmark_transfer_id: QString::default(),
+            bookmark_transfer_state: QString::from("idle"),
+            bookmark_transfer_message: QString::default(),
+            bookmark_transfer_detail: QString::default(),
             mark_action_id: QString::default(),
             mark_action_state: QString::from("idle"),
             mark_action_message: QString::default(),
             mark_action_detail: QString::default(),
             library_pending: false,
+            diagnostics_summary: QStringList::default(),
+            diagnostics_available: false,
             library_error: QString::default(),
             storage_library_refresh_again: false,
             storage_library_read_pending: false,

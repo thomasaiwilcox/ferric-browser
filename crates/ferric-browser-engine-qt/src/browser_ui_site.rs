@@ -1,13 +1,19 @@
 use super::{
     Config, CxxQtType, FocusObservation, Instant, MAX_DIAGNOSTICS_EXPORT_BYTES, Mode,
-    ParsedCommand, Path, Pin, PrivacyKind, QString, QStringList, SITE_DOCTOR_EXPERIMENT_TIMEOUT,
-    SiteExperiment, Uuid, Value, atomic_write_private, diagnostics, display_url,
-    focus_mode_transition, matching_site_rules, qobject, safe_ipc_url, safe_site_host,
+    ParsedCommand, Path, Pin, PrivacyKind, QString, QStringList, QUrl,
+    SITE_DOCTOR_EXPERIMENT_TIMEOUT, SiteExperiment, Uuid, Value, atomic_write_private, diagnostics,
+    display_url, focus_mode_transition, matching_site_rules, qobject, safe_ipc_url, safe_site_host,
     safe_site_origin, setting_supports_site_scope, site_doctor_remaining_seconds,
     toml_string_array_literal, userscript,
 };
 
 impl qobject::BrowserUi {
+    // Qt invokables require a receiver even for pure URL conversion.
+    #[allow(clippy::unused_self)]
+    pub(super) fn local_file_path(&self, url: &QUrl) -> QString {
+        qobject::ferric_browser_local_file_path(url)
+    }
+
     // Qt invokables need a QObject receiver, including pure presentation helpers.
     #[allow(clippy::unused_self)]
     pub(super) fn prompt_origin(&self, url: &QString) -> QString {
@@ -522,32 +528,6 @@ impl qobject::BrowserUi {
         }))
     }
 
-    pub(super) fn diagnostics_json(mut self: Pin<&mut Self>) -> QString {
-        const MAX_DIAGNOSTICS_TEXT: usize = 48 * 1024;
-
-        let result = self.ipc_diagnostics(&Value::Null);
-        let mut serialized = match result {
-            Ok(value) => serde_json::to_string_pretty(&value)
-                .unwrap_or_else(|_| "{\"error\":\"diagnostics serialization failed\"}".into()),
-            Err(error) => serde_json::json!({"error": error}).to_string(),
-        };
-        self.as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .diagnostics_preview_payload = Some(serialized.clone());
-        if serialized.len() > MAX_DIAGNOSTICS_TEXT {
-            serialized.truncate(MAX_DIAGNOSTICS_TEXT);
-            serialized.push_str("\n… output truncated by the browser UI");
-        }
-        self.as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .diagnostics_preview_ready = true;
-        QString::from(serialized)
-    }
-
     pub(super) fn spellcheck_dictionaries(self: Pin<&mut Self>) -> QStringList {
         let _ = self;
         diagnostics::installed_dictionary_names()
@@ -603,7 +583,10 @@ impl qobject::BrowserUi {
                     .as_mut()
                     .get_mut()
                     .diagnostics_preview_payload = None;
-                self.set_status_text(QString::from("Diagnostics export written"));
+                self.as_mut().set_diagnostics_available(false);
+                self.set_status_text(QString::from(
+                    "Report saved. Refresh Diagnostics to prepare another report.",
+                ));
                 true
             }
             Err(error) => {

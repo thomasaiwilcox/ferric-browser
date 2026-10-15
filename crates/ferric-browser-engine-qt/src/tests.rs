@@ -39,6 +39,7 @@ const ADAPTER_SOURCE: &str = concat!(
     include_str!("browser_ui_query_bindings.rs"),
     include_str!("browser_ui_query_configuration.rs"),
     include_str!("browser_ui_query_diagnostics.rs"),
+    include_str!("browser_ui_diagnostics.rs"),
     include_str!("browser_ui_query_permissions.rs"),
     include_str!("browser_ui_query_profiles.rs"),
     include_str!("browser_ui_query_site.rs"),

@@ -29,7 +29,10 @@ is being migrated. This document is the review allowlist for those exceptions.
 
 - The site ledger and diagnostics snapshot are opaque diagnostic/export payloads.
   Site actions re-read the existing diagnostic snapshot before using consent,
-  comparing its site/document identity with the reviewed snapshot.
+  comparing its site/document identity with the reviewed snapshot. Diagnostic
+  summary rows, report readiness and engine-update notices use typed Qt
+  properties or return values; preparing a notice must not parse or replace
+  the reviewed diagnostic report.
 - Saved-session preview site labels, addresses, pinning and muting use typed Qt list
   properties. Session preview errors use the existing completion receipt;
   previews do not serialize a presentation model into JSON.
@@ -62,7 +65,7 @@ The following formerly JSON-encoded policy/presentation data must remain typed:
   status.
 
 `tests::qml_json_contract_allowlist_is_explicit` records the current number of
-JSON calls in the window runtime and native-page components (21 parses and 39
+JSON calls in the window runtime and native-page components (20 parses and 39
 stringifications). Adding a new call requires a deliberate update to
 this document and a review that it is an opaque page-script, diagnostic, or
 export contract—not a presentation or policy model.

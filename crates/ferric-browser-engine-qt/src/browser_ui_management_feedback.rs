@@ -9,6 +9,7 @@ pub(super) enum FeedbackLane {
     SessionSave,
     SessionDelete,
     Mark,
+    BookmarkTransfer,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -35,6 +36,7 @@ impl qobject::BrowserUi {
                 FeedbackLane::SessionSave => self.as_ref().rust().session_save_id.clone(),
                 FeedbackLane::SessionDelete => self.as_ref().rust().session_delete_id.clone(),
                 FeedbackLane::Mark => self.as_ref().rust().mark_action_id.clone(),
+                FeedbackLane::BookmarkTransfer => self.as_ref().rust().bookmark_transfer_id.clone(),
             },
         };
         let state = QString::from(match state {
@@ -71,15 +73,28 @@ impl qobject::BrowserUi {
                 self.as_mut().set_mark_action_detail(detail);
                 self.as_mut().set_mark_action_state(state);
             }
+            FeedbackLane::BookmarkTransfer => {
+                self.as_mut().set_bookmark_transfer_id(id);
+                self.as_mut().set_bookmark_transfer_message(message);
+                self.as_mut().set_bookmark_transfer_detail(detail);
+                self.as_mut().set_bookmark_transfer_state(state);
+            }
         }
     }
 
     pub(super) fn reset_management_feedback(mut self: Pin<&mut Self>) {
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .mark_feedback_tickets
+            .clear();
         for lane in [
             FeedbackLane::Profile,
             FeedbackLane::SessionSave,
             FeedbackLane::SessionDelete,
             FeedbackLane::Mark,
+            FeedbackLane::BookmarkTransfer,
         ] {
             self.as_mut()
                 .publish_management_feedback(lane, FeedbackState::Idle, "", "");

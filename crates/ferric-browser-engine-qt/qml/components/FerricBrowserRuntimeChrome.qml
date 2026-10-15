@@ -648,12 +648,17 @@ GridLayout {
     }
 
     FerricDiagnostics {
+        previewText: window.diagnosticsText
+        summaryRows: browserUi.diagnostics_summary
+        reportAvailable: browserUi.diagnostics_available
+        exportNotice: window.diagnosticsExportNotice
+        exportDetail: window.diagnosticsExportDetail
         browserWindow: window
         onCloseRequested: window.closeDiagnostics()
         onRefreshRequested: window.refreshDiagnostics()
-        onCopyRequested: window.copyToClipboard(window.diagnosticsText, true)
+        onCopyRequested: if (browserUi.diagnostics_available) window.copyToClipboard(window.diagnosticsText, true)
         onSaveRequested: {
-            window.refreshDiagnostics()
+            if (!browserUi.diagnostics_available) return
             fileDialogSurfaces.diagnosticsExportCurrentFile = "ferric-browser-diagnostics.json"
             fileDialogSurfaces.openDiagnosticsExport()
         }
@@ -1706,141 +1711,23 @@ GridLayout {
         onActionsRequested: function(label) { window.showHintActions(label) }
     }
 
-    Popup {
+    FerricTargetSearch {
         id: targetSearchPopup
         objectName: "targetSearchPopup"
-        parent: Overlay.overlay
-        x: Math.max(12, (parent ? parent.width - width : window.width - width) / 2)
-        y: Math.max(12, (parent ? parent.height : window.height) * 0.16)
-        width: Math.max(1, Math.min(620 * window.chromeScale, window.width - 24))
-        height: Math.max(1, Math.min(520 * window.chromeScale, window.height - 48))
-        visible: browserUi.target_search_active
-        modal: true
-        focus: true
-        padding: 12 * window.chromeScale
-        closePolicy: Popup.NoAutoClose
-        onOpened: {
-            window.captureOverlayFocus(window, window.activeWebView())
-            Qt.callLater(function() { targetSearchInput.forceActiveFocus() })
-        }
+        browserWindow: window
+        searchVisible: browserUi.target_search_active
+        query: String(window.hintState.query || "")
+        scope: browserUi.target_search_scope
+        rows: window.targetSearchRows()
+        selectedIdentity: window.targetSearchSelectedIdentity
+        selectedMeaning: window.targetSearchSelectedMeaning
+        onOpening: window.captureOverlayFocus(window, window.activeWebView())
         onClosed: window.restoreOverlayFocus()
-
-        background: Rectangle {
-            color: window.panelColor
-            border.color: window.borderColor
-            radius: 6 * window.chromeScale
-        }
-
-        contentItem: ColumnLayout {
-            Accessible.role: Accessible.Dialog
-            Accessible.name: "Visible target search"
-            spacing: 8 * window.chromeScale
-
-            Label {
-                Layout.fillWidth: true
-                text: "Visible targets · " + browserUi.target_search_scope
-                color: window.primaryTextColor
-                font.bold: true
-                Accessible.name: text
-            }
-
-            FerricTextField {
-                id: targetSearchInput
-                objectName: "targetSearchInput"
-                Layout.fillWidth: true
-                text: window.hintState.query || ""
-                placeholderText: "Search visible page targets"
-                maximumLength: 256
-                Accessible.name: "Search visible targets"
-                selectByMouse: true
-                onTextEdited: window.applyTargetSearchQuery(text)
-                Keys.onPressed: function(event) {
-                    if (event.key === Qt.Key_Up) {
-                        window.moveTargetSearchSelection(-1)
-                        event.accepted = true
-                    } else if (event.key === Qt.Key_Down) {
-                        window.moveTargetSearchSelection(1)
-                        event.accepted = true
-                    } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                        window.confirmTargetSearchSelection()
-                        event.accepted = true
-                    } else if (event.key === Qt.Key_Escape) {
-                        browserUi.cancel_target_search()
-                        event.accepted = true
-                    }
-                }
-            }
-
-            ListView {
-                id: targetSearchList
-                objectName: "targetSearchList"
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
-                model: window.targetSearchRows()
-                Accessible.role: Accessible.List
-                Accessible.name: "Visible target results"
-                delegate: ItemDelegate {
-                    id: targetSearchRow
-                    required property var modelData
-                    width: targetSearchList.width
-                    height: Math.max(44 * window.chromeScale, rowContent.implicitHeight + 8)
-                    highlighted: modelData.identity === window.targetSearchSelectedIdentity
-                            && modelData.meaning === window.targetSearchSelectedMeaning
-                    Accessible.name: modelData.kind + ": " + modelData.text
-                    onClicked: window.selectTargetSearchIdentity(modelData.identity)
-
-                    contentItem: RowLayout {
-                        id: rowContent
-                        spacing: 10 * window.chromeScale
-                        Label {
-                            text: targetSearchRow.modelData.kind
-                            color: window.accentColor
-                            font.bold: true
-                            Layout.preferredWidth: 128 * window.chromeScale
-                            elide: Text.ElideRight
-                            verticalAlignment: Text.AlignVCenter
-                        }
-                        Label {
-                            text: targetSearchRow.modelData.text
-                            color: window.primaryTextColor
-                            Layout.fillWidth: true
-                            elide: Text.ElideRight
-                            wrapMode: Text.NoWrap
-                            verticalAlignment: Text.AlignVCenter
-                        }
-                    }
-
-                    background: Rectangle {
-                        color: targetSearchRow.highlighted
-                                ? window.selectionColor : "transparent"
-                        radius: 3 * window.chromeScale
-                    }
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                Label {
-                    Layout.fillWidth: true
-                    text: targetSearchList.count === 0
-                            ? "No visible targets match"
-                            : targetSearchList.count + " visible target(s) · Enter to confirm"
-                    color: window.mutedTextColor
-                }
-                Button {
-                    text: "Cancel"
-                    Accessible.name: "Cancel target search"
-                    onClicked: browserUi.cancel_target_search()
-                }
-                Button {
-                    text: "Confirm"
-                    Accessible.name: "Confirm selected target"
-                    enabled: window.targetSearchSelectedIdentity.length > 0
-                    onClicked: window.confirmTargetSearchSelection()
-                }
-            }
-        }
+        onQueryEdited: function(value) { window.applyTargetSearchQuery(value) }
+        onMoveRequested: function(delta) { window.moveTargetSearchSelection(delta) }
+        onSelectionRequested: function(identity) { window.selectTargetSearchIdentity(identity) }
+        onConfirmRequested: window.confirmTargetSearchSelection()
+        onCancelRequested: browserUi.cancel_target_search()
     }
 
     Connections {
@@ -1858,13 +1745,17 @@ GridLayout {
                 window.targetSearchSelectedMeaning = ""
                 window.targetSearchSelectionInitialized = false
             }
-            Qt.callLater(function() {
-                if (browserUi.mode === "hint"
-                        && browserUi.target_search_active === searchActive) {
-                    window.startHintCollection()
-                    if (searchActive) targetSearchInput.forceActiveFocus()
-                }
-            })
+            targetSearchRefreshTimer.restart()
+        }
+    }
+
+    Timer {
+        id: targetSearchRefreshTimer
+        interval: 0
+        onTriggered: {
+            if (browserUi.mode !== "hint") return
+            window.startHintCollection()
+            if (browserUi.target_search_active) targetSearchPopup.focusInput()
         }
     }
 

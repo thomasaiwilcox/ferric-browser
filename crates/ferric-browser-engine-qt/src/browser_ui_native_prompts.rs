@@ -328,7 +328,7 @@ impl qobject::BrowserUi {
             PromptCompletion::OutOfOrder => {
                 self.as_mut().force_prompt_normal();
                 self.set_status_text(QString::from(
-                    "Native prompt completed out of order; mode reset to Normal",
+                    "The page context changed. Switched to Normal mode.",
                 ));
                 false
             }

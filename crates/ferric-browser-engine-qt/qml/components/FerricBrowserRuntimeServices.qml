@@ -811,8 +811,8 @@ FerricBrowserRuntimeBase {
                 ? fileDialogSurfaces.engineFileSelectedFiles
                 : [fileDialogSurfaces.engineFileSelectedFile]
         for (var i = 0; i < urls.length; ++i) {
-            var path = urls[i].toLocalFile()
-            if (!path || urls[i].scheme !== "file") {
+            var path = browserUi.local_file_path(urls[i])
+            if (!path) {
                 return []
             }
             paths.push(path)
@@ -830,7 +830,7 @@ FerricBrowserRuntimeBase {
 
     function folderDialogPaths() {
         var url = fileDialogSurfaces.engineFolderSelectedFolder
-        var path = url && url.scheme === "file" ? url.toLocalFile() : ""
+        var path = browserUi.local_file_path(url || "")
         return path ? [path] : []
     }
 
@@ -1331,6 +1331,8 @@ FerricBrowserRuntimeBase {
     }
 
     function refreshDiagnostics() {
+        window.diagnosticsExportNotice = ""
+        window.diagnosticsExportDetail = ""
         var payload = browserUi.diagnostics_json()
         diagnosticsText = payload && payload.length > 0
                 ? payload
@@ -1338,31 +1340,9 @@ FerricBrowserRuntimeBase {
     }
 
     function refreshEngineUpdateNotice() {
-        var payload = browserUi.diagnostics_json()
-        if (!payload || payload.length === 0) {
-            engineUpdateStatus = "unavailable"
-            engineUpdateNotice = "Engine qualification status unavailable; inspect diagnostics"
-            return
-        }
-        try {
-            var snapshot = JSON.parse(payload)
-            var policy = snapshot.build && snapshot.build.engine_update_policy
-                    ? snapshot.build.engine_update_policy : null
-            var status = policy && policy.status ? String(policy.status) : "unavailable"
-            engineUpdateStatus = status
-            if (status === "blocked") {
-                engineUpdateNotice = "QtWebEngine build is blocked; update it with the system package manager"
-            } else if (status === "unqualified") {
-                engineUpdateNotice = "QtWebEngine build is unqualified; verify the installed package before relying on compatibility"
-            } else if (status === "unavailable") {
-                engineUpdateNotice = "Engine qualification status unavailable; inspect diagnostics"
-            } else {
-                engineUpdateNotice = ""
-            }
-        } catch (error) {
-            engineUpdateStatus = "unavailable"
-            engineUpdateNotice = "Engine qualification status unavailable; inspect diagnostics"
-        }
+        var values = browserUi.engine_update_notice()
+        engineUpdateStatus = String(values[0] || "unavailable")
+        engineUpdateNotice = String(values[1] || "")
     }
 
     function showDiagnostics() {
@@ -1510,11 +1490,12 @@ FerricBrowserRuntimeBase {
 
     function installUserscriptManifest() {
         var selected = fileDialogSurfaces.userscriptManifestSelectedFile
-        if (!selected || selected.scheme !== "file") {
+        var path = browserUi.local_file_path(selected || "")
+        if (!path) {
             window.settingsNotice = "Choose a local userscript manifest"
             return
         }
-        if (!browserUi.install_userscript_manifest(selected.toLocalFile())) {
+        if (!browserUi.install_userscript_manifest(path)) {
             window.settingsNotice = "Userscript installation could not be started"
             return
         }

@@ -163,8 +163,7 @@ FerricModalSurface {
             Layout.fillWidth: true
             browserWindow: dialog.browserWindow
             keyHint: "enter"
-            actionLabel: dialog.browserWindow.pageDialogKind() === "beforeunload" ? "Leave page" :
-                                                                                    "OK"
+            actionLabel: dialog.browserWindow.pageDialogKind() === "beforeunload" ? "Leave page" : dialog.browserWindow.pageDialogKind() === "authentication" ? "Sign in" : "OK"
             selected: activeFocus
             onClicked: dialog.browserWindow.acceptPageDialog()
         }

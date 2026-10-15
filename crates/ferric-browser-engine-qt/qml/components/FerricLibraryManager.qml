@@ -94,7 +94,7 @@ FerricModalSurface {
     title: ChromePresentation.libraryTitle(libraryKind)
     message: libraryKind === "history" && (browserWindow.temporaryProfile || browserWindow.ephemeralProfile)
         ? "History in this private session." : ChromePresentation.libraryDescription(libraryKind)
-    keyHelp: "j/k or ↑/↓ browse  ·  enter activate  ·  tab actions  ·  esc close"
+    keyHelp: "j/k or ↑/↓ browse  ·  enter " + (["actions", "context-routes"].indexOf(libraryKind) >= 0 ? "details" : "activate") + "  ·  tab actions  ·  esc close"
     dialogWidth: 880 * scale
     dialogHeight: 620 * scale
     stackingOrder: 55
@@ -224,6 +224,10 @@ FerricModalSurface {
 
     FerricPrivateHistoryTransfer {
         browserWindow: libraryManager.browserWindow
+        transferPending: libraryManager.browserWindow.privateBookmarkTransferPending === true
+        transferMessage: String(libraryManager.browserWindow.privateBookmarkTransferMessage || "")
+        transferDetail: String(libraryManager.browserWindow.privateBookmarkTransferDetail || "")
+        transferFailed: libraryManager.browserWindow.privateBookmarkTransferFailed === true
         profilesModel: libraryManager.profilesModel
         profilesLoading: libraryManager.profilesLoading
         onReopenRequested: function(profileName) {

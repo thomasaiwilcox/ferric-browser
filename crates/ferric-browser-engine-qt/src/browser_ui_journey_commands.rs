@@ -406,7 +406,12 @@ impl qobject::BrowserUi {
                 .lacks_durable_storage()
                 && !private_history_command
             {
-                return Err("private profiles have no durable history or marks".into());
+                return Err(if self.as_ref().active_profile_is_transient() {
+                    "Private browsing does not save durable bookmarks or quickmarks"
+                } else {
+                    "Profile storage is unavailable. Restore storage and retry."
+                }
+                .into());
             }
             if !private_history_command
                 && (self.as_ref().rust().storage_library.is_none()
@@ -596,12 +601,7 @@ impl qobject::BrowserUi {
                 };
                 let stored_url = match command_name {
                     "history-open" => {
-                        let history = if self
-                            .as_ref()
-                            .rust()
-                            .profile_persistence
-                            .lacks_durable_storage()
-                        {
+                        let history = if self.as_ref().active_profile_is_transient() {
                             self.as_ref().private_history_records()
                         } else {
                             self.as_ref()

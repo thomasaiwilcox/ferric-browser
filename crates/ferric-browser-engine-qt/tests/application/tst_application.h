@@ -90,6 +90,10 @@ class ApplicationTests final : public QObject {
     void productPolishManagerFeedback();
     void productPolishLibrary();
     void productPolishPrivateLibrary();
+    void productPolishDiagnosticReport();
+    void productPolishLocalFilePaths();
+    void productPolishUnavailableStorage();
+    void productPolishBookmarkTransfer();
     void initTestCase();
     void init();
     void cleanup();

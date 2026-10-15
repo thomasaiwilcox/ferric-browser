@@ -19,6 +19,8 @@ ApplicationWindow {
     font: rootWindow.font
     palette: rootWindow.palette
     property string windowStartupUrl: "about:blank"
+    readonly property alias windowUi: secondaryUi
+    signal bookmarkTransferStarted(var destinationUi, bool queued)
     property string windowBookmarkTransferUrl: ""
     property string windowBookmarkTransferTitle: ""
     property string windowProfileName: "secondary"
@@ -376,7 +378,7 @@ ApplicationWindow {
         function acceptPendingDownload() {
             var id = secondaryWindow.pendingDownloadId
             var download = secondaryWindow.pendingDownloadRequests[id]
-            var selectedPath = secondaryDownloadChooser.selectedFile.toLocalFile()
+            var selectedPath = rootWindow.primaryBrowserUi.local_file_path(secondaryDownloadChooser.selectedFile)
             if (!download) {
                 secondaryWindow.pendingDownloadId = ""
                 rootWindow.restoreOverlayFocus()
@@ -727,8 +729,8 @@ function onContext_workspaceChanged() {
                 ? secondaryDialogSurfaces.engineFileSelectedFiles
                 : [secondaryDialogSurfaces.engineFileSelectedFile]
         for (var i = 0; i < urls.length; ++i) {
-            var path = urls[i].toLocalFile()
-            if (!path || urls[i].scheme !== "file") {
+            var path = rootWindow.primaryBrowserUi.local_file_path(urls[i])
+            if (!path) {
                 return []
             }
             paths.push(path)
@@ -738,7 +740,7 @@ function onContext_workspaceChanged() {
 
     function secondaryFolderDialogPaths() {
         var url = secondaryDialogSurfaces.engineFolderSelectedFolder
-        var path = url && url.scheme === "file" ? url.toLocalFile() : ""
+        var path = rootWindow.primaryBrowserUi.local_file_path(url || "")
         return path ? [path] : []
     }
 
@@ -2172,9 +2174,11 @@ function onContext_workspaceChanged() {
                 return
             }
             stop()
-            if (!secondaryUi.queue_bookmark_transfer(
+            var queued = secondaryUi.queue_bookmark_transfer(
                         secondaryWindow.windowBookmarkTransferUrl,
-                        secondaryWindow.windowBookmarkTransferTitle)) {
+                        secondaryWindow.windowBookmarkTransferTitle)
+            secondaryWindow.bookmarkTransferStarted(secondaryUi, queued)
+            if (!queued) {
                 secondaryUi.status_text = "Bookmark transfer failed"
             }
             secondaryWindow.windowBookmarkTransferUrl = ""

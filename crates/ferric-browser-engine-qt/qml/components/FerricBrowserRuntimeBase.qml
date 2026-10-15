@@ -1667,6 +1667,8 @@ ApplicationWindow {
     })
     property bool diagnosticsVisible: false
     property string diagnosticsText: ""
+    property string diagnosticsExportNotice: ""
+    property string diagnosticsExportDetail: ""
     property string engineUpdateStatus: ""
     property string engineUpdateNotice: ""
     property var resolvedQtRequests: []
@@ -1729,6 +1731,30 @@ ApplicationWindow {
     property string pendingUserscriptRemoval: ""
     property bool libraryManagerVisible: false
     property string pendingLibraryDelete: ""
+    property var privateBookmarkTransferUi: null
+    property var privateBookmarkTransferWindow: null
+    property string privateBookmarkTransferReceipt: ""
+    property string privateBookmarkTransferLabel: ""
+    property string privateBookmarkTransferMessage: ""
+    property string privateBookmarkTransferDetail: ""
+    property bool privateBookmarkTransferPending: false
+    property bool privateBookmarkTransferFailed: false
+    onPrivateBookmarkTransferUiChanged: if (!privateBookmarkTransferUi && privateBookmarkTransferPending && privateBookmarkTransferReceipt.length > 0) finishPrivateBookmarkTransfer(false, "The destination closed before the save could be confirmed. Check its bookmarks before trying again.", "")
+    onPrivateBookmarkTransferWindowChanged: if (!privateBookmarkTransferWindow && privateBookmarkTransferPending && privateBookmarkTransferReceipt.length === 0) finishPrivateBookmarkTransfer(false, "The destination closed before the save could be confirmed. Check its bookmarks before trying again.", "")
+    Connections {
+        target: window.privateBookmarkTransferUi
+        function onBookmark_transfer_stateChanged() { window.checkPrivateBookmarkTransfer() }
+    }
+    Connections {
+        target: window.privateBookmarkTransferWindow
+        function onBookmarkTransferStarted(ui, queued) {
+            if (!window.privateBookmarkTransferPending) return
+            if (!queued) { window.finishPrivateBookmarkTransfer(false, "The bookmark couldn't be saved. Check the destination profile and try again.", ui.status_text); return }
+            window.privateBookmarkTransferUi = ui
+            window.privateBookmarkTransferReceipt = String(ui.bookmark_transfer_id)
+            window.checkPrivateBookmarkTransfer()
+        }
+    }
     property bool privateHistoryTransferVisible: false
     property string privateHistoryTransferId: ""
     property string privateHistoryTransferTitle: ""
@@ -1958,7 +1984,11 @@ ApplicationWindow {
         id: storageLibraryPollTimer
         interval: 50
         repeat: true
-        running: !window.temporaryProfile
+        // Completion belongs to every durable window, including destinations
+        // opened from a private primary window.
+        running: !window.temporaryProfile || (window.browserWindowRegistry || []).some(function(entry) {
+            return entry && entry.ui && !entry.privateProfile && !entry.ephemeralProfile
+        })
         onTriggered: {
             var entries = window.browserWindowRegistry || []
             if (entries.length === 0) {
@@ -1967,7 +1997,8 @@ ApplicationWindow {
             var consumed = false
             for (var i = 0; i < entries.length; ++i) {
                 var entry = entries[i]
-                if (entry && entry.ui && entry.ui.poll_storage_library()) {
+                if (entry && entry.ui && !entry.privateProfile && !entry.ephemeralProfile
+                        && entry.ui.poll_storage_library()) {
                     consumed = true
                 }
             }

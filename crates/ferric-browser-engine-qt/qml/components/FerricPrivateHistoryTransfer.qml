@@ -6,6 +6,10 @@ FerricModalSurface {
     id: transfer
     required property var profilesModel
     required property bool profilesLoading
+    property bool transferPending: false
+    property string transferMessage: ""
+    property string transferDetail: ""
+    property bool transferFailed: false
     signal reopenRequested(string profileName)
     signal bookmarkRequested(string profileName, string profileLabel)
     signal cancelRequested()
@@ -26,6 +30,14 @@ FerricModalSurface {
         anchors.fill: parent
         spacing: 10 * transfer.scale
 
+        FerricManagerFeedback {
+            Layout.fillWidth: true
+            browserWindow: transfer.browserWindow
+            message: transfer.transferMessage
+            detail: transfer.transferDetail
+            pending: transfer.transferPending
+            failed: transfer.transferFailed
+        }
         FerricManagerList {
             id: profileList
             objectName: "privateTransferProfiles"
@@ -113,6 +125,7 @@ FerricModalSurface {
                     Button {
                         objectName: "privateTransferOpen"
                         text: "Open page"
+                        enabled: !transfer.transferPending
                         width: Math.min(implicitWidth, parent.width)
                         Accessible.name: "Open private page in " + (label || name)
                         onClicked: transfer.reopenRequested(name)
@@ -120,6 +133,7 @@ FerricModalSurface {
                     Button {
                         objectName: "privateTransferBookmark"
                         text: "Add bookmark"
+                        enabled: !transfer.transferPending
                         width: Math.min(implicitWidth, parent.width)
                         Accessible.name: "Save private page as a bookmark in " + (label || name)
                         onClicked: transfer.bookmarkRequested(name, label)
@@ -131,7 +145,7 @@ FerricModalSurface {
             id: cancelButton
             objectName: "privateTransferCancel"
             Layout.alignment: Qt.AlignRight
-            text: "Cancel"
+            text: transfer.transferPending ? "Close" : "Cancel"
             Accessible.name: "Cancel private page transfer"
             onClicked: transfer.cancelRequested()
         }

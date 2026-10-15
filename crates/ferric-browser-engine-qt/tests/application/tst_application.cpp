@@ -197,11 +197,18 @@ void ApplicationTests::init() {
         startupConfig = QString::fromUtf8(QJsonDocument(QJsonObject{
             {"schema_version",3}, {"hints",QJsonObject{{"selectors",policies}}}}).toJson(QJsonDocument::Compact));
     }
+    const auto storageBase = QDir::cleanPath(testName.startsWith("productPolish")
+        ? directory.filePath("durable-test/" + testName + "/" + QString::fromLatin1(QTest::currentDataTag()))
+        : directory.filePath("durable-test"));
+    if (testName == "productPolishUnavailableStorage") {
+        QVERIFY(QDir().mkpath(QFileInfo(storageBase).absolutePath()));
+        QFile blockedRoot(storageBase);
+        QVERIFY(blockedRoot.open(QIODevice::WriteOnly));
+        blockedRoot.write("fixture blocks profile directory");
+    }
     engine->setInitialProperties(
         {{"temporaryProfile", !durable},
-         {"storageBasePath", testName.startsWith("productPolish")
-             ? directory.filePath("durable-test/" + testName + "/" + QString::fromLatin1(QTest::currentDataTag()))
-             : directory.filePath("durable-test")},
+         {"storageBasePath", storageBase},
          {"softwareRendering", true},
          {"nativeWayland", QGuiApplication::platformName() == "wayland"},
          {"startupConfigJson", startupConfig},
@@ -2406,6 +2413,27 @@ void ApplicationTests::productPolishFileChooser() {
     QTRY_VERIFY(evaluate("testWindow.pendingFileDialogRequest === null").toBool());
     QTRY_COMPARE(text("mode"), QString("pass-through"));
     QCOMPARE(page("document.getElementById('polish-file').files.length").toInt(), 0);
+    const auto path = directory.filePath(QString::fromUtf8("résumé + 100%.txt"));
+    QFile upload(path);
+    QVERIFY(upload.open(QIODevice::WriteOnly));
+    QCOMPARE(upload.write("upload fixture"), qint64(14));
+    upload.close();
+    // Configure the initial selection before the new chooser is opened.
+    // Closing an active chooser would cancel the WebEngine request itself.
+    QVERIFY(chooser->setProperty("selectedFile", QUrl::fromLocalFile(path)));
+    window->requestActivate();
+    QTRY_VERIFY(window->isActive());
+    evaluate("testWindow.activeWebView().forceActiveFocus()");
+    page("document.getElementById('polish-file').focus();true");
+    QTRY_VERIFY(page("document.hasFocus()").toBool());
+    key(Qt::Key_Return);
+    QTRY_VERIFY(evaluate("testWindow.pendingFileDialogRequest !== null").toBool());
+    QTRY_VERIFY(chooser->property("visible").toBool());
+    QCOMPARE(chooser->property("selectedFile").toUrl(), QUrl::fromLocalFile(path));
+    QVERIFY(QMetaObject::invokeMethod(chooser, "accept"));
+    QTRY_VERIFY(evaluate("testWindow.pendingFileDialogRequest === null").toBool());
+    QTRY_COMPARE(page("document.getElementById('polish-file').files.length").toInt(), 1);
+    QCOMPARE(page("document.getElementById('polish-file').files[0].name").toString(), QFileInfo(path).fileName());
 }
 
 void ApplicationTests::productPolishWebAuthStates() {
@@ -2771,6 +2799,124 @@ void ApplicationTests::productPolishManagerFeedback() {
     key(Qt::Key_Escape);
 }
 
+void ApplicationTests::productPolishUnavailableStorage() {
+    QTRY_VERIFY(!evaluate("testWindow.browserUi.profile_bootstrap_pending").toBool());
+    QVERIFY(!evaluate("testWindow.temporaryProfile").toBool());
+    QVERIFY(!command("history"));
+    QVERIFY(text("status_text").contains("Profile storage is unavailable"));
+    QVERIFY(!text("status_text").contains("Private"));
+    QVERIFY(!evaluate("testWindow.libraryManagerVisible").toBool());
+    QVERIFY(!evaluate("testWindow.browserUi.queue_bookmark_transfer('https://example.com/page','Retained draft')").toBool());
+    QCOMPARE(text("bookmark_transfer_state"), QString("failed"));
+    QVERIFY(!text("bookmark_transfer_detail").isEmpty());
+}
+
+void ApplicationTests::productPolishLocalFilePaths() {
+    const auto path = directory.filePath(QString::fromUtf8("résumé + 100% #?.txt"));
+    const auto encoded = QUrl::fromLocalFile(path).toString(QUrl::FullyEncoded);
+    QCOMPARE(ferric_browser_local_file_path(QUrl::fromEncoded(encoded.toUtf8(), QUrl::StrictMode)), path);
+    QCOMPARE(evaluate("testWindow.browserUi.local_file_path(" + quoted(encoded) + ")").toString(), path);
+    QCOMPARE(ferric_browser_local_file_path(QUrl("file://localhost/tmp/hello%20world")), QString("/tmp/hello world"));
+    for (const auto &invalid : QStringList{"https://example.com/file", "file:relative.txt", "file://server/tmp/file", "file:///tmp/file?query", "file:///tmp/file#fragment", "file:///tmp/bad%00name", "file:///tmp/bad%xy", "file://user@localhost/tmp/file", ""}) {
+        QVERIFY2(ferric_browser_local_file_path(QUrl::fromEncoded(invalid.toUtf8(), QUrl::StrictMode)).isEmpty(), qPrintable(invalid));
+    }
+}
+
+void ApplicationTests::productPolishDiagnosticReport() {
+    const auto path = directory.filePath(QString::fromUtf8("reviewed résumé + 100%.json"));
+    // Startup compatibility checks must not authorize export of a report that
+    // has never been opened. They also must not replace an already reviewed one.
+    evaluate("testWindow.refreshEngineUpdateNotice()");
+    QVERIFY(!evaluate("testWindow.browserUi.export_diagnostics(" + quoted(path) + ")").toBool());
+    QVERIFY(!QFile::exists(path));
+    QElapsedTimer reportCreation;
+    reportCreation.start();
+    QVERIFY(command("diagnostics"));
+    QTRY_VERIFY(evaluate("testWindow.diagnosticsVisible").toBool());
+    qInfo() << "diagnostics creation elapsed ms" << reportCreation.elapsed();
+    QVERIFY(evaluate("testWindow.browserUi.diagnostics_available").toBool());
+    QVERIFY(evaluate("testWindow.browserUi.diagnostics_summary.length >= 3").toBool());
+    const auto preview = evaluate("testWindow.diagnosticsText").toString();
+    QVERIFY(QJsonDocument::fromJson(preview.toUtf8()).isObject());
+    auto report = findVisualItem(window->contentItem(), "diagnosticsReportText");
+    QVERIFY(report && !report->isVisible());
+    evaluate("testWindow.browserUi.record_request_resolution('page-dialog','cancelled')");
+    evaluate("testWindow.refreshEngineUpdateNotice()");
+    QCOMPARE(evaluate("testWindow.diagnosticsText").toString(), preview);
+    auto chooser = window->findChild<QObject *>("diagnosticsExportChooser");
+    QVERIFY(chooser);
+    QFile existing(directory.filePath("fixture.html"));
+    QVERIFY(existing.open(QIODevice::ReadOnly));
+    const auto original = existing.readAll();
+    existing.close();
+    auto save = findVisualItem(window->contentItem(), "diagnosticsSave");
+    QVERIFY(save);
+    QVERIFY(QMetaObject::invokeMethod(save, "click"));
+    QTRY_VERIFY(chooser->property("visible").toBool());
+    QCOMPARE(evaluate("testWindow.diagnosticsText").toString(), preview);
+    QVERIFY(QMetaObject::invokeMethod(chooser, "close"));
+    QVERIFY(chooser->setProperty("selectedFile", QUrl::fromLocalFile(existing.fileName())));
+    QVERIFY(QMetaObject::invokeMethod(chooser, "open"));
+    QTRY_VERIFY(chooser->property("visible").toBool());
+    QVERIFY(QMetaObject::invokeMethod(chooser, "accept"));
+    QVERIFY(evaluate("testWindow.diagnosticsExportNotice.indexOf(\"The report couldn't be saved\") === 0").toBool());
+    QVERIFY(evaluate("testWindow.browserUi.diagnostics_available").toBool());
+    QCOMPARE(evaluate("testWindow.diagnosticsText").toString(), preview);
+    QVERIFY(existing.open(QIODevice::ReadOnly));
+    QCOMPARE(existing.readAll(), original);
+    existing.close();
+    // Qt takes its final selection from the platform dialog when accepted.
+    // Set the initial selection before opening, as required by that API.
+    QVERIFY(QMetaObject::invokeMethod(chooser, "close"));
+    QVERIFY(chooser->setProperty("selectedFile", QUrl::fromLocalFile(path)));
+    QVERIFY(QMetaObject::invokeMethod(chooser, "open"));
+    QTRY_VERIFY(chooser->property("visible").toBool());
+    QVERIFY(QMetaObject::invokeMethod(chooser, "accept"));
+    QTRY_VERIFY(QFile::exists(path));
+    QVERIFY(evaluate("testWindow.diagnosticsExportNotice.indexOf('Report saved') === 0").toBool());
+    QVERIFY(!evaluate("testWindow.browserUi.diagnostics_available").toBool());
+    QFile saved(path);
+    QVERIFY(saved.open(QIODevice::ReadOnly));
+    QCOMPARE(saved.readAll(), preview.toUtf8());
+    key(Qt::Key_Escape);
+    QTRY_VERIFY(!evaluate("testWindow.diagnosticsVisible").toBool());
+}
+
+void ApplicationTests::productPolishBookmarkTransfer() {
+    QTRY_VERIFY(!evaluate("testWindow.browserUi.profile_bootstrap_pending").toBool());
+    QDirIterator files(evaluate("testWindow.storageBasePath").toString(), QStringList{"browser.sqlite"}, QDir::Files, QDirIterator::Subdirectories);
+    QVERIFY(files.hasNext());
+    sqlite3 *raw = nullptr;
+    const auto databasePath = files.next().toUtf8();
+    QCOMPARE(sqlite3_open_v2(databasePath.constData(), &raw, SQLITE_OPEN_READWRITE, nullptr), SQLITE_OK);
+    const std::unique_ptr<sqlite3, decltype(&sqlite3_close)> database(raw, sqlite3_close);
+    sqlite3_busy_timeout(database.get(), 5000);
+    QCOMPARE(sqlite3_exec(database.get(), "CREATE TRIGGER polish_reject_transfer BEFORE INSERT ON bookmarks WHEN NEW.title='Fail transfer' BEGIN SELECT RAISE(ABORT, 'fixture rejected transfer'); END", nullptr, nullptr, nullptr), SQLITE_OK);
+    QVERIFY(evaluate("testWindow.browserUi.queue_bookmark_transfer('https://transfer.example/page','Fail transfer')").toBool());
+    const auto receipt = text("bookmark_transfer_id");
+    QVERIFY(!receipt.isEmpty());
+    QVERIFY(!evaluate("testWindow.browserUi.queue_bookmark_transfer('https://transfer.example/duplicate','Duplicate')").toBool());
+    QVERIFY(command("bookmark-add --title 'Independent bookmark'"));
+    const auto markReceipt = text("mark_action_id");
+    QVERIFY(markReceipt != receipt);
+    QTRY_COMPARE(text("bookmark_transfer_state"), QString("failed"));
+    QTRY_COMPARE(text("mark_action_state"), QString("succeeded"));
+    QCOMPARE(text("bookmark_transfer_id"), receipt);
+    QVERIFY(text("bookmark_transfer_detail").contains("fixture rejected transfer"));
+    QCOMPARE(sqlite3_exec(database.get(), "DROP TRIGGER polish_reject_transfer", nullptr, nullptr, nullptr), SQLITE_OK);
+    // Exercise the actual presentation controller with a real destination and
+    // worker, independently of private-history retention policy.
+    evaluate("testWindow.privateHistoryTransferVisible=true;testWindow.privateHistoryTransferTitle='Reviewed page';testWindow.privateHistoryTransferUrl='https://transfer.example/retry'");
+    evaluate("testWindow.confirmPrivateHistoryBookmark(testWindow.profileName, 'Destination')");
+    QVERIFY(evaluate("testWindow.privateBookmarkTransferPending").toBool());
+    QVERIFY(evaluate("testWindow.privateHistoryTransferVisible").toBool());
+    QTRY_VERIFY(!evaluate("testWindow.privateBookmarkTransferPending").toBool());
+    QVERIFY(!evaluate("testWindow.privateBookmarkTransferFailed").toBool());
+    QCOMPARE(evaluate("testWindow.privateBookmarkTransferMessage").toString(), QString("Bookmark saved in Destination"));
+    QCOMPARE(evaluate("testWindow.privateHistoryTransferUrl").toString(), QString("https://transfer.example/retry"));
+    evaluate("testWindow.cancelPrivateHistoryTransfer()");
+}
+
 void ApplicationTests::productPolishLibrary() {
     QVERIFY(command("bookmark-add --title " + quoted("Original bookmark")));
     QTRY_COMPARE(text("mark_action_state"), QString("succeeded"));
@@ -2921,6 +3067,40 @@ void ApplicationTests::productPolishPrivateLibrary() {
     QCOMPARE(text("library_kind"), QString("actions"));
     QVERIFY(!text("library_values").isEmpty());
     key(Qt::Key_Escape);
+    // A private session cannot checkpoint to disk. Dirty in-memory state must
+    // not leave the runtime scheduling itself every millisecond forever.
+    QTRY_VERIFY_WITH_TIMEOUT(evaluate("(function(){var delay=testWindow.browserUi.maintenance_delay_ms();return delay===-1 || delay>=1000})()").toBool(), 5000);
+    const auto privateUrl = text("current_url");
+    QVERIFY(evaluate("testWindow.temporaryProfile").toBool());
+    // Seed a regular destination through its own normal window, then close it.
+    // The private source never gains profile-write authority or navigates there.
+    evaluate("testWindow.browserWindowFactory.createObject(null, {windowProfileName:'polish-private-destination',windowStartupUrl:'rb://start',windowPrivateProfile:false})");
+    QTRY_COMPARE(evaluate("testWindow.browserWindowRegistry.length").toInt(), 2);
+    QTRY_VERIFY(!evaluate("testWindow.browserWindowRegistry[1].ui.profile_bootstrap_pending").toBool());
+    evaluate("testWindow.browserWindowRegistry[1].host.windowShutdownApproved=true;testWindow.browserWindowRegistry[1].host.close()");
+    QTRY_COMPARE(evaluate("testWindow.browserWindowRegistry.length").toInt(), 1);
+    evaluate("testWindow.refreshProfiles()");
+    QTRY_VERIFY(text("profile_values").contains("polish-private-destination"));
+    evaluate("testWindow.showPrivateHistoryTransfer('reviewed-private-entry','Reviewed private page'," + quoted(privateUrl) + ")");
+    evaluate("testWindow.confirmPrivateHistoryBookmark('polish-private-destination','Destination')");
+    QVERIFY(evaluate("testWindow.privateBookmarkTransferPending").toBool());
+    evaluate("testWindow.showPrivateHistoryTransfer('another-entry','Another page','https://other.example/')");
+    QCOMPARE(evaluate("testWindow.privateHistoryTransferUrl").toString(), privateUrl);
+    QTRY_COMPARE(evaluate("testWindow.browserWindowRegistry.length").toInt(), 2);
+    QTRY_VERIFY2_WITH_TIMEOUT(!evaluate("testWindow.privateBookmarkTransferPending").toBool(), qPrintable(evaluate("JSON.stringify({receipt:testWindow.privateBookmarkTransferReceipt,tracking:!!testWindow.privateBookmarkTransferUi,state:testWindow.browserWindowRegistry[1].ui.bookmark_transfer_state,id:testWindow.browserWindowRegistry[1].ui.bookmark_transfer_id,bootstrap:testWindow.browserWindowRegistry[1].ui.profile_bootstrap_pending,url:testWindow.browserWindowRegistry[1].host.windowBookmarkTransferUrl,status:testWindow.browserWindowRegistry[1].ui.status_text})").toString()), 10000);
+    QVERIFY2(!evaluate("testWindow.privateBookmarkTransferFailed").toBool(), qPrintable(evaluate("testWindow.privateBookmarkTransferMessage").toString()));
+    const auto destination = QString("testWindow.browserWindowRegistry[1]");
+    QVERIFY(!evaluate(destination + ".ephemeralProfile").toBool());
+    QVERIFY(!evaluate(destination + ".host.windowPrivateProfile").toBool());
+    QCOMPARE(evaluate(destination + ".host.activeView.nativeUrl").toString(), QString("rb://start"));
+    QVERIFY(evaluate(destination + ".ui.current_url").toString() != privateUrl);
+    QTRY_VERIFY(evaluate(destination + ".ui.execute_command('bookmark-list')").toBool());
+    QTRY_VERIFY(evaluate(destination + ".ui.library_values").toString().contains(privateUrl));
+    QVERIFY(evaluate(destination + ".ui.library_values").toString().contains("Reviewed private page"));
+    QTRY_VERIFY(evaluate(destination + ".ui.execute_command('history')").toBool());
+    QVERIFY(!evaluate(destination + ".ui.library_values").toString().contains(privateUrl));
+    QCOMPARE(text("current_url"), privateUrl);
+    evaluate("testWindow.cancelPrivateHistoryTransfer()");
 }
 
 void ApplicationTests::clipboardOtherWindows_data() {

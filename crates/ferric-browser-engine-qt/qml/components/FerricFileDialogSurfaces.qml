@@ -6,6 +6,7 @@ import QtQuick.Dialogs
 // presentation and reports acceptance or cancellation.
 Item {
     id: root
+    objectName: "browserFileDialogs"
 
     signal downloadAccepted()
     signal downloadRejected()
@@ -67,6 +68,7 @@ Item {
 
     FileDialog {
         id: diagnosticsExportChooser
+        objectName: "diagnosticsExportChooser"
         title: "Choose diagnostics export destination"
         fileMode: FileDialog.SaveFile
         nameFilters: ["JSON files (*.json)", "All files (*)"]

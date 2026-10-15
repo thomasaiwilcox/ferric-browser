@@ -48,6 +48,7 @@ ColumnLayout {
         textFormat: TextEdit.PlainText
         readOnly: true
         selectByMouse: true
+        selectByKeyboard: true
         wrapMode: TextEdit.Wrap
         color: feedback.browserWindow.secondaryTextColor
         background: Rectangle { color: feedback.browserWindow.surfaceColor }

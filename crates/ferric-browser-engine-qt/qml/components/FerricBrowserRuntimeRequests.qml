@@ -1946,7 +1946,7 @@ FerricBrowserRuntimePresentation {
             window.restoreOverlayFocus()
             return
         }
-        var selectedPath = fileDialogSurfaces.downloadSelectedFile.toLocalFile()
+        var selectedPath = browserUi.local_file_path(fileDialogSurfaces.downloadSelectedFile)
         var finalName = browserUi.accept_download_path(id, selectedPath)
         if (finalName.length === 0) {
             window.resolveQtRequest(browserUi, download, "download", "cancel", [])

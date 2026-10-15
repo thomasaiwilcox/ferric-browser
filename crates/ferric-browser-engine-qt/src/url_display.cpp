@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <QtCore/QByteArray>
+#include <QtCore/QDir>
 #include <QtCore/QtGlobal>
 #include <QtCore/QUrl>
 #include <QtGui/QClipboard>
@@ -45,6 +46,23 @@ QString ferric_browser_canonicalize_url(const QString &value)
         }
     }
     return url.toString(QUrl::FullyEncoded);
+}
+
+// Receive QUrl directly: stringifying a QML URL can decode a literal percent
+// sign and make a later string parse ambiguous. Preserve its encoded identity.
+QString ferric_browser_local_file_path(const QUrl &value)
+{
+    auto url = value;
+    if (!url.isValid() || !url.isLocalFile() || url.hasQuery() || url.hasFragment()
+        || !url.userInfo().isEmpty() || url.port() != -1
+        || (!url.host().isEmpty() && url.host().compare(QStringLiteral("localhost"), Qt::CaseInsensitive) != 0)) {
+        return {};
+    }
+    // QUrl represents file://localhost as a UNC path; this browser targets
+    // local Linux files, where localhost denotes the same absolute local path.
+    url.setHost({});
+    const auto path = url.toLocalFile();
+    return QDir::isAbsolutePath(path) && !path.contains(QChar::Null) ? path : QString{};
 }
 
 QString ferric_browser_read_clipboard()

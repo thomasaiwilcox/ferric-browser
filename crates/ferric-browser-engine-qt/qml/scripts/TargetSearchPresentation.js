@@ -1,5 +1,18 @@
 .pragma library
 
+function kindLabel(kind) {
+    var labels = {link:"Link",button:"Button",input:"Text field",select:"Choice",textarea:"Text area",
+        contenteditable:"Editable text",image:"Image",media:"Media",scrollable:"Scroll area",
+        aria:"Control",focusable:"Control","editor-focus":"Editor","label-control":"Labelled control",
+        region:"Region","scrollable-region":"Scroll region",surface:"Surface","focusable-surface":"Surface",frame:"Embedded page"}
+    return labels[kind] || "Page control"
+}
+
+function scopeLabel(scope) {
+    var labels = {links:"Links on this page",controls:"Controls on this page",regions:"Regions on this page",surfaces:"Interactive surfaces on this page",all:"Links, controls and page areas"}
+    return labels[scope] || "Visible page items"
+}
+
 function identity(candidate) {
     if (!candidate || typeof candidate !== "object") return ""
     var related = candidate.related_element_id === null

@@ -752,6 +752,15 @@ FerricBrowserRuntimeServices {
             browserUi.status_text = "Private history transfer is unavailable"
             return
         }
+        if (window.privateBookmarkTransferPending) {
+            var message = "A bookmark is still saving. Wait before choosing another page."
+            browserUi.status_text = message
+            window.showCommandNotice(message, false)
+            return
+        }
+        window.privateBookmarkTransferMessage = ""
+        window.privateBookmarkTransferDetail = ""
+        window.privateBookmarkTransferFailed = false
         window.privateHistoryTransferId = String(entryId)
         window.privateHistoryTransferTitle = String(title || "")
         window.privateHistoryTransferUrl = String(url)
@@ -783,37 +792,64 @@ FerricBrowserRuntimeServices {
         Qt.callLater(function() { window.executePendingEngineAction() })
     }
 
+    function checkPrivateBookmarkTransfer() {
+        var ui = window.privateBookmarkTransferUi
+        if (!window.privateBookmarkTransferPending || !ui) return
+        var state = String(ui.bookmark_transfer_state)
+        if (String(ui.bookmark_transfer_id) !== window.privateBookmarkTransferReceipt) {
+            if (state === "idle") window.finishPrivateBookmarkTransfer(false, "The save could not be confirmed. Check the destination's bookmarks before trying again.", "")
+            return
+        }
+        if (state === "succeeded") window.finishPrivateBookmarkTransfer(true, "Bookmark saved in " + window.privateBookmarkTransferLabel, "")
+        else if (state === "failed") window.finishPrivateBookmarkTransfer(false, "The bookmark couldn't be saved. Your private page is still here. Try again.", String(ui.bookmark_transfer_detail || ""))
+        else if (state === "idle") window.finishPrivateBookmarkTransfer(false, "The save could not be confirmed. Check the destination's bookmarks before trying again.", "")
+    }
+
+    function finishPrivateBookmarkTransfer(succeeded, message, detail) {
+        window.privateBookmarkTransferPending = false
+        window.privateBookmarkTransferReceipt = ""
+        window.privateBookmarkTransferUi = null
+        window.privateBookmarkTransferWindow = null
+        window.privateBookmarkTransferMessage = message
+        window.privateBookmarkTransferDetail = detail
+        window.privateBookmarkTransferFailed = !succeeded
+        browserUi.status_text = message
+        if (!window.privateHistoryTransferVisible) window.showCommandNotice(message, !succeeded)
+    }
+
     function confirmPrivateHistoryBookmark(profileName, profileLabel) {
+        if (window.privateBookmarkTransferPending) return
+        window.privateBookmarkTransferLabel = String(profileLabel || profileName)
+        window.privateBookmarkTransferMessage = "Saving bookmark in " + window.privateBookmarkTransferLabel + "…"
+        window.privateBookmarkTransferDetail = ""
+        window.privateBookmarkTransferFailed = false
         var entries = window.browserWindowRegistry || []
         for (var index = 0; index < entries.length; ++index) {
             var entry = entries[index]
-            if (entry && entry.ui && !entry.ephemeralProfile
-                    && String(entry.profileName || "") === String(profileName)) {
-                if (!entry.ui.queue_bookmark_transfer(
-                            window.privateHistoryTransferUrl,
-                            window.privateHistoryTransferTitle)) {
-                    browserUi.status_text = "Destination profile is not ready for bookmark transfer"
+            if (entry && entry.ui && !entry.ephemeralProfile && String(entry.profileName || "") === String(profileName)) {
+                if (!entry.ui.queue_bookmark_transfer(window.privateHistoryTransferUrl, window.privateHistoryTransferTitle)) {
+                    window.finishPrivateBookmarkTransfer(false, "The bookmark couldn't be queued. Check the destination profile and try again.", String(entry.ui.status_text || ""))
                     return
                 }
-                window.activateBrowserWindow(entry.host, entry.ui)
-                window.cancelPrivateHistoryTransfer()
+                window.privateBookmarkTransferUi = entry.ui
+                window.privateBookmarkTransferReceipt = String(entry.ui.bookmark_transfer_id)
+                window.privateBookmarkTransferPending = true
+                window.checkPrivateBookmarkTransfer()
                 return
             }
         }
-        window.browserWindowFactory.createObject(null, {
-            windowStartupUrl: window.privateHistoryTransferUrl,
+        window.privateBookmarkTransferPending = true
+        var destination = window.browserWindowFactory.createObject(null, {
+            windowStartupUrl: "rb://start",
             windowProfileName: profileName,
-            windowProfileLabel: profileLabel,
+            windowProfileLabel: String(profileLabel || profileName),
             windowPrivateProfile: false,
             windowBookmarkTransferUrl: window.privateHistoryTransferUrl,
             windowBookmarkTransferTitle: window.privateHistoryTransferTitle
         })
-        window.privateHistoryTransferVisible = false
-        window.privateHistoryTransferId = ""
-        window.privateHistoryTransferTitle = ""
-        window.privateHistoryTransferUrl = ""
-        window.libraryManagerVisible = false
-        window.closeInternalSurface()
+        if (!destination) { window.finishPrivateBookmarkTransfer(false, "The destination profile couldn't be opened. Try again.", ""); return }
+        window.privateBookmarkTransferWindow = destination
+        window.requestActivate()
     }
 
     function deleteLibraryEntry(entryKind, entryId) {
@@ -860,7 +896,7 @@ FerricBrowserRuntimeServices {
 
     function finishJourneyExport() {
         var selected = fileDialogSurfaces.journeyExportSelectedFile
-        var path = selected && selected.scheme === "file" ? selected.toLocalFile() : ""
+        var path = browserUi.local_file_path(selected || "")
         if (path.length === 0 || !browserUi.export_journey(path)) {
             window.journeyExportPreviewVisible = true
             return
@@ -870,10 +906,15 @@ FerricBrowserRuntimeServices {
 
     function finishDiagnosticsExport() {
         var selected = fileDialogSurfaces.diagnosticsExportSelectedFile
-        var path = selected && selected.scheme === "file" ? selected.toLocalFile() : ""
+        var path = browserUi.local_file_path(selected || "")
         if (!path || !browserUi.export_diagnostics(path)) {
-            window.diagnosticsVisible = true
+            window.diagnosticsExportNotice = "The report couldn't be saved. Review the details and try again."
+            window.diagnosticsExportDetail = path ? String(browserUi.status_text) : "Choose a local file on this computer."
+        } else {
+            window.diagnosticsExportDetail = ""
+            window.diagnosticsExportNotice = "Report saved. Refresh to prepare another report."
         }
+        window.diagnosticsVisible = true
     }
 
     function journeySearchArgument(value) {

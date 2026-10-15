@@ -493,14 +493,96 @@ between those snapshots. The final application was rebuilt and its startup
 qualified after that correction. These checks establish this checkpoint's
 behavior, not completion of the remaining product audit below.
 
+## Navigation, report and transfer batch
+
+Implemented and qualified locally in the production application. The broader
+product audit remains active.
+
+- Visible-target search uses readable control and scope labels, full-width
+  literal titles and explicit activation. Keyboard selection scrolls into
+  view. Action-reference Enter inspects a row without executing its command.
+- Diagnostics puts typed version, compatibility and storage summaries before
+  an optional selectable report. Unknown results stay unknown. Startup version
+  checks no longer create or replace a reviewed report. Saving exports the
+  reviewed snapshot, and reports its result inside the panel.
+- Report preview shortening preserves UTF-8 boundaries, including a multibyte
+  character crossing the 48 KiB limit. The full report is retained separately.
+- Native file URLs are decoded at the Qt boundary rather than calling C++
+  methods on QML URL primitives. Exports, uploads, downloads and script-manifest
+  selection use the same conversion in primary, secondary and popup windows.
+  The boundary receives QUrl values directly: re-parsing a URL's display text
+  loses filename fidelity. Remote authorities, relative or invalid URLs and
+  NUL paths fail closed; Unicode, spaces, plus and percent characters remain
+  exact. Export failures retain their report and expose selectable details.
+- Private bookmark transfers wait for durable completion in an independent
+  receipt lane. Ordinary bookmark writes cannot complete a transfer by
+  accident, and multiple results in one worker poll are all processed.
+  Failed drafts remain available, and choosing another page cannot relabel a
+  pending transfer. Completion polling covers registered durable windows even
+  when the primary window is private; transient and unavailable profiles do
+  not attempt to restart a durable storage worker. Dirty session state without
+  a checkpoint destination no longer schedules a perpetual 1 ms retry; its
+  in-memory state is retained. Opening a destination for Add bookmark uses
+  its start page rather than navigating the private address in normal browsing.
+- Normal profiles with unavailable storage no longer fall through to private
+  history. Compact certificate prompts use less empty space, and HTTP login
+  confirmation says Sign in.
+
+Evidence for this checkpoint:
+
+- Full source QML suite: 320 passed on the final source. Narrow and large-font
+  renders were inspected; diagnostic facts and selected search results retain
+  useful room, without a scrollbar when the result fits.
+- Focused production workflows: 8 passed. The broader production polish group
+  passes all 45 checks, including embedded resource parity, actual upload and
+  export dialog acceptance, overwrite refusal/retry, storage failure, ordinary
+  versus transfer receipt correlation, and prompt/teardown regressions.
+- An actual private source and new regular destination now complete Add
+  bookmark, preserve the reviewed address while another request is rejected,
+  and retain the source page. The destination stays on its start page and its
+  history does not gain the private address. A private session also settles
+  without a permanent 1 ms checkpoint retry.
+- Clipboard regressions: 81 passed in 144.43 seconds. CLI/IPC manager-command
+  validation and formatting/whitespace checks passed.
+- Repository gate: passed; 913 Rust checks passed, 2 intentionally ignored.
+  Strict workspace Clippy and adapter startup passed. The adapter uses a
+  disposable profile and a bounded 10-second lifetime.
+- After updating two outdated source assertions, the reduced-motion check
+  verifies its actual binding and the JSON allowance records 20 parses and
+  39 stringifications. Production source stayed unchanged during those
+  test/documentation corrections. The report guard was strengthened and
+  passed again with an explicit engine-notice refresh before first review.
+- Final application-artifact re-link: 5 passed, covering resource parity,
+  report review/export, actual private transfer and idle scheduling on the
+  freshly rebuilt application engine (7.40 seconds).
+
+The native failures exposed two production defects beyond the original URL
+conversion: completion polling was disabled for regular child windows whenever
+there was a private primary window, and an in-memory session without a durable
+checkpoint path scheduled perpetual retries. Both are fixed in the passing
+production tests. Earlier logs remain under `navigation-*`; they also retain
+the failed intermediate string-based URL conversion and fixture corrections.
+Native fixture corrections follow Qt's public dialog lifecycle: set an initial
+selection, open the dialog, then call its accept method. Emitting the accepted
+signal directly skips the platform selection step. The upstream behavior is
+visible in [Qt's FileDialog implementation](https://github.com/qt/qtdeclarative/blob/v6.11.2/src/quickdialogs/quickdialogs/qquickfiledialog.cpp#L543).
+The focused run also measured report creation at 211–244 ms; startup engine
+notices no longer invoke that work. Full report creation still needs a
+responsiveness review in the remaining whole-window pass.
+
+Earlier compile diagnostics are preserved in `navigation-build-initial-*` and
+`navigation-build-initial.log`; they caught two corrected Qt/Rust type errors.
+
 ## Audit status and remaining implementation
 
 These remain part of the original goal, rather than deferred release promises:
 
 1. **Site Ledger / Site Doctor / diagnostics.** The ledger layout, readable
    summaries, disclosure and consent changes above pass fresh compiled
-   qualification. Audit the remaining diagnostics/export surfaces for readable
-   entry points and truthful unavailable states. The baseline 900×700 render
+   qualification. The remaining diagnostics/export surfaces now have readable
+   summaries, explicit report review, honest unavailable states and production
+   export evidence above. Report-creation responsiveness remains to be reviewed.
+   The baseline 900×700 render
    (`site-ledger-before.png`) is retained to compare the overflow fix.
 2. **Profile/session management feedback.** Completed and qualified in this
    checkpoint: typed previews, deletion pending state, durable failures,
@@ -511,14 +593,15 @@ These remain part of the original goal, rather than deferred release promises:
    affordances, including visible-target search and hint feedback. The library
    workflow defects reproduced by `library-before.log` are now fixed and
    qualified above. Continue the remaining reference/help wording and
-   unavailable-state audit, including read-only action affordances, normal
-   metadata-unavailable history and private-transfer completion feedback. Visible
-   target search still exposes raw kind/scope labels and a fixed 128-unit kind
-   column. Action-reference availability wording and its Enter behavior also
-   need a concrete decision.
+   unavailable-state audit. Read-only action affordances, normal
+   metadata-unavailable history, private-transfer completion, visible-target
+   search and action-reference behavior now have compiled evidence above.
+   Retain those checks through the final whole-window walkthrough.
 4. **Status/error messages.** Audit operation IDs, stale-target terminology,
    adapter/engine wording and internal state transitions in ordinary status
    notices. Preserve useful diagnostic detail without flooding normal use.
+   Check completed-transfer dismissal labels and unavailable-storage recovery
+   guidance as part of this pass.
 5. **All prompts.** Shared overflow, safe activation, request ownership,
    origin display and scoped WebAuthn defects are fixed and qualified above.
    Actual cross-window page/authentication placement, login drafts, focus and
@@ -526,10 +609,9 @@ These remain part of the original goal, rather than deferred release promises:
    and security-key fixtures establish window/input ownership only; real
    credentials, hardware keys and native portals retain separate qualification.
    Finish the whole-window compact/large-font review and the remaining prompt
-   copy/layout review alongside the final walkthrough. The native certificate
-   render has excess empty body space and prominent scroll tracks; the HTTP
-   login confirmation still uses a generic OK label. Review these together
-   with compact and large-font layouts.
+   copy/layout review alongside the final walkthrough. The compact certificate
+   and HTTP login wording corrections above now pass compiled verification;
+   certificate renders were inspected again on the final batch.
 6. **Whole-window finish.** Verify theme/readability, larger fonts and
    primary/secondary/popup consistency in the final walkthrough. The lifecycle
    investigation above found and fixed real context callbacks and a native
@@ -544,7 +626,9 @@ These remain part of the original goal, rather than deferred release promises:
    source is frozen. Keep the installed browser and normal profiles separate
    from disposable test fixtures.
 
-## Evidence so far
+## First checkpoint evidence
+
+Later batch records above describe subsequent changes and validation.
 
 - Workspace repository gate and Rust tests: passed after the manager command,
   route-validation and input-guard fixes. Strict workspace Clippy: passed.

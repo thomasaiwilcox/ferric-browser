@@ -1178,10 +1178,8 @@ fn action_command_maps_subject_and_verb_to_a_registered_executor() {
     assert!(qml.contains("Install userscript manifest"));
     assert!(source.contains("fn install_userscript_manifest"));
     assert!(qml.contains("function refreshEngineUpdateNotice()"));
-    assert!(
-        qml.contains("QtWebEngine build is blocked; update it with the system package manager")
-    );
-    assert!(qml.contains("engine_update_policy"));
+    assert!(qml.contains("browserUi.engine_update_notice()"));
+    assert!(!qml.contains("var payload = browserUi.diagnostics_json()\n        if (!payload"));
     assert!(qml.contains("result.action === \"clean-yank\""));
     assert!(qml.contains("Clean-copy link"));
     assert!(qml.contains("\"browser.link.clean-copy\""));

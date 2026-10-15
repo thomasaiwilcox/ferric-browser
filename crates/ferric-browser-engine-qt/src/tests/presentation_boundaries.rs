@@ -178,7 +178,7 @@ fn accessibility_surface_reports_theme_contrast_and_reduced_motion() {
     assert!(preferences.contains("struct ChromePreferences"));
     assert!(qml.contains("ui.chrome_reduced_motion === \"on\""));
     assert!(qml.contains("window.chromeFontFamily = ui.chrome_font_family"));
-    assert!(qml.contains("Optional interface motion is disabled"));
+    assert!(qml.contains("diagnostics.browserWindow.reducedMotionActive"));
 }
 
 #[test]
@@ -625,7 +625,8 @@ fn qml_json_contract_allowlist_is_explicit() {
 
     assert!(allowlist.contains("Opaque page-script request/result contracts"));
     assert!(allowlist.contains("Prohibited presentation payloads"));
-    assert_eq!(qml.matches("JSON.parse(").count(), 21);
+    assert!(allowlist.contains("20 parses and 39"));
+    assert_eq!(qml.matches("JSON.parse(").count(), 20);
     assert_eq!(qml.matches("JSON.stringify(").count(), 39);
 }
 
@@ -1102,14 +1103,14 @@ fn diagnostics_export_requires_explicit_local_save_and_never_overwrites() {
     assert!(source.contains("fn export_diagnostics"));
     assert!(source.contains("Diagnostics export requires reviewing the visible preview first"));
     assert!(source.contains("diagnostics_preview_ready = false"));
-    assert!(source.contains("diagnostics_preview_payload = Some(serialized.clone())"));
+    assert!(source.contains("diagnostics_preview_payload = available.then"));
     assert!(source.contains("MAX_DIAGNOSTICS_EXPORT_BYTES"));
     assert!(source.contains("Diagnostics export requires an absolute local file path"));
     assert!(source.contains("Diagnostics export refuses to overwrite an existing file"));
     assert!(source.contains("atomic_write_private(path_ref, payload.as_bytes())"));
     assert!(qml.contains("fileDialogSurfaces.openDiagnosticsExport()"));
     assert!(dialogs.contains("title: \"Choose diagnostics export destination\""));
-    assert!(qml.contains("Save diagnostics preview"));
+    assert!(qml.contains("Save report"));
     assert!(qml.contains("browserUi.export_diagnostics(path)"));
 }
 
@@ -1595,8 +1596,8 @@ fn target_search_is_local_native_ranked_and_identity_bound() {
     assert!(target_search.contains("at most one scope and no query text"));
     assert!(target_search.contains("rust.macro_depth == 0"));
     assert!(target_search.contains("current_target(rust.state.as_ref(), rust.tab).is_some()"));
-    assert!(popup.contains("visible: browserUi.target_search_active"));
-    assert!(popup.contains("maximumLength: 256"));
+    assert!(popup.contains("searchVisible: browserUi.target_search_active"));
+    assert!(include_str!("../../qml/components/FerricTargetSearch.qml").contains("maximumLength: 256"));
     assert!(popup.contains("window.confirmTargetSearchSelection()"));
     assert!(popup.contains("browserUi.cancel_target_search()"));
     assert!(!popup.contains("modelData.href"));

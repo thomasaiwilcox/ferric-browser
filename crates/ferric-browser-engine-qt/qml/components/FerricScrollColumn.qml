@@ -17,6 +17,7 @@ ScrollView {
     contentHeight: Math.max(content.implicitHeight, availableHeight)
     ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
     ScrollBar.vertical.active: true
+    ScrollBar.vertical.policy: content.implicitHeight > availableHeight + 1 ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
 
     function reveal(item) {
         var ancestor = item;

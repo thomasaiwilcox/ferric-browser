@@ -181,7 +181,8 @@ Item {
         message: "For: " + (root.browserWindow.pendingCertificateErrorHost || "Host unavailable")
                  + "\nOnly continue if you recognize this host and understand the risk. The browser may reuse this certificate exception during this session. It does not change your system's trusted certificates."
         dialogWidth: 680 * scale
-        dialogHeight: 440 * scale
+        dialogHeight: 350 * scale
+        minimumBodyHeight: 44 * scale
         dialogBorderColor: root.browserWindow.warningColor
         cancelAction: "back"
         actions: [
@@ -215,6 +216,7 @@ Item {
                 objectName: "certificateErrorDescription"
                 Layout.fillWidth: true
                 text: root.browserWindow.pendingCertificateErrorDescription
+                Layout.alignment: Qt.AlignTop
                 textFormat: TextEdit.PlainText
                 readOnly: true
                 selectByMouse: true

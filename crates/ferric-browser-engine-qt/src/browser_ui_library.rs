@@ -224,6 +224,16 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn ensure_storage_worker(mut self: Pin<&mut Self>) -> bool {
+        // Transient and unavailable profiles have no durable worker to restart.
+        if self.as_ref().active_profile_is_transient()
+            || self
+                .as_ref()
+                .rust()
+                .profile_persistence
+                .lacks_durable_storage()
+        {
+            return false;
+        }
         if self.as_ref().storage_is_open() {
             return true;
         }
@@ -333,7 +343,7 @@ impl qobject::BrowserUi {
         let mut journey_node_result = None;
         let mut journey_query_result = None;
         let mut journey_export_result = None;
-        let mut mark_result = None;
+        let mut mark_results = Vec::new();
         let mut history_clear_result = None;
         let mut flush_result = None;
         for effect in effects {
@@ -400,7 +410,7 @@ impl qobject::BrowserUi {
                     journey_export_result = Some(result.map_err(|error| error.message));
                 }
                 StorageCompletion::MarkWrite(result) => {
-                    mark_result = Some(result.map_err(|error| error.message));
+                    mark_results.push((effect.ticket, result.map_err(|error| error.message)));
                 }
                 StorageCompletion::HistoryClear(result) => {
                     history_clear_result = Some(result.map_err(|error| error.message));
@@ -657,9 +667,9 @@ impl qobject::BrowserUi {
                 }
             }
         }
-        if let Some(result) = mark_result {
+        for (ticket, result) in mark_results {
             consumed = true;
-            self.as_mut().apply_mark_write_result(result);
+            self.as_mut().apply_mark_write_result(ticket, result);
         }
         if let Some(result) = library_result {
             consumed = true;

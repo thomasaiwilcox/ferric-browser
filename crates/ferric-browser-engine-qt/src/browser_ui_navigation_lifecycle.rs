@@ -128,8 +128,9 @@ impl qobject::BrowserUi {
         let url = match canonical_engine_url(url) {
             Ok(url) => QString::from(url),
             Err(error) => {
-                self.as_mut()
-                    .set_status_text(QString::from(format!("Engine URL rejected: {error}")));
+                self.as_mut().set_status_text(QString::from(format!(
+                    "Address could not be opened: {error}"
+                )));
                 return;
             }
         };
@@ -223,8 +224,9 @@ impl qobject::BrowserUi {
         let url = match canonical_engine_url(url) {
             Ok(url) => QString::from(url),
             Err(error) => {
-                self.as_mut()
-                    .set_status_text(QString::from(format!("Engine URL rejected: {error}")));
+                self.as_mut().set_status_text(QString::from(format!(
+                    "Address could not be opened: {error}"
+                )));
                 self.as_mut()
                     .rust_mut()
                     .as_mut()
@@ -405,7 +407,9 @@ impl qobject::BrowserUi {
             Ok(url) => QString::from(url),
             Err(error) => {
                 if index == self.as_ref().rust().active_tab_index {
-                    self.set_status_text(QString::from(format!("Engine URL rejected: {error}")));
+                    self.set_status_text(QString::from(format!(
+                        "Address could not be opened: {error}"
+                    )));
                 }
                 return;
             }
@@ -483,7 +487,9 @@ impl qobject::BrowserUi {
         let canonical_url = match canonical_engine_url(url) {
             Ok(url) => url,
             Err(error) => {
-                self.set_status_text(QString::from(format!("Engine URL rejected: {error}")));
+                self.set_status_text(QString::from(format!(
+                    "Address could not be opened: {error}"
+                )));
                 return;
             }
         };
@@ -549,7 +555,9 @@ impl qobject::BrowserUi {
             Ok(url) => url,
             Err(error) => {
                 if index == self.as_ref().rust().active_tab_index {
-                    self.set_status_text(QString::from(format!("Engine URL rejected: {error}")));
+                    self.set_status_text(QString::from(format!(
+                        "Address could not be opened: {error}"
+                    )));
                 }
                 return;
             }
@@ -761,7 +769,7 @@ impl qobject::BrowserUi {
         self.as_mut().set_page_title(QString::default());
         self.as_mut().set_view_alive(false);
         self.as_mut().set_load_state(QString::from("released"));
-        self.set_status_text(QString::from("Transient profile resources released"));
+        self.set_status_text(QString::from("Private session closed"));
         true
     }
 

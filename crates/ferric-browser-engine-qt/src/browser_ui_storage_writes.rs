@@ -42,24 +42,41 @@ impl qobject::BrowserUi {
         }
     }
 
-    pub(super) fn apply_mark_write(
+    pub(super) fn apply_mark_write(self: Pin<&mut Self>, write: MarkWrite) -> Result<(), String> {
+        self.apply_mark_write_with_feedback(write, FeedbackLane::Mark)
+    }
+
+    fn apply_mark_write_with_feedback(
         mut self: Pin<&mut Self>,
         write: MarkWrite,
+        lane: FeedbackLane,
     ) -> Result<(), String> {
         if !self.as_ref().storage_is_open() {
             return Err("profile metadata worker is unavailable".to_owned());
         }
-        self.as_mut()
-            .submit_storage(StorageRequest::MarkBatch {
+        let ticket = self
+            .as_mut()
+            .submit_storage_with_ticket(StorageRequest::MarkBatch {
                 writes: vec![write],
             })
             .map_err(|error| error.to_string())?;
         self.as_mut().publish_management_feedback(
-            FeedbackLane::Mark,
+            lane,
             FeedbackState::Pending,
             "Saving library change…",
             "",
         );
+        let id = if matches!(lane, FeedbackLane::BookmarkTransfer) {
+            self.as_ref().rust().bookmark_transfer_id.clone()
+        } else {
+            self.as_ref().rust().mark_action_id.clone()
+        };
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .mark_feedback_tickets
+            .insert(ticket, (lane, id));
         self.set_status_text(QString::from("Saving library change…"));
         Ok(())
     }
@@ -72,11 +89,7 @@ impl qobject::BrowserUi {
 
     pub(super) fn refresh_library(mut self: Pin<&mut Self>) {
         let private_history = self.as_ref().rust().library_kind.to_string() == "history"
-            && self
-                .as_ref()
-                .rust()
-                .profile_persistence
-                .lacks_durable_storage();
+            && self.as_ref().active_profile_is_transient();
         if private_history {
             let rows = self
                 .as_ref()
@@ -91,20 +104,44 @@ impl qobject::BrowserUi {
         }
     }
 
-    pub(super) fn apply_mark_write_result(mut self: Pin<&mut Self>, result: Result<usize, String>) {
+    pub(super) fn apply_mark_write_result(
+        mut self: Pin<&mut Self>,
+        ticket: StorageTicket,
+        result: Result<usize, String>,
+    ) {
+        let receipt = self
+            .as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .mark_feedback_tickets
+            .remove(&ticket);
+        let Some((lane, id)) = receipt else {
+            return;
+        };
+        let current_receipt = if matches!(lane, FeedbackLane::BookmarkTransfer) {
+            self.as_ref().rust().bookmark_transfer_id == id
+        } else {
+            self.as_ref().rust().mark_action_id == id
+        };
+        if result.is_ok() {
+            self.as_ref().rust().storage_library_dirty.set(true);
+            let pending = self.as_ref().rust().storage_library_read_pending;
+            self.as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .storage_library_refresh_again |= pending;
+            self.as_mut().request_storage_library();
+            self.as_mut().refresh_start_page_metadata();
+        }
+        if !current_receipt {
+            return;
+        }
         match result {
             Ok(_) => {
-                self.as_ref().rust().storage_library_dirty.set(true);
-                let pending = self.as_ref().rust().storage_library_read_pending;
-                self.as_mut()
-                    .rust_mut()
-                    .as_mut()
-                    .get_mut()
-                    .storage_library_refresh_again |= pending;
-                self.as_mut().request_storage_library();
-                self.as_mut().refresh_start_page_metadata();
                 self.as_mut().publish_management_feedback(
-                    FeedbackLane::Mark,
+                    lane,
                     FeedbackState::Succeeded,
                     "Library change saved",
                     "",
@@ -113,12 +150,14 @@ impl qobject::BrowserUi {
             }
             Err(error) => {
                 self.as_mut().publish_management_feedback(
-                    FeedbackLane::Mark,
+                    lane,
                     FeedbackState::Failed,
                     "This change couldn't be saved. Review the details and try again.",
                     &error,
                 );
-                self.set_status_text(QString::from(format!("Library change failed: {error}")));
+                self.set_status_text(QString::from(
+                    "The library change couldn't be saved. Review its details and try again.",
+                ));
             }
         }
     }
@@ -183,7 +222,7 @@ impl qobject::BrowserUi {
 
     pub(super) fn saved_library_rows(&self, kind: &str) -> Option<Vec<String>> {
         let rust = self.rust();
-        if kind == "history" && rust.profile_persistence.lacks_durable_storage() {
+        if kind == "history" && self.active_profile_is_transient() {
             return Some(
                 self.private_history_records()
                     .iter()
@@ -252,6 +291,12 @@ impl qobject::BrowserUi {
             ));
             return false;
         }
+        if self.as_ref().rust().bookmark_transfer_state.to_string() == "pending" {
+            self.set_status_text(QString::from(
+                "Another bookmark is being saved. Wait for its result.",
+            ));
+            return false;
+        }
         let url = url.to_string();
         if !is_safe_history_url(&url) {
             self.as_mut()
@@ -259,16 +304,22 @@ impl qobject::BrowserUi {
             return false;
         }
         let title = sanitize_untrusted_title(&title.to_string());
-        if self
-            .as_mut()
-            .apply_mark_write(MarkWrite::AddBookmark {
+        if let Err(error) = self.as_mut().apply_mark_write_with_feedback(
+            MarkWrite::AddBookmark {
                 id: Uuid::new_v4().to_string(),
                 url,
                 title,
                 timestamp: unix_timestamp(),
-            })
-            .is_err()
-        {
+            },
+            FeedbackLane::BookmarkTransfer,
+        ) {
+            self.as_mut().publish_management_feedback(
+                FeedbackLane::BookmarkTransfer,
+                FeedbackState::Failed,
+                "The bookmark couldn't be saved. Restore profile storage and retry.",
+                &error,
+            );
+            self.set_status_text(QString::from("The bookmark couldn't be saved"));
             return false;
         }
         true

@@ -8,7 +8,10 @@ ListView {
     required property var hostWindow
     clip: true
     boundsBehavior: Flickable.StopAtBounds
-    ScrollBar.vertical: ScrollBar { active: true }
+    ScrollBar.vertical: ScrollBar {
+        active: true
+        policy: view.contentHeight > view.height + 1 ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
+    }
 
     function revealFocusedControl() {
         if (!visible || height <= 0) return

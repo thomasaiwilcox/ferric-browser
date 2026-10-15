@@ -28,6 +28,7 @@ FocusScope {
     property var previousFocusItem: null
     property bool restoreFocus: true
     property bool dismissOnEscape: true
+    property bool displayPrepared: false
     readonly property bool suspended: !!hostWindow && (
         hostWindow.windowCloseConfirmationVisible === true
         || hostWindow.windowShutdownPromptVisible === true
@@ -52,6 +53,7 @@ FocusScope {
     }
 
     signal dismissRequested()
+    signal opening()
     function focusWithin(control) {
         var item = hostWindow ? hostWindow.activeFocusItem : null;
         while (item && item !== control)
@@ -115,8 +117,11 @@ FocusScope {
     }
 
     function prepareForDisplay() {
-        previousFocusItem = hostWindow && hostWindow.activeFocusItem ? hostWindow.activeFocusItem :
-                                                                       null;
+        if (!displayPrepared) {
+            previousFocusItem = hostWindow && hostWindow.activeFocusItem ? hostWindow.activeFocusItem : null;
+            displayPrepared = true;
+            opening();
+        }
         focusInitialControl();
     }
 
@@ -126,6 +131,7 @@ FocusScope {
         if (visible) {
             surface.prepareForDisplay();
         } else {
+            displayPrepared = false;
             surface.restorePreviousFocus();
         }
     }

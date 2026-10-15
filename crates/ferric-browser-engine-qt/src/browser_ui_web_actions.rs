@@ -841,8 +841,8 @@ impl qobject::BrowserUi {
             }
         };
         match self.as_mut().start_spawn_process(&argv) {
-            Ok(operation_id) => {
-                self.set_status_text(QString::from(format!("Spawn started: {operation_id}")));
+            Ok(_) => {
+                self.set_status_text(QString::from("External command started"));
                 true
             }
             Err(error) => {
