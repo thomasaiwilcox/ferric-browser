@@ -86,25 +86,37 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn request_storage_library(mut self: Pin<&mut Self>) {
+        if self.as_ref().active_profile_is_transient() {
+            return;
+        }
         self.as_mut().ensure_storage_worker();
-        let should_request = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            if this.storage_library.is_some() && !this.storage_library_dirty.get() {
-                return;
-            }
-            true
-        };
-        let result = should_request.then(|| {
-            self.as_mut()
-                .submit_storage(StorageRequest::Library { limit: 1_000 })
-        });
-        if let Some(Err(error)) = result
-            && !matches!(error, ferric_browser_storage::StorageWorkerError::Busy)
+        if self.as_ref().rust().storage_library_read_pending
+            || (self.as_ref().rust().storage_library.is_some()
+                && !self.as_ref().rust().storage_library_dirty.get())
         {
-            self.set_status_text(QString::from(format!(
-                "Profile metadata query unavailable: {error}"
-            )));
+            return;
+        }
+        match self
+            .as_mut()
+            .submit_storage(StorageRequest::Library { limit: 1_000 })
+        {
+            Ok(()) => {
+                self.as_mut().set_library_error(QString::default());
+                self.as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .storage_library_read_pending = true;
+                self.publish_library_pending();
+            }
+            Err(ferric_browser_storage::StorageWorkerError::Busy) => {}
+            Err(error) => {
+                self.as_mut()
+                    .set_library_error(QString::from(error.to_string()));
+                self.set_status_text(QString::from(format!(
+                    "Library couldn't be loaded: {error}"
+                )));
+            }
         }
     }
 
@@ -645,42 +657,13 @@ impl qobject::BrowserUi {
                 }
             }
         }
+        if let Some(result) = mark_result {
+            consumed = true;
+            self.as_mut().apply_mark_write_result(result);
+        }
         if let Some(result) = library_result {
             consumed = true;
-            match result {
-                Ok(snapshot) => {
-                    let mut rust = self.as_mut().rust_mut();
-                    let this = rust.as_mut().get_mut();
-                    for entry in &snapshot.command_history {
-                        if !this.command_history.contains(entry) {
-                            this.command_history.push(entry.clone());
-                        }
-                    }
-                    let limit = this
-                        .config
-                        .get("history")
-                        .and_then(|history| history.get("command_limit"))
-                        .and_then(serde_json::Value::as_u64)
-                        .unwrap_or(1_000)
-                        .min(1_000) as usize;
-                    this.command_history.truncate(limit);
-                    this.storage_library = Some(snapshot);
-                    this.storage_library_revision = this.storage_library_revision.saturating_add(1);
-                    this.storage_library_dirty.set(false);
-                }
-                Err(error) => {
-                    {
-                        let mut rust = self.as_mut().rust_mut();
-                        let this = rust.as_mut().get_mut();
-                        this.storage_library = None;
-                        this.storage_library_dirty.set(false);
-                    }
-                    self.as_mut().close_storage();
-                    self.as_mut().set_status_text(QString::from(format!(
-                        "Profile metadata query failed: {error}"
-                    )));
-                }
-            }
+            self.as_mut().apply_library_read_result(result);
         }
         if let Some(result) = command_record_result {
             consumed = true;
@@ -749,15 +732,27 @@ impl qobject::BrowserUi {
         }
         if let Some(result) = journey_query_result {
             consumed = true;
-            match result {
-                Ok(snapshot) => {
-                    self.as_mut().apply_journey_query_snapshot(snapshot);
-                    self.as_mut()
-                        .set_status_text(QString::from("Journey query ready"));
+            self.as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .journey_read_pending = false;
+            self.as_mut().publish_library_pending();
+            if self.as_ref().rust().library_kind.to_string() == "journey" {
+                match result {
+                    Ok(snapshot) => {
+                        self.as_mut().set_library_error(QString::default());
+                        self.as_mut().apply_journey_query_snapshot(snapshot);
+                        self.as_mut()
+                            .set_status_text(QString::from("Journey ready"));
+                    }
+                    Err(error) => {
+                        self.as_mut().set_library_error(QString::from(&error));
+                        self.as_mut().set_status_text(QString::from(format!(
+                            "Journey couldn't be loaded: {error}"
+                        )));
+                    }
                 }
-                Err(error) => self
-                    .as_mut()
-                    .set_status_text(QString::from(format!("Journey query failed: {error}"))),
             }
         }
         if let Some(result) = journey_export_result {
@@ -848,22 +843,6 @@ impl qobject::BrowserUi {
         if let Some(result) = download_result {
             consumed = true;
             self.as_mut().apply_download_batch_result(result);
-        }
-        if let Some(result) = mark_result {
-            consumed = true;
-            match result {
-                Ok(_) => {
-                    self.as_ref().rust().storage_library_dirty.set(true);
-                    self.as_mut().refresh_start_page_metadata();
-                    self.as_mut()
-                        .set_status_text(QString::from("Bookmark/quickmark write committed"));
-                }
-                Err(error) => {
-                    self.as_mut().set_status_text(QString::from(format!(
-                        "Bookmark/quickmark worker write failed: {error}"
-                    )));
-                }
-            }
         }
         if let Some(result) = history_clear_result {
             consumed = true;

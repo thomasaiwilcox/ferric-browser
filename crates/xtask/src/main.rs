@@ -531,6 +531,10 @@ fn run_qml_ui_tests() -> Result<(), String> {
         .env("QT_QPA_PLATFORM", "offscreen")
         .env("QT_QPA_PLATFORMTHEME", "")
         .env("QT_QUICK_BACKEND", "software")
+        .env(
+            "QTWEBENGINE_CHROMIUM_FLAGS",
+            "--disable-gpu --js-flags=--expose-gc",
+        )
         .status()
         .map_err(|error| format!("failed to run {executable}: {error}"))?;
     if status.success() {

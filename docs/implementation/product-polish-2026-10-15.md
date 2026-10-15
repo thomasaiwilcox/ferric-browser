@@ -197,6 +197,77 @@ Final logs use `manager-*`, including `manager-qml-final-qualified.log`,
 `manager-clipboard-detail.log` and `manager-ipc.log`. Known teardown warnings
 remain visible in the native logs and remain part of the audit below.
 
+## Library workflow batch
+
+The isolated baseline reproduced both off-screen Delete controls at 390 pixels
+and Enter on Edit opening the bookmark instead. The current implementation:
+
+- Places titles and addresses above wrapping actions, with literal, selectable
+  full details available separately. Accessible action labels use item names.
+  Journey destinations have readable labels while sending their canonical
+  `current`, `tab` and `window` values.
+- Restricts list navigation to focus on the list or its current row, rather
+  than a child control. Qt focus scopes can have active focus while a child
+  button owns the key. Native buttons now receive Enter; editable text keeps
+  its own keys and modified Enter cannot open a saved page.
+- Completes mark edits only after their matching durable worker receipt.
+  Failures keep drafts. New catalog publications reconcile stable row identities
+  instead of clearing the model on arbitrary storage completions. Successful
+  mark writes request a fresh catalog, discarding older in-flight reads.
+- Keeps last-readable rows on a catalog failure and exposes an explicit refresh
+  with readable pending/error states. Catalog and Journey reads are tracked
+  separately. A late Journey result cannot replace a subsequently selected
+  library. Known recovery and storage identities remain inspection details.
+- Gives libraries readable titles, honest empty states and real command headers.
+  Journey rows now include their kind and node identity so keyboard activation
+  follows the same path as the Reopen button. Read-only action/routing rows
+  cannot fall through to quickmark navigation.
+- Puts Journey search and map controls in the scrolling content, sizes map nodes
+  to the active font, and keeps the top visible while its header finishes layout.
+  Relationship explanations remain readable; raw transitions and source IDs
+  are confined to row details and exports.
+
+Evidence so far: 14 focused library checks and the 34 existing chrome checks
+pass. The expanded full QML suite passes 256 checks with forced GC enabled.
+Compact and large-font library renders were inspected; render review identified
+and corrected an initially hidden Journey search header. The new production
+library test exercises a real rejected SQL update, saved-row preservation,
+read-error recovery, deletion, quickmark edits and Journey keyboard activation.
+The compiled normal-library workflow passes, including a real rejected SQL
+update, retry, failed read and recovery, deletion, quickmark editing and actual
+navigation to an earlier Journey page. Interactive private testing found command
+completion requesting a durable catalog in a transient profile; the common
+read entry point now excludes transient profiles. The final compiled private regression passes, including actual command entry
+and action-list refresh without spurious durable-worker errors. Search controls wait for their accepted
+Journey query; static references keep unrelated metadata errors out of their
+presentation. The QML runner now supplies its mandatory forced-GC flag itself,
+so the documented repository check is self-contained. The first Clippy pass identified an unused
+mutable binding and an obsolete adapter close helper after read failures became
+retryable; both were removed before the current run. Final evidence for the frozen source:
+
+- Repository gate: passed; 909 Rust checks passed, 2 intentionally ignored.
+- Full QML suite: 256 passed, including 14 library checks.
+- Strict workspace Clippy and bounded adapter startup: passed.
+- Production polish: 16 passed in 31.82 seconds, including embedded resource
+  parity, durable SQL failure/retry, read recovery, private command completion,
+  late-query ownership and navigation to a different Journey page.
+- Production clipboard: 81 passed; public CLI/IPC probe passed.
+- Compact and large-font component and production renders inspected; formatting
+  and whitespace checks passed.
+
+The native runner links the exact static engine reported by Cargo for the
+application build, recorded in `library-engine-path.txt`. A frozen copy of the
+workspace engine was also used for focused private/durable workflow checks.
+Earlier failures are retained: obsolete source assertions, missing test flags,
+and fixtures that bypassed interactive command setup or observed transient
+states after the worker had already completed. The actual private-completion
+storage error was corrected at the common read boundary, rather than hidden
+only in the view. Final logs use `library-gate-final.log`,
+`library-clippy-final.log`, `library-adapter-final.log`, `library-native.log`,
+`library-native-detail.log`, `library-clipboard.log`,
+`library-clipboard-detail.log` and `library-ipc.log` under
+`target/product-polish/`. The wider goal remains active.
+
 ## Audit status and remaining implementation
 
 These remain part of the original goal, rather than deferred release promises:
@@ -212,19 +283,22 @@ These remain part of the original goal, rather than deferred release promises:
    evidence above. Retain these regressions during subsequent changes.
 3. **Start, guide, libraries and navigation tools.** Audit labels, metadata,
    empty states, long titles/addresses, command explanations and learning
-   affordances, including visible-target search and hint feedback. Inspection
-   has identified single-row library actions that cannot fit compact widths,
-   internal entry IDs in accessibility labels, unqualified plain/rich text in
-   library labels, and deferred library focus callbacks that need owner-bound
-   lifetime handling. Verify library action keys reach the focused control
-   rather than opening the selected entry. Isolated baseline tests reproduce
-   both off-screen Delete controls at 390 pixels and Enter on Edit opening the
-   bookmark instead (`target/product-polish/library-before.log`).
+   affordances, including visible-target search and hint feedback. The library
+   workflow defects reproduced by `library-before.log` are now fixed and
+   qualified above. Continue the remaining reference/help wording and
+   unavailable-state audit, including read-only action affordances, normal
+   metadata-unavailable history and private-transfer completion feedback.
 4. **Status/error messages.** Audit operation IDs, stale-target terminology,
    adapter/engine wording and internal state transitions in ordinary status
    notices. Preserve useful diagnostic detail without flooding normal use.
 5. **All prompts.** Inspect permissions, authentication, certificates, sharing,
-   downloads and shutdown with long/untrusted content. Confirm exact scope,
+   downloads and shutdown with long/untrusted content. An isolated baseline now
+   reproduces a long page message pushing action choices outside the shared
+   dialog, and private-history transfer actions overflowing a 390-pixel window
+   with 16-point text (`target/product-polish/prompt-before.log`). The same
+   baseline passes immediate Loader unload without deferred focus warnings;
+   do not assume shared focus callbacks cause the remaining provider-teardown
+   warnings. Confirm exact scope,
    safe defaults and keyboard/pointer behavior at compact sizes.
 6. **Whole-window finish.** Verify theme/readability, larger fonts, focus,
    primary/secondary/popup consistency, and investigate observed lifecycle

@@ -1971,9 +1971,6 @@ ApplicationWindow {
             if (consumed && window.downloadManagerVisible) {
                 window.refreshDownloads()
             }
-            if (consumed && window.libraryManagerVisible) {
-                window.refreshLibraryManager()
-            }
             if (window.journeyExportAwaiting
                     && browserUi.journey_export_preview_text.length > 0) {
                 window.journeyExportPreviewText = browserUi.journey_export_preview_text

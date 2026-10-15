@@ -26,6 +26,7 @@ class ApplicationTests final : public QObject {
     QVariant evaluate(const QString &source);
     QString text(const QString &property);
     bool command(const QString &value);
+    void interactiveCommand(const QString &value);
     static QString quoted(const QString &value);
     QVariant page(const QString &source, int world = 0);
     void typeText(const QString &text);
@@ -74,6 +75,8 @@ class ApplicationTests final : public QObject {
     void productPolishSiteLedger();
     void productPolishSessionPreview();
     void productPolishManagerFeedback();
+    void productPolishLibrary();
+    void productPolishPrivateLibrary();
     void initTestCase();
     void init();
     void cleanup();

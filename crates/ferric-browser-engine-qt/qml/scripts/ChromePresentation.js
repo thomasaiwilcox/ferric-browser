@@ -2,7 +2,7 @@
 
 // Pure chrome-presentation helpers. This resource deliberately has no bridge,
 // storage, or page access; it only projects already-validated chrome facts.
-var VERSION = "3"
+var VERSION = "4"
 
 function byteSize(bytes) {
     var value = Number(bytes)
@@ -86,6 +86,26 @@ function navigationFailureMessage(kind) {
     }
     return typeof messages[kind] === "string" ? messages[kind]
             : "The page couldn't be opened. Check the address or try again later."
+}
+
+function libraryTitle(kind) {
+    var titles = {history: "History", bookmarks: "Bookmarks", quickmarks: "Quickmarks", journey: "Browsing journey", actions: "Browser actions", "context-routes": "Context routes"}
+    return titles[kind] || "Library"
+}
+
+function libraryDescription(kind) {
+    var descriptions = {history: "Pages visited in this profile.", bookmarks: "Saved pages in this profile.", quickmarks: "Named shortcuts to saved pages.", journey: "Explore how your pages connect.", actions: "Available commands and examples.", "context-routes": "Rules for opening pages in a context."}
+    return descriptions[kind] || "Saved browser information."
+}
+
+function libraryEmptyMessage(kind) {
+    var messages = {history: "No history yet. Pages you visit in this profile will appear here.", bookmarks: "No bookmarks yet. Save a page with :bookmark-add.", quickmarks: "No quickmarks yet. Give a page a shortcut with :quickmark-add NAME.", journey: "No pages match this view. Clear the search or show all pages.", actions: "No actions are available in this view.", "context-routes": "No context routes configured."}
+    return messages[kind] || "No items to show."
+}
+
+function journeyTransitionLabel(value) {
+    var labels = {navigate: "Navigation", redirect: "Redirect", opener: "Opened from another page", popup: "Popup", hint: "Followed a hint", "session-restore": "Restored session", reopen: "Reopened page", "branch-after-back": "New path after going back", typed: "Address entered", link: "Followed a link", back: "Back", forward: "Forward", reload: "Reload"}
+    return labels[value] || "Navigation"
 }
 
 function siteScopeKey(data) {

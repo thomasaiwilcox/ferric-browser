@@ -10,7 +10,7 @@ FerricCommandDialog {
     visible: browserWindow.journeyExportPreviewVisible
     commandText: ":journey-export"
     title: "Review journey export"
-    message: "Review the sanitized export before choosing its destination."
+    message: "Review the pages and connections included before choosing where to save this export."
     dialogWidth: 760 * scale
     dialogHeight: 520 * scale
     dialogBorderColor: browserWindow.warningColor
@@ -34,7 +34,9 @@ FerricCommandDialog {
         TextArea {
             width: parent.width
             text: preview.browserWindow.journeyExportPreviewText
+            textFormat: TextEdit.PlainText
             readOnly: true
+            selectByMouse: true
             wrapMode: TextEdit.Wrap
             color: preview.browserWindow.primaryTextColor
             background: Rectangle { color: preview.browserWindow.surfaceColor }

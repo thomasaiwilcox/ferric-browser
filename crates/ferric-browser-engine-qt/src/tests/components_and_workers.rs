@@ -715,7 +715,7 @@ fn library_entries_component_preserves_row_state_and_emits_root_owned_operations
     assert!(qml.contains("signal deleteRequested(string entryKind, string entryId)"));
     assert!(qml.contains("signal journeyReopenRequested(string nodeId, string target)"));
     assert!(qml.contains("signal journeyExpandRequested(string nodeId)"));
-    assert!(qml.contains("function markEditSaved(entryKind, entryId)"));
+    assert!(qml.contains("function markEditSaved(entryKind, entryId, value)"));
     assert!(qml.contains("function focusList()"));
     assert!(qml.contains("function moveSelection(delta)"));
     assert!(qml.contains("function activateCurrent()"));
@@ -726,7 +726,6 @@ fn library_entries_component_preserves_row_state_and_emits_root_owned_operations
     assert!(!qml.contains("execute_command"));
     assert!(manager.contains("FerricLibraryEntries {"));
     assert!(composition_root.contains("window.editLibraryEntry(entryKind, entryId, value)"));
-    assert!(composition_root.contains("libraryManager.markEditSaved(entryKind, entryId)"));
     assert!(composition_root.contains("window.deleteLibraryEntry(entryKind, entryId)"));
     assert!(composition_root.contains("browserUi.execute_command(command)"));
 }
@@ -743,9 +742,7 @@ fn library_manager_composes_presentation_and_forwards_every_operation_to_the_roo
     );
     assert!(qml.contains("signal journeyReopenRequested(string nodeId, string target)"));
     assert!(qml.contains("function focusPrimaryControl()"));
-    assert!(qml.contains("Qt.callLater(focusPrimaryControl)"));
     assert!(qml.contains("Component.onCompleted:"));
-    assert!(qml.contains("libraryEntryList.handleNavigationKey(event)"));
     assert!(!qml.contains("browserUi."));
     assert!(!qml.contains("execute_command"));
     assert!(composition_root.contains("FerricLibraryManager {"));

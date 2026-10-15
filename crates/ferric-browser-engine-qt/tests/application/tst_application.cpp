@@ -22,6 +22,7 @@
 #include <QtTest>
 #include <QtWebEngineQuick/qtwebenginequickglobal.h>
 #include <csignal>
+#include <sqlite3.h>
 #include <unistd.h>
 
 static QQuickItem *findVisualItem(QQuickItem *parent, const QString &name) {
@@ -51,6 +52,13 @@ bool ApplicationTests::command(const QString &value) {
     if (!accepted)
         qInfo() << "command rejected" << value << text("status_text");
     return accepted;
+}
+void ApplicationTests::interactiveCommand(const QString &value) {
+    evaluate("testWindow.browserUi.enter_command()");
+    auto input = window->findChild<QQuickItem *>("commandLineInput");
+    QVERIFY(input);
+    QVERIFY(input->setProperty("text", value));
+    evaluate("testWindow.submitInteractiveCommand(" + quoted(value) + ")");
 }
 QString ApplicationTests::quoted(const QString &value) {
     QJsonArray array;
@@ -148,7 +156,7 @@ void ApplicationTests::init() {
     engine = std::make_unique<QQmlApplicationEngine>();
     const auto testName = QString::fromLatin1(QTest::currentTestFunction());
     const bool durable = testName.startsWith("durablePersistence")
-                         || testName.startsWith("productPolish");
+                         || (testName.startsWith("productPolish") && testName != "productPolishPrivateLibrary");
     QString startupConfig = "{\"schema_version\":3}";
     if (testName == "productPolishSiteLedger")
         startupConfig = R"JSON({"schema_version":3,"blocking":{"enabled":true,"bypass_sites":["other-private.test"]}})JSON";
@@ -2309,6 +2317,158 @@ void ApplicationTests::productPolishManagerFeedback() {
     QVERIFY(!evaluate("testWindow.browserUi.session_names_pending").toBool());
     const auto artifacts = qEnvironmentVariable("FERRIC_TEST_ARTIFACT_DIR");
     if (!artifacts.isEmpty()) QVERIFY(window->grabWindow().save(artifacts + "/production-manager-feedback.png"));
+    key(Qt::Key_Escape);
+}
+
+void ApplicationTests::productPolishLibrary() {
+    QVERIFY(command("bookmark-add --title " + quoted("Original bookmark")));
+    QTRY_COMPARE(text("mark_action_state"), QString("succeeded"));
+    QTRY_VERIFY(!evaluate("testWindow.browserUi.library_pending").toBool());
+    interactiveCommand("bookmark-list");
+    QTRY_VERIFY(evaluate("testWindow.libraryManagerVisible").toBool());
+    QTRY_VERIFY(text("library_values").contains("Original bookmark"));
+    QTRY_VERIFY(findVisualItem(window->contentItem(), "libraryEntryEditButton"));
+    auto edit = findVisualItem(window->contentItem(), "libraryEntryEditButton");
+    edit->forceActiveFocus();
+    key(Qt::Key_Return);
+    auto input = findVisualItem(window->contentItem(), "libraryEntryEdit");
+    QVERIFY(input && input->isVisible());
+    input->forceActiveFocus();
+    key(Qt::Key_A, Qt::ControlModifier);
+    typeText("revised bookmark");
+    QCOMPARE(input->property("text").toString(), QString("revised bookmark"));
+    // A real background read must preserve the row and its unsaved input.
+    evaluate("testWindow.browserUi.refresh_library()");
+    QTRY_VERIFY(!evaluate("testWindow.browserUi.library_pending").toBool());
+    QCOMPARE(findVisualItem(window->contentItem(), "libraryEntryEdit"), input);
+    QCOMPARE(input->property("text").toString(), QString("revised bookmark"));
+    QDirIterator files(evaluate("testWindow.storageBasePath").toString(),
+                       QStringList{"browser.sqlite"}, QDir::Files,
+                       QDirIterator::Subdirectories);
+    QVERIFY(files.hasNext());
+    sqlite3 *raw = nullptr;
+    const auto databasePath = files.next().toUtf8();
+    QCOMPARE(sqlite3_open_v2(databasePath.constData(), &raw, SQLITE_OPEN_READWRITE, nullptr), SQLITE_OK);
+    const std::unique_ptr<sqlite3, decltype(&sqlite3_close)> database(raw, sqlite3_close);
+    sqlite3_busy_timeout(database.get(), 5000);
+    QCOMPARE(sqlite3_exec(database.get(), "CREATE TRIGGER polish_reject_edit BEFORE UPDATE ON bookmarks BEGIN SELECT RAISE(ABORT, 'fixture rejected bookmark update'); END", nullptr, nullptr, nullptr), SQLITE_OK);
+    key(Qt::Key_Return);
+    QTRY_COMPARE(text("mark_action_state"), QString("failed"));
+    QVERIFY(input->isVisible());
+    QCOMPARE(input->property("text").toString(), QString("revised bookmark"));
+    QVERIFY(text("library_values").contains("Original bookmark"));
+    QVERIFY(!text("library_values").contains("revised bookmark"));
+    auto feedback = window->findChild<QQuickItem *>("libraryOperationFeedback");
+    QVERIFY(feedback && feedback->isVisible());
+    QCOMPARE(feedback->property("message").toString(), text("mark_action_message"));
+    QVERIFY(text("mark_action_detail").contains("fixture rejected"));
+    QCOMPARE(sqlite3_exec(database.get(), "DROP TRIGGER polish_reject_edit", nullptr, nullptr, nullptr), SQLITE_OK);
+    input->forceActiveFocus(); key(Qt::Key_Return);
+    QTRY_COMPARE(text("mark_action_state"), QString("succeeded"));
+    QTRY_VERIFY(!input->isVisible());
+    QTRY_VERIFY(text("library_values").contains("revised bookmark"));
+    QVERIFY(!text("library_values").contains("Original bookmark"));
+    // Read errors retain the displayed catalog and can recover without restart.
+    QCOMPARE(sqlite3_exec(database.get(), "ALTER TABLE bookmarks RENAME TO polish_saved_bookmarks", nullptr, nullptr, nullptr), SQLITE_OK);
+    evaluate("testWindow.browserUi.refresh_library()");
+    QTRY_VERIFY(!text("library_error").isEmpty());
+    QVERIFY(text("library_values").contains("revised bookmark"));
+    QCOMPARE(sqlite3_exec(database.get(), "ALTER TABLE polish_saved_bookmarks RENAME TO bookmarks", nullptr, nullptr, nullptr), SQLITE_OK);
+    evaluate("testWindow.browserUi.refresh_library()");
+    QTRY_VERIFY(!evaluate("testWindow.browserUi.library_pending").toBool());
+    QTRY_COMPARE(text("library_error"), QString());
+    // Two-step deletion is followed by a durable catalog publication.
+    auto remove = findVisualItem(window->contentItem(), "libraryEntryDeleteButton");
+    QVERIFY(remove && remove->isVisible());
+    QVERIFY(QMetaObject::invokeMethod(remove, "click"));
+    QVERIFY(!evaluate("testWindow.pendingLibraryDelete").toString().isEmpty());
+    QVERIFY(QMetaObject::invokeMethod(remove, "click"));
+    QCOMPARE(text("mark_action_state"), QString("pending"));
+    QTRY_COMPARE(text("mark_action_state"), QString("succeeded"));
+    QTRY_COMPARE(text("library_values"), QString());
+    auto list = window->findChild<QQuickItem *>("libraryEntryList");
+    QVERIFY(list); QTRY_COMPARE(list->property("count").toInt(), 0);
+    key(Qt::Key_Escape);
+    QVERIFY(command("quickmark-add paper"));
+    QTRY_COMPARE(text("mark_action_state"), QString("succeeded"));
+    QTRY_VERIFY(!evaluate("testWindow.browserUi.library_pending").toBool());
+    interactiveCommand("quickmark-list");
+    QTRY_VERIFY(evaluate("testWindow.libraryManagerVisible").toBool());
+    QTRY_VERIFY(text("library_values").startsWith("paper\t"));
+    QTRY_VERIFY(findVisualItem(window->contentItem(), "libraryEntryEditButton"));
+    edit = findVisualItem(window->contentItem(), "libraryEntryEditButton");
+    QVERIFY(edit); edit->forceActiveFocus(); key(Qt::Key_Return);
+    input = findVisualItem(window->contentItem(), "libraryEntryEdit");
+    QVERIFY(input && input->isVisible()); input->forceActiveFocus();
+    key(Qt::Key_A, Qt::ControlModifier);
+    const auto quickmarkUrl = text("current_url") + "?saved=quickmark";
+    typeText(quickmarkUrl); key(Qt::Key_Return);
+    QTRY_COMPARE(text("mark_action_state"), QString("succeeded"));
+    QTRY_VERIFY(text("library_values").contains("saved=quickmark"));
+    QTRY_VERIFY(!input->isVisible());
+    window->resize(390, 700);
+    evaluate("testWindow.font.pointSize=16");
+    QTest::qWait(100);
+    const auto artifacts = qEnvironmentVariable("FERRIC_TEST_ARTIFACT_DIR");
+    if (!artifacts.isEmpty()) QVERIFY(window->grabWindow().save(artifacts + "/production-library-large.png"));
+    key(Qt::Key_Escape);
+    const auto originalPageUrl = text("current_url");
+    const auto laterPageUrl = originalPageUrl + "?journey=later";
+    evaluate("testWindow.browserUi.navigate(" + quoted(laterPageUrl) + ")");
+    evaluate("testWindow.executePendingEngineAction()");
+    QTRY_COMPARE(text("current_url"), laterPageUrl);
+    QTRY_VERIFY(!evaluate("testWindow.activeWebView().loading").toBool());
+    QTest::qWait(150);
+    evaluate("testWindow.browserUi.refresh_library()");
+    QTRY_VERIFY(!evaluate("testWindow.browserUi.library_pending").toBool());
+    QTRY_VERIFY(command("journey"));
+    QVERIFY(command("action-list"));
+    QTRY_VERIFY(!evaluate("testWindow.browserUi.library_pending").toBool());
+    QTest::qWait(150);
+    QCOMPARE(text("library_kind"), QString("actions"));
+    QVERIFY(!text("library_values").isEmpty());
+    interactiveCommand("journey");
+    QTRY_VERIFY(evaluate("testWindow.libraryManagerVisible").toBool());
+    QTRY_COMPARE(text("library_kind"), QString("journey"));
+    QTRY_VERIFY(!text("library_values").isEmpty());
+    list = window->findChild<QQuickItem *>("libraryEntryList");
+    QVERIFY(list); QTRY_VERIFY(list->property("count").toInt() > 0);
+    const auto journeyRows = text("library_values").split('\n');
+    int originalIndex = -1;
+    for (int index = 0; index < journeyRows.size(); ++index) {
+        const auto fields = journeyRows[index].split('\t');
+        if (fields.size() >= 3 && fields[2] == originalPageUrl) originalIndex = index;
+    }
+    QVERIFY(originalIndex >= 0);
+    QVERIFY(list->setProperty("currentIndex", originalIndex));
+    QTRY_VERIFY(list->property("currentItem").value<QObject *>() != nullptr);
+    // The real projection must carry its kind and node identity to reopen a
+    // different saved page, rather than only dismissing the panel.
+    const auto currentUrl = originalPageUrl;
+    page("window.polishJourneyMarker='before';true");
+    list->forceActiveFocus(); key(Qt::Key_Return);
+    QTRY_VERIFY(!evaluate("testWindow.libraryManagerVisible").toBool());
+    QTRY_COMPARE(text("current_url"), currentUrl);
+    QTRY_VERIFY(page("window.polishJourneyMarker === undefined && document.getElementById('button') !== null").toBool());
+}
+
+void ApplicationTests::productPolishPrivateLibrary() {
+    interactiveCommand("history");
+    QTRY_VERIFY(evaluate("testWindow.libraryManagerVisible").toBool());
+    QCOMPARE(text("library_kind"), QString("history"));
+    const auto before = text("library_values");
+    QVERIFY(before.contains(text("current_url")));
+    evaluate("testWindow.refreshActiveLibrary()");
+    QCOMPARE(text("library_error"), QString());
+    QVERIFY(!evaluate("testWindow.browserUi.library_pending").toBool());
+    QCOMPARE(text("library_values"), before);
+    key(Qt::Key_Escape);
+    interactiveCommand("action-list");
+    QTRY_VERIFY(evaluate("testWindow.libraryManagerVisible").toBool());
+    QVERIFY(evaluate("testWindow.refreshActiveLibrary()").toBool());
+    QCOMPARE(text("library_error"), QString());
+    QCOMPARE(text("library_kind"), QString("actions"));
+    QVERIFY(!text("library_values").isEmpty());
     key(Qt::Key_Escape);
 }
 

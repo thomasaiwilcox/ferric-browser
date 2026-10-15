@@ -526,6 +526,12 @@ mod qobject {
         #[qproperty(QStringList, session_preview_pinned)]
         #[qproperty(QStringList, session_preview_muted)]
         #[qproperty(QString, session_preview)]
+        #[qproperty(QString, mark_action_id)]
+        #[qproperty(QString, mark_action_state)]
+        #[qproperty(QString, mark_action_message)]
+        #[qproperty(QString, mark_action_detail)]
+        #[qproperty(bool, library_pending)]
+        #[qproperty(QString, library_error)]
         #[qproperty(QString, profile_action_id)]
         #[qproperty(QString, profile_action_state)]
         #[qproperty(QString, profile_action_message)]
@@ -1025,6 +1031,9 @@ mod qobject {
 
         #[qinvokable]
         fn list_named_sessions(self: Pin<&mut BrowserUi>) -> QString;
+
+        #[qinvokable]
+        fn refresh_library(self: Pin<&mut BrowserUi>);
 
         #[qinvokable]
         fn delete_named_session(self: Pin<&mut BrowserUi>, name: &QString, confirmed: bool)
@@ -2020,6 +2029,15 @@ pub struct BrowserUiRust {
     session_preview_pinned: QStringList,
     session_preview_muted: QStringList,
     session_preview: QString,
+    mark_action_id: QString,
+    mark_action_state: QString,
+    mark_action_message: QString,
+    mark_action_detail: QString,
+    library_pending: bool,
+    library_error: QString,
+    storage_library_refresh_again: bool,
+    storage_library_read_pending: bool,
+    journey_read_pending: bool,
     profile_action_id: QString,
     profile_action_state: QString,
     profile_action_message: QString,
@@ -2552,14 +2570,6 @@ impl qobject::BrowserUi {
             .is_some_and(BrowserApplication::storage_is_open)
     }
 
-    fn close_storage(mut self: Pin<&mut Self>) {
-        let mut rust = self.as_mut().rust_mut();
-        let this = rust.as_mut().get_mut();
-        if let Some(state) = Option::as_mut(&mut this.state) {
-            state.close_storage();
-        }
-    }
-
     fn submit_storage(
         mut self: Pin<&mut Self>,
         request: StorageRequest,
@@ -2773,6 +2783,15 @@ impl Default for BrowserUiRust {
             session_preview_pinned: QStringList::default(),
             session_preview_muted: QStringList::default(),
             session_preview: QString::default(),
+            mark_action_id: QString::default(),
+            mark_action_state: QString::from("idle"),
+            mark_action_message: QString::default(),
+            mark_action_detail: QString::default(),
+            library_pending: false,
+            library_error: QString::default(),
+            storage_library_refresh_again: false,
+            storage_library_read_pending: false,
+            journey_read_pending: false,
             profile_action_id: QString::default(),
             profile_action_state: QString::from("idle"),
             profile_action_message: QString::default(),

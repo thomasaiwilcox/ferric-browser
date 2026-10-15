@@ -8,6 +8,7 @@ pub(super) enum FeedbackLane {
     Profile,
     SessionSave,
     SessionDelete,
+    Mark,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -33,6 +34,7 @@ impl qobject::BrowserUi {
                 FeedbackLane::Profile => self.as_ref().rust().profile_action_id.clone(),
                 FeedbackLane::SessionSave => self.as_ref().rust().session_save_id.clone(),
                 FeedbackLane::SessionDelete => self.as_ref().rust().session_delete_id.clone(),
+                FeedbackLane::Mark => self.as_ref().rust().mark_action_id.clone(),
             },
         };
         let state = QString::from(match state {
@@ -63,6 +65,12 @@ impl qobject::BrowserUi {
                 self.as_mut().set_session_delete_detail(detail);
                 self.as_mut().set_session_delete_state(state);
             }
+            FeedbackLane::Mark => {
+                self.as_mut().set_mark_action_id(id);
+                self.as_mut().set_mark_action_message(message);
+                self.as_mut().set_mark_action_detail(detail);
+                self.as_mut().set_mark_action_state(state);
+            }
         }
     }
 
@@ -71,10 +79,13 @@ impl qobject::BrowserUi {
             FeedbackLane::Profile,
             FeedbackLane::SessionSave,
             FeedbackLane::SessionDelete,
+            FeedbackLane::Mark,
         ] {
             self.as_mut()
                 .publish_management_feedback(lane, FeedbackState::Idle, "", "");
         }
+        self.as_mut().set_library_pending(false);
+        self.as_mut().set_library_error(QString::default());
         self.as_mut().set_profile_list_error(QString::default());
         self.as_mut().set_profile_preview_error(QString::default());
         self.as_mut()

@@ -5,6 +5,7 @@ import QtQuick.Dialogs
 import QtWebEngine
 import io.github.ferricbrowser 1.0
 import "../scripts/BrowserScripts.js" as BrowserScripts
+import "../scripts/ChromePresentation.js" as ChromePresentation
 import "../scripts/TargetSearchPresentation.js" as TargetSearchPresentation
 import "../scripts/SpellcheckPresentation.js" as SpellcheckPresentation
 
@@ -522,19 +523,54 @@ FerricBrowserRuntimeServices {
         window.continueQuitRequest()
     }
 
+    Timer {
+        id: libraryPublicationTimer
+        interval: 0
+        onTriggered: window.refreshLibraryManager()
+    }
+    Connections {
+        target: browserUi
+        function onLibrary_valuesChanged() { libraryPublicationTimer.restart() }
+        function onLibrary_kindChanged() { libraryPublicationTimer.restart() }
+        function onLibrary_graph_edge_sourcesChanged() { libraryPublicationTimer.restart() }
+        function onLibrary_graph_edge_targetsChanged() { libraryPublicationTimer.restart() }
+        function onLibrary_graph_edge_transitionsChanged() { libraryPublicationTimer.restart() }
+    }
+    function updateLibraryRows(rows) {
+        // Retain delegates and drafts for stable records during asynchronous reads.
+        for (var i = 0; i < rows.length; ++i) {
+            var found = -1
+            for (var j = i; j < libraryEntries.count; ++j) {
+                var current = libraryEntries.get(j)
+                if (current.entryKind === rows[i].entryKind && current.entryId === rows[i].entryId) { found = j; break }
+            }
+            if (found < 0) libraryEntries.insert(i, rows[i])
+            else {
+                if (found !== i) libraryEntries.move(found, i, 1)
+                libraryEntries.set(i, rows[i])
+            }
+        }
+        if (libraryEntries.count > rows.length) libraryEntries.remove(rows.length, libraryEntries.count - rows.length)
+    }
+    function refreshActiveLibrary() {
+        window.pendingLibraryDelete = ""
+        if (browserUi.library_kind === "journey") {
+            if (window.libraryJourneyCurrentOnly) window.runJourneyCurrentQuery()
+            else window.runJourneyQuery(window.libraryJourneyExpandedNode.length > 0
+                ? window.journeyExpandArgument(window.libraryJourneyExpandedNode)
+                : window.journeySearchArgument(window.libraryJourneySearchText))
+        } else if (browserUi.library_kind === "actions") return browserUi.execute_command(":action-list")
+        else if (browserUi.library_kind === "context-routes") return browserUi.execute_command(":context-route list")
+        else browserUi.refresh_library()
+    }
     function refreshLibraryManager() {
-        libraryEntries.clear()
+        window.pendingLibraryDelete = ""
         libraryGraphEntries.clear()
         libraryGraphNodes.clear()
         window.libraryGraphLineData = []
         var kind = browserUi.library_kind
         var values = browserUi.library_values
-        if (values.length === 0) {
-            window.libraryTotalEntries = 0
-            window.libraryPage = 0
-            return
-        }
-        var lines = values.split("\n")
+        var lines = values.length > 0 ? values.split("\n") : []
         window.libraryTotalEntries = lines.length
         var visibleLines = lines
         if (kind !== "journey") {
@@ -543,38 +579,32 @@ FerricBrowserRuntimeServices {
             var pageStart = window.libraryPage * window.libraryPageSize
             visibleLines = lines.slice(pageStart, pageStart + window.libraryPageSize)
         }
+        var rows = []
         for (var i = 0; i < visibleLines.length; ++i) {
             var fields = visibleLines[i].split("\t")
+            var row = {label: "", secondary: "", detail: "", entryId: fields[0], entryKind: "", nodeId: ""}
             if ((kind === "history" || kind === "bookmarks") && fields.length >= 3) {
-                libraryEntries.append({
-                    label: fields[1],
-                    secondary: fields[2],
-                    entryId: fields[0],
-                    entryKind: kind === "history" ? "history" : "bookmark"
-                })
+                row.label = fields[1] || fields[2]
+                row.secondary = fields[2]
+                row.entryKind = kind === "history" ? "history" : "bookmark"
             } else if (kind === "journey" && fields.length >= 4) {
-                var journeyLabel = fields[1].length > 0 ? fields[1] : fields[2]
-                libraryEntries.append({
-                    label: journeyLabel + " · " + fields[3],
-                    secondary: fields[2] + (fields.length >= 5 && fields[4].length > 0
-                                           ? " · " + fields[4] : ""),
-                    nodeId: fields[0]
-                })
+                row.label = fields[1] || fields[2]
+                row.secondary = fields[2] + " · " + ChromePresentation.journeyTransitionLabel(fields[3])
+                row.detail = row.label + "\n" + fields[2] + "\nTransition: " + fields[3]
+                    + (fields[4] ? "\nSource: " + fields[4] : "") + "\nRecord: " + fields[0]
+                row.entryKind = "journey"; row.nodeId = fields[0]
             } else if (kind === "quickmarks" && fields.length >= 2) {
-                libraryEntries.append({
-                    label: fields[0],
-                    secondary: fields[1],
-                    entryId: fields[0],
-                    entryKind: "quickmark"
-                })
+                row.label = fields[0]; row.secondary = fields[1]; row.entryKind = "quickmark"
             } else if (kind === "actions" && fields.length >= 3) {
-                libraryEntries.append({
-                    label: fields[0] + " · " + fields[1],
-                    secondary: fields[2] + (fields.length >= 4 && fields[3].length > 0
-                                           ? " · Example: " + fields[3] : "")
-                })
-            }
+                row.label = fields[1]; row.secondary = fields[2]; row.entryKind = "action"
+                row.detail = fields[0] + "\n" + fields[2] + (fields[3] ? "\nExample: " + fields[3] : "")
+            } else if (kind === "context-routes" && fields.length >= 6) {
+                row.label = fields[1]; row.secondary = "Open in context " + fields[2]; row.entryKind = "route"
+                row.detail = "Rule: " + fields[0] + "\n" + fields[3] + "\n" + fields[4] + "\nEntry points: " + fields[5]
+            } else continue
+            rows.push(row)
         }
+        window.updateLibraryRows(rows)
         if (kind === "journey") {
             var edgeSources = browserUi.library_graph_edge_sources
             var edgeTargets = browserUi.library_graph_edge_targets
@@ -596,8 +626,8 @@ FerricBrowserRuntimeServices {
                 }
                 var nodeIndex = ({})
                 var graphNodeLimit = Math.min(lines.length, 120)
-                var graphNodeWidth = 170
-                var graphNodeHeight = 48
+                var graphNodeWidth = libraryManager.graphNodeWidth
+                var graphNodeHeight = libraryManager.graphNodeHeight
                 var graphNodeGapX = 24
                 var graphNodeGapY = 18
                 var graphColumns = 4
@@ -625,11 +655,11 @@ FerricBrowserRuntimeServices {
                     var sourceId = String(edgeSources[e])
                     var targetId = String(edgeTargets[e])
                     var transition = String(edgeTransitions[e] || "navigate")
-                    var source = nodeLabels[sourceId] || sourceId
-                    var target = nodeLabels[targetId] || targetId
+                    var source = nodeLabels[sourceId] || "Earlier page"
+                    var target = nodeLabels[targetId] || "Another page"
                     libraryGraphEntries.append({
                         label: source + " → " + target,
-                        secondary: transition
+                        secondary: ChromePresentation.journeyTransitionLabel(transition)
                     })
                     if (nodeIndex[sourceId] !== undefined
                             && nodeIndex[targetId] !== undefined) {
@@ -646,14 +676,14 @@ FerricBrowserRuntimeServices {
                 }
                 if (lines.length > graphNodeLimit) {
                     libraryGraphEntries.insert(0, {
-                        label: "Graph layout capped at " + graphNodeLimit + " nodes",
-                        secondary: "Use Search or Expand for a smaller neighborhood"
+                        label: "Showing " + graphNodeLimit + " pages on the map",
+                        secondary: "Search or choose Nearby pages to narrow the view"
                     })
                 }
                 if (libraryGraphEntries.count === 0) {
                     libraryGraphEntries.append({
-                        label: "No retained relationships",
-                        secondary: "The current node has no visible edge in this bounded view"
+                        label: "No connections to show",
+                        secondary: "Try showing all pages or searching for another page"
                     })
                 }
             }
@@ -666,6 +696,7 @@ FerricBrowserRuntimeServices {
     }
 
     function changeLibraryPage(delta) {
+        window.pendingLibraryDelete = ""
         var next = window.libraryPage + delta
         if (next < 0 || next >= window.libraryPageCount()) {
             return
@@ -711,7 +742,9 @@ FerricBrowserRuntimeServices {
             window.executePendingEngineAction()
             window.libraryManagerVisible = false
             window.closeInternalSurface()
+            return true
         }
+        return false
     }
 
     function showPrivateHistoryTransfer(entryId, title, url) {
@@ -792,8 +825,9 @@ FerricBrowserRuntimeServices {
         }
         if (browserUi.execute_command(":" + command + " " + libraryCommandArgument(entryId))) {
             window.pendingLibraryDelete = ""
-            window.refreshLibraryManager()
+            return true
         }
+        return false
     }
 
     function editLibraryEntry(entryKind, entryId, value) {
@@ -808,7 +842,6 @@ FerricBrowserRuntimeServices {
                 : libraryCommandArgument(entryId) + " " + libraryCommandArgument(trimmed)
         if (browserUi.execute_command(":" + command + " " + argumentsText)) {
             window.pendingLibraryDelete = ""
-            window.refreshLibraryManager()
             return true
         }
         return false

@@ -30,12 +30,14 @@ FerricModalSurface {
         Label {
             Layout.fillWidth: true
             text: "Title: " + transfer.browserWindow.privateHistoryTransferTitle
+            textFormat: Text.PlainText
             color: transfer.browserWindow.primaryTextColor
             elide: Text.ElideRight
         }
         Label {
             Layout.fillWidth: true
             text: "URL: " + transfer.browserWindow.privateHistoryTransferUrl
+            textFormat: Text.PlainText
             color: transfer.browserWindow.secondaryTextColor
             wrapMode: Text.WrapAnywhere
         }
@@ -57,7 +59,8 @@ FerricModalSurface {
                 spacing: 8
                 Label {
                     Layout.fillWidth: true
-                    text: name + " — " + label
+                    text: label + " · " + name
+                    textFormat: Text.PlainText
                     color: transfer.browserWindow.primaryTextColor
                     elide: Text.ElideRight
                 }

@@ -712,6 +712,18 @@ GridLayout {
         id: libraryManager
         browserWindow: window
         managerVisible: window.libraryManagerVisible
+        listPending: ["actions", "context-routes"].indexOf(browserUi.library_kind) < 0 && browserUi.library_pending
+        listError: ["actions", "context-routes"].indexOf(browserUi.library_kind) < 0 ? browserUi.library_error : ""
+        feedback: ["bookmarks", "quickmarks"].indexOf(browserUi.library_kind) >= 0
+            ? ({id: browserUi.mark_action_id, state: browserUi.mark_action_state,
+                message: browserUi.mark_action_message, detail: browserUi.mark_action_detail})
+            : ({id: "", state: "idle", message: "", detail: ""})
+        onRefreshRequested: {
+            if (window.refreshActiveLibrary() === false)
+                libraryManager.requestRejected("This view couldn't be refreshed. Try again.", browserUi.status_text)
+        }
+        onDeleteCancelled: window.pendingLibraryDelete = ""
+        onGraphLayoutRequested: if (window.libraryManagerVisible) window.refreshLibraryManager()
         libraryKind: browserUi.library_kind
         graphMode: window.libraryJourneyGraphMode
         totalEntries: window.libraryTotalEntries
@@ -749,18 +761,25 @@ GridLayout {
         onJourneyCurrentRequested: window.runJourneyCurrentQuery()
         onJourneyAllRequested: window.runJourneyAllQuery()
         onEntryOpenRequested: function(entryKind, entryId) {
-            window.openLibraryEntry(entryKind, entryId)
+            if (!window.openLibraryEntry(entryKind, entryId))
+                libraryManager.requestRejected("This saved page couldn't be opened. Refresh and try again.", browserUi.status_text)
         }
         onPrivateHistoryTransferRequested: function(entryId, title, url) {
             window.showPrivateHistoryTransfer(entryId, title, url)
         }
         onEntryEditRequested: function(entryKind, entryId, value) {
             if (window.editLibraryEntry(entryKind, entryId, value)) {
-                libraryManager.markEditSaved(entryKind, entryId)
+                libraryManager.mutationAccepted(browserUi.mark_action_id, entryKind, entryId, String(value), false)
+            } else {
+                libraryManager.requestRejected("This edit couldn't be saved. Review the value and try again.", browserUi.status_text)
             }
         }
         onEntryDeleteRequested: function(entryKind, entryId) {
-            window.deleteLibraryEntry(entryKind, entryId)
+            var confirmed = window.pendingLibraryDelete === entryKind + "\t" + entryId
+            if (window.deleteLibraryEntry(entryKind, entryId))
+                libraryManager.mutationAccepted(browserUi.mark_action_id, entryKind, entryId, "", true)
+            else if (confirmed)
+                libraryManager.requestRejected("This item couldn't be deleted. Try again.", browserUi.status_text)
         }
         onJourneyReopenRequested: function(nodeId, target) {
             var command = ":journey-reopen " + window.libraryCommandArgument(nodeId)
@@ -770,6 +789,8 @@ GridLayout {
                 window.executePendingEngineAction()
                 window.libraryManagerVisible = false
                 window.closeInternalSurface()
+            } else {
+                libraryManager.requestRejected("This page couldn't be reopened. Refresh and try again.", browserUi.status_text)
             }
         }
         onJourneyExpandRequested: function(nodeId) {

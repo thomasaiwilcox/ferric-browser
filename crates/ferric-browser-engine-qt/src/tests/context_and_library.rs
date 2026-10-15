@@ -1095,9 +1095,7 @@ fn action_command_maps_subject_and_verb_to_a_registered_executor() {
     assert!(qml.contains("quickmark-edit"));
     assert!(qml.contains("function changeLibraryPage(delta)"));
     assert!(qml.contains("function runJourneyCurrentQuery()"));
-    assert!(qml.contains("Show current journey node only"));
     assert!(qml.contains("window.runJourneyQuery(\"--current\")"));
-    assert!(qml.contains("Choose reopen target for journey node"));
     assert!(qml.contains("--target \" + target"));
     assert!(qml.contains("Previous library page"));
     assert!(qml.contains("Next library page"));

@@ -263,6 +263,9 @@ impl qobject::BrowserUi {
             this.session_names.clear();
             this.session_names_dirty.set(true);
             this.session_names_refresh_again = false;
+            this.storage_library_refresh_again = false;
+            this.storage_library_read_pending = false;
+            this.journey_read_pending = false;
             this.profile_list_refresh_again = false;
             this.session_restore_preview_pending = false;
             this.session_restore_load_append = None;
