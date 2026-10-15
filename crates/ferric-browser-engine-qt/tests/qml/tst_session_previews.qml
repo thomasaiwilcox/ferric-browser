@@ -135,6 +135,7 @@ TestCase {
         keyClick(Qt.Key_Y); compare(spy.count, 0)
         surface.folderText = "/disposable/profile/path"
         tryVerify(function() { var item = findChild(surface, "commandDialogAction-confirm"); return item && item.enabled })
+        tryCompare(findChild(surface, "commandDialogAction-cancel"), "activeFocus", true)
         keyClick(Qt.Key_Return); compare(spy.count, 0)
         tryCompare(host, "profileDeletePreviewVisible", false)
         host.profileDeletePreviewVisible = true
@@ -144,6 +145,7 @@ TestCase {
     function test_session_save_keeps_the_name_until_success_is_known() {
         var manager = createTemporaryObject(managerFixture, host.contentItem)
         verify(manager)
+        verify(waitForPolish(host))
         var input = findChild(manager, "sessionNameInput")
         input.text = "draft-session"
         var spy = createTemporaryObject(spyFixture, manager, {target: manager, signalName: "saveRequested"})

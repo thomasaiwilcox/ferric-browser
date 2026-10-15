@@ -8,6 +8,12 @@ use super::{
 };
 
 impl qobject::BrowserUi {
+    // Qt invokables need a QObject receiver, including pure presentation helpers.
+    #[allow(clippy::unused_self)]
+    pub(super) fn prompt_origin(&self, url: &QString) -> QString {
+        QString::from(safe_site_origin(&url.to_string()).unwrap_or_default())
+    }
+
     // Scalar arguments preserve the existing QML bridge contract.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn page_focus_observed_for(

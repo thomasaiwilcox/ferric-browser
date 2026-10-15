@@ -305,6 +305,9 @@ FerricBrowserRuntimePresentation {
         if (!request) {
             return
         }
+        // Claim presentation synchronously. This prevents Qt's default dialog;
+        // the user's decision still resolves through dialogAccept/dialogReject.
+        request.accepted = true
         if (window.pendingPageDialogRequest || window.pendingAuthenticationRequest) {
             window.clearPageDialog(true)
         }
@@ -336,9 +339,8 @@ FerricBrowserRuntimePresentation {
         window.pageDialogMessage = window.boundedPageDialogText(request.message)
         var title = window.boundedPageDialogText(request.title)
         window.pageDialogTitle = title.length > 0 ? title : "Page " + kind
-        window.pageDialogOrigin = request.securityOrigin && request.securityOrigin.host
-                ? window.boundedPageDialogText(request.securityOrigin.host)
-                : "opaque or unavailable origin"
+        window.pageDialogOrigin = ui.prompt_origin(String(request.securityOrigin || ""))
+                || "Origin unavailable"
         window.pageDialogDefaultText = window.boundedPageDialogText(request.defaultText)
         window.pageDialogSuppressChecked = false
         pageDialogPopup.inputText = window.pageDialogDefaultText
@@ -350,6 +352,7 @@ FerricBrowserRuntimePresentation {
         if (!request) {
             return
         }
+        request.accepted = true
         if (window.pendingPageDialogRequest || window.pendingAuthenticationRequest) {
             window.clearPageDialog(true)
         }
@@ -373,14 +376,13 @@ FerricBrowserRuntimePresentation {
                     ui, view, "authentication")
         window.captureOverlayFocus(window, view)
         window.pageDialogIsAuthentication = true
-        window.pageDialogTitle = request.proxyHost
+        var proxyAuthentication = request.type === AuthenticationDialogRequest.AuthenticationTypeProxy
+        window.pageDialogTitle = proxyAuthentication
                 ? "Proxy authentication"
                 : "HTTP authentication"
-        window.pageDialogOrigin = request.proxyHost
+        window.pageDialogOrigin = proxyAuthentication
                 ? window.boundedPageDialogText(request.proxyHost)
-                : (request.url && request.url.host
-                   ? window.boundedPageDialogText(request.url.host)
-                   : "opaque or unavailable origin")
+                : (ui.prompt_origin(String(request.url || "")) || "Origin unavailable")
         var realm = window.boundedPageDialogText(request.realm)
         window.pageDialogMessage = realm.length > 0
                 ? "Credentials requested for realm: " + realm
@@ -584,22 +586,22 @@ FerricBrowserRuntimePresentation {
     }
 
     function webAuthStateLabel(state) {
-        if (state === WebEngineWebAuthUxRequest.SelectAccount) {
+        if (state === WebEngineWebAuthUxRequest.WebAuthUxState.SelectAccount) {
             return "Select an account"
         }
-        if (state === WebEngineWebAuthUxRequest.CollectPin) {
+        if (state === WebEngineWebAuthUxRequest.WebAuthUxState.CollectPin) {
             return "Enter your security-key PIN"
         }
-        if (state === WebEngineWebAuthUxRequest.FinishTokenCollection) {
+        if (state === WebEngineWebAuthUxRequest.WebAuthUxState.FinishTokenCollection) {
             return "Touch or confirm your security key"
         }
-        if (state === WebEngineWebAuthUxRequest.RequestFailed) {
+        if (state === WebEngineWebAuthUxRequest.WebAuthUxState.RequestFailed) {
             return "Security-key request failed"
         }
-        if (state === WebEngineWebAuthUxRequest.Completed) {
+        if (state === WebEngineWebAuthUxRequest.WebAuthUxState.Completed) {
             return "Security-key request completed"
         }
-        if (state === WebEngineWebAuthUxRequest.Cancelled) {
+        if (state === WebEngineWebAuthUxRequest.WebAuthUxState.Cancelled) {
             return "Security-key request cancelled"
         }
         return "Preparing security-key request"
@@ -611,10 +613,10 @@ FerricBrowserRuntimePresentation {
         }
         window.pendingWebAuthState = state
         window.webAuthStatusText = window.webAuthStateLabel(state)
-        if (state === WebEngineWebAuthUxRequest.Completed) {
+        if (state === WebEngineWebAuthUxRequest.WebAuthUxState.Completed) {
             var completedUi = window.clearWebAuthRequest(false) || browserUi
             completedUi.status_text = "WebAuthn completed"
-        } else if (state === WebEngineWebAuthUxRequest.Cancelled) {
+        } else if (state === WebEngineWebAuthUxRequest.WebAuthUxState.Cancelled) {
             var cancelledUi = window.clearWebAuthRequest(false) || browserUi
             cancelledUi.status_text = "WebAuthn cancelled"
         }
@@ -637,8 +639,8 @@ FerricBrowserRuntimePresentation {
         webAuthPrompt.pin = ""
         webAuthPrompt.close()
         if (hadRequest && cancelRequest
-                && request.state !== WebEngineWebAuthUxRequest.Completed
-                && request.state !== WebEngineWebAuthUxRequest.Cancelled) {
+                && request.state !== WebEngineWebAuthUxRequest.WebAuthUxState.Completed
+                && request.state !== WebEngineWebAuthUxRequest.WebAuthUxState.Cancelled) {
             window.resolveQtRequest(ui, request, "webauth", "cancel", [])
         }
         if (hadRequest) {
@@ -695,7 +697,7 @@ FerricBrowserRuntimePresentation {
 
     function selectWebAuthAccount(account) {
         var request = window.pendingWebAuthRequest
-        if (!request || window.pendingWebAuthState !== WebEngineWebAuthUxRequest.SelectAccount) {
+        if (!request || window.pendingWebAuthState !== WebEngineWebAuthUxRequest.WebAuthUxState.SelectAccount) {
             return
         }
         request.setSelectedAccount(window.boundedPageDialogText(account))
@@ -703,7 +705,7 @@ FerricBrowserRuntimePresentation {
 
     function submitWebAuthPin() {
         var request = window.pendingWebAuthRequest
-        if (!request || window.pendingWebAuthState !== WebEngineWebAuthUxRequest.CollectPin) {
+        if (!request || window.pendingWebAuthState !== WebEngineWebAuthUxRequest.WebAuthUxState.CollectPin) {
             return
         }
         var pin = window.boundedPageDialogText(webAuthPrompt.pin)
@@ -714,7 +716,7 @@ FerricBrowserRuntimePresentation {
 
     function retryWebAuth() {
         var request = window.pendingWebAuthRequest
-        if (request && window.pendingWebAuthState === WebEngineWebAuthUxRequest.RequestFailed) {
+        if (request && window.pendingWebAuthState === WebEngineWebAuthUxRequest.WebAuthUxState.RequestFailed) {
             request.retry()
         }
     }

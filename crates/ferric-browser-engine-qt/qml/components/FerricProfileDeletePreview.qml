@@ -42,6 +42,14 @@ FerricCommandDialog {
         }
         Button {
             id: foldersButton
+            Layout.fillWidth: true
+            contentItem: Label {
+                text: foldersButton.text
+                font: foldersButton.font
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: preview.browserWindow.primaryTextColor
+            }
             text: checked ? "Hide affected folders" : "Show affected folders"
             checkable: true
             enabled: !preview.previewPending
@@ -56,6 +64,7 @@ FerricCommandDialog {
                 textFormat: TextEdit.PlainText
                 readOnly: true
                 selectByMouse: true
+                selectByKeyboard: true
                 wrapMode: TextEdit.Wrap
                 color: preview.browserWindow.primaryTextColor
                 background: Rectangle { color: preview.browserWindow.surfaceColor }

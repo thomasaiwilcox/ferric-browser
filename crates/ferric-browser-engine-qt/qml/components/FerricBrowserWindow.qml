@@ -820,6 +820,8 @@ function onContext_workspaceChanged() {
     }
 
     function handleFileDialogRequested(request) {
+        if (!request) return
+        request.accepted = true
         if (secondaryWindow.pendingFileDialogRequest) {
             secondaryWindow.clearSecondaryFileDialog(true,
                     "Previous file selection cancelled")

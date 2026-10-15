@@ -66,6 +66,10 @@ class ApplicationTests final : public QObject {
     void clipboardHeldBrowserGesture();
     void clipboardOtherWindows_data();
     void clipboardOtherWindows();
+    void productPolishPagePrompts();
+    void productPolishHttpAuthentication();
+    void productPolishFileChooser();
+    void productPolishWebAuthStates();
     void productPolishNavigationFailure();
     void productPolishManagementSurfaces_data();
     void productPolishManagementSurfaces();

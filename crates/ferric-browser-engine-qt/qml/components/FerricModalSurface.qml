@@ -16,85 +16,108 @@ FocusScope {
     property string title: ""
     property string message: ""
     property string keyHelp: "esc close"
+    property string compactKeyHelp: "esc close"
     property real dialogWidth: 640 * scale
     property real dialogHeight: 360 * scale
     property real minimumDialogWidth: 280 * scale
     property real minimumDialogHeight: 160 * scale
+    property real minimumBodyHeight: 100 * scale
     property color dialogBorderColor: browserWindow.accentColor
     property int stackingOrder: 70
     property Item initialFocusItem: null
     property var previousFocusItem: null
     property bool restoreFocus: true
     property bool dismissOnEscape: true
-    readonly property real scale: browserWindow.chromeScale === undefined
-                                  ? 1 : browserWindow.chromeScale
+    readonly property real scale: browserWindow.chromeScale === undefined ? 1 :
+                                                                            browserWindow.chromeScale
     readonly property alias panelItem: panel
     readonly property alias bodyItem: body
+    readonly property alias headerItem: headerScroll
+    readonly property bool compactHelp: width < 600 * scale
+    readonly property bool containsActiveFocus: {
+        var item = hostWindow ? hostWindow.activeFocusItem : null;
+        while (item && item !== surface)
+            item = item.parent;
+        return item === surface;
+    }
 
     signal dismissRequested()
+    function focusWithin(control) {
+        var item = hostWindow ? hostWindow.activeFocusItem : null;
+        while (item && item !== control)
+            item = item.parent;
+        return item === control;
+    }
 
     anchors.fill: parent
     z: stackingOrder
-    focus: visible
+    // Capture the previous focus before requesting our own. A declarative
+    // focus: visible steals it before prepareForDisplay can remember it.
+    focus: false
     Accessible.role: Accessible.Dialog
     Accessible.name: title.length > 0 ? title : commandText
 
     function focusInitialControl() {
-        Qt.callLater(function() {
+        Qt.callLater(function () {
             if (!surface.visible) {
-                return
+                return;
             }
-            if (surface.initialFocusItem
-                    && surface.initialFocusItem.visible
+            if (surface.initialFocusItem && surface.initialFocusItem.visible
                     && surface.initialFocusItem.enabled) {
-                surface.initialFocusItem.forceActiveFocus()
+                surface.initialFocusItem.forceActiveFocus();
             } else {
-                surface.forceActiveFocus()
+                surface.forceActiveFocus();
             }
-        })
+        });
     }
 
     function restorePreviousFocus() {
-        var target = surface.previousFocusItem
-        surface.previousFocusItem = null
+        var target = surface.previousFocusItem;
+        surface.previousFocusItem = null;
         if (!surface.restoreFocus) {
-            return
+            return;
         }
-        Qt.callLater(function() {
-            if (!surface.visible && target && target.forceActiveFocus
-                    && target.visible !== false && target.enabled !== false) {
-                target.forceActiveFocus()
+        Qt.callLater(function () {
+            if (!surface.visible && target && target.forceActiveFocus && target.visible !== false
+                    && target.enabled !== false) {
+                target.forceActiveFocus();
             }
-        })
+        });
     }
 
     function prepareForDisplay() {
-        previousFocusItem = hostWindow && hostWindow.activeFocusItem
-                            ? hostWindow.activeFocusItem : null
-        focusInitialControl()
+        previousFocusItem = hostWindow && hostWindow.activeFocusItem ? hostWindow.activeFocusItem :
+                                                                       null;
+        focusInitialControl();
     }
 
     onVisibleChanged: {
+        if (shortcutsButton)
+            shortcutsButton.checked = false;
         if (visible) {
-            surface.prepareForDisplay()
+            surface.prepareForDisplay();
         } else {
-            surface.restorePreviousFocus()
+            surface.restorePreviousFocus();
         }
     }
-    Component.onCompleted: if (visible) prepareForDisplay()
+    Component.onCompleted: if (visible)
+                               prepareForDisplay()
 
-    Keys.onPressed: function(event) {
+    Keys.onPressed: function (event) {
         if (surface.visible && surface.dismissOnEscape && event.key === Qt.Key_Escape) {
-            event.accepted = true
-            surface.dismissRequested()
-        } else if (surface.visible && event.modifiers === Qt.NoModifier
-                   && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)) {
-            var control = surface.hostWindow ? surface.hostWindow.activeFocusItem : null
+            event.accepted = true;
+            surface.dismissRequested();
+        } else if (surface.visible && event.modifiers === Qt.NoModifier && (event.key
+                                                                            === Qt.Key_Return
+                                                                            || event.key
+                                                                            === Qt.Key_Enter)) {
+            var control = surface.hostWindow ? surface.hostWindow.activeFocusItem : null;
             // Use AbstractButton's public activation method so checkboxes,
             // actions and disabled controls retain their native semantics.
             if (control && typeof control.click === "function") {
-                event.accepted = true
-                if (!event.isAutoRepeat) control.click()
+                event.accepted = true;
+                if (!event.isAutoRepeat)
+                    control.click();
             }
         }
     }
@@ -121,11 +144,9 @@ FocusScope {
         id: panel
         objectName: "ferricModalPanel"
         anchors.centerIn: parent
-        width: Math.min(Math.max(surface.minimumDialogWidth,
-                                 surface.dialogWidth),
+        width: Math.min(Math.max(surface.minimumDialogWidth, surface.dialogWidth),
                         Math.max(0, surface.width - 32 * surface.scale))
-        height: Math.min(Math.max(surface.minimumDialogHeight,
-                                  surface.dialogHeight),
+        height: Math.min(Math.max(surface.minimumDialogHeight, surface.dialogHeight),
                          Math.max(0, surface.height - 32 * surface.scale))
         color: surface.browserWindow.panelColor
         border.color: surface.dialogBorderColor
@@ -133,11 +154,13 @@ FocusScope {
         radius: 6 * surface.scale
 
         ColumnLayout {
+            id: frame
             anchors.fill: parent
             anchors.margins: 16 * surface.scale
             spacing: 10 * surface.scale
 
             RowLayout {
+                id: contextRow
                 Layout.fillWidth: true
                 spacing: 8 * surface.scale
 
@@ -145,10 +168,13 @@ FocusScope {
                     objectName: "dialogContextLabel"
                     textFormat: Text.PlainText
                     text: surface.commandText
+                    Layout.maximumWidth: frame.width
+                    elide: Text.ElideRight
                     color: surface.browserWindow.accentColor
                     font.family: surface.browserWindow.font.family
                     font.bold: true
-                    Accessible.name: (text.indexOf(":") === 0 ? "Dialog command " : "Browser dialog ") + text
+                    Accessible.name: (text.indexOf(":") === 0 ? "Dialog command " :
+                                                                "Browser dialog ") + text
                 }
                 Rectangle {
                     Layout.fillWidth: true
@@ -157,26 +183,64 @@ FocusScope {
                 }
             }
 
-            Label {
-                objectName: "dialogTitleLabel"
+            FerricScrollColumn {
+                id: headerScroll
+                objectName: "dialogHeaderScroll"
                 Layout.fillWidth: true
-                textFormat: Text.PlainText
-                visible: surface.title.length > 0
-                text: surface.title
-                color: surface.browserWindow.primaryTextColor
-                font.bold: true
-                font.pointSize: surface.browserWindow.font.pointSize + 1
-                wrapMode: Text.WordWrap
-            }
-
-            Label {
-                objectName: "dialogMessageLabel"
-                Layout.fillWidth: true
-                textFormat: Text.PlainText
-                visible: surface.message.length > 0
-                text: surface.message
-                color: surface.browserWindow.secondaryTextColor
-                wrapMode: Text.WordWrap
+                Layout.minimumHeight: 0
+                Layout.preferredHeight: Math.min(contentLayout.implicitHeight, Math.max(0,
+                                                                                        frame.height
+                                                                                        - contextRow.implicitHeight
+                                                                                        - (keyHelpRow.visible
+                                                                                           ? keyHelpRow.implicitHeight :
+                                                                                             0) - frame.spacing
+                                                                                        * (keyHelpRow.visible
+                                                                                           ? 3 : 2)
+                                                                                        - surface.minimumBodyHeight),
+                                                 frame.height * 0.45)
+                Layout.maximumHeight: Layout.preferredHeight
+                visible: surface.title.length > 0 || surface.message.length > 0 || (
+                             surface.compactHelp && shortcutsButton.checked)
+                hostWindow: surface.hostWindow
+                spacing: 8 * surface.scale
+                onContentHeightChanged: if (shortcutsButton.checked) shortcutRevealTimer.restart()
+                Label {
+                    objectName: "dialogTitleLabel"
+                    Layout.fillWidth: true
+                    textFormat: Text.PlainText
+                    visible: surface.title.length > 0
+                    text: surface.title
+                    color: surface.browserWindow.primaryTextColor
+                    font.bold: true
+                    font.pointSize: surface.browserWindow.font.pointSize + 1
+                    wrapMode: Text.Wrap
+                }
+                TextArea {
+                    objectName: "dialogMessageLabel"
+                    Layout.fillWidth: true
+                    visible: surface.message.length > 0
+                    textFormat: TextEdit.PlainText
+                    text: surface.message
+                    readOnly: true
+                    selectByMouse: true
+                    selectByKeyboard: true
+                    activeFocusOnTab: true
+                    padding: 0
+                    background: null
+                    color: surface.browserWindow.secondaryTextColor
+                    wrapMode: TextEdit.Wrap
+                    Accessible.name: "Dialog message"
+                }
+                Label {
+                    Layout.fillWidth: true
+                    objectName: "dialogKeyboardInstructions"
+                    visible: shortcutsButton.checked && surface.compactHelp
+                    text: surface.keyHelp
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: surface.browserWindow.mutedTextColor
+                    Accessible.name: "Keyboard controls: " + text
+                }
             }
 
             Item {
@@ -185,14 +249,37 @@ FocusScope {
                 Layout.fillHeight: true
             }
 
-            Label {
+            RowLayout {
+                id: keyHelpRow
                 Layout.fillWidth: true
                 visible: surface.keyHelp.length > 0
-                text: surface.keyHelp
-                color: surface.browserWindow.mutedTextColor
-                font.family: surface.browserWindow.font.family
-                wrapMode: Text.WordWrap
-                Accessible.name: "Keyboard controls: " + text
+                Label {
+                    Layout.fillWidth: true
+                    textFormat: Text.PlainText
+                    text: surface.compactHelp ? surface.compactKeyHelp : surface.keyHelp
+                    color: surface.browserWindow.mutedTextColor
+                    wrapMode: Text.Wrap
+                    Accessible.name: "Keyboard controls: " + surface.keyHelp
+                }
+                ToolButton {
+                    id: shortcutsButton
+                    objectName: "dialogKeyboardHelp"
+                    visible: surface.compactHelp
+                    text: "Keys"
+                    checkable: true
+                    Accessible.name: "Show keyboard shortcuts"
+                    onCheckedChanged: if (checked)
+                                          shortcutRevealTimer.restart()
+                    ToolTip.visible: hovered
+                    ToolTip.text: surface.keyHelp
+                }
+                Timer {
+                    id: shortcutRevealTimer
+                    interval: 0
+                    onTriggered: headerScroll.contentItem.contentY = Math.max(0,
+                                                                              headerScroll.contentHeight
+                                                                              - headerScroll.availableHeight)
+                }
             }
         }
     }

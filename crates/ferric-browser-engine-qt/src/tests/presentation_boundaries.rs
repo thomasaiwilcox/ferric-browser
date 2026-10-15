@@ -439,7 +439,6 @@ fn authentication_and_client_certificates_stay_in_native_engine_prompts() {
     assert!(qml.contains("selection.certificates"));
     assert!(qml.contains("\"client-certificate\", \"select\", [index]"));
     assert!(qml.contains("\"client-certificate\", \"selectNone\", []"));
-    assert!(qml.contains("Private keys are never exposed here."));
     assert!(!qml.contains("console.log(username"));
     assert!(!qml.contains("console.log(password"));
 }
@@ -536,7 +535,6 @@ fn context_routes_are_pre_navigation_and_browser_confirmed() {
     assert!(source.contains("context_workspace"));
     assert!(qml.contains("context_route_id"));
     assert!(!qml.contains("context_route_json"));
-    assert!(qml.contains("Context route confirmation"));
     assert!(qml.contains("contextStatus"));
     assert!(qml.contains("contextStatusColor"));
     assert!(qml.contains("function routeContextWorkspace(ui)"));
@@ -1356,8 +1354,8 @@ fn webauthn_uses_engine_state_and_clears_pin_input() {
     ]
     .concat();
     assert!(qml.contains("onWebAuthUxRequested"));
-    assert!(qml.contains("WebEngineWebAuthUxRequest.SelectAccount"));
-    assert!(qml.contains("WebEngineWebAuthUxRequest.CollectPin"));
+    assert!(qml.contains("WebEngineWebAuthUxRequest.WebAuthUxState.SelectAccount"));
+    assert!(qml.contains("WebEngineWebAuthUxRequest.WebAuthUxState.CollectPin"));
     assert!(qml.contains("request.setSelectedAccount"));
     assert!(qml.contains("request.setPin(pin)"));
     assert!(qml.contains("webAuthPrompt.pin = \"\""));

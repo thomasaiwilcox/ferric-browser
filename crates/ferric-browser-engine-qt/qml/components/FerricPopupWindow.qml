@@ -547,6 +547,8 @@ ApplicationWindow {
     }
 
     function handleFileDialogRequested(request) {
+        if (!request) return
+        request.accepted = true
         if (popupWindow.pendingFileDialogRequest) {
             popupWindow.clearPopupFileDialog(true,
                     "Previous file selection cancelled")

@@ -268,12 +268,152 @@ only in the view. Final logs use `library-gate-final.log`,
 `library-clipboard-detail.log` and `library-ipc.log` under
 `target/product-polish/`. The wider goal remains active.
 
+## Prompt readability and keyboard batch
+
+Implemented and qualified locally; the broader product audit remains active.
+
+- The shared frame bounds its title/message viewport, preserves full literal,
+  selectable messages and reserves room for choices. Forms and choices scroll
+  without compressing their text. Focused controls are revealed after layout.
+  Read-only inspection supports keyboard selection and caret-following scroll.
+  Font metrics raise command-dialog minimum dimensions when larger fonts need
+  more space. Compact prompts keep Escape visible and expose the complete
+  shortcut reference through Keys.
+- Initial focus is captured before transferring it to the modal. Dismissal now
+  restores the prior control. Command shortcuts apply to choice navigation;
+  text inspection, editable fields, checkboxes and other buttons keep their
+  own keys. Return does not trigger a primary action while Cancel is focused.
+- Page confirmations and leave-page prompts start on Cancel/Stay. Page response
+  and authentication fields still submit with unmodified Enter. The requesting
+  origin and full message remain literal and inspectable. Cancellation and
+  explicit acceptance retain the existing request-resolution and lease paths.
+- Certificate, passkey and sharing pickers have visible safe cancellation.
+  Passkey and sharing cancellation stay outside their scrolling bodies. Account
+  and source selection requires deliberate navigation; text review does not
+  select an identity. PINs clear on dismissal and state changes.
+- An executable fixture exposed invalid unscoped WebAuthn enum references.
+  Prompt presentation and production request handling now use the actual
+  scoped `WebAuthUxState` values. Production tests compare those handlers with
+  the installed Qt C++ enum and exercise account/PIN/retry callbacks without
+  retaining the submitted PIN. This does not replace hardware-key qualification.
+- Sharing shows the source name supplied by Qt's DisplayRole, including window
+  titles, with a numbered fallback when a name is absent. This follows the
+  [Qt desktop-media request contract](https://doc.qt.io/qt-6/qwebenginedesktopmediarequest.html).
+  Category buttons remain readable at narrow widths.
+- Private-page transfer shows a literal, selectable address, clear normal-profile
+  storage scope, wrapping destination actions and safe initial cancellation.
+  The private-transfer completion-feedback audit remains open below.
+- External-app and context-route confirmations expose full selectable addresses
+  instead of truncating consent context. Rule IDs/behavior and renderer exit
+  details are available deliberately behind disclosure controls. Reopening and
+  rapid-hint wording explains the effect without internal descriptors or batches
+  described as implementation bounds.
+- Context navigation uses the destination model, reaching available choices
+  outside ListView's instantiated delegate range. Unavailable contexts remain
+  unavailable; selection does not bypass route validation.
+
+Focused evidence: 37 QML checks pass across 900×700, 640×480 and 390×600, with
+10-, 16- and 20-point fonts. Render review caught an oversized shortcut footer,
+cramped source-category labels and misplaced scrollbars; these were corrected
+before the passing focused run. Full-suite preflight passed 286 checks before
+the final six external/route/recovery cases were added. Two earlier preview
+fixtures sent input before their initial focus/layout settled; they now wait
+for the actual safe choice or rendered form. Their focused rerun passes.
+Initial compile/enum/layout failures are retained in ignored `prompt-*` logs.
+The final frozen-source repository gate passes 909 Rust checks (2 intentionally
+ignored) and all 293 QML checks. Strict workspace Clippy passes as well. The
+23 changed source files match `prompt-source-hashes.json`; logs use
+`prompt-gate-verified`, `prompt-clippy-final` and `prompt-render-reviewed`.
+The production WebAuthn regression was first linked against the previous,
+immutable engine: it fails because Qt's SelectAccount state was reported as
+Preparing. Keyboard long-message regressions separately reproduce disabled
+selection and a caret scrolling out of view before the fixes. Production
+adapter/native/clipboard/IPC qualification completed below.
+
+### Production request-ownership findings
+
+The expanded primary-window run also caught ordinary HTTP authentication being
+classified as proxy authentication: Qt populated `proxyHost` for that request.
+Classification now uses `AuthenticationDialogRequest.AuthenticationTypeProxy`.
+A focused source-UI preflight passes all five relevant workflows (7 checks with
+setup/cleanup), including the full HTTP login and cleared credential fields.
+That preflight uses an immutable compiled engine and local QML imports with
+explicit native-type aliases; it is not substituted for embedded-resource
+qualification. The final repository gate passes 909 Rust and 293 QML checks.
+
+
+The first fresh production run passed the new page-dialog and WebAuthn state
+checks and verified all 89 embedded resources. One disclosure pointer test
+failed. Instrumentation showed that waiting for the first rendered frame made
+it pass; the test now waits for `frameSwapped` before clicking. The WebAuthn
+request stub also now supplies Qt's PIN metadata, avoiding an invalid mock-only
+binding warning.
+
+Render inspection found a real defect that the earlier response-only tests did
+not detect: Qt's default JavaScript dialog was appearing over Ferric's prompt.
+JavaScript, authentication and file-dialog handlers now claim request
+presentation synchronously, before any deferred portal work or cancellation.
+This is Qt's `accepted` presentation flag; approval still uses the existing
+bounded, single-resolution accept/reject paths. See the
+[JavaScript dialog](https://doc.qt.io/qt-6/qml-qtwebengine-javascriptdialogrequest.html),
+[authentication](https://doc.qt.io/qt-6/qml-qtwebengine-authenticationdialogrequest.html)
+and [file dialog](https://doc.qt.io/qt-6/qml-qtwebengine-filedialogrequest.html)
+request contracts.
+
+The same capture showed an unavailable origin for an ordinary HTTP page. QML
+URLs do not supply the assumed `.host` property. A scalar, read-only adapter
+method now reuses the existing Rust canonical-origin and permission-origin
+normalization; credentials, paths, query strings and fragments are excluded.
+The dialog reads the actual request origin rather than guessing from the
+current top-level page. Opaque origins remain explicitly unavailable.
+
+Production regressions now assert request ownership and the exact origin,
+exercise a local HTTP 401 challenge through Ferric's credential fields, and
+cancel a real file-input chooser without selecting a file. The current
+28-source snapshot is recorded in `prompt-ownership-source-hashes.json`.
+The ownership repository gate passes 909 Rust checks (2 intentionally ignored)
+and 293 QML checks. Strict workspace Clippy also passes after documenting the
+QObject receiver required by the pure origin invokable, following the adapter's
+existing convention. That lint annotation is the only source change after the
+gate; the current 28-source snapshot includes it. Production integration is
+qualified below. Earlier native results above belong to the preceding snapshot.
+The original goal remains active.
+
+### Final prompt checkpoint evidence
+
+- Final repository gate: 909 Rust checks passed, 2 intentionally ignored;
+  all 293 QML checks passed (`prompt-ownership-gate-final.log`).
+- Strict workspace Clippy: passed for the final Rust bridge and receiver
+  annotation (`prompt-ownership-clippy-final.log`). The subsequent change only
+  classifies HTTP/proxy presentation using Qt's explicit request type.
+- Adapter startup: `cargo xtask test adapter` passed after the ownership/API
+  changes. The final application binary also passed a fresh bounded 10-second
+  startup with no QML errors (`prompt-ownership-binary-startup.log`).
+- Production polish: 21 checks passed in 44.33 seconds, including all 89 embedded
+  resource bytes/hashes, real page responses, HTTP login and cleared fields,
+  file chooser cancellation, and Qt account/PIN/retry callback state handling.
+- Production clipboard: 81 checks passed in 143.31 seconds.
+- Public CLI/IPC probe: passed. The production runner links the exact Cargo
+  application engine recorded in `prompt-ownership-engine-path.txt`.
+- Final source hashes match all 28 changed source files. Compact/large-font
+  component captures and the actual 390-pixel production confirmation were
+  inspected; the final capture has the correct origin and no default-dialog
+  overlap. Formatting and whitespace checks pass.
+
+Final logs use `prompt-ownership-*`; the CTest detail logs preserve individual
+results. Earlier unscoped-enum, HTTP/proxy and pre-render-click failures remain
+in separate logs and the before-type snapshot. The final capture replaces the
+earlier view that exposed the default-dialog overlap. Existing invalid-provider-context
+warnings at engine teardown remain visible and require the whole-window audit.
+These checks qualify the changed primary-window workflows, not physical
+security keys, portal selection or secondary/popup page-prompt placement.
+
 ## Audit status and remaining implementation
 
 These remain part of the original goal, rather than deferred release promises:
 
 1. **Site Ledger / Site Doctor / diagnostics.** The ledger layout, readable
-   summaries, disclosure and consent changes above need their fresh compiled
+   summaries, disclosure and consent changes above pass fresh compiled
    qualification. Audit the remaining diagnostics/export surfaces for readable
    entry points and truthful unavailable states. The baseline 900×700 render
    (`site-ledger-before.png`) is retained to compare the overflow fix.
@@ -291,15 +431,14 @@ These remain part of the original goal, rather than deferred release promises:
 4. **Status/error messages.** Audit operation IDs, stale-target terminology,
    adapter/engine wording and internal state transitions in ordinary status
    notices. Preserve useful diagnostic detail without flooding normal use.
-5. **All prompts.** Inspect permissions, authentication, certificates, sharing,
-   downloads and shutdown with long/untrusted content. An isolated baseline now
-   reproduces a long page message pushing action choices outside the shared
-   dialog, and private-history transfer actions overflowing a 390-pixel window
-   with 16-point text (`target/product-polish/prompt-before.log`). The same
-   baseline passes immediate Loader unload without deferred focus warnings;
-   do not assume shared focus callbacks cause the remaining provider-teardown
-   warnings. Confirm exact scope,
-   safe defaults and keyboard/pointer behavior at compact sizes.
+5. **All prompts.** The shared overflow, private-transfer wrapping,
+   focused-control activation, request ownership, origin and scoped WebAuthn
+   defects are fixed and qualified above. Download/shutdown regressions pass.
+   Qualify and correct actual cross-window page/authentication/identity prompt
+   placement and focus. Hardware/security-key and native portal qualification
+   stay distinct from the in-memory/source-UI checks. Immediate Loader unload
+   passes without deferred-focus warnings; the provider-teardown warnings below
+   still need their own ownership investigation.
 6. **Whole-window finish.** Verify theme/readability, larger fonts, focus,
    primary/secondary/popup consistency, and investigate observed lifecycle
    warnings where they indicate real broken behavior.
@@ -310,7 +449,9 @@ These remain part of the original goal, rather than deferred release promises:
    batch; verify the secondary fix in the compiled run. Investigate live
    teardown behavior rather than masking all warnings. Native
    management commands currently require the primary window; broader access
-   and prompt ownership still need review.
+   and prompt ownership still need review. Page/authentication dialogs currently
+   use the primary singleton; qualify and correct secondary/popup placement and
+   focus with actual requests before claiming whole-window completion.
 7. **Final evidence.** Run repository-required gates, compiled production
    integration and a rendered whole-application walkthrough after the final
    source is frozen. Keep the installed browser and normal profiles separate

@@ -10,7 +10,7 @@ FerricCommandDialog {
     visible: browserWindow.rapidHintConfirmationVisible
     commandText: ":hint --rapid"
     title: "Open another background-tab batch?"
-    message: "Rapid hinting has opened 20 background tabs. Confirming grants one additional bounded batch of 20 tabs."
+    message: "Rapid hinting has opened 20 background tabs. Continue to open up to 20 more."
     dialogWidth: 600 * scale
     dialogHeight: 250 * scale
     dialogBorderColor: browserWindow.warningColor

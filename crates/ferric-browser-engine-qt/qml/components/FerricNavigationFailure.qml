@@ -46,6 +46,15 @@ FerricCommandDialog {
             wrapMode: Text.WordWrap
         }
         ToolButton {
+            id: detailsButton
+            Layout.fillWidth: true
+            contentItem: Label {
+                text: detailsButton.text
+                font: detailsButton.font
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: surface.browserWindow.primaryTextColor
+            }
             objectName: "navigationFailureDetailsButton"
             text: surface.detailsExpanded ? "Hide technical details" : "Show technical details"
             onClicked: surface.detailsExpanded = !surface.detailsExpanded
@@ -65,6 +74,7 @@ FerricCommandDialog {
                 textFormat: TextEdit.PlainText
                 readOnly: true
                 selectByMouse: true
+                selectByKeyboard: true
                 wrapMode: TextEdit.WrapAnywhere
                 color: surface.browserWindow.secondaryTextColor
                 Accessible.name: "Technical details for this page failure"

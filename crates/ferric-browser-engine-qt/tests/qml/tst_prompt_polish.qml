@@ -1,0 +1,448 @@
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+import QtTest
+import QtWebEngine
+import "../../qml/components"
+TestCase {
+    id: test
+    name: "PromptPolish"
+    when: windowShown
+    ApplicationWindow {
+        id: host
+        width: 900
+        height: 700
+        visible: true
+        font.family: "monospace"
+        font.pointSize: 10
+        property real chromeScale: 1
+        property real chromeRowHeight: 24
+        property color backgroundColor: "#181825"
+        property color surfaceColor: "#313244"
+        property color panelColor: "#1e1e2e"
+        property color primaryTextColor: "#cdd6f4"
+        property color secondaryTextColor: "#bac2de"
+        property color mutedTextColor: "#a6adc8"
+        property color borderColor: "#585b70"
+        property color accentColor: "#89b4fa"
+        property color warningColor: "#f9e2af"
+        property color errorColor: "#f38ba8"
+        property color selectionColor: "#45475a"
+        property color selectionTextColor: "#cdd6f4"
+        property bool temporaryProfile: false
+        property bool ephemeralProfile: false
+        property color successColor: "#a6e3a1"
+        property color privateColor: "#cba6f7"
+        property bool libraryManagerVisible: true
+        property bool privateHistoryTransferVisible: false
+        property string privateHistoryTransferTitle: ""
+        property string privateHistoryTransferUrl: ""
+        property bool journeyExportPreviewVisible: false
+        property string journeyExportPreviewText: ""
+        property string pageDialogTitle: "<b>A page message</b>"
+        property string pageDialogMessage: "Review this request"
+        property string pageDialogOrigin: "https://example.test"
+        property string dialogKind: "confirm"
+        property bool pageDialogSuppressChecked: false
+        property var pendingPageDialogRequest: ({})
+        property int acceptedDialogs: 0
+        property int rejectedDialogs: 0
+        function pageDialogKind() { return dialogKind }
+        function acceptPageDialog() { acceptedDialogs++ }
+        function rejectPageDialog() { rejectedDialogs++ }
+        property int pendingWebAuthState: WebEngineWebAuthUxRequest.WebAuthUxState.SelectAccount
+        property string pendingWebAuthRelyingParty: "example.test"
+        property string webAuthStatusText: "Choose an account"
+        property var pendingWebAuthUserNames: ["<b>literal account</b>","Another account"]
+        property var pendingWebAuthRequest: ({pinRequest:{remainingAttempts:3,minPinLength:4}})
+        property string pendingClientCertificateHost: "example.test"
+        property var pendingClientCertificateOptions: [{index:0,subject:"<b>literal identity</b>",issuer:"Example issuer",selfSigned:false}]
+        property bool contextRouteVisible: false
+        property var contextRouteUi: ({context_route_context:"Research",context_route_profile:"work",context_route_id:"internal-rule-id",context_route_behavior:"prompt",context_route_url:"https://example.test"})
+        function acceptContextRoute() {}
+        function dismissContextRoute() { contextRouteVisible=false }
+        property bool rendererFailureVisible: false
+        property var rendererFailureHost: host
+        property var rendererFailureView: ({})
+        property int rendererFailureCount: 1
+        property string rendererFailureSafeUrl: "https://example.test"
+        property string rendererFailureReason: "<b>engine reason</b>"
+        property int rendererFailureExitCode: 12345
+        property bool softwareRendering: true
+        function activeWebView() { return rendererFailureView }
+        property bool permissionPromptVisible: false
+        property var pendingPermissionHost: host
+        property string pendingPermissionOrigin: "https://example.test"
+        property string pendingPermissionName: "camera"
+        property bool pendingPermissionPrivate: false
+        property int pendingPermissionGroupCount: 1
+        function permissionDisplayName(name) { return "use your camera" }
+        function permissionCanRememberForSite(origin,name) { return true }
+        function permissionCanRemember(origin,name) { return true }
+        property bool contextMoveVisible: false
+        property string contextMoveTabId: ""
+        property var contextMoveChoices: []
+        property string movedContext: ""
+        function chooseContextMove(name) { movedContext=name }
+        function restoreOverlayFocus() {}
+        property string pendingCertificateErrorHost: "example.test"
+        property string pendingCertificateErrorDescription: "<b>literal certificate error</b>"
+        property bool desktopMediaPromptVisible: false
+        property var pendingDesktopMediaHost: host
+        property string desktopMediaOrigin: "https://example.test"
+        property var pendingDesktopMediaRequest: ({screensModel:screenSources,windowsModel:windowSources})
+        color: backgroundColor
+        palette.window: backgroundColor
+        palette.windowText: primaryTextColor
+        palette.base: panelColor
+        palette.text: primaryTextColor
+        palette.placeholderText: mutedTextColor
+        palette.button: surfaceColor
+        palette.buttonText: primaryTextColor
+        palette.highlight: accentColor
+        palette.highlightedText: backgroundColor
+    }
+
+    Component {
+        id: fixture
+        FerricCommandDialog {
+            browserWindow: host
+            title: "A page request"
+            message: "Please review the request."
+            actions: [{id:"accept",key:"y",label:"Continue",shortcuts:["Y"]},
+                      {id:"disabled",key:"x",label:"Unavailable",enabled:false},
+                      {id:"cancel",key:"n",label:"Cancel",safe:true}]
+        }
+    }
+    Component {
+        id: formFixture
+        FerricCommandDialog {
+            browserWindow: host
+            actions: [{id:"cancel",label:"Cancel",safe:true},{id:"accept",key:"y",label:"Continue",shortcuts:["Y"]}]
+            ColumnLayout {
+                anchors.fill: parent
+                TextField { objectName: "draftField"; Layout.fillWidth: true }
+                CheckBox { objectName: "reviewConsent"; text: "Review choice" }
+                Button { objectName: "inspectionButton"; text: "Inspect"; property int activations: 0; onClicked: activations++ }
+            }
+        }
+    }
+    ListModel { id: fixtureProfiles; ListElement { name: "work"; label: "<b>Work profile</b>" } }
+    Component { id: transferFixture; FerricPrivateHistoryTransfer { browserWindow: host; profilesModel: fixtureProfiles; profilesLoading: false } }
+    ListModel { id: screenSources; ListElement { display: "Display 1" } }
+    ListModel { id: windowSources; ListElement { display: "<b>Editor window</b>" } }
+    QtObject {
+        id: externalUi
+        property bool external_navigation_visible: false
+        property string external_navigation_scheme: "mailto"
+        property string external_navigation_uri: "mailto:person@example.test"
+        function confirm_external_navigation() { return false }
+        function cancel_external_navigation() { external_navigation_visible=false }
+    }
+    Component { id: externalFixture; FerricExternalNavigationDialog { browserWindow: host; browserUi: externalUi } }
+    Component { id: routeFixture; FerricContextRouteDialog { browserWindow: host } }
+    Component { id: crashFixture; FerricRendererFailurePrompt { browserWindow: host } }
+    Component { id: permissionFixture; FerricPermissionPrompt { browserWindow: host } }
+    Component { id: moveFixture; FerricContextMoveDialog { browserWindow: host } }
+    Component { id: authFixture; FerricWebAuthPrompt { browserWindow: host } }
+    Component { id: certificateFixture; FerricCertificatePrompts { browserWindow: host } }
+    Component { id: sharingFixture; FerricDesktopMediaPrompt { browserWindow: host } }
+    Component { id: pageFixture; FerricPageDialog { browserWindow: host } }
+    Component { id: spyFixture; SignalSpy {} }
+    Component { id: outsideFixture; TextField {} }
+    Component { id: loaderFixture; Loader { sourceComponent: fixture } }
+
+    function init() {
+        failOnWarning(/invalid context|TypeError|ReferenceError|Binding loop|Cannot assign|Unable to assign/)
+        host.width=900; host.height=700; host.font.pointSize=10
+        host.pendingWebAuthState=WebEngineWebAuthUxRequest.WebAuthUxState.SelectAccount
+        host.pendingWebAuthRelyingParty="example.test"
+        host.desktopMediaPromptVisible=false
+        host.contextRouteVisible=false;host.rendererFailureVisible=false;externalUi.external_navigation_visible=false
+        host.permissionPromptVisible=false
+        host.contextMoveVisible=false;host.movedContext=""
+        host.privateHistoryTransferVisible=false
+        host.privateHistoryTransferTitle="<b>A private page</b>"
+        host.privateHistoryTransferUrl="https://example.test/"
+        host.dialogKind="confirm"; host.acceptedDialogs=0; host.rejectedDialogs=0
+        host.pageDialogMessage="Review this request"; host.pageDialogSuppressChecked=false
+        host.requestActivate(); tryCompare(host,"active",true)
+    }
+    function create(component) {
+        var view=createTemporaryObject(component,host.contentItem)
+        verify(view); verify(waitForPolish(host)); return view
+    }
+    function inside(item, panel) {
+        var point=item.mapToItem(panel,0,0)
+        verify(point.x>=-1 && point.y>=-1,"Control starts outside its viewport")
+        verify(point.x+item.width<=panel.width+1 && point.y+item.height<=panel.height+1,"Control "+item.objectName+" ends outside "+panel.objectName+": "+JSON.stringify({x:point.x,y:point.y,width:item.width,height:item.height,panelWidth:panel.width,panelHeight:panel.height}))
+    }
+    function waitInside(item, panel) {
+        tryVerify(function(){var p=item.mapToItem(panel,0,0);return p.y>=-1 && p.y+item.height<=panel.height+1})
+        inside(item,panel)
+    }
+    function capture(name) {
+        if(testArtifactDirectory.length>0) grabImage(host.contentItem).save(testArtifactDirectory+"/"+name+".png")
+    }
+    function sizes() { return [{tag:"wide",width:900,height:700,font:10},
+                              {tag:"compact",width:640,height:480,font:16},
+                              {tag:"narrow-large",width:390,height:600,font:20}] }
+    function resize(data) { host.width=data.width;host.height=data.height;host.font.pointSize=data.font }
+    function test_long_content_data() { return sizes() }
+    function test_long_content(data) {
+        resize(data)
+        var view=create(fixture)
+        view.title="<b>Literal title</b> " + "long-title-".repeat(80)
+        view.message="<b>Literal message</b> " + "longaddresswithoutbreaks".repeat(200)
+        verify(waitForPolish(host))
+        var header=findChild(view,"dialogHeaderScroll")
+        verify(header.contentHeight>header.height)
+        var scrollbar=header.ScrollBar.vertical
+        verify(scrollbar.mapToItem(header,0,0).x>header.width/2)
+        compare(findChild(view,"dialogTitleLabel").textFormat,Text.PlainText)
+        var message=findChild(view,"dialogMessageLabel")
+        compare(message.text,view.message); compare(message.textFormat,TextEdit.PlainText)
+        verify(message.height>=message.implicitHeight-1)
+        var cancel=findChild(view,"commandDialogAction-cancel")
+        tryCompare(cancel,"activeFocus",true)
+        var choices=findChild(view,"commandDialogActionScroll")
+        inside(choices,view.panelItem); waitInside(cancel,choices)
+        mouseWheel(header,header.width/2,header.height/2,0,-240)
+        tryVerify(function(){return header.contentItem.contentY>0})
+        inside(cancel,choices)
+        capture("prompt-"+data.tag)
+    }
+    function test_many_choices_scroll_and_skip_disabled_rows() {
+        host.width=390;host.height=600;host.font.pointSize=16
+        var view=create(fixture)
+        var actions=[{id:"cancel",label:"Keep current settings",safe:true},{id:"disabled",label:"Unavailable",enabled:false}]
+        for(var i=0;i<10;i++)actions.push({id:"choice"+i,label:"A long literal choice <b>"+i+"</b> with a description"})
+        view.actions=actions
+        var cancel=findChild(view,"commandDialogAction-cancel")
+        tryCompare(cancel,"activeFocus",true)
+        keyClick(Qt.Key_Down); compare(view.currentIndex,2)
+        for(var j=0;j<9;j++)keyClick(Qt.Key_Down)
+        compare(view.currentIndex,11)
+        var last=findChild(view,"commandDialogAction-choice9")
+        tryCompare(last,"activeFocus",true)
+        verify(waitForPolish(host)); inside(last,findChild(view,"commandDialogActionScroll"))
+        var spy=createTemporaryObject(spyFixture,view,{target:view,signalName:"actionRequested"})
+        keyClick(Qt.Key_Return); compare(spy.count,1); compare(spy.signalArguments[0][0],"choice9")
+        keyClick(Qt.Key_Return); compare(spy.count,1)
+    }
+    function test_detail_controls_keep_their_own_keys() {
+        var view=create(formFixture)
+        var spy=createTemporaryObject(spyFixture,view,{target:view,signalName:"actionRequested"})
+        var input=findChild(view,"draftField"); input.forceActiveFocus();tryCompare(input,"activeFocus",true)
+        keyClick("j");keyClick("k");keyClick("y");compare(input.text,"jky");compare(spy.count,0)
+        keyClick(Qt.Key_Left);compare(view.currentIndex,0)
+        var checkbox=findChild(view,"reviewConsent");checkbox.forceActiveFocus();keyClick(Qt.Key_Return)
+        compare(checkbox.checked,true);compare(spy.count,0)
+        var button=findChild(view,"inspectionButton");button.forceActiveFocus();keyClick(Qt.Key_Return)
+        compare(button.activations,1);compare(spy.count,0)
+        keyClick(Qt.Key_Escape);compare(spy.count,1);compare(spy.signalArguments[0][0],"cancel")
+    }
+    function test_keyboard_can_read_to_the_end_of_a_long_message() {
+        host.width=390;host.height=600
+        var view=create(fixture)
+        view.message="A line of literal page text.\n".repeat(200)
+        var message=findChild(view,"dialogMessageLabel")
+        message.forceActiveFocus();tryCompare(message,"activeFocus",true)
+        keyClick(Qt.Key_End,Qt.ControlModifier)
+        tryCompare(message,"cursorPosition",message.length)
+        var header=findChild(view,"dialogHeaderScroll")
+        tryVerify(function(){var cursor=message.cursorRectangle;var point=message.mapToItem(header,cursor.x,cursor.y);return point.y>=-1 && point.y+cursor.height<=header.height+1})
+    }
+    function test_message_selection_does_not_confirm() {
+        var view=create(fixture)
+        var spy=createTemporaryObject(spyFixture,view,{target:view,signalName:"actionRequested"})
+        var message=findChild(view,"dialogMessageLabel");message.forceActiveFocus();message.selectAll()
+        keyClick(Qt.Key_Return);compare(spy.count,0)
+        keyClick(Qt.Key_Escape);compare(spy.count,1);compare(spy.signalArguments[0][0],"cancel")
+    }
+    function test_private_transfer_data() { return sizes() }
+    function test_private_transfer(data) {
+        resize(data);host.privateHistoryTransferVisible=true
+        host.privateHistoryTransferUrl="https://example.test/"+"long-path".repeat(500)
+        var view=create(transferFixture)
+        var cancelled=createTemporaryObject(spyFixture,view,{target:view,signalName:"cancelRequested"})
+        var bookmarked=createTemporaryObject(spyFixture,view,{target:view,signalName:"bookmarkRequested"})
+        var cancel=findChild(view,"privateTransferCancel");tryCompare(cancel,"activeFocus",true)
+        inside(cancel,view.panelItem)
+        compare(findChild(view,"privateTransferAddress").text,host.privateHistoryTransferUrl)
+        var bookmark=findChild(view,"privateTransferBookmark");verify(bookmark)
+        bookmark.forceActiveFocus();tryCompare(bookmark,"activeFocus",true)
+        waitInside(bookmark,findChild(view,"privateTransferProfiles"))
+        inside(bookmark,view.panelItem)
+        keyClick(Qt.Key_Return);compare(bookmarked.count,1);compare(bookmarked.signalArguments[0][0],"work")
+        cancel.forceActiveFocus();keyClick(Qt.Key_Return);compare(cancelled.count,1)
+        capture("private-transfer-"+data.tag)
+    }
+    function test_page_safe_default_data() { return [{tag:"confirm",kind:"confirm"},{tag:"leave-page",kind:"beforeunload"}] }
+    function test_page_safe_default(data) {
+        host.dialogKind=data.kind
+        var view=create(pageFixture);view.open()
+        var cancel=findChild(view,"pageDialogCancel");tryCompare(cancel,"activeFocus",true)
+        keyClick(Qt.Key_Return);compare(host.rejectedDialogs,1);compare(host.acceptedDialogs,0)
+        var accept=findChild(view,"pageDialogAccept");accept.forceActiveFocus();keyClick(Qt.Key_Space)
+        compare(host.acceptedDialogs,1)
+    }
+    function test_page_form_data() { return sizes() }
+    function test_page_form(data) {
+        resize(data);host.dialogKind="authentication"
+        host.pageDialogMessage="<b>Literal authentication message</b> ".repeat(100)
+        var view=create(pageFixture);view.open();verify(waitForPolish(host))
+        var username=findChild(view,"pageDialogUsername");tryCompare(username,"activeFocus",true)
+        keyClick("j");keyClick("k");compare(view.usernameText,"jk")
+        var checkbox=findChild(view,"pageDialogSuppress");checkbox.forceActiveFocus();keyClick(Qt.Key_Return)
+        compare(host.pageDialogSuppressChecked,true);compare(host.acceptedDialogs,0)
+        var cancel=findChild(view,"pageDialogCancel");cancel.forceActiveFocus()
+        tryVerify(function(){var p=cancel.mapToItem(view.panelItem,0,0);return p.y+cancel.height<view.panelItem.height})
+        keyClick(Qt.Key_Return);compare(host.rejectedDialogs,1);compare(host.acceptedDialogs,0)
+        username.forceActiveFocus();keyClick(Qt.Key_Return);compare(host.acceptedDialogs,1)
+        capture("page-form-"+data.tag)
+    }
+    function test_account_cancel_is_safe_and_navigation_is_deliberate() {
+        var view=create(authFixture);view.open()
+        var cancelled=createTemporaryObject(spyFixture,view,{target:view,signalName:"cancelled"})
+        var selected=createTemporaryObject(spyFixture,view,{target:view,signalName:"accountSelected"})
+        var cancel=findChild(view,"webAuthCancel");tryCompare(cancel,"activeFocus",true)
+        var accounts=findChild(view,"webAuthAccounts")
+        tryVerify(function(){return accounts.currentItem!==null})
+        compare(accounts.currentItem.selected,false);compare(accounts.currentItem.keyHint,"")
+        keyClick(Qt.Key_Return);compare(cancelled.count,1);compare(selected.count,0)
+        keyClick(Qt.Key_Down);keyClick(Qt.Key_Return)
+        compare(selected.count,1);compare(selected.signalArguments[0][0],"Another account")
+        host.pendingWebAuthState=WebEngineWebAuthUxRequest.WebAuthUxState.CollectPin
+        var pin=findChild(view,"webAuthPin");tryCompare(pin,"activeFocus",true)
+        view.pin="1234"
+        var submitted=createTemporaryObject(spyFixture,view,{target:view,signalName:"pinSubmitted"})
+        keyClick(Qt.Key_Return);compare(submitted.count,1)
+        view.close();compare(view.pin,"")
+    }
+    function test_security_prompts_data() { return sizes() }
+    function test_security_prompts(data) {
+        resize(data)
+        host.pendingWebAuthRelyingParty="<b>literal party</b>"+"longhost".repeat(100)
+        var view=create(authFixture);view.open();verify(waitForPolish(host))
+        var cancel=findChild(view,"webAuthCancel");tryCompare(cancel,"activeFocus",true)
+        waitInside(cancel,findChild(view,"ferricModalPanel"))
+        capture("passkey-"+data.tag);view.close()
+        var certificates=create(certificateFixture);certificates.openCertificateError()
+        var back=findChild(certificates,"commandDialogAction-back");tryCompare(back,"activeFocus",true)
+        compare(findChild(certificates,"certificateErrorDescription").textFormat,TextEdit.PlainText)
+        waitInside(back,findChild(certificates,"commandDialogActionScroll"))
+        certificates.closeCertificateError();certificates.openClientCertificate()
+        var rejected=createTemporaryObject(spyFixture,certificates,{target:certificates,signalName:"clientCertificateRejected"})
+        var accepted=createTemporaryObject(spyFixture,certificates,{target:certificates,signalName:"clientCertificateAccepted"})
+        var cancelCertificate=findChild(certificates,"clientCertificateCancel");tryCompare(cancelCertificate,"activeFocus",true)
+        inside(cancelCertificate,findChild(certificates,"clientCertificateChoices").parent.parent)
+        keyClick(Qt.Key_Return);compare(rejected.count,1);compare(accepted.count,0)
+        keyClick(Qt.Key_Down);keyClick(Qt.Key_Return);compare(accepted.count,1);compare(accepted.signalArguments[0][0],0)
+        certificates.closeClientCertificate()
+    }
+    function test_permission_data() { return sizes() }
+    function test_permission(data) {
+        resize(data);host.permissionPromptVisible=true
+        host.pendingPermissionOrigin="https://example.test/"+"long-origin".repeat(200)
+        var view=create(permissionFixture)
+        var decided=createTemporaryObject(spyFixture,view,{target:view,signalName:"decisionRequested"})
+        var deny=findChild(view,"commandDialogAction-deny");tryCompare(deny,"activeFocus",true)
+        waitInside(deny,findChild(view,"commandDialogActionScroll"))
+        keyClick(Qt.Key_Return);compare(decided.count,1);compare(decided.signalArguments[0][0],false)
+        view.visible=false;view.visible=true
+        tryCompare(deny,"activeFocus",true)
+        keyClick(Qt.Key_Down);keyClick(Qt.Key_Down);keyClick(Qt.Key_Return)
+        compare(decided.count,2);compare(decided.signalArguments[1][0],true);compare(decided.signalArguments[1][1],"")
+        capture("permission-"+data.tag)
+    }
+    function test_sharing_data() { return sizes() }
+    function test_sharing(data) {
+        resize(data);host.desktopMediaPromptVisible=true
+        var view=create(sharingFixture)
+        var cancelled=createTemporaryObject(spyFixture,view,{target:view,signalName:"cancellationRequested"})
+        var windows=createTemporaryObject(spyFixture,view,{target:view,signalName:"windowRequested"})
+        var screens=createTemporaryObject(spyFixture,view,{target:view,signalName:"screenRequested"})
+        var cancel=findChild(view,"sharingCancel");tryCompare(cancel,"activeFocus",true)
+        waitInside(cancel,view.panelItem)
+        var initialSources=findChild(view,"sharingSources")
+        tryVerify(function(){return initialSources.currentItem!==null})
+        compare(initialSources.currentItem.selected,false);compare(initialSources.currentItem.keyHint,"")
+        keyClick(Qt.Key_Return);compare(cancelled.count,1);compare(screens.count,0)
+        var categories=findChild(view,"sharingWindows");categories.forceActiveFocus();keyClick(Qt.Key_Return)
+        compare(view.showingWindows,true);compare(windows.count,0)
+        var sources=findChild(view,"sharingSources");tryVerify(function(){return sources.currentItem!==null})
+        compare(sources.currentItem.actionLabel,"<b>Editor window</b>")
+        keyClick(Qt.Key_Return);compare(windows.count,1);compare(windows.signalArguments[0][0],0)
+        capture("sharing-"+data.tag)
+    }
+    function test_external_address_is_complete_and_literal_data() { return sizes() }
+    function test_external_address_is_complete_and_literal(data) {
+        resize(data);externalUi.external_navigation_visible=true
+        externalUi.external_navigation_uri="mailto:person@example.test?subject=<b>literal</b>"+"long-subject".repeat(400)
+        var view=create(externalFixture)
+        var address=findChild(view,"externalNavigationAddress")
+        compare(address.text,externalUi.external_navigation_uri);compare(address.textFormat,TextEdit.PlainText)
+        var cancel=findChild(view,"commandDialogAction-cancel");tryCompare(cancel,"activeFocus",true)
+        waitInside(cancel,findChild(view,"commandDialogActionScroll"))
+        address.forceActiveFocus();address.selectAll();keyClick(Qt.Key_Return)
+        compare(externalUi.external_navigation_visible,true)
+        keyClick(Qt.Key_Escape);compare(externalUi.external_navigation_visible,false)
+    }
+    function test_route_and_recovery_details_data() { return sizes() }
+    function test_route_and_recovery_details(data) {
+        resize(data);host.contextRouteVisible=true
+        host.contextRouteUi={context_route_context:"<b>Research</b>",context_route_profile:"work",context_route_id:"internal-rule-id",context_route_behavior:"prompt",context_route_url:"https://example.test/"+"long-address".repeat(200)}
+        var route=create(routeFixture)
+        var address=findChild(route,"contextRouteAddress")
+        compare(address.text,host.contextRouteUi.context_route_url);compare(address.textFormat,TextEdit.PlainText)
+        var details=findChild(route,"contextRouteDetails");verify(!details.visible)
+        var button=findChild(route,"contextRouteDetailsButton");button.forceActiveFocus();keyClick(Qt.Key_Return)
+        verify(button.width<=findChild(route,"commandDialogDetailScroll").width)
+        verify(button.contentItem.height>=button.contentItem.implicitHeight-1)
+        compare(details.visible,true);verify(details.text.indexOf("internal-rule-id")>=0)
+        compare(host.contextRouteVisible,true)
+        keyClick(Qt.Key_Escape);compare(host.contextRouteVisible,false)
+        host.rendererFailureVisible=true
+        var crash=create(crashFixture)
+        var technical=findChild(crash,"rendererFailureDetails");verify(!technical.visible)
+        var more=findChild(crash,"rendererFailureDetailsButton");more.forceActiveFocus();keyClick(Qt.Key_Return)
+        compare(technical.visible,true);compare(technical.textFormat,TextEdit.PlainText)
+        verify(more.width<=findChild(crash,"commandDialogDetailScroll").width)
+        verify(more.contentItem.height>=more.contentItem.implicitHeight-1)
+        verify(technical.text.indexOf("12345")>=0)
+        var dismiss=findChild(crash,"commandDialogAction-dismiss");dismiss.forceActiveFocus();tryCompare(dismiss,"activeFocus",true)
+        waitInside(dismiss,findChild(crash,"commandDialogActionScroll"))
+        capture("recovery-"+data.tag)
+    }
+    function test_compact_keyboard_reference_is_available_without_losing_actions() {
+        host.width=390;host.height=600;host.font.pointSize=16
+        var view=create(fixture)
+        var spy=createTemporaryObject(spyFixture,view,{target:view,signalName:"actionRequested"})
+        var help=findChild(view,"dialogKeyboardHelp");verify(help.visible)
+        help.forceActiveFocus();keyClick(Qt.Key_Return);compare(help.checked,true);compare(spy.count,0)
+        var header=findChild(view,"dialogHeaderScroll")
+        var instructions=findChild(view,"dialogKeyboardInstructions")
+        compare(instructions.visible,true);compare(instructions.text,view.keyHelp)
+        tryVerify(function(){return header.contentItem.contentY+header.availableHeight>=header.contentHeight-1})
+        keyClick(Qt.Key_Escape);compare(spy.count,1)
+        view.visible=false;view.visible=true;compare(help.checked,false)
+    }
+    function test_context_navigation_reaches_uninstantiated_choices() {
+        var choices=[{name:"unavailable",label:"Unavailable context",available:false}]
+        for(var i=0;i<100;i++)choices.push({name:"context"+i,label:"Context "+i,available:true})
+        host.contextMoveChoices=choices;host.contextMoveVisible=true
+        var view=create(moveFixture)
+        var cancel=findChild(view,"contextMoveCancel");tryCompare(cancel,"activeFocus",true)
+        // The last row is outside ListView's instantiated delegate range.
+        keyClick(Qt.Key_Up);keyClick(Qt.Key_Return);compare(host.movedContext,"context99")
+    }
+    function test_dismiss_restores_focus() {
+        var outside=create(outsideFixture);outside.forceActiveFocus();tryCompare(outside,"activeFocus",true)
+        var view=create(fixture);tryVerify(function(){return view.containsActiveFocus})
+        view.visible=false;tryCompare(outside,"activeFocus",true)
+    }
+    function test_unload_cancels_deferred_focus_work() {
+        var loader=create(loaderFixture);verify(loader.item);loader.active=false;wait(20)
+    }
+}

@@ -989,6 +989,8 @@ FerricBrowserRuntimeBase {
     }
 
     function handleFileDialogRequested(request, view, ui) {
+        if (!request) return
+        request.accepted = true
         if (window.pendingFileDialogRequest) {
             window.clearEngineFileDialog(true, "Previous file selection cancelled")
             window.resolveQtRequest(ui || browserUi, request, "file-dialog", "dialogReject", [])

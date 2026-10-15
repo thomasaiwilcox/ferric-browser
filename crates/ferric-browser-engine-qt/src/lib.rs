@@ -1458,6 +1458,9 @@ mod qobject {
         fn list_permissions(self: Pin<&mut BrowserUi>, origin: &QString) -> QString;
 
         #[qinvokable]
+        fn prompt_origin(self: &BrowserUi, url: &QString) -> QString;
+
+        #[qinvokable]
         fn reset_permission(
             self: Pin<&mut BrowserUi>,
             origin: &QString,

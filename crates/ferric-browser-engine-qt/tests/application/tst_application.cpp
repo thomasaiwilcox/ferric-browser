@@ -18,6 +18,7 @@
 #include <QQuickWindow>
 #include <QTcpSocket>
 #include <QtWebEngineCore/QWebEngineFrame>
+#include <QtWebEngineCore/QWebEngineWebAuthUxRequest>
 #include <QTemporaryDir>
 #include <QtTest>
 #include <QtWebEngineQuick/qtwebenginequickglobal.h>
@@ -133,7 +134,15 @@ void ApplicationTests::init() {
                 if (!request.contains("\r\n\r\n"))
                     return;
                 const auto path = request.split(' ').value(1);
-                const QByteArray body = frameFixtures.contains(path) ? frameFixtures.value(path) :
+                if (path == "/polish-auth" && !request.contains(
+                        "Authorization: Basic " + QByteArray("test-user:test-pass").toBase64())) {
+                    socket->write("HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"Polish fixture\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                    socket->disconnectFromHost();
+                    return;
+                }
+                const QByteArray body = path == "/polish-auth"
+                    ? QByteArray("<!doctype html><script>window.authenticated=true</script>")
+                    : frameFixtures.contains(path) ? frameFixtures.value(path) :
                     request.startsWith("GET /child.html ")
                         ? QByteArray(
                               "<!doctype "
@@ -618,7 +627,10 @@ void ApplicationTests::promptAcceptCancelAndNestedRestoration() {
          "confirmation');},0); true");
     QTRY_VERIFY(
         evaluate("testWindow.pendingPageDialogRequest !== null").toBool());
-    QTest::qWait(100);
+    auto accept = findVisualItem(window->contentItem(), "pageDialogAccept");
+    QVERIFY(accept);
+    accept->forceActiveFocus();
+    QTRY_VERIFY(accept->hasActiveFocus());
     key(Qt::Key_Return);
     QTRY_VERIFY(
         evaluate("testWindow.pendingPageDialogRequest === null").toBool());
@@ -1989,6 +2001,119 @@ void ApplicationTests::clipboardHeldBrowserGesture() {
            QString("unchanged"));
 }
 
+void ApplicationTests::productPolishPagePrompts() {
+    window->resize(390, 700);
+    evaluate("testWindow.font.pointSize = 16");
+    QVERIFY(command("mode-enter pass-through"));
+    page("setTimeout(function(){window.polishAnswer=confirm('<b>Literal confirmation</b> '+ 'Long message '.repeat(300));},0);true");
+    QTRY_VERIFY(evaluate("testWindow.pendingPageDialogRequest !== null").toBool());
+    QVERIFY(evaluate("testWindow.pendingPageDialogRequest.accepted").toBool());
+    QCOMPARE(evaluate("testWindow.pageDialogOrigin").toString(),
+             QString("http://127.0.0.1:%1").arg(server.serverPort()));
+    auto cancel = findVisualItem(window->contentItem(), "pageDialogCancel");
+    auto accept = findVisualItem(window->contentItem(), "pageDialogAccept");
+    QVERIFY(cancel && accept);
+    QTRY_VERIFY(cancel->hasActiveFocus());
+    const auto artifacts = qEnvironmentVariable("FERRIC_TEST_ARTIFACT_DIR");
+    if (!artifacts.isEmpty()) {
+        QTest::qWait(100);
+        QVERIFY(window->grabWindow().save(artifacts + "/production-page-confirm-large.png"));
+    }
+    key(Qt::Key_Return);
+    QTRY_VERIFY(evaluate("testWindow.pendingPageDialogRequest === null").toBool());
+    QCOMPARE(page("window.polishAnswer").toBool(), false);
+    QTRY_COMPARE(text("mode"), QString("pass-through"));
+
+    page("setTimeout(function(){window.polishAnswer=prompt('Response, not HTML <b>','draft');},0);true");
+    QTRY_VERIFY(evaluate("testWindow.pendingPageDialogRequest !== null").toBool());
+    auto input = findVisualItem(window->contentItem(), "pageDialogInput");
+    QVERIFY(input);
+    QTRY_VERIFY(input->hasActiveFocus());
+    key(Qt::Key_A, Qt::ControlModifier);
+    typeText("reviewed response");
+    key(Qt::Key_Return);
+    QTRY_VERIFY(evaluate("testWindow.pendingPageDialogRequest === null").toBool());
+    QCOMPARE(page("window.polishAnswer").toString(), QString("reviewed response"));
+    QTRY_COMPARE(text("mode"), QString("pass-through"));
+
+    page("setTimeout(function(){window.polishAnswer=confirm('Explicit acceptance');},0);true");
+    QTRY_VERIFY(evaluate("testWindow.pendingPageDialogRequest !== null").toBool());
+    QTRY_VERIFY(cancel->hasActiveFocus());
+    accept->forceActiveFocus();
+    QTRY_VERIFY(accept->hasActiveFocus());
+    key(Qt::Key_Return);
+    QTRY_VERIFY(evaluate("testWindow.pendingPageDialogRequest === null").toBool());
+    QCOMPARE(page("window.polishAnswer").toBool(), true);
+}
+
+void ApplicationTests::productPolishHttpAuthentication() {
+    QCOMPARE(evaluate("testWindow.browserUi.prompt_origin('https://name:private@EXAMPLE.test:8443/path?token=private#fragment')").toString(),
+             QString("https://example.test:8443"));
+    QCOMPARE(evaluate("testWindow.browserUi.prompt_origin('data:text/html,opaque')").toString(), QString());
+    const auto origin = QString("http://127.0.0.1:%1").arg(server.serverPort());
+    QVERIFY(command("open " + origin + "/polish-auth"));
+    QTRY_VERIFY(evaluate("testWindow.pendingAuthenticationRequest !== null").toBool());
+    QVERIFY(evaluate("testWindow.pendingAuthenticationRequest.accepted").toBool());
+    QCOMPARE(evaluate("testWindow.pageDialogOrigin").toString(), origin);
+    auto username = findVisualItem(window->contentItem(), "pageDialogUsername");
+    auto password = findVisualItem(window->contentItem(), "pageDialogPassword");
+    QVERIFY(username && password);
+    QTRY_VERIFY(username->hasActiveFocus());
+    QVERIFY(username->setProperty("text", QString("test-user")));
+    QVERIFY(password->setProperty("text", QString("test-pass")));
+    password->forceActiveFocus();
+    key(Qt::Key_Return);
+    QTRY_VERIFY(evaluate("testWindow.pendingAuthenticationRequest === null").toBool());
+    QTRY_VERIFY(!evaluate("testWindow.activeWebView().loading").toBool());
+    QCOMPARE(page("window.authenticated").toBool(), true);
+    QCOMPARE(username->property("text").toString(), QString());
+    QCOMPARE(password->property("text").toString(), QString());
+}
+
+void ApplicationTests::productPolishFileChooser() {
+    auto chooser = window->findChild<QObject *>("engineFileChooser");
+    QVERIFY(chooser);
+    QVERIFY(chooser->setProperty("currentFolder", QUrl::fromLocalFile(directory.path())));
+    QVERIFY(command("mode-enter pass-through"));
+    page("var input=document.createElement('input');input.type='file';input.id='polish-file';document.body.prepend(input);input.focus();true");
+    key(Qt::Key_Return);
+    QTRY_VERIFY(evaluate("testWindow.pendingFileDialogRequest !== null").toBool());
+    QVERIFY(evaluate("testWindow.pendingFileDialogRequest.accepted").toBool());
+    evaluate("testWindow.clearEngineFileDialog(true, 'File selection cancelled')");
+    QTRY_VERIFY(evaluate("testWindow.pendingFileDialogRequest === null").toBool());
+    QTRY_COMPARE(text("mode"), QString("pass-through"));
+    QCOMPARE(page("document.getElementById('polish-file').files.length").toInt(), 0);
+}
+
+void ApplicationTests::productPolishWebAuthStates() {
+    using State = QWebEngineWebAuthUxRequest::WebAuthUxState;
+    const auto select = QString::number(static_cast<int>(State::SelectAccount));
+    const auto pin = QString::number(static_cast<int>(State::CollectPin));
+    const auto failed = QString::number(static_cast<int>(State::RequestFailed));
+    QCOMPARE(evaluate("testWindow.webAuthStateLabel(" + select + ")").toString(), QString("Select an account"));
+    QCOMPARE(evaluate("testWindow.webAuthStateLabel(" + pin + ")").toString(), QString("Enter your security-key PIN"));
+    QCOMPARE(evaluate("testWindow.webAuthStateLabel(" + failed + ")").toString(), QString("Security-key request failed"));
+    // Exercise the production request callbacks using an in-memory request.
+    // Hardware authentication itself is qualified separately with a real key.
+    evaluate("testWindow.pendingWebAuthRequest = ({selected:'',pinMatched:false,retries:0,"
+             "pinRequest:{remainingAttempts:3,minPinLength:4},"
+             "setSelectedAccount:function(value){this.selected=value},"
+             "setPin:function(value){this.pinMatched=value==='1234'},"
+             "retry:function(){this.retries++}})");
+    evaluate("testWindow.pendingWebAuthState=" + select + ";testWindow.selectWebAuthAccount('offered account')");
+    QCOMPARE(evaluate("testWindow.pendingWebAuthRequest.selected").toString(), QString("offered account"));
+    evaluate("testWindow.pendingWebAuthState=" + pin);
+    auto input = findVisualItem(window->contentItem(), "webAuthPin");
+    QVERIFY(input);
+    QVERIFY(input->setProperty("text", QString("1234")));
+    evaluate("testWindow.submitWebAuthPin()");
+    QVERIFY(evaluate("testWindow.pendingWebAuthRequest.pinMatched").toBool());
+    QCOMPARE(input->property("text").toString(), QString());
+    evaluate("testWindow.pendingWebAuthState=" + failed + ";testWindow.retryWebAuth()");
+    QCOMPARE(evaluate("testWindow.pendingWebAuthRequest.retries").toInt(), 1);
+    evaluate("testWindow.pendingWebAuthRequest=null;testWindow.pendingWebAuthState=null");
+}
+
 void ApplicationTests::productPolishNavigationFailure() {
     evaluate("testWindow.browserUi.navigation_failed_with_details("
              "testWindow.browserUi.active_tab_index,"
@@ -2000,6 +2125,9 @@ void ApplicationTests::productPolishNavigationFailure() {
     QVERIFY(button);
     QVERIFY(details);
     QVERIFY(!details->isVisible());
+    QSignalSpy rendered(window, &QQuickWindow::frameSwapped);
+    window->update();
+    QVERIFY(rendered.wait(2000));
     QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier,
                       button->mapToScene(QPointF(button->width() / 2, button->height() / 2)).toPoint());
     QTRY_VERIFY(details->isVisible());
