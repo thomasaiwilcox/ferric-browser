@@ -716,19 +716,6 @@ FerricBrowserRuntimeBase {
         }
     }
 
-    FerricUserscriptRemovalDialog {
-        id: userscriptRemovalDialog
-        browserWindow: window
-        onConfirmed: {
-            var name = window.pendingUserscriptRemoval
-            window.pendingUserscriptRemoval = ""
-            if (browserUi.remove_userscript(name)) {
-                window.settingsNotice = "Removing userscript…"
-            }
-        }
-        onCancelled: window.pendingUserscriptRemoval = ""
-    }
-
     function applyNativeEditAction(ui, view, action, source) {
         var edit = action.split("\t")
         if (edit.length !== 5 || !view
@@ -1416,141 +1403,17 @@ FerricBrowserRuntimeBase {
         }
     }
 
-    function refreshSettings() {
-        var query = (window.settingsSearch || "").trim().toLowerCase()
-        var visibleRows = []
-        for (var index = 0; index < browserUi.settings_rows.length; ++index) {
-            var row = browserUi.settings_rows[index]
-            var searchable = [row.key, row.label, row.scope, row.apply]
-                             .join(" ").toLowerCase()
-            if (!query || searchable.indexOf(query) >= 0) {
-                visibleRows.push(row)
-            }
-        }
-        var replaced = settingsModel.replaceRows(visibleRows)
-        if (!replaced) {
-            window.settingsNotice = "Settings could not be displayed because their row data was inconsistent"
-        }
-    }
-
-    function settingLiteral(row, value) {
-        if (row.type === "bool") {
-            return value ? "true" : "false"
-        }
-        if (row.type === "number") {
-            return String(value)
-        }
-        if (row.type === "languages") {
-            var languages = String(value || "").split(",")
-            var normalized = []
-            for (var index = 0; index < languages.length && index < 16; ++index) {
-                var language = languages[index].trim()
-                if (language.length > 0 && normalized.indexOf(language) < 0) {
-                    normalized.push(language)
-                }
-            }
-            return JSON.stringify(normalized)
-        }
-        return JSON.stringify(String(value))
-    }
-
-    function applySetting(row, value) {
-        if (!browserUi.set_runtime_setting(
-                    row.key, settingLiteral(row, value), window.settingsTemporary)) {
-            window.settingsNotice = row.key + ": " + browserUi.runtime_setting_error
-            return false
-        }
-        window.settingsNotice = "Applied " + row.key + " ("
-                + (window.settingsTemporary ? "temporary" : "persistent or memory-only") + ")"
-        window.refreshSettings()
-        return true
-    }
-
-    function resetSetting(row) {
-        if (!browserUi.unset_runtime_setting(row.key, window.settingsTemporary)) {
-            window.settingsNotice = row.key + ": " + browserUi.runtime_setting_error
-            return false
-        }
-        window.settingsNotice = "Reset " + row.key
-        window.refreshSettings()
-        return true
-    }
-
-    function showSettings(search) {
-        if (!window.settingsVisible) {
-            window.openInternalSurface()
-        }
-        window.settingsNotice = ""
-        if (search !== undefined) {
-            window.settingsSearch = String(search)
-        }
-        window.refreshUserscriptInventory()
-        window.refreshSettings()
-        window.settingsVisible = true
-    }
-
-    function chooseUserscriptManifest() {
-        fileDialogSurfaces.openUserscriptManifest()
-    }
-
-    function installUserscriptManifest() {
-        var selected = fileDialogSurfaces.userscriptManifestSelectedFile
-        var path = browserUi.local_file_path(selected || "")
-        if (!path) {
-            window.settingsNotice = "Choose a local userscript manifest"
-            return
-        }
-        if (!browserUi.install_userscript_manifest(path)) {
-            window.settingsNotice = "Userscript installation could not be started"
-            return
-        }
-        window.settingsNotice = "Installing userscript…"
-        window.refreshUserscriptInventory()
-        window.refreshSettings()
-    }
-
-    function confirmRemoveUserscript(name) {
-        if (!name || window.temporaryProfile) {
-            return
-        }
-        window.pendingUserscriptRemoval = String(name)
-        userscriptRemovalDialog.open()
-    }
-
-    function refreshUserscriptInventory() {
-        browserUi.refresh_userscript_inventory()
-    }
-
-    function userscriptInventoryRows() {
-        var names = browserUi.userscript_names
-        var enabled = browserUi.userscript_enabled_values
-        var pageWorld = browserUi.userscript_page_world_values
-        var actions = browserUi.userscript_action_counts
-        if (names.length !== enabled.length || names.length !== pageWorld.length
-                || names.length !== actions.length) {
-            return []
-        }
-        var rows = []
-        for (var index = 0; index < names.length; ++index) {
-            var actionCount = Number(actions[index])
-            rows.push({
-                name: String(names[index]),
-                enabled: String(enabled[index]) === "true",
-                page_world: String(pageWorld[index]) === "true",
-                actions: isFinite(actionCount) && actionCount >= 0
-                         ? Math.floor(actionCount) : 0
-            })
-        }
-        return rows
-    }
-
-    function closeSettings() {
-        var wasVisible = window.settingsVisible
-        window.settingsVisible = false
-        if (wasVisible) {
-            window.closeInternalSurface()
-        }
-    }
+    function refreshSettings() { settingsWorkspace.refreshSettings() }
+    function settingLiteral(row, value) { return settingsWorkspace.settingLiteral(row, value) }
+    function applySetting(row, value) { return settingsWorkspace.applySetting(row, value) }
+    function resetSetting(row) { return settingsWorkspace.resetSetting(row) }
+    function showSettings(search) { settingsWorkspace.show(search) }
+    function closeSettings() { settingsWorkspace.close() }
+    function chooseUserscriptManifest() { fileDialogSurfaces.openUserscriptManifest() }
+    function installUserscriptManifest() { return settingsWorkspace.installManifest(fileDialogSurfaces.userscriptManifestSelectedFile) }
+    function confirmRemoveUserscript(name) { settingsWorkspace.confirmRemoveUserscript(name) }
+    function refreshUserscriptInventory() { browserUi.refresh_userscript_inventory() }
+    function userscriptInventoryRows() { return settingsWorkspace.userscriptRows() }
 
     function siteDoctorUserscriptsDisabled(ui) {
         return !!ui && ui.site_experiment_active

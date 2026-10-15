@@ -15,6 +15,9 @@ fn durable_history_commands(commands: &[ParsedCommand]) -> bool {
 }
 
 fn secondary_command_supported(command: &ParsedCommand) -> bool {
+    if command.name == "help" {
+        return matches!(command.arguments.as_slice(), [topic] if super::setting_metadata(topic).is_some());
+    }
     if command.name == "open" {
         return !command.arguments.iter().any(|argument| {
             matches!(
@@ -58,7 +61,6 @@ fn secondary_command_supported(command: &ParsedCommand) -> bool {
             | "download-resume"
             | "download-retry"
             | "downloads"
-            | "help"
             | "hint"
             | "history"
             | "journey"
@@ -78,7 +80,6 @@ fn secondary_command_supported(command: &ParsedCommand) -> bool {
             | "session-load"
             | "session-save"
             | "sessions"
-            | "settings"
             | "site-data-clear"
             | "site-doctor"
             | "site-doctor-undo"
@@ -100,6 +101,32 @@ fn secondary_command_supported(command: &ParsedCommand) -> bool {
             | "window-move"
             | "window-new"
     )
+}
+
+#[cfg(test)]
+mod settings_surface_tests {
+    use super::*;
+
+    #[test]
+    fn secondary_settings_availability_requires_a_supported_surface() {
+        let command = |name: &str, arguments: &[&str]| ParsedCommand {
+            name: name.into(),
+            arguments: arguments.iter().map(|value| (*value).to_owned()).collect(),
+        };
+        assert!(secondary_command_supported(&command("settings", &[])));
+        assert!(secondary_command_supported(&command(
+            "help",
+            &["ui.font_size_pt"]
+        )));
+        for unavailable in [
+            command("help", &[]),
+            command("help", &["open"]),
+            command("help", &["ui.font_size_pt", "extra"]),
+            command("sessions", &[]),
+        ] {
+            assert!(!secondary_command_supported(&unavailable));
+        }
+    }
 }
 
 impl qobject::BrowserUi {
@@ -144,7 +171,7 @@ impl qobject::BrowserUi {
             })
         {
             self.set_status_text(QString::from(format!(
-                "{} requires full browser chrome and is unavailable in this window",
+                "Use {} in the main browser window for this request.",
                 command.name
             )));
             return false;

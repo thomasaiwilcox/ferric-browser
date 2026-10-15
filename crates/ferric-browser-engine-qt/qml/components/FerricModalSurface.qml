@@ -38,7 +38,7 @@ FocusScope {
         || hostWindow.shutdownPromptVisible === true
         || hostWindow.shutdownPagePromptVisible === true
         || hostWindow.applicationShutdownForcePromptVisible === true)
-    readonly property bool interactive: visible && !suspended
+    readonly property bool interactive: visible && enabled && !suspended
     readonly property real scale: browserWindow.chromeScale === undefined ? 1 :
                                                                             browserWindow.chromeScale
     readonly property alias panelItem: panel

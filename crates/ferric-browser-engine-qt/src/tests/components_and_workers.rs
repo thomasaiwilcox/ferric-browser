@@ -499,7 +499,7 @@ fn hint_overlay_component_renders_candidates_and_emits_root_owned_intents() {
 }
 
 #[test]
-fn userscript_inventory_component_keeps_enable_rollback_at_the_root_boundary() {
+fn userscript_inventory_component_keeps_enable_rollback_at_the_owner_boundary() {
     let qml = include_str!("../../qml/components/FerricUserscriptInventory.qml");
     let settings = include_str!("../../qml/components/FerricSettings.qml");
     let composition_root = QML_SOURCE;
@@ -510,7 +510,7 @@ fn userscript_inventory_component_keeps_enable_rollback_at_the_root_boundary() {
     assert!(!composition_root.contains("id: userscriptList"));
     assert!(composition_root.contains("browserUi.set_userscript_enabled(name, enabled)"));
     assert!(settings.contains("userscriptInventory.setEnabled(name, enabled)"));
-    assert!(composition_root.contains("settingsSurface.setUserscriptEnabled(name, !enabled)"));
+    assert!(composition_root.contains("surface.setUserscriptEnabled(name, accepted ? enabled : !enabled)"));
 }
 
 #[test]
@@ -526,12 +526,12 @@ fn setting_rows_component_emits_intents_without_reaching_the_runtime_bridge() {
     assert!(!qml.contains("window.applySetting"));
     assert!(settings.contains("FerricSettingRows {"));
     assert!(!composition_root.contains("id: settingsList"));
-    assert!(composition_root.contains("window.applySetting(row, value)"));
-    assert!(composition_root.contains("window.resetSetting(row)"));
+    assert!(composition_root.contains("workspace.applySetting(row, value)"));
+    assert!(composition_root.contains("workspace.resetSetting(row)"));
 }
 
 #[test]
-fn settings_component_composes_schema_rows_and_keeps_mutations_at_the_root() {
+fn settings_component_composes_schema_rows_and_keeps_mutations_in_its_owner() {
     let qml = include_str!("../../qml/components/FerricSettings.qml");
     let rows = include_str!("../../qml/components/FerricSettingRows.qml");
     let composition_root = QML_SOURCE;
@@ -553,13 +553,14 @@ fn settings_component_composes_schema_rows_and_keeps_mutations_at_the_root() {
     assert!(rows.contains("options: options"));
     assert!(rows.contains("rowData.options"));
     assert!(composition_root.contains("FerricSettings {"));
-    assert!(composition_root.contains("FerricSettingsModel { id: settingsModel }"));
+    assert!(composition_root.contains("FerricSettingsModel {"));
+    assert!(composition_root.contains("id: settingsModel"));
     assert!(composition_root.contains("settingsModel.replaceRows("));
     assert!(!composition_root.contains("JSON.parse(browserUi.config_json)"));
     assert!(!composition_root.contains("function settingConfigValue("));
     assert!(composition_root.contains("browserUi.set_userscript_enabled(name, enabled)"));
-    assert!(composition_root.contains("settingsSurface.setUserscriptEnabled(name, !enabled)"));
-    assert!(composition_root.contains("window.applySetting(row, value)"));
+    assert!(composition_root.contains("surface.setUserscriptEnabled(name, accepted ? enabled : !enabled)"));
+    assert!(composition_root.contains("workspace.applySetting(row, value)"));
 }
 
 #[test]

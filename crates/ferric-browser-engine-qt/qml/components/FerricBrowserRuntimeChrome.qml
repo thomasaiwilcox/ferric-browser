@@ -677,42 +677,19 @@ GridLayout {
         }
     }
 
-    FerricSettingsModel { id: settingsModel }
-
-    FerricSettings {
-        id: settingsSurface
+    FerricSettingsWorkspace {
+        id: settingsWorkspace
+        objectName: "primarySettingsWorkspace"
         browserWindow: window
-        settingsVisible: window.settingsVisible
-        temporary: window.settingsTemporary
-        searchText: window.settingsSearch
-        notice: window.settingsNotice
+        browserUi: window.browserUi
+        state: window
+        profileLabel: window.profileLabel
+        transientProfile: window.temporaryProfile || window.ephemeralProfile
         spellcheckStatus: window.spellcheckStatusText(browserUi)
         spellcheckDictionariesMissing: window.spellcheckDictionaryStatus(browserUi).missing.length > 0
-        userscriptRows: window.userscriptInventoryRows()
-        settingsModel: settingsModel
-        onCloseRequested: window.closeSettings()
-        onRefreshRequested: window.refreshSettings()
-        onInstallUserscriptRequested: window.chooseUserscriptManifest()
-        onTemporaryChangeRequested: function(temporary) {
-            window.settingsTemporary = temporary
-            window.settingsNotice = temporary
-                    ? "Changes apply only to this window and session"
-                    : "Changes use the profile runtime override layer"
-        }
-        onSearchChanged: function(text) {
-            window.settingsSearch = text
-            window.refreshSettings()
-        }
-        onUserscriptEnabledRequested: function(name, enabled) {
-            if (browserUi.set_userscript_enabled(name, enabled)) {
-                settingsSurface.setUserscriptEnabled(name, enabled)
-            } else {
-                settingsSurface.setUserscriptEnabled(name, !enabled)
-            }
-        }
-        onUserscriptRemovalRequested: function(name) { window.confirmRemoveUserscript(name) }
-        onSettingApplyRequested: function(row, value) { window.applySetting(row, value) }
-        onSettingResetRequested: function(row) { window.resetSetting(row) }
+        onOpening: window.openInternalSurface()
+        onClosed: window.closeInternalSurface()
+        onInstallManifestRequested: window.chooseUserscriptManifest()
     }
 
     FerricLibraryManager {

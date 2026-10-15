@@ -15,9 +15,19 @@ ApplicationWindow {
     title: secondaryWindow.windowEphemeralProfile
            ? "Ferric Browser · " + secondaryWindow.windowProfileLabel
            : "Ferric Browser · " + secondaryWindow.windowProfileName
-    color: rootWindow.backgroundColor
-    font: rootWindow.font
-    palette: rootWindow.palette
+    color: secondaryAppearance.backgroundColor
+    font: secondaryAppearance.font
+    palette.window: secondaryAppearance.backgroundColor
+    palette.windowText: secondaryAppearance.primaryTextColor
+    palette.base: secondaryAppearance.surfaceColor
+    palette.alternateBase: secondaryAppearance.panelColor
+    palette.text: secondaryAppearance.primaryTextColor
+    palette.button: secondaryAppearance.surfaceColor
+    palette.buttonText: secondaryAppearance.primaryTextColor
+    palette.highlight: secondaryAppearance.selectionColor
+    palette.highlightedText: secondaryAppearance.selectionTextColor
+    palette.placeholderText: secondaryAppearance.mutedTextColor
+    palette.link: secondaryAppearance.accentColor
     property string windowStartupUrl: "about:blank"
     readonly property alias windowUi: secondaryUi
     signal bookmarkTransferStarted(var destinationUi, bool queued)
@@ -55,15 +65,16 @@ ApplicationWindow {
     property string pendingInteractiveCommand: ""
     readonly property bool statusBarVisible:
         (secondaryWindow.commandNoticeVisible && !secondaryWindow.inputBarActive)
-        || rootWindow.statusBarVisibleForMode(secondaryUi.mode)
+        || secondaryAppearance.statusBarVisibleForMode(secondaryUi.mode)
     readonly property real bottomChromeHeight:
-        inputBarActive ? rootWindow.inputBarHeight
-                       : (statusBarVisible ? rootWindow.statusBarHeight : 0)
+        inputBarActive ? secondaryAppearance.inputBarHeight
+                       : (statusBarVisible ? secondaryAppearance.statusBarHeight : 0)
     readonly property var activeView: windowTransferMode
                                                ? windowTransferView
                                                : (windowFallbackView || secondaryView)
     readonly property bool browserKeyFocusActive:
         !rootWindow.browserChromeInputActive
+        && !secondarySettings.active
         && !(activeView && activeView.nativeUrl === "rb://start" && activeView.startPage && activeView.startPage.inputActive)
         && !windowCloseConfirmationVisible
         && !windowShutdownPromptVisible
@@ -333,6 +344,7 @@ ApplicationWindow {
 
     FerricFileDialogSurfaces {
         id: secondaryDialogSurfaces
+        onUserscriptManifestAccepted: secondarySettings.installManifest(userscriptManifestSelectedFile)
         onEngineFileAccepted: secondaryWindow.acceptFileDialog()
         onEngineFileRejected: secondaryWindow.rejectFileDialog()
         onEngineFolderAccepted: secondaryWindow.acceptFolderDialog()
@@ -550,6 +562,27 @@ ApplicationWindow {
                     || loweredStatus.indexOf("rejected") >= 0)
             }
         }
+    }
+
+    FerricWindowAppearance {
+        id: secondaryAppearance
+        browserUi: secondaryUi
+        hostWindow: secondaryWindow
+        themeWindow: rootWindow
+    }
+    FerricSettingsWorkspace {
+        id: secondarySettings
+        objectName: "secondarySettingsWorkspace"
+        browserWindow: secondaryAppearance
+        hostWindow: secondaryWindow
+        browserUi: secondaryUi
+        transientProfile: secondaryWindow.windowTransientProfile
+        profileLabel: secondaryWindow.windowProfileLabel
+        spellcheckStatus: rootWindow.spellcheckStatusText(secondaryUi)
+        spellcheckDictionariesMissing: rootWindow.spellcheckDictionaryStatus(secondaryUi).missing.length > 0
+        onOpening: rootWindow.captureOverlayFocus(secondaryWindow, secondaryWindow.activeView)
+        onClosed: rootWindow.restoreOverlayFocus()
+        onInstallManifestRequested: secondaryDialogSurfaces.openUserscriptManifest()
     }
 
     FerricShutdownDecisionDialog {
@@ -934,6 +967,10 @@ function onContext_workspaceChanged() {
     function applySwitcherEngineAction() {
         var action = secondaryUi.take_engine_action()
         if (!action || action.length === 0) {
+            return
+        }
+        if (action === "show-settings" || action.indexOf("show-settings\t") === 0) {
+            secondarySettings.show(action === "show-settings" ? undefined : action.slice("show-settings\t".length))
             return
         }
         if (action.indexOf("edit\t") === 0) {
@@ -1966,7 +2003,7 @@ function onContext_workspaceChanged() {
 
     FerricCommandLine {
         id: secondaryCommandBar
-        browserWindow: rootWindow
+        browserWindow: secondaryAppearance
         commandVisible: secondaryUi.mode === "command"
         completionVisible: secondaryUi.completion_visible
         completionText: secondaryUi.completion_text
@@ -2021,16 +2058,16 @@ function onContext_workspaceChanged() {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        height: rootWindow.inputBarHeight
+        height: secondaryAppearance.inputBarHeight
         z: 20
         visible: secondaryUi.mode === "search"
-        color: rootWindow.surfaceColor
+        color: secondaryAppearance.surfaceColor
 
         Label {
             id: secondarySearchPrefix
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            width: rootWindow.inputBarHeight
+            width: secondaryAppearance.inputBarHeight
             text: secondaryUi.search_backward ? "?" : "/"
             color: rootWindow.warningColor
             font.bold: true
@@ -2049,11 +2086,11 @@ function onContext_workspaceChanged() {
             topPadding: 0
             bottomPadding: 0
             text: secondaryUi.search_text
-            color: rootWindow.primaryTextColor
-            selectionColor: rootWindow.selectionColor
-            selectedTextColor: rootWindow.selectionTextColor
+            color: secondaryAppearance.primaryTextColor
+            selectionColor: secondaryAppearance.selectionColor
+            selectedTextColor: secondaryAppearance.selectionTextColor
             placeholderText: "search"
-            placeholderTextColor: rootWindow.mutedTextColor
+            placeholderTextColor: secondaryAppearance.mutedTextColor
             background: Rectangle { color: "transparent" }
             focus: secondarySearchBar.visible
             Accessible.name: "Search"
@@ -2076,7 +2113,7 @@ function onContext_workspaceChanged() {
     }
 
     FerricWindowStatusBar {
-        browserWindow: window
+        browserWindow: secondaryAppearance
         statusVisible: secondaryWindow.statusBarVisible
         mode: secondaryUi.mode
         displayUrl: secondaryUi.display_url

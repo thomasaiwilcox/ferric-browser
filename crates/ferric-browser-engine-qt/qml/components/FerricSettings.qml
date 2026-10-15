@@ -9,6 +9,11 @@ FerricModalSurface {
     required property bool temporary
     required property string searchText
     required property string notice
+    property string noticeDetail: ""
+    property bool noticeFailed: false
+    property bool noticePending: false
+    property string profileLabel: ""
+    property bool transientProfile: browserWindow.temporaryProfile === true || browserWindow.ephemeralProfile === true
     required property string spellcheckStatus
     required property bool spellcheckDictionariesMissing
     required property var userscriptRows
@@ -26,11 +31,14 @@ FerricModalSurface {
     function setUserscriptEnabled(name, enabled) {
         userscriptInventory.setEnabled(name, enabled);
     }
+    function clearUserscriptOverrides() {
+        userscriptInventory.clearEnabledOverrides();
+    }
 
     visible: settingsVisible
     commandText: ":settings"
     title: "Settings"
-    message: "Customize browsing and the interface for this profile."
+    message: profileLabel.length > 0 ? "Customize browsing and the interface for “" + profileLabel + "”." : "Customize browsing and the interface for this profile."
     keyHelp: "type to filter  ·  tab/shift-tab controls  ·  esc close"
     dialogWidth: 980 * scale
     dialogHeight: 680 * scale
@@ -38,34 +46,40 @@ FerricModalSurface {
     initialFocusItem: settingsSearchInput
     onDismissRequested: closeRequested()
 
-    ScrollView {
-        id: settingsScroll
-        objectName: "settingsScroll"
+    ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 0
-        clip: true
+        spacing: 8 * settings.scale
 
-        ColumnLayout {
-            width: settingsScroll.availableWidth
-            spacing: 8
+        FerricScrollColumn {
+            id: settingsScroll
+            objectName: "settingsScroll"
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            Layout.minimumHeight: 0
+            hostWindow: settings.hostWindow
 
             ColumnLayout {
                 Layout.fillWidth: true
+                Layout.minimumWidth: 0
                 Flow {
                     Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    Layout.maximumWidth: settingsScroll.contentWidth
                     Layout.preferredHeight: childrenRect.height
                     spacing: 8
-                    Button {
+                    FerricWrappingButton {
                         text: "Refresh"
                         Accessible.name: "Refresh settings"
                         onClicked: settings.refreshRequested()
                     }
-                    Button {
+                    FerricWrappingButton {
+                        objectName: "settingsInstallScript"
                         text: "Install script"
+                        enabled: !settings.transientProfile && !settings.noticePending
                         Accessible.name: "Install userscript manifest"
                         onClicked: settings.installUserscriptRequested()
                     }
-                    Button {
+                    FerricWrappingButton {
                         text: "Close"
                         Accessible.name: "Close settings"
                         onClicked: settings.closeRequested()
@@ -76,15 +90,29 @@ FerricModalSurface {
             ColumnLayout {
                 Layout.fillWidth: true
                 CheckBox {
+                    id: sessionScope
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
                     text: "Only for this session"
-                    checked: settings.temporary
+                    checked: settings.temporary || settings.transientProfile
+                    enabled: !settings.transientProfile
                     Accessible.name: "Apply settings temporarily"
                     Accessible.description: "Changes remain in memory for this session"
                     onToggled: settings.temporaryChangeRequested(checked)
+                    contentItem: Label {
+                        objectName: "settingsSessionScopeLabel"
+                        text: sessionScope.text
+                        font: sessionScope.font
+                        color: settings.browserWindow.primaryTextColor
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        leftPadding: !sessionScope.mirrored && sessionScope.indicator ? sessionScope.indicator.width + sessionScope.spacing : 0
+                        rightPadding: sessionScope.mirrored && sessionScope.indicator ? sessionScope.indicator.width + sessionScope.spacing : 0
+                    }
                 }
                 Label {
                     Layout.fillWidth: true
-                    text: "Session changes are forgotten when Ferric closes. Turn this off to save changes; your config.toml file stays intact."
+                    text: settings.transientProfile ? "Changes stay in memory and are forgotten when this private or temporary profile closes." : "Session changes are forgotten when Ferric closes. Turn this off to save changes; your config.toml file stays intact."
                     color: settings.browserWindow.secondaryTextColor
                     wrapMode: Text.WordWrap
                 }
@@ -116,15 +144,6 @@ FerricModalSurface {
 
             Label {
                 Layout.fillWidth: true
-                visible: settings.notice.length > 0
-                text: settings.notice
-                color: settings.notice.indexOf("error") >= 0 ? settings.browserWindow.errorColor : settings.browserWindow.successColor
-                wrapMode: Text.WordWrap
-                Accessible.name: "Settings status"
-            }
-
-            Label {
-                Layout.fillWidth: true
                 text: settings.spellcheckStatus
                 color: settings.spellcheckDictionariesMissing ? settings.browserWindow.warningColor : settings.browserWindow.mutedTextColor
                 wrapMode: Text.WordWrap
@@ -138,12 +157,21 @@ FerricModalSurface {
                 font.bold: true
                 Accessible.name: "Installed userscripts"
             }
+            Label {
+                Layout.fillWidth: true
+                text: "Installed scripts are shared by regular profiles."
+                textFormat: Text.PlainText
+                color: settings.browserWindow.secondaryTextColor
+                wrapMode: Text.Wrap
+            }
 
             FerricUserscriptInventory {
                 id: userscriptInventory
                 Layout.fillWidth: true
                 Layout.preferredHeight: implicitHeight
                 browserWindow: settings.browserWindow
+                changesAvailable: !settings.transientProfile && !settings.noticePending
+                visible: !settings.transientProfile && settings.userscriptRows.length > 0
                 rows: settings.userscriptRows
                 onEnabledRequested: function (name, enabled) {
                     settings.userscriptEnabledRequested(name, enabled);
@@ -155,8 +183,8 @@ FerricModalSurface {
 
             Label {
                 Layout.fillWidth: true
-                visible: settings.browserWindow.temporaryProfile
-                text: "Userscript installation and enable changes are unavailable in private or ephemeral profiles."
+                visible: settings.transientProfile
+                text: "Userscript changes are unavailable in private and temporary profiles."
                 color: settings.browserWindow.mutedTextColor
                 wrapMode: Text.WordWrap
             }
@@ -172,6 +200,24 @@ FerricModalSurface {
                 onResetRequested: function (row) {
                     settings.settingResetRequested(row);
                 }
+            }
+        }
+        FerricScrollColumn {
+            objectName: "settingsFeedbackViewport"
+            Layout.fillWidth: true
+            Layout.minimumHeight: 0
+            Layout.preferredHeight: Math.min(contentLayout.implicitHeight, settings.bodyItem.height * 0.4)
+            Layout.maximumHeight: settings.bodyItem.height * 0.4
+            visible: settings.notice.length > 0
+            hostWindow: settings.hostWindow
+            FerricManagerFeedback {
+                Layout.fillWidth: true
+                browserWindow: settings.browserWindow
+                message: settings.notice
+                detail: settings.noticeDetail
+                failed: settings.noticeFailed
+                pending: settings.noticePending
+                Accessible.name: "Settings status"
             }
         }
     }

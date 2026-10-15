@@ -8,6 +8,7 @@
 #include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
+#include <QFont>
 #include <QGuiApplication>
 #include <QImage>
 #include <QHostAddress>
@@ -2524,6 +2525,177 @@ void ApplicationTests::productPolishManagementSurfaces() {
     }
     key(Qt::Key_Escape);
     QTRY_VERIFY(!evaluate("testWindow." + visibleProperty).toBool());
+}
+
+void ApplicationTests::productPolishWindowSettings_data() {
+    QTest::addColumn<QString>("kind");
+    QTest::newRow("regular") << QString("regular");
+    QTest::newRow("private") << QString("private");
+    QTest::newRow("temporary") << QString("temporary");
+}
+
+void ApplicationTests::productPolishWindowSettings() {
+    QFETCH(QString, kind);
+    const auto primaryFont = evaluate("testWindow.browserUi.chrome_font_size_pt").toDouble();
+    const auto primaryUrl = text("current_url");
+    if (kind == "regular") {
+        QVERIFY(evaluate("testWindow.browserUi.create_profile('settings-owner','Settings owner')").toBool());
+        QTRY_COMPARE(text("profile_action_state"), QString("succeeded"));
+        evaluate("testWindow.openProfile('settings-owner','Settings owner','rb://blank')");
+    } else if (kind == "private") {
+        evaluate("testWindow.browserWindowFactory.createObject(null,{windowStartupUrl:'rb://blank',windowProfileName:'private-settings',windowProfileLabel:'Private settings',windowPrivateProfile:true})");
+    } else {
+        QVERIFY(evaluate("testWindow.openEphemeralWindow('rb://blank')").toBool());
+    }
+    QTRY_VERIFY(evaluate("testWindow.browserWindowRegistry.length>1").toBool());
+    const auto entry = QString("testWindow.browserWindowRegistry[testWindow.browserWindowRegistry.length-1]");
+    auto child = qobject_cast<QQuickWindow *>(evaluate(entry + ".host").value<QObject *>());
+    QVERIFY(child);
+    QTRY_VERIFY(!evaluate(entry + ".ui.profile_bootstrap_pending").toBool());
+    evaluate(entry + ".host.activeView.forceActiveFocus()");
+    child->requestActivate();
+    QTRY_VERIFY(child->isActive());
+    evaluate(entry + ".ui.enter_command()");
+    evaluate(entry + ".host.submitInteractiveCommand('settings')");
+    auto workspace = child->findChild<QObject *>("secondarySettingsWorkspace");
+    QVERIFY(workspace);
+    QTRY_VERIFY(workspace->property("settingsVisible").toBool());
+    QTRY_COMPARE(evaluate(entry + ".ui.mode").toString(), QString("normal"));
+    auto searchInput = child->findChild<QQuickItem *>("settingsSearchInput");
+    QVERIFY(searchInput);
+    QTRY_VERIFY(searchInput->hasActiveFocus());
+    QVERIFY(!evaluate("testWindow.settingsVisible").toBool());
+    QVERIFY(!evaluate(entry + ".host.browserKeyFocusActive").toBool());
+    QCOMPARE(workspace->property("transientProfile").toBool(), kind != "regular");
+    auto install = findVisualItem(child->contentItem(), "settingsInstallScript");
+    QVERIFY(install);
+    QCOMPARE(install->isEnabled(), kind == "regular");
+    QVERIFY(workspace->setProperty("settingsSearch", "ui.font_size_pt"));
+    engine->rootContext()->setContextProperty("settingsWorkspaceUnderTest", workspace);
+    evaluate("settingsWorkspaceUnderTest.refreshSettings()");
+    auto editor = findVisualItem(child->contentItem(), "settingTextEditor");
+    QTRY_VERIFY((editor = findVisualItem(child->contentItem(), "settingTextEditor")));
+    QVERIFY(workspace->setProperty("settingsTemporary", true));
+    QVERIFY(editor->setProperty("text", "14"));
+    QVERIFY(QMetaObject::invokeMethod(editor, "accepted"));
+    QTRY_COMPARE(evaluate(entry + ".ui.chrome_font_size_pt").toDouble(), 14.0);
+    QCOMPARE(evaluate("testWindow.browserUi.chrome_font_size_pt").toDouble(), primaryFont);
+    QCOMPARE(text("current_url"), primaryUrl);
+    QTRY_COMPARE(child->property("font").value<QFont>().pointSizeF(), 14.0);
+    // Validation errors must retain the edit without exposing the raw error as
+    // the primary message or applying it to either window.
+    editor = findVisualItem(child->contentItem(), "settingTextEditor");
+    QVERIFY(editor);
+    QVERIFY(editor->setProperty("text", "0"));
+    QVERIFY(QMetaObject::invokeMethod(editor, "accepted"));
+    QVERIFY(workspace->property("noticeFailed").toBool());
+    QVERIFY(!workspace->property("noticeDetail").toString().isEmpty());
+    QCOMPARE(editor->property("text").toString(), QString("0"));
+    QCOMPARE(evaluate(entry + ".ui.chrome_font_size_pt").toDouble(), 14.0);
+    const auto artifacts = qEnvironmentVariable("FERRIC_TEST_ARTIFACT_DIR");
+    if (!artifacts.isEmpty()) {
+        child->resize(640, 480);
+        QTest::qWait(100);
+        QVERIFY(child->grabWindow().save(artifacts + "/production-window-settings-" + kind + ".png"));
+    }
+    child->requestActivate();
+    QTest::keyClick(child, Qt::Key_Escape);
+    QTRY_VERIFY(!workspace->property("settingsVisible").toBool());
+    evaluate(entry + ".ui.enter_command()");
+    evaluate(entry + ".host.submitInteractiveCommand('help ui.font_size_pt')");
+    QTRY_VERIFY(workspace->property("settingsVisible").toBool());
+    QCOMPARE(workspace->property("settingsSearch").toString(), QString("ui.font_size_pt"));
+    QTest::keyClick(child, Qt::Key_Escape);
+    QTRY_VERIFY(!workspace->property("settingsVisible").toBool());
+    evaluate(entry + ".host.windowShutdownApproved=true");
+    child->close();
+}
+
+void ApplicationTests::productPolishUserscriptFeedback() {
+    QTRY_VERIFY(!evaluate("testWindow.browserUi.profile_bootstrap_pending").toBool());
+    QVERIFY(command("settings"));
+    QTRY_VERIFY(evaluate("testWindow.settingsVisible").toBool());
+    auto workspace = window->findChild<QObject *>("primarySettingsWorkspace");
+    QVERIFY(workspace);
+    QFile source(directory.filePath("toggle_owner.js"));
+    QVERIFY(source.open(QIODevice::WriteOnly));
+    source.write("void 0;"); source.close();
+    QFile manifest(directory.filePath("toggle_owner.toml"));
+    QVERIFY(manifest.open(QIODevice::WriteOnly));
+    manifest.write("schema_version = 1\nname = \"toggle_owner\"\nexecutable = \"/bin/true\"\n"
+                   "page_world = true\nsource = \"toggle_owner.js\"\n"
+                   "matches = [\"http://127.0.0.1:*/*\"]\nrun_at = \"document_end\"\n");
+    manifest.close();
+    // The initial inventory may still be running. A rejected request has not
+    // started an install; wait until the real worker accepts this one.
+    engine->rootContext()->setContextProperty("settingsWorkspaceUnderTest", workspace);
+    engine->rootContext()->setContextProperty("settingsManifestUnderTest", QUrl::fromLocalFile(manifest.fileName()));
+    bool installAccepted = false;
+    QTRY_VERIFY2(installAccepted || (installAccepted = evaluate("settingsWorkspaceUnderTest.installManifest(settingsManifestUnderTest)").toBool()),
+                 qPrintable(evaluate("testWindow.settingsNotice").toString() + ": " + workspace->property("noticeDetail").toString()));
+    QTRY_COMPARE(text("userscript_install_state"), QString("installed"));
+    auto toggle = findVisualItem(window->contentItem(), "userscriptEnableToggle");
+    QTRY_VERIFY((toggle = findVisualItem(window->contentItem(), "userscriptEnableToggle")));
+    QVERIFY(toggle->property("checked").toBool());
+    const auto storageBase = evaluate("testWindow.storageBasePath").toString();
+    QDirIterator installed(storageBase, QStringList{"toggle_owner.toml"}, QDir::Files, QDirIterator::Subdirectories);
+    QVERIFY(installed.hasNext());
+    const auto installedPath = installed.next();
+    QVERIFY(!installed.hasNext());
+    const auto scriptsDirectory = QFileInfo(installedPath).absolutePath();
+    const auto backupDirectory = scriptsDirectory + ".held";
+    QVERIFY(QDir().rename(scriptsDirectory, backupDirectory));
+    QFile blocker(scriptsDirectory);
+    QVERIFY(blocker.open(QIODevice::WriteOnly));
+    blocker.write("fixture blocks the script update"); blocker.close();
+    QVERIFY(QMetaObject::invokeMethod(toggle, "click"));
+    QVERIFY(!toggle->property("checked").toBool());
+    QVERIFY(workspace->property("noticePending").toBool());
+    QTRY_VERIFY(text("userscript_install_state").startsWith("error:"));
+    QTRY_VERIFY(toggle->property("checked").toBool());
+    QVERIFY(workspace->property("noticeFailed").toBool());
+    QVERIFY(!workspace->property("noticeDetail").toString().isEmpty());
+    QVERIFY(QFile::remove(scriptsDirectory));
+    QVERIFY(QDir().rename(backupDirectory, scriptsDirectory));
+    QVERIFY(QMetaObject::invokeMethod(toggle, "click"));
+    QTRY_COMPARE(text("userscript_install_state"), QString("disabled"));
+    QTRY_VERIFY((toggle = findVisualItem(window->contentItem(), "userscriptEnableToggle"))
+                && !toggle->property("checked").toBool() && toggle->isEnabled());
+    QVERIFY(!workspace->property("noticePending").toBool());
+    QVERIFY(!workspace->property("noticeFailed").toBool());
+    QFile saved(installedPath);
+    QVERIFY(saved.open(QIODevice::ReadOnly));
+    QVERIFY(saved.readAll().contains("enabled = false"));
+    saved.close();
+    auto remove = findVisualItem(window->contentItem(), "userscriptRemoveButton");
+    QVERIFY(remove);
+    remove->forceActiveFocus();
+    QSignalSpy rendered(window, &QQuickWindow::frameSwapped);
+    window->requestUpdate();
+    QTRY_VERIFY(!rendered.isEmpty());
+    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier,
+                     remove->mapToScene(QPointF(remove->width()/2, remove->height()/2)).toPoint());
+    auto confirmation = findVisualItem(window->contentItem(), "userscriptRemovalConfirmation");
+    QTRY_VERIFY((confirmation = findVisualItem(window->contentItem(), "userscriptRemovalConfirmation")));
+    key(Qt::Key_Escape);
+    QTRY_VERIFY(!confirmation->isVisible());
+    QVERIFY(evaluate("testWindow.settingsVisible").toBool());
+    QVERIFY(QFile::exists(installedPath));
+    remove->forceActiveFocus();
+    rendered.clear(); window->requestUpdate(); QTRY_VERIFY(!rendered.isEmpty());
+    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier,
+                     remove->mapToScene(QPointF(remove->width()/2, remove->height()/2)).toPoint());
+    QTRY_VERIFY(confirmation->isVisible());
+    auto confirm = findVisualItem(confirmation, "commandDialogAction-confirm");
+    QVERIFY(confirm);
+    rendered.clear(); window->requestUpdate(); QTRY_VERIFY(!rendered.isEmpty());
+    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier,
+                     confirm->mapToScene(QPointF(confirm->width()/2, confirm->height()/2)).toPoint());
+    QTRY_COMPARE(text("userscript_install_state"), QString("removed"));
+    QVERIFY(!QFile::exists(installedPath));
+    QVERIFY(evaluate("testWindow.settingsVisible").toBool());
+    key(Qt::Key_Escape);
+    QTRY_VERIFY(!evaluate("testWindow.settingsVisible").toBool());
 }
 
 void ApplicationTests::productPolishWindowClose_data() {

@@ -251,10 +251,20 @@ impl qobject::BrowserUi {
                         } else {
                             "Userscript disabled; it applies on the next navigation"
                         }));
+                        self.as_mut()
+                            .set_userscript_install_state(QString::from(if enabled {
+                                "enabled"
+                            } else {
+                                "disabled"
+                            }));
                     }
-                    Err(error) => self.as_mut().set_status_text(QString::from(format!(
-                        "Userscript change rejected: {error}"
-                    ))),
+                    Err(error) => {
+                        self.as_mut().set_status_text(QString::from(format!(
+                            "Userscript change rejected: {error}"
+                        )));
+                        self.as_mut()
+                            .set_userscript_install_state(QString::from(format!("error:{error}")));
+                    }
                 },
             }
         }

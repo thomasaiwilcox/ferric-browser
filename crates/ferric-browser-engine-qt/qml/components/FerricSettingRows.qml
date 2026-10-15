@@ -92,6 +92,7 @@ Item {
 
                 FerricTextField {
                     id: settingTextEditor
+                    objectName: "settingTextEditor"
                     visible: settingRow.rowData.type === "text" || settingRow.rowData.type === "number"
                              || settingRow.rowData.type === "languages"
                     Layout.fillWidth: true

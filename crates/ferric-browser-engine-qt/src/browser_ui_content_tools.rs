@@ -155,7 +155,7 @@ impl qobject::BrowserUi {
             return false;
         }
         self.as_mut()
-            .set_userscript_install_state(QString::from("idle"));
+            .set_userscript_install_state(QString::from("updating"));
         self.as_mut()
             .set_status_text(QString::from("Updating userscript enabled state…"));
         true

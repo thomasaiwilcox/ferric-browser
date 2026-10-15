@@ -85,6 +85,7 @@ const QML_SOURCE: &str = concat!(
     include_str!("../qml/components/FerricWebEngineSurfaceRecovery.qml"),
     include_str!("../qml/components/FerricSpatialGridOverlay.qml"),
     include_str!("../qml/components/FerricProfileSessionSurfaces.qml"),
+    include_str!("../qml/components/FerricSettingsWorkspace.qml"),
     include_str!("../qml/components/FerricBrowserWindow.qml"),
     include_str!("../qml/components/FerricNativeTabContent.qml"),
     include_str!("../qml/components/FerricStartPage.qml"),

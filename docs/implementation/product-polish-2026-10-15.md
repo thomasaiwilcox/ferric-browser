@@ -644,6 +644,86 @@ under `diagnostics-native-focused-initial` and
 in `diagnostics-clippy-initial.log`. Existing Qt/GCC and offscreen WebEngine
 warnings remain visible; these results do not claim a warning-free build.
 
+## Window settings ownership batch
+
+Status: ownership and userscript workflow changes qualified; compact layout and
+cross-window input remain under audit.
+
+Settings presentation now lives in a shared workspace with an explicit
+BrowserUi owner and receiving window. The primary window uses the same
+workspace as regular, private and temporary secondary windows. Search drafts,
+validation failures, userscript feedback, confirmation dialogs and focus stay
+with that owner. Private and temporary settings explicitly use the in-memory
+scope; userscript changes remain unavailable there. The shared userscript
+catalog is described as shared by regular profiles.
+
+Secondary-window settings commands and help for known configuration keys are
+enabled through the existing interactive-command capability boundary. Other
+unsupported requests retain their restrictions and now explain which window
+can handle them without referring to internal chrome capabilities. Secondary
+fonts, palettes and command/status geometry follow that window's validated
+configuration, preserving the primary window's appearance.
+
+The settings form now uses the shared focus-aware scrolling container. Action
+buttons and the session-scope checkbox wrap at narrow widths. Operation
+feedback stays in a separate bounded viewport so editing does not scroll it
+away. Technical errors remain selectable behind disclosure, and failed edits
+retain their values. Render review caught the original clipped button and
+checkbox labels, then the focused-field and feedback visibility problems.
+
+Userscript enablement now reports pending and terminal outcomes through the
+existing userscript operation-state field. A failed background change clears
+optimistic overrides and restores the saved value. Retrying can complete and
+publish the new inventory. A production regression blocks the installed script
+directory, observes failure and rollback, restores the directory and verifies
+the retried change in the actual saved manifest.
+
+Preflight evidence includes the shared production C++ settings model in the
+QML runner, 332 passing QML checks, and an earlier source-UI run against the
+qualified diagnostic engine. That source-UI run passed 9 primary/secondary
+surface checks, but preceded the final layout and command-capability changes.
+The later production run uses the real command-bar submission path; simply
+calling execute_command would have missed the unsupported-command guard.
+
+Final checkpoint evidence:
+
+- Strict workspace Clippy passed (`window-settings-clippy.log`). All five
+  changed Rust files still match that run's recorded hashes.
+- The final repository gate passed: 922 Rust tests, 2 ignored, and 334 QML
+  checks (`window-settings-gate.log`). Formatting and whitespace checks pass.
+- All 51 production polish checks passed on the embedded UI in 188.8 seconds
+  (`window-settings-native.log`). This includes actual command-bar settings in
+  regular/private/temporary windows, isolated font changes, rejected-edit
+  retention, userscript write failure/rollback/retry, and removal.
+- The final CLI/IPC probe passed (`window-settings-ipc-final.log`), as did
+  adapter startup with a bounded 10-second lifetime (`window-settings-adapter.log`).
+- An immediately repeated unchanged Cargo build reused every artifact and
+  completed in 0.52 seconds (`window-settings-noop-build.*`). The earlier
+  generated-manifest freshness trace did not justify changing the existing
+  write-if-content-changed implementation.
+- All 81 native clipboard checks passed in 221.9 seconds
+  (`window-settings-clipboard.log`).
+
+The final workflow audit reproduced another real defect: the userscript
+removal confirmation was stacked behind settings, and Escape reached the
+underlying surface. The confirmation now has an explicit upper stacking layer;
+settings is disabled while it is open, and disabled modal surfaces no longer
+register active shortcut handling. The original pointer and Escape probes both
+failed; all 11 focused settings checks now pass. Final embedded application
+coverage verifies pointer cancellation, Escape, and actual script removal.
+Earlier intermediate evidence remains in `window-settings-before-removal-*`.
+
+The userscript failure/retry fixture also needed correction: Qt's retry
+assertion evaluates its expression again on success, so an accepted install
+must be latched rather than submitted twice. Failed fixture logs are retained.
+
+Render inspection at a real configured 14-point font in a 640×480 secondary
+window shows that guidance and feedback crowd the settings controls. That
+compact layout remains incomplete. The secondary input guard also still
+references primary-window chrome state; independent-window keyboard behavior
+and focus return need direct regression coverage and correction. These remain
+part of the full polish goal. No whole-product completion is claimed.
+
 ## Audit status and remaining implementation
 
 These remain part of the original goal, rather than deferred release promises:
@@ -689,8 +769,12 @@ These remain part of the original goal, rather than deferred release promises:
    primary/secondary/popup consistency in the final walkthrough. The lifecycle
    investigation above found and fixed real context callbacks and a native
    teardown crash; repeated qualification and the checkpoint gates pass.
-   Native management commands currently require the primary window; broader
-   access and manager ownership remain part of this audit. Page/authentication
+   Shared settings access and ownership is being qualified above. Profile and
+   session manager access, popup management, and explicit IPC window routing
+   remain part of this audit. Check whether primary-window surfaces affect
+   another window's key routing, and use actual configured font sizes in the
+   final compact walkthrough so metric-based padding is exercised.
+   Page/authentication
    and identity prompts now mount in the requesting child window while their
    existing request owner resolves the decision. Review remaining navigation
    tools and global feedback before claiming whole-window completion.

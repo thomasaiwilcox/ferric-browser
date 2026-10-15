@@ -5,8 +5,10 @@
 #include <QQmlEngine>
 #include <QQmlContext>
 #include <QJSEngine>
+#include <QStringList>
 #include <QtQml/qqml.h>
 #include "../../src/script_runner.h"
+#include "../../src/settings_model.h"
 
 class PerformanceClock final : public QObject
 {
@@ -34,6 +36,7 @@ public slots:
     {
         engine->rootContext()->setContextProperty(
             "testArtifactDirectory", qEnvironmentVariable("FERRIC_TEST_ARTIFACT_DIR"));
+        engine->rootContext()->setContextProperty("testEmptySettingsOptions", QStringList{});
     }
 };
 
@@ -43,6 +46,7 @@ int main(int argc, char **argv)
     // constructs its QGuiApplication, including when tests run offscreen.
     QtWebEngineQuick::initialize();
     qmlRegisterType<FerricScriptRunner>("Ferric.Testing", 1, 0, "ScriptRunner");
+    qmlRegisterType<FerricBrowserSettingsModel>("io.github.ferricbrowser", 1, 0, "FerricSettingsModel");
     qmlRegisterSingletonType<PerformanceClock>("Ferric.Testing", 1, 0, "PerformanceClock",
                                                createPerformanceClock);
     TestSetup setup;

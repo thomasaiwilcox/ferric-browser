@@ -27,17 +27,6 @@ FerricBrowserRuntimePresentation {
         function onTab_countChanged() {
             window.noteTabActivity()
         }
-        function onUserscript_install_stateChanged() {
-            var state = browserUi.userscript_install_state || "idle"
-            if (state === "installed") {
-                window.settingsNotice = "Userscript installed"
-            } else if (state === "removed") {
-                window.settingsNotice = "Userscript removed"
-            } else if (state.indexOf("error:") === 0) {
-                window.settingsNotice = "Userscript operation failed: "
-                        + state.substring(6)
-            }
-        }
         function onContext_route_idChanged() {
             window.showContextRoute(browserUi)
         }
