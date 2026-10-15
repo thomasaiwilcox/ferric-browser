@@ -759,7 +759,7 @@ FerricBrowserRuntimeBase {
         }
         window.copiedValue = value
         window.copyNoticeSensitive = !exposeValue
-        window.copiedText = exposeValue ? value : "Selected document text (content hidden)"
+        window.copiedText = exposeValue ? value : "Content hidden"
         window.copyNoticeVisible = true
         copyNoticeTimer.restart()
         return true
@@ -1474,7 +1474,6 @@ FerricBrowserRuntimeBase {
         window.refreshUserscriptInventory()
         window.refreshSettings()
         window.settingsVisible = true
-        Qt.callLater(function() { settingsSearchInput.forceActiveFocus() })
     }
 
     function chooseUserscriptManifest() {

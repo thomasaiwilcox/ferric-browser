@@ -562,10 +562,13 @@ TestCase {
         verify(combo)
         compare(combo.count, 3)
         compare(combo.currentText, "on")
+        compare(combo.displayText, "Reduce motion")
+        combo.font.pointSize = 28
         mouseClick(combo)
         tryCompare(combo.popup, "visible", true)
         var option = combo.popup.contentItem.itemAtIndex(2)
         verify(option)
+        compare(option.font.pointSize, 28)
         mouseClick(option)
         compare(appliedSettingValue, "off")
     }

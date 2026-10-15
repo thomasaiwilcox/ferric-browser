@@ -63,6 +63,14 @@ def main():
                 assert explanation['mixed_routing']['owner'] == 'page', explanation
                 reserved = invoke('query', 'binding-explain', ':', '--mode', 'normal', '--format', 'json')
                 assert reserved['mixed_routing']['owner'] == 'browser', reserved
+                for panel in ('settings', 'profiles', 'sessions'):
+                    invoke('command', panel + ' unexpected', accepted=False)
+                    invoke('command', '--window', '123e4567-e89b-12d3-a456-426614174000',
+                           '--', panel, accepted=False)
+                    invoke('command', panel)
+                after_panels = invoke('query', 'active-tab', '--format', 'json')
+                assert after_panels['tabs'][0]['url'] == before['tabs'][0]['url'], after_panels
+                print('native manager commands accepted over IPC without navigating', flush=True)
                 print('T010 IPC provenance and T022 real BrowserUi binding explanation passed', flush=True)
             finally:
                 app.terminate()

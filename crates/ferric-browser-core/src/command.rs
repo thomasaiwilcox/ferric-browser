@@ -1604,7 +1604,37 @@ impl CommandRegistry {
                 false,
                 "Open the privacy-safe runtime diagnostics report.",
             ),
+            definition(
+                "settings",
+                &[],
+                vec![Mode::Normal, Mode::Command],
+                CountPolicy::NotSupported,
+                false,
+                "Open the browser settings panel.",
+            ),
+            definition(
+                "profiles",
+                &[],
+                vec![Mode::Normal, Mode::Command],
+                CountPolicy::NotSupported,
+                false,
+                "Open the profile manager.",
+            ),
+            definition(
+                "sessions",
+                &[],
+                vec![Mode::Normal, Mode::Command],
+                CountPolicy::NotSupported,
+                false,
+                "Open the saved-session manager.",
+            ),
         ]);
+        for command in &mut registry.definitions {
+            if matches!(command.name.as_str(), "settings" | "profiles" | "sessions") {
+                command.scope = CommandScope::Window;
+                command.effect = EffectClass::Query;
+            }
+        }
         for name in ["set", "unset"] {
             if let Some(command) = registry
                 .definitions
@@ -3708,7 +3738,13 @@ mod tests {
             .remove(0);
         assert_eq!(registry.resolve(&command.name).unwrap().name, "open");
         assert!(registry.validate(&command, Mode::Normal).is_ok());
-        assert_eq!(registry.definitions().len(), 146);
+        assert_eq!(registry.definitions().len(), 149);
+        for name in ["settings", "profiles", "sessions"] {
+            let surface = registry.resolve(name).unwrap();
+            assert_eq!(surface.scope, CommandScope::Window);
+            assert_eq!(surface.effect, EffectClass::Query);
+            assert_eq!(surface.count, CountPolicy::NotSupported);
+        }
         let target_search = registry.resolve("target-search").unwrap();
         assert_eq!(target_search.effect, EffectClass::Query);
         assert_eq!(target_search.count, CountPolicy::NotSupported);

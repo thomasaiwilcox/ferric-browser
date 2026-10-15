@@ -550,6 +550,7 @@ ApplicationWindow {
 
     FerricShutdownDecisionDialog {
         hostWindow: secondaryWindow
+        themeWindow: rootWindow
         promptVisible: secondaryWindow.windowCloseConfirmationVisible
         commandText: ":window-close"
         title: "Close this browser window?"
@@ -574,6 +575,7 @@ ApplicationWindow {
 
     FerricShutdownDecisionDialog {
         hostWindow: secondaryWindow
+        themeWindow: rootWindow
         promptVisible: secondaryWindow.windowShutdownPromptVisible
         commandText: ":window-close"
         title: "Active browser work is still running"
@@ -594,6 +596,7 @@ ApplicationWindow {
 
     FerricShutdownDecisionDialog {
         hostWindow: secondaryWindow
+        themeWindow: rootWindow
         promptVisible: secondaryWindow.windowShutdownPagePromptVisible
         commandText: ":window-close"
         title: "Page state may be lost"
@@ -616,6 +619,7 @@ ApplicationWindow {
 
     FerricShutdownDecisionDialog {
         hostWindow: secondaryWindow
+        themeWindow: rootWindow
         promptVisible: secondaryWindow.windowShutdownStoragePromptVisible
         commandText: ":window-close"
         title: "Durable profile state could not be flushed"

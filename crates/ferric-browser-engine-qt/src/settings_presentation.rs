@@ -92,7 +92,7 @@ const NO_OPTIONS: &[&str] = &[];
 const SETTINGS_SURFACE: &[SettingsSurfaceDefinition] = &[
     SettingsSurfaceDefinition {
         key: "hints.proxy_targets",
-        label: "Validated editor and label hints",
+        label: "Hints for custom editors and labels",
         editor_type: "enum",
         options: &["off", "validated"],
     },
@@ -104,13 +104,13 @@ const SETTINGS_SURFACE: &[SettingsSurfaceDefinition] = &[
     },
     SettingsSurfaceDefinition {
         key: "ui.font_family",
-        label: "Chrome font family",
+        label: "Interface font family",
         editor_type: "text",
         options: NO_OPTIONS,
     },
     SettingsSurfaceDefinition {
         key: "ui.font_size_pt",
-        label: "Chrome font size (pt)",
+        label: "Interface font size (pt)",
         editor_type: "number",
         options: NO_OPTIONS,
     },
@@ -194,7 +194,7 @@ const SETTINGS_SURFACE: &[SettingsSurfaceDefinition] = &[
     },
     SettingsSurfaceDefinition {
         key: "downloads.collision",
-        label: "Download collision policy",
+        label: "When a filename already exists",
         editor_type: "enum",
         options: &["ask", "rename"],
     },

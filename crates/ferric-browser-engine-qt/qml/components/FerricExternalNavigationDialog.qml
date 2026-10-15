@@ -12,7 +12,7 @@ FerricCommandDialog {
     }
 
     visible: browserUi.external_navigation_visible
-    commandText: ":open-external"
+    commandText: "Open another application"
     title: "Open with system handler?"
     message: "This URI will leave Ferric Browser and may launch another application."
     dialogWidth: 620 * scale

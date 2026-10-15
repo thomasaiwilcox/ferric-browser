@@ -1,5 +1,5 @@
 use super::{
-    CommandRegistry, CxxQtType, MAX_MACRO_COMMANDS, ParsedCommand, Pin, QString,
+    CommandRegistry, CxxQtType, IpcRoute, MAX_MACRO_COMMANDS, ParsedCommand, Pin, QString, Value,
     interactive_open_command, is_context_command, is_profile_command, is_session_command,
     parse_action_invocation, qobject,
 };
@@ -11,6 +11,78 @@ pub(super) enum CommandDispatchControl {
 }
 
 impl qobject::BrowserUi {
+    pub(super) fn execute_management_surface_command(
+        mut self: Pin<&mut Self>,
+        command: &ParsedCommand,
+    ) -> Result<Value, String> {
+        self.as_ref()
+            .rust()
+            .registry
+            .validate(command, self.as_ref().rust().core_mode)
+            .map_err(|error| error.to_string())?;
+        if !command.arguments.is_empty() {
+            return Err(format!("{} does not accept arguments", command.name));
+        }
+        let (action, label) = match command.name.as_str() {
+            "settings" => ("show-settings", "settings"),
+            "profiles" => ("show-profiles", "profiles"),
+            "sessions" => ("show-sessions", "saved sessions"),
+            _ => return Err("Unknown browser panel".into()),
+        };
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .pending_engine_action = Some(action.into());
+        self.as_mut()
+            .set_status_text(QString::from(format!("Opening {label}")));
+        Ok(serde_json::json!({"status": "accepted", "surface": command.name}))
+    }
+
+    pub(super) fn dispatch_support_command(
+        mut self: Pin<&mut Self>,
+        command: &ParsedCommand,
+        route: &IpcRoute,
+    ) -> Option<Result<Value, String>> {
+        if !matches!(
+            command.name.as_str(),
+            "help" | "version" | "diagnostics" | "settings" | "profiles" | "sessions"
+        ) {
+            return None;
+        }
+        if route.context.is_some() {
+            return Some(Err(format!(
+                "context routing is not valid for {}",
+                command.name
+            )));
+        }
+        if matches!(command.name.as_str(), "settings" | "profiles" | "sessions")
+            && route.open_target != super::IpcOpenTarget::Tab
+        {
+            return Some(Err("Browser panels open in an existing window".into()));
+        }
+        if let Err(error) = self.as_ref().validate_ipc_route(route) {
+            return Some(Err(error));
+        }
+        if matches!(command.name.as_str(), "settings" | "profiles" | "sessions") {
+            match self.as_ref().ipc_route_window(route) {
+                Ok(window) if Some(window) == self.as_ref().rust().window => {}
+                Ok(_) => {
+                    return Some(Err(
+                        "This panel is available in the main browser window".into()
+                    ));
+                }
+                Err(error) => return Some(Err(error)),
+            }
+        }
+        Some(match command.name.as_str() {
+            "help" => self.as_mut().execute_help_command(command),
+            "version" => self.as_mut().execute_version_command(command),
+            "diagnostics" => self.as_mut().execute_diagnostics_command(command),
+            _ => self.as_mut().execute_management_surface_command(command),
+        })
+    }
+
     pub(super) fn dispatch_workflow_command(
         mut self: Pin<&mut Self>,
         command: &mut ParsedCommand,
@@ -74,6 +146,15 @@ impl qobject::BrowserUi {
                 .as_mut()
                 .get_mut()
                 .macro_expanded_commands = expanded + 1;
+        }
+        if matches!(command.name.as_str(), "settings" | "profiles" | "sessions") {
+            return match self.as_mut().execute_management_surface_command(command) {
+                Ok(_) => CommandDispatchControl::Continue,
+                Err(error) => {
+                    self.set_status_text(QString::from(error));
+                    CommandDispatchControl::Failed
+                }
+            };
         }
         if matches!(command.name.as_str(), "quit" | "window-close") {
             let mode = self.as_ref().rust().core_mode;

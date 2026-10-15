@@ -126,17 +126,8 @@ impl qobject::BrowserUi {
             self.as_ref().validate_ipc_route(route)?;
             return self.as_mut().execute_config_get_command(&command);
         }
-        if matches!(command.name.as_str(), "help" | "version" | "diagnostics") {
-            if route.context.is_some() {
-                return Err(format!("context routing is not valid for {}", command.name));
-            }
-            self.as_ref().validate_ipc_route(route)?;
-            return match command.name.as_str() {
-                "help" => self.as_mut().execute_help_command(&command),
-                "version" => self.as_mut().execute_version_command(&command),
-                "diagnostics" => self.as_mut().execute_diagnostics_command(&command),
-                _ => unreachable!("support command was matched above"),
-            };
+        if let Some(result) = self.as_mut().dispatch_support_command(&command, route) {
+            return result;
         }
         if command.name == "config-export" {
             if route.context.is_some() {

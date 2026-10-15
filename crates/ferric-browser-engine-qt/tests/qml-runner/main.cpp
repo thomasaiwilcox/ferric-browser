@@ -3,6 +3,7 @@
 #include <QElapsedTimer>
 #include <QObject>
 #include <QQmlEngine>
+#include <QQmlContext>
 #include <QJSEngine>
 #include <QtQml/qqml.h>
 
@@ -24,6 +25,17 @@ static QObject *createPerformanceClock(QQmlEngine *, QJSEngine *)
     return new PerformanceClock;
 }
 
+class TestSetup final : public QObject
+{
+    Q_OBJECT
+public slots:
+    void qmlEngineAvailable(QQmlEngine *engine)
+    {
+        engine->rootContext()->setContextProperty(
+            "testArtifactDirectory", qEnvironmentVariable("FERRIC_TEST_ARTIFACT_DIR"));
+    }
+};
+
 int main(int argc, char **argv)
 {
     // WebEngine must configure shared OpenGL contexts before Qt Quick Test
@@ -31,7 +43,8 @@ int main(int argc, char **argv)
     QtWebEngineQuick::initialize();
     qmlRegisterSingletonType<PerformanceClock>("Ferric.Testing", 1, 0, "PerformanceClock",
                                                createPerformanceClock);
-    return quick_test_main(argc, argv, "ferric_qml_tests", nullptr);
+    TestSetup setup;
+    return quick_test_main_with_setup(argc, argv, "ferric_qml_tests", nullptr, &setup);
 }
 
 #include "main.moc"

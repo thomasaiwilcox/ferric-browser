@@ -1764,6 +1764,9 @@ ApplicationWindow {
         || window.devToolsVisible
         || window.journeyExportPreviewVisible
         || window.rendererFailureVisible
+        || window.recoveryAvailable
+        || window.rapidHintConfirmationVisible
+        || browserUi.navigation_failure_visible
         || window.contextRouteVisible
         || window.contextMoveVisible
         || window.sessionManagerVisible

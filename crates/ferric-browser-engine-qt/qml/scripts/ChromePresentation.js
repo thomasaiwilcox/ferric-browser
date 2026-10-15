@@ -2,7 +2,91 @@
 
 // Pure chrome-presentation helpers. This resource deliberately has no bridge,
 // storage, or page access; it only projects already-validated chrome facts.
-var VERSION = "1"
+var VERSION = "2"
+
+function byteSize(bytes) {
+    var value = Number(bytes)
+    if (!isFinite(value) || value < 0) return "Size unknown"
+    var units = ["B", "KiB", "MiB", "GiB", "TiB"]
+    var unit = 0
+    while (value >= 1024 && unit < units.length - 1) {
+        value /= 1024
+        unit++
+    }
+    return value.toFixed(unit === 0 || value >= 100 ? 0 : 1) + " " + units[unit]
+}
+
+function fileName(path) {
+    var parts = String(path || "").split(/[\\/]/)
+    return parts[parts.length - 1] || "Download"
+}
+
+function downloadStateLabel(state) {
+    var labels = { "offered": "Waiting to start", "in-progress": "Downloading",
+        "paused": "Paused", "completed": "Complete", "cancelled": "Cancelled",
+        "interrupted": "Interrupted" }
+    return typeof labels[state] === "string" ? labels[state] : "Status unavailable"
+}
+
+function downloadProgress(bytes, total, speed, state) {
+    var text = byteSize(bytes)
+    if (isFinite(Number(total)) && Number(total) >= 0)
+        text += " of " + byteSize(total)
+    if (state === "in-progress" && isFinite(Number(speed)) && Number(speed) > 0)
+        text += " · " + byteSize(speed) + "/s"
+    return text
+}
+
+function switcherKindLabel(kind) {
+    var labels = { "tab": "Tab", "window": "Window", "context": "Context",
+        "command": "Command", "history": "History", "bookmark": "Bookmark",
+        "quickmark": "Quickmark", "session": "Session", "download": "Download",
+        "closed": "Recently closed", "action": "Action" }
+    return typeof labels[kind] === "string" ? labels[kind] : "Browser item"
+}
+
+function switcherActionLabel(action) {
+    var labels = { "focus": "Switch to", "open": "Open", "enter": "Enter",
+        "load-preview": "Preview session", "load": "Restore session",
+        "show": "Show in folder", "help": "View help", "execute": "Run",
+        "reopen": "Reopen", "delete": "Delete", "close": "Close" }
+    return typeof labels[action] === "string" ? labels[action] : "Action"
+}
+
+function settingValueLabel(key, value) {
+    var choices = {
+        "ui.statusbar": { "in-mode": "While using browser modes", "always": "Always", "never": "Never" },
+        "ui.reduced_motion": { "system": "Follow system", "on": "Reduce motion", "off": "Allow motion" },
+        "input.entry_mode": { "normal": "Normal", "insert": "Insert", "passthrough": "Pass-through" },
+        "hints.proxy_targets": { "off": "Off", "validated": "Custom editors and labels" },
+        "content.autoplay": { "engine-default": "Browser default", "require-gesture": "After interaction" },
+        "downloads.collision": { "ask": "Ask what to do", "rename": "Keep both files" },
+        "desktop.portals": { "auto": "Automatic", "required": "Required" },
+        "logging.level": { "error": "Errors", "warn": "Warnings", "info": "Information", "debug": "Debug" }
+    }
+    var labels = choices[key]
+    return labels && typeof labels[value] === "string" ? labels[value] : String(value)
+}
+
+function settingApplyLabel(value) {
+    var labels = { "live": "Applies immediately", "navigation": "Applies on the next navigation",
+        "next-navigation": "Applies on the next navigation", "restart": "Requires a restart",
+        "profile-restart": "Requires a profile restart", "reload": "Applies after reloading configuration",
+        "startup": "Applies when Ferric starts" }
+    return typeof labels[value] === "string" ? labels[value] : String(value || "")
+}
+
+function navigationFailureMessage(kind) {
+    var messages = {
+        "dns": "The site's address couldn't be found. Check the address and your internet connection.",
+        "network": "The connection couldn't be completed. Check your connection, then open the page again.",
+        "tls": "A secure connection couldn't be established. Check the site's address and your device's date and time.",
+        "http": "The server couldn't provide this page. Check the address or try again later.",
+        "download": "This address was handled as a download. Check Downloads for its status."
+    }
+    return typeof messages[kind] === "string" ? messages[kind]
+            : "The page couldn't be opened. Check the address or try again later."
+}
 
 function colorChannels(value) {
     if (typeof value === "string"

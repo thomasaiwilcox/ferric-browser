@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "../scripts/ChromePresentation.js" as ChromePresentation
 
 Item {
     id: switcherResults
@@ -59,7 +60,7 @@ Item {
                    ? switcherResults.browserWindow.selectionColor : "transparent"
             Accessible.role: Accessible.ListItem
             Accessible.selected: index === resultList.currentIndex
-            Accessible.name: resultData.kind + " " + resultData.label
+            Accessible.name: ChromePresentation.switcherKindLabel(resultData.kind) + " " + resultData.label
             Accessible.description: (resultData.profile || "")
                 + (resultData.secondary ? " · " + resultData.secondary : "")
                 + (index === resultList.currentIndex ? " · selected" : "")
@@ -77,7 +78,8 @@ Item {
                 Label {
                     Layout.fillWidth: true
                     color: switcherResults.browserWindow.primaryTextColor
-                    text: "[" + resultRow.resultData.kind + "] " + resultRow.resultData.label
+                    text: ChromePresentation.switcherKindLabel(resultRow.resultData.kind) + " · " + resultRow.resultData.label
+                    textFormat: Text.PlainText
                     elide: Text.ElideRight
                 }
                 Label {
@@ -86,25 +88,38 @@ Item {
                     text: (resultRow.resultData.profile || "")
                           + (resultRow.resultData.secondary
                              ? " · " + resultRow.resultData.secondary : "")
+                    textFormat: Text.PlainText
                     elide: Text.ElideRight
                 }
-                RowLayout {
+                Flow {
                     Layout.fillWidth: true
+                    Layout.preferredHeight: childrenRect.height
                     spacing: 4
                     Repeater {
                         model: resultRow.resultData.actions || []
                         delegate: Button {
                             required property var modelData
                             objectName: "switcherActionButton"
-                            text: modelData
-                            Accessible.name: modelData + " " + resultRow.resultData.kind
+                            text: ChromePresentation.switcherActionLabel(modelData)
+                            Accessible.name: text + " · " + resultRow.resultData.label
                             onClicked: switcherResults.actionRequested(resultRow.resultIndex, modelData)
                         }
                     }
-                    Item { Layout.fillWidth: true }
                 }
             }
 
+        }
+
+        Label {
+            objectName: "switcherEmptyState"
+            anchors.centerIn: parent
+            width: Math.max(0, parent.width - 24)
+            visible: resultList.count === 0
+            text: "No matching items.\nTry a different search or switch to a broader scope."
+            textFormat: Text.PlainText
+            color: switcherResults.browserWindow.secondaryTextColor
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.WordWrap
         }
     }
 }

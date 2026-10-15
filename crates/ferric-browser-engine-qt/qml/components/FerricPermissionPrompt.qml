@@ -11,7 +11,7 @@ FerricCommandDialog {
 
     visible: browserWindow.permissionPromptVisible
              && browserWindow.pendingPermissionHost === hostWindow
-    commandText: ":permission"
+    commandText: "Site permission"
     title: "Permission request"
     message: browserWindow.pendingPermissionOrigin + " wants to "
              + browserWindow.permissionDisplayName(

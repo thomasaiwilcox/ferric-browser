@@ -14,7 +14,7 @@ FerricModalSurface {
 
     visible: browserWindow.desktopMediaPromptVisible
              && browserWindow.pendingDesktopMediaHost === hostWindow
-    commandText: ":share"
+    commandText: "Screen sharing"
     title: "Choose what to share"
     message: "Origin: " + browserWindow.desktopMediaOrigin
     keyHelp: "s screens  ·  w windows  ·  j/k or ↑/↓ select  ·  enter share  ·  esc cancel"

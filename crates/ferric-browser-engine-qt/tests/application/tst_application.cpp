@@ -8,6 +8,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QImage>
 #include <QHostAddress>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -136,8 +137,9 @@ void ApplicationTests::init() {
         }
     });
     engine = std::make_unique<QQmlApplicationEngine>();
-    const bool durable = QString::fromLatin1(QTest::currentTestFunction())
-                             .startsWith("durablePersistence");
+    const auto testName = QString::fromLatin1(QTest::currentTestFunction());
+    const bool durable = testName.startsWith("durablePersistence")
+                         || testName.startsWith("productPolish");
     QString startupConfig = "{\"schema_version\":3}";
     if (QString::fromLatin1(QTest::currentTestFunction()) ==
         "startupSelectorValidation") {
@@ -1964,6 +1966,156 @@ void ApplicationTests::clipboardHeldBrowserGesture() {
   key(Qt::Key_V, Qt::ControlModifier);
   QCOMPARE(page("document.getElementById('input').value").toString(),
            QString("unchanged"));
+}
+
+void ApplicationTests::productPolishNavigationFailure() {
+    evaluate("testWindow.browserUi.navigation_failed_with_details("
+             "testWindow.browserUi.active_tab_index,"
+             "'https://unreachable.example/','dns','net::ERR_NAME_NOT_RESOLVED')");
+    QTRY_VERIFY(evaluate("testWindow.browserUi.navigation_failure_visible").toBool());
+    QCOMPARE(text("status_text"), QString("Couldn't load this page"));
+    auto button = window->findChild<QQuickItem *>("navigationFailureDetailsButton");
+    auto details = window->findChild<QQuickItem *>("navigationFailureDetails");
+    QVERIFY(button);
+    QVERIFY(details);
+    QVERIFY(!details->isVisible());
+    QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier,
+                      button->mapToScene(QPointF(button->width() / 2, button->height() / 2)).toPoint());
+    QTRY_VERIFY(details->isVisible());
+    QVERIFY(details->property("text").toString().contains("ERR_NAME_NOT_RESOLVED"));
+    const auto artifacts = qEnvironmentVariable("FERRIC_TEST_ARTIFACT_DIR");
+    if (!artifacts.isEmpty())
+        QVERIFY(window->grabWindow().save(artifacts + "/production-navigation-details.png"));
+    key(Qt::Key_Escape);
+    QTRY_VERIFY(!evaluate("testWindow.browserUi.navigation_failure_visible").toBool());
+}
+
+void ApplicationTests::productPolishManagementSurfaces_data() {
+    QTest::addColumn<QString>("entry");
+    QTest::addColumn<QString>("visibleProperty");
+    QTest::newRow("downloads") << QString("downloads") << QString("downloadManagerVisible");
+    QTest::newRow("profiles") << QString("profiles") << QString("profileManagerVisible");
+    QTest::newRow("sessions") << QString("sessions") << QString("sessionManagerVisible");
+    QTest::newRow("settings") << QString("settings") << QString("settingsVisible");
+}
+
+void ApplicationTests::productPolishManagementSurfaces() {
+    QFETCH(QString, entry);
+    QFETCH(QString, visibleProperty);
+    if (entry != "downloads") {
+        QVERIFY(!command(entry + " unexpected"));
+        QVERIFY(!evaluate("testWindow." + visibleProperty).toBool());
+    }
+    QVERIFY(command(entry));
+    QTRY_VERIFY(evaluate("testWindow." + visibleProperty).toBool());
+    if (entry == "settings") {
+        auto input = window->findChild<QQuickItem *>("settingsSearchInput");
+        QVERIFY(input);
+        QTRY_VERIFY(input->hasActiveFocus());
+        key(Qt::Key_Z);
+        QTRY_COMPARE(evaluate("testWindow.settingsSearch").toString(), QString("z"));
+    }
+    const auto artifacts = qEnvironmentVariable("FERRIC_TEST_ARTIFACT_DIR");
+    if (!artifacts.isEmpty()) {
+        QTest::qWait(100);
+        QVERIFY(window->grabWindow().save(artifacts + "/production-" +
+                                          QString::fromLatin1(QTest::currentDataTag()) + ".png"));
+    }
+    key(Qt::Key_Escape);
+    QTRY_VERIFY(!evaluate("testWindow." + visibleProperty).toBool());
+}
+
+void ApplicationTests::productPolishWindowClose_data() {
+    QTest::addColumn<bool>("popup");
+    QTest::newRow("secondary") << false;
+    QTest::newRow("popup") << true;
+}
+
+void ApplicationTests::productPolishWindowClose() {
+    QFETCH(bool, popup);
+    QString entry;
+    if (popup) {
+        QVERIFY(command("bind p hint --target pointer links"));
+        key(Qt::Key_P);
+        const auto label = hintLabel("Open popup");
+        QVERIFY(!label.isEmpty());
+        typeText(label);
+        key(Qt::Key_Return);
+        QTRY_COMPARE(evaluate("testWindow.popupWindowRegistry.length").toInt(), 1);
+        entry = "testWindow.popupWindowRegistry[0]";
+    } else {
+        QVERIFY(evaluate("testWindow.openEphemeralWindow('rb://blank')").toBool());
+        QTRY_VERIFY(evaluate("testWindow.browserWindowRegistry.length > 1").toBool());
+        entry = "testWindow.browserWindowRegistry[testWindow.browserWindowRegistry.length-1]";
+    }
+    auto child = qobject_cast<QQuickWindow *>(evaluate(entry + ".host").value<QObject *>());
+    QVERIFY(child);
+    child->requestActivate();
+    QTRY_VERIFY(child->isActive());
+    // A compositor close request must display the safe choice in the actual
+    // receiving window, using the same theme as the primary window.
+    QVERIFY(!child->close());
+    QTRY_VERIFY(evaluate(entry + ".host.windowCloseConfirmationVisible").toBool());
+    const auto dialogs = child->findChildren<QQuickItem *>("shutdownDecisionDialog");
+    QQuickItem *dialog = nullptr;
+    for (auto candidate : dialogs)
+        if (candidate->isVisible()) dialog = candidate;
+    QVERIFY(dialog);
+    auto panel = dialog->findChild<QQuickItem *>("shutdownDecisionPanel");
+    auto keep = dialog->findChild<QQuickItem *>("shutdownKeepButton");
+    QVERIFY(panel);
+    QVERIFY(keep);
+    QCOMPARE(panel->property("color"), evaluate("testWindow.panelColor"));
+    QTRY_VERIFY(keep->hasActiveFocus());
+    const auto artifacts = qEnvironmentVariable("FERRIC_TEST_ARTIFACT_DIR");
+    if (!artifacts.isEmpty())
+        QVERIFY(child->grabWindow().save(artifacts + "/production-close-" +
+                                         QString::fromLatin1(QTest::currentDataTag()) + ".png"));
+    QTest::keyClick(child, Qt::Key_Escape);
+    QTRY_VERIFY(!evaluate(entry + ".host.windowCloseConfirmationVisible").toBool());
+    QVERIFY(child->isVisible());
+    QVERIFY(!child->close());
+    QTRY_VERIFY(evaluate(entry + ".host.windowCloseConfirmationVisible").toBool());
+    QTest::mouseClick(child, Qt::LeftButton, Qt::NoModifier,
+                     keep->mapToScene(QPointF(keep->width()/2, keep->height()/2)).toPoint());
+    QTRY_VERIFY(!evaluate(entry + ".host.windowCloseConfirmationVisible").toBool());
+    QVERIFY(child->isVisible());
+    evaluate(entry + ".host.destroy()");
+}
+
+void ApplicationTests::productPolishPopupScripts() {
+    // Install ordinary top-frame page scripts through the real manager. Both
+    // phases must run after a popup's navigation has committed successfully.
+    for (const auto &phase : {QString("document_end"), QString("document_idle")}) {
+        const auto name = "popup_" + phase;
+        QFile source(directory.filePath(name + ".js"));
+        QVERIFY(source.open(QIODevice::WriteOnly));
+        source.write(("window." + name + "=(window." + name + "||0)+1;").toUtf8());
+        source.close();
+        QFile manifest(directory.filePath(name + ".toml"));
+        QVERIFY(manifest.open(QIODevice::WriteOnly));
+        manifest.write(("schema_version = 1\nname = \"" + name + "\"\nexecutable = \"/bin/true\"\n"
+                        "page_world = true\nsource = \"" + name + ".js\"\n"
+                        "matches = [\"http://127.0.0.1:*/*\"]\nrun_at = \"" + phase + "\"\n").toUtf8());
+        manifest.close();
+        QVERIFY(evaluate("testWindow.browserUi.install_userscript_manifest(" +
+                         quoted(manifest.fileName()) + ")").toBool());
+        QTRY_COMPARE(text("userscript_install_state"), QString("installed"));
+    }
+    evaluate("testWindow.safeMode=false;testWindow.userscriptsOff=false");
+    QVERIFY(command("bind p hint --target pointer links"));
+    key(Qt::Key_P);
+    const auto label = hintLabel("Open popup");
+    QVERIFY(!label.isEmpty());
+    typeText(label);
+    key(Qt::Key_Return);
+    QTRY_COMPARE(evaluate("testWindow.popupWindowRegistry.length").toInt(), 1);
+    pageReceiver = "testWindow.popupWindowRegistry[0].view";
+    QTRY_VERIFY(evaluate(pageReceiver + " !== null && !" + pageReceiver + ".loading").toBool());
+    QTRY_COMPARE(page("window.popup_document_end || 0").toInt(), 1);
+    QTRY_COMPARE(page("window.popup_document_idle || 0").toInt(), 1);
+    evaluate("testWindow.popupWindowRegistry[0].host.destroy()");
+    pageReceiver = "testWindow.activeWebView()";
 }
 
 void ApplicationTests::clipboardOtherWindows_data() {

@@ -12,7 +12,7 @@ FerricModalSurface {
     property alias passwordText: pageDialogPassword.text
 
     visible: false
-    commandText: ":page-dialog"
+    commandText: "From this page"
     title: browserWindow.pageDialogTitle
     message: browserWindow.pageDialogMessage
     keyHelp: "tab/shift-tab controls  ·  enter accept  ·  esc reject"

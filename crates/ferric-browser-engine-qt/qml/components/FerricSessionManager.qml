@@ -5,14 +5,19 @@ import QtQuick.Layouts
 FerricModalSurface {
     id: manager
     required property var sessionsModel
+    readonly property bool privateSession: browserWindow.temporaryProfile === true
+                                            || browserWindow.ephemeralProfile === true
     signal closeRequested()
     signal saveRequested(string name)
     signal previewRequested(string name)
     signal deleteRequested(string name, bool confirmed)
 
     visible: browserWindow.sessionManagerVisible
-    commandText: ":session-list"
+    commandText: ":sessions"
     title: "Named sessions"
+    message: privateSession
+             ? "Private browsing doesn't save named sessions. Use a regular profile to save or restore tabs."
+             : "Save groups of tabs and return to them later."
     keyHelp: "tab/shift-tab controls  ·  enter activate  ·  esc close"
     dialogWidth: 620 * scale
     dialogHeight: 480 * scale
@@ -41,11 +46,13 @@ FerricModalSurface {
                 id: sessionNameInput
                 Layout.fillWidth: true
                 placeholderText: "Save current session as..."
+                enabled: !manager.privateSession
                 Accessible.name: "New session name"
             }
             Button {
+                objectName: "sessionSaveButton"
                 text: "Save"
-                enabled: sessionNameInput.text.length > 0
+                enabled: !manager.privateSession && sessionNameInput.text.trim().length > 0
                 onClicked: {
                     manager.saveRequested(sessionNameInput.text)
                     sessionNameInput.text = ""
@@ -59,6 +66,7 @@ FerricModalSurface {
             Layout.fillHeight: true
             clip: true
             model: manager.sessionsModel
+            ScrollBar.vertical: ScrollBar {}
             delegate: RowLayout {
                 required property string name
                 width: sessionList.width
@@ -66,7 +74,9 @@ FerricModalSurface {
                 Label {
                     Layout.fillWidth: true
                     text: name
+                    textFormat: Text.PlainText
                     color: manager.browserWindow.primaryTextColor
+                    elide: Text.ElideRight
                     Accessible.name: "Named session " + name
                 }
                 Button {
@@ -80,6 +90,18 @@ FerricModalSurface {
                         manager.browserWindow.pendingDeleteName === name
                     )
                 }
+            }
+            Label {
+                anchors.centerIn: parent
+                width: Math.max(0, parent.width - 24)
+                visible: sessionList.count === 0
+                text: manager.privateSession
+                      ? "Nothing from this private session will be saved here."
+                      : "Save a session above to keep a group of tabs together."
+                textFormat: Text.PlainText
+                color: manager.browserWindow.secondaryTextColor
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.WordWrap
             }
         }
     }

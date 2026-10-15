@@ -11,8 +11,8 @@ FerricCommandDialog {
     commandText: ":session-load"
     title: "Load session: " + browserWindow.sessionPreviewName
     message: browserWindow.sessionPreviewAppend
-             ? "Append these validated descriptors to the current tabs?"
-             : "Replace the current tabs with these validated descriptors?"
+             ? "Add these saved tabs to your current window?"
+             : "Restore these saved tabs in place of your current tabs?"
     dialogWidth: 680 * scale
     dialogHeight: 540 * scale
     stackingOrder: 50
@@ -48,7 +48,7 @@ FerricCommandDialog {
             wrapMode: TextEdit.Wrap
             color: preview.browserWindow.primaryTextColor
             background: Rectangle { color: preview.browserWindow.surfaceColor }
-            Accessible.name: "Validated session descriptors"
+            Accessible.name: "Saved tabs in this session"
         }
     }
 }

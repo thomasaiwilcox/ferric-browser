@@ -9,9 +9,9 @@ FerricCommandDialog {
     signal dismissalRequested()
 
     visible: browserWindow.recoveryAvailable
-    commandText: ":session-restore"
+    commandText: "Session recovery"
     title: "Recover the previous browser session?"
-    message: "The previous browser run ended unexpectedly. Ferric can restore the last safe session snapshot."
+    message: "Ferric didn't close normally last time. Restore your previous tabs to pick up where you left off. Forms won't be resubmitted."
     dialogWidth: 640 * scale
     dialogHeight: 280 * scale
     dialogBorderColor: browserWindow.warningColor
@@ -20,7 +20,7 @@ FerricCommandDialog {
         { id: "cancel", key: "n / alt+d", shortcuts: ["N"],
           label: "Start without recovery", safe: true },
         { id: "recover", key: "y / alt+r", shortcuts: ["Y"],
-          label: "Recover safe session" }
+          label: "Restore previous tabs" }
     ]
     onActionRequested: function(action) {
         if (action === "recover") {

@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "../scripts/ChromePresentation.js" as ChromePresentation
 
 Item {
     id: settingRows
@@ -40,14 +41,16 @@ Item {
                 Label {
                     Layout.fillWidth: true
                     text: settingRow.rowData.label
+                    textFormat: Text.PlainText
                     color: settingRows.browserWindow.primaryTextColor
                     font.bold: true
                     wrapMode: Text.WordWrap
                 }
                 Label {
                     Layout.fillWidth: true
-                    text: settingRow.rowData.key + " · " + settingRow.rowData.scope
-                          + " · " + settingRow.rowData.apply
+                    text: settingRow.rowData.key + " · "
+                          + ChromePresentation.settingApplyLabel(settingRow.rowData.apply)
+                    textFormat: Text.PlainText
                     color: settingRows.browserWindow.mutedTextColor
                     wrapMode: Text.WordWrap
                 }
@@ -74,6 +77,15 @@ Item {
                     currentIndex: count > 0
                                   ? Math.max(0, find(String(settingRow.rowData.value)))
                                   : -1
+                    displayText: ChromePresentation.settingValueLabel(settingRow.rowData.key, currentText)
+                    delegate: ItemDelegate {
+                        required property int index
+                        width: settingEnumEditor.width
+                        font: settingEnumEditor.font
+                        palette: settingEnumEditor.palette
+                        text: ChromePresentation.settingValueLabel(settingRow.rowData.key, settingEnumEditor.textAt(index))
+                        highlighted: settingEnumEditor.highlightedIndex === index
+                    }
                     Accessible.name: settingRow.rowData.label
                     onActivated: settingRows.applyRequested(settingRow.rowData, currentText)
                 }

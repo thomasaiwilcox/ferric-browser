@@ -104,17 +104,22 @@ pub fn guide_article(command: &str) -> Option<GuideArticle> {
             "History lists eligible recorded visits for this profile. The journey graph connects page visits by navigation relationships and can be searched or expanded. Reopening a history or journey entry performs a new safe navigation. Clearing history requires the existing confirmation and can be scoped by time or origin; it also invalidates affected Top Sites tiles. Private history stays in its own session and is never used by ordinary-profile Top Sites.",
             "Escape closes the library or graph. History clearing cannot be undone by tab-undo; dismissed Top Sites can be restored without altering history.",
         ),
-        "profile-list" | "profile-open" | "profile-create" | "profile-delete" | "context-list"
-        | "context-create" | "context-delete" | "context-enter" | "context-save"
-        | "context-route" => (
+        "profiles" | "profile-list" | "profile-open" | "profile-create" | "profile-delete"
+        | "context-list" | "context-create" | "context-delete" | "context-enter"
+        | "context-save" | "context-route" => (
             "Profiles and Sessions",
-            "Profiles isolate browser data and configuration. Each normal profile owns its own bookmarks, start-page preference, favourites, dismissals, and icons. Contexts select supported profile/workspace workflows and can route eligible explicit opens. Profile deletion uses a preview and the browser's existing safety rules. Private and ephemeral browsing cannot read ordinary-profile start-page state, and temporary choices are destroyed with their owner.",
+            "Use profiles to open the profile manager; profile-list lists profile names for scripts. Profiles keep cookies, browsing history, bookmarks and settings separate. Contexts combine a profile with supported window and workspace workflows. Review the deletion preview before removing a profile. Private browsing keeps its start-page choices separate and forgets them when the private session closes.",
             "Escape cancels a preview or routing decision. Review the selected profile before destructive operations; deletion does not have a tab-undo recovery.",
         ),
-        "session-save" | "session-load" | "session-list" | "session-delete" => (
+        "sessions" | "session-save" | "session-load" | "session-list" | "session-delete" => (
             "Profiles and Sessions",
-            "Sessions save eligible tab descriptors, order, pinning, muting, scale, and supported scroll positions. Loading previews the stored session and restores safe GET destinations, including native start pages; unsafe navigation becomes a placeholder. Lazy restoration delays hidden page loads. Named sessions are distinct from the automatic crash-recovery checkpoint. Private-session state is not exported as durable profile metadata.",
-            "Escape cancels the restore preview. Loading a descriptor cannot replay unsaved form data or arbitrary script state.",
+            "Use sessions to preview, restore or delete saved groups of tabs; session-list lists their names for scripts. Sessions retain tab order, pinned and muted state, zoom, and supported scroll positions. Restoring opens saved page addresses and start pages without replaying forms. Hidden pages can load when selected. Named sessions are separate from automatic crash recovery. Private browsing is not saved here.",
+            "Escape cancels the restore preview. Unsaved form entries and the running state of a web app cannot be restored from a saved session.",
+        ),
+        "settings" => (
+            "Configuration and Troubleshooting",
+            "Open the settings panel to search by setting name or configuration key. Choose a readable value or edit a field, then apply it. Session-only changes are forgotten when Ferric closes; saved changes keep your config.toml intact. Settings show when a change takes effect. Use site-rule commands for settings that apply to one site.",
+            "Escape closes settings. Reset returns a setting to its inherited value.",
         ),
         "download" | "downloads" | "download-open" | "download-show" | "download-cancel"
         | "download-pause" | "download-resume" | "download-retry" | "print-pdf" | "print"

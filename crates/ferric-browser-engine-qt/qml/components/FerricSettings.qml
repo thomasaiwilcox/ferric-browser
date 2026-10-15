@@ -30,11 +30,12 @@ FerricModalSurface {
     visible: settingsVisible
     commandText: ":settings"
     title: "Settings"
-    message: "Validated runtime settings for the active global or profile layer."
+    message: "Customize browsing and the interface for this profile."
     keyHelp: "type to filter  ·  tab/shift-tab controls  ·  esc close"
     dialogWidth: 980 * scale
     dialogHeight: 680 * scale
     stackingOrder: 76
+    initialFocusItem: settingsSearchInput
     onDismissRequested: closeRequested()
 
     ScrollView {
@@ -75,7 +76,7 @@ FerricModalSurface {
             ColumnLayout {
                 Layout.fillWidth: true
                 CheckBox {
-                    text: "Temporary"
+                    text: "Only for this session"
                     checked: settings.temporary
                     Accessible.name: "Apply settings temporarily"
                     Accessible.description: "Changes remain in memory for this session"
@@ -83,16 +84,18 @@ FerricModalSurface {
                 }
                 Label {
                     Layout.fillWidth: true
-                    text: "Temporary changes stay in memory. Persistent edits do not rewrite config.toml."
+                    text: "Session changes are forgotten when Ferric closes. Turn this off to save changes; your config.toml file stays intact."
                     color: settings.browserWindow.secondaryTextColor
                     wrapMode: Text.WordWrap
                 }
             }
 
             FerricTextField {
+                id: settingsSearchInput
+                objectName: "settingsSearchInput"
                 Layout.fillWidth: true
                 text: settings.searchText
-                placeholderText: "Filter settings by key, description, scope, or apply time"
+                placeholderText: "Search settings by name or configuration key"
                 Accessible.name: "Search settings"
                 Accessible.role: Accessible.EditableText
                 onTextChanged: settings.searchChanged(text)
@@ -106,7 +109,7 @@ FerricModalSurface {
 
             Label {
                 Layout.fillWidth: true
-                text: "Supported fields below use the validated typed schema. Site-scoped values remain available through explicit site-rule commands; this manager edits the active global/profile runtime layer."
+                text: "For settings that apply to one site, use the site-rule commands."
                 color: settings.browserWindow.secondaryTextColor
                 wrapMode: Text.WordWrap
             }

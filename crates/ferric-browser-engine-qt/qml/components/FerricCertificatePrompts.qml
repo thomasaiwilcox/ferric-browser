@@ -24,7 +24,7 @@ Item {
         id: clientCertificatePrompt
         browserWindow: root.browserWindow
         visible: false
-        commandText: ":client-certificate"
+        commandText: "Client certificate"
         title: "Select a client certificate"
         message: "Choose one of the identities offered by the browser engine. Private keys are never exposed here."
         keyHelp: "j/k or ↑/↓ select  ·  enter use certificate  ·  esc cancel"
@@ -106,7 +106,7 @@ Item {
         id: certificateErrorPrompt
         browserWindow: root.browserWindow
         visible: false
-        commandText: ":certificate-error"
+        commandText: "Connection security"
         title: "Certificate cannot be verified"
         message: "Only continue if you recognize this host and understand the risk. This exception applies to this request only."
         dialogWidth: 680 * scale

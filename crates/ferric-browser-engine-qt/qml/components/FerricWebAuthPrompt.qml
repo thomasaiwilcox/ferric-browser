@@ -24,8 +24,8 @@ Item {
         id: prompt
         browserWindow: root.browserWindow
         visible: false
-        commandText: ":webauth"
-        title: "WebAuthn security-key request"
+        commandText: "Passkeys and security keys"
+        title: "Verify your identity"
         message: root.browserWindow.webAuthStatusText
         keyHelp: root.browserWindow.pendingWebAuthState
                  === WebEngineWebAuthUxRequest.SelectAccount

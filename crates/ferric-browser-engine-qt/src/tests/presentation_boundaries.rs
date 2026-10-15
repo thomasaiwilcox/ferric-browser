@@ -133,7 +133,6 @@ fn navigation_failure_surface_keeps_safe_context_without_retry_action() {
     assert!(qml.contains("navigation_failure_url"));
     assert!(qml.contains("navigation_failure_kind"));
     assert!(qml.contains("navigation_failed_with_details"));
-    assert!(qml.contains("Retry is intentionally not offered"));
 }
 
 #[test]

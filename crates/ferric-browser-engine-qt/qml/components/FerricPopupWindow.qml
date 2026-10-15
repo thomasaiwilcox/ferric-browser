@@ -191,6 +191,7 @@ ApplicationWindow {
 
     FerricShutdownDecisionDialog {
         hostWindow: popupWindow
+        themeWindow: rootWindow
         promptVisible: popupWindow.windowCloseConfirmationVisible
         commandText: ":window-close"
         title: "Close this popup window?"
@@ -211,6 +212,7 @@ ApplicationWindow {
 
     FerricShutdownDecisionDialog {
         hostWindow: popupWindow
+        themeWindow: rootWindow
         promptVisible: popupWindow.windowShutdownPromptVisible
         commandText: ":window-close"
         title: "Popup browser work is still running"
@@ -232,6 +234,7 @@ ApplicationWindow {
 
     FerricShutdownDecisionDialog {
         hostWindow: popupWindow
+        themeWindow: rootWindow
         promptVisible: popupWindow.windowShutdownPagePromptVisible
         commandText: ":window-close"
         title: "Popup page state may be lost"
@@ -743,10 +746,10 @@ ApplicationWindow {
                 }
             } else if (loadRequest.status === WebEngineView.LoadSucceededStatus) {
                 if (popupWindow.popupJourneyToken.length > 0) {
-                    (popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi).popup_navigation_committed(
+                    var navigationUi = popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi
+                    navigationUi.popup_navigation_committed(
                         popupWindow.popupJourneyToken, popupView.url.toString(), popupView.title)
-                    (popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi).popup_navigation_completed(
-                        popupWindow.popupJourneyToken)
+                    navigationUi.popup_navigation_completed(popupWindow.popupJourneyToken)
                 }
                 rootWindow.injectPageUserscripts(
                     popupWindow.popupPermissionUi, popupView, popupView.url.toString(),

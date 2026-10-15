@@ -11,6 +11,7 @@ FocusScope {
     objectName: "shutdownDecisionDialog"
 
     required property var hostWindow
+    property var themeWindow: hostWindow
     property bool promptVisible: false
     property string title: ""
     property string message: ""
@@ -19,14 +20,14 @@ FocusScope {
     property string proceedLabel: "Continue"
     property string keepAccessibleName: keepLabel
     property string proceedAccessibleName: proceedLabel
-    property color dialogBorderColor: hostWindow.warningColor
+    property color dialogBorderColor: themeWindow.warningColor
     property int dialogHeight: 220
     property int stackingOrder: 100
     property int currentIndex: 0
     property var previousFocusItem: null
     property bool decisionTaken: false
-    readonly property real scale: hostWindow.chromeScale === undefined
-                                  ? 1 : hostWindow.chromeScale
+    readonly property real scale: themeWindow.chromeScale === undefined
+                                  ? 1 : themeWindow.chromeScale
 
     signal keepRequested()
     signal proceedRequested()
@@ -216,11 +217,11 @@ FocusScope {
         id: panel
         objectName: "shutdownDecisionPanel"
         anchors.centerIn: parent
-        width: Math.min(620 * dialog.scale, dialog.width - 32 * dialog.scale)
+        width: Math.min(620 * dialog.scale, Math.max(0, dialog.width - 32 * dialog.scale))
         height: Math.min(Math.max(dialog.dialogHeight,
                                   contentLayout.implicitHeight + 32 * dialog.scale),
-                         dialog.height - 32 * dialog.scale)
-        color: dialog.hostWindow.panelColor
+                         Math.max(0, dialog.height - 32 * dialog.scale))
+        color: dialog.themeWindow.panelColor
         border.color: dialog.dialogBorderColor
         border.width: 2
         radius: 6 * dialog.scale
@@ -231,36 +232,62 @@ FocusScope {
             anchors.margins: 16 * dialog.scale
             spacing: 10 * dialog.scale
 
-            RowLayout {
+            ScrollView {
+                id: copyScroll
+                objectName: "shutdownMessageScroll"
                 Layout.fillWidth: true
-                spacing: 8 * dialog.scale
+                Layout.fillHeight: true
+                Layout.preferredHeight: copyLayout.implicitHeight
+                implicitHeight: copyLayout.implicitHeight
+                contentWidth: availableWidth
+                contentHeight: copyLayout.implicitHeight
+                clip: true
+                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                ScrollBar.vertical.policy: ScrollBar.AsNeeded
+                ScrollBar.vertical.active: true
+                ScrollBar.vertical.objectName: "shutdownMessageScrollbar"
 
-                Label {
-                    text: dialog.commandText
-                    color: dialog.hostWindow.accentColor
-                    font.family: dialog.hostWindow.font.family
-                    font.bold: true
-                }
-                Rectangle {
-                    Layout.fillWidth: true
-                    implicitHeight: 1
-                    color: dialog.hostWindow.borderColor
-                }
-            }
+                ColumnLayout {
+                    id: copyLayout
+                    width: copyScroll.availableWidth
+                    height: implicitHeight
+                    spacing: 10 * dialog.scale
 
-            Label {
-                Layout.fillWidth: true
-                text: dialog.title
-                color: dialog.hostWindow.primaryTextColor
-                font.bold: true
-                font.pointSize: dialog.hostWindow.font.pointSize + 1
-                wrapMode: Text.WordWrap
-            }
-            Label {
-                Layout.fillWidth: true
-                text: dialog.message
-                color: dialog.hostWindow.secondaryTextColor
-                wrapMode: Text.WordWrap
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8 * dialog.scale
+                        Label {
+                            text: dialog.commandText
+                            textFormat: Text.PlainText
+                            color: dialog.themeWindow.accentColor
+                            font.family: dialog.themeWindow.font.family
+                            font.bold: true
+                        }
+                        Rectangle {
+                            Layout.fillWidth: true
+                            implicitHeight: 1
+                            color: dialog.themeWindow.borderColor
+                        }
+                    }
+                    Label {
+                        objectName: "shutdownTitle"
+                        Layout.fillWidth: true
+                        text: dialog.title
+                        textFormat: Text.PlainText
+                        color: dialog.themeWindow.primaryTextColor
+                        font.bold: true
+                        font.pointSize: dialog.themeWindow.font.pointSize + 1
+                        wrapMode: Text.Wrap
+                    }
+                    Label {
+                        objectName: "shutdownMessage"
+                        Layout.fillWidth: true
+                        text: dialog.message
+                        textFormat: Text.PlainText
+                        color: dialog.themeWindow.secondaryTextColor
+                        wrapMode: Text.Wrap
+                    }
+                }
             }
 
             Button {
@@ -282,33 +309,37 @@ FocusScope {
                     id: keepContent
                     spacing: 10 * dialog.scale
                     Label {
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
                         text: dialog.currentIndex === 0 ? "›" : " "
-                        color: dialog.hostWindow.accentColor
+                        color: dialog.themeWindow.accentColor
                         font.bold: true
                     }
                     Label {
                         text: "esc / n"
-                        color: dialog.hostWindow.mutedTextColor
-                        font.family: dialog.hostWindow.font.family
+                        color: dialog.themeWindow.mutedTextColor
+                        font.family: dialog.themeWindow.font.family
                     }
                     Label {
                         Layout.fillWidth: true
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
                         text: dialog.keepLabel
                         color: dialog.currentIndex === 0
-                               ? dialog.hostWindow.selectionTextColor
-                               : dialog.hostWindow.primaryTextColor
+                               ? dialog.themeWindow.selectionTextColor
+                               : dialog.themeWindow.primaryTextColor
                         font.bold: dialog.currentIndex === 0
                     }
                 }
 
                 background: Rectangle {
                     color: dialog.currentIndex === 0
-                           ? dialog.hostWindow.selectionColor
+                           ? dialog.themeWindow.selectionColor
                            : (keepButton.hovered
-                              ? dialog.hostWindow.surfaceColor : "transparent")
+                              ? dialog.themeWindow.surfaceColor : "transparent")
                     border.color: dialog.currentIndex === 0
-                                  ? dialog.hostWindow.accentColor
-                                  : dialog.hostWindow.borderColor
+                                  ? dialog.themeWindow.accentColor
+                                  : dialog.themeWindow.borderColor
                     border.width: 1
                     radius: 4 * dialog.scale
                 }
@@ -333,33 +364,37 @@ FocusScope {
                     id: proceedContent
                     spacing: 10 * dialog.scale
                     Label {
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
                         text: dialog.currentIndex === 1 ? "›" : " "
                         color: dialog.dialogBorderColor
                         font.bold: true
                     }
                     Label {
                         text: "y"
-                        color: dialog.hostWindow.mutedTextColor
-                        font.family: dialog.hostWindow.font.family
+                        color: dialog.themeWindow.mutedTextColor
+                        font.family: dialog.themeWindow.font.family
                     }
                     Label {
                         Layout.fillWidth: true
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
                         text: dialog.proceedLabel
                         color: dialog.currentIndex === 1
-                               ? dialog.hostWindow.selectionTextColor
-                               : dialog.hostWindow.primaryTextColor
+                               ? dialog.themeWindow.selectionTextColor
+                               : dialog.themeWindow.primaryTextColor
                         font.bold: dialog.currentIndex === 1
                     }
                 }
 
                 background: Rectangle {
                     color: dialog.currentIndex === 1
-                           ? dialog.hostWindow.selectionColor
+                           ? dialog.themeWindow.selectionColor
                            : (proceedButton.hovered
-                              ? dialog.hostWindow.surfaceColor : "transparent")
+                              ? dialog.themeWindow.surfaceColor : "transparent")
                     border.color: dialog.currentIndex === 1
                                   ? dialog.dialogBorderColor
-                                  : dialog.hostWindow.borderColor
+                                  : dialog.themeWindow.borderColor
                     border.width: 1
                     radius: 4 * dialog.scale
                 }
@@ -367,9 +402,9 @@ FocusScope {
 
             Label {
                 Layout.fillWidth: true
-                text: "j/k or ↑/↓ select  ·  enter run  ·  y confirm  ·  n/esc cancel"
-                color: dialog.hostWindow.mutedTextColor
-                font.family: dialog.hostWindow.font.family
+                text: "j/k or ↑/↓ select  ·  enter activate"
+                color: dialog.themeWindow.mutedTextColor
+                font.family: dialog.themeWindow.font.family
                 wrapMode: Text.WordWrap
                 Accessible.name: text
             }

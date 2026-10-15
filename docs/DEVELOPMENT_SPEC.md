@@ -586,7 +586,8 @@ steal focus. Limit one interactive modal prompt per window with a bounded
 queue, and group identical origin/type requests.
 
 All browser-owned modal surfaces use the same command-first interaction
-contract: a visible command name, a safe initial choice, window-scoped Escape,
+contract: a visible command name for command-backed surfaces, or a plain context
+label for page/security/lifecycle prompts, a safe initial choice, window-scoped Escape,
 keyboard navigation that still works when WebEngine retained focus, Enter to
 activate the selected choice, and pointer-selectable action rows. Complex
 management surfaces may use Tab/Shift-Tab for editable controls, but must still
@@ -935,6 +936,7 @@ commands may be added, but these names and semantics form the target contract.
 | `blocklist-update`, `blocking-toggle [--site]`, `blocking-status` | Transactional list update, precise exception, diagnostics |
 | `macro-record <REGISTER>`, `macro-stop`, `macro-play <REGISTER>` | Record/replay eligible commands |
 | `repeat [--count N]`, `cancel` | Repeat eligible operation/cancel pending UI work |
+| `settings`, `profiles`, `sessions` | Open native browser management panels; list commands remain available for scripts |
 | `help [COMMAND\|SETTING]`, `version`, `diagnostics` | Local documentation and support report |
 | `quit` | Normal coordinated application shutdown |
 

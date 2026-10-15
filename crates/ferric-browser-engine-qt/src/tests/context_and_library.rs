@@ -1050,7 +1050,6 @@ fn action_command_maps_subject_and_verb_to_a_registered_executor() {
     ]
     .concat();
     let reopen_confirmation = include_str!("../../qml/components/FerricReopenWindowConfirmation.qml");
-    let downloads = include_str!("../../qml/components/FerricDownloadManager.qml");
     let source = ADAPTER_SOURCE;
     let hint_policy = include_str!("../hint_policy.rs");
     assert!(qml.contains("browser.tab.move"));
@@ -1147,7 +1146,6 @@ fn action_command_maps_subject_and_verb_to_a_registered_executor() {
     assert!(qml.contains("download.totalBytes"));
     assert!(qml.contains("download.interruptReasonString"));
     assert!(qml.contains("function downloadMetrics(id, download)"));
-    assert!(downloads.contains("Failure reason: "));
     assert!(qml.contains("function formatDownloadRate(bytesPerSecond)"));
     assert!(qml.contains("id: downloadMetricsTimer"));
     assert!(qml.contains("function spellcheckDictionaryStatus(ui)"));

@@ -554,6 +554,18 @@ FerricBrowserRuntimeChrome {
             window.showSettings()
             return
         }
+        if (action === "show-profiles") {
+            window.refreshProfiles()
+            window.openInternalSurface()
+            window.profileManagerVisible = true
+            return
+        }
+        if (action === "show-sessions") {
+            window.refreshSessions()
+            window.openInternalSurface()
+            window.sessionManagerVisible = true
+            return
+        }
         if (action.indexOf("show-settings\t") === 0) {
             window.showSettings(action.split("\t").slice(1).join("\t"))
             return

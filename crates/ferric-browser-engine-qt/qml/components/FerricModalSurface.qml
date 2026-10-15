@@ -12,7 +12,7 @@ FocusScope {
 
     required property var browserWindow
     property var hostWindow: browserWindow
-    property string commandText: ":dialog"
+    property string commandText: "Ferric"
     property string title: ""
     property string message: ""
     property string keyHelp: "esc close"
@@ -133,11 +133,13 @@ FocusScope {
                 spacing: 8 * surface.scale
 
                 Label {
+                    objectName: "dialogContextLabel"
+                    textFormat: Text.PlainText
                     text: surface.commandText
                     color: surface.browserWindow.accentColor
                     font.family: surface.browserWindow.font.family
                     font.bold: true
-                    Accessible.name: "Dialog command " + text
+                    Accessible.name: (text.indexOf(":") === 0 ? "Dialog command " : "Browser dialog ") + text
                 }
                 Rectangle {
                     Layout.fillWidth: true
@@ -147,7 +149,9 @@ FocusScope {
             }
 
             Label {
+                objectName: "dialogTitleLabel"
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 visible: surface.title.length > 0
                 text: surface.title
                 color: surface.browserWindow.primaryTextColor
@@ -157,7 +161,9 @@ FocusScope {
             }
 
             Label {
+                objectName: "dialogMessageLabel"
                 Layout.fillWidth: true
+                textFormat: Text.PlainText
                 visible: surface.message.length > 0
                 text: surface.message
                 color: surface.browserWindow.secondaryTextColor

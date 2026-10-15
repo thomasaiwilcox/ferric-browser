@@ -14,7 +14,7 @@ Rectangle {
     anchors.bottom: parent.bottom
     anchors.bottomMargin: browserWindow.bottomChromeHeight + 8
     width: Math.min(parent.width - 32, 720)
-    height: Math.max(74, browserWindow.chromeRowHeight * 5)
+    height: Math.max(copyContent.implicitHeight + 20, browserWindow.chromeRowHeight * 2)
     z: 30
     visible: browserWindow.copyNoticeVisible
     color: browserWindow.panelColor
@@ -23,6 +23,7 @@ Rectangle {
     radius: 3
 
     RowLayout {
+        id: copyContent
         anchors.fill: parent
         anchors.margins: 10
         spacing: 8
@@ -32,16 +33,18 @@ Rectangle {
             spacing: 3
             Label {
                 Layout.fillWidth: true
-                text: browserWindow.copyNoticeSensitive ? "Copied sensitive value" : "Copied URL"
+                text: "Copied to clipboard"
+                textFormat: Text.PlainText
                 color: browserWindow.primaryTextColor
                 font.bold: true
             }
             Label {
                 Layout.fillWidth: true
                 text: browserWindow.copiedText
+                textFormat: Text.PlainText
                 color: browserWindow.secondaryTextColor
                 elide: Text.ElideMiddle
-                Accessible.name: "Copied URL"
+                Accessible.name: browserWindow.copyNoticeSensitive ? "Copied content is hidden" : "Copied address"
             }
         }
 
@@ -52,7 +55,7 @@ Rectangle {
         ToolButton {
             text: "×"
             onClicked: dismissalRequested()
-            Accessible.name: "Dismiss copied URL notice"
+            Accessible.name: "Dismiss copy notice"
         }
     }
 }

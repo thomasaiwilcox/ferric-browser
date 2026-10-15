@@ -1451,7 +1451,7 @@ fn ipc_support_commands_use_typed_help_and_empty_arguments() {
     assert_eq!(command.name, "help");
     assert_eq!(command.arguments, vec!["content.zoom"]);
     assert_eq!(route.open_target, IpcOpenTarget::Tab);
-    for name in ["version", "diagnostics"] {
+    for name in ["version", "diagnostics", "settings", "profiles", "sessions"] {
         let (command, _) = typed_ipc_command(&serde_json::json!({
             "command": name,
             "arguments": {}
@@ -1459,6 +1459,10 @@ fn ipc_support_commands_use_typed_help_and_empty_arguments() {
         .expect("typed support command");
         assert_eq!(command.name, name);
         assert_eq!(command.arguments, Vec::<String>::new());
+        assert!(typed_ipc_command(&serde_json::json!({
+            "command": name,
+            "arguments": {"unexpected": true}
+        })).is_err());
     }
     assert!(
         typed_ipc_command(&serde_json::json!({

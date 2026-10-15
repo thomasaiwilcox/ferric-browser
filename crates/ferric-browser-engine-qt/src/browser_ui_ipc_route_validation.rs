@@ -4,23 +4,32 @@
 //! onto live browser state. It deliberately does not inspect JSON or execute
 //! commands.
 
-use super::{CxxQtType, DispatchTarget, IpcOpenTarget, IpcRoute, qobject};
+use super::{CxxQtType, DispatchTarget, IpcOpenTarget, IpcRoute, WindowId, qobject};
 
 impl qobject::BrowserUi {
-    pub(super) fn validate_ipc_route(&self, route: &IpcRoute) -> Result<(), String> {
+    pub(super) fn ipc_route_window(&self, route: &IpcRoute) -> Result<WindowId, String> {
         let state = self
             .rust()
             .state
             .as_ref()
             .ok_or_else(|| "core state unavailable".to_owned())?;
-        let window = match route.selector {
+        match route.selector {
             DispatchTarget::Active => state.active_window(),
             DispatchTarget::LastFocused => state.last_focused_window().or(state.active_window()),
             DispatchTarget::Window(window) => Some(window),
             DispatchTarget::Tab(tab) => state.tabs().get(&tab).map(|tab| tab.window),
         }
         .and_then(|window| state.windows().get(&window).map(|_| window))
-        .ok_or_else(|| "requested window is not available".to_owned())?;
+        .ok_or_else(|| "requested window is not available".to_owned())
+    }
+
+    pub(super) fn validate_ipc_route(&self, route: &IpcRoute) -> Result<(), String> {
+        let state = self
+            .rust()
+            .state
+            .as_ref()
+            .ok_or_else(|| "core state unavailable".to_owned())?;
+        let window = self.ipc_route_window(route)?;
         if let Some(context_name) = route.context.as_deref() {
             let context = self
                 .rust()

@@ -24,6 +24,16 @@ FerricModalSurface {
         return actions[index].enabled === undefined || actions[index].enabled
     }
 
+    function actionShortcuts(action) {
+        var sequences = action.shortcuts || (action.key ? [action.key] : [])
+        // The dialog owns these keys. Registering them again on a row makes
+        // Qt report an ambiguous shortcut instead of dismissing or navigating.
+        var navigation = ["esc", "escape", "enter", "return", "up", "down", "j", "k"]
+        return sequences.filter(function(sequence) {
+            return navigation.indexOf(String(sequence).trim().toLowerCase()) < 0
+        })
+    }
+
     function firstEnabledIndex() {
         for (var i = 0; i < actions.length; ++i) {
             if (actionEnabled(i)) {
@@ -184,8 +194,7 @@ FerricModalSurface {
                 onClicked: dialog.requestAction(modelData.id)
 
                 Shortcut {
-                    sequences: modelData.shortcuts
-                               || (modelData.key ? [modelData.key] : [])
+                    sequences: dialog.actionShortcuts(modelData)
                     context: Qt.WindowShortcut
                     enabled: dialog.visible && parent.enabled && sequences.length > 0
                     onActivated: dialog.requestAction(modelData.id)
