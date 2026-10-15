@@ -115,6 +115,15 @@ pub(super) fn typed_ipc_action(
         "command": command_name,
         "arguments": object.get("arguments").cloned().unwrap_or_else(|| serde_json::json!({}))
     });
+    if let Some(definition) = action_registry.resolve(action)
+        && definition.command == "edit"
+        && let Some(arguments) = command["arguments"].as_object_mut()
+    {
+        if !arguments.is_empty() {
+            return Err("native edit actions accept no arguments".into());
+        }
+        arguments.insert("operation".into(), Value::String(definition.verb.clone()));
+    }
     let link_action = action_registry
         .resolve(action)
         .is_some_and(|definition| definition.subject == ActionSubject::Link);

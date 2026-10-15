@@ -16,6 +16,14 @@ pub(super) fn decode_ui_action_arguments(action_id: &str, value: &str) -> Result
         }
         "browser.url.send" | "browser.link.send" => send_arguments(value),
         "browser.selection.send" | "browser.tab.send" => Ok(serde_json::json!({"target": value})),
+        "browser.edit.copy"
+        | "browser.edit.cut"
+        | "browser.edit.paste"
+        | "browser.edit.paste-plain"
+            if value.is_empty() =>
+        {
+            Ok(serde_json::json!({}))
+        }
         "browser.selection.copy" => Ok(serde_json::json!({})),
         "browser.selection.search" => Ok(optional_value("engine", value)),
         "browser.context.enter" => Ok(serde_json::json!({"name": value})),

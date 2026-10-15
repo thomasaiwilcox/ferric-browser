@@ -64,7 +64,7 @@ FerricModalSurface {
             elide: Text.ElideMiddle
             Accessible.name: "Page dialog origin"
         }
-        TextField {
+        FerricTextField {
             id: pageDialogInput
             Keys.forwardTo: [dialog]
             Layout.fillWidth: true
@@ -73,7 +73,7 @@ FerricModalSurface {
             Accessible.role: Accessible.EditableText
             Accessible.editable: true
         }
-        TextField {
+        FerricTextField {
             id: pageDialogUsername
             Keys.forwardTo: [dialog]
             Layout.fillWidth: true
@@ -83,7 +83,7 @@ FerricModalSurface {
             Accessible.role: Accessible.EditableText
             Accessible.editable: true
         }
-        TextField {
+        FerricTextField {
             id: pageDialogPassword
             Keys.forwardTo: [dialog]
             Layout.fillWidth: true

@@ -265,13 +265,7 @@ pub(super) fn configured_bindings(
             let Some(command) = command.as_str() else {
                 continue;
             };
-            let keys = keychain
-                .chars()
-                .map(|key| key.to_string())
-                .collect::<Vec<_>>();
-            if keys.is_empty() || keys.iter().any(|key| key.chars().any(char::is_control)) {
-                continue;
-            }
+            let keys = ferric_browser_core::binding_key_tokens(keychain)?;
             definitions.retain(|definition| definition.mode != mode || definition.keys != keys);
             if !matches!(command, "unbound" | "none") {
                 definitions.push(BindingDefinition {

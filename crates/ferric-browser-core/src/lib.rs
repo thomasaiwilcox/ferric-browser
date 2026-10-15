@@ -53,7 +53,7 @@ pub use id::{
 };
 pub use input::{
     BindingDefinition, BindingError, BindingOutcome, BindingRegistry, BindingResolver, BindingTrie,
-    DEFAULT_CHORD_TIMEOUT_MS,
+    DEFAULT_CHORD_TIMEOUT_MS, binding_key_tokens,
 };
 pub use journey::{
     JourneyEdge, JourneyEdgeKind, JourneyGraph, JourneyNode, MAX_JOURNEY_EDGES, MAX_JOURNEY_NODES,
@@ -69,8 +69,8 @@ pub use mixed_policy::{
     resolve_mixed_key_policy,
 };
 pub use model::reducer::{
-    Diagnostic, Effect, EngineEffect, Event, PersistEffect, ReduceError, TabTransfer, Target,
-    reduce,
+    ClipboardEdit, Diagnostic, Effect, EngineEffect, Event, PersistEffect, ReduceError,
+    TabTransfer, Target, reduce,
 };
 pub use model::{
     ApplicationState, ExistenceState, LoadingState, Mode, PrivacyKind, ProfileState, RendererState,

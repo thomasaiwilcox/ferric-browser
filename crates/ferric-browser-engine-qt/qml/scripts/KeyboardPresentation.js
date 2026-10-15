@@ -62,6 +62,8 @@ function logicalNormalKeyText(event) {
             }
             return ""
         }
+        if (event.key === Qt.Key_C) return "Ctrl+c"
+        if (event.key === Qt.Key_X) return "Ctrl+x"
         if (event.key === Qt.Key_B) {
             return "Ctrl+b"
         }

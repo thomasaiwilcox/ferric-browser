@@ -391,10 +391,7 @@ impl EffectiveMixedKeyPolicy {
 }
 
 fn is_reserved_page_key(value: &str) -> bool {
-    matches!(
-        value,
-        ":" | "Escape" | "Ctrl+Escape" | "Ctrl+Shift+Escape" | "Ctrl+Shift+v"
-    )
+    matches!(value, ":" | "Escape" | "Ctrl+Escape" | "Ctrl+Shift+Escape")
 }
 
 fn is_modifier_only(value: &str) -> bool {
@@ -424,6 +421,8 @@ fn is_named_logical_token(value: &str) -> bool {
             | "Ctrl+Shift+n"
             | "Ctrl+Shift+t"
             | "Ctrl+Shift+w"
+            | "Ctrl+c"
+            | "Ctrl+x"
             | "Ctrl+b"
             | "Ctrl+d"
             | "Ctrl+f"
@@ -555,13 +554,7 @@ mod tests {
 
     #[test]
     fn reserved_controls_are_rejected_with_their_layer_provenance() {
-        for key in [
-            ":",
-            "Escape",
-            "Ctrl+Escape",
-            "Ctrl+Shift+Escape",
-            "Ctrl+Shift+v",
-        ] {
+        for key in [":", "Escape", "Ctrl+Escape", "Ctrl+Shift+Escape"] {
             let global = layer(Some("mixed"), Some(&[key]));
             assert_eq!(
                 resolve_mixed_key_policy(Some(&global), None, None, None),
@@ -667,7 +660,7 @@ mod tests {
         }
         let reserved = mixed.decide(
             Mode::Normal,
-            &token("Ctrl+Shift+v"),
+            &token("Ctrl+Escape"),
             BrowserKeySequenceState::Idle,
         );
         assert_eq!(reserved.owner, InputOwner::Browser);

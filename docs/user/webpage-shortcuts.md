@@ -5,15 +5,15 @@ Neither entry command selects an arbitrary input or changes page focus.
 
 | Key in Normal mode | Indicator | Behavior |
 | --- | --- | --- |
-| `Ctrl+v` | `PASS THROUGH` | Forward ordinary keys until Ctrl+Escape. |
-| `Ctrl+Shift+v` or `; v` | `PASS NEXT KEY` | Forward one key gesture, then return to Normal. |
+| `; V` | `PASS THROUGH` | Forward ordinary keys until Ctrl+Escape. |
+| `; v` | `PASS NEXT KEY` | Forward one key gesture, then return to Normal. |
 
-For YouTube, focus the player, press Ctrl+v, then use its player shortcuts.
+For YouTube, focus the player, press `;`, then Shift+v, then use its player shortcuts.
 The browser's Normal-mode bindings are bypassed: `f` reaches the player instead
 of starting hints. Ordinary Escape reaches the page to close a menu or exit
 video fullscreen. Press **Ctrl+Escape** to return to Normal.
 
-For an occasional shortcut, press Ctrl+Shift+v (or `;`, then `v`), release
+For an occasional shortcut, press `;`, then `v`, release
 the entry shortcut, and press `f`. Its press, held-key repeats, and final
 release reach the page unchanged. Normal resumes after release. You can also
 forward a modified key, Enter, or ordinary Escape; modifier keys alone do not
@@ -42,3 +42,11 @@ One-key forwarding is an explicit mode, not an automatic page-entry setting.
 
 Text entry continues to use `i` and `I`, with ordinary Escape returning to
 Normal. See [Text entry](insert-modes.md).
+
+Copy and paste use standard native shortcuts by default, including in Normal:
+Ctrl+C copies, Ctrl+X cuts, Ctrl+V pastes, and Ctrl+Shift+V pastes plain text.
+An explicit configuration binding takes precedence under the normal input policy.
+Use `binding-explain Ctrl+v` to identify a legacy override and remove that override
+to adopt the new default; existing configuration is never rewritten.
+`edit copy`, `edit cut`, `edit paste`, and `edit paste-plain` request native edits.
+`yank selection` remains a plain-text command, including inside frames.

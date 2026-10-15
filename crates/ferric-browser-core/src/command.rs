@@ -474,6 +474,21 @@ impl CommandRegistry {
                 "Open the current safe URL in the active tab or a new tab.",
             ),
             definition(
+                "edit",
+                &[],
+                vec![
+                    Mode::Normal,
+                    Mode::Command,
+                    Mode::Insert,
+                    Mode::InsertLocked,
+                    Mode::PassThrough,
+                    Mode::Caret,
+                ],
+                CountPolicy::NotSupported,
+                true,
+                "Request native Copy, Cut, Paste, or plain-text Paste in the focused document.",
+            ),
+            definition(
                 "paste-open",
                 &[],
                 normal.clone(),
@@ -1904,6 +1919,24 @@ impl CommandRegistry {
             tab_open.examples = vec![
                 "tab-open https://example.test".into(),
                 "tab-open --background https://example.test".into(),
+            ];
+        }
+        if let Some(edit) = registry
+            .definitions
+            .iter_mut()
+            .find(|definition| definition.name == "edit")
+        {
+            edit.effect = EffectClass::Sensitive;
+            edit.arguments = vec![ArgumentDefinition {
+                name: "operation".into(),
+                kind: ArgumentKind::Enum,
+                required: true,
+            }];
+            edit.examples = vec![
+                "edit copy".into(),
+                "edit cut".into(),
+                "edit paste".into(),
+                "edit paste-plain".into(),
             ];
         }
         if let Some(paste_open) = registry
@@ -3675,7 +3708,7 @@ mod tests {
             .remove(0);
         assert_eq!(registry.resolve(&command.name).unwrap().name, "open");
         assert!(registry.validate(&command, Mode::Normal).is_ok());
-        assert_eq!(registry.definitions().len(), 145);
+        assert_eq!(registry.definitions().len(), 146);
         let target_search = registry.resolve("target-search").unwrap();
         assert_eq!(target_search.effect, EffectClass::Query);
         assert_eq!(target_search.count, CountPolicy::NotSupported);

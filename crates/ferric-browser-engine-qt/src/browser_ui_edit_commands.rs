@@ -318,7 +318,8 @@ impl qobject::BrowserUi {
                 .as_mut()
                 .get_mut()
                 .clipboard_request_primary = primary;
-            self.as_mut().set_status_text(QString::from("Title copied"));
+            self.as_mut()
+                .set_status_text(QString::from("Title copy pending"));
             return Ok(serde_json::json!({
                 "status": "accepted",
                 "source": "title",
@@ -374,9 +375,9 @@ impl qobject::BrowserUi {
             .get_mut()
             .clipboard_request_primary = primary;
         self.as_mut().set_status_text(QString::from(if clean {
-            "Clean URL copied"
+            "Clean URL copy pending"
         } else {
-            "URL copied"
+            "URL copy pending"
         }));
         Ok(serde_json::json!({
             "status": "accepted",

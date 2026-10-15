@@ -9,8 +9,8 @@ Escape exits either variant. For example, use `i`, type a search, Enter, then `j
 use `I` for document editing with repeated paragraphs. Neither command focuses an arbitrary input.
 Both variants reset when changing tabs or navigating; Transient Insert also ends when its editable context loses focus.
 
-For webpage shortcuts outside text fields, press `Ctrl+v` for `PASS THROUGH`.
-Press `Ctrl+Shift+v` or `; v` for `PASS NEXT KEY`: the next key, its repeats, and release reach the page, then Normal resumes.
+Ctrl+C/Ctrl+X copy/cut, Ctrl+V pastes, and Ctrl+Shift+V pastes plain text. For persistent webpage shortcuts, press `; V` for `PASS THROUGH`.
+Press `; v` for `PASS NEXT KEY`: the next key, its repeats, and release reach the page, then Normal resumes.
 Modifier keys alone do not finish one-key forwarding. `Ctrl+Escape` returns either variant to Normal; ordinary Escape reaches the page.
 Both reset when changing tabs or navigating; one-key forwarding also cancels when the window loses activation.
 The entry shortcuts are configurable Normal-mode bindings; `Ctrl+Escape` is a reserved recovery shortcut.
@@ -22,6 +22,7 @@ See [Webpage shortcuts](webpage-shortcuts.md) for examples and the existing emer
 | `normal` | `-` | `zoom out` |
 | `normal` | `.` | `repeat` |
 | `normal` | `; S` | `scroll-target auto` |
+| `normal` | `; V` | `mode-enter passthrough` |
 | `normal` | `; a` | `hint --target choose all` |
 | `normal` | `; b` | `hint --target tab-bg all` |
 | `normal` | `; d` | `hint --target download links` |
@@ -50,7 +51,6 @@ See [Webpage shortcuts](webpage-shortcuts.md) for examples and the existing emer
 | `normal` | `Ctrl+Shift+Space` | `start-page-cycle` |
 | `normal` | `Ctrl+Shift+n` | `window-new --private` |
 | `normal` | `Ctrl+Shift+t` | `tab-undo` |
-| `normal` | `Ctrl+Shift+v` | `mode-enter passthrough-once` |
 | `normal` | `Ctrl+Shift+w` | `window-close` |
 | `normal` | `Ctrl+Space` | `switcher` |
 | `normal` | `Ctrl+Tab` | `tab-select previous` |
@@ -64,7 +64,6 @@ See [Webpage shortcuts](webpage-shortcuts.md) for examples and the existing emer
 | `normal` | `Ctrl+s` | `stop` |
 | `normal` | `Ctrl+t` | `tab-new` |
 | `normal` | `Ctrl+u` | `scroll-page up --half` |
-| `normal` | `Ctrl+v` | `mode-enter passthrough` |
 | `normal` | `Ctrl+w` | `tab-close` |
 | `normal` | `F` | `hint --target tab all` |
 | `normal` | `F11` | `fullscreen` |

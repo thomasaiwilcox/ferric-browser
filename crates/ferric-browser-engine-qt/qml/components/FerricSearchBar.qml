@@ -45,7 +45,7 @@ Rectangle {
         }
     }
 
-    TextField {
+    FerricTextField {
         id: searchLine
         anchors.left: searchPrefixBackground.right
         anchors.right: searchBackwardButton.left

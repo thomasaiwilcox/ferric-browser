@@ -203,6 +203,34 @@ impl qobject::BrowserUi {
         }
     }
 
+    pub(super) fn clipboard_shortcut_browser_owned(self: Pin<&mut Self>, key: &QString) -> bool {
+        let key = key.to_string();
+        let binding = self.as_ref();
+        let this = binding.rust();
+        match this.core_mode {
+            Mode::Normal => {
+                let decision = decision_for_key(this, Mode::Normal, &key);
+                match decision.map(|value| value.reason) {
+                    Some(MixedKeyDecisionReason::ExactPageKey) => false,
+                    Some(
+                        MixedKeyDecisionReason::ActiveBrowserCount
+                        | MixedKeyDecisionReason::ActiveBrowserKeychain,
+                    ) => true,
+                    _ => {
+                        this.macro_key_prefix.is_some()
+                            || this
+                                .bindings
+                                .as_ref()
+                                .is_some_and(|bindings| bindings.has_initial_key(&key))
+                    }
+                }
+            }
+            Mode::Insert | Mode::InsertLocked | Mode::PassThrough | Mode::PassThroughOnce => false,
+            Mode::Caret => key != "Ctrl+c",
+            _ => true,
+        }
+    }
+
     pub(super) fn mixed_key_route(self: Pin<&mut Self>, key: &QString) -> QString {
         let decision = decision_for_key(
             self.as_ref().rust(),

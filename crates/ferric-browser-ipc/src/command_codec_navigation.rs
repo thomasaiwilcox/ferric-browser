@@ -168,6 +168,14 @@ pub(super) fn encode(command: &ParsedCommand) -> Result<Option<EncodedCommand>, 
                 "state": command.arguments.first().map_or("toggle", String::as_str)
             })
         }
+        "edit" => {
+            let [operation] = command.arguments.as_slice() else {
+                return Err("edit requires one operation".into());
+            };
+            ferric_browser_core::ClipboardEdit::parse(operation)
+                .ok_or_else(|| "unknown edit operation".to_owned())?;
+            serde_json::json!({"operation": operation})
+        }
         "reload" => {
             if command.arguments.is_empty() {
                 serde_json::json!({"bypass_cache": false})

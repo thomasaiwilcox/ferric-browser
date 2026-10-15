@@ -78,7 +78,7 @@ Item {
                     onActivated: settingRows.applyRequested(settingRow.rowData, currentText)
                 }
 
-                TextField {
+                FerricTextField {
                     id: settingTextEditor
                     visible: settingRow.rowData.type === "text" || settingRow.rowData.type === "number"
                              || settingRow.rowData.type === "languages"

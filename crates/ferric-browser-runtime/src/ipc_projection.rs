@@ -45,6 +45,7 @@ pub fn ipc_event_type(event: &Event) -> &'static str {
         | Event::Escape { .. } => "mode.changed",
         Event::RendererTerminated { .. } => "renderer.changed",
         Event::ClearJourney { .. } => "history.changed",
+        Event::ClipboardEdit { .. } => "clipboard.edit-requested",
         Event::RequestShutdown => "shutdown.requested",
     }
 }
@@ -52,6 +53,9 @@ pub fn ipc_event_type(event: &Event) -> &'static str {
 #[must_use]
 pub fn ipc_event_payload(event: &Event, state: &ApplicationState) -> Value {
     match event {
+        Event::ClipboardEdit { target, operation } => {
+            serde_json::json!({"tab": target.tab.to_string(), "operation": operation.as_str(), "status": "requested"})
+        }
         Event::CreateProfile { privacy, .. } => serde_json::json!({ "privacy": privacy.name() }),
         Event::CreateWindow { profile } => serde_json::json!({
             "profile_id": profile.to_string(), "window_count": state.windows().len()

@@ -21,6 +21,54 @@ pub enum BindingError {
     UnknownCommand(CommandError),
 }
 
+/// Parse canonical single gestures, compact printable chains and comma-separated
+/// chains without turning a modified shortcut into printable characters.
+#[must_use]
+pub fn binding_key_tokens(value: &str) -> Option<Vec<String>> {
+    fn gesture(value: &str) -> bool {
+        crate::LogicalKeyToken::parse(value).is_ok()
+            || matches!(
+                value,
+                "Enter"
+                    | "Shift+Enter"
+                    | "Ctrl+Enter"
+                    | "Alt+Enter"
+                    | "Space"
+                    | "Backspace"
+                    | "Tab"
+                    | "Backtab"
+                    | "Left"
+                    | "Right"
+                    | "Up"
+                    | "Down"
+                    | "PgUp"
+                    | "PgDown"
+                    | "Home"
+                    | "End"
+                    | "Delete"
+                    | "Insert"
+            )
+    }
+    if value.is_empty() || value.len() > 128 || value.chars().any(char::is_control) {
+        return None;
+    }
+    if gesture(value) {
+        return Some(vec![value.to_owned()]);
+    }
+    let tokens = if value.contains(',') {
+        value.split(',').map(str::to_owned).collect::<Vec<_>>()
+    } else {
+        if ["Ctrl+", "Alt+", "Shift+", "Meta+"]
+            .iter()
+            .any(|prefix| value.starts_with(prefix))
+        {
+            return None;
+        }
+        value.chars().map(|key| key.to_string()).collect()
+    };
+    tokens.iter().all(|token| gesture(token)).then_some(tokens)
+}
+
 fn parse_binding_command(command: &str) -> Result<ParsedCommand, BindingError> {
     let mut commands =
         parse_chain(command, ParseInput::Interactive).map_err(BindingError::UnknownCommand)?;
@@ -244,12 +292,7 @@ impl BindingTrie {
                 binding(Mode::Normal, &["Ctrl+Shift+Space"], "start-page-cycle"),
                 binding(Mode::Normal, &["Ctrl+p"], "tab-pin"),
                 binding(Mode::Normal, &["Ctrl+Space"], "switcher"),
-                binding(Mode::Normal, &["Ctrl+v"], "mode-enter passthrough"),
-                binding(
-                    Mode::Normal,
-                    &["Ctrl+Shift+v"],
-                    "mode-enter passthrough-once",
-                ),
+                binding(Mode::Normal, &[";", "V"], "mode-enter passthrough"),
                 binding(Mode::Normal, &[";", "v"], "mode-enter passthrough-once"),
                 binding(Mode::Normal, &["d"], "tab-close"),
                 binding(Mode::Normal, &["u"], "tab-undo"),
@@ -389,6 +432,14 @@ impl BindingResolver {
         self.trie.definitions()
     }
 
+    /// Read-only shortcut ownership without allocating the presentation catalog.
+    #[must_use]
+    pub fn has_initial_key(&self, key: &str) -> bool {
+        self.trie
+            .root(self.mode)
+            .is_some_and(|root| root.children.contains_key(key))
+    }
+
     /// Feeds one logical key token into the current mode's trie.
     #[must_use]
     pub fn feed(&mut self, key: &str, now_ms: u64) -> BindingOutcome {
@@ -524,11 +575,28 @@ mod tests {
     use super::*;
 
     #[test]
+    fn binding_tokens_preserve_modified_gestures_and_printable_chains() {
+        for (value, expected) in [
+            ("Ctrl+v", vec!["Ctrl+v"]),
+            ("Ctrl+Shift+v", vec!["Ctrl+Shift+v"]),
+            (";V", vec![";", "V"]),
+            ("g,g", vec!["g", "g"]),
+            ("Ctrl+v,g", vec!["Ctrl+v", "g"]),
+            ("Shift+Enter", vec!["Shift+Enter"]),
+            ("gg", vec!["g", "g"]),
+        ] {
+            assert_eq!(binding_key_tokens(value).unwrap(), expected);
+        }
+        for value in ["", "Ctrl+unknown", "g,,g", "g\n"] {
+            assert!(binding_key_tokens(value).is_none());
+        }
+    }
+
+    #[test]
     fn passthrough_entry_bindings_resolve_in_normal_mode() {
         let registry = BindingRegistry::default_v1(CommandRegistry::default_v1()).unwrap();
         for (keys, command) in [
-            (vec!["Ctrl+v"], "mode-enter passthrough"),
-            (vec!["Ctrl+Shift+v"], "mode-enter passthrough-once"),
+            (vec![";", "V"], "mode-enter passthrough"),
             (vec![";", "v"], "mode-enter passthrough-once"),
         ] {
             let mut resolver = registry.resolver(Mode::Normal);
@@ -864,7 +932,10 @@ mod tests {
             (vec!["=".to_owned()], "zoom reset"),
             (vec!["Ctrl+p".to_owned()], "tab-pin"),
             (vec!["Ctrl+Space".to_owned()], "switcher"),
-            (vec!["Ctrl+v".to_owned()], "mode-enter passthrough"),
+            (
+                vec![";".to_owned(), "V".to_owned()],
+                "mode-enter passthrough",
+            ),
             (vec!["g".to_owned(), "?".to_owned()], "binding-list"),
         ] {
             assert_eq!(

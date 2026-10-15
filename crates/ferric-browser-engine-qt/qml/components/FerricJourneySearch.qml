@@ -11,7 +11,7 @@ RowLayout {
     signal currentRequested()
     signal allRequested()
 
-    TextField {
+    FerricTextField {
         id: journeySearchField
         Layout.fillWidth: true
         placeholderText: "Search title, URL, transition, or source"

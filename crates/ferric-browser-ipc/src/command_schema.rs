@@ -12,6 +12,7 @@ pub fn command_argument_names(command: &str) -> &'static [&'static str] {
         "back" | "forward" | "tab-next" | "tab-prev" => &["count"],
         "tab-open" => &["input", "background"],
         "fullscreen" => &["state"],
+        "edit" => &["operation"],
         "reload" => &["bypass_cache"],
         "search" => &["query", "backward", "case"],
         "window-new" => &["profile", "private"],

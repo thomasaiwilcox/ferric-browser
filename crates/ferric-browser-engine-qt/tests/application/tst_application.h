@@ -11,6 +11,8 @@
 // observes tests.
 class ApplicationTests final : public QObject {
     Q_OBJECT
+    Q_PROPERTY(QVariant savedSelection MEMBER savedSelection)
+    QVariant savedSelection;
     std::unique_ptr<QQmlApplicationEngine> engine;
     QQuickWindow *window = nullptr;
     QTemporaryDir directory;
@@ -49,6 +51,20 @@ class ApplicationTests final : public QObject {
     void rapidHintRejectsConsumedReplay();
     void hintRefreshRetainsInput();
     void hintRefreshDoesNotAutoFollow();
+    void clipboardNativeEditing_data();
+    void clipboardNativeEditing();
+    void clipboardChrome();
+    void clipboardMenus();
+    void clipboardSelectionOwnership();
+    void clipboardShortcutOverride();
+    void clipboardWaylandTransport();
+    void clipboardSelectionControls_data();
+    void clipboardSelectionControls();
+    void clipboardSelectionChangedRejects();
+    void clipboardSelectionLifetimeCycles();
+    void clipboardHeldBrowserGesture();
+    void clipboardOtherWindows_data();
+    void clipboardOtherWindows();
     void initTestCase();
     void init();
     void cleanup();

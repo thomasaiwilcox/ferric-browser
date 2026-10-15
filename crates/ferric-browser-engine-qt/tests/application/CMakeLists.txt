@@ -3,6 +3,9 @@ project(ferric_application_tests LANGUAGES CXX)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_CXX_STANDARD 17)
 find_package(SQLite3 REQUIRED)
+if(NOT TARGET SQLite3::SQLite3) # CMake < 4.3
+    add_library(SQLite3::SQLite3 ALIAS SQLite::SQLite3)
+endif()
 find_package(Qt6 REQUIRED COMPONENTS Quick QuickControls2 WebEngineQuick Network DBus Test)
 get_filename_component(REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../.." ABSOLUTE)
 set(FERRIC_ENGINE_LIBRARY "${REPO_ROOT}/target/release/libferric_browser_engine_qt.a" CACHE FILEPATH "Cargo-built production engine")
@@ -23,3 +26,6 @@ set_tests_properties(application_frame_dpr2 PROPERTIES TIMEOUT 120 ENVIRONMENT "
 
 add_test(NAME application_frame_lifetime COMMAND application_tests crossOriginFrameLifetimeCycles)
 set_tests_properties(application_frame_lifetime PROPERTIES TIMEOUT 700 ENVIRONMENT "QTEST_FUNCTION_TIMEOUT=600000;FERRIC_APP_STRESS=1;QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu --js-flags=--expose-gc")
+
+add_test(NAME application_clipboard COMMAND application_tests clipboardNativeEditing clipboardChrome clipboardMenus clipboardSelectionOwnership clipboardShortcutOverride clipboardSelectionControls clipboardSelectionChangedRejects clipboardSelectionLifetimeCycles clipboardHeldBrowserGesture clipboardOtherWindows)
+set_tests_properties(application_clipboard PROPERTIES TIMEOUT 360 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")

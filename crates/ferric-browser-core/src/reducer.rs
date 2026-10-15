@@ -13,6 +13,37 @@ pub struct Target {
     pub document: DocumentId,
 }
 
+/// Native engine editing; clipboard contents never cross the command boundary.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ClipboardEdit {
+    Copy,
+    Cut,
+    Paste,
+    PastePlain,
+}
+
+impl ClipboardEdit {
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "copy" => Some(Self::Copy),
+            "cut" => Some(Self::Cut),
+            "paste" => Some(Self::Paste),
+            "paste-plain" => Some(Self::PastePlain),
+            _ => None,
+        }
+    }
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Copy => "copy",
+            Self::Cut => "cut",
+            Self::Paste => "paste",
+            Self::PastePlain => "paste-plain",
+        }
+    }
+}
+
 /// State copied across same-profile windows while the live engine view is
 /// reparented by the UI adapter.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -120,6 +151,10 @@ pub enum Event {
         target: Target,
         bypass_cache: bool,
     },
+    ClipboardEdit {
+        target: Target,
+        operation: ClipboardEdit,
+    },
     Stop {
         target: Target,
     },
@@ -192,6 +227,10 @@ pub enum EngineEffect {
     Reload {
         target: Target,
         bypass_cache: bool,
+    },
+    ClipboardEdit {
+        target: Target,
+        operation: ClipboardEdit,
     },
     Stop {
         target: Target,
@@ -876,6 +915,18 @@ pub fn reduce(state: &mut ApplicationState, event: Event) -> Result<Vec<Effect>,
             effects.push(Effect::Engine(EngineEffect::Reload {
                 target,
                 bypass_cache,
+            }));
+        }
+        Event::ClipboardEdit { target, operation } => {
+            if !target_is_current(state, target) {
+                effects.push(Effect::Diagnostic(Diagnostic::IgnoredStaleTarget {
+                    tab: target.tab,
+                }));
+                return Ok(effects);
+            }
+            effects.push(Effect::Engine(EngineEffect::ClipboardEdit {
+                target,
+                operation,
             }));
         }
         Event::Stop { target } => {

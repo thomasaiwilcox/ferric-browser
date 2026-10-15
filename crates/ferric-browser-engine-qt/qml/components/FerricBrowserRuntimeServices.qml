@@ -272,6 +272,27 @@ FerricBrowserRuntimeBase {
         return fallback
     }
 
+    Component { id: selectionSourceFactory; FerricSelectionSource {} }
+
+    function selectionProviderFor(view) {
+        if (!view) return null
+        if (!view.selectionSource) view.selectionSource = selectionSourceFactory.createObject(view, {view: view, browserUi: view.viewUi || view.popupPermissionUi || browserUi})
+        return view.selectionSource
+    }
+    function readSelection(ui, view, token, captured) {
+        if (captured === null) { ui.deliver_selection(token, JSON.stringify({error: "selection source unavailable"})); return }
+        var provider = window.selectionProviderFor(view)
+        if (!provider) { ui.deliver_selection(token, JSON.stringify({error: "document view unavailable"})); return }
+        provider.extract(function(result) {
+            if (!ui.deliver_selection(token, JSON.stringify(result))) return
+            // Complete an accepted plain copy in this callback turn. A later
+            // navigation cannot leave detached text waiting in the work queue.
+            var copied = ui.take_clipboard_request()
+            if (copied.length > 0) window.copyToClipboard(copied,
+                    !ui.clipboard_request_sensitive, ui.clipboard_request_primary, ui)
+        }, captured)
+    }
+
     function focusObserverSource() {
         return BrowserScripts.focusObserverSource()
     }
@@ -361,14 +382,16 @@ FerricBrowserRuntimeBase {
     }
 
     function probeFocusNotification(ui, host, view, index, message) {
-        if (message !== "__ferric_browser_focus_changed" || !ui || !host
-                || (ui.mode !== "insert" && ui.mode !== "insert-locked")) {
+        if ((message !== "__ferric_browser_focus_changed" && message !== "__ferric_browser_selection_changed") || !ui || !host) {
             return
         }
         var active = host === window ? window.activeWebView() : host.activeView
         if (active !== view) {
             return
         }
+        var provider = window.selectionProviderFor(view)
+        if (provider) provider.capture()
+        if (message === "__ferric_browser_selection_changed" || (ui.mode !== "insert" && ui.mode !== "insert-locked")) return
         // Transferred views carry index -1; resolve against their current owner.
         window.probeActiveFocus(ui, index < 0 ? ui.active_tab_index : index, view)
     }
@@ -377,6 +400,8 @@ FerricBrowserRuntimeBase {
         if (!ui || !view || !view.mainFrame || !view.mainFrame.isValid || (view.nativeUrl !== undefined && view.nativeUrl.length > 0)) {
             return
         }
+        var provider = window.selectionProviderFor(view)
+        if (provider) provider.capture()
         window.probeFocusFrame(ui, index, view.mainFrame, "0", view.url.toString())
     }
 
@@ -554,7 +579,7 @@ FerricBrowserRuntimeBase {
         })
     }
 
-    TextField {
+    FerricTextField {
         id: clipboardBridge
         x: -1000
         y: -1000
@@ -690,21 +715,54 @@ FerricBrowserRuntimeBase {
         onCancelled: window.pendingUserscriptRemoval = ""
     }
 
-    function copyToClipboard(value, exposeValue, primary) {
+    function applyNativeEditAction(ui, view, action, source) {
+        var edit = action.split("\t")
+        if (edit.length !== 5 || !view
+                || !ui.clipboard_edit_target_current(edit[1], edit[2], edit[3], view.clipboardPopupToken || "")) {
+            ui.status_text = "Edit destination is stale"
+            return false
+        }
+        return window.requestNativeEdit(ui, view, edit[4], source)
+    }
+
+    function requestNativeEdit(ui, view, operation, source) {
+        var actions = {copy: WebEngineView.Copy, cut: WebEngineView.Cut,
+            paste: WebEngineView.Paste, "paste-plain": WebEngineView.PasteAndMatchStyle}
+        var action = actions[operation]
+        if (!view || action === undefined || !view.action(action).enabled) {
+            ui.status_text = "Edit action is unavailable"
+            return false
+        }
+        var provider = window.selectionProviderFor(view)
+        provider.validate(source || provider.snapshot(), function(result) {
+            if (!result || result.error || !view.action(action).enabled) {
+                ui.status_text = "Edit destination is stale or unavailable"
+                return
+            }
+            view.triggerWebAction(action)
+            ui.status_text = operation === "copy" ? "Copy requested"
+                    : operation === "cut" ? "Cut requested" : "Paste requested"
+        })
+        return true
+    }
+
+    function copyToClipboard(value, exposeValue, primary, ownerUi) {
         if (!value || value.length === 0) {
-            return
+            return false
         }
         if (exposeValue === undefined) {
             exposeValue = true
         }
-        if (!browserUi.write_clipboard(value, primary === true)) {
-            return
+        var ui = ownerUi || browserUi
+        if (!ui.write_clipboard(value, primary === true)) {
+            return false
         }
         window.copiedValue = value
         window.copyNoticeSensitive = !exposeValue
         window.copiedText = exposeValue ? value : "Selected document text (content hidden)"
         window.copyNoticeVisible = true
         copyNoticeTimer.restart()
+        return true
     }
 
     function fileDialogNameFilters(request) {

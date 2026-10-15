@@ -652,6 +652,10 @@ ApplicationWindow {
     }
 
     WebEngineView {
+        property var selectionSource: null
+        property var viewUi: popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi
+        property int tabIndex: -1
+        readonly property string clipboardPopupToken: popupWindow.popupJourneyToken
         id: popupView
         property var pageUserScriptNames: []
         property string pageUserScriptReloadUrl: ""
@@ -698,6 +702,12 @@ ApplicationWindow {
             if (popupWindow.popupJourneyToken.length > 0) {
                 (popupWindow.popupPermissionUi || rootWindow.primaryBrowserUi).popup_navigation_url_changed(
                     popupWindow.popupJourneyToken, url.toString())
+            }
+        }
+        onJavaScriptConsoleMessage: function(level, message, lineNumber, sourceID) {
+            if (message === "__ferric_browser_focus_changed" || message === "__ferric_browser_selection_changed") {
+                var provider = rootWindow.selectionProviderFor(popupView)
+                if (provider) provider.capture()
             }
         }
         onLoadingChanged: function(loadRequest) {

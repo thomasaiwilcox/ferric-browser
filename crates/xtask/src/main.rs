@@ -35,6 +35,12 @@ fn main() {
             println!("  Build and run the QtWebEngine adapter tests.");
             println!("cargo xtask test application");
             println!("  Run production BrowserUi/QML/WebEngine integration tests offscreen.");
+            println!("cargo xtask test clipboard-wayland");
+            println!(
+                "  Qualify isolated Wayland clipboard exchange with verified compositor input."
+            );
+            println!("cargo xtask test application-clipboard");
+            println!("  Run the focused production clipboard regression suite offscreen.");
             println!("cargo xtask test application-wayland");
             println!(
                 "  Run production integration tests with Qt-generated events on nested Wayland (not physical-input qualification)."
@@ -125,8 +131,8 @@ fn render_binding_docs() -> Result<String, String> {
         "Escape exits either variant. For example, use `i`, type a search, Enter, then `j` to browse;\n",
         "use `I` for document editing with repeated paragraphs. Neither command focuses an arbitrary input.\n",
         "Both variants reset when changing tabs or navigating; Transient Insert also ends when its editable context loses focus.\n\n",
-        "For webpage shortcuts outside text fields, press `Ctrl+v` for `PASS THROUGH`.\n",
-        "Press `Ctrl+Shift+v` or `; v` for `PASS NEXT KEY`: the next key, its repeats, and release reach the page, then Normal resumes.\n",
+        "Ctrl+C/Ctrl+X copy/cut, Ctrl+V pastes, and Ctrl+Shift+V pastes plain text. For persistent webpage shortcuts, press `; V` for `PASS THROUGH`.\n",
+        "Press `; v` for `PASS NEXT KEY`: the next key, its repeats, and release reach the page, then Normal resumes.\n",
         "Modifier keys alone do not finish one-key forwarding. `Ctrl+Escape` returns either variant to Normal; ordinary Escape reaches the page.\n",
         "Both reset when changing tabs or navigating; one-key forwarding also cancels when the window loses activation.\n",
         "The entry shortcuts are configurable Normal-mode bindings; `Ctrl+Escape` is a reserved recovery shortcut.\n",
@@ -1612,7 +1618,27 @@ fn run_test(arguments: &[String]) -> Result<(), String> {
             run_native_insert_tests()
         }
         "application" => run_application_tests(),
+        "application-clipboard" => {
+            prepare_application_tests()?;
+            run(
+                "ctest",
+                &[
+                    "--test-dir",
+                    "target/application-tests",
+                    "--output-on-failure",
+                    "-R",
+                    "^application_clipboard$",
+                ],
+            )
+        }
         "application-wayland" => run_wayland_application_tests(),
+        "clipboard-wayland" => {
+            prepare_application_tests()?;
+            run(
+                "python3",
+                &["crates/ferric-browser-engine-qt/tests/application/run_clipboard_wayland.py"],
+            )
+        }
         "wayland-input" => run_wayland_input_qualification(),
         "adapter" => run_adapter_smoke(),
         "fuzz" => run_fuzz_smoke(),

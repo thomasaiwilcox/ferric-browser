@@ -15,6 +15,10 @@ This table is generated from the shared action registry. UI, hints, IPC, the uni
 | `browser.url.send` | `url` | `send` | `send` | target:text (required), url:url | `action url send --to mpv` | ui, ipc, switcher | configured-action-target | `url` | `current-document` | `sensitive` | `never` |
 | `browser.selection.send` | `selection` | `send` | `send` | target:text (required) | `action selection send --to mpv` | ui, ipc, switcher | configured-action-target | `text` | `live-selection` | `sensitive` | `never` |
 | `browser.tab.send` | `tab` | `send` | `send` | target:text (required) | `action tab send --to mpv` | ui, ipc, switcher | configured-action-target | `live-tab` | `live-tab` | `sensitive` | `never` |
+| `browser.edit.copy` | `edit` | `copy` | `edit` |  | `action edit copy` | ui, ipc, switcher | live-document | `none` | `live-document` | `sensitive` | `never` |
+| `browser.edit.cut` | `edit` | `cut` | `edit` |  | `action edit cut` | ui, ipc, switcher | live-document | `none` | `live-document` | `sensitive` | `never` |
+| `browser.edit.paste` | `edit` | `paste` | `edit` |  | `action edit paste` | ui, ipc, switcher | live-document | `none` | `live-document` | `sensitive` | `never` |
+| `browser.edit.paste-plain` | `edit` | `paste-plain` | `edit` |  | `action edit paste-plain` | ui, ipc, switcher | live-document | `none` | `live-document` | `sensitive` | `never` |
 | `browser.selection.copy` | `selection` | `copy` | `yank` |  | `action selection copy` | ui, ipc, switcher |  | `none` | `live-selection` | `sensitive` | `never` |
 | `browser.selection.search` | `selection` | `search` | `selection-search` | engine:text | `action selection search --engine ddg` | ui, ipc, switcher | live-document | `text` | `live-selection` | `navigation` | `never` |
 | `browser.url.clean` | `url` | `clean` | `url-clean` | url:url | `action url clean https://example.test/?utm_source=demo` | ui, ipc, switcher |  | `url` | `current-document` | `query` | `never` |

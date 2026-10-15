@@ -1650,6 +1650,25 @@ mod qobject {
         fn mixed_key_route(self: Pin<&mut BrowserUi>, key: &QString) -> QString;
 
         #[qinvokable]
+        fn clipboard_shortcut_browser_owned(self: Pin<&mut BrowserUi>, key: &QString) -> bool;
+
+        #[qinvokable]
+        fn clipboard_edit_target_current(
+            self: Pin<&mut BrowserUi>,
+            tab: &QString,
+            generation: &QString,
+            document: &QString,
+            popup_token: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn popup_clipboard_edit(
+            self: Pin<&mut BrowserUi>,
+            token: &QString,
+            operation: &QString,
+        ) -> QString;
+
+        #[qinvokable]
         fn begin_spatial_navigation(self: Pin<&mut BrowserUi>) -> bool;
 
         #[qinvokable]

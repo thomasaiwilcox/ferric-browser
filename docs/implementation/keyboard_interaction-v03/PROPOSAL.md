@@ -64,8 +64,9 @@ Normal remains home. Defaults remain unchanged unless a slice's explicit contrac
 | --- | --- |
 | `i` / `I` | Transient / locked Insert; real native text entry; ordinary Escape exits editing |
 | Transient Enter / modified Enter | Ordinary Enter completes the transient interaction; Shift/Ctrl/Alt/Meta Enter retain the established editing behaviour; IME rules remain |
-| `Ctrl+v` | Persistent Pass-through from Normal; in editing contexts it retains the current page/editing meaning |
-| `Ctrl+Shift+v` and `;v` | Pass Next Key; do not implement another one-shot mode |
+| `Ctrl+v` | Native Paste by default; explicit configuration bindings retain precedence |
+| `Ctrl+Shift+v` | Native plain-text Paste by default |
+| `;V` and `;v` | Persistent Pass-through and Pass Next Key respectively |
 | `Ctrl+Escape` | Recovery from either explicit pass-through variant |
 | `Ctrl+Shift+Escape` | Existing emergency/fullscreen behaviour, not a renamed recovery shortcut |
 | `f`, `F`, existing Hint families | Current semantic actions, labels, rapid rules and configured behaviour |
@@ -247,7 +248,7 @@ Resolve this **before** QML special-cases `/` and `?` or ordinary bindings. Rust
 
 ### Reserved controls and chain semantics
 
-In Normal, `:`, ordinary `Escape`, `Ctrl+Escape`, `Ctrl+Shift+Escape` and `Ctrl+Shift+v` cannot be assigned to `input.page_keys`. Existing native security/prompt and enabled media handling also remain outside site mappings. Normal `:` remains command entry; `/`, `?`, `f`, digits and supported modified keys may be page-owned.
+In Normal, `:`, ordinary `Escape`, `Ctrl+Escape`, `Ctrl+Shift+Escape` cannot be assigned to `input.page_keys`. Existing native security/prompt and enabled media handling also remain outside site mappings. Normal `:` remains command entry; `/`, `?`, `f`, digits and supported modified keys may be page-owned.
 
 A new gesture starts a browser keychain/count only when it is browser-owned. Once started, its continuation is browser-owned through completion, mismatch, timeout or cancellation. Never replay a buffered prefix or a rejected suffix to the page. A page mapping for `g` can make Normal `gg` unreachable before a chain starts; `binding-explain` must identify the conflict. A page mapping for a digit takes precedence over starting a count, but not over an already active browser-owned count/chain. Configuration changes cancel incomplete chains before the next new gesture; they do not retarget a held physical key.
 
@@ -482,3 +483,7 @@ The source invariants WEBAPP-001–022 are retained in the traceability map. The
 | UI-024 | Missing tests/infrastructure are not passes; research no-go is not feature completion. |
 | UI-025 | Default label strategy stays stable; alternatives require measured, explicit opt-in approval. |
 | UI-026 | Unresolved specification/security/platform gaps block only the dependent slice, not justify invented semantics. |
+
+The clipboard shortcut compatibility change is user-approved in
+[ADR-0018](../../architecture/ADR-0018-native-clipboard-ownership.md).
+Historical source documents and evidence retain their original observations.

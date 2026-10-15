@@ -85,16 +85,9 @@ fn parse_explain_keychain(keychain: &str) -> Result<(u32, bool, Vec<String>), St
         }
     };
 
-    let tokens = if ferric_browser_core::LogicalKeyToken::parse(&remaining).is_ok() {
-        vec![remaining]
-    } else if remaining.contains(',') {
-        remaining.split(',').map(str::to_owned).collect()
-    } else {
-        remaining.chars().map(|key| key.to_string()).collect()
-    };
-    if tokens.is_empty() || tokens.iter().any(String::is_empty) {
-        return Err("bindings.explain keychain must contain a binding key".into());
-    }
+    let tokens = ferric_browser_core::binding_key_tokens(&remaining).ok_or_else(|| {
+        "bindings.explain keychain must contain canonical binding keys".to_owned()
+    })?;
     let count = if count_text.is_empty() {
         1
     } else {

@@ -7,6 +7,7 @@ pub enum ActionSubject {
     Link,
     Tab,
     Selection,
+    Edit,
     Download,
     Context,
     Window,
@@ -25,6 +26,7 @@ impl ActionSubject {
             Self::Link => "link",
             Self::Tab => "tab",
             Self::Selection => "selection",
+            Self::Edit => "edit",
             Self::Download => "download",
             Self::Context => "context",
             Self::Window => "window",
@@ -116,7 +118,7 @@ impl ActionDefinition {
             ActionSubject::Quickmark => "quickmark",
             ActionSubject::Session => "session",
             ActionSubject::Download => "download",
-            ActionSubject::Command => "command",
+            ActionSubject::Command | ActionSubject::Edit => "command",
             ActionSubject::Selection | ActionSubject::Url | ActionSubject::Link => "text",
         }
     }
@@ -130,6 +132,7 @@ impl ActionDefinition {
             ActionSubject::Url => "current-document",
             ActionSubject::Link => "captured-link",
             ActionSubject::Selection => "live-selection",
+            ActionSubject::Edit => "live-document",
             ActionSubject::Tab => "live-tab",
             ActionSubject::Window => "live-window",
             ActionSubject::Context => "profile-context",
@@ -149,7 +152,7 @@ impl ActionDefinition {
     pub fn required_capabilities(&self) -> &'static [&'static str] {
         match self.command.as_str() {
             "send" => &["configured-action-target"],
-            "selection-search" => &["live-document"],
+            "selection-search" | "edit" => &["live-document"],
             "download-open" | "download-show" | "download-cancel" | "download-pause"
             | "download-resume" | "download-retry" => &["durable-download-index"],
             "history-open" | "history-clear" | "bookmark-add" | "bookmark-open"
@@ -419,6 +422,38 @@ impl ActionRegistry {
                     effect: EffectClass::Sensitive,
                     confirmation: ActionConfirmation::Never,
                     sensitive: true,
+                },
+                ActionDefinition {
+                    id: "browser.edit.copy".into(), subject: ActionSubject::Edit,
+                    verb: "copy".into(), label: "Copy".into(),
+                    description: "Request native copy in the focused document.".into(),
+                    command: "edit".into(), arguments: vec![], examples: vec!["action edit copy".into()],
+                    sources: vec![ActionSource::Ui, ActionSource::Ipc, ActionSource::Switcher],
+                    effect: EffectClass::Sensitive, confirmation: ActionConfirmation::Never, sensitive: true,
+                },
+                ActionDefinition {
+                    id: "browser.edit.cut".into(), subject: ActionSubject::Edit,
+                    verb: "cut".into(), label: "Cut".into(),
+                    description: "Request native cut in the focused document.".into(),
+                    command: "edit".into(), arguments: vec![], examples: vec!["action edit cut".into()],
+                    sources: vec![ActionSource::Ui, ActionSource::Ipc, ActionSource::Switcher],
+                    effect: EffectClass::Sensitive, confirmation: ActionConfirmation::Never, sensitive: true,
+                },
+                ActionDefinition {
+                    id: "browser.edit.paste".into(), subject: ActionSubject::Edit,
+                    verb: "paste".into(), label: "Paste".into(),
+                    description: "Request native paste in the focused document.".into(),
+                    command: "edit".into(), arguments: vec![], examples: vec!["action edit paste".into()],
+                    sources: vec![ActionSource::Ui, ActionSource::Ipc, ActionSource::Switcher],
+                    effect: EffectClass::Sensitive, confirmation: ActionConfirmation::Never, sensitive: true,
+                },
+                ActionDefinition {
+                    id: "browser.edit.paste-plain".into(), subject: ActionSubject::Edit,
+                    verb: "paste-plain".into(), label: "Paste plain text".into(),
+                    description: "Request native paste plain text in the focused document.".into(),
+                    command: "edit".into(), arguments: vec![], examples: vec!["action edit paste-plain".into()],
+                    sources: vec![ActionSource::Ui, ActionSource::Ipc, ActionSource::Switcher],
+                    effect: EffectClass::Sensitive, confirmation: ActionConfirmation::Never, sensitive: true,
                 },
                 ActionDefinition {
                     id: "browser.selection.copy".into(),
@@ -1813,7 +1848,7 @@ mod tests {
     fn builtins_have_stable_namespaced_ids_and_commands() {
         let registry = ActionRegistry::default_v1();
         registry.validate().expect("valid action registry");
-        assert_eq!(registry.definitions().len(), 73);
+        assert_eq!(registry.definitions().len(), 77);
         assert_eq!(
             registry
                 .resolve("browser.url.clean")

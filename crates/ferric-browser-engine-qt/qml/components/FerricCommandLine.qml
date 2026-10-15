@@ -102,7 +102,7 @@ Item {
                 }
             }
 
-            TextField {
+            FerricTextField {
                 id: commandLine
                 objectName: "commandLineInput"
                 Layout.fillWidth: true
