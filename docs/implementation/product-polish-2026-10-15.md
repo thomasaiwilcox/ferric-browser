@@ -1099,6 +1099,124 @@ temporary profiles. Only the C++ test changed for that correction; source and
 artifact hashes preserved the passing Rust, Clippy, adapter and IPC evidence.
 Both initial failures remain in the local evidence directory.
 
+## Shared tab views and owner-bound profile/session managers
+
+Status: checkpoint qualified; the full product polish goal remains active.
+
+The before application probe (`window-tabs-before.log`) rejects `tab-open` in a
+secondary window with a request to use the main window. Those windows previously
+had one static page despite the reducer supporting multiple tabs and session
+restore. The persistent view reconciler now serves both window types. Views keep
+stable tab IDs through ordering changes, lazy session restoration and live
+movement; navigation callbacks check their current stable owner before updating
+tab state. Pin/mute metadata is read through scalar Qt methods rather than a
+new JSON presentation payload. Secondary tab strips use their own configured
+font, visibility and position.
+
+Profile/session presentation now uses a shared per-window workspace. Models,
+drafts, feedback, preview polling and focus stay with its BrowserUi and host.
+Profile opens use the validated command path; private-origin manager opens use
+the native start page instead of copying a private page address. The existing
+profile lock/deletion guard remains in the worker. Preview requests no longer
+share a string slot with worker results. Restore payloads have one consumer in
+the tab controller, which closes the owning preview only after materializing
+the views. Closed folder previews stop polling and cannot reopen their manager.
+Teardown guards reject input and stop polling when an owner disappears.
+
+Focused evidence so far: the shared controller's six QML checks and the
+workspace's six checks pass. The initial compiled tab-pool integration passes
+with two independent live JavaScript states, switching and closing; the same run
+passes regular/private/temporary Settings. The later compiled manager integration passes create/save/replace and existing
+preview/feedback tests. The expanded live-transfer probe exposed startup
+navigation of an adopted page, adoption before asynchronous profile setup, and
+an active-view binding left stale by in-place array edits. Transfer now waits
+for profile setup, skips normal startup navigation, publishes view-pool changes,
+and retires replaced renderers before late callbacks. Rollback leaves source
+restoration to its caller and removes the live view before reconciling the
+failed destination. Final compiled checks remain pending. The first expanded
+probe aborted through the harness's script timeout; the backtrace identifies
+that assertion rather than a product memory fault. A subsequent identity check
+showed the empty active-view binding. A separate added test used an obsolete
+manager close helper; it now calls the owning workspace. One manual full-QML
+run passed 417 checks but omitted the runner's forced-GC flag and failed that
+environment requirement; the final repository gate will use its required flags.
+The complete pre-notification QML suite passes 420 checks; the follow-up
+compiled owner/manager checks pass independent drafts, replace/append with live
+views, and a private-origin profile open that leaves the private URL unchanged.
+The tab test now waits for the committed document URL as well as readiness,
+so the initial blank document cannot receive its retained test state. Further
+checks exposed logical order versus visual layout order: a visible StackLayout
+fixture fails after reorder when indexed by the logical tab position and passes
+when indexed by the selected live view. Both production stacks now use that
+mapping. A newly detached window removes its unused startup blank tab after
+successful adoption. The expanded native checks cover visible selection,
+reordering, the same live renderer through detach/return, and compact 16-point
+manager renders. The first final gate passes formatting, strict Clippy and all 420 QML checks,
+but fails seven Rust source assertions. Six refer to the removed static view,
+primary-only manager wiring or an implementation comment. Their replacements
+check the shared controller's actual owner/profile mapping, per-host developer
+tools, owner-bound delete confirmation and reducer fallback path. The seventh
+reveals audible/mute notifications existed only on the removed secondary view;
+they now update primary MPRIS from the shared factory only for its live active
+primary-owned tab.
+
+The v3 full gate passes 942 Rust tests (two opt-in tests ignored), 420 QML
+checks, strict Clippy, adapter startup and live IPC. Its compiled production
+group fails three of 68 cases: live transfer and two permission-owner cases.
+Native compact renders also expose a zero-size workspace child that behavioral
+checks missed. The workspace now anchors its presentation child to the full
+window. Six new width/font cases reproduce the missing geometry before the fix;
+all twelve workspace checks and the full 426-check QML suite now pass. New native
+assertions require usable modal dimensions, and corrected 640×480/16-point
+profile/session screenshots were inspected (`window-manager-v4-focused-renders`).
+
+The transfer retirement trace identifies the exact reducer/UI mismatch:
+`TransferTabIn` can reuse the initial idle blank tab, so removing that tab
+unconditionally destroys the adopted renderer. Cleanup now leaves the adopted
+stable ID intact. Removed views retire before their model rows disappear, and
+deferred removal uses an inert model. Core window IDs are local to each runtime;
+transfer destination lookup now accepts the existing unique window token and
+rejects ambiguous core aliases instead of selecting the first match. Actual IPC
+owner routing and the public window-ID projection still remain in the full-goal
+audit. The shared factory uses the existing permission handler with an explicit
+requesting host, rather than calling a nonexistent helper.
+
+The v4 compiled focused run passes all eleven checks: visible tab reordering,
+retained JavaScript state and renderer identity through detach/return, one tab in
+the detached window, independent manager drafts, replace/append restoration,
+private-origin profile opening, regular/private/temporary Settings, permission
+handoff/queued-window close, feedback and preview. No TypeError/ReferenceError
+appears in that focused log. A separate native manager render run passes three
+checks.
+
+Final v4 qualification passes formatting, strict workspace Clippy, the full
+repository gate (942 Rust tests passed, two opt-in tests ignored, 426 QML
+checks), adapter startup, live IPC, all 68 compiled production checks, and all
+81 clipboard checks. The exact selected engine archive, browser executable and
+native test executable are recorded in `window-managers-v4-artifacts.json`;
+all 34 frozen inputs match `window-managers-v4-source-hashes.json`. The final
+native compact profile/session renders were inspected again. Runner status,
+logs and renders are under ignored `target/product-polish/`. Qt header and
+headless-environment warnings remain; this is not hardware/Wayland release
+qualification.
+
+Separate probes against the same production source confirm two follow-up
+issues: preparing a transfer fallback writes `about:blank` into an existing
+model row, and rejected transfer destinations leave accepted IPC operations
+nonterminal. A component fixture also reproduces a native initializer writing
+through an unowned index. Live secondary Back/Forward commands and source-close
+plus GC probes pass. Older toolbar callback failures belong to hidden,
+zero-height legacy controls and do not establish a visible user-control bug.
+The next batch must repair the confirmed ownership and terminal-status issues.
+
+An attempted filesystem-only probe mixed old registered QML with edited files;
+it is not production evidence.
+
+All original remaining work stays in scope: provisional-view ownership,
+terminal transfer failures, popup parity, explicit live-window IPC owner routing,
+ordinary startup/error copy, whole-window configured-font review and final
+release/native qualification. This section does not establish whole-product completion.
+
 ## Audit status and remaining implementation
 
 These remain part of the original goal, rather than deferred release promises:

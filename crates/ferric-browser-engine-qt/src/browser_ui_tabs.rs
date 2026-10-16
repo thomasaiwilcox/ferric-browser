@@ -5,6 +5,18 @@ use super::{
 };
 
 impl qobject::BrowserUi {
+    pub(super) fn tab_pinned_at(&self, index: i32) -> bool {
+        self.tab_for_index(index)
+            .and_then(|tab| self.rust().state.as_ref()?.tabs().get(&tab))
+            .is_some_and(|tab| tab.pinned)
+    }
+
+    pub(super) fn tab_muted_at(&self, index: i32) -> bool {
+        self.tab_for_index(index)
+            .and_then(|tab| self.rust().state.as_ref()?.tabs().get(&tab))
+            .is_some_and(|tab| tab.muted)
+    }
+
     pub(super) fn new_tab(mut self: Pin<&mut Self>) -> i32 {
         let Some(window) = self.as_ref().rust().window else {
             self.set_status_text(QString::from("No active window"));

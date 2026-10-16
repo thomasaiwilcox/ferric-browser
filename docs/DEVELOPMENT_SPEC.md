@@ -1142,6 +1142,16 @@ tabs use that profile. Opening a different profile creates/focuses its window.
 Engine-initiated popups inherit the opener's profile, including private mode;
 they may not switch profile through a hostname rule mid-authentication.
 
+Regular browser windows use the same persistent tab-view reconciliation and
+profile/session manager presentation. Each manager keeps its requesting window's
+models, drafts, feedback, preview and focus scope. A restored logical tab must
+have a corresponding engine view before the restore preview closes; hidden
+restored pages remain unloaded until selected. Preview requests and worker
+results use separate typed handoffs, with one consumer for restore payloads.
+Opening a regular profile from a private or temporary manager uses the native
+start page through the existing validated profile-open path, preserving the
+private page's address.
+
 **TAB-002 — Ordering.** New related tabs follow their opener's group in creation
 order; unrelated tabs append. Closing the active tab selects the next tab at
 the same position, then the previous tab if none remains. Closing the final

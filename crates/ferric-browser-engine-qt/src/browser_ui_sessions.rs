@@ -786,6 +786,23 @@ impl qobject::BrowserUi {
         std::mem::take(&mut rust.as_mut().get_mut().session_preview)
     }
 
+    pub(super) fn take_session_preview_request(mut self: Pin<&mut Self>) -> QStringList {
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .session_preview_request
+            .take()
+            .map_or_else(QStringList::default, |(name, append)| {
+                [
+                    QString::from(name),
+                    QString::from(if append { "true" } else { "false" }),
+                ]
+                .into_iter()
+                .collect()
+            })
+    }
+
     pub(super) fn clear_link_preview(mut self: Pin<&mut Self>) {
         self.as_mut().clear_link_preview_presentation();
         self.as_mut().set_link_preview_visible(false);

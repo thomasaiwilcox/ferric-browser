@@ -367,7 +367,9 @@ fn profile_delete_preview_component_only_emits_confirmation_intents() {
     assert!(!qml.contains("browserUi."));
     assert!(composition_root.contains("FerricProfileDeletePreview {"));
     assert!(!composition_root.contains("id: profileDeletePreview"));
-    assert!(composition_root.contains("browserUi.delete_profile(window.profileDeleteName, true)"));
+    assert!(composition_root.contains(
+        "workspace.browserUi.delete_profile(workspace.state.profileDeleteName, true)"
+    ));
 }
 
 #[test]
@@ -379,8 +381,9 @@ fn reopen_window_confirmation_component_only_emits_root_owned_intents() {
     assert!(!qml.contains("browserUi."));
     assert!(composition_root.contains("FerricReopenWindowConfirmation {"));
     assert!(!composition_root.contains("id: reopenWindowConfirmation"));
-    assert!(composition_root.contains("window.confirmReopenWindow()"));
-    assert!(composition_root.contains("window.cancelReopenWindow()"));
+    assert!(composition_root.contains("surfaces.controller.confirmReopenWindow()"));
+    assert!(composition_root.contains("surfaces.controller.cancelReopenWindow()"));
+    assert!(composition_root.contains("hostWindow.confirmReopenWindow()"));
 }
 
 #[test]
@@ -393,7 +396,7 @@ fn session_preview_component_renders_state_and_emits_root_owned_intents() {
     assert!(!qml.contains("browserUi."));
     assert!(composition_root.contains("FerricSessionPreview {"));
     assert!(!composition_root.contains("id: sessionPreview\n"));
-    assert!(composition_root.contains("window.loadPreviewedSession()"));
+    assert!(composition_root.contains("surfaces.controller.loadPreviewedSession()"));
 }
 
 #[test]

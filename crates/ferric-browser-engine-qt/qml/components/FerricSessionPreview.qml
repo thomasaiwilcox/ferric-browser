@@ -4,20 +4,21 @@ import QtQuick.Layouts
 
 FerricCommandDialog {
     id: preview
+    property var state: browserWindow
     signal closeRequested()
     signal loadRequested(bool append)
     property var savedTabs: []
-    readonly property bool canLoad: !browserWindow.sessionPreviewLoading
-        && !browserWindow.sessionPreviewError && savedTabs.length > 0
+    readonly property bool canLoad: !state.sessionPreviewLoading
+        && !state.sessionPreviewError && savedTabs.length > 0
     onVisibleChanged: detailsButton.checked = false
 
-    visible: browserWindow.sessionPreviewVisible
+    visible: state.sessionPreviewVisible
     commandText: ":session-load"
-    title: "Load session: " + browserWindow.sessionPreviewName
-    message: browserWindow.sessionPreviewLoading ? "Reading saved tabs…"
+    title: "Load session: " + state.sessionPreviewName
+    message: state.sessionPreviewLoading ? "Reading saved tabs…"
         : !canLoad ? "The saved tabs couldn't be previewed. Close this preview and try again."
         : savedTabs.length + (savedTabs.length === 1 ? " saved tab. " : " saved tabs. ")
-          + (browserWindow.sessionPreviewAppend ? "Add these to your current window?"
+          + (state.sessionPreviewAppend ? "Add these to your current window?"
              : "Replacing current tabs may discard unsaved work.")
     dialogWidth: 680 * scale
     dialogHeight: 540 * scale
@@ -26,7 +27,7 @@ FerricCommandDialog {
         { id: "cancel", key: "esc", label: "Cancel", safe: true },
         { id: "append", key: "a", shortcuts: ["A"], label: "Append tabs", enabled: canLoad },
         { id: "replace", key: "r", shortcuts: ["R"], label: "Replace current tabs",
-          destructive: true, enabled: canLoad && !browserWindow.sessionPreviewAppend }
+          destructive: true, enabled: canLoad && !state.sessionPreviewAppend }
     ]
     onActionRequested: function(action) {
         if (action === "append") preview.loadRequested(true)
@@ -39,7 +40,7 @@ FerricCommandDialog {
         spacing: 8 * preview.scale
         BusyIndicator {
             Layout.alignment: Qt.AlignHCenter
-            visible: preview.browserWindow.sessionPreviewLoading
+            visible: preview.state.sessionPreviewLoading
             running: visible
         }
         ListView {
@@ -93,7 +94,7 @@ FerricCommandDialog {
         }
         Button {
             id: detailsButton
-            visible: !preview.browserWindow.sessionPreviewLoading && !preview.canLoad
+            visible: !preview.state.sessionPreviewLoading && !preview.canLoad
             text: checked ? "Hide details" : "Show details"
             checkable: true
         }
@@ -103,7 +104,7 @@ FerricCommandDialog {
             visible: detailsButton.visible && detailsButton.checked
             clip: true
             TextArea {
-                text: preview.browserWindow.sessionPreviewText
+                text: preview.state.sessionPreviewText
                 textFormat: TextEdit.PlainText
                 readOnly: true
                 selectByMouse: true

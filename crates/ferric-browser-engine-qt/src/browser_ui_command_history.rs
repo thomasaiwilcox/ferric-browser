@@ -68,33 +68,13 @@ fn secondary_command_supported(command: &ParsedCommand) -> bool {
             | "macro-play"
             | "permission-reset"
             | "permissions"
-            | "profile-create"
-            | "profile-delete"
-            | "profile-list"
-            | "profile-open"
-            | "profiles"
             | "quickmark-list"
             | "repeat"
-            | "session-delete"
-            | "session-list"
-            | "session-load"
-            | "session-save"
-            | "sessions"
             | "site-data-clear"
             | "site-doctor"
             | "site-doctor-undo"
             | "site-status"
             | "switcher"
-            | "tab-close"
-            | "tab-clone"
-            | "tab-focus"
-            | "tab-move"
-            | "tab-next"
-            | "tab-open"
-            | "tab-pin"
-            | "tab-prev"
-            | "tab-select"
-            | "tab-undo"
             | "url-clean"
             | "url-explain"
             | "window-focus"
@@ -122,7 +102,6 @@ mod settings_surface_tests {
             command("help", &[]),
             command("help", &["open"]),
             command("help", &["ui.font_size_pt", "extra"]),
-            command("sessions", &[]),
         ] {
             assert!(!secondary_command_supported(&unavailable));
         }
@@ -302,17 +281,20 @@ mod tests {
 
     #[test]
     fn secondary_windows_reject_commands_their_chrome_cannot_present() {
-        for name in [
-            "history",
-            "downloads",
-            "help",
-            "diagnostics",
-            "switcher",
-            "tab-close",
-        ] {
+        for name in ["history", "downloads", "help", "diagnostics", "switcher"] {
             assert!(!secondary_command_supported(&command(name, &[])), "{name}");
         }
-        for name in ["reload", "zoom", "get", "version", "history-open"] {
+        for name in [
+            "reload",
+            "zoom",
+            "get",
+            "version",
+            "history-open",
+            "tab-close",
+            "tab-open",
+            "tab-next",
+            "tab-prev",
+        ] {
             assert!(secondary_command_supported(&command(name, &[])), "{name}");
         }
         assert!(secondary_command_supported(&command(

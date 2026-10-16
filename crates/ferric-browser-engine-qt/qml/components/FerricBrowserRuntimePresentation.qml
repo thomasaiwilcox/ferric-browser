@@ -1749,11 +1749,17 @@ FerricBrowserRuntimeServices {
             return false
         }
         if (sourceHost === window) {
-            var index = sourceUi ? sourceUi.active_tab_index : -1
+            if (tabViews.indexOf(view) >= 0) return true
+            var index = sourceUi ? sourceUi.tab_index_for_id(view.stableTabId) : -1
             if (index < 0 || index > tabViews.length) {
                 index = tabViews.length
             }
-            tabViews.splice(index, 0, view)
+            if (tabViewAt(index) && tabViewAt(index).stableTabId === view.stableTabId)
+                window.removeTabViewAt(index, null)
+            view.viewUi = sourceUi
+            view.viewHost = window
+            view.viewTabs = tabs
+            tabViews = tabViews.slice(0, index).concat([view], tabViews.slice(index))
             view.parent = window.webViewsObject
             view.visible = true
             for (var restoredIndex = index; restoredIndex < tabViews.length; ++restoredIndex) {
@@ -1778,6 +1784,7 @@ FerricBrowserRuntimeServices {
         if (!view || typeof payload !== "string" || payload.length === 0) {
             return false
         }
+        var sourceTabId = view.stableTabId
         var sourceUrl = view.url ? view.url.toString() : "about:blank"
         var contentHistory = sourceUi.content_history_export(view.tabIndex >= 0 ? view.tabIndex : sourceUi.active_tab_index)
         var transferData = null
@@ -1796,7 +1803,6 @@ FerricBrowserRuntimeServices {
         if (index < 0 || index >= tabs.count) {
             browserUi.rollback_tab_transfer(adoptedTabId)
             window.syncTabModel()
-            window.restoreSourceView(sourceUi, sourceHost, view)
             return false
         }
         tabs.setProperty(index, "url", transferData.url || "about:blank")
@@ -1808,7 +1814,6 @@ FerricBrowserRuntimeServices {
         if (!placeholder) {
             browserUi.rollback_tab_transfer(adoptedTabId)
             window.syncTabModel()
-            window.restoreSourceView(sourceUi, sourceHost, view)
             return false
         }
         window.removeTabViewAt(index, null)
@@ -1828,18 +1833,19 @@ FerricBrowserRuntimeServices {
         view.anchors.fill = undefined
         view.parent = window.webViewsObject
         view.visible = true
-        tabViews.splice(index, 0, view)
+        tabViews = tabViews.slice(0, index).concat([view], tabViews.slice(index))
         for (var reindex = index; reindex < tabViews.length; ++reindex) {
             tabViews[reindex].tabIndex = reindex
             tabViews[reindex].viewModel = tabs.get(reindex)
         }
         window.updateBrowserWindowView(browserUi, view)
         if (!window.completeDetachedSource(sourceUi, sourceHost, payload)) {
+            tabViews = tabViews.slice(0, index).concat(tabViews.slice(index + 1))
             view.parent = null
             view.visible = false
+            view.stableTabId = sourceTabId
             browserUi.rollback_tab_transfer(adoptedTabId)
             window.syncTabModel()
-            window.restoreSourceView(sourceUi, sourceHost, view)
             return false
         }
         if (arguments.length >= 5 && typeof arguments[4] === "string"
@@ -2037,7 +2043,7 @@ FerricBrowserRuntimeServices {
                 tabs.setProperty(0, "tabId", fallback.stableTabId)
                 fallback.parent = window.webViewsObject
                 fallback.visible = true
-                tabViews.push(fallback)
+                tabViews = tabViews.concat([fallback])
                 browserUi.status_text = "Live tab moved; blank fallback tab created"
             } else {
                 window.syncTabModel()

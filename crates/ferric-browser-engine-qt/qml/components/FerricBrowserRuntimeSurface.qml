@@ -826,172 +826,10 @@ FerricBrowserRuntimeChrome {
     }
 
     function applyRestorePayload(payload, hasModeLine) {
-        var lines = payload.split("\n")
-        var append = hasModeLine && lines.shift() === "append"
-        var previousCount = tabs.count
-        if (!append) {
-            tabs.clear()
-            previousCount = 0
-        }
-        for (var i = 0; i < lines.length; ++i) {
-            if (lines[i].length === 0) {
-                continue
-            }
-            var fields = lines[i].split("\t")
-            var tabIndex = previousCount + i
-            tabs.append({
-                url: fields[0],
-                title: fields.length > 4 && fields[4].length > 0 && !hasModeLine
-                       ? fields[4]
-                       : (i === 0 ? "Recovered tab" : "Recovered tab " + (i + 1)),
-                loaded: tabIndex === browserUi.active_tab_index,
-                pinned: fields.length > 1 && fields[1] === "true",
-                muted: fields.length > 2 && fields[2] === "true",
-                zoom: fields.length > 3 ? Number(fields[3]) : 1.0,
-                scrollX: hasModeLine && fields.length > 4 ? Number(fields[4]) : -1,
-                scrollY: hasModeLine && fields.length > 5 ? Number(fields[5]) : -1,
-                suspended: false,
-                discarded: false
-            })
-        }
+        window.tabViewControllerObject.applyRestorePayload(payload, hasModeLine)
     }
 
-    function syncTabModel() {
-        var pending = browserUi.take_session_restore_values()
-        if (pending.length > 0) {
-            window.applyRestorePayload(pending, true)
-        }
-        var coreIds = []
-        for (var coreIndex = 0; coreIndex < browserUi.tab_count; ++coreIndex) {
-            coreIds.push(browserUi.tab_id_for_index(coreIndex))
-        }
-        var aligned = pending.length === 0
-                && tabs.count === coreIds.length
-                && tabViews.length === coreIds.length
-        if (aligned) {
-            for (var alignedIndex = 0; alignedIndex < coreIds.length; ++alignedIndex) {
-                if (tabs.get(alignedIndex).tabId !== coreIds[alignedIndex]
-                        || tabViews[alignedIndex].stableTabId !== coreIds[alignedIndex]) {
-                    aligned = false
-                    break
-                }
-            }
-        }
-        var activeBeforeSync = browserUi.active_tab_index
-        if (aligned && activeBeforeSync >= 0 && activeBeforeSync < tabs.count
-                && !tabs.get(activeBeforeSync).loaded) {
-            aligned = false
-        }
-        if (aligned) {
-            return
-        }
-        var identitySignature = coreIds.join("\n")
-        if (window.tabIdentitySignature.length > 0
-                && window.tabIdentitySignature !== identitySignature) {
-            window.noteTabActivity()
-        }
-        window.tabIdentitySignature = identitySignature
-        for (var modelIndex = 0; modelIndex < coreIds.length; ++modelIndex) {
-            var wantedId = coreIds[modelIndex]
-            var foundIndex = -1
-            for (var searchIndex = modelIndex; searchIndex < tabs.count; ++searchIndex) {
-                if (tabs.get(searchIndex).tabId === wantedId) {
-                    foundIndex = searchIndex
-                    break
-                }
-            }
-            if (foundIndex >= 0) {
-                if (foundIndex !== modelIndex) {
-                    tabs.move(foundIndex, modelIndex, 1)
-                }
-            } else if (modelIndex < tabs.count
-                       && String(tabs.get(modelIndex).tabId || "").length === 0) {
-                tabs.setProperty(modelIndex, "tabId", wantedId)
-            } else {
-                // Native descriptors must be present before constructing the
-                // view: committing a placeholder can overwrite a queued undo
-                // or clone destination through the active-tab callbacks.
-                var descriptor = {}
-                try { descriptor = JSON.parse(browserUi.tab_transfer_payload(wantedId)) } catch (error) {}
-                var nativeDescriptor = descriptor.url === "rb://start" || descriptor.url === "rb://blank"
-                tabs.insert(modelIndex, {
-                    tabId: wantedId,
-                    url: nativeDescriptor ? descriptor.url : "about:blank",
-                    title: nativeDescriptor ? (descriptor.url === "rb://start" ? "Start page" : "Blank") : "New tab",
-                    loaded: true,
-                    pinned: false,
-                    muted: false,
-                    zoom: 1.0,
-                    suspended: false,
-                    discarded: false
-                })
-            }
-        }
-        while (tabs.count > coreIds.length) {
-            tabs.remove(tabs.count - 1)
-        }
-        var active = browserUi.active_tab_index
-        if (active >= 0 && active < tabs.count && !tabs.get(active).loaded) {
-            tabs.setProperty(active, "loaded", true)
-        }
-        var remainingViews = tabViews.slice(0)
-        var orderedViews = []
-        for (var index = 0; index < tabs.count; ++index) {
-            var tabId = coreIds[index]
-            var view = null
-            for (var viewSearch = 0; viewSearch < remainingViews.length; ++viewSearch) {
-                if (remainingViews[viewSearch].stableTabId === tabId) {
-                    view = remainingViews.splice(viewSearch, 1)[0]
-                    break
-                }
-            }
-            if (!view && remainingViews.length > 0
-                    && String(remainingViews[0].stableTabId || "").length === 0) {
-                view = remainingViews.shift()
-            }
-            if (!view) {
-                view = window.webViewFactory.createObject(window.webViewsObject, {
-                tabIndex: index,
-                stableTabId: tabId,
-                viewUi: browserUi,
-                viewTabs: tabs,
-                viewModel: tabs.get(index),
-                viewProfile: browserProfile,
-                viewInterceptor: requestInterceptor,
-                viewTransientProfile: window.temporaryProfile,
-                viewTransferred: false
-                })
-            }
-            if (!view) {
-                browserUi.status_text = "Could not create tab view"
-                break
-            }
-            view.stableTabId = tabId
-            orderedViews.push(view)
-        }
-        for (var staleIndex = 0; staleIndex < remainingViews.length; ++staleIndex) {
-            remainingViews[staleIndex].destroy()
-        }
-        tabViews = orderedViews
-        for (var viewIndex = 0; viewIndex < tabViews.length; ++viewIndex) {
-            tabViews[viewIndex].tabIndex = viewIndex
-            tabViews[viewIndex].viewModel = tabs.get(viewIndex)
-        }
-        if (tabViews.length !== tabs.count || tabs.count !== browserUi.tab_count) {
-            browserUi.status_text = "Tab model/view invariant failed"
-            console.error("tab count invariant failed", tabViews.length,
-                          tabs.count, browserUi.tab_count)
-            return
-        }
-        for (var verifyIndex = 0; verifyIndex < tabs.count; ++verifyIndex) {
-            if (tabs.get(verifyIndex).tabId !== coreIds[verifyIndex]
-                    || tabViews[verifyIndex].stableTabId !== coreIds[verifyIndex]) {
-                browserUi.status_text = "Tab identity invariant failed"
-                console.error("tab identity invariant failed", verifyIndex)
-                return
-            }
-        }
-    }
+    function syncTabModel() { window.tabViewControllerObject.syncTabModel() }
 
     function scheduleRuntimeWork(delay) {
         var boundedDelay = Math.max(0, Math.min(60000, Number(delay) || 0))
@@ -1006,6 +844,7 @@ FerricBrowserRuntimeChrome {
             window.syncTabModel()
             window.executePendingEngineAction()
             browserUi.poll_config()
+            window.profileSessionWorkspaceObject.presentCommandRequest()
             window.maybeOpenPendingEngineFileDialog()
             window.maybeOpenPendingDesktopMediaRequest()
             browserUi.refresh_operations()

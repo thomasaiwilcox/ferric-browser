@@ -135,6 +135,11 @@ impl qobject::BrowserUi {
             }
         };
         self.as_mut().clear_session_preview_rows();
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .session_preview_request = None;
         self.as_mut().reset_management_feedback();
         let profile_id = effect.profile.id;
         let session_path = effect.session_path;

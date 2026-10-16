@@ -851,57 +851,18 @@ GridLayout {
         onTriggered: window.refreshDownloads()
     }
 
-    FerricProfileSessionSurfaces {
-        id: profileSessionSurfaces
-        anchors.fill: parent
-        z: 50
+    readonly property alias profileSessionWorkspaceObject: profileSessionWorkspace
+    FerricProfileSessionWorkspace {
+        id: profileSessionWorkspace
         browserWindow: window
-        browserUi: window.browserUi
+        hostWindow: window
+        browserUi: window.primaryBrowserUi
+        state: window
         profilesModel: profiles
         namedSessionsModel: namedSessions
-        onCreateProfileRequested: function(name, label) {
-            if (browserUi.create_profile(name, label)) {
-                profileSessionSurfaces.profileMutationAccepted("create", name, label)
-            } else {
-                profileSessionSurfaces.profileRequestRejected("This profile couldn't be created. Review the name and try again.")
-            }
-        }
-        onRenameProfileRequested: function(name, label) {
-            if (browserUi.rename_profile(name, label)) {
-                profileSessionSurfaces.profileMutationAccepted("rename", name, label)
-            } else {
-                profileSessionSurfaces.profileRequestRejected("This profile couldn't be renamed. Try again.")
-            }
-        }
-        onOpenProfileRequested: function(name, label) {
-            window.openProfile(name, label)
-        }
-        onDeleteProfileRequested: function(name) {
-            if (window.profileDeletePreviewVisible) {
-                if (browserUi.delete_profile(window.profileDeleteName, true)) {
-                    profileSessionSurfaces.profileMutationAccepted("delete", name, "")
-                } else {
-                    profileSessionSurfaces.profileRequestRejected("This profile couldn't be deleted. Review the details and try again.")
-                }
-                profileSessionSurfaces.returnToProfiles()
-            } else if (!window.showProfileDeletePreview(name)) {
-                profileSessionSurfaces.profileRequestRejected("The profile folders couldn't be checked. Try again.")
-            }
-        }
-        onSaveSessionRequested: function(name) {
-            if (browserUi.save_named_session(name)) {
-                profileSessionSurfaces.sessionSaveAccepted(name)
-            } else {
-                profileSessionSurfaces.sessionRequestRejected("This session couldn't be saved. Review the name and try again.")
-            }
-        }
-        onDeleteSessionRequested: function(name) {
-            if (browserUi.delete_named_session(name, true)) {
-                profileSessionSurfaces.sessionDeleteAccepted()
-            } else {
-                profileSessionSurfaces.sessionRequestRejected("This session couldn't be deleted. Try again.")
-            }
-        }
+        transientProfile: window.temporaryProfile
+        onOpening: window.openInternalSurface()
+        onClosed: window.closeInternalSurface()
     }
 
     StackLayout {
@@ -912,7 +873,10 @@ GridLayout {
         anchors.rightMargin: window.tabStripVisible && window.tabPosition === "right"
                              ? window.sideTabWidth : 0
         anchors.bottomMargin: window.bottomChromeHeight
-        currentIndex: browserUi.active_tab_index
+        currentIndex: {
+            var selected = window.activeWebView()
+            return selected ? selected.StackLayout.index : -1
+        }
 
         Component {
             id: webViewComponent
@@ -972,6 +936,11 @@ GridLayout {
                 property var viewInterceptor: window.primaryRequestInterceptor
                 property bool viewTransientProfile: window.temporaryProfile
                 property bool viewTransferred: false
+                property bool viewRetired: false
+                function ownsTab() {
+                    return !viewRetired && !!viewUi && tabIndex >= 0 && stableTabId.length > 0
+                        && viewUi.tab_id_for_index(tabIndex) === stableTabId
+                }
                 property var pageUserScriptNames: []
                 property string pageUserScriptReloadUrl: ""
                 property string pageDialogDocumentKey: ""
@@ -984,10 +953,11 @@ GridLayout {
                 property string rendererFailureReason: ""
                 property int rendererFailureExitCode: 0
                 property bool scrollPositionRestored: false
-                devToolsView: window.devToolsVisible
-                        ? (window.devToolsDetached
-                           ? window.devToolsExternalView : attachedDevToolsLoader.item)
-                        : null
+                devToolsView: viewHost && viewHost !== window
+                        ? (viewHost.devToolsVisible ? viewHost.devToolsAttachedView : null)
+                        : window.devToolsVisible
+                          ? (window.devToolsDetached ? window.devToolsExternalView : attachedDevToolsLoader.item)
+                          : null
                 // Navigation-scoped content settings are snapshotted per
                 // document; live config changes apply to the next navigation.
                 property var effectiveSiteSettings: ({ values: {}, matched_rules: [] })
@@ -1049,6 +1019,14 @@ GridLayout {
                         window.scheduleFocusProbe(2)
                     }
                 }
+                onRecentlyAudibleChanged: {
+                    if (ownsTab() && viewUi === browserUi && tabIndex === viewUi.active_tab_index)
+                        window.updateMprisForPrimaryView(webView)
+                }
+                onAudioMutedChanged: {
+                    if (ownsTab() && viewUi === browserUi && tabIndex === viewUi.active_tab_index)
+                        window.updateMprisForPrimaryView(webView)
+                }
                 onZoomFactorChanged: {
                     if (viewUi === browserUi && browserUi.mode === "grid") {
                         browserUi.spatial_invalidated("geometry-changed")
@@ -1060,16 +1038,17 @@ GridLayout {
                 }
                 onUrlChanged: {
                     if (nativeUrl.length > 0) return
+                    if (!ownsTab()) return
                     nativeContent.noteSameDocument(url.toString())
                     refreshEffectiveSiteSettings()
                     if (!viewModel.loaded) {
                         return
                     }
                     var changedUrl = url.toString()
-                    if (viewModel.url !== changedUrl && viewTabs === tabs) {
-                        tabs.setProperty(tabIndex, "url", changedUrl)
+                    if (viewModel.url !== changedUrl && viewTabs && tabIndex >= 0) {
+                        viewTabs.setProperty(tabIndex, "url", changedUrl)
                     }
-                    if (viewTabs !== tabs || tabIndex === viewUi.active_tab_index) {
+                    if (!viewTabs || tabIndex < 0 || tabIndex === viewUi.active_tab_index) {
                         if (viewUi === browserUi) {
                             address.text = browserUi.display_url
                             window.updateMprisForPrimaryView(webView)
@@ -1079,15 +1058,16 @@ GridLayout {
                 }
                 onTitleChanged: {
                     if (nativeUrl.length > 0) return
-                    if (viewModel.loaded && viewTabs === tabs) {
-                        tabs.setProperty(tabIndex, "title", title || "New tab")
+                    if (!ownsTab()) return
+                    if (viewModel.loaded && viewTabs && tabIndex >= 0) {
+                        viewTabs.setProperty(tabIndex, "title", title || "New tab")
                         if (tabIndex === viewUi.active_tab_index && viewUi === browserUi) {
                             window.updateMprisForPrimaryView(webView)
                         }
                     }
                 }
                 onLoadingChanged: function(loadRequest) {
-                    if (!viewModel.loaded || nativeUrl.length > 0) return
+                    if (!viewModel.loaded || nativeUrl.length > 0 || !ownsTab()) return
                     if (loadRequest.status === WebEngineView.LoadStartedStatus) {
                         viewUi.invalidate_native_prompt_leases()
                         webView.scrollPositionRestored = false
@@ -1099,13 +1079,15 @@ GridLayout {
                         window.clearDesktopMediaForView(webView)
                         window.clearSiteDataClearForView(webView)
                         window.noteCaptureNavigation(webView)
-                        window.clearFileDialogForView(webView)
+                        if (viewHost && viewHost.clearFileDialogForView) viewHost.clearFileDialogForView(webView)
                         window.clearRendererFailureForView(webView)
                         window.resetPageDialogBudget(webView)
                         viewInterceptor.clearSiteEvidence(webView.url.host)
                         viewUi.clear_blocking_active_evidence()
-                        if (viewTabs === tabs) {
-                            window.cancelPermissionForTab(tabIndex)
+                        if (viewTabs && tabIndex >= 0) {
+                            window.removePermissionGroups(function(group) {
+                                return group.ui === webView.viewUi && group.tabIndex === webView.tabIndex
+                            }, true)
                         } else {
                             window.cancelPermissionForUi(viewUi)
                         }
@@ -1115,14 +1097,14 @@ GridLayout {
                             viewUi, webView, webView.url.toString(), viewTransientProfile,
                             "document_start")
                         window.injectCosmeticRules(viewUi, webView)
-                        if (viewTabs === tabs) {
+                        if (viewTabs && tabIndex >= 0) {
                             viewUi.navigation_started_for(tabIndex, loadRequest.url.toString())
                         } else {
                             viewUi.navigation_started(loadRequest.url.toString())
                         }
                     } else if (loadRequest.status === WebEngineView.LoadSucceededStatus) {
                         nativeContent.noteCommit()
-                        if (viewTabs === tabs) {
+                        if (viewTabs && tabIndex >= 0) {
                             viewUi.navigation_committed_for(tabIndex, webView.url.toString(), webView.title)
                         } else {
                             viewUi.navigation_committed(webView.url.toString(), webView.title)
@@ -1140,7 +1122,7 @@ GridLayout {
                                 viewUi, webView, webView.url.toString(), viewTransientProfile,
                                 "document_idle")
                         })
-                        if (viewTabs === tabs) {
+                        if (viewTabs && tabIndex >= 0) {
                             viewUi.navigation_completed_for(tabIndex)
                         } else {
                             viewUi.navigation_completed()
@@ -1149,12 +1131,12 @@ GridLayout {
                                 && tabIndex === viewUi.active_tab_index) {
                             window.scheduleFocusProbe(3)
                         }
-                    if (viewTabs !== tabs || tabIndex === viewUi.active_tab_index) {
+                    if (!viewTabs || tabIndex < 0 || tabIndex === viewUi.active_tab_index) {
                             window.finishSiteDoctorAfterLoad(viewUi, true)
                         }
                     } else if (loadRequest.status === WebEngineView.LoadFailedStatus) {
                         nativeContent.noteCommit()
-                        if (viewTabs === tabs) {
+                        if (viewTabs && tabIndex >= 0) {
                             viewUi.navigation_failed_with_details(
                                 tabIndex,
                                 loadRequest.url.toString(),
@@ -1172,17 +1154,16 @@ GridLayout {
                     viewUi.finish_print_pdf(filePath, success)
                 }
                 onFileDialogRequested: function(request) {
-                    if (viewTabs !== tabs || tabIndex === viewUi.active_tab_index) {
+                    if (!viewTabs || tabIndex < 0 || tabIndex === viewUi.active_tab_index) {
                         window.handleFileDialogRequested(request, webView, viewUi)
                     } else {
                         window.resolveQtRequest(viewUi, request, "file-dialog", "dialogReject", [])
                     }
                 }
                 onPermissionRequested: function(permissionRequest) {
-                    if (viewTabs !== tabs || tabIndex === viewUi.active_tab_index) {
-                        window.handlePermissionRequested(
-                            permissionRequest, tabIndex, viewUi, webView,
-                            viewTransientProfile)
+                    if (!viewTabs || tabIndex < 0 || tabIndex === viewUi.active_tab_index) {
+                        window.handlePermissionRequested(permissionRequest, tabIndex,
+                            viewUi, webView, viewTransientProfile, viewHost)
                     } else {
                         window.resolveQtRequest(viewUi, permissionRequest, "permission", "deny", [])
                     }
@@ -1196,40 +1177,40 @@ GridLayout {
                         viewUi, webView, request, viewTransientProfile, viewHost)
                 }
                 onSelectClientCertificate: function(selection) {
-                    if (viewTabs !== tabs || tabIndex === viewUi.active_tab_index) {
+                    if (!viewTabs || tabIndex < 0 || tabIndex === viewUi.active_tab_index) {
                         window.handleClientCertificateRequested(
-                            viewUi, webView, selection, viewTransientProfile, window)
+                            viewUi, webView, selection, viewTransientProfile, viewHost)
                     } else {
                         window.resolveQtRequest(viewUi, selection, "client-certificate", "selectNone", [])
                     }
                 }
                 onCertificateError: function(error) {
-                    if (viewTabs !== tabs || tabIndex === viewUi.active_tab_index) {
+                    if (!viewTabs || tabIndex < 0 || tabIndex === viewUi.active_tab_index) {
                         window.handleCertificateError(
-                            viewUi, webView, error, window)
+                            viewUi, webView, error, viewHost)
                     } else {
                         window.resolveQtRequest(viewUi, error, "client-certificate", "rejectCertificate", [])
                     }
                 }
                 onWebAuthUxRequested: function(request) {
-                    if (viewTabs !== tabs || tabIndex === viewUi.active_tab_index) {
+                    if (!viewTabs || tabIndex < 0 || tabIndex === viewUi.active_tab_index) {
                         window.handleWebAuthRequested(
-                            viewUi, webView, request, window)
+                            viewUi, webView, request, viewHost)
                     } else {
                         window.resolveQtRequest(viewUi, request, "webauth", "cancel", [])
                     }
                 }
                 onContextMenuRequested: function(request) {
-                    if (viewTabs !== tabs || tabIndex === viewUi.active_tab_index) {
+                    if (!viewTabs || tabIndex < 0 || tabIndex === viewUi.active_tab_index) {
                         window.handleContextMenuRequested(
-                            viewUi, webView, request, window)
+                            viewUi, webView, request, viewHost)
                     } else {
                         request.accepted = true
                     }
                 }
                 onDesktopMediaRequested: function(request) {
                     window.handleDesktopMediaRequested(
-                        viewUi, webView, request, window)
+                        viewUi, webView, request, viewHost)
                 }
                 onFullScreenRequested: function(request) {
                     if (viewUi === browserUi && browserUi.mode === "grid") {
@@ -1237,17 +1218,17 @@ GridLayout {
                     }
                     request.accept()
                     if (request.toggleOn) {
-                        window.showFullScreen()
+                        viewHost.showFullScreen()
                         viewUi.status_text = "Page fullscreen enabled"
                     } else {
-                        window.showNormal()
+                        viewHost.showNormal()
                         viewUi.status_text = "Page fullscreen ended"
                     }
                 }
                 onRenderProcessTerminated: function(terminationStatus, exitCode) {
                     if (nativeUrl.length > 0) return
                     window.handleRendererProcessTerminated(
-                        viewUi, webView, window, tabIndex,
+                        viewUi, webView, viewHost, tabIndex,
                         terminationStatus, exitCode)
                 }
                 Component.onDestruction: {
@@ -1260,7 +1241,7 @@ GridLayout {
                         window.clearContextMenuForView(webView)
                         window.clearDesktopMediaForView(webView)
                         window.clearCaptureSessionForView(webView)
-                        window.clearFileDialogForView(webView)
+                        if (viewHost && viewHost.clearFileDialogForView) viewHost.clearFileDialogForView(webView)
                         window.clearRendererFailureForView(webView)
                     }
                     if (promptIdentityUi && promptIdentityTabIndex >= 0
@@ -1270,7 +1251,7 @@ GridLayout {
                     }
                 }
                 onNewWindowRequested: function(request) {
-                    var popupAllowed = viewTabs === tabs
+                    var popupAllowed = viewTabs && tabIndex >= 0
                             ? viewUi.popup_allowed_for(
                                 tabIndex, request.requestedUrl.toString(), request.userInitiated)
                             : viewUi.popup_allowed(
@@ -1287,11 +1268,11 @@ GridLayout {
                         popupContextName: viewUi.context_name,
                         popupContextLabel: viewUi.context_label,
                         popupPrivateProfile: viewTransientProfile,
-                        popupEphemeralProfile: window.ephemeralProfile,
-                        popupProfileName: window.profileName
+                        popupEphemeralProfile: viewHost === window ? window.ephemeralProfile : viewHost.windowEphemeralProfile,
+                        popupProfileName: viewHost === window ? window.profileName : viewHost.windowProfileName
                     })
                     if (!popup) {
-                        if (viewTabs === tabs) {
+                        if (viewTabs && tabIndex >= 0) {
                             viewUi.navigation_failed_for(tabIndex)
                         } else {
                             viewUi.navigation_failed()
@@ -1799,10 +1780,7 @@ GridLayout {
 
         window.pendingInteractiveCommand = ""
         var commandStatus = browserUi.status_text
-        var preview = browserUi.take_session_preview()
-        if (preview.length > 0) {
-            window.showCommandSessionPreview(preview)
-        }
+        window.profileSessionWorkspaceObject.presentCommandRequest()
         if (browserUi.library_kind.length > 0) {
             window.libraryPage = 0
             window.openInternalSurface()

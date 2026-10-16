@@ -2527,6 +2527,182 @@ void ApplicationTests::productPolishManagementSurfaces() {
     QTRY_VERIFY(!evaluate("testWindow." + visibleProperty).toBool());
 }
 
+void ApplicationTests::productPolishSecondaryTabs() {
+    QTRY_VERIFY(!evaluate("testWindow.browserUi.profile_bootstrap_pending").toBool());
+    const auto primaryUrl = text("current_url");
+    const auto primaryTabs = evaluate("testWindow.browserUi.tab_count").toInt();
+    evaluate("testWindow.browserWindowFactory.createObject(null,{windowStartupUrl:"
+        + quoted(primaryUrl) + ",windowProfileName:'tabs-owner',windowProfileLabel:'Tabs owner'})");
+    QTRY_VERIFY(evaluate("testWindow.browserWindowRegistry.length>1").toBool());
+    const auto token = evaluate("testWindow.browserWindowRegistry[testWindow.browserWindowRegistry.length-1].windowToken").toString();
+    const auto entry = "testWindow.browserWindowRegistry.find(function(e){return e.windowToken === " + quoted(token) + "})";
+    QTRY_VERIFY(evaluate(entry + ".host.profileBootstrapComplete").toBool());
+    pageReceiver = entry + ".host.activeView";
+    QTRY_VERIFY(page("location.href === " + quoted(primaryUrl)
+        + " && document.readyState === 'complete'").toBool());
+    page("window.retainedState=41");
+    const QPointer<QObject> firstPage = evaluate(entry + ".host.activeView").value<QObject *>();
+    QVERIFY2(evaluate(entry + ".ui.execute_secondary_interactive_command(" + quoted("tab-open " + primaryUrl) + ")").toBool(),
+             qPrintable(evaluate(entry + ".ui.status_text").toString()));
+    evaluate(entry + ".host.processRuntimeWork()");
+    QTRY_COMPARE(evaluate(entry + ".ui.tab_count").toInt(), 2);
+    QTRY_COMPARE(evaluate(entry + ".host.tabViews.length").toInt(), 2);
+    QTRY_VERIFY(page("location.href === " + quoted(primaryUrl)
+        + " && document.readyState === 'complete'").toBool());
+    QVERIFY(!page("window.retainedState === 41").toBool());
+    page("window.retainedState=82");
+    const auto secondId = evaluate(entry + ".ui.tab_id_for_index(1)").toString();
+    QVERIFY(evaluate(entry + ".ui.execute_secondary_interactive_command("
+        + quoted("tab-move " + secondId + " left") + ")").toBool());
+    evaluate(entry + ".host.processRuntimeWork()");
+    QTRY_COMPARE(evaluate(entry + ".ui.active_tab_index").toInt(), 0);
+    QTRY_VERIFY(evaluate(entry + ".host.activeView.visible").toBool());
+    QTRY_COMPARE(page("window.retainedState").toInt(), 82);
+    QVERIFY(evaluate(entry + ".ui.execute_secondary_interactive_command('tab-prev')").toBool());
+    evaluate(entry + ".host.processRuntimeWork()");
+    QTRY_COMPARE(evaluate(entry + ".host.activeView").value<QObject *>(), firstPage.data());
+    QTRY_VERIFY(evaluate(entry + ".host.activeView.visible").toBool());
+    QTRY_COMPARE(page("window.retainedState").toInt(), 41);
+    QVERIFY(evaluate(entry + ".ui.execute_secondary_interactive_command('tab-next')").toBool());
+    evaluate(entry + ".host.processRuntimeWork()");
+    QTRY_COMPARE(page("window.retainedState").toInt(), 82);
+    QVERIFY(evaluate(entry + ".ui.execute_secondary_interactive_command('tab-close')").toBool());
+    evaluate(entry + ".host.processRuntimeWork()");
+    QTRY_COMPARE(evaluate(entry + ".ui.tab_count").toInt(), 1);
+    QTRY_COMPARE(page("window.retainedState").toInt(), 41);
+    QCOMPARE(text("current_url"), primaryUrl);
+    QCOMPARE(evaluate("testWindow.browserUi.tab_count").toInt(), primaryTabs);
+    const QPointer<QObject> livePage = evaluate(entry + ".host.activeView").value<QObject *>();
+    QVERIFY(livePage);
+    // Moving a live page must retain its JS state and leave a real fallback
+    // in the source, rather than treating transferred windows as one-view shells.
+    QVERIFY(evaluate(entry + ".ui.execute_secondary_interactive_command('tab-detach')").toBool());
+    evaluate(entry + ".host.processRuntimeWork()");
+    QTRY_COMPARE(evaluate("testWindow.browserWindowRegistry.length").toInt(), 3);
+    const auto movedToken = evaluate("testWindow.browserWindowRegistry.find(function(e){return e.windowToken !== "
+        + quoted(token) + " && e.host !== testWindow}).windowToken").toString();
+    const auto moved = "testWindow.browserWindowRegistry.find(function(e){return e.windowToken === " + quoted(movedToken) + "})";
+    QTRY_VERIFY(evaluate(moved + ".host.profileBootstrapComplete").toBool());
+    QTRY_COMPARE(evaluate(moved + ".ui.tab_count").toInt(), 1);
+    QTRY_COMPARE(evaluate(moved + ".host.activeView").value<QObject *>(), livePage.data());
+    pageReceiver = moved + ".host.activeView";
+    QTRY_COMPARE(page("window.retainedState").toInt(), 41);
+    QTRY_COMPARE(evaluate(entry + ".host.tabViews.length").toInt(), 1);
+    QVERIFY(evaluate("testWindow.browserWindowEntryForTarget(" + entry + ".ui.core_window_id) === null").toBool());
+    const auto destination = token;
+    QVERIFY(evaluate(moved + ".ui.execute_secondary_interactive_command(" + quoted("tab-give " + destination) + ")").toBool());
+    evaluate(moved + ".host.processRuntimeWork()");
+    const auto transferStatus = evaluate(moved + ".ui.status_text").toString();
+    QTRY_VERIFY2(evaluate(entry + ".host.activeView").value<QObject *>() == livePage.data(),
+        qPrintable(transferStatus + " / "
+            + evaluate(entry + ".ui.status_text").toString()));
+    pageReceiver = entry + ".host.activeView";
+    QTRY_COMPARE(page("window.retainedState").toInt(), 41);
+    QCOMPARE(text("current_url"), primaryUrl);
+}
+
+void ApplicationTests::productPolishSecondaryManagers() {
+    QTRY_VERIFY(!evaluate("testWindow.browserUi.profile_bootstrap_pending").toBool());
+    const auto primaryUrl = text("current_url");
+    evaluate("testWindow.browserWindowFactory.createObject(null,{windowStartupUrl:"
+        + quoted(primaryUrl) + ",windowProfileName:'manager-owner',windowProfileLabel:'Manager owner'})");
+    QTRY_VERIFY(evaluate("testWindow.browserWindowRegistry.length>1").toBool());
+    const auto token = evaluate("testWindow.browserWindowRegistry[1].windowToken").toString();
+    const auto entry = "testWindow.browserWindowRegistry.find(function(e){return e.windowToken === " + quoted(token) + "})";
+    QTRY_VERIFY(evaluate(entry + ".host.profileBootstrapComplete").toBool());
+    auto child = qobject_cast<QQuickWindow *>(evaluate(entry + ".host").value<QObject *>());
+    QVERIFY(child);
+    const auto managers = entry + ".host.profileSessionWorkspace";
+    QVERIFY(evaluate(entry + ".ui.execute_secondary_interactive_command('profiles')").toBool());
+    evaluate(entry + ".host.processRuntimeWork()");
+    QTRY_VERIFY(evaluate(managers + ".profileManagerVisible").toBool());
+    QVERIFY(!evaluate("testWindow.profileManagerVisible").toBool());
+    QVERIFY(!evaluate(entry + ".host.browserKeyFocusActive").toBool());
+    QVERIFY(command("profiles"));
+    auto primaryDraft = window->findChild<QQuickItem *>("profileNameInput");
+    QVERIFY(primaryDraft);
+    QVERIFY(primaryDraft->setProperty("text", "keep-primary-draft"));
+    auto name = child->findChild<QQuickItem *>("profileNameInput");
+    auto label = child->findChild<QQuickItem *>("profileLabelInput");
+    auto create = child->findChild<QQuickItem *>("profileCreateButton");
+    QVERIFY(name && label && create);
+    QVERIFY(name->setProperty("text", "created-by-child"));
+    QVERIFY(label->setProperty("text", "Created in child"));
+    QVERIFY(QMetaObject::invokeMethod(create, "click"));
+    QTRY_COMPARE(evaluate(entry + ".ui.profile_action_state").toString(), QString("succeeded"));
+    QTRY_COMPARE(name->property("text").toString(), QString());
+    QVERIFY(text("profile_action_id").isEmpty());
+    evaluate(managers + ".closeProfiles()");
+    QVERIFY(evaluate("testWindow.profileManagerVisible").toBool());
+    QCOMPARE(primaryDraft->property("text").toString(), QString("keep-primary-draft"));
+    evaluate("testWindow.profileSessionWorkspaceObject.closeProfiles()");
+    QVERIFY(evaluate(entry + ".ui.execute_secondary_interactive_command('tab-open rb://blank')").toBool());
+    evaluate(entry + ".host.processRuntimeWork()");
+    QTRY_COMPARE(evaluate(entry + ".ui.tab_count").toInt(), 2);
+    QVERIFY(evaluate(entry + ".ui.save_named_session('child-tabs')").toBool());
+    QTRY_COMPARE(evaluate(entry + ".ui.session_save_state").toString(), QString("succeeded"));
+    QVERIFY(evaluate(entry + ".ui.execute_secondary_interactive_command('tab-close')").toBool());
+    evaluate(entry + ".host.processRuntimeWork()");
+    QTRY_COMPARE(evaluate(entry + ".ui.tab_count").toInt(), 1);
+    evaluate(entry + ".host.submitInteractiveCommand('session-load child-tabs')");
+    QTRY_VERIFY(evaluate(managers + ".sessionPreviewVisible").toBool());
+    QTRY_VERIFY(!evaluate(managers + ".sessionPreviewLoading").toBool());
+    QVERIFY(!evaluate(managers + ".sessionPreviewError").toBool());
+    QVERIFY(!evaluate("testWindow.sessionPreviewVisible").toBool());
+    QVERIFY(evaluate(managers + ".loadPreviewedSession()").toBool());
+    QTRY_COMPARE(evaluate(entry + ".ui.tab_count").toInt(), 2);
+    QTRY_COMPARE(evaluate(entry + ".host.tabViews.length").toInt(), 2);
+    QTRY_VERIFY(!evaluate(managers + ".sessionPreviewVisible").toBool());
+    QTRY_COMPARE(evaluate(entry + ".host.activeView.nativeUrl").toString(), QString("rb://blank"));
+    // Appending must add real views and retain the existing live renderers.
+    const auto retainedView = evaluate(entry + ".host.tabViews[0]").value<QObject *>();
+    evaluate(entry + ".host.submitInteractiveCommand('session-load --append child-tabs')");
+    QTRY_VERIFY(evaluate(managers + ".sessionPreviewVisible").toBool());
+    QTRY_VERIFY(!evaluate(managers + ".sessionPreviewLoading").toBool());
+    QVERIFY(evaluate(managers + ".sessionPreviewAppend").toBool());
+    QVERIFY(evaluate(managers + ".loadPreviewedSession()").toBool());
+    QTRY_COMPARE(evaluate(entry + ".ui.tab_count").toInt(), 4);
+    QTRY_COMPARE(evaluate(entry + ".host.tabViews.length").toInt(), 4);
+    QCOMPARE(evaluate(entry + ".host.tabViews[0]").value<QObject *>(), retainedView);
+    QTRY_VERIFY(!evaluate(managers + ".sessionPreviewVisible").toBool());
+
+    // Opening a regular profile from private management must start at home
+    // without exporting the current private URL.
+    evaluate("testWindow.browserWindowFactory.createObject(null,{windowStartupUrl:"
+        + quoted(primaryUrl + "?private-only=1")
+        + ",windowProfileName:'private-manager',windowProfileLabel:'Private',windowPrivateProfile:true})");
+    QTRY_COMPARE(evaluate("testWindow.browserWindowRegistry.length").toInt(), 3);
+    const auto privateToken = evaluate("testWindow.browserWindowRegistry.find(function(e){return e.privateProfile}).windowToken").toString();
+    const auto privateEntry = "testWindow.browserWindowRegistry.find(function(e){return e.windowToken === " + quoted(privateToken) + "})";
+    QTRY_VERIFY(evaluate(privateEntry + ".host.profileBootstrapComplete").toBool());
+    QTRY_COMPARE(evaluate(privateEntry + ".ui.current_url").toString(), primaryUrl + "?private-only=1");
+    QVERIFY(evaluate(privateEntry + ".ui.request_profile_window('created-by-child')").toBool());
+    QTRY_COMPARE(evaluate("testWindow.browserWindowRegistry.length").toInt(), 4);
+    const auto opened = QString("testWindow.browserWindowRegistry.find(function(e){return e.profileName === 'created-by-child'})");
+    QTRY_VERIFY(evaluate(opened + ".host.profileBootstrapComplete").toBool());
+    QTRY_COMPARE(evaluate(opened + ".host.activeView.nativeUrl").toString(), QString("rb://start"));
+    QCOMPARE(evaluate(privateEntry + ".ui.current_url").toString(), primaryUrl + "?private-only=1");
+    QVERIFY(evaluate(entry + ".ui.execute_secondary_interactive_command('set --temp ui.font_size_pt=16')").toBool());
+    QTRY_COMPARE(child->property("font").value<QFont>().pointSizeF(), 16.0);
+    child->resize(640, 480);
+    const auto artifacts = qEnvironmentVariable("FERRIC_TEST_ARTIFACT_DIR");
+    for (const auto &surface : {QString("profiles"), QString("sessions")}) {
+        evaluate(entry + ".host.submitInteractiveCommand(" + quoted(surface) + ")");
+        QTRY_VERIFY(evaluate(managers + (surface == "profiles" ? ".profileManagerVisible" : ".sessionManagerVisible")).toBool());
+        QTest::qWait(100);
+        auto panel = child->findChild<QQuickItem *>(surface == "profiles" ? "profileList" : "sessionList");
+        while (panel && panel->objectName() != "ferricModalPanel") panel = panel->parentItem();
+        QVERIFY(panel && panel->isVisible());
+        QVERIFY(panel->width() > child->width() / 2);
+        QVERIFY(panel->height() > child->height() / 2);
+        if (!artifacts.isEmpty())
+            QVERIFY(child->grabWindow().save(artifacts + "/production-secondary-" + surface + "-compact-16pt.png"));
+        evaluate(managers + (surface == "profiles" ? ".closeProfiles()" : ".closeSessions()"));
+    }
+    QCOMPARE(text("current_url"), primaryUrl);
+    QCOMPARE(evaluate("testWindow.browserUi.tab_count").toInt(), 1);
+}
+
 void ApplicationTests::productPolishWindowSettings_data() {
     QTest::addColumn<QString>("kind");
     QTest::newRow("regular") << QString("regular");

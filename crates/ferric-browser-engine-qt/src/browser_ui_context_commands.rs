@@ -89,11 +89,11 @@ impl qobject::BrowserUi {
         if !self.as_mut().request_session_preview(&name) {
             return Err("named session preview is unavailable or busy".into());
         }
-        self.as_mut().set_session_preview(QString::from(format!(
-            "{}\n{}",
-            if append { "append" } else { "replace" },
-            name
-        )));
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .session_preview_request = Some((name.to_string(), append));
         self.as_mut()
             .set_status_text(QString::from("Session preview requested"));
         Ok(serde_json::json!({
@@ -176,6 +176,19 @@ impl qobject::BrowserUi {
             "profile": profile_name,
             "private": private
         }))
+    }
+
+    pub(super) fn request_profile_window(mut self: Pin<&mut Self>, name: &QString) -> bool {
+        let mut arguments = vec![name.to_string()];
+        if self.as_ref().active_profile_is_transient() {
+            // Opening a profile from its manager must not copy a private page
+            // into regular browsing. Use the existing explicit-URL command path.
+            arguments.push("rb://start".into());
+        }
+        self.as_mut().handle_profile_command(&ParsedCommand {
+            name: "profile-open".into(),
+            arguments,
+        })
     }
 
     pub(super) fn handle_profile_command(

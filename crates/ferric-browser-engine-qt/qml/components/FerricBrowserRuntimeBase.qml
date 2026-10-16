@@ -108,7 +108,6 @@ ApplicationWindow {
     property string tabsMode: "multiple"
     property string tabPosition: "top"
     property bool tabSwitchingVisible: false
-    property string tabIdentitySignature: ""
     readonly property bool tabStripVisible:
         tabsMode === "always"
         || (tabsMode === "multiple" && browserUi.tab_count > 1)
@@ -959,18 +958,16 @@ ApplicationWindow {
 
     function browserWindowEntryForTarget(target) {
         var requested = String(target || "")
-        if (requested.length === 0) {
-            return null
-        }
-        var entries = window.browserWindowRegistry || []
-        for (var i = 0; i < entries.length; ++i) {
-            var entry = entries[i]
-            if (entry && entry.host && entry.ui
-                    && (entry.coreWindowId === requested || entry.windowToken === requested)) {
-                return entry
-            }
-        }
-        return null
+        if (requested.length === 0) return null
+        var entries = (window.browserWindowRegistry || []).filter(function(entry) {
+            return entry && entry.host && entry.ui
+        })
+        var exact = entries.filter(function(entry) { return entry.windowToken === requested })
+        if (exact.length === 1) return exact[0]
+        // Core IDs are local to each BrowserUi runtime. Keep a unique alias
+        // usable, but never choose the first of several matching windows.
+        var aliases = entries.filter(function(entry) { return entry.coreWindowId === requested })
+        return aliases.length === 1 ? aliases[0] : null
     }
 
     function browserWindowEntryForContext(contextName, sourceEntry) {
@@ -2230,40 +2227,6 @@ ApplicationWindow {
         if (!active && browserUi.mode === "pass-through-once") {
             window.cancelFocusProbes()
             browserUi.escape()
-        }
-    }
-
-    Timer {
-        id: sessionPreviewPollTimer
-        interval: 50
-        repeat: true
-        running: window.sessionPreviewLoading
-        onTriggered: {
-            var preview = browserUi.take_session_preview()
-            if (preview.length > 0) {
-                if (preview.indexOf("ERROR\t") === 0) {
-                    window.sessionPreviewText = preview.slice(6)
-                    window.sessionPreviewError = true
-                } else {
-                    window.sessionPreviewText = preview
-                }
-                window.sessionPreviewLoading = false
-            }
-            var restored = browserUi.take_session_restore_values()
-            if (restored.length > 0) {
-                if (window.recoveryAvailable) {
-                    tabs.clear()
-                    window.applyRestorePayload(restored, true)
-                    window.recoveryAvailable = false
-                } else {
-                    window.sessionPreviewVisible = false
-                    window.sessionManagerVisible = false
-                    window.sessionPreviewError = false
-                    window.closeInternalSurface()
-                }
-                window.sessionPreviewLoading = false
-                window.syncTabModel()
-            }
         }
     }
 

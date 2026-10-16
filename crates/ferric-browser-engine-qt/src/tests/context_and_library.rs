@@ -1163,12 +1163,14 @@ fn action_command_maps_subject_and_verb_to_a_registered_executor() {
     assert!(qml.contains("prepare_print_job"));
     assert!(qml.contains("finish_print_job"));
     assert!(qml.contains("printToPdf(function(success)"));
-    assert!(qml.contains("devToolsView: window.devToolsVisible"));
+    assert!(qml.contains("devToolsView: viewHost && viewHost !== window"));
+    assert!(qml.contains("viewHost.devToolsVisible ? viewHost.devToolsAttachedView : null"));
+    assert!(qml.contains("window.devToolsDetached ? window.devToolsExternalView : attachedDevToolsLoader.item"));
     assert!(qml.contains("function toggleDevTools(detach)"));
     assert!(qml.contains("inspectedView: window.activeWebView()"));
     assert!(qml.contains("id: secondaryDevToolsLoader"));
     assert!(qml.contains("active: secondaryWindow.devToolsVisible"));
-    assert!(qml.contains("devToolsView: secondaryWindow.devToolsVisible"));
+    assert!(qml.contains("inspectedView: secondaryWindow.activeView"));
     assert!(qml.contains("secondaryWindow.devToolsWindow"));
     assert!(qml.contains("action === \"show-binding-help\""));
     assert!(qml.contains("action === \"show-diagnostics\""));

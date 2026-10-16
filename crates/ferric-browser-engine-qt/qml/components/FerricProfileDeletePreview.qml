@@ -4,15 +4,16 @@ import QtQuick.Layouts
 
 FerricCommandDialog {
     id: preview
+    property var state: browserWindow
     signal confirmRequested()
     signal cancelRequested()
     property bool previewPending: true
     property string folderText: ""
     onVisibleChanged: foldersButton.checked = false
 
-    visible: browserWindow.profileDeletePreviewVisible
+    visible: state.profileDeletePreviewVisible
     commandText: ":profile-delete"
-    title: "Delete profile: " + browserWindow.profileDeleteName
+    title: "Delete profile: " + state.profileDeleteName
     message: "Removes the profile record and Ferric's saved profile data, sessions and cache. Cookies and website storage stay on disk."
     dialogWidth: 680 * scale
     dialogHeight: 480 * scale

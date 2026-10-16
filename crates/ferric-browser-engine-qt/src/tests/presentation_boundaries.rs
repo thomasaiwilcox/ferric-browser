@@ -486,11 +486,15 @@ fn extracted_prompt_components_render_state_and_emit_intents_without_engine_poli
 fn account_flows_keep_tabs_and_popups_on_the_opener_profile() {
     let qml = QML_SOURCE;
     assert!(qml.contains("profile: viewProfile"));
-    assert!(qml.contains("property var viewProfile: secondaryWindow.windowWebEngineProfile"));
+    let controller = include_str!("../../qml/components/FerricTabViewController.qml");
+    let secondary = include_str!("../../qml/components/FerricBrowserWindow.qml");
+    assert!(secondary.contains("profile: secondaryWindow.windowWebEngineProfile"));
+    assert!(controller.contains("viewProfile: profile"));
     assert!(qml.contains("popupProfile: viewProfile"));
-    assert!(qml.contains("viewProfile: secondaryWindow.windowWebEngineProfile"));
+    assert!(secondary.contains("viewProfile: windowWebEngineProfile"));
     assert!(qml.contains("popupPrivateProfile: viewTransientProfile"));
-    assert!(qml.contains("viewTransientProfile: secondaryWindow.windowTransientProfile"));
+    assert!(secondary.contains("transientProfile: secondaryWindow.windowTransientProfile"));
+    assert!(controller.contains("viewTransientProfile: transientProfile"));
     assert!(qml.contains("storageName: window.temporaryProfile ? \"\""));
     assert!(qml.contains("storageName: secondaryWindow.windowTransientProfile ? \"\""));
     assert!(!qml.contains("new WebEngineProfile"));
@@ -1069,7 +1073,12 @@ fn popup_windows_capture_opener_context_identity() {
             "popupWindow, popupView,\n                      popupWindow.popupPrivateProfile"
         )
     );
-    assert!(qml.contains("property var viewUi: secondaryUi"));
+    let controller = include_str!("../../qml/components/FerricTabViewController.qml");
+    let secondary = include_str!("../../qml/components/FerricBrowserWindow.qml");
+    assert!(controller.contains("viewUi: browserUi"));
+    assert!(secondary.contains("browserUi: secondaryUi"));
+    assert!(controller.contains("viewHost: browserHost"));
+    assert!(secondary.contains("browserHost: secondaryWindow"));
     assert!(qml.contains("Ferric Browser popup · context"));
     assert!(qml.contains("popupPermissionUi: viewUi"));
 }
@@ -1300,7 +1309,10 @@ fn ephemeral_hint_target_creates_a_typed_new_window_action() {
     assert!(qml.contains("Ephemeral profile owner token is already bound"));
     assert!(qml.contains("ephemeralInvocationToken"));
     assert!(qml.contains("windowSharedProfile: sharedProfile"));
-    assert!(qml.contains("property var viewProfile: secondaryWindow.windowWebEngineProfile"));
+    let controller = include_str!("../../qml/components/FerricTabViewController.qml");
+    let secondary = include_str!("../../qml/components/FerricBrowserWindow.qml");
+    assert!(secondary.contains("profile: secondaryWindow.windowWebEngineProfile"));
+    assert!(controller.contains("viewProfile: profile"));
     assert!(qml.contains("action.indexOf(\"ephemeral-window\\t\") === 0"));
     assert!(qml.contains("window.registerBrowserWindow("));
     assert!(qml.contains("windowEphemeralProfile: true"));

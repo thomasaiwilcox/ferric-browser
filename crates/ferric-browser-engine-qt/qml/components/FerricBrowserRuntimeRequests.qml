@@ -1300,7 +1300,7 @@ FerricBrowserRuntimePresentation {
         }
     }
 
-    function handlePermissionRequested(request, tabIndex, ui, view, privateProfile) {
+    function handlePermissionRequested(request, tabIndex, ui, view, privateProfile, hostWindow) {
         if (!request || !request.isValid) {
             return
         }
@@ -1337,7 +1337,7 @@ FerricBrowserRuntimePresentation {
             return
         }
         window.queuePermissionPrompt(
-            permissionUi, request, tabIndex, !!privateProfile, window, view)
+            permissionUi, request, tabIndex, !!privateProfile, hostWindow || window, view)
     }
 
     function decidePermission(allow, lifetime) {
@@ -1424,7 +1424,7 @@ FerricBrowserRuntimePresentation {
 
     function cancelPermissionForTab(tabIndex) {
         window.removePermissionGroups(function(group) {
-            return group.tabIndex === tabIndex
+            return group.ui === browserUi && group.tabIndex === tabIndex
         }, true)
     }
 

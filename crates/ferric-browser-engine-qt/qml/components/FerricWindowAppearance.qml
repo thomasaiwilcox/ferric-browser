@@ -18,6 +18,7 @@ QtObject {
     readonly property real chromeScale: Math.max(1, metrics.height / 14)
     readonly property real chromePadding: Math.max(4, Math.ceil(metrics.height * 0.25))
     readonly property real chromeRowHeight: Math.ceil(metrics.height + chromePadding * 1.25)
+    readonly property real tabBarHeight: Math.ceil(metrics.height + chromePadding * 1.5)
     readonly property real inputBarHeight: Math.ceil(metrics.height + chromePadding * 2)
     readonly property real statusBarHeight: inputBarHeight
     readonly property real chromeOpacity: 1

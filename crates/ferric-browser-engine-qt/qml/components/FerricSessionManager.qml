@@ -4,13 +4,14 @@ import QtQuick.Layouts
 
 FerricModalSurface {
     id: manager
+    property var state: browserWindow
     required property var sessionsModel
     property bool listPending: false
     property string listError: ""
     property var saveFeedback: ({ id: "", state: "idle", message: "", detail: "" })
     property var deleteFeedback: ({ id: "", state: "idle", message: "", detail: "" })
     readonly property var nameField: sessionList.headerItem ? sessionList.headerItem.nameInput : null
-    readonly property bool privateSession: browserWindow.temporaryProfile === true || browserWindow.ephemeralProfile === true
+    property bool privateSession: browserWindow.temporaryProfile === true || browserWindow.ephemeralProfile === true
     readonly property bool operationPending: saveFeedback.state === "pending" || deleteFeedback.state === "pending"
     property string submittedSaveId: ""
     property string submittedName: ""
@@ -43,7 +44,7 @@ FerricModalSurface {
         if (visible && sessionList) sessionList.positionViewAtBeginning()
     }
 
-    visible: browserWindow.sessionManagerVisible
+    visible: state.sessionManagerVisible
     commandText: ":sessions"
     title: "Named sessions"
     message: privateSession

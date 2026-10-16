@@ -4,6 +4,7 @@ import QtQuick.Layouts
 
 FerricModalSurface {
     id: manager
+    property var state: browserWindow
     required property var profilesModel
     property bool listPending: false
     property string listError: ""
@@ -52,7 +53,7 @@ FerricModalSurface {
     onVisibleChanged: if (visible && profileList) profileList.positionViewAtBeginning()
     Timer { id: renameFocusTimer; interval: 0; onTriggered: if (manager.visible && manager.renameName.length > 0) renameField.forceActiveFocus() }
 
-    visible: browserWindow.profileManagerVisible
+    visible: state.profileManagerVisible
     commandText: ":profiles"
     title: "Profiles"
     message: "Keep separate tabs, cookies and browsing history for each profile."

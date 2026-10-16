@@ -110,8 +110,9 @@ fn profile_delete_command_uses_the_existing_preview_boundary() {
     let qml = QML_SOURCE;
     assert!(qml.contains("action.indexOf(\"profile-delete\\t\") === 0"));
     assert!(qml.contains("window.showProfileDeletePreview(profileDeleteAction"));
-    assert!(qml.contains("browserUi.delete_profile(window.profileDeleteName, true)"));
+    assert!(qml.contains("workspace.browserUi.delete_profile(workspace.state.profileDeleteName, true)"));
     assert!(!qml.contains("delete_profile(window.profileDeleteName, false)"));
+    assert!(!qml.contains("delete_profile(workspace.state.profileDeleteName, false)"));
 }
 
 #[test]
@@ -247,7 +248,10 @@ fn tab_give_command_preserves_target_and_queues_live_transfer() {
     assert!(qml.contains("fields[3].indexOf(\"op-\") === 0"));
     assert!(qml.contains("sourceUi.complete_transfer_operation(arguments[4], true)"));
     assert!(qml.contains("operationId))"));
-    assert!(qml.contains("complete_tab_transfer() creates the reducer's mandatory"));
+    assert!(qml.contains("sourceUi.complete_tab_transfer(transfer.tab_id)"));
+    assert!(qml.contains("sourceHost.prepareTransferFallback()"));
+    assert!(qml.contains("fallback.stableTabId = secondaryUi.tab_id_for_index(0)"));
+    assert!(qml.contains("windowPreparedTransferFallback"));
     assert!(!qml.contains("secondaryUi.new_tab()"));
     assert!(qml.contains("action.indexOf(\"window-focus\\t\") === 0"));
     assert!(source.contains("pending_engine_action = Some(format!(\"window-focus\\t{id}\"))"));

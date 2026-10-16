@@ -1046,7 +1046,24 @@ FerricBrowserRuntimeBase {
         }
     }
 
-    property var tabViews: []
+    readonly property alias tabViewControllerObject: primaryTabController
+    property alias tabViews: primaryTabController.tabViews
+    FerricTabViewController {
+        id: primaryTabController
+        browserUi: window.browserUi
+        browserHost: window
+        tabs: window.tabsModel
+        viewFactory: window.webViewFactory
+        viewParent: window.webViewsObject
+        profile: window.browserProfile
+        interceptor: window.primaryRequestInterceptor
+        transientProfile: window.temporaryProfile
+        onActivity: window.noteTabActivity()
+        onRestored: {
+            if (window.profileSessionWorkspaceObject) window.profileSessionWorkspaceObject.finishSessionRestore(window.recoveryAvailable)
+            window.recoveryAvailable = false
+        }
+    }
     property var preparedTransferFallback: null
 
     function tabViewAt(index) {
@@ -1058,10 +1075,12 @@ FerricBrowserRuntimeBase {
         if (!view) {
             return null
         }
-        tabViews.splice(index, 1)
+        tabViews = tabViews.slice(0, index).concat(tabViews.slice(index + 1))
         if (transferParent) {
             view.parent = transferParent
         } else {
+            view.viewRetired = true
+            view.viewModel = ({ loaded:false, url:"", muted:false, zoom:1.0 })
             // WebEngineView owns a compositor texture. Remove it from the
             // scene before deferred destruction so its last frame cannot
             // overlap the newly selected tab during renderer teardown.
@@ -1082,7 +1101,7 @@ FerricBrowserRuntimeBase {
         if (!view) {
             return null
         }
-        tabViews.splice(index, 1)
+        tabViews = tabViews.slice(0, index).concat(tabViews.slice(index + 1))
         view.parent = null
         view.visible = false
         return view
@@ -1153,57 +1172,14 @@ FerricBrowserRuntimeBase {
         id: libraryGraphNodes
     }
 
-    function refreshSessions() {
-        browserUi.list_named_sessions()
-        applySessionValues()
-    }
+    function refreshSessions() { return window.profileSessionWorkspaceObject.refreshSessions() }
 
-    function applySessionValues() {
-        var values = browserUi.session_names_values
-        namedSessions.clear()
-        for (var i = 0; i < values.length; ++i) namedSessions.append({ name: String(values[i]) })
-    }
+    function applySessionValues() { return window.profileSessionWorkspaceObject.applySessionValues() }
 
-    function showSessionPreview(name, append) {
-        if (!browserUi.request_session_preview(name)) {
-            return false
-        }
-        sessionPreviewName = name
-        sessionPreviewAppend = append
-        sessionPreviewLoading = true
-        sessionPreviewError = false
-        sessionPreviewText = "Reading saved tabs…"
-        window.openInternalSurface()
-        sessionManagerVisible = false
-        sessionPreviewVisible = true
-        return true
-    }
+    function showSessionPreview(name, append) { return window.profileSessionWorkspaceObject.showSessionPreview(name, append) }
 
-    function showCommandSessionPreview(payload) {
-        var lines = payload.split("\n")
-        if (lines.length < 2) {
-            return
-        }
-        sessionPreviewName = lines[1]
-        sessionPreviewAppend = lines[0] === "append"
-        sessionPreviewLoading = true
-        sessionPreviewError = false
-        sessionPreviewText = "Reading saved tabs…"
-        window.openInternalSurface()
-        sessionPreviewVisible = true
-    }
 
-    function loadPreviewedSession() {
-        if (sessionPreviewError
-                || !browserUi.request_named_session_load(sessionPreviewName, sessionPreviewAppend)) {
-            return
-        }
-        sessionPreviewLoading = true
-        sessionPreviewError = false
-        sessionPreviewText = "Restoring saved tabs…"
-        window.syncTabModel()
-        window.executePendingEngineAction()
-    }
+    function loadPreviewedSession() { return window.profileSessionWorkspaceObject.loadPreviewedSession() }
 
     function showReopenWindowConfirmation(sourceUi, sourceHost, action) {
         reopenWindowConfirmationUi = sourceUi
@@ -1239,25 +1215,9 @@ FerricBrowserRuntimeBase {
         browserUi.status_text = "Reopen-in-window cancelled"
     }
 
-    function refreshProfiles() {
-        browserUi.request_profile_list()
-        applyProfileValues()
-    }
+    function refreshProfiles() { return window.profileSessionWorkspaceObject.refreshProfiles() }
 
-    function applyProfileValues() {
-        var values = browserUi.profile_values
-        profiles.clear()
-        if (values.length === 0) {
-            return
-        }
-        var lines = values.split("\n")
-        for (var i = 0; i < lines.length; ++i) {
-            var fields = lines[i].split("\t")
-            if (fields.length >= 3) {
-                profiles.append({ name: fields[0], label: fields[1], id: fields[2] })
-            }
-        }
-    }
+    function applyProfileValues() { return window.profileSessionWorkspaceObject.applyProfileValues() }
 
     function showSiteLedger() {
         var payload = browserUi.refresh_site_status()
@@ -1442,9 +1402,13 @@ FerricBrowserRuntimeBase {
     }
 
     function openProfile(name, label, requestedUrl) {
+        window.openProfileWindow(name, label, requestedUrl, browserUi.current_url)
+        window.profileSessionWorkspaceObject.closeProfiles()
+    }
+    function openProfileWindow(name, label, requestedUrl, sourceUrl) {
         var hasRequestedUrl = requestedUrl !== undefined
                 && String(requestedUrl).length > 0
-        var startupUrl = hasRequestedUrl ? String(requestedUrl) : browserUi.current_url
+        var startupUrl = hasRequestedUrl ? String(requestedUrl) : String(sourceUrl || "rb://start")
         var entries = window.browserWindowRegistry || []
         for (var existingIndex = 0; existingIndex < entries.length; ++existingIndex) {
             var existing = entries[existingIndex]
@@ -1454,8 +1418,6 @@ FerricBrowserRuntimeBase {
                 if (hasRequestedUrl) {
                     existing.ui.navigate_initial(startupUrl, "external-open", false)
                 }
-                profileManagerVisible = false
-                window.closeInternalSurface()
                 return
             }
         }
@@ -1465,20 +1427,8 @@ FerricBrowserRuntimeBase {
             windowProfileLabel: label,
             windowPrivateProfile: false
         })
-        profileManagerVisible = false
-        window.closeInternalSurface()
     }
 
-    function showProfileDeletePreview(name) {
-        if (!browserUi.request_profile_delete_preview(name)) {
-            return false
-        }
-        profileDeleteName = name
-        window.openInternalSurface()
-        profileManagerVisible = false
-        profileDeletePreviewVisible = true
-        profileSessionSurfaces.restartProfileDeletePreview()
-        return true
-    }
+    function showProfileDeletePreview(name) { return window.profileSessionWorkspaceObject.showProfileDeletePreview(name) }
 
 }

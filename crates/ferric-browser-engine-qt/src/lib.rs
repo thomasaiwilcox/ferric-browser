@@ -979,6 +979,10 @@ mod qobject {
 
         #[qinvokable]
         fn tab_id_for_index(self: Pin<&mut BrowserUi>, index: i32) -> QString;
+        #[qinvokable]
+        fn tab_pinned_at(&self, index: i32) -> bool;
+        #[qinvokable]
+        fn tab_muted_at(&self, index: i32) -> bool;
 
         #[qinvokable]
         fn tab_transfer_payload(self: Pin<&mut BrowserUi>, id: &QString) -> QString;
@@ -1065,6 +1069,8 @@ mod qobject {
 
         #[qinvokable]
         fn take_session_preview(self: Pin<&mut BrowserUi>) -> QString;
+        #[qinvokable]
+        fn take_session_preview_request(self: Pin<&mut BrowserUi>) -> QStringList;
 
         #[qinvokable]
         fn clear_link_preview(self: Pin<&mut BrowserUi>);
@@ -1201,6 +1207,8 @@ mod qobject {
 
         #[qinvokable]
         fn request_profile_delete_preview(self: Pin<&mut BrowserUi>, name: &QString) -> bool;
+        #[qinvokable]
+        fn request_profile_window(self: Pin<&mut BrowserUi>, name: &QString) -> bool;
 
         #[qinvokable]
         fn delete_profile(self: Pin<&mut BrowserUi>, name: &QString, confirmed: bool) -> bool;
@@ -2065,6 +2073,7 @@ pub struct BrowserUiRust {
     session_preview_pinned: QStringList,
     session_preview_muted: QStringList,
     session_preview: QString,
+    session_preview_request: Option<(String, bool)>,
     mark_feedback_tickets: BTreeMap<StorageTicket, (FeedbackLane, QString)>,
     bookmark_transfer_id: QString,
     bookmark_transfer_state: QString,
@@ -2836,6 +2845,7 @@ impl Default for BrowserUiRust {
             session_preview_pinned: QStringList::default(),
             session_preview_muted: QStringList::default(),
             session_preview: QString::default(),
+            session_preview_request: None,
             mark_feedback_tickets: BTreeMap::new(),
             bookmark_transfer_id: QString::default(),
             bookmark_transfer_state: QString::from("idle"),
