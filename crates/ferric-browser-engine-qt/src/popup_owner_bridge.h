@@ -12,4 +12,6 @@ class FerricPopupOwnerBridge : public QObject {
     using QObject::QObject;
     Q_INVOKABLE bool initialize(QObject *source, QObject *destination,
                                 const QString &token);
+    Q_INVOKABLE bool inheritProfile(QObject *source, QObject *destination,
+                                   const QString &profileName);
 };

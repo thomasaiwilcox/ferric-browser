@@ -20,6 +20,7 @@ FerricBrowserWindow {
     property bool popupEphemeralProfile: false
     property string popupEphemeralInvocationToken: ""
     property string popupProfileName: ""
+    property string popupStorageBasePath: rootWindow.storageBasePath
     property string popupContextName: ""
     property string popupContextLabel: ""
 
@@ -29,6 +30,7 @@ FerricBrowserWindow {
     windowPopupToken: popupJourneyToken
     windowSharedProfile: popupProfile
     windowProfileName: popupProfileName
+    windowStorageBasePath: popupStorageBasePath
     windowProfileLabel: popupEphemeralProfile ? "Temporary" : popupProfileName
     windowPrivateProfile: popupPrivateProfile && !popupEphemeralProfile
     windowEphemeralProfile: popupEphemeralProfile

@@ -45,7 +45,7 @@ QVariant ApplicationTests::evaluate(const QString &source) {
     QQmlExpression expression(engine->rootContext(), window, source);
     const auto value = expression.evaluate();
     if (expression.hasError())
-        qFatal("QML expression: %s", qPrintable(expression.error().toString()));
+        qFatal("QML expression %s: %s", qPrintable(source), qPrintable(expression.error().toString()));
     return value;
 }
 QString ApplicationTests::text(const QString &property) {
@@ -2775,6 +2775,235 @@ void ApplicationTests::productPolishPopupSourceClose() {
     QTRY_COMPARE(evaluate("testWindow.profileResourceRegistry.groups.length").toInt(),1);
     pageReceiver="testWindow.activeWebView()";
 }
+void ApplicationTests::productPolishNewWindowRouting_data() {
+    QTest::addColumn<bool>("secondary");
+    QTest::addColumn<QString>("decision");
+    for (bool secondary : {false,true})
+        for (const auto &decision : {QString("context"),QString("normal"),QString("private")})
+            QTest::newRow(qPrintable((secondary ? "secondary-" : "primary-")+decision)) << secondary << decision;
+}
+
+void ApplicationTests::productPolishNewWindowRouting() {
+    QFETCH(bool,secondary);
+    QFETCH(QString,decision);
+    QTest::failOnWarning(QRegularExpression(".*(invalid context|TypeError|ReferenceError).*"));
+    const auto initial=text("current_url");
+    QString owner="testWindow.browserWindowRegistry[0]";
+    if (secondary) {
+        evaluate("testWindow.browserWindowFactory.createObject(null,{windowStartupUrl:"
+            +quoted(initial)+",windowProfileName:'default',windowProfileLabel:'Default'})");
+        QTRY_COMPARE(evaluate("testWindow.browserWindowRegistry.length").toInt(),2);
+        owner="testWindow.browserWindowRegistry[1]";
+        QTRY_VERIFY(evaluate(owner+".host.profileBootstrapComplete").toBool());
+    }
+    auto host=qobject_cast<QQuickWindow *>(evaluate(owner+".host").value<QObject *>());
+    QVERIFY(host);
+    host->requestActivate();QTRY_VERIFY(host->isActive());
+    pageReceiver=owner+".view";
+    QTRY_VERIFY(page("document.readyState==='complete' && document.getElementById('input')!==null").toBool());
+    page("window.routingSourceState=73");
+    QVERIFY(evaluate(owner+".ui.execute_command('context-create routed --profile default')").toBool());
+    QTRY_VERIFY(evaluate(owner+".ui.status_text.indexOf('Context created: routed')===0").toBool());
+    // Ordinary fixtures start without a writable user config. Supply a valid
+    // disposable config and authored context before testing route persistence.
+    const auto configDirectory=directory.path()+"/routing-config-"+QString::fromLatin1(QTest::currentDataTag());
+    QVERIFY(QDir().mkpath(configDirectory));
+    QFile configFile(configDirectory+"/config.toml");
+    QVERIFY(configFile.open(QIODevice::WriteOnly));configFile.write("schema_version=3\n");configFile.close();
+    evaluate(owner+".ui.config_path="+quoted(configFile.fileName()));
+    const QJsonObject contexts{{"schema_version",3},{"contexts",QJsonArray{QJsonObject{
+        {"name","routed"},{"label","Routed"},{"profile","default"}}}}};
+    QVERIFY(evaluate(owner+".ui.set_contexts_configuration("+quoted(QString::fromUtf8(QJsonDocument(contexts).toJson(QJsonDocument::Compact)))+")").toBool());
+    QVERIFY2(evaluate(owner+".ui.execute_command("+quoted("context-route add "+initial+" routed --entry-point explicit-open")+")").toBool(),
+        qPrintable(evaluate(owner+".ui.status_text").toString()));
+    const auto before=evaluate("testWindow.liveWindowEntries().length").toInt();
+    const auto tokens=evaluate("JSON.stringify(testWindow.liveWindowEntries().map(function(e){return e.windowToken}))").toString();
+    QVERIFY(evaluate(owner+".ui.execute_command("+quoted("open --target "+QString(decision=="private" ? "private-window " : "window ")+initial)+")").toBool());
+    evaluate("testWindow.completeBrowserKeyAction("+owner+".ui,"+owner+".host)");
+    if (decision!="private") {
+        QTRY_VERIFY(evaluate("testWindow.contextRouteVisible").toBool());
+        QVERIFY(evaluate("testWindow.contextRouteUi === "+owner+".ui && testWindow.contextRouteHost === "+owner+".host").toBool());
+        auto safe=findVisualItem(host->contentItem(),"commandDialogAction-normal");
+        QVERIFY(safe);QCOMPARE(safe->window(),host);QTRY_VERIFY(safe->hasActiveFocus());
+        const auto artifacts=qEnvironmentVariable("FERRIC_TEST_ARTIFACT_DIR");
+        if (!artifacts.isEmpty()) {
+            QDir().mkpath(artifacts);
+            QVERIFY(host->grabWindow().save(artifacts+"/production-"
+                +(secondary ? "secondary" : "primary")+"-context-route-"+decision+".png"));
+        }
+        QTest::keyClick(host,decision=="context" ? Qt::Key_Y : Qt::Key_N);
+        QTRY_VERIFY(!evaluate("testWindow.contextRouteVisible").toBool());
+    } else {
+        QVERIFY(!evaluate("testWindow.contextRouteVisible").toBool());
+    }
+    QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),before+1);
+    const auto destination="testWindow.liveWindowEntries().find(function(e){return !"+tokens+".includes(e.windowToken)})";
+    QVERIFY2(evaluate("!!("+destination+")").toBool(),qPrintable(evaluate(
+        "JSON.stringify(testWindow.liveWindowEntries().map(function(e){return [e.windowToken,e.profileName,e.ui.status_text,e.host.profileBootstrapComplete]}))").toString()));
+    const auto destinationAdmission=evaluate("JSON.stringify(testWindow.liveWindowEntries().map(function(e){return [e.windowToken,e.profileName,e.ui.status_text,e.host.profileBootstrapComplete]}))").toString();
+    QTRY_VERIFY2(evaluate("(function(){var e="+destination+";return !!e && !!e.host && e.host.profileBootstrapComplete})()").toBool(),
+        qPrintable(destinationAdmission+" -> "+evaluate("JSON.stringify(testWindow.liveWindowEntries().map(function(e){return [e.windowToken,e.profileName,e.ui.status_text,e.host.profileBootstrapComplete]}))").toString()));
+    pageReceiver=destination+".view";
+    QTRY_VERIFY(page("document.readyState==='complete' && document.getElementById('input')!==null").toBool());
+    QCOMPARE(page("location.href").toString(),initial);
+    QCOMPARE(evaluate(destination+".ui.context_name").toString(),decision=="context" ? QString("routed") : QString());
+    QCOMPARE(evaluate(destination+".privateProfile").toBool(),decision=="private");
+    QCOMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),before+1);
+    pageReceiver=owner+".view";
+    QCOMPARE(page("window.routingSourceState").toInt(),73);
+    QCOMPARE(page("location.href").toString(),initial);
+    pageReceiver="testWindow.activeWebView()";
+}
+
+void ApplicationTests::productPolishNewWindows_data() {
+    QTest::addColumn<QString>("sourceKind");
+    QTest::addColumn<bool>("privateProfile");
+    QTest::addColumn<bool>("temporaryProfile");
+    QTest::addColumn<bool>("explicitProfile");
+    QTest::newRow("primary") << QString("primary") << false << false << false;
+    for (const auto &kind : {QString("secondary"),QString("popup")}) {
+        QTest::newRow(qPrintable(kind+"-regular")) << kind << false << false << false;
+        QTest::newRow(qPrintable(kind+"-private")) << kind << true << false << false;
+        QTest::newRow(qPrintable(kind+"-temporary")) << kind << false << true << false;
+        QTest::newRow(qPrintable(kind+"-private-explicit-durable")) << kind << true << false << true;
+        QTest::newRow(qPrintable(kind+"-temporary-explicit-durable")) << kind << false << true << true;
+    }
+}
+
+void ApplicationTests::productPolishNewWindows() {
+    QFETCH(QString,sourceKind);
+    QFETCH(bool,privateProfile);
+    QFETCH(bool,temporaryProfile);
+    QFETCH(bool,explicitProfile);
+    QTest::failOnWarning(QRegularExpression(".*(invalid context|TypeError|ReferenceError).*"));
+    const auto initial=text("current_url");
+    const auto sourceBase=sourceKind!="primary" && !privateProfile && !temporaryProfile
+        ? directory.path()+"/window-scope-"+QString::fromLatin1(QTest::currentDataTag())
+        : evaluate("testWindow.storageBasePath").toString();
+    QString owner="testWindow.browserWindowRegistry[0]";
+    if (sourceKind!="primary") {
+        // Explicit-durable rows deliberately collide with the regular profile's
+        // name; an explicit selector must still leave private browsing.
+        evaluate("testWindow.browserWindowFactory.createObject(null,{windowStartupUrl:"
+            +quoted(initial)+",windowProfileName:"+quoted(explicitProfile ? "default" : "new-window-owner")
+            +",windowProfileLabel:'New window owner',windowPrivateProfile:"
+            +(privateProfile ? "true" : "false")+",windowEphemeralProfile:"
+            +(temporaryProfile ? "true" : "false")+",windowEphemeralInvocationToken:'new-window-session',windowStorageBasePath:"
+            +quoted(sourceBase)+"})");
+        QTRY_COMPARE(evaluate("testWindow.browserWindowRegistry.length").toInt(),2);
+        owner="testWindow.browserWindowRegistry[1]";
+        QTRY_VERIFY(evaluate(owner+".host.profileBootstrapComplete").toBool());
+        if (!privateProfile && !temporaryProfile) {
+            QTRY_VERIFY(QDirIterator(sourceBase,QStringList{"browser.sqlite"},QDir::Files,QDirIterator::Subdirectories).hasNext());
+            QCOMPARE(evaluate(owner+".profile.persistentStoragePath").toString(),sourceBase+"/webengine/new-window-owner");
+        }
+    }
+    if (!privateProfile && !temporaryProfile) {
+        const auto profile=evaluate(owner+".profileName").toString();
+        QVERIFY(evaluate(owner+".ui.execute_command("+quoted("context-create polish-work --profile "+profile)+")").toBool());
+        QTRY_VERIFY(evaluate(owner+".ui.status_text.indexOf('Context created: polish-work')===0").toBool());
+        evaluate(owner+".ui.set_context_entry_reuse(true)");
+        QVERIFY(evaluate(owner+".ui.execute_command('context-enter polish-work')").toBool());
+        evaluate(owner+".ui.set_context_entry_reuse(false)");
+        QTRY_COMPARE(evaluate(owner+".ui.context_name").toString(),QString("polish-work"));
+    }
+    pageReceiver=owner+".view";
+    QTRY_VERIFY(page("document.readyState==='complete' && document.getElementById('blank')!==null").toBool());
+    if (sourceKind=="popup") {
+        auto host=qobject_cast<QQuickWindow *>(evaluate(owner+".host").value<QObject *>());
+        auto view=qobject_cast<QQuickItem *>(evaluate(pageReceiver).value<QObject *>());
+        QVERIFY(host && view);
+        host->requestActivate();QTRY_VERIFY(host->isActive());
+        const auto point=page("(()=>{const r=document.getElementById('blank').getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2]})()").toList();
+        QCOMPARE(point.size(),2);
+        QTest::mouseClick(host,Qt::LeftButton,Qt::NoModifier,
+            view->mapToScene(QPointF(point[0].toDouble(),point[1].toDouble())).toPoint());
+        QTRY_COMPARE(evaluate("testWindow.popupWindowRegistry.length").toInt(),1);
+        owner="testWindow.popupWindowRegistry[0]";
+        pageReceiver=owner+".view";
+        QTRY_VERIFY(page("document.readyState==='complete' && document.getElementById('input')!==null").toBool());
+    }
+    const auto sourceUrl=page("location.href").toString();
+    const auto sourceProfile=evaluate(owner+".profile").value<QObject *>();
+    const auto sourceToken=evaluate(owner+".windowToken").toString();
+    owner="testWindow.liveWindowEntries().find(function(e){return e.windowToken==="+quoted(sourceToken)+"})";
+    pageReceiver=owner+".view";
+    QVERIFY(evaluate(owner+".ui.execute_command('set --temp ui.font_size_pt=17')").toBool());
+    const auto before=evaluate("testWindow.liveWindowEntries().length").toInt();
+    const auto tokens=evaluate("JSON.stringify(testWindow.liveWindowEntries().map(function(e){return e.windowToken}))").toString();
+    const auto desired=initial+"?new-window="+sourceKind;
+    const auto request=QString("open --target window ")+(explicitProfile ? "--profile default " : "")+desired;
+    QVERIFY(evaluate(owner+".ui.execute_command("+quoted(request)+")").toBool());
+    evaluate("testWindow.completeBrowserKeyAction("+owner+".ui,"+owner+".host)");
+    QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),before+1);
+    const auto destination="testWindow.liveWindowEntries().find(function(e){return !"+tokens+".includes(e.windowToken)})";
+    QVERIFY2(evaluate("!!("+destination+")").toBool(),qPrintable(evaluate(
+        "JSON.stringify(testWindow.liveWindowEntries().map(function(e){return [e.windowToken,e.profileName,e.ui.status_text,e.host.profileBootstrapComplete]}))").toString()));
+    const auto destinationAdmission=evaluate("JSON.stringify(testWindow.liveWindowEntries().map(function(e){return [e.windowToken,e.profileName,e.ui.status_text,e.host.profileBootstrapComplete]}))").toString();
+    QTRY_VERIFY2(evaluate("(function(){var e="+destination+";return !!e && !!e.host && e.host.profileBootstrapComplete})()").toBool(),
+        qPrintable(destinationAdmission+" -> "+evaluate("JSON.stringify(testWindow.liveWindowEntries().map(function(e){return [e.windowToken,e.profileName,e.ui.status_text,e.host.profileBootstrapComplete]}))").toString()));
+    pageReceiver=destination+".view";
+    QTRY_COMPARE(page("location.href").toString(),desired);
+    QCOMPARE(evaluate(destination+".privateProfile").toBool(),!explicitProfile && privateProfile);
+    QCOMPARE(evaluate(destination+".ephemeralProfile").toBool(),!explicitProfile && temporaryProfile);
+    QCOMPARE(evaluate(destination+".ui.context_name").toString(),
+        !privateProfile && !temporaryProfile ? QString("polish-work") : QString());
+    if (explicitProfile) {
+        QCOMPARE(evaluate(destination+".profile").value<QObject *>(),evaluate("testWindow.browserProfile").value<QObject *>());
+        QVERIFY(evaluate(destination+".profile").value<QObject *>()!=sourceProfile);
+    } else {
+        QCOMPARE(evaluate(destination+".profile").value<QObject *>(),sourceProfile);
+        QCOMPARE(evaluate(destination+".host.windowStorageBasePath").toString(),sourceBase);
+        QCOMPARE(evaluate("JSON.parse("+destination+".ui.config_json).ui.font_size_pt").toInt(),17);
+        if (temporaryProfile)
+            QCOMPARE(evaluate(destination+".ephemeralInvocationToken").toString(),QString("new-window-session"));
+    }
+    pageReceiver=owner+".view";
+    QCOMPARE(page("location.href").toString(),sourceUrl);
+    const auto destinationToken=evaluate(destination+".windowToken").toString();
+    const auto nextOwner="testWindow.liveWindowEntries().find(function(e){return e.windowToken==="+quoted(destinationToken)+"})";
+    const auto beforeBlank=evaluate("JSON.stringify(testWindow.liveWindowEntries().map(function(e){return e.windowToken}))").toString();
+    QVERIFY(evaluate(nextOwner+".ui.execute_command('window-new')").toBool());
+    evaluate("testWindow.completeBrowserKeyAction("+nextOwner+".ui,"+nextOwner+".host)");
+    QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),before+2);
+    const auto blank="testWindow.liveWindowEntries().find(function(e){return !"+beforeBlank+".includes(e.windowToken)})";
+    QVERIFY2(evaluate("!!("+blank+")").toBool(),qPrintable(evaluate(
+        "JSON.stringify(testWindow.liveWindowEntries().map(function(e){return [e.windowToken,e.profileName,e.ui.status_text,e.host.profileBootstrapComplete]}))").toString()));
+    const auto blankAdmission=evaluate("JSON.stringify(testWindow.liveWindowEntries().map(function(e){return [e.windowToken,e.profileName,e.ui.status_text,e.host.profileBootstrapComplete]}))").toString();
+    QTRY_VERIFY2(evaluate("(function(){var e="+blank+";return !!e && !!e.host && e.host.profileBootstrapComplete})()").toBool(),
+        qPrintable(blankAdmission+" -> "+evaluate("JSON.stringify(testWindow.liveWindowEntries().map(function(e){return [e.windowToken,e.profileName,e.ui.status_text,e.host.profileBootstrapComplete]}))").toString()));
+    QCOMPARE(evaluate(blank+".profile").value<QObject *>(),evaluate(nextOwner+".profile").value<QObject *>());
+    QCOMPARE(evaluate(blank+".ui.context_name").toString(),evaluate(nextOwner+".ui.context_name").toString());
+    QCOMPARE(evaluate(blank+".privateProfile").toBool(),evaluate(nextOwner+".privateProfile").toBool());
+    QCOMPARE(evaluate(blank+".ephemeralProfile").toBool(),evaluate(nextOwner+".ephemeralProfile").toBool());
+    const auto beforePrivate=evaluate("JSON.stringify(testWindow.liveWindowEntries().map(function(e){return e.windowToken}))").toString();
+    QVERIFY(evaluate(nextOwner+".ui.execute_command('window-new --private')").toBool());
+    evaluate("testWindow.completeBrowserKeyAction("+nextOwner+".ui,"+nextOwner+".host)");
+    QTRY_COMPARE(evaluate("testWindow.liveWindowEntries().length").toInt(),before+3);
+    const auto fresh="testWindow.liveWindowEntries().find(function(e){return !"+beforePrivate+".includes(e.windowToken)})";
+    QVERIFY2(evaluate("!!("+fresh+")").toBool(),qPrintable(evaluate(
+        "JSON.stringify(testWindow.liveWindowEntries().map(function(e){return [e.windowToken,e.profileName,e.ui.status_text,e.host.profileBootstrapComplete]}))").toString()));
+    const auto freshAdmission=evaluate("JSON.stringify(testWindow.liveWindowEntries().map(function(e){return [e.windowToken,e.profileName,e.ui.status_text,e.host.profileBootstrapComplete]}))").toString();
+    QTRY_VERIFY2(evaluate("(function(){var e="+fresh+";return !!e && !!e.host && e.host.profileBootstrapComplete})()").toBool(),
+        qPrintable(freshAdmission+" -> "+evaluate("JSON.stringify(testWindow.liveWindowEntries().map(function(e){return [e.windowToken,e.profileName,e.ui.status_text,e.host.profileBootstrapComplete]}))").toString()));
+    QVERIFY(evaluate(fresh+".privateProfile && !"+fresh+".ephemeralProfile && "+fresh+".profile.offTheRecord").toBool());
+    QVERIFY(evaluate(fresh+".profile !== "+nextOwner+".profile").toBool());
+    QCOMPARE(evaluate(fresh+".ui.context_name").toString(),QString());
+    if (sourceKind!="primary") {
+        pageReceiver=nextOwner+".view";
+        page("window.newWindowRetainedState=47");
+        QPointer<QQuickWindow> sourceWindow=qobject_cast<QQuickWindow *>(evaluate(owner+".host").value<QObject *>());
+        QVERIFY(sourceWindow);
+        evaluate(owner+".host.windowShutdownApproved=true");
+        QVERIFY(sourceWindow->close());sourceWindow->deleteLater();
+        QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
+        QTRY_VERIFY(sourceWindow.isNull());
+        QCOMPARE(page("window.newWindowRetainedState").toInt(),47);
+        QCOMPARE(page("location.href").toString(),desired);
+    }
+    pageReceiver="testWindow.activeWebView()";
+}
+
 void ApplicationTests::productPolishPopupCommands() {
     QTest::failOnWarning(QRegularExpression(".*(invalid context|TypeError|ReferenceError).*"));
     const auto openerUrl=text("current_url");

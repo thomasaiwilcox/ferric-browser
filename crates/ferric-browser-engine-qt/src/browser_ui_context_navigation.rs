@@ -11,6 +11,9 @@ impl qobject::BrowserUi {
         url: &ValidatedUrl,
         entry_point: &str,
     ) -> bool {
+        if self.as_ref().active_profile_is_transient() {
+            return false;
+        }
         let pending = {
             let contexts_json = self.as_ref().rust().contexts_json.to_string();
             let Ok(config) = serde_json::from_str::<ContextsConfig>(&contexts_json) else {
@@ -35,6 +38,7 @@ impl qobject::BrowserUi {
                 context_name: context.name.clone(),
                 profile_name: context.profile.clone(),
                 url: url.as_str().to_owned(),
+                new_window: false,
             }
         };
         let route_id = QString::from(&pending.route_id);
@@ -47,11 +51,12 @@ impl qobject::BrowserUi {
             .as_mut()
             .get_mut()
             .pending_context_route = Some(pending);
-        self.as_mut().set_context_route_id(route_id);
         self.as_mut().set_context_route_behavior(behavior);
         self.as_mut().set_context_route_context(context);
         self.as_mut().set_context_route_profile(profile);
         self.as_mut().set_context_route_url(url);
+        // Publish readiness after every field used by the prompt is present.
+        self.as_mut().set_context_route_id(route_id);
         true
     }
 
@@ -97,7 +102,7 @@ impl qobject::BrowserUi {
             self.set_status_text(QString::from("Context route URL is invalid"));
             return false;
         };
-        if pending.profile_name != self.as_ref().rust().profile_name {
+        if pending.new_window || pending.profile_name != self.as_ref().rust().profile_name {
             self.as_mut()
                 .rust_mut()
                 .as_mut()
@@ -165,6 +170,25 @@ impl qobject::BrowserUi {
             self.set_status_text(QString::from("Context route URL is invalid"));
             return false;
         };
+        if pending.new_window {
+            let profile = self.as_ref().rust().profile_name.clone();
+            self.as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .pending_engine_action =
+                Some(super::browser_ui_ipc_preparation::window_open_action(
+                    false,
+                    &profile,
+                    None,
+                    true,
+                    url.as_str(),
+                ));
+            self.set_status_text(QString::from(
+                "Opening a new window without context routing",
+            ));
+            return true;
+        }
         match self.as_mut().navigate_url(&url) {
             Ok(()) => {
                 self.set_status_text(QString::from("Navigation requested without context route"));

@@ -1065,7 +1065,9 @@ fn context_entry_restores_safe_descriptors_lazily_and_focuses_live_members() {
     assert!(qml.contains("tabIndex === browserUi.active_tab_index"));
     assert!(qml.contains("fields.length > 4 && fields[4].length > 0"));
     assert!(qml.contains("function focusExistingContextWindow(commandText, sourceUi)"));
-    assert!(qml.contains("windowStartupContextRestore: true"));
+    assert!(qml.contains("var restoreContext = fields[0] === \"context-window\""));
+    assert!(qml.contains("restoreContext && fields.length !== 5"));
+    assert!(qml.contains("windowStartupContextRestore: restoreContext"));
     assert!(qml.contains("secondaryUi.set_context_entry_reuse("));
     assert!(qml.contains("browserUi.set_context_entry_reuse(true)"));
     assert!(!qml.contains("context_entry_force_reuse ="));

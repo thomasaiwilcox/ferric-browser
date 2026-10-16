@@ -44,6 +44,7 @@ ApplicationWindow {
     property bool windowEphemeralProfile: false
     property string windowEphemeralInvocationToken: ""
     property var windowSharedProfile: null
+    property var windowInheritedUi: null
     property var windowSharedRequestInterceptor: null
     property bool windowPopup: false
     property var windowPopupRequest: null
@@ -920,6 +921,10 @@ function onContext_workspaceChanged() {
     function applySwitcherEngineAction() {
         var action = secondaryUi.take_engine_action()
         if (!action || action.length === 0) {
+            return
+        }
+        if (action.indexOf("new-window\t") === 0 || action.indexOf("context-window\t") === 0) {
+            rootWindow.executeNewWindowAction(secondaryUi, action)
             return
         }
         if (action.indexOf("window-focus\t") === 0) {
@@ -2068,6 +2073,17 @@ function onContext_workspaceChanged() {
             secondaryWindow.completeProfileBootstrap()
             return
         }
+        if (secondaryWindow.windowInheritedUi) {
+            var inherited = popupOwnerBridge.inheritProfile(windowInheritedUi, secondaryUi, windowProfileName)
+            windowInheritedUi = null
+            if (!inherited) {
+                secondaryWindow.rejectPopupAdmission()
+                return
+            }
+            if (secondaryUi.profile_bootstrap_pending) secondaryProfileBootstrapTimer.start()
+            else secondaryWindow.completeProfileBootstrap()
+            return
+        }
         secondaryWindow.syncTabModel()
         rootWindow.installFocusObserver(secondaryWindow.activeView)
         secondaryUi.set_startup_configuration(
@@ -2081,7 +2097,7 @@ function onContext_workspaceChanged() {
                                       secondaryWindow.windowEphemeralProfile,
                                       secondaryWindow.windowProfileLabel,
                                       secondaryWindow.windowProfileName,
-                                      rootWindow.storageBasePath)
+                                      secondaryWindow.windowStorageBasePath)
         if (secondaryWindow.windowBookmarkTransferUrl.length > 0) {
             bookmarkTransferTimer.start()
         }
@@ -2143,7 +2159,8 @@ function onContext_workspaceChanged() {
     }
 
     function completeProfileBootstrap() {
-        if (runtimeReleased || profileBootstrapComplete) return
+        if (runtimeReleased || profileBootstrapComplete
+                || (!windowPopup && secondaryUi.profile_bootstrap_pending)) return
         rootWindow.profileResourceRegistry.activateWindow(secondaryWindow)
         profileBootstrapComplete = true
         secondaryWindow.syncTabModel()
@@ -2188,8 +2205,13 @@ function onContext_workspaceChanged() {
             return
         }
         if (secondaryWindow.windowStartupContext.length > 0) {
-            secondaryUi.execute_command(
-                        "context-enter " + secondaryWindow.windowStartupContext)
+            if (windowStartupContextRestore) {
+                secondaryUi.set_context_entry_reuse(true)
+                secondaryUi.execute_command("context-enter " + windowStartupContext)
+            } else if (!secondaryUi.assign_window_context(windowStartupContext)) {
+                secondaryWindow.rejectPopupAdmission()
+                return
+            }
             rootWindow.routeContextWorkspace(secondaryUi)
         }
         if (secondaryWindow.windowStartupContextRestore) {
@@ -2230,6 +2252,7 @@ function onContext_workspaceChanged() {
         secondaryWindow.runtimeReleased = true
         secondaryWindow.devToolsVisible = false
         rootWindow.discardOverlayFocus(secondaryWindow)
+        if (rootWindow.contextRouteUi === secondaryUi) rootWindow.closeContextRoutePrompt()
         secondaryProfileBootstrapTimer.stop()
         secondaryWindow.cancelPendingTransfer()
         secondaryRuntimeWorkTimer.stop()

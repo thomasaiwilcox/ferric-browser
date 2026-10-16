@@ -118,6 +118,9 @@ def main():
                 assert len(before['windows']) == 2, before
                 child = next((row for row in before['live_registry'] if row['id'] != primary))
                 child_id = child['id']
+                primary_owner = next(row for row in before['live_registry'] if row['id'] == primary)
+                assert child['profile'] == primary_owner['profile'], ('new window changed the source profile', child, primary_owner)
+                record['checks'].append('new window inherits the selected regular profile')
                 child_token = child['owner_token']
                 root_before = identity(tabs(primary))
                 for selector in [child_id, child_token]:
@@ -187,6 +190,22 @@ def main():
                 visible = rpc('operations.query', {'window': private['id'], 'include_private': True})['operations']
                 assert any(row['operation_id'] == private_operation for row in visible), visible
                 record['checks'].append('private operations require configured explicit opt-in')
+                before_new = rpc('windows.query', {})
+                source_tabs = identity(tabs(child_id))
+                command('open', {'input': 'rb://blank', 'target': 'window'}, child_id)
+                additional = wait_for(ready_windows, lambda value: len(value.get('live_registry', [])) == len(before_new['live_registry']) + 1)
+                existing_ids = {row['id'] for row in before_new['live_registry']}
+                new_owner = next(row for row in additional['live_registry'] if row['id'] not in existing_ids)
+                assert new_owner['profile'] == child['profile'] and not new_owner['private'] and not new_owner['ephemeral'], new_owner
+                assert identity(tabs(child_id)) == source_tabs, 'new-window navigation changed its source tabs'
+                record['checks'].append('secondary new-window dispatch creates a live same-profile owner without changing source tabs')
+                command('window-new', window=private['id'])
+                inherited_private = wait_for(ready_windows, lambda value: len(value.get('live_registry', [])) == len(additional['live_registry']) + 1)
+                existing_ids = {row['id'] for row in additional['live_registry']}
+                private_child = next(row for row in inherited_private['live_registry'] if row['id'] not in existing_ids)
+                assert private_child['private'] and not private_child['ephemeral'] and private_child['profile'] == private['profile'], private_child
+                assert tabs(private_child['id']) == [], 'inherited private tabs exposed by default'
+                record['checks'].append('window-new from a private owner preserves privacy and default query exclusions')
                 record['after'] = rpc('windows.query', {})
                 record['status'] = 'passed'
             finally:

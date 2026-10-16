@@ -325,9 +325,14 @@ impl qobject::BrowserUi {
                                 .rust_mut()
                                 .as_mut()
                                 .get_mut()
-                                .pending_engine_action = Some(format!(
-                                "new-window\t{private}\t{profile_name}\tabout:blank"
-                            ));
+                                .pending_engine_action =
+                                Some(super::browser_ui_ipc_preparation::window_open_action(
+                                    private,
+                                    &profile_name,
+                                    None,
+                                    false,
+                                    "about:blank",
+                                ));
                             self.as_mut().set_status_text(QString::from(if private {
                                 "Private window requested"
                             } else {

@@ -59,6 +59,7 @@ TestCase {
         property string pendingClientCertificateHost: "example.test"
         property var pendingClientCertificateOptions: [{index:0,subject:"<b>literal identity</b>",issuer:"Example issuer",selfSigned:false}]
         property bool contextRouteVisible: false
+        property var contextRouteHost: host
         property var contextRouteUi: ({context_route_context:"Research",context_route_profile:"work",context_route_id:"internal-rule-id",context_route_behavior:"prompt",context_route_url:"https://example.test"})
         function acceptContextRoute() {}
         function dismissContextRoute() { contextRouteVisible=false }

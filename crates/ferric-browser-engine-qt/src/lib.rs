@@ -1429,6 +1429,15 @@ mod qobject {
             token: &QString,
         ) -> bool;
 
+        fn initialize_window_owner(
+            self: Pin<&mut BrowserUi>,
+            destination: Pin<&mut BrowserUi>,
+            profile_name: &QString,
+        ) -> bool;
+
+        #[qinvokable]
+        fn assign_window_context(self: Pin<&mut BrowserUi>, name: &QString) -> bool;
+
         #[qinvokable]
         fn configure_profile(
             self: Pin<&mut BrowserUi>,

@@ -740,6 +740,7 @@ ApplicationWindow {
                 || (window.pendingContextMenuUi === ui
                     && (!!window.pendingContextMenuRequest
                         || window.pendingContextMenuLeaseToken.length > 0))
+                || (window.contextRouteUi === ui && window.contextRouteVisible)
     }
 
     function captureOverlayFocus(hostWindow, fallbackTarget) {
@@ -775,17 +776,22 @@ ApplicationWindow {
                 || !ui.context_route_profile || !ui.context_route_url) {
             return
         }
+        var owner = window.browserWindowEntryForUi(ui)
+        if (!owner) return
         window.contextRouteUi = ui
+        window.contextRouteHost = owner.host
         window.contextRouteVisible = true
-        window.captureOverlayFocus(window, window.activeWebView())
+        window.captureOverlayFocus(owner.host, owner.view)
     }
 
     function closeContextRoutePrompt() {
         var wasVisible = window.contextRouteVisible
+        var host = window.contextRouteHost
         window.contextRouteVisible = false
         window.contextRouteUi = null
+        window.contextRouteHost = null
         if (wasVisible) {
-            window.restoreOverlayFocus()
+            window.restoreOverlayFocus(host)
         }
     }
 
@@ -837,21 +843,58 @@ ApplicationWindow {
         return true
     }
 
-    function executeContextRouteWindowAction(ui) {
-        var action = ui ? ui.take_engine_action() : ""
-        if (action.indexOf("new-window\t") !== 0) {
-            return
-        }
+    function executeNewWindowAction(ui, action) {
         var fields = action.split("\t")
-        if (fields.length >= 5) {
-            browserWindowComponent.createObject(null, {
-                windowStartupUrl: fields.slice(4).join("\t"),
-                windowProfileName: fields[2],
-                windowProfileLabel: fields[2],
-                windowPrivateProfile: fields[1] === "true",
-                windowStartupContext: fields[3]
-            })
+        var restoreContext = fields[0] === "context-window"
+        var owner = window.browserWindowEntryForUi(ui)
+        if (!owner || !owner.host || owner.host.runtimeReleased === true
+                || (fields.length !== 4 && fields.length !== 5 && fields.length !== 6)
+                || (fields[0] !== "new-window" && !restoreContext)
+                || (restoreContext && fields.length !== 5)
+                || (fields[1] !== "true" && fields[1] !== "false")
+                || (fields.length === 6 && fields[4] !== "true" && fields[4] !== "false")
+                || !fields[2] || !fields[fields.length - 1]) {
+            if (ui) ui.status_text = "This window request is no longer available. Try again."
+            return false
         }
+        var inherit = fields[1] === "false" && fields[2] === owner.profileName
+                && (fields.length === 6 ? fields[4] === "true"
+                    : (fields.length === 4 || (!owner.privateProfile && !owner.ephemeralProfile)))
+        if (fields.length === 6 && fields[4] === "true"
+                && !inherit) {
+            ui.status_text = "The source profile changed. Request the new window again."
+            return false
+        }
+        var privateProfile = fields[1] === "true" || (inherit && owner.privateProfile)
+        var temporaryProfile = inherit && owner.ephemeralProfile
+        var context = fields.length >= 5 && fields[3].length > 0 ? fields[3]
+                    : (inherit && !privateProfile && !temporaryProfile ? String(ui.context_name || "") : "")
+        var child = window.browserWindowFactory.createObject(null, {
+            windowStartupUrl: fields[fields.length - 1],
+            windowProfileName: fields[2],
+            windowProfileLabel: inherit
+                ? (owner.host === window ? window.profileLabel : owner.host.windowProfileLabel) : fields[2],
+            windowStorageBasePath: owner.host === window
+                ? window.storageBasePath : owner.host.windowStorageBasePath,
+            windowPrivateProfile: privateProfile,
+            windowEphemeralProfile: temporaryProfile,
+            windowEphemeralInvocationToken: temporaryProfile ? owner.ephemeralInvocationToken : "",
+            windowSharedProfile: inherit ? owner.profile : null,
+            windowInheritedUi: inherit ? ui : null,
+            windowStartupContext: context,
+            windowStartupContextRestore: restoreContext,
+            windowStartupRoutePreflighted: true
+        })
+        if (!child) {
+            ui.status_text = "The window couldn't be opened. Try again."
+            return false
+        }
+        return true
+    }
+
+    function executeContextRouteWindowAction(ui) {
+        var owner = window.browserWindowEntryForUi(ui)
+        if (owner) window.completeBrowserKeyAction(ui, owner.host)
     }
 
     function acceptContextRoute() {
@@ -869,10 +912,9 @@ ApplicationWindow {
 
     function dismissContextRoute() {
         var ui = window.contextRouteUi
-        if (ui) {
-            ui.dismiss_context_route()
-        }
+        var accepted = ui && ui.dismiss_context_route()
         window.closeContextRoutePrompt()
+        if (accepted) window.executeContextRouteWindowAction(ui)
     }
 
     function registerBrowserWindow(hostWindow, ui, view, profile, profileName,
@@ -1594,6 +1636,7 @@ ApplicationWindow {
     property string startupContextsJson: ""
     property bool contextRouteVisible: false
     property var contextRouteUi: null
+    property var contextRouteHost: null
     property bool contextMoveVisible: false
     property string contextMoveTabId: ""
     property var contextMoveChoices: []
@@ -1854,7 +1897,7 @@ ApplicationWindow {
         || window.recoveryAvailable
         || window.rapidHintConfirmationVisible
         || browserUi.navigation_failure_visible
-        || window.contextRouteVisible
+        || (window.contextRouteVisible && (window.contextRouteHost || window) === window)
         || window.contextMoveVisible
         || window.sessionManagerVisible
         || window.sessionPreviewVisible

@@ -797,6 +797,8 @@ impl qobject::BrowserUi {
         }
         if command.name == "open"
             && route.context.is_none()
+            && route.profile.is_none()
+            && route.open_target != IpcOpenTarget::PrivateWindow
             && command.arguments.first().is_some_and(|input| {
                 self.as_mut().queue_context_route_for_input(
                     input,
@@ -808,6 +810,16 @@ impl qobject::BrowserUi {
                 )
             })
         {
+            if let Some(pending) = self
+                .as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .pending_context_route
+                .as_mut()
+            {
+                pending.new_window = route.open_target == IpcOpenTarget::Window;
+            }
             self.as_mut()
                 .set_status_text(QString::from("Context route confirmation required"));
             return Ok(serde_json::json!({
@@ -835,48 +847,13 @@ impl qobject::BrowserUi {
                 )
                 .map_err(|error| error.to_string())?;
                 let private = route.open_target == IpcOpenTarget::PrivateWindow;
-                if private && route.profile.is_some() {
-                    return Err("private-window cannot select a durable profile".into());
-                }
-                let context_profile = route.context.as_deref().and_then(|context_name| {
-                    self.as_ref()
-                        .rust()
-                        .contexts
-                        .as_ref()?
-                        .contexts()
-                        .iter()
-                        .find(|context| context.name == context_name)
-                        .map(|context| context.profile.clone())
-                });
-                let profile = route
-                    .profile
-                    .clone()
-                    .or(context_profile)
-                    .unwrap_or_else(|| {
-                        if private {
-                            "private".into()
-                        } else {
-                            "secondary".into()
-                        }
-                    });
-                let pending_action = route.context.as_deref().map_or_else(
-                    || {
-                        format!(
-                            "new-window\t{}\t{}\t{}",
-                            private,
-                            profile,
-                            navigation.url.as_str()
-                        )
-                    },
-                    |context| {
-                        format!(
-                            "new-window\t{}\t{}\t{}\t{}",
-                            private,
-                            profile,
-                            context,
-                            navigation.url.as_str()
-                        )
-                    },
+                let profile = self.as_ref().get_ref().new_window_profile_name(route)?;
+                let pending_action = super::browser_ui_ipc_preparation::window_open_action(
+                    private,
+                    &profile,
+                    route.context.as_deref(),
+                    !private && route.profile.is_none() && route.context.is_none(),
+                    navigation.url.as_str(),
                 );
                 self.as_mut()
                     .rust_mut()

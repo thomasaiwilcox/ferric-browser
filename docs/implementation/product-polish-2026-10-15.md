@@ -2,13 +2,13 @@
 
 Status: active. Branch: `polish/refined-browser-experience`.
 
-Latest verified checkpoint: application-lived native profile resources, a shared
-popup window host, ticket-correlated session saves and content-sized page
-dialogs. The complete local gate, native integration, clipboard, live IPC and
-adapter checks pass; the production dialog renders have been inspected. See
-the shared-host checkpoint below for exact scope and evidence. The full polish
-goal remains active: the new-window probe still reproduces profile inheritance
-and secondary dispatch defects, alongside the remaining audit items.
+Latest verified checkpoint: new-window creation and profile/context inheritance
+across primary, secondary and popup owners, including private/temporary identity
+and routing decisions in the requesting window. The local gate, broad native
+integration, clipboard, live IPC and adapter checks pass. Production captures
+confirm dialog placement and readable controls; routing-card spacing remains a
+visual follow-up. The full polish goal remains active, including shared child
+hints, continuing permission/journey state and the remaining audit below.
 
 ## Product intent
 
@@ -1548,13 +1548,104 @@ shared status call sites.
 The separate `new-window-v5-before.json` probe against the same preserved browser
 still fails: an unspecified profile becomes `secondary` instead of inheriting
 `default`, and a secondary owner's accepted new-window action creates no third
-window. This is the next integration fix; the passing checkpoint does not
-cover or conceal it. Shared child-window hints remain unavailable. Popup
+window. This was the next integration fix, addressed by the following batch;
+the earlier passing checkpoint did not cover it. Shared child-window hints
+remain unavailable. Popup
 journey/permission sharing, developer-tool lifetime edges, ordinary status/help
 copy and the configured-font/theme whole-window review remain open. Offscreen
 software rendering does not qualify native Wayland/GPU behavior, physical
 credentials or real-account authentication. No installation or publication
 was performed.
+
+## Window creation and inheritance batch
+
+Status: qualified locally for the window-creation and routing behavior below.
+The full product-polish goal remains active.
+
+The exact checkpoint browser reproduces two public-IPC defects in
+`new-window-v5-before.json`: an omitted profile becomes `secondary`, and a
+secondary owner's accepted new-window request creates no window. New permanent
+native rows also fail against that old engine: the primary loses its context,
+and the secondary never creates its requested destination.
+
+The implementation now resolves an omitted profile from the addressed owner,
+uses one native action consumer in every window, and carries an explicit
+inheritance decision separately from profile-name matching. An explicitly
+selected durable profile therefore stays distinct from a private profile with
+the same name. Same-profile children and popups share validated typed profile
+admission, retain configuration and native resources independently of their
+source, and preserve temporary invocation identity. A fresh private-window
+request still creates a separate off-the-record profile.
+
+Context membership is assigned through the reducer without recursively invoking
+context entry. Explicit context restoration retains its existing behavior.
+Routing prompts publish their ready signal after all prompt fields, belong to
+their requesting host, and retain a new-window destination through both choices.
+Private-window opens and explicit profile selection bypass automatic context
+routing; private and temporary browsing never use saved-context routing.
+
+Permanent native coverage now includes primary/secondary/popup sources,
+regular/private/temporary sessions, explicit durable selection with colliding
+names, configuration/context/native-profile preservation, source destruction,
+blank-window creation and fresh private sessions. Routing cases use actual
+safe-choice and confirmation keys. The live IPC probe also verifies secondary
+window creation and inherited private-query exclusions. These additions pass
+on the qualified production inputs described below.
+
+The first current-build probe exposed a readiness defect in the new admission
+path: profile publication starts asynchronous network-policy work, so calling
+the host's completion method immediately made context assignment reject and
+retire the new window. Ordinary inherited windows now wait for backend readiness
+through the existing bootstrap timer. Native popup request acceptance remains
+synchronous, with its inherited profile policy retained by the resource group.
+The missing-owner regression now handles a retired target safely and preserves
+the admission status in its failure output. The initial SIGABRT was the test
+harness's deliberate `qFatal` for an invalid QML lookup; core PID 502351 records
+that call chain, rather than a native profile teardown fault. No extracted core
+copy was created. Regular child and popup cases now also exercise an alternate
+disposable storage base, requiring native and Rust profile paths to stay aligned.
+
+An intermediate focused run passed 17 checks and failed three. Primary context
+inheritance, secondary regular/private/temporary windows, all explicit durable
+name-collision cases, primary routing decisions and popup command handling now
+pass. The regular popup row reused the secondary row's alternate profile root;
+fixture roots and routing config directories are now unique per data row.
+Secondary route prompts had the correct input host but retained the primary
+visual parent. The dialog now binds its visual parent to the requesting host's
+content item, and native tests explicitly check the action control's window.
+Both corrections pass the fresh focused and full qualification below.
+
+Final evidence is recorded in `target/product-polish/new-window-v4-status.json`
+and `new-window-v4-checkpoint.json`. Formatting, strict all-target workspace
+Clippy and the complete repository gate pass: 960 Rust tests pass with two
+existing ignored tests, and all 435 QML checks pass. The native lifetime CTest
+target passes. The focused native group passes 20 checks, the broad
+product-polish group passes 99, the clipboard group passes 81, and the live IPC
+probe passes 13 checks. Adapter startup and all six native render checks pass,
+including setup/cleanup for the four captured request cases.
+
+The final gate initially rejected an obsolete source assertion for the old
+duplicated context-window handler. Its replacement checks context-action
+detection, payload arity and the shared restoration flag. That is the sole
+`cfg(test)` difference from the preserved v3 production/native build; every
+production and native test input, all binary hashes and the working CTest
+executable were verified identical before reuse. The corrected Rust tests and
+all runtime groups were then rerun. The manifest retains 50 frozen inputs.
+
+All four final captures were inspected. Popup confirmation/sign-in panels fit
+their content, preserve origins and show unclipped fields/actions. Primary and
+secondary routing prompts appear in the requesting window with the normal
+choice focused. The routing card still has excessive vertical space between
+short sections; `routing-render-followup.json` records this remaining polish
+work rather than treating the whole interface as finished.
+
+This checkpoint verifies native profile/configuration/context inheritance and
+the tested window/routing paths. Continuing session-permission sharing, popup
+journey ancestry, child hints/pointer chrome, child clean-link previews,
+simultaneous routing prompts, startup/status/help copy and the full configured
+font/theme/compact walkthrough remain open. Native Wayland/GPU, portal,
+real-account and physical-credential qualification is not established by these
+offscreen software checks. No installation or publication was performed.
 
 ## Audit status and remaining implementation
 

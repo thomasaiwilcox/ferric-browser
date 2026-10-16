@@ -93,6 +93,10 @@ class ApplicationTests final : public QObject {
     void productPolishPopupSourceClose_data();
     void productPolishPopupSourceClose();
     void productPolishPopupCommands();
+    void productPolishNewWindowRouting_data();
+    void productPolishNewWindowRouting();
+    void productPolishNewWindows_data();
+    void productPolishNewWindows();
     void productPolishProvisionalTransferFallback_data();
     void productPolishProvisionalTransferFallback();
     void productPolishSecondaryTabs();

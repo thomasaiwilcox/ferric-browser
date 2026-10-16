@@ -5,7 +5,50 @@ use super::{
     resolve_input,
 };
 
+// Existing native action framing, with an explicit inheritance decision. A
+// selected durable profile must never be mistaken for the source's private
+// profile merely because their display names happen to match.
+pub(super) fn window_open_action(
+    private: bool,
+    profile: &str,
+    context: Option<&str>,
+    inherit: bool,
+    url: &str,
+) -> String {
+    format!(
+        "new-window\t{private}\t{profile}\t{}\t{inherit}\t{url}",
+        context.unwrap_or_default()
+    )
+}
+
 impl qobject::BrowserUi {
+    pub(super) fn new_window_profile_name(&self, route: &IpcRoute) -> Result<String, String> {
+        if route.open_target == IpcOpenTarget::PrivateWindow {
+            if route.profile.is_some() {
+                return Err("private-window cannot select a durable profile".into());
+            }
+            return Ok("private".into());
+        }
+        if let Some(context_name) = route.context.as_deref() {
+            return self
+                .rust()
+                .contexts
+                .as_ref()
+                .and_then(|contexts| {
+                    contexts
+                        .contexts()
+                        .iter()
+                        .find(|context| context.name == context_name)
+                })
+                .map(|context| context.profile.clone())
+                .ok_or_else(|| "The requested context is no longer available.".into());
+        }
+        Ok(route
+            .profile
+            .clone()
+            .unwrap_or_else(|| self.rust().profile_name.clone()))
+    }
+
     pub(super) fn execute_clean_open_ipc(
         mut self: Pin<&mut Self>,
         command: &ParsedCommand,
@@ -42,41 +85,13 @@ impl qobject::BrowserUi {
         let pending = match route.open_target {
             IpcOpenTarget::Window | IpcOpenTarget::PrivateWindow => {
                 let private = route.open_target == IpcOpenTarget::PrivateWindow;
-                if private && route.profile.is_some() {
-                    return Err("private-window cannot select a durable profile".into());
-                }
-                let context_profile = route.context.as_deref().and_then(|context_name| {
-                    self.as_ref()
-                        .rust()
-                        .contexts
-                        .as_ref()?
-                        .contexts()
-                        .iter()
-                        .find(|context| context.name == context_name)
-                        .map(|context| context.profile.clone())
-                });
-                let profile = route
-                    .profile
-                    .clone()
-                    .or(context_profile)
-                    .unwrap_or_else(|| {
-                        if private {
-                            "private".into()
-                        } else {
-                            "secondary".into()
-                        }
-                    });
-                let new_window_action = route.context.as_deref().map_or_else(
-                    || format!("new-window\t{}\t{}\t{}", private, profile, cleaned.as_str()),
-                    |context| {
-                        format!(
-                            "new-window\t{}\t{}\t{}\t{}",
-                            private,
-                            profile,
-                            context,
-                            cleaned.as_str()
-                        )
-                    },
+                let profile = self.as_ref().get_ref().new_window_profile_name(route)?;
+                let new_window_action = super::browser_ui_ipc_preparation::window_open_action(
+                    private,
+                    &profile,
+                    route.context.as_deref(),
+                    !private && route.profile.is_none() && route.context.is_none(),
+                    cleaned.as_str(),
                 );
                 PendingLinkNavigation {
                     target: None,

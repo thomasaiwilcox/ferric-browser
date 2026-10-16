@@ -659,24 +659,8 @@ FerricBrowserRuntimeChrome {
             }
             return
         }
-        if (action.indexOf("new-window\t") === 0) {
-            var windowAction = action.split("\t")
-            if (windowAction.length >= 5) {
-                window.browserWindowFactory.createObject(null, {
-                    windowStartupUrl: windowAction.slice(4).join("\t"),
-                    windowProfileName: windowAction[2],
-                    windowProfileLabel: windowAction[2],
-                    windowStartupContext: windowAction[3],
-                    windowPrivateProfile: windowAction[1] === "true"
-                })
-            } else if (windowAction.length >= 4) {
-                window.browserWindowFactory.createObject(null, {
-                    windowStartupUrl: windowAction.slice(3).join("\t"),
-                    windowProfileName: windowAction[2],
-                    windowProfileLabel: windowAction[2],
-                    windowPrivateProfile: windowAction[1] === "true"
-                })
-            }
+        if (action.indexOf("new-window\t") === 0 || action.indexOf("context-window\t") === 0) {
+            window.executeNewWindowAction(browserUi, action)
             return
         }
         if (action.indexOf("profile-delete\t") === 0) {
@@ -698,20 +682,6 @@ FerricBrowserRuntimeChrome {
         }
         if (action.indexOf("ephemeral-window\t") === 0) {
             window.openEphemeralWindow(action.split("\t").slice(1).join("\t"))
-            return
-        }
-        if (action.indexOf("context-window\t") === 0) {
-            var contextWindowAction = action.split("\t")
-            if (contextWindowAction.length >= 5) {
-                window.browserWindowFactory.createObject(null, {
-                    windowStartupUrl: contextWindowAction.slice(4).join("\t"),
-                    windowProfileName: contextWindowAction[2],
-                    windowProfileLabel: contextWindowAction[2],
-                    windowStartupContext: contextWindowAction[3],
-                    windowStartupContextRestore: true,
-                    windowPrivateProfile: contextWindowAction[1] === "true"
-                })
-            }
             return
         }
         if (action.indexOf("navigate\t") === 0) {

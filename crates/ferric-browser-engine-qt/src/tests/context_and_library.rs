@@ -215,7 +215,7 @@ fn ipc_open_context_routes_preserve_new_window_context_metadata() {
     assert_eq!(command.arguments, vec!["https://work.example.test/"]);
     assert_eq!(route.open_target, IpcOpenTarget::Window);
     assert_eq!(route.context.as_deref(), Some("work"));
-    assert!(QML_SOURCE.contains("windowStartupContext: windowAction[3]"));
+    assert!(QML_SOURCE.contains("windowStartupContext: context"));
     assert!(ADAPTER_SOURCE.contains("private-window cannot use a durable context"));
 }
 

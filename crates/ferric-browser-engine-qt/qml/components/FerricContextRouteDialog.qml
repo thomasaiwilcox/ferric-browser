@@ -8,6 +8,8 @@ FerricCommandDialog {
     id: dialog
 
     readonly property var routeUi: browserWindow.contextRouteUi || ({})
+    hostWindow: browserWindow.contextRouteHost || browserWindow
+    parent: hostWindow && hostWindow.contentItem ? hostWindow.contentItem : null
 
     visible: browserWindow.contextRouteVisible
     commandText: ":context-route"

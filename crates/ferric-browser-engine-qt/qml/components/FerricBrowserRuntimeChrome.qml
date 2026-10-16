@@ -1283,7 +1283,8 @@ GridLayout {
                         popupPrivateProfile: viewTransientProfile,
                         popupEphemeralProfile: viewHost === window ? window.ephemeralProfile : viewHost.windowEphemeralProfile,
                         popupEphemeralInvocationToken: viewHost === window ? window.ephemeralInvocationToken : viewHost.windowEphemeralInvocationToken,
-                        popupProfileName: viewHost === window ? window.profileName : viewHost.windowProfileName
+                        popupProfileName: viewHost === window ? window.profileName : viewHost.windowProfileName,
+                        popupStorageBasePath: viewHost === window ? window.storageBasePath : viewHost.windowStorageBasePath
                     })
                     if (!popup || !popup.profileBootstrapComplete) {
                         viewUi.close_popup_tab(popupToken)

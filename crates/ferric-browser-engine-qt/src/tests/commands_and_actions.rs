@@ -154,8 +154,11 @@ fn window_new_command_uses_typed_profile_and_private_options() {
     );
     let qml = QML_SOURCE;
     assert!(qml.contains("action.indexOf(\"new-window\\t\") === 0"));
-    assert!(qml.contains("windowPrivateProfile: windowAction[1] === \"true\""));
-    assert!(qml.contains("windowStartupUrl: windowAction.slice(3).join(\"\\t\")"));
+    assert!(qml.contains("window.executeNewWindowAction(browserUi, action)"));
+    assert!(qml.contains("rootWindow.executeNewWindowAction(secondaryUi, action)"));
+    assert!(qml.contains("windowPrivateProfile: privateProfile"));
+    assert!(qml.contains("windowInheritedUi: inherit ? ui : null"));
+    assert!(qml.contains("windowStartupUrl: fields[fields.length - 1]"));
 }
 
 #[test]

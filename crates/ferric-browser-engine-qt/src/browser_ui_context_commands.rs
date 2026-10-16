@@ -5,6 +5,47 @@ use super::{
 };
 
 impl qobject::BrowserUi {
+    pub(super) fn assign_window_context(mut self: Pin<&mut Self>, name: &QString) -> bool {
+        let name = name.to_string();
+        let target = {
+            let binding = self.as_ref();
+            let rust = binding.rust();
+            if rust.profile_bootstrap_pending
+                || !rust.view_alive
+                || binding.active_profile_is_transient()
+                || !rust.contexts.as_ref().is_some_and(|contexts| {
+                    contexts
+                        .contexts()
+                        .iter()
+                        .any(|context| context.name == name && context.profile == rust.profile_name)
+                })
+            {
+                None
+            } else {
+                rust.window
+            }
+        };
+        let Some(window) = target else {
+            self.set_status_text(QString::from("This context can't be used in this window."));
+            return false;
+        };
+        if self
+            .as_mut()
+            .reduce_event(super::Event::SetWindowContext {
+                window,
+                context: Some(name),
+            })
+            .is_err()
+        {
+            self.set_status_text(QString::from(
+                "The context couldn't be assigned to this window.",
+            ));
+            return false;
+        }
+        self.as_mut().sync_context_metadata();
+        true
+    }
+
     pub(super) fn execute_session_save_command(
         mut self: Pin<&mut Self>,
         command: &ParsedCommand,
@@ -150,20 +191,22 @@ impl qobject::BrowserUi {
                 "profile": name,
                 "private": private
             }));
-        } else if self.as_ref().rust().storage_roots.is_some() {
-            self.as_ref().rust().profile_name.clone()
         } else if private {
             "private".into()
         } else {
-            return Err("normal window creation requires a named profile".into());
+            self.as_ref().rust().profile_name.clone()
         };
 
         self.as_mut()
             .rust_mut()
             .as_mut()
             .get_mut()
-            .pending_engine_action = Some(format!(
-            "new-window\t{private}\t{profile_name}\tabout:blank"
+            .pending_engine_action = Some(super::browser_ui_ipc_preparation::window_open_action(
+            private,
+            &profile_name,
+            None,
+            !private,
+            "about:blank",
         ));
         self.as_mut().set_status_text(QString::from(if private {
             "Private window requested"
