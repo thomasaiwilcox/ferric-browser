@@ -140,6 +140,25 @@ TestCase {
     }
     Component { id: focusControllerFixture; FerricFocusOverlayController { browserWindow: host } }
     Component { id: backgroundFieldFixture; TextField { text:"Background draft" } }
+    Component {
+        id: shutdownDialogFixture
+        FerricShutdownDecisionDialog { hostWindow: host; themeWindow: host }
+    }
+    function test_shutdown_focus_return_cannot_steal_a_live_dialog() {
+        var field=createTemporaryObject(backgroundFieldFixture,host.contentItem)
+        field.forceActiveFocus();tryCompare(field,"activeFocus",true)
+        var shutdown=createTemporaryObject(shutdownDialogFixture,host.contentItem)
+        var dialog=createTemporaryObject(genericDialogFixture,host.contentItem,{stackingOrder:80})
+        var back=findChild(dialog,"commandDialogAction-back");verify(back)
+        tryCompare(back,"activeFocus",true)
+        // A close confirmation may have captured the page before an incoming
+        // prompt took focus. Its deferred return must respect the live modal.
+        shutdown.previousFocusItem=field
+        shutdown.restorePreviousFocus()
+        wait(30)
+        compare(back.activeFocus,true)
+        compare(field.text,"Background draft")
+    }
     function test_queued_focus_returns_keep_the_front_dialog_data() {
         return [{tag:"mode",mode:true},{tag:"overlay",mode:false}]
     }

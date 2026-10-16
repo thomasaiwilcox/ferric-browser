@@ -99,7 +99,9 @@ FocusScope {
         onTriggered: {
             var target = dialog.restoreFocusTarget
             dialog.restoreFocusTarget = null
+            var scope = dialog.hostWindow ? dialog.hostWindow.modalInputScope : null
             if (!dialog.visible && target && target.forceActiveFocus
+                    && (!scope || scope.allowsFocus(target))
                     && target.visible !== false && target.enabled !== false) target.forceActiveFocus()
         }
     }

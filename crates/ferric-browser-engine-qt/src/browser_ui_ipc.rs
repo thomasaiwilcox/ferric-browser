@@ -22,8 +22,13 @@ impl qobject::BrowserUi {
             "tab-new" | "start-page" | "start-page-view" | "start-page-cycle" | "favourite-add"
         ) {
             self.as_ref().validate_ipc_route(route)?;
-            if route.selector != DispatchTarget::Active {
-                return Err("start-page commands require the active tab".into());
+            if Some(
+                self.as_ref()
+                    .ipc_route_window(route)
+                    .map_err(|error| error.to_string())?,
+            ) != self.as_ref().rust().window
+            {
+                return Err("Choose the active tab in the requested window.".into());
             }
             return match self.as_mut().dispatch_start_page_command(&command) {
                 Some(true) => Ok(serde_json::json!({"status": "accepted"})),
@@ -528,7 +533,20 @@ impl qobject::BrowserUi {
                 return Err("context routing is not valid for window actions".into());
             }
             self.as_ref().validate_ipc_route(route)?;
-            return self.as_mut().execute_window_action(&command);
+            let result = self.as_mut().execute_window_action(&command)?;
+            if let Some(operation_id) = operation_id
+                && let Some(action) = self
+                    .as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .pending_engine_action
+                    .as_mut()
+            {
+                action.push('\t');
+                action.push_str(operation_id);
+            }
+            return Ok(result);
         }
         if command.name == "window-move" {
             if route.context.is_some() {

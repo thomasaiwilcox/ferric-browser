@@ -47,6 +47,7 @@ TestCase {
         Item {
             id: state
             required property var owner
+            property bool ready: true
             property alias controller: controller
             property alias tabs: tabs
             ListModel { id: tabs }
@@ -60,6 +61,7 @@ TestCase {
             }
             FerricTabViewController {
                 id: controller
+                ready: state.ready
                 browserHost: test
                 browserUi: state.owner
                 tabs: state.tabs
@@ -90,6 +92,26 @@ TestCase {
             compare(view.viewUi,owner);compare(view.viewHost,test)
             compare(view.viewTabs,state.tabs)
         }
+    }
+    function test_bootstrap_does_not_materialize_provisional_tabs_or_consume_restore() {
+        var owner=createTemporaryObject(uiFixture,test,{ids:["provisional-tab"]})
+        var state=createTemporaryObject(harness,test,{owner:owner,ready:false})
+        verify(state)
+        owner.pending="replace\nhttps://restored.test/\tfalse\tfalse\t1\t0\t0"
+        for (var i=0;i<3;i++) state.controller.syncTabModel()
+        compare(state.tabs.count,0)
+        compare(state.controller.tabViews.length,0)
+        verify(owner.pending.length>0)
+        owner.ids=["configured-tab"]
+        state.controller.syncTabModel()
+        compare(state.controller.tabViews.length,0)
+        state.ready=true
+        tryCompare(state.controller,"tabIdentitySignature","configured-tab")
+        compare(state.controller.tabViews.length,1)
+        compare(state.controller.tabViews[0].stableTabId,"configured-tab")
+        compare(state.controller.tabViews[0].viewUi,owner)
+        compare(state.tabs.get(0).url,"https://restored.test/")
+        compare(owner.pending,"")
     }
     function test_reordering_retains_live_view_identity() {
         var owner=createTemporaryObject(uiFixture,test)

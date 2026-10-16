@@ -29,19 +29,26 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn begin_shutdown_gate(mut self: Pin<&mut Self>) -> bool {
-        let mut rust = self.as_mut().rust_mut();
-        let this = rust.as_mut().get_mut();
-        if this.ipc_shutdown_gate {
+        if self.as_ref().rust().ipc_shutdown_gate {
             return true;
         }
-        this.ipc_shutdown_gate = true;
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .ipc_shutdown_gate = true;
+        self.as_mut().refresh_ipc_owner();
         self.set_status_text(QString::from("Shutdown gate active"));
         true
     }
 
     pub(super) fn end_shutdown_gate(mut self: Pin<&mut Self>) {
-        let mut rust = self.as_mut().rust_mut();
-        rust.as_mut().get_mut().ipc_shutdown_gate = false;
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .ipc_shutdown_gate = false;
+        self.as_mut().refresh_ipc_owner();
     }
 
     pub(super) fn force_quit(self: Pin<&mut Self>) {

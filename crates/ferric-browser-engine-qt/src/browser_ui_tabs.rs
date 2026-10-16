@@ -800,11 +800,15 @@ impl qobject::BrowserUi {
         if id.is_empty() || id.len() > 128 || id.chars().any(char::is_control) {
             return Err("window action ID is invalid".into());
         }
+        let id = super::WindowId::from_display(id)
+            .map(|id| id.to_string())
+            .or_else(|| Uuid::parse_str(id).ok().map(|id| id.to_string()))
+            .unwrap_or_else(|| id.clone());
         let local_target = self.as_ref().rust().state.as_ref().and_then(|state| {
             state
                 .windows()
                 .values()
-                .find(|window| window.id.to_string() == *id)
+                .find(|window| window.id.to_string() == id)
                 .map(|window| (window.id, window.active_tab))
         });
         if let Some((window, active_tab)) = local_target {
@@ -817,8 +821,8 @@ impl qobject::BrowserUi {
                     .map_err(|error| error.to_string())?;
             }
             self.as_mut().sync_tab_order_from_core();
-        } else if Uuid::parse_str(id).is_err() {
-            return Err("window action target is stale".into());
+        } else if !super::live_ipc_owners::has_window_target(&id) {
+            return Err("The requested browser window is no longer available.".into());
         }
         self.as_mut()
             .rust_mut()

@@ -315,7 +315,22 @@ impl BrowserRuntime {
         privacy: ferric_browser_core::PrivacyKind,
         profile_label: impl Into<String>,
     ) -> Result<(Self, WindowId, TabId), RuntimeError> {
-        let mut runtime = Self::new();
+        Self::bootstrap_with_ids(privacy, profile_label, ferric_browser_core::IdSource::new())
+    }
+
+    /// Bootstraps an owner using the live application's shared ID authority.
+    ///
+    /// # Errors
+    /// Returns a structured error if initial reducer state cannot be created.
+    pub fn bootstrap_with_ids(
+        privacy: ferric_browser_core::PrivacyKind,
+        profile_label: impl Into<String>,
+        ids: ferric_browser_core::IdSource,
+    ) -> Result<(Self, WindowId, TabId), RuntimeError> {
+        let mut runtime = Self {
+            state: ApplicationState::with_id_source(ids),
+            registry: CommandRegistry::default_v1(),
+        };
         runtime.handle(RuntimeInput::Lifecycle(Event::CreateProfile {
             label: profile_label.into(),
             privacy,
@@ -615,6 +630,43 @@ mod tests {
             RuntimeEffect::IpcEvent { event_type: "tab.changed", payload }
                 if payload["window_id"] == window.to_string()
         )));
+    }
+
+    #[test]
+    fn application_owners_and_replacements_have_distinct_routable_ids() {
+        use ferric_browser_core::{IdSource, PrivacyKind, SharedIdAllocator};
+        let ids = SharedIdAllocator::default();
+        let (first, first_window, first_tab) = BrowserRuntime::bootstrap_with_ids(
+            PrivacyKind::Normal,
+            "first",
+            IdSource::from_shared(ids.clone()),
+        )
+        .expect("first owner");
+        let (second, second_window, second_tab) = BrowserRuntime::bootstrap_with_ids(
+            PrivacyKind::Normal,
+            "second",
+            IdSource::from_shared(ids.clone()),
+        )
+        .expect("second owner");
+        assert_ne!(first_window, second_window);
+        assert_ne!(first_tab, second_tab);
+        assert!(!first.view().windows().contains_key(&second_window));
+        assert!(!second.view().tabs().contains_key(&first_tab));
+        drop(first);
+        let (_, replacement_window, replacement_tab) = BrowserRuntime::bootstrap_with_ids(
+            PrivacyKind::Private,
+            "replacement",
+            IdSource::from_shared(ids),
+        )
+        .expect("replacement owner");
+        assert_ne!(replacement_window, first_window);
+        assert_ne!(replacement_window, second_window);
+        assert_ne!(replacement_tab, first_tab);
+        assert_ne!(replacement_tab, second_tab);
+        assert_eq!(
+            WindowId::from_display(&replacement_window.to_string()),
+            Some(replacement_window)
+        );
     }
 
     #[test]

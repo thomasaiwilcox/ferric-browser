@@ -494,9 +494,12 @@ pub(super) fn query_from_values(
     let (method, params) = match kind.as_str() {
         "tabs" => {
             if mode.is_some() || key.is_some() || explain || include_members {
-                return Err("tabs query accepts only --window and --format".into());
+                return Err("tabs query accepts only --window, --private and --format".into());
             }
             let mut params = serde_json::json!({});
+            if include_private {
+                params["include_private"] = serde_json::Value::Bool(true);
+            }
             if let Some(window) = window {
                 params["window"] = serde_json::Value::String(window);
             }
@@ -504,17 +507,21 @@ pub(super) fn query_from_values(
         }
         "active-tab" => {
             if mode.is_some() || key.is_some() || explain || include_members {
-                return Err("active-tab query accepts only --window and --format".into());
+                return Err(
+                    "active-tab query accepts only --window, --private and --format".into(),
+                );
             }
             let mut params = serde_json::json!({"active_only": true});
+            if include_private {
+                params["include_private"] = serde_json::Value::Bool(true);
+            }
             if let Some(window) = window {
                 params["window"] = serde_json::Value::String(window);
             }
             ("tabs.query", params)
         }
         "windows" => {
-            if window.is_some()
-                || mode.is_some()
+            if mode.is_some()
                 || key.is_some()
                 || explain
                 || include_members
@@ -522,15 +529,28 @@ pub(super) fn query_from_values(
                 || switcher_scope.is_some()
                 || switcher_limit.is_some()
             {
-                return Err("windows query accepts only --format".into());
+                return Err("windows query accepts only --window and --format".into());
             }
-            ("windows.query", serde_json::json!({}))
+            let mut params = serde_json::json!({});
+            if let Some(window) = window {
+                params["window"] = serde_json::Value::String(window);
+            }
+            ("windows.query", params)
         }
         "operations" => {
-            if window.is_some() || mode.is_some() || key.is_some() || explain || include_members {
-                return Err("operations query accepts only --format".into());
+            if mode.is_some() || key.is_some() || explain || include_members {
+                return Err(
+                    "operations query accepts only --window, --private and --format".into(),
+                );
             }
-            ("operations.query", serde_json::json!({}))
+            let mut params = serde_json::json!({});
+            if let Some(window) = window {
+                params["window"] = serde_json::Value::String(window);
+            }
+            if include_private {
+                params["include_private"] = serde_json::Value::Bool(true);
+            }
+            ("operations.query", params)
         }
         "blocking" => {
             if window.is_some()

@@ -195,23 +195,7 @@ FerricBrowserRuntimeChrome {
             return
         }
         if (action.indexOf("window-focus\t") === 0) {
-            var focusParts = action.split("\t")
-            var focusTarget = focusParts.length >= 2 ? focusParts[1] : ""
-            var focusOperationId = focusParts.length >= 3 ? focusParts[2] : ""
-            var focusEntry = window.browserWindowEntryForTarget(focusTarget)
-            if (!focusEntry || !focusEntry.host || !focusEntry.ui) {
-                browserUi.status_text = "Window focus target is stale"
-                if (focusOperationId.length > 0) {
-                    browserUi.complete_window_focus(focusOperationId, "stale")
-                }
-                return
-            }
-            if (!window.activateBrowserWindow(
-                        focusEntry.host, focusEntry.ui, focusOperationId)) {
-                focusEntry.ui.status_text = "Window activation outcome unknown"
-            } else {
-                focusEntry.ui.status_text = "Window focused"
-            }
+            window.executeWindowFocusAction(browserUi, action)
             return
         }
         if (action.indexOf("window-move\t") === 0) {
@@ -1353,6 +1337,7 @@ FerricBrowserRuntimeChrome {
     }
 
     function completeProfileBootstrap() {
+        if (window.runtimeDisposing || window.profileBootstrapComplete) return
         window.refreshSpellcheckInventory(browserUi)
         browserProfile.spellCheckEnabled = window.spellcheckEnabled(browserUi)
         browserProfile.spellCheckLanguages = window.spellcheckLanguages(browserUi)
@@ -1366,6 +1351,11 @@ FerricBrowserRuntimeChrome {
         if (window.ephemeralProfile && window.ephemeralInvocationToken.length === 0) {
             window.ephemeralInvocationToken = window.profileName
         }
+        if (!requestInterceptor.attach(browserProfile)) {
+            browserUi.status_text = "Request interceptor unavailable"
+        }
+        window.profileBootstrapComplete = true
+        window.syncTabModel()
         window.registerBrowserWindow(
                     window, browserUi, window.activeWebView(), browserProfile,
                     window.profileName,
@@ -1374,9 +1364,6 @@ FerricBrowserRuntimeChrome {
             browserUi.set_context_entry_reuse(true)
             browserUi.execute_command("context-enter " + window.startupContext)
             window.routeContextWorkspace(browserUi)
-        }
-        if (!requestInterceptor.attach(browserProfile)) {
-            browserUi.status_text = "Request interceptor unavailable"
         }
         if (window.startupBackground) {
             browserUi.status_text = "Opening startup URL in a background tab"

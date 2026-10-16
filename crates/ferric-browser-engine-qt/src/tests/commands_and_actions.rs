@@ -167,10 +167,14 @@ fn external_window_focus_reports_bounded_activation_outcome() {
     ));
     assert!(source.contains("fn complete_window_focus("));
     assert!(source.contains("\"activation\": outcome"));
-    assert!(qml.contains("var focusOperationId = focusParts.length >= 3 ? focusParts[2] : \"\""));
+    assert!(qml.contains("function executeWindowFocusAction(sourceUi, action)"));
+    assert!(qml.contains("executeWindowFocusAction(browserUi, action)"));
+    assert!(qml.contains("window.activateBrowserWindow(entry.host, sourceUi, operationId)"));
+    let secondary = include_str!("../../qml/components/FerricBrowserWindow.qml");
+    assert!(secondary.contains("executeWindowFocusAction(secondaryUi, action)"));
     assert!(qml.contains("complete_window_focus(focusOperationId, \"activated\")"));
     assert!(qml.contains("complete_window_focus(operationId, \"unknown\")"));
-    assert!(qml.contains("complete_window_focus(focusOperationId, \"stale\")"));
+    assert!(qml.contains("complete_window_focus(operationId, \"stale\")"));
 }
 
 #[test]

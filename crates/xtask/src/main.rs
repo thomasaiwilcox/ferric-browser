@@ -609,6 +609,10 @@ fn run_application_tests() -> Result<(), String> {
     run(
         "python3",
         &["crates/ferric-browser-engine-qt/tests/application/run_ipc_probe.py"],
+    )?;
+    run(
+        "python3",
+        &["crates/ferric-browser-engine-qt/tests/application/run_window_ipc_probe.py"],
     )
 }
 

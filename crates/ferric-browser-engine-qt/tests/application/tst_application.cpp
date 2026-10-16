@@ -2086,6 +2086,7 @@ void ApplicationTests::productPolishWindowPrompts() {
         QVERIFY(evaluate("testWindow.openEphemeralWindow(" + quoted(text("current_url")) + ")").toBool());
         QTRY_VERIFY(evaluate("testWindow.browserWindowRegistry.length > 1").toBool());
         entry = "testWindow.browserWindowRegistry[testWindow.browserWindowRegistry.length-1]";
+        QTRY_VERIFY(evaluate(entry + ".host.profileBootstrapComplete").toBool());
         pageReceiver = entry + ".host.activeView";
     }
     auto child = qobject_cast<QQuickWindow *>(evaluate(entry + ".host").value<QObject *>());
@@ -2215,6 +2216,7 @@ void ApplicationTests::productPolishTlsPrompt() {
     if (hostKind == 1) {
         QVERIFY(evaluate("testWindow.openEphemeralWindow(" + quoted(text("current_url")) + ")").toBool());
         entry = "testWindow.browserWindowRegistry[testWindow.browserWindowRegistry.length-1].host";
+        QTRY_VERIFY(evaluate(entry + ".profileBootstrapComplete").toBool());
         pageReceiver = entry + ".activeView";
     } else if (hostKind == 2) {
         QVERIFY(command("bind p hint --target pointer links"));
@@ -2309,6 +2311,7 @@ void ApplicationTests::productPolishIdentityWindows() {
     } else {
         QVERIFY(evaluate("testWindow.openEphemeralWindow(" + quoted(text("current_url")) + ")").toBool());
         entry = "testWindow.browserWindowRegistry[testWindow.browserWindowRegistry.length-1].host";
+        QTRY_VERIFY(evaluate(entry + ".profileBootstrapComplete").toBool());
         pageReceiver = entry + ".activeView";
     }
     auto host = qobject_cast<QQuickWindow *>(evaluate(entry).value<QObject *>());
@@ -2359,6 +2362,7 @@ void ApplicationTests::productPolishPromptTeardown() {
     } else {
         QVERIFY(evaluate("testWindow.openEphemeralWindow(" + quoted(text("current_url")) + ")").toBool());
         entry = "testWindow.browserWindowRegistry[testWindow.browserWindowRegistry.length-1].host";
+        QTRY_VERIFY(evaluate(entry + ".profileBootstrapComplete").toBool());
         pageReceiver = entry + ".activeView";
     }
     QTRY_VERIFY(page("document.getElementById('button') !== null").toBool());
@@ -2720,7 +2724,9 @@ void ApplicationTests::productPolishSecondaryTabs() {
     pageReceiver = moved + ".host.activeView";
     QTRY_COMPARE(page("window.retainedState").toInt(), 41);
     QTRY_COMPARE(evaluate(entry + ".host.tabViews.length").toInt(), 1);
-    QVERIFY(evaluate("testWindow.browserWindowEntryForTarget(" + entry + ".ui.core_window_id) === null").toBool());
+    QVERIFY(evaluate(entry + ".ui.core_window_id !== testWindow.browserUi.core_window_id").toBool());
+    QVERIFY(evaluate("testWindow.browserWindowEntryForTarget(" + entry + ".ui.core_window_id).ui === " + entry + ".ui").toBool());
+    QVERIFY(evaluate("testWindow.browserWindowEntryForTarget(testWindow.browserUi.core_window_id).host === testWindow").toBool());
     const auto destination = token;
     QVERIFY(evaluate(moved + ".ui.execute_secondary_interactive_command(" + quoted("tab-give " + destination) + ")").toBool());
     evaluate(moved + ".host.processRuntimeWork()");
@@ -2859,7 +2865,7 @@ void ApplicationTests::productPolishWindowSettings() {
     const auto entry = QString("testWindow.browserWindowRegistry[testWindow.browserWindowRegistry.length-1]");
     auto child = qobject_cast<QQuickWindow *>(evaluate(entry + ".host").value<QObject *>());
     QVERIFY(child);
-    QTRY_VERIFY(!evaluate(entry + ".ui.profile_bootstrap_pending").toBool());
+    QTRY_VERIFY(evaluate(entry + ".host.profileBootstrapComplete").toBool());
     evaluate(entry + ".host.activeView.forceActiveFocus()");
     child->requestActivate();
     QTRY_VERIFY(child->isActive());
@@ -2926,7 +2932,7 @@ void ApplicationTests::productPolishIndependentWindowInput() {
     const auto entry = QString("testWindow.browserWindowRegistry[testWindow.browserWindowRegistry.length-1]");
     auto child = qobject_cast<QQuickWindow *>(evaluate(entry + ".host").value<QObject *>());
     QVERIFY(child);
-    QTRY_VERIFY(!evaluate(entry + ".ui.profile_bootstrap_pending").toBool());
+    QTRY_VERIFY(evaluate(entry + ".host.profileBootstrapComplete").toBool());
     QVERIFY(command("settings"));
     QTRY_VERIFY(evaluate("testWindow.settingsVisible").toBool());
     evaluate("testWindow.settingsSearch='primary draft'");
@@ -2976,7 +2982,7 @@ void ApplicationTests::productPolishPermissionWindowOwnership() {
     QTRY_VERIFY(evaluate("testWindow.browserWindowRegistry.length>1").toBool());
     auto child = qobject_cast<QQuickWindow *>(evaluate(entry + ".host").value<QObject *>());
     QVERIFY(child);
-    QTRY_VERIFY(!evaluate(entry + ".ui.profile_bootstrap_pending").toBool());
+    QTRY_VERIFY(evaluate(entry + ".host.profileBootstrapComplete").toBool());
     const auto request = QString("navigator.geolocation.getCurrentPosition(()=>window.geoResult='allowed',()=>window.geoResult='denied');true");
     QVERIFY(page(request).toBool());
     QTRY_VERIFY(evaluate("testWindow.permissionPromptVisible").toBool());
@@ -3899,6 +3905,7 @@ void ApplicationTests::clipboardOtherWindows() {
         evaluate("testWindow.browserWindowRegistry.length > 1").toBool());
     entry = "testWindow.browserWindowRegistry[testWindow.browserWindowRegistry."
             "length-1]";
+    QTRY_VERIFY(evaluate(entry + ".host.profileBootstrapComplete").toBool());
     pageReceiver = entry + ".host.activeView";
   }
   auto child = qobject_cast<QQuickWindow *>(

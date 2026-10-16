@@ -1152,6 +1152,9 @@ Opening a regular profile from a private or temporary manager uses the native
 start page through the existing validated profile-open path, preserving the
 private page's address. Provisional and retired renderers cannot publish tab
 metadata or native/history state; they must first hold a live stable tab identity.
+Ordinary windows materialize tab views only after profile bootstrap completes,
+so a provisional tab cannot replace a live renderer during startup or consume
+the configured profile's queued restore payload.
 
 **TAB-002 — Ordering.** New related tabs follow their opener's group in creation
 order; unrelated tabs append. Closing the active tab selects the next tab at
@@ -2336,6 +2339,16 @@ optional context ID/name, compositor workspace/output when known, safe URL,
 safe title, selected/pinned/muted flags, loading/renderer state, and document
 revision. Results omit private tabs unless configuration permits
 private queries and the request explicitly sets `include_private: true`.
+Live window and tab IDs are unique across runtime owners and are not reused
+when a window closes or changes profile. Window selectors returned by queries
+route commands, actions and scoped queries to that exact live owner. Missing,
+closed or ambiguous explicit selectors never fall back to another window.
+Unscoped window/tab queries collect the live owners; active-tab queries select
+one active or last-focused owner. Destination profile/context/private-query
+validation still applies after native routing.
+Operation queries follow the same private-query opt-in and configuration rule,
+including status and explicitly requested stderr. Scoped operation queries use
+the same live window selector as tab queries.
 Private permission answers and secrets are never exposed. Default URL output
 removes userinfo and recognized auth secrets; raw-query/fragment output, if
 added, requires an explicit sensitive-output flag and is not logged.

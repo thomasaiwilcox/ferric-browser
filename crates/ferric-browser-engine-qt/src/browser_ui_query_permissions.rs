@@ -3,6 +3,15 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
 
+pub(super) fn private_queries_enabled(rust: &BrowserUiRust) -> bool {
+    rust.config
+        .get("ipc")
+        .and_then(Value::as_object)
+        .and_then(|ipc| ipc.get("private_queries"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
 impl qobject::BrowserUi {
     pub(super) fn ipc_permissions_query(&self, params: &Value) -> Result<Value, IpcQueryError> {
         let object = params.as_object().ok_or_else(|| {
@@ -121,13 +130,7 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn ipc_private_queries_enabled(&self) -> bool {
-        self.rust()
-            .config
-            .get("ipc")
-            .and_then(Value::as_object)
-            .and_then(|ipc| ipc.get("private_queries"))
-            .and_then(Value::as_bool)
-            .unwrap_or(false)
+        private_queries_enabled(self.rust())
     }
 
     pub(super) fn ipc_contexts_query(&self, params: &Value) -> Result<Value, String> {

@@ -142,6 +142,7 @@ mod ipc_schema;
 mod ipc_transport;
 mod library_presentation;
 mod link_cleaning_policy;
+mod live_ipc_owners;
 mod logging;
 mod macro_policy;
 mod macro_projection;
@@ -266,7 +267,7 @@ use ipc_response::{
     IpcQueryError, action_failure_category, ipc_action_failure, ipc_action_failure_with_context,
     ipc_command_failure_with_context, ipc_failure,
 };
-use ipc_transport::{instance_id as ipc_instance_id, publish_ipc_event};
+use ipc_transport::publish_ipc_event;
 use library_presentation::JourneyGraphEdgePresentation;
 use macro_policy::{
     MAX_MACRO_COMMANDS, MAX_MACRO_DEPTH, is_repeatable_command, valid_macro_register,
@@ -772,6 +773,15 @@ mod qobject {
 
         #[qinvokable]
         fn activate_runtime_wake(self: Pin<&mut BrowserUi>);
+
+        #[qinvokable]
+        fn register_ipc_owner(self: Pin<&mut BrowserUi>) -> bool;
+        #[qinvokable]
+        fn refresh_ipc_owner(self: Pin<&mut BrowserUi>);
+        #[qinvokable]
+        fn set_ipc_window_active(self: Pin<&mut BrowserUi>, active: bool);
+        #[qinvokable]
+        fn release_ipc_owner(self: Pin<&mut BrowserUi>);
 
         #[qinvokable]
         fn maintenance_delay_ms(self: Pin<&mut BrowserUi>) -> i32;
@@ -1889,8 +1899,8 @@ use ferric_browser_core::{
     parse_chain, resolve_input, switcher_rank, tokenize_switcher_query,
 };
 use ferric_browser_ipc::{
-    EventNotification, PublicError, Request, Response, has_pending_requests,
-    install_pending_request_waker, publish_event, subscribe_event_stream, take_pending_request,
+    PublicError, Request, Response, has_pending_requests, install_pending_request_waker,
+    subscribe_event_stream, take_pending_request,
 };
 use ferric_browser_runtime::{
     BrowserRuntime, RuntimeCommand, RuntimeDispatch, RuntimeEffect, RuntimeInput,
@@ -2459,6 +2469,7 @@ pub struct BrowserUiRust {
     macro_depth: u8,
     macro_expanded_commands: usize,
     live_window_registry: Vec<LiveWindowRegistryEntry>,
+    ipc_owner: Option<live_ipc_owners::OwnerLease>,
 }
 
 #[derive(Clone, Debug)]
@@ -2595,7 +2606,14 @@ fn bootstrap_runtime(
     privacy: PrivacyKind,
     profile_label: &str,
 ) -> Option<(BrowserRuntime, WindowId, TabId)> {
-    BrowserRuntime::bootstrap(privacy, profile_label).ok()
+    static IDS: std::sync::OnceLock<ferric_browser_core::SharedIdAllocator> =
+        std::sync::OnceLock::new();
+    BrowserRuntime::bootstrap_with_ids(
+        privacy,
+        profile_label,
+        IdSource::from_shared(IDS.get_or_init(Default::default).clone()),
+    )
+    .ok()
 }
 
 fn ensure_spawn_working_directory(rust: &mut BrowserUiRust) -> Result<PathBuf, String> {
@@ -3252,6 +3270,7 @@ impl Default for BrowserUiRust {
             macro_depth: 0,
             macro_expanded_commands: 0,
             live_window_registry: Vec::new(),
+            ipc_owner: None,
         }
     }
 }

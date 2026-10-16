@@ -12,10 +12,15 @@ Item {
     required property var profile
     required property var interceptor
     required property bool transientProfile
+    property bool ready: true
     property var tabViews: []
     property string tabIdentitySignature: ""
     signal activity
     signal restored
+
+    onReadyChanged: {
+        if (ready) syncTabModel()
+    }
 
     function refreshMetadata() {
         for (var i = 0; i < tabs.count; ++i) {
@@ -59,7 +64,9 @@ Item {
     }
 
     function syncTabModel() {
-        if (!viewFactory || !viewParent) return false
+        // Profile bootstrap replaces the provisional reducer identities. Do
+        // not create renderers or consume restore data until their owner is ready.
+        if (!ready || !viewFactory || !viewParent) return false
         var pending = browserUi.take_session_restore_values()
         if (pending.length > 0) {
             controller.applyRestorePayload(pending, true)

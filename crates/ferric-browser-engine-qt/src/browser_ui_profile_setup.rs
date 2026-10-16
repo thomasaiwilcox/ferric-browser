@@ -46,6 +46,7 @@ impl qobject::BrowserUi {
             return;
         };
         self.as_mut().set_profile_bootstrap_pending(true);
+        self.as_mut().refresh_ipc_owner();
         let startup_config =
             serde_json::from_str::<Config>(&self.as_ref().rust().config_json.to_string())
                 .unwrap_or_default();

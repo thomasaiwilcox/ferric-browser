@@ -616,6 +616,7 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn release_transient_resources(mut self: Pin<&mut Self>) -> bool {
+        self.as_mut().release_ipc_owner();
         let has_state = self.as_ref().rust().state.is_some();
         if has_state && !self.as_ref().active_profile_is_transient() {
             self.set_status_text(QString::from(

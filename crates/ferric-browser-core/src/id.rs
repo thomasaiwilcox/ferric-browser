@@ -1,4 +1,10 @@
-use std::fmt;
+use std::{
+    fmt,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+};
 
 macro_rules! opaque_id {
     ($name:ident) => {
@@ -62,12 +68,40 @@ opaque_id!(WindowId);
 /// only relies on identity opacity and uniqueness.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct IdSource {
-    next: u64,
+    allocation: Allocation,
 }
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum Allocation {
+    Local(u64),
+    Shared(SharedIdAllocator),
+}
+
+/// Identity authority shared by runtimes belonging to one live application.
+/// Clones allocate from the same counter, including after an owner closes.
+/// Equality compares allocator identity, not its changing counter value.
+#[derive(Clone, Debug)]
+pub struct SharedIdAllocator(Arc<AtomicU64>);
+
+impl Default for SharedIdAllocator {
+    fn default() -> Self {
+        Self(Arc::new(AtomicU64::new(1)))
+    }
+}
+
+impl PartialEq for SharedIdAllocator {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl Eq for SharedIdAllocator {}
 
 impl Default for IdSource {
     fn default() -> Self {
-        Self { next: 1 }
+        Self {
+            allocation: Allocation::Local(1),
+        }
     }
 }
 
@@ -75,6 +109,14 @@ impl IdSource {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Uses an application-owned allocator instead of an isolated counter.
+    #[must_use]
+    pub fn from_shared(allocator: SharedIdAllocator) -> Self {
+        Self {
+            allocation: Allocation::Shared(allocator),
+        }
     }
 
     pub(crate) fn document(&mut self) -> DocumentId {
@@ -136,12 +178,23 @@ impl IdSource {
     }
 
     fn allocate(&mut self) -> u64 {
-        let id = self.next;
-        self.next = self
-            .next
-            .checked_add(1)
-            .expect("runtime ID space exhausted");
-        id
+        match &mut self.allocation {
+            Allocation::Local(next) => {
+                let id = *next;
+                *next = next.checked_add(1).expect("runtime ID space exhausted");
+                id
+            }
+            Allocation::Shared(allocator) => {
+                // fetch_update retains the workspace's Rust 1.85 support.
+                #[allow(deprecated)]
+                allocator
+                    .0
+                    .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
+                        next.checked_add(1)
+                    })
+                    .expect("runtime ID space exhausted")
+            }
+        }
     }
 }
 
@@ -183,5 +236,48 @@ mod tests {
         assert!(WindowId::from_display("windowid-0x2a").is_none());
         assert!(WindowId::from_display("windowid-").is_none());
         assert!(WindowId::from_display(&format!("windowid-{}", "9".repeat(65))).is_none());
+    }
+
+    #[test]
+    fn shared_runtime_ids_survive_clones_and_owner_replacement() {
+        let allocator = SharedIdAllocator::default();
+        let mut first = IdSource::from_shared(allocator.clone());
+        let mut second = first.clone();
+        let old = first.window();
+        let other = second.window();
+        drop(first);
+        let mut replacement = IdSource::from_shared(allocator);
+        let next = replacement.window();
+        assert_ne!(old, other);
+        assert_ne!(old, next);
+        assert_ne!(other, next);
+        assert_eq!(WindowId::from_display(&next.to_string()), Some(next));
+    }
+
+    #[test]
+    fn isolated_sources_remain_deterministic() {
+        let mut first = IdSource::new();
+        let mut second = first.clone();
+        assert_eq!(first.tab(), second.tab());
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn shared_sources_allocate_uniquely_across_threads() {
+        let allocator = SharedIdAllocator::default();
+        let owners = (0..8)
+            .map(|_| {
+                let allocator = allocator.clone();
+                std::thread::spawn(move || {
+                    let mut ids = IdSource::from_shared(allocator);
+                    (0..32).map(|_| ids.tab()).collect::<Vec<_>>()
+                })
+            })
+            .collect::<Vec<_>>();
+        let ids = owners
+            .into_iter()
+            .flat_map(|owner| owner.join().expect("owner"))
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(ids.len(), 256);
     }
 }

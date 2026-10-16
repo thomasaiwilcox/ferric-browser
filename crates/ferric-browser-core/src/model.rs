@@ -176,6 +176,15 @@ impl ApplicationState {
         Self::default()
     }
 
+    /// Creates empty reducer-owned state with the application's ID authority.
+    #[must_use]
+    pub fn with_id_source(ids: IdSource) -> Self {
+        Self {
+            ids,
+            ..Self::default()
+        }
+    }
+
     #[must_use]
     pub fn profiles(&self) -> &BTreeMap<ProfileId, ProfileState> {
         &self.profiles

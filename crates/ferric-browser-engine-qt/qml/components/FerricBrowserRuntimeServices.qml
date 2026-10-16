@@ -1050,6 +1050,7 @@ FerricBrowserRuntimeBase {
     property alias tabViews: primaryTabController.tabViews
     FerricTabViewController {
         id: primaryTabController
+        ready: window.profileBootstrapComplete && !window.runtimeDisposing
         browserUi: window.browserUi
         browserHost: window
         tabs: window.tabsModel

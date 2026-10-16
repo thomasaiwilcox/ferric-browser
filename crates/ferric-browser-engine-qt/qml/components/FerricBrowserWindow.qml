@@ -201,6 +201,7 @@ ApplicationWindow {
     }
 
     onActiveChanged: {
+        secondaryUi.set_ipc_window_active(active)
         if (!active && secondaryUi.mode === "pass-through-once") {
             secondaryUi.escape()
         }
@@ -977,6 +978,10 @@ function onContext_workspaceChanged() {
         if (!action || action.length === 0) {
             return
         }
+        if (action.indexOf("window-focus\t") === 0) {
+            rootWindow.executeWindowFocusAction(secondaryUi, action)
+            return
+        }
         if (action === "show-settings" || action.indexOf("show-settings\t") === 0) {
             secondarySettings.show(action === "show-settings" ? undefined : action.slice("show-settings\t".length))
             return
@@ -1385,6 +1390,7 @@ function onContext_workspaceChanged() {
 
     function processRuntimeWork() {
         if (secondaryWindow.runtimeReleased) return
+        secondaryUi.poll_ipc()
         secondaryWindow.syncTabModel()
         secondaryWindow.applySwitcherEngineAction()
         secondaryUi.poll_config()
@@ -1678,6 +1684,7 @@ function onContext_workspaceChanged() {
     }
     FerricTabViewController {
         id: secondaryTabController
+        ready: secondaryWindow.profileBootstrapComplete && !secondaryWindow.runtimeReleased
         browserUi: secondaryUi
         browserHost: secondaryWindow
         tabs: secondaryTabs

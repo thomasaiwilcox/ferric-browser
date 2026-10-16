@@ -12,6 +12,7 @@ ApplicationWindow {
     id: window
     readonly property var modalInputScope: FerricModalInputController { hostWindow: window }
     property bool runtimeDisposing: false
+    property bool profileBootstrapComplete: false
     readonly property alias scriptRunnerObject: scriptRunner
     FerricScriptRunner { id: scriptRunner }
     readonly property alias primaryBrowserUi: browserUi
@@ -876,6 +877,8 @@ ApplicationWindow {
         if (!hostWindow || !ui) {
             return false
         }
+        if (!ui.register_ipc_owner()) return false
+        ui.set_ipc_window_active(!!hostWindow.active)
         var existing = (window.browserWindowRegistry || []).filter(function(entry) {
             return entry && entry.ui === ui
         })
@@ -1015,6 +1018,7 @@ ApplicationWindow {
     }
 
     function unregisterBrowserWindow(ui) {
+        if (ui) ui.release_ipc_owner()
         var entries = window.browserWindowRegistry || []
         for (var i = 0; i < entries.length; ++i) {
             if (entries[i] && entries[i].ui === ui && entries[i].ephemeralProfile) {
@@ -1209,6 +1213,21 @@ ApplicationWindow {
 
     function ephemeralTokenForUi(ui) {
         return windowRegistryController.ephemeralTokenForUi(ui)
+    }
+
+    function executeWindowFocusAction(sourceUi, action) {
+        var parts = action.split("\t")
+        var target = parts.length >= 2 ? parts[1] : ""
+        var operationId = parts.length >= 3 ? parts[2] : ""
+        var entry = window.browserWindowEntryForTarget(target)
+        if (!entry || !entry.host || !entry.ui) {
+            sourceUi.status_text = "The requested window is no longer open"
+            if (operationId.length > 0) sourceUi.complete_window_focus(operationId, "stale")
+            return
+        }
+        // The issuing UI owns the operation, even when another window receives focus.
+        if (window.activateBrowserWindow(entry.host, sourceUi, operationId) && entry.host.active)
+            sourceUi.status_text = "Window focused"
     }
 
     function activateBrowserWindow(hostWindow, targetUi, operationId) {
@@ -2220,6 +2239,7 @@ ApplicationWindow {
     }
 
     onActiveChanged: {
+        browserUi.set_ipc_window_active(active)
         if (!active) window.copyNoticeVisible = false
         if (!active && browserUi.hint_pointer_mode) {
             browserUi.hint_pointer_invalidated("window-inactive")

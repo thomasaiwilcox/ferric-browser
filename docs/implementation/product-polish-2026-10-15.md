@@ -1283,6 +1283,114 @@ and support active/last-focused routing without an explicit-target fallback.
 Ordinary new-window profile selection and popup parity remain part of this
 investigation. The full original polish objective remains active.
 
+## Live window identities and native IPC owner dispatch
+
+Status: implemented and qualified for live IPC ownership, startup view readiness
+and nested dialog focus. Advances
+IPC-003/004/005 and the whole-window audit without adding a command or setting.
+
+The previous checkpoint's standalone probe confirms duplicate window IDs,
+child-targeted commands affecting the primary window, and unusable query
+selectors. Live GUI runtimes now share an application-owned monotonic allocator;
+isolated core runtimes retain deterministic allocation. Clones, concurrent
+allocation and replacement owners have direct identity tests.
+
+The native directory retains lifetime-safe `CxxQtThread` handles with leases
+removed on close. Explicit Core IDs and existing unique owner tokens select one
+owner; absent, closed and ambiguous targets never choose a default window.
+Queued deliveries check the captured window and readiness again. Discarded Qt
+callbacks still resolve their authenticated request. Destination command/action
+validation retains source, profile and context fields. Profile matching uses
+the canonical name rather than its display label. Explicit-window native new
+tabs no longer fail an Active-only selector guard.
+
+Unscoped window, tab, profile and operation queries collect live owners. Active
+tab queries select one owner. Collection keeps creation order and rejects a
+changed window topology. Event watermarks are allocated across owners, and
+instance shutdown gates apply at admission and queued delivery. CLI window
+selectors and private opt-in reach their existing typed query boundaries.
+
+The first compiled routing stage passes six focused checks. The next stage
+passes 957 Rust tests (two opt-in tests ignored) and a fresh standalone build.
+Its live record (`owner-routing-stage2-live.json`) proves distinct window IDs,
+correct Core-ID/token command and action destinations, global operation
+observation, and actual child active/last-focused selection. It then times out
+on a child diagnostic reply: secondary maintenance never flushed deferred IPC.
+A separate run (`owner-routing-private-before.json`) also passes explicit-owner
+native new tabs, destination policy rejection and private-tab filtering before
+finding private operations in an unscoped query.
+
+Secondary maintenance now polls IPC. Operation status/stderr now follow the
+private-query configuration and explicit opt-in rule, including scoped queries
+and private/temporary regression fixtures. A shared window-focus handler retains
+the issuing operation owner, works in secondary windows, and no longer reports
+focus success while compositor activation is pending. Focus commands carry
+their operation ID. The permanent `run_window_ipc_probe.py` covers actual owner
+routing, focus completion, diagnostics and private operation visibility; CI and
+`cargo xtask test application` invoke it. Fresh compiled verification passes as
+recorded below. Ordinary new-window profile selection, popup parity,
+closed/reconfigured owner integration coverage and the original remaining
+polish scope are still incomplete.
+
+The first full run stops on Clippy documentation markup (`QObject`); that is
+corrected without changing behavior. The second passes strict Clippy and all
+432 QML checks, then stops on the old focus-handler source assertion. The
+assertion now requires the shared primary/secondary handler and issuing-UI
+operation ownership. The live focus probe remains the behavioral check.
+
+Two independent follow-ups use the immutable stage2 archive/executable while
+production inputs remain frozen. `secondary-new-window-before.json` confirms an
+accepted secondary `open --target window` creates no window. The strengthened
+native source-close probe then explicitly destroys the original `QQuickWindow`
+with `deleteLater()`: its transferred page's WebEngine profile is destroyed too
+(two test checks pass, one fails). A StackLayout binding TypeError also appears.
+`profile-owner-destruction-finding.json` and `source-destroy-native-before.log`
+retain the evidence. Closing and garbage collection alone did not prove native
+parent destruction. Profile/interceptor/callback lifetime, final-owner cleanup
+and new-window profile semantics require a coherent follow-up before release
+qualification; keeping an unused source window alive is not sufficient.
+
+The third full run passes format, strict workspace Clippy, 958 Rust checks
+(two opt-in checks ignored), 432 QML checks, adapter startup, the fresh standalone
+build, all ten live owner-routing scenarios and the existing IPC probe. Its
+native group stops at the secondary confirmation fixture: a WebEngine script
+callback times out while profile bootstrap replaces a provisional renderer.
+The focused production case reproduces the same timeout.
+
+Both ordinary window kinds now gate tab-view materialization on completed
+profile bootstrap. The shared controller leaves queued restore data untouched
+until it is ready, then creates only the configured identities. The new QML
+regression passes, as do all 433 QML checks and all ten live owner-routing
+scenarios against the fresh `profile-readiness` build. The native prompt case
+advances beyond the timeout, then exposes a second defect: a close confirmation
+can restore page focus beneath a still-open page dialog. The shared shutdown
+dialog now checks the host's modal focus scope before applying a queued return.
+A focused QML regression fails before this guard and passes after it. Native
+TLS, identity, teardown, settings, permission and clipboard fixtures now wait
+for completed profile bootstrap before using a child page, rather than treating
+a provisional blank renderer as ready.
+
+Final qualification (`modal-owner-v2-status.json`) passes format, strict
+workspace Clippy, the full repository gate, adapter startup, the existing IPC
+probe and all ten live owner scenarios. Counts are 958 Rust checks with two
+opt-in checks ignored, 434 QML checks, 75 compiled product-polish checks and 81
+clipboard checks. All 35 frozen inputs and the exact engine/browser/native
+artifact hashes are verified in `modal-owner-v2-verification.json`. Fresh close
+and secondary-confirm renders were inspected. Qt/GCC and offscreen environment
+warnings remain; this does not qualify release, hardware or native Wayland.
+Only this implementation log changes after the verification to record results.
+The original polish objective remains active.
+
+The corrected isolated lifetime probe receives a native download signal after
+experimental reparenting and forced source-window destruction, but no download
+record reaches the destination owner. Its normal test failure is retained in
+`source-destroy-callback-observer.log`; the earlier callback experiment instead
+aborted by reading an undeclared pending-download property and did not establish
+callback routing. Secondary download handling also references three pending
+state properties that are absent from that window. These findings remain open
+alongside resource creation-context lifetime, native ownership and final-owner
+cleanup. The experimental reparenting exists only in the ignored probe harness.
+
 ## Audit status and remaining implementation
 
 These remain part of the original goal, rather than deferred release promises:

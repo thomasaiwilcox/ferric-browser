@@ -1129,6 +1129,45 @@ fn cli_query_exposes_live_window_registry() {
 }
 
 #[test]
+fn cli_window_queries_preserve_explicit_ids_and_private_opt_in() {
+    for kind in ["tabs", "active-tab", "windows", "operations"] {
+        let mut arguments = vec![
+            "query".into(),
+            kind.into(),
+            "--window".into(),
+            "windowid-22".into(),
+            "--format".into(),
+            "json".into(),
+        ];
+        if kind != "windows" {
+            arguments.push("--private".into());
+        }
+        let (_, action) = parse_cli(&arguments).expect("explicit window query");
+        let CliAction::Query {
+            method,
+            params,
+            format,
+        } = action
+        else {
+            panic!("query")
+        };
+        assert_eq!(
+            method,
+            match kind {
+                "windows" => "windows.query",
+                "operations" => "operations.query",
+                _ => "tabs.query",
+            }
+        );
+        assert_eq!(params["window"], "windowid-22");
+        assert_eq!(format, "json");
+        if kind != "windows" {
+            assert_eq!(params["include_private"], true);
+        }
+    }
+}
+
+#[test]
 fn cli_switcher_command_uses_typed_scope_and_query_fields() {
     let command = parse_chain("switcher --scope tabs rust", ParseInput::Cli)
         .expect("valid switcher command")
