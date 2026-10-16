@@ -475,6 +475,7 @@ TestCase {
                 notice: ""
                 spellcheckStatus: "Available"
                 spellcheckDictionariesMissing: false
+                userscriptInventoryReady: true
                 userscriptRows: [{ name: "Example script", enabled: true,
                                    actions: 2, page_world: false }]
                 settingsModel: chromeTest.settingsModelObject

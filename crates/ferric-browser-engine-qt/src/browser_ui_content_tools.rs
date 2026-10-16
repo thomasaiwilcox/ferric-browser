@@ -1,7 +1,7 @@
 use super::{
-    CxxQtType, PathBuf, Pin, QString, QStringList, UserscriptManagerRequest, Uuid,
-    captured_target_is_current, cleanup_print_artifact, fs, qobject, userscript,
-    validate_pdf_output_path, validate_print_pdf_path, validate_save_page_path,
+    CxxQtType, PathBuf, Pin, QString, QStringList, UserscriptManagerRequest,
+    UserscriptManagerWorker, Uuid, captured_target_is_current, cleanup_print_artifact, fs, qobject,
+    userscript, validate_pdf_output_path, validate_print_pdf_path, validate_save_page_path,
 };
 
 impl qobject::BrowserUi {
@@ -69,6 +69,13 @@ impl qobject::BrowserUi {
     pub(super) fn refresh_userscript_inventory(mut self: Pin<&mut Self>) -> bool {
         if self.as_ref().active_profile_is_transient() {
             self.as_mut().clear_userscript_inventory_rows();
+            self.as_mut().set_userscript_inventory_ready(false);
+            self.as_mut().set_userscript_inventory_pending(false);
+            self.as_mut()
+                .set_userscript_inventory_error(QString::default());
+            return true;
+        }
+        if self.as_ref().rust().userscript_inventory_pending {
             return true;
         }
         let Some(root) = self
@@ -78,29 +85,38 @@ impl qobject::BrowserUi {
             .as_ref()
             .map(|roots| roots.config.clone())
         else {
-            self.as_mut().clear_userscript_inventory_rows();
-            self.as_mut().set_status_text(QString::from(
-                "Userscripts are unavailable without configured storage",
-            ));
-            return false;
+            return self.userscript_inventory_failed(
+                "Userscript storage is unavailable for this profile.",
+            );
         };
-        let result = self
-            .as_mut()
-            .rust_mut()
-            .as_mut()
-            .get_mut()
-            .userscript_manager_worker
-            .as_mut()
-            .ok_or_else(|| "userscript manager is unavailable".to_owned())
-            .and_then(|worker| worker.request(UserscriptManagerRequest::Refresh { root }));
+        let result = {
+            let mut rust = self.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            (|| {
+                if this.userscript_manager_worker.is_none() {
+                    this.userscript_manager_worker = Some(UserscriptManagerWorker::spawn()?);
+                }
+                let worker = this
+                    .userscript_manager_worker
+                    .as_mut()
+                    .expect("worker initialized");
+                if worker.is_pending() {
+                    // Every mutation also reads the inventory, but a failed
+                    // mutation may not reach that read. Queue one real refresh
+                    // after its result rather than replacing operation feedback.
+                    this.userscript_inventory_refresh_again = true;
+                    Ok(())
+                } else {
+                    worker.request(UserscriptManagerRequest::Refresh { root })
+                }
+            })()
+        };
         if let Err(error) = result {
-            self.as_mut()
-                .set_userscript_install_state(QString::from(format!("error:{error}")));
-            self.as_mut().set_status_text(QString::from(format!(
-                "Userscript inventory unavailable: {error}"
-            )));
-            return false;
+            return self.userscript_inventory_failed(&error);
         }
+        self.as_mut().set_userscript_inventory_pending(true);
+        self.as_mut()
+            .set_userscript_inventory_error(QString::default());
         true
     }
 
@@ -111,15 +127,16 @@ impl qobject::BrowserUi {
     ) -> bool {
         let name = name.to_string();
         if self.as_ref().active_profile_is_transient() {
-            self.as_mut().set_status_text(QString::from(
-                "Userscript changes are unavailable in private or ephemeral profiles",
-            ));
-            return false;
+            return self.userscript_update_failed(
+                "Userscript changes need a regular profile.",
+                "Userscript changes are unavailable in private or temporary profiles.",
+            );
         }
         if name.is_empty() || name.len() > 128 || name.chars().any(char::is_control) {
-            self.as_mut()
-                .set_status_text(QString::from("Userscript name is empty or invalid"));
-            return false;
+            return self.userscript_update_failed(
+                "Choose an installed script to change.",
+                "The userscript name is empty or invalid.",
+            );
         }
         let Some(root) = self
             .as_ref()
@@ -128,10 +145,10 @@ impl qobject::BrowserUi {
             .as_ref()
             .map(|roots| roots.config.clone())
         else {
-            self.as_mut().set_status_text(QString::from(
-                "Userscripts are unavailable without configured storage",
-            ));
-            return false;
+            return self.userscript_update_failed(
+                "Userscript changes need available storage.",
+                "Userscript storage is unavailable for this profile.",
+            );
         };
         let result = self
             .as_mut()
@@ -149,10 +166,10 @@ impl qobject::BrowserUi {
                 })
             });
         if let Err(error) = result {
-            self.as_mut().set_status_text(QString::from(format!(
-                "Userscript change rejected: {error}"
-            )));
-            return false;
+            return self.userscript_update_failed(
+                "The script couldn't be changed. See Settings for details.",
+                &error,
+            );
         }
         self.as_mut()
             .set_userscript_install_state(QString::from("updating"));
@@ -163,16 +180,17 @@ impl qobject::BrowserUi {
 
     pub(super) fn remove_userscript(mut self: Pin<&mut Self>, name: &QString) -> bool {
         if self.as_ref().active_profile_is_transient() {
-            self.as_mut().set_status_text(QString::from(
-                "Userscript removal is unavailable in private or ephemeral profiles",
-            ));
-            return false;
+            return self.userscript_update_failed(
+                "Userscript changes need a regular profile.",
+                "Userscript removal is unavailable in private or temporary profiles.",
+            );
         }
         let name = name.to_string();
         if name.is_empty() || name.len() > 128 || name.chars().any(char::is_control) {
-            self.as_mut()
-                .set_status_text(QString::from("Userscript name is empty or invalid"));
-            return false;
+            return self.userscript_update_failed(
+                "Choose an installed script to remove.",
+                "The userscript name is empty or invalid.",
+            );
         }
         let Some(root) = self
             .as_ref()
@@ -181,10 +199,10 @@ impl qobject::BrowserUi {
             .as_ref()
             .map(|roots| roots.config.clone())
         else {
-            self.as_mut().set_status_text(QString::from(
-                "Userscripts are unavailable without configured storage",
-            ));
-            return false;
+            return self.userscript_update_failed(
+                "Userscript changes need available storage.",
+                "Userscript storage is unavailable for this profile.",
+            );
         };
         let result = self
             .as_mut()
@@ -196,12 +214,10 @@ impl qobject::BrowserUi {
             .ok_or_else(|| "userscript manager is unavailable".to_owned())
             .and_then(|worker| worker.request(UserscriptManagerRequest::Remove { root, name }));
         if let Err(error) = result {
-            self.as_mut()
-                .set_userscript_install_state(QString::from(format!("error:{error}")));
-            self.as_mut().set_status_text(QString::from(format!(
-                "Userscript removal rejected: {error}"
-            )));
-            return false;
+            return self.userscript_update_failed(
+                "The script couldn't be removed. See Settings for details.",
+                &error,
+            );
         }
         self.as_mut()
             .set_userscript_install_state(QString::from("removing"));

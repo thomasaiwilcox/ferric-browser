@@ -58,6 +58,9 @@ TestCase {
             property var userscript_page_world_values: []
             property var userscript_action_counts: []
             property string userscript_install_state: "idle"
+            property bool userscript_inventory_ready: true
+            property bool userscript_inventory_pending: false
+            property string userscript_inventory_error: ""
             function refresh_userscript_inventory() {}
             function set_runtime_setting(key, value, temporary) {
                 calls = calls.concat([{key:key, value:value, temporary:temporary}])

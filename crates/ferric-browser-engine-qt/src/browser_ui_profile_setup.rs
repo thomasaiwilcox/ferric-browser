@@ -395,6 +395,7 @@ impl qobject::BrowserUi {
             this.profile_list_worker = ProfileListWorker::spawn().ok();
             this.profile_preview_worker = ProfilePreviewWorker::spawn().ok();
             this.userscript_manager_worker = UserscriptManagerWorker::spawn().ok();
+            this.userscript_inventory_refresh_again = false;
             this.focus_observations.clear();
             this.focus_suppressions.clear();
             this.profile_name.clone_from(&profile_name);
@@ -469,6 +470,13 @@ impl qobject::BrowserUi {
             this.status_text = status.clone();
             status
         };
+        self.as_mut().clear_userscript_inventory_rows();
+        self.as_mut().set_userscript_inventory_ready(false);
+        self.as_mut().set_userscript_inventory_pending(false);
+        self.as_mut()
+            .set_userscript_inventory_error(QString::default());
+        self.as_mut()
+            .set_userscript_install_state(QString::from("idle"));
         let revision = self
             .as_ref()
             .rust()

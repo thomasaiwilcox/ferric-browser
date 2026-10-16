@@ -1,5 +1,6 @@
 //! Typed userscript inventory projection for QML settings components.
 
+use super::background_workers::UserscriptMutationOutcome;
 use super::{CxxQtType, Pin, QString, QStringList, qobject, userscript, userscript_catalog};
 
 impl qobject::BrowserUi {
@@ -31,6 +32,61 @@ impl qobject::BrowserUi {
                 .map(|script| QString::from(script.actions.to_string()))
                 .collect(),
         );
+        self.as_mut().set_userscript_inventory_ready(true);
+        self.as_mut()
+            .set_userscript_inventory_error(QString::default());
+    }
+
+    pub(super) fn userscript_update_failed(
+        mut self: Pin<&mut Self>,
+        notice: &str,
+        detail: &str,
+    ) -> bool {
+        self.as_mut()
+            .set_userscript_install_state(QString::from(format!("error:{detail}")));
+        self.set_status_text(QString::from(notice));
+        false
+    }
+
+    pub(super) fn userscript_inventory_failed(mut self: Pin<&mut Self>, detail: &str) -> bool {
+        self.as_mut().set_userscript_inventory_pending(false);
+        self.as_mut()
+            .set_userscript_inventory_error(QString::from(detail));
+        self.set_status_text(QString::from(
+            "Installed scripts couldn't be loaded. Refresh in Settings to try again.",
+        ));
+        false
+    }
+
+    pub(super) fn finish_userscript_change(
+        mut self: Pin<&mut Self>,
+        outcome: UserscriptMutationOutcome,
+        state: &str,
+        notice: &str,
+    ) {
+        match outcome {
+            UserscriptMutationOutcome::Failed(error) => {
+                self.userscript_update_failed(
+                    "The script couldn't be updated. See Settings for details.",
+                    &error,
+                );
+            }
+            UserscriptMutationOutcome::Applied { inventory } => {
+                let notice = match inventory {
+                    Ok(scripts) => {
+                        self.as_mut().set_userscript_inventory_rows(&scripts);
+                        notice.to_owned()
+                    }
+                    Err(error) => {
+                        self.as_mut().userscript_inventory_failed(&error);
+                        format!("{notice}. Refresh the list in Settings.")
+                    }
+                };
+                self.as_mut()
+                    .set_userscript_install_state(QString::from(state));
+                self.set_status_text(QString::from(notice));
+            }
+        }
     }
 
     pub(super) fn clear_userscript_inventory_rows(mut self: Pin<&mut Self>) {

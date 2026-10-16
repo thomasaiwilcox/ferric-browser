@@ -17,6 +17,9 @@ FerricModalSurface {
     property bool transientProfile: browserWindow.temporaryProfile === true || browserWindow.ephemeralProfile === true
     required property string spellcheckStatus
     required property bool spellcheckDictionariesMissing
+    property bool userscriptInventoryReady: false
+    property bool userscriptInventoryPending: false
+    property string userscriptInventoryError: ""
     required property var userscriptRows
     required property var settingsModel
     signal closeRequested
@@ -177,12 +180,37 @@ FerricModalSurface {
                 wrapMode: Text.Wrap
             }
 
+            FerricManagerFeedback {
+                objectName: "userscriptInventoryFeedback"
+                Layout.fillWidth: true
+                browserWindow: settings.browserWindow
+                visible: !settings.transientProfile && (settings.userscriptInventoryPending
+                    || settings.userscriptInventoryError.length > 0 || !settings.userscriptInventoryReady)
+                message: settings.userscriptInventoryPending ? "Loading installed scripts…"
+                    : settings.userscriptInventoryError.length > 0 ? "Installed scripts couldn't be loaded. Refresh to try again."
+                    : "Refresh to load installed scripts."
+                detail: settings.userscriptInventoryError
+                pending: settings.userscriptInventoryPending
+                failed: settings.userscriptInventoryError.length > 0
+            }
+            Label {
+                objectName: "userscriptInventoryPreviousResults"
+                Layout.fillWidth: true
+                visible: !settings.transientProfile && settings.userscriptRows.length > 0
+                    && (settings.userscriptInventoryPending || settings.userscriptInventoryError.length > 0)
+                text: "Showing the last loaded list. Changes are available after a successful refresh."
+                textFormat: Text.PlainText
+                color: settings.browserWindow.secondaryTextColor
+                wrapMode: Text.Wrap
+            }
             FerricUserscriptInventory {
                 id: userscriptInventory
                 Layout.fillWidth: true
                 Layout.preferredHeight: implicitHeight
                 browserWindow: settings.browserWindow
                 changesAvailable: !settings.transientProfile && !settings.noticePending
+                                  && settings.userscriptInventoryReady && !settings.userscriptInventoryPending
+                                  && settings.userscriptInventoryError.length === 0
                 visible: !settings.transientProfile && settings.userscriptRows.length > 0
                 rows: settings.userscriptRows
                 onEnabledRequested: function (name, enabled) {
@@ -202,7 +230,10 @@ FerricModalSurface {
             }
             Label {
                 Layout.fillWidth: true
-                visible: !settings.transientProfile && settings.userscriptRows.length === 0
+                objectName: "userscriptInventoryEmpty"
+                visible: !settings.transientProfile && settings.userscriptInventoryReady
+                    && !settings.userscriptInventoryPending && settings.userscriptInventoryError.length === 0
+                    && settings.userscriptRows.length === 0
                 text: "No userscripts installed. Choose Install script to add a manifest."
                 textFormat: Text.PlainText
                 wrapMode: Text.Wrap
@@ -218,6 +249,7 @@ FerricModalSurface {
             visible: settings.notice.length > 0
             hostWindow: settings.hostWindow
             FerricManagerFeedback {
+                objectName: "settingsOperationFeedback"
                 Layout.fillWidth: true
                 browserWindow: settings.browserWindow
                 message: settings.notice
@@ -246,7 +278,7 @@ FerricModalSurface {
                     objectName: "settingsInstallScript"
                     visible: sections.currentIndex === 1
                     text: "Install script"
-                    enabled: !settings.transientProfile && !settings.noticePending
+                    enabled: !settings.transientProfile && !settings.noticePending && !settings.userscriptInventoryPending
                     Accessible.name: "Install userscript manifest"
                     onClicked: settings.installUserscriptRequested()
                 }

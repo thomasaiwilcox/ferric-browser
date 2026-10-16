@@ -566,6 +566,9 @@ mod qobject {
         #[qproperty(QString, session_names_error)]
         #[qproperty(QString, profile_values)]
         #[qproperty(bool, profile_values_pending)]
+        #[qproperty(bool, userscript_inventory_pending)]
+        #[qproperty(bool, userscript_inventory_ready)]
+        #[qproperty(QString, userscript_inventory_error)]
         #[qproperty(QStringList, userscript_names)]
         #[qproperty(QStringList, userscript_enabled_values)]
         #[qproperty(QStringList, userscript_page_world_values)]
@@ -2100,6 +2103,10 @@ pub struct BrowserUiRust {
     session_names_error: QString,
     profile_values: QString,
     profile_values_pending: bool,
+    userscript_inventory_pending: bool,
+    userscript_inventory_ready: bool,
+    userscript_inventory_error: QString,
+    userscript_inventory_refresh_again: bool,
     userscript_names: QStringList,
     userscript_enabled_values: QStringList,
     userscript_page_world_values: QStringList,
@@ -2867,6 +2874,10 @@ impl Default for BrowserUiRust {
             session_names_error: QString::default(),
             profile_values: QString::default(),
             profile_values_pending: false,
+            userscript_inventory_pending: false,
+            userscript_inventory_ready: false,
+            userscript_inventory_error: QString::default(),
+            userscript_inventory_refresh_again: false,
             userscript_names: QStringList::default(),
             userscript_enabled_values: QStringList::default(),
             userscript_page_world_values: QStringList::default(),

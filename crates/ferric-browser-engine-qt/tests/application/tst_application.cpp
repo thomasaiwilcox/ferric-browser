@@ -2569,7 +2569,9 @@ void ApplicationTests::productPolishWindowSettings() {
     QCOMPARE(workspace->property("transientProfile").toBool(), kind != "regular");
     auto install = findVisualItem(child->contentItem(), "settingsInstallScript");
     QVERIFY(install);
-    QCOMPARE(install->isEnabled(), kind == "regular");
+    QTRY_VERIFY(!evaluate(entry + ".ui.userscript_inventory_pending").toBool());
+    QCOMPARE(evaluate(entry + ".ui.userscript_inventory_ready").toBool(), kind == "regular");
+    QTRY_COMPARE(install->isEnabled(), kind == "regular");
     QVERIFY(workspace->setProperty("settingsSearch", "ui.font_size_pt"));
     engine->rootContext()->setContextProperty("settingsWorkspaceUnderTest", workspace);
     evaluate("settingsWorkspaceUnderTest.refreshSettings()");
@@ -2788,6 +2790,13 @@ void ApplicationTests::productPolishUserscriptFeedback() {
     auto scriptsTab = window->findChild<QQuickItem *>("settingsScriptsTab");
     QVERIFY(scriptsTab);
     QVERIFY(QMetaObject::invokeMethod(scriptsTab, "click"));
+    QTRY_VERIFY(!evaluate("testWindow.browserUi.userscript_inventory_pending").toBool());
+    QVERIFY(evaluate("testWindow.browserUi.userscript_inventory_ready").toBool());
+    QVERIFY(!evaluate("testWindow.browserUi.set_userscript_enabled('', false)").toBool());
+    const auto rejectedDetail = workspace->property("noticeDetail").toString();
+    QVERIFY(!rejectedDetail.isEmpty());
+    QCOMPARE(text("userscript_install_state"), "error:" + rejectedDetail);
+    QVERIFY(!text("status_text").contains(rejectedDetail));
     QFile source(directory.filePath("toggle_owner.js"));
     QVERIFY(source.open(QIODevice::WriteOnly));
     source.write("void 0;"); source.close();
@@ -2797,14 +2806,18 @@ void ApplicationTests::productPolishUserscriptFeedback() {
                    "page_world = true\nsource = \"toggle_owner.js\"\n"
                    "matches = [\"http://127.0.0.1:*/*\"]\nrun_at = \"document_end\"\n");
     manifest.close();
-    // The initial inventory may still be running. A rejected request has not
-    // started an install; wait until the real worker accepts this one.
     engine->rootContext()->setContextProperty("settingsWorkspaceUnderTest", workspace);
     engine->rootContext()->setContextProperty("settingsManifestUnderTest", QUrl::fromLocalFile(manifest.fileName()));
-    bool installAccepted = false;
-    QTRY_VERIFY2(installAccepted || (installAccepted = evaluate("settingsWorkspaceUnderTest.installManifest(settingsManifestUnderTest)").toBool()),
-                 qPrintable(evaluate("testWindow.settingsNotice").toString() + ": " + workspace->property("noticeDetail").toString()));
+    QVERIFY2(evaluate("settingsWorkspaceUnderTest.installManifest(settingsManifestUnderTest)").toBool(),
+             qPrintable(evaluate("testWindow.settingsNotice").toString() + ": " + workspace->property("noticeDetail").toString()));
+    // Refresh while the accepted mutation owns the single-flight worker.
+    // Repeated refreshes coalesce and must not replace its operation feedback.
+    QVERIFY(evaluate("testWindow.browserUi.refresh_userscript_inventory()").toBool());
+    QVERIFY(evaluate("testWindow.browserUi.refresh_userscript_inventory()").toBool());
+    QVERIFY(evaluate("testWindow.browserUi.userscript_inventory_pending").toBool());
     QTRY_COMPARE(text("userscript_install_state"), QString("installed"));
+    QTRY_VERIFY(!evaluate("testWindow.browserUi.userscript_inventory_pending").toBool());
+    QCOMPARE(text("userscript_inventory_error"), QString());
     auto toggle = findVisualItem(window->contentItem(), "userscriptEnableToggle");
     QTRY_VERIFY((toggle = findVisualItem(window->contentItem(), "userscriptEnableToggle")));
     QVERIFY(toggle->property("checked").toBool());
@@ -2815,6 +2828,39 @@ void ApplicationTests::productPolishUserscriptFeedback() {
     QVERIFY(!installed.hasNext());
     const auto scriptsDirectory = QFileInfo(installedPath).absolutePath();
     const auto backupDirectory = scriptsDirectory + ".held";
+    // A read failure keeps the last loaded rows visible, disables stale
+    // actions and never claims that no scripts are installed.
+    QVERIFY(QDir().rename(scriptsDirectory, backupDirectory));
+    QFile readBlocker(scriptsDirectory);
+    QVERIFY(readBlocker.open(QIODevice::WriteOnly));
+    readBlocker.write("fixture blocks the inventory read"); readBlocker.close();
+    QVERIFY(evaluate("testWindow.browserUi.refresh_userscript_inventory()").toBool());
+    QVERIFY(evaluate("testWindow.browserUi.refresh_userscript_inventory()").toBool());
+    QTRY_VERIFY(!evaluate("testWindow.browserUi.userscript_inventory_pending").toBool());
+    const auto inventoryDetail = text("userscript_inventory_error");
+    QVERIFY2(!inventoryDetail.isEmpty(), "inventory failure must retain its diagnostic detail");
+    QVERIFY(evaluate("testWindow.browserUi.userscript_names.indexOf('toggle_owner') >= 0").toBool());
+    QTRY_VERIFY(!toggle->isEnabled());
+    auto inventoryFeedback = window->findChild<QQuickItem *>("userscriptInventoryFeedback");
+    auto inventoryEmpty = window->findChild<QQuickItem *>("userscriptInventoryEmpty");
+    QVERIFY(inventoryFeedback && inventoryFeedback->isVisible());
+    QVERIFY(inventoryEmpty && !inventoryEmpty->isVisible());
+    QVERIFY(!inventoryFeedback->property("message").toString().contains(inventoryDetail));
+    QVERIFY(!text("status_text").contains(inventoryDetail));
+    auto inventoryDetails = inventoryFeedback->findChild<QQuickItem *>("managerFeedbackDetails");
+    auto inventoryDisclosure = inventoryFeedback->findChild<QQuickItem *>("managerFeedbackDetailsButton");
+    QVERIFY(inventoryDetails && !inventoryDetails->isVisible());
+    QVERIFY(inventoryDisclosure);
+    QVERIFY(QMetaObject::invokeMethod(inventoryDisclosure, "click"));
+    QTRY_VERIFY(inventoryDetails->isVisible());
+    QCOMPARE(inventoryDetails->property("text").toString(), inventoryDetail);
+    QVERIFY(QFile::remove(scriptsDirectory));
+    QVERIFY(QDir().rename(backupDirectory, scriptsDirectory));
+    QVERIFY(evaluate("testWindow.browserUi.refresh_userscript_inventory()").toBool());
+    QTRY_VERIFY(!evaluate("testWindow.browserUi.userscript_inventory_pending").toBool());
+    QCOMPARE(text("userscript_inventory_error"), QString());
+    QTRY_VERIFY((toggle = findVisualItem(window->contentItem(), "userscriptEnableToggle"))
+                && toggle->isEnabled() && toggle->property("checked").toBool());
     QVERIFY(QDir().rename(scriptsDirectory, backupDirectory));
     QFile blocker(scriptsDirectory);
     QVERIFY(blocker.open(QIODevice::WriteOnly));
@@ -2843,6 +2889,22 @@ void ApplicationTests::productPolishUserscriptFeedback() {
     QVERIFY(saved.open(QIODevice::ReadOnly));
     QVERIFY(saved.readAll().contains("enabled = false"));
     saved.close();
+    QFile corruptManifest(scriptsDirectory + "/unrelated.toml");
+    QVERIFY(corruptManifest.open(QIODevice::WriteOnly));
+    corruptManifest.write("invalid = ["); corruptManifest.close();
+    QVERIFY(QMetaObject::invokeMethod(toggle, "click"));
+    QTRY_COMPARE(text("userscript_install_state"), QString("enabled"));
+    QVERIFY(!text("userscript_inventory_error").isEmpty());
+    QVERIFY(text("status_text").startsWith("Userscript enabled"));
+    QVERIFY(!workspace->property("noticeFailed").toBool());
+    QVERIFY(saved.open(QIODevice::ReadOnly));
+    QVERIFY(saved.readAll().contains("enabled = true")); saved.close();
+    QVERIFY(corruptManifest.remove());
+    QVERIFY(evaluate("testWindow.browserUi.refresh_userscript_inventory()").toBool());
+    QTRY_VERIFY(!evaluate("testWindow.browserUi.userscript_inventory_pending").toBool());
+    QCOMPARE(text("userscript_inventory_error"), QString());
+    QTRY_VERIFY((toggle = findVisualItem(window->contentItem(), "userscriptEnableToggle"))
+                && toggle->isEnabled() && toggle->property("checked").toBool());
     auto remove = findVisualItem(window->contentItem(), "userscriptRemoveButton");
     QVERIFY(remove);
     remove->forceActiveFocus();

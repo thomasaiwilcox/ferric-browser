@@ -2376,6 +2376,20 @@ installing/enabling one is an explicit user act.
 The manifest limits the browser's protocol response, not the executable's OS
 permissions. No native in-process plugin loader exists in V1.
 
+The installed-script manager distinguishes loading, a successfully empty
+inventory and a failed read. A failed refresh preserves the last loaded list,
+labels it as previous results and disables changes through those stale rows
+until refresh succeeds. Refreshes during a script change coalesce without
+replacing that operation's result. Ordinary failure notices stay readable;
+full errors remain available as selectable plain text under explicit details,
+including after reopening Settings. If the script service stops, the pending
+operation receives one terminal failure rather than remaining busy or repeatedly
+overwriting later status notices.
+The outcome of a script change is separate from its subsequent inventory read:
+an applied change remains successful when an unrelated manifest prevents that
+read. The manager then reports the list failure and offers refresh, rather than
+advising a retry of a change that already happened.
+
 A manifest is a `<name>.toml` file under the configured userscripts directory.
 Relative executable paths resolve against that manifest's directory, never
 the current page or working directory. Example target contract:

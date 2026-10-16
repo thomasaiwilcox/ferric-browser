@@ -200,72 +200,41 @@ impl qobject::BrowserUi {
         };
         if let Some(result) = userscript_manager_result {
             match result {
-                UserscriptManagerResult::Inventory(result) => match result {
-                    Ok(scripts) => {
-                        self.as_mut().set_userscript_inventory_rows(&scripts);
+                UserscriptManagerResult::Inventory(result) => {
+                    self.as_mut().set_userscript_inventory_pending(false);
+                    match result {
+                        Ok(scripts) => self.as_mut().set_userscript_inventory_rows(&scripts),
+                        Err(error) => {
+                            self.as_mut().userscript_inventory_failed(&error);
+                        }
                     }
-                    Err(error) => {
-                        self.as_mut().clear_userscript_inventory_rows();
-                        self.as_mut().set_status_text(QString::from(format!(
-                            "Userscript inventory unavailable: {error}"
-                        )));
-                    }
-                },
-                UserscriptManagerResult::Installed(result) => match result {
-                    Ok(scripts) => {
-                        self.as_mut().set_userscript_inventory_rows(&scripts);
-                        self.as_mut()
-                            .set_status_text(QString::from("Userscript installed"));
-                        self.as_mut()
-                            .set_userscript_install_state(QString::from("installed"));
-                    }
-                    Err(error) => {
-                        self.as_mut().set_status_text(QString::from(
-                            "Userscript installation failed. See Settings for details.",
-                        ));
-                        self.as_mut()
-                            .set_userscript_install_state(QString::from(format!("error:{error}")));
-                    }
-                },
-                UserscriptManagerResult::Removed(result) => match result {
-                    Ok(scripts) => {
-                        self.as_mut().set_userscript_inventory_rows(&scripts);
-                        self.as_mut()
-                            .set_status_text(QString::from("Userscript removed"));
-                        self.as_mut()
-                            .set_userscript_install_state(QString::from("removed"));
-                    }
-                    Err(error) => {
-                        self.as_mut().set_status_text(QString::from(
-                            "Userscript removal failed. See Settings for details.",
-                        ));
-                        self.as_mut()
-                            .set_userscript_install_state(QString::from(format!("error:{error}")));
-                    }
-                },
-                UserscriptManagerResult::SetEnabled { enabled, result } => match result {
-                    Ok(scripts) => {
-                        self.as_mut().set_userscript_inventory_rows(&scripts);
-                        self.as_mut().set_status_text(QString::from(if enabled {
+                }
+                UserscriptManagerResult::Installed(result) => self
+                    .as_mut()
+                    .finish_userscript_change(result, "installed", "Userscript installed"),
+                UserscriptManagerResult::Removed(result) => {
+                    self.as_mut()
+                        .finish_userscript_change(result, "removed", "Userscript removed")
+                }
+                UserscriptManagerResult::SetEnabled { enabled, result } => {
+                    self.as_mut().finish_userscript_change(
+                        result,
+                        if enabled { "enabled" } else { "disabled" },
+                        if enabled {
                             "Userscript enabled; it applies on the next navigation"
                         } else {
                             "Userscript disabled; it applies on the next navigation"
-                        }));
-                        self.as_mut()
-                            .set_userscript_install_state(QString::from(if enabled {
-                                "enabled"
-                            } else {
-                                "disabled"
-                            }));
-                    }
-                    Err(error) => {
-                        self.as_mut().set_status_text(QString::from(
-                            "Userscript update failed. See Settings for details.",
-                        ));
-                        self.as_mut()
-                            .set_userscript_install_state(QString::from(format!("error:{error}")));
-                    }
-                },
+                        },
+                    );
+                }
+            }
+            let refresh_again = {
+                let mut rust = self.as_mut().rust_mut();
+                std::mem::take(&mut rust.as_mut().get_mut().userscript_inventory_refresh_again)
+            };
+            if refresh_again {
+                self.as_mut().set_userscript_inventory_pending(false);
+                self.as_mut().refresh_userscript_inventory();
             }
         }
         let profile_list_result = {

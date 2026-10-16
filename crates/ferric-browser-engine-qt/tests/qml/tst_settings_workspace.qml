@@ -48,6 +48,9 @@ TestCase {
             property var userscript_page_world_values: []
             property var userscript_action_counts: []
             property string userscript_install_state: "idle"
+            property bool userscript_inventory_ready: true
+            property bool userscript_inventory_pending: false
+            property string userscript_inventory_error: ""
             function refresh_userscript_inventory() {}
             function set_runtime_setting(key, value, temporary) {
                 calls = calls.concat([{key:key, value:value, temporary:temporary}])
@@ -56,7 +59,10 @@ TestCase {
             function unset_runtime_setting(key, temporary) {
                 calls = calls.concat([{key:key, temporary:temporary}]); return accepted
             }
-            function set_userscript_enabled(name, enabled) { return accepted }
+            function set_userscript_enabled(name, enabled) {
+                if (!accepted) userscript_install_state="error:<b>private script failure</b>"
+                return accepted
+            }
             function remove_userscript(name) { return accepted }
         }
     }
@@ -128,8 +134,9 @@ TestCase {
         compare(view.applySetting(owner.settings_rows[0],editor.text),false)
         compare(editor.text,"unsaved value");verify(view.noticeFailed)
         compare(view.settingsNotice.indexOf("<b>"),-1)
-        var details=findChild(view,"managerFeedbackDetails");verify(!details.visible)
-        findChild(view,"managerFeedbackDetailsButton").click();tryCompare(details,"visible",true)
+        var feedback=findChild(view,"settingsOperationFeedback")
+        var details=findChild(feedback,"managerFeedbackDetails");verify(!details.visible)
+        findChild(feedback,"managerFeedbackDetailsButton").click();tryCompare(details,"visible",true)
         compare(details.text,"<b>literal failure details</b>")
         compare(details.textFormat,TextEdit.PlainText);verify(details.selectByKeyboard)
     }
@@ -240,6 +247,107 @@ TestCase {
             return y>=0 && y+search.height<=scroll.height+1
         })
         if(testArtifactDirectory.length>0)grabImage(host.contentItem).save(testArtifactDirectory+"/settings-workspace-error-"+data.tag+".png")
+        keyClick(Qt.Key_Escape);tryCompare(view,"settingsVisible",false)
+    }
+
+    function scripts(view) {
+        view.show();verify(waitForPolish(host))
+        findChild(view,"settingsScriptsTab").click();verify(waitForPolish(host))
+    }
+    function test_inventory_error_loading_and_empty_states() {
+        var owner=createTemporaryObject(ownerFixture,test,{userscript_inventory_ready:false})
+        var view=workspace(owner);scripts(view)
+        var feedback=findChild(view,"userscriptInventoryFeedback")
+        var empty=findChild(view,"userscriptInventoryEmpty")
+        verify(feedback.visible);verify(!empty.visible)
+        verify(feedback.message.indexOf("Refresh to load")>=0)
+        owner.userscript_inventory_pending=true
+        tryCompare(feedback,"pending",true);verify(!empty.visible)
+        owner.userscript_inventory_error="<b>read /private/fixture/userscripts: Not a directory</b>"
+        owner.userscript_inventory_pending=false
+        tryCompare(feedback,"failed",true);verify(!empty.visible)
+        compare(feedback.message.indexOf("/private"),-1)
+        var details=findChild(feedback,"managerFeedbackDetails")
+        verify(!details.visible)
+        findChild(feedback,"managerFeedbackDetailsButton").click()
+        tryCompare(details,"visible",true)
+        compare(details.text,owner.userscript_inventory_error)
+        compare(details.textFormat,TextEdit.PlainText);verify(details.selectByKeyboard)
+        owner.userscript_inventory_error="";owner.userscript_inventory_ready=true
+        tryCompare(empty,"visible",true);verify(!feedback.visible)
+    }
+    function test_inventory_failure_retains_previous_rows_and_recovers() {
+        var owner=createTemporaryObject(ownerFixture,test,{
+            userscript_names:["Example"],userscript_enabled_values:["true"],
+            userscript_page_world_values:["false"],userscript_action_counts:["0"]})
+        var view=workspace(owner);scripts(view)
+        var toggle=findChild(view,"userscriptEnableToggle");verify(toggle.enabled)
+        owner.userscript_inventory_pending=true
+        tryCompare(toggle,"enabled",false)
+        owner.userscript_inventory_error="couldn't read /private/fixture/userscripts"
+        owner.userscript_inventory_pending=false
+        compare(view.userscriptRows().length,1);verify(!toggle.enabled)
+        verify(findChild(view,"userscriptInventoryPreviousResults").visible)
+        verify(!findChild(view,"userscriptInventoryEmpty").visible)
+        owner.userscript_inventory_error=""
+        tryCompare(toggle,"enabled",true)
+        verify(!findChild(view,"userscriptInventoryPreviousResults").visible)
+    }
+    function test_rejected_script_change_keeps_error_detail() {
+        var owner=createTemporaryObject(ownerFixture,test,{accepted:false,
+            userscript_names:["Example"],userscript_enabled_values:["true"],
+            userscript_page_world_values:["false"],userscript_action_counts:["0"]})
+        var view=workspace(owner);scripts(view)
+        findChild(view,"userscriptEnableToggle").click()
+        compare(view.noticeDetail,"<b>private script failure</b>")
+        verify(view.noticeFailed);compare(view.settingsNotice.indexOf("private"),-1)
+        view.close();view.show()
+        compare(view.noticeDetail,"<b>private script failure</b>")
+        verify(view.noticeFailed)
+        owner.userscript_install_state="idle"
+        compare(view.settingsNotice,"");compare(view.noticeDetail,"")
+    }
+    function test_applied_change_with_inventory_failure_keeps_its_success() {
+        var owner=createTemporaryObject(ownerFixture,test,{
+            userscript_names:["Example"],userscript_enabled_values:["false"],
+            userscript_page_world_values:["false"],userscript_action_counts:["0"]})
+        var view=workspace(owner);scripts(view)
+        owner.userscript_inventory_error="An unrelated manifest couldn't be read."
+        owner.userscript_install_state="enabled"
+        compare(view.noticeFailed,false)
+        verify(view.settingsNotice.indexOf("enabled")>=0)
+        verify(findChild(view,"userscriptInventoryFeedback").failed)
+        verify(!findChild(view,"userscriptEnableToggle").enabled)
+    }
+    function test_inventory_error_is_reachable_with_configured_fonts_data() {
+        return [{tag:"compact",width:640,height:480,font:16},{tag:"narrow",width:390,height:600,font:20}]
+    }
+    function test_inventory_error_is_reachable_with_configured_fonts(data) {
+        host.runtimeMetrics=true;host.width=data.width;host.height=data.height;host.font.pointSize=data.font
+        var owner=createTemporaryObject(ownerFixture,test,{
+            userscript_inventory_error:"Unable to read /private/fixture/userscripts: "+Array(10).join("long diagnostic detail ")})
+        var view=workspace(owner);scripts(view)
+        var feedback=findChild(view,"userscriptInventoryFeedback")
+        var button=findChild(feedback,"managerFeedbackDetailsButton")
+        button.forceActiveFocus()
+        var scroll=findChild(view,"settingsScriptsScroll")
+        tryVerify(function() {
+            var y=button.mapToItem(scroll,0,0).y
+            return y>=0 && y+button.height<=scroll.height+1
+        })
+        keyClick(Qt.Key_Space)
+        var details=findChild(feedback,"managerFeedbackDetails")
+        tryCompare(details,"visible",true)
+        verify(waitForPolish(host))
+        details.forceActiveFocus()
+        tryCompare(details,"activeFocus",true)
+        tryVerify(function() {
+            var caret=details.cursorRectangle
+            var y=details.mapToItem(scroll,caret.x,caret.y).y
+            return y>=0 && y+caret.height<=scroll.height+1
+        })
+        verify(waitForRendering(host.contentItem))
+        if(testArtifactDirectory.length>0)grabImage(host.contentItem).save(testArtifactDirectory+"/settings-inventory-error-"+data.tag+".png")
         keyClick(Qt.Key_Escape);tryCompare(view,"settingsVisible",false)
     }
 }

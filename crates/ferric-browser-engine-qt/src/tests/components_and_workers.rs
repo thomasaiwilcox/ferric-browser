@@ -1143,7 +1143,7 @@ matches = ["https://example.test/*"]
     match toggled.expect("toggle response") {
         UserscriptManagerResult::SetEnabled {
             enabled: false,
-            result: Ok(scripts),
+            result: super::background_workers::UserscriptMutationOutcome::Applied { inventory: Ok(scripts) },
         } => assert!(!scripts[0].enabled),
         other => panic!("unexpected toggle result: {other:?}"),
     }
@@ -1172,7 +1172,7 @@ executable = "/bin/true"
         value
     });
     match installed.expect("install response") {
-        UserscriptManagerResult::Installed(Ok(scripts)) => {
+        UserscriptManagerResult::Installed(super::background_workers::UserscriptMutationOutcome::Applied { inventory: Ok(scripts) }) => {
             assert_eq!(scripts.len(), 2);
         }
         other => panic!("unexpected install result: {other:?}"),
@@ -1192,7 +1192,7 @@ executable = "/bin/true"
         value
     });
     match removed.expect("remove response") {
-        UserscriptManagerResult::Removed(Ok(scripts)) => assert_eq!(scripts.len(), 1),
+        UserscriptManagerResult::Removed(super::background_workers::UserscriptMutationOutcome::Applied { inventory: Ok(scripts) }) => assert_eq!(scripts.len(), 1),
         other => panic!("unexpected remove result: {other:?}"),
     }
     assert!(!root.join("userscripts/installed.toml").exists());

@@ -188,16 +188,16 @@ impl qobject::BrowserUi {
     pub(super) fn install_userscript_manifest(mut self: Pin<&mut Self>, path: &QString) -> bool {
         let path = path.to_string();
         if path.is_empty() || path.len() > 4096 || path.chars().any(char::is_control) {
-            self.as_mut().set_userscript_install_state(QString::from(
-                "error:userscript manifest path is empty or invalid",
-            ));
-            return false;
+            return self.userscript_update_failed(
+                "Choose a local userscript manifest.",
+                "The userscript manifest path is empty or invalid.",
+            );
         }
         if self.as_ref().active_profile_is_transient() {
-            self.as_mut().set_userscript_install_state(QString::from(
-                "error:userscript installation is unavailable in private or ephemeral profiles",
-            ));
-            return false;
+            return self.userscript_update_failed(
+                "Userscript installation needs a regular profile.",
+                "Userscript installation is unavailable in private or temporary profiles.",
+            );
         }
         let Some(root) = self
             .as_ref()
@@ -206,10 +206,10 @@ impl qobject::BrowserUi {
             .as_ref()
             .map(|roots| roots.config.clone())
         else {
-            self.as_mut().set_userscript_install_state(QString::from(
-                "error:userscripts are unavailable without configured storage",
-            ));
-            return false;
+            return self.userscript_update_failed(
+                "Userscript installation needs available storage.",
+                "Userscript storage is unavailable for this profile.",
+            );
         };
         let result = self
             .as_mut()
@@ -233,14 +233,10 @@ impl qobject::BrowserUi {
                     .set_status_text(QString::from("Installing userscript…"));
                 true
             }
-            Err(error) => {
-                self.as_mut()
-                    .set_userscript_install_state(QString::from(format!("error:{error}")));
-                self.as_mut().set_status_text(QString::from(format!(
-                    "Userscript installation failed: {error}"
-                )));
-                false
-            }
+            Err(error) => self.userscript_update_failed(
+                "The script couldn't be installed. See Settings for details.",
+                &error,
+            ),
         }
     }
 

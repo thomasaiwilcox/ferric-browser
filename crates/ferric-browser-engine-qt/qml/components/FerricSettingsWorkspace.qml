@@ -36,8 +36,8 @@ Item {
         if (search !== undefined)
             state.settingsSearch = String(search);
         refresh();
-        var operation = browserUi.userscript_install_state;
-        if (["pending", "removing", "updating"].indexOf(operation) >= 0)
+        var operation = browserUi.userscript_install_state || "idle";
+        if (["pending", "removing", "updating"].indexOf(operation) >= 0 || operation.indexOf("error:") === 0)
             applyScriptState(operation);
         state.settingsVisible = true;
         surface.focusInitialControl();
@@ -106,6 +106,10 @@ Item {
         refreshSettings();
         return true;
     }
+    function scriptFailureDetail() {
+        var operation = browserUi.userscript_install_state || "";
+        return operation.indexOf("error:") === 0 ? operation.substring(6) : browserUi.status_text;
+    }
     function installManifest(selected) {
         var path = browserUi.local_file_path(selected || "");
         if (!path) {
@@ -113,7 +117,7 @@ Item {
             return false;
         }
         if (!browserUi.install_userscript_manifest(path)) {
-            showNotice("The userscript couldn't be installed. Review the manifest and try again.", browserUi.status_text, true);
+            showNotice("The userscript couldn't be installed. Review the manifest and try again.", scriptFailureDetail(), true);
             return false;
         }
         showNotice("Installing userscript…", "", false, true);
@@ -153,6 +157,9 @@ Item {
         } else if (operation.indexOf("error:") === 0) {
             surface.clearUserscriptOverrides();
             showNotice("Couldn't update the script. Try again.", operation.substring(6), true);
+        } else if (operation === "idle") {
+            surface.clearUserscriptOverrides();
+            showNotice("");
         }
     }
 
@@ -181,6 +188,9 @@ Item {
         profileLabel: workspace.profileLabel
         spellcheckStatus: workspace.spellcheckStatus
         spellcheckDictionariesMissing: workspace.spellcheckDictionariesMissing
+        userscriptInventoryReady: workspace.browserUi.userscript_inventory_ready
+        userscriptInventoryPending: workspace.browserUi.userscript_inventory_pending
+        userscriptInventoryError: workspace.browserUi.userscript_inventory_error
         userscriptRows: workspace.userscriptRows()
         settingsModel: settingsModel
         onCloseRequested: workspace.close()
@@ -200,7 +210,7 @@ Item {
             if (accepted)
                 workspace.showNotice("Updating userscript…", "", false, true);
             else
-                workspace.showNotice("The userscript couldn't be changed. Try again.", workspace.browserUi.status_text, true);
+                workspace.showNotice("The userscript couldn't be changed. Try again.", workspace.scriptFailureDetail(), true);
         }
         onUserscriptRemovalRequested: function (name) {
             workspace.confirmRemoveUserscript(name);
@@ -223,7 +233,7 @@ Item {
             if (workspace.browserUi.remove_userscript(name))
                 workspace.showNotice("Removing userscript…", "", false, true);
             else
-                workspace.showNotice("The userscript couldn't be removed. Try again.", workspace.browserUi.status_text, true);
+                workspace.showNotice("The userscript couldn't be removed. Try again.", workspace.scriptFailureDetail(), true);
         }
         onCancelled: workspace.state.pendingUserscriptRemoval = ""
     }

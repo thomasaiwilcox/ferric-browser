@@ -1038,6 +1038,67 @@ other windows, popup management/input parity, explicit live-window IPC routing,
 the whole-window configured-font walkthrough and final release qualification
 remain part of the original goal.
 
+## Userscript inventory and failure recovery
+
+Status: qualified locally; retained in the polish branch.
+
+The focused before fixture (`userscript-inventory-before.log`) reproduces a
+failed inventory read displaying "No userscripts installed." The manager now
+publishes independent pending, ready and error properties. Read failures retain
+the last loaded rows, identify them as previous results and disable stale row
+actions until refresh succeeds. Loading and unknown states cannot claim an empty
+inventory. Full read errors use an explicit plain-text disclosure, while the
+ordinary status gives a short reason and recovery action.
+
+Refreshes coalesce while a mutation is running and perform a real refresh after
+that operation settles. Inventory feedback cannot replace install/remove/enable
+feedback. Synchronous mutation failures now retain their full detail in the
+operation state, and the Settings surface reads that detail instead of copying
+the shortened status notice. Reopening Settings restores failed-operation
+feedback so the instruction to inspect Settings remains useful. New profile
+configuration resets inventory and operation presentation.
+
+The worker previously projected every unexpected service stop as an inventory
+failure on every poll, even when an install, removal or toggle was pending.
+It now retains the accepted operation kind and delivers its terminal failure
+once. A real thread-exit regression covers each operation and rejects repeated
+idle failures. Review also found successful script changes being projected as
+failed when an unrelated manifest broke the subsequent inventory read. The
+worker now preserves applied changes separately from read outcomes. Real
+filesystem regressions cover installation, enablement and removal with a
+malformed unrelated manifest; the application check verifies the persisted
+enabled state and successful operation feedback alongside the list error.
+The compiled application regression also exercises a blocked scripts
+directory, retained rows, disclosure, refresh coalescing, synchronous rejection
+and successful recovery using disposable profile storage. QML coverage includes
+failure/loading/empty transitions, previous-row disablement, retained mutation
+details and compact/large-font keyboard access; the prototype render was
+inspected at 640×480/16pt and 390×600/20pt.
+
+Final qualification passes: 942 Rust tests passed with two opt-in tests ignored,
+408 QML checks, 66 compiled production application checks and 81 clipboard
+checks. Formatting, strict workspace Clippy, bounded adapter startup and the
+expanded live IPC probe pass. The focused real-worker application workflow and
+the regular/private/temporary secondary-settings cases also pass independently.
+`inventory-final-status.json` records the phases; `inventory-final-artifacts.json`
+records the application, compiled test executable and exact Cargo-discovered
+engine archive. The engine snapshot SHA-256 is
+`e833fce28e637f65eda3a84c26494724543f218e8e012b4093b2d551f29d9485`.
+Final compact and narrow renders were inspected with the details cursor actually
+visible; the earlier geometry-only check could capture before scrolling settled.
+
+Startup notices, owner-correct profile/session managers, popup
+parity, live IPC window routing, the whole-window configured-font walkthrough
+and final release qualification remain part of the original goal.
+The first Clippy run rejected the placement of the new lifecycle test module;
+it was moved to the file's end before restarting qualification. The first full
+native group also exposed an old test expecting Install to be enabled while
+inventory loading was still pending. That fixture now waits for readiness and
+then verifies installation availability separately for regular, private and
+temporary profiles. Only the C++ test changed for that correction; source and
+artifact hashes preserved the passing Rust, Clippy, adapter and IPC evidence.
+Both initial failures remain in the local evidence directory.
+
 ## Audit status and remaining implementation
 
 These remain part of the original goal, rather than deferred release promises:
