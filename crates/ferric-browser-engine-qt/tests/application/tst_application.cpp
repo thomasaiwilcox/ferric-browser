@@ -2708,14 +2708,28 @@ void ApplicationTests::productPolishPermissionWindowOwnership() {
 void ApplicationTests::productPolishOverlappingModalInput_data() {
     QTest::addColumn<bool>("removal");
     QTest::addColumn<bool>("enter");
-    QTest::newRow("settings-escape") << false << false;
-    QTest::newRow("settings-enter") << false << true;
-    QTest::newRow("removal-escape") << true << false;
-    QTest::newRow("removal-enter") << true << true;
+    QTest::addColumn<QSize>("windowSize");
+    QTest::addColumn<int>("fontSize");
+    for (const auto &size : {QSize(900, 700), QSize(640, 480), QSize(390, 600)}) {
+        const int fontSize = size.width() == 900 ? 10 : size.width() == 640 ? 16 : 20;
+        for (const bool removal : {false, true}) {
+            for (const bool enter : {false, true}) {
+                const auto name = QString("%1-%2-%3").arg(removal ? "removal" : "settings",
+                    enter ? "enter" : "escape").arg(size.width()).toLatin1();
+                QTest::newRow(name.constData()) << removal << enter << size << fontSize;
+            }
+        }
+    }
 }
 void ApplicationTests::productPolishOverlappingModalInput() {
     QFETCH(bool, removal);
     QFETCH(bool, enter);
+    QFETCH(QSize, windowSize);
+    QFETCH(int, fontSize);
+    QVERIFY(evaluate("testWindow.browserUi.set_runtime_setting('ui.font_size_pt',"
+                     + quoted(QString::number(fontSize)) + ",true)").toBool());
+    QTRY_COMPARE(evaluate("testWindow.browserUi.chrome_font_size_pt").toInt(), fontSize);
+    window->resize(windowSize);
     QVERIFY(command("settings"));
     QTRY_VERIFY(evaluate("testWindow.settingsVisible").toBool());
     evaluate("testWindow.settingsSearch='preserved draft'");
@@ -2734,6 +2748,20 @@ void ApplicationTests::productPolishOverlappingModalInput() {
     auto deny = findVisualItem(window->contentItem(), "commandDialogAction-deny");
     QVERIFY(deny);
     QTRY_VERIFY(deny->hasActiveFocus());
+    auto prompt = findVisualItem(window->contentItem(), "sitePermissionPrompt");
+    QVERIFY(prompt);
+    auto header = findVisualItem(prompt, "dialogHeaderScroll");
+    auto message = findVisualItem(prompt, "dialogMessageLabel");
+    auto denyLabel = findVisualItem(deny, "commandActionLabel");
+    QVERIFY(header && message && denyLabel);
+    QTRY_VERIFY(message->mapToItem(header, QPointF(0, message->height())).y() <= header->height() + 1);
+    QCOMPARE(denyLabel->property("lineCount").toInt(), 1);
+    const auto artifacts = qEnvironmentVariable("FERRIC_TEST_ARTIFACT_DIR");
+    if (!artifacts.isEmpty()) {
+        QTest::qWait(50);
+        QVERIFY(window->grabWindow().save(artifacts + "/production-permission-"
+            + QString::fromLatin1(QTest::currentDataTag()) + ".png"));
+    }
     key(enter ? Qt::Key_Return : Qt::Key_Escape);
     QTRY_VERIFY(!evaluate("testWindow.permissionPromptVisible").toBool());
     QTRY_COMPARE(page("window.geoResult").toString(), QString("denied"));

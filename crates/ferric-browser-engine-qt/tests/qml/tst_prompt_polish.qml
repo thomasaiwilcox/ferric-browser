@@ -15,7 +15,8 @@ TestCase {
         visible: true
         font.family: "monospace"
         font.pointSize: 10
-        property real chromeScale: 1
+        FontMetrics { id: actualFontMetrics; font: host.font }
+        property real chromeScale: Math.max(1, actualFontMetrics.height / 14)
         property real chromeRowHeight: 24
         property color backgroundColor: "#181825"
         property color surfaceColor: "#313244"
@@ -76,9 +77,10 @@ TestCase {
         property string pendingPermissionName: "camera"
         property bool pendingPermissionPrivate: false
         property int pendingPermissionGroupCount: 1
-        function permissionDisplayName(name) { return "use your camera" }
-        function permissionCanRememberForSite(origin,name) { return true }
-        function permissionCanRemember(origin,name) { return true }
+        FerricRequestPresentationController { id: permissionPresentation; browserWindow: host }
+        function permissionDisplayName(name) { return permissionPresentation.permissionDisplayName(name) }
+        function permissionCanRememberForSite(origin,name) { return permissionPresentation.permissionCanRememberForSite(origin,name) }
+        function permissionCanRemember(origin,name) { return permissionPresentation.permissionCanRemember(origin,name) }
         property bool contextMoveVisible: false
         property string contextMoveTabId: ""
         property var contextMoveChoices: []
@@ -160,6 +162,9 @@ TestCase {
         host.desktopMediaPromptVisible=false
         host.contextRouteVisible=false;host.rendererFailureVisible=false;externalUi.external_navigation_visible=false
         host.permissionPromptVisible=false
+        host.pendingPermissionOrigin="https://example.test"
+        host.pendingPermissionName="camera"
+        host.pendingPermissionPrivate=false
         host.contextMoveVisible=false;host.movedContext=""
         host.privateHistoryTransferVisible=false
         host.privateHistoryTransferTitle="<b>A private page</b>"
@@ -342,6 +347,42 @@ TestCase {
         certificates.closeClientCertificate()
     }
     function test_permission_data() { return sizes() }
+    function test_permission_context_and_actions_data() {
+        var rows=[]
+        var permissions=["camera","microphone","camera-and-microphone","screen-capture",
+                         "notifications","geolocation","clipboard","local-fonts"]
+        for(var size of sizes())for(var permission of permissions)for(var privateProfile of [false,true])
+            rows.push(Object.assign({},size,{tag:size.tag+"-"+permission+(privateProfile?"-private":"-regular"),
+                                           permission:permission,privateProfile:privateProfile}))
+        return rows
+    }
+    function test_permission_context_and_actions(data) {
+        resize(data)
+        host.pendingPermissionName=data.permission
+        host.pendingPermissionPrivate=data.privateProfile
+        host.permissionPromptVisible=true
+        var view=create(permissionFixture)
+        var decided=createTemporaryObject(spyFixture,view,{target:view,signalName:"decisionRequested"})
+        var deny=findChild(view,"commandDialogAction-deny");tryCompare(deny,"activeFocus",true)
+        var message=findChild(view,"dialogMessageLabel")
+        inside(message,view.headerItem)
+        compare(findChild(deny,"commandActionLabel").lineCount,1,"Deny must remain a readable single-line action")
+        var persistence=findChild(view,"permissionPersistenceLabel")
+        if(data.privateProfile)compare(persistence.text,"Permissions are not saved in private profiles.")
+        else if(data.permission==="screen-capture")compare(persistence.text,"This permission cannot be saved for future visits.")
+        capture("permission-context-"+data.tag)
+        var choices=findChild(view,"commandDialogActionScroll")
+        for(var index=0;index<view.actions.length;++index) {
+            var action=findChild(view,"commandDialogAction-"+view.actions[index].id)
+            if(index>0)keyClick(Qt.Key_Down)
+            tryCompare(action,"activeFocus",true)
+            waitInside(action,choices)
+            var label=findChild(action,"commandActionLabel")
+            verify(label.height>=label.implicitHeight-1,"Action labels must not be vertically clipped")
+        }
+        keyClick(Qt.Key_Escape)
+        compare(decided.count,1);compare(decided.signalArguments[0][0],false)
+    }
     function test_permission(data) {
         resize(data);host.permissionPromptVisible=true
         host.pendingPermissionOrigin="https://example.test/"+"long-origin".repeat(200)

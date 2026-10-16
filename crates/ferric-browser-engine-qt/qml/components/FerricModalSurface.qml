@@ -65,7 +65,9 @@ FocusScope {
         }
     }
     Component.onDestruction: if (registeredInputScope && registeredInputScope.acceptingSurfaces === true) registeredInputScope.unregisterSurface(surface)
-    property real maximumSpacingScale: Infinity
+    // Text already uses the configured font. Limit extra spacing by the
+    // available window, so large fonts retain room for context and controls.
+    property real maximumSpacingScale: Math.max(1, Math.min(width / 800, height / 650))
     readonly property real scale: Math.min(maximumSpacingScale,
         browserWindow.chromeScale === undefined ? 1 : browserWindow.chromeScale)
     readonly property alias panelItem: panel

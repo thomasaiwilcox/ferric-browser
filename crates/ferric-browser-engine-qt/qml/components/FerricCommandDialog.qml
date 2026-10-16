@@ -29,8 +29,8 @@ FerricModalSurface {
     compactKeyHelp: "esc cancel"
     dismissOnEscape: false
     initialFocusItem: actionRepeater.itemAt(currentIndex)
-    minimumDialogHeight: Math.max(160 * scale, choiceMetrics.height * 14)
-    minimumBodyHeight: Math.max(100 * scale, choiceMetrics.height * 6)
+    minimumDialogHeight: Math.max(160 * scale, choiceMetrics.height * 16)
+    minimumBodyHeight: Math.max(100 * scale, choiceMetrics.height * 4)
 
     FontMetrics { id: choiceMetrics; font: dialog.browserWindow.font }
 
@@ -238,7 +238,7 @@ FerricModalSurface {
                     readonly property bool commandDialogChoice: true
                     objectName: "commandDialogAction-" + modelData.id
                     Layout.fillWidth: true
-                    Layout.preferredHeight: Math.max(42 * scale, implicitContentHeight + 14 * scale)
+                    Layout.preferredHeight: Math.max(42, implicitContentHeight + 14)
                     browserWindow: dialog.browserWindow
                     keyHint: modelData.key || ""
                     actionLabel: modelData.label || modelData.id

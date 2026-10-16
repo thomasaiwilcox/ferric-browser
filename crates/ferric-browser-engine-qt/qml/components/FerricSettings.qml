@@ -41,7 +41,6 @@ FerricModalSurface {
     title: "Settings"
     message: profileLabel.length > 0 ? "Profile: " + profileLabel : "Browsing and interface preferences"
     keyHelp: "type to filter  ·  tab/shift-tab controls  ·  esc close"
-    maximumSpacingScale: Math.max(1, Math.min(width / 800, height / 650))
     dialogWidth: 980 * scale
     dialogHeight: 680 * scale
     stackingOrder: 76

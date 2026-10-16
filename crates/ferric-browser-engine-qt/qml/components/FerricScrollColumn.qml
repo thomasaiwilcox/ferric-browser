@@ -72,7 +72,7 @@ ScrollView {
     }
     Connections {
         id: cursorFocusSignals
-        target: scroll.hostWindow ? scroll.hostWindow.activeFocusItem : null
+        target: scroll.hostWindow ? scroll.hostWindow.activeFocusItem || null : null
         ignoreUnknownSignals: true
         function onCursorRectangleChanged() { scroll.scheduleFocus(); }
     }

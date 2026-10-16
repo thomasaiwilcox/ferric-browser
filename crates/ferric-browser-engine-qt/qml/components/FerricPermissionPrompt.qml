@@ -6,13 +6,13 @@ import QtQuick.Layouts
 // shutdown and recovery prompts. Policy remains with the composition root.
 FerricCommandDialog {
     id: prompt
+    objectName: "sitePermissionPrompt"
 
     signal decisionRequested(bool allow, string lifetime)
 
     visible: browserWindow.permissionPromptVisible
              && browserWindow.pendingPermissionHost === hostWindow
     commandText: "Site permission"
-    title: "Permission request"
     message: browserWindow.pendingPermissionOrigin + " wants to "
              + browserWindow.permissionDisplayName(
                    browserWindow.pendingPermissionName) + "."
@@ -64,10 +64,11 @@ FerricCommandDialog {
         spacing: 8 * prompt.scale
 
         Label {
+            objectName: "permissionScopeLabel"
             Layout.fillWidth: true
             text: (prompt.browserWindow.pendingPermissionPrivate
                    ? "Private profile · " : "")
-                  + "Scope: current document"
+                  + "From this page"
                   + (prompt.browserWindow.pendingPermissionGroupCount > 1
                      ? " · " + prompt.browserWindow.pendingPermissionGroupCount
                        + " identical requests grouped"
@@ -77,13 +78,16 @@ FerricCommandDialog {
             Accessible.name: "Permission scope and grouped request count"
         }
         Label {
+            objectName: "permissionPersistenceLabel"
             Layout.fillWidth: true
-            text: prompt.browserWindow.permissionCanRemember(
+            text: prompt.browserWindow.pendingPermissionPrivate
+                  ? "Permissions are not saved in private profiles."
+                  : prompt.browserWindow.permissionCanRememberForSite(
                       prompt.browserWindow.pendingPermissionOrigin,
                       prompt.browserWindow.pendingPermissionName)
-                  ? "A remembered rule applies only to this exact site."
-                  : "This decision applies to this request only."
-            color: prompt.browserWindow.warningColor
+                  ? "Saved choices apply only to this site."
+                  : "This permission cannot be saved for future visits."
+            color: prompt.browserWindow.mutedTextColor
             wrapMode: Text.WordWrap
         }
     }

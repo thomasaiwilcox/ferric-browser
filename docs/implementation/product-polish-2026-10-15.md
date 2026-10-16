@@ -854,6 +854,78 @@ layouts, rendered review and final qualification remain required.
 The manager/popup/routing, ordinary status-copy, and whole-application
 configured-font audits remain part of the original goal.
 
+## Configured-font dialog layout batch
+
+Status: implemented and qualified on the frozen source.
+
+This advances UI-004 prompt context and safe interaction, and UI-006 font and
+logical-dimension requirements. Actual-font renders exposed permission context
+being clipped and the short Deny action wrapping vertically. The prompt
+fixtures had varied font size while fixing `chromeScale` at one; using the
+production FontMetrics calculation reproduced 39 failures across the prompt
+suite (`dialog-layout-production-before.log`).
+
+The shared modal frame now caps extra spacing by the available window. Text
+keeps its configured font size. Action gutters and spacing use logical units
+and natural text width; action height follows wrapped content. Command dialogs
+reserve more of a small window for useful content, while keeping context and
+safe choices reachable through their existing scroll views. Settings inherits
+the shared spacing rule instead of maintaining a separate override.
+
+Permission prompts use one context heading instead of repeating the title.
+The source label says From this page. Persistence guidance follows the actual
+available choices: private profiles no longer suggest that a permission can be
+saved, and request-only capabilities do not imply session or future grants.
+Permission policy and decision lifetimes are unchanged. Optional focus-signal
+targets in the shared scroll view resolve to null when the host has no current
+focus item, removing undefined-object binding warnings in lightweight hosts.
+
+Evidence:
+
+- All 85 prompt checks pass using actual font metrics, including a matrix of
+  eight permission types, three window/font configurations and regular/private
+  profiles. The matrix checks visible origin/intent, readable Deny, complete
+  action labels, navigation revealing every choice, and safe cancellation.
+- The full QML suite passes all 402 checks with the required forced-GC
+  environment (`dialog-layout-qml-qualified.log`). The exploratory full-run
+  command omitted that flag and failed only the explicit GC-availability
+  assertion; the corrected run passes without the undefined focus-target
+  warnings.
+- Rendered and inspected permission, page-login, passkey, screen-sharing,
+  recovery and generic long-content surfaces at 900×700/10 pt, 640×480/16 pt
+  and 390×600/20 pt (`dialog-layout-renders/`). Oversized content remains
+  scrollable; text is not reduced to fit.
+- Compiled application coverage now drives real geolocation requests over
+  settings and nested confirmations in all three window/font configurations,
+  checking visible context, safe Enter/Escape, retained drafts and restored
+  input. All 12 rows pass against the production source UI
+  (`dialog-layout-native-source.log`). A machine restart interrupted the tail
+  of that preflight; its remaining authentication/identity checks pass in a
+  fresh process (`dialog-layout-native-source-auth.log`, eight including
+  setup/cleanup).
+- Final qualification passed 922 Rust tests (two ignored), all 402 QML checks,
+  all 66 embedded application checks in 145.3 seconds, all 81 clipboard checks,
+  bounded adapter startup, and the standalone CLI/IPC probe. Phase results and
+  timings are recorded in `dialog-layout-final-status.json`. The engine archive
+  SHA-256 is `bcf1def4fbfb5c73a1e1b1ef5f6e2e30df64b9087b288d227eedf02f6fbb40dd`;
+  source/application digests are in `dialog-layout-source-hashes.json` and
+  `dialog-layout-final-artifacts.json`. Rust source and Cargo/build-script
+  configuration still match the strict Clippy checkpoint `9d006ca`.
+
+The wider actual-font audit also found overflow in the separate shutdown
+dialog. A spacing-cap prototype passes 14 ProductPolish checks and its render
+has been inspected, but that change is not yet integrated. Navigation and
+library fixtures pass with actual FontMetrics in the isolated audit copy.
+The next batch must promote that correction and the stronger fixtures.
+
+A disposable live IPC probe independently confirms that the CLI discards a
+remote invalid-argument code and useful correction message, reporting a generic
+engine failure instead (`cli-error-boundary-before.json`). Fixing the typed
+forwarding boundary and ordinary failure copy remains required.
+
+The original manager/popup/routing, status-copy and whole-window finish remain
+required. Component renders do not establish complete application consistency.
+
 ## Audit status and remaining implementation
 
 These remain part of the original goal, rather than deferred release promises:
