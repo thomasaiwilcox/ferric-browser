@@ -106,6 +106,21 @@ def main():
                        accepted=False, error_code='E_ENGINE')
                 invoke('command', 'open --context no-such-context https://should-not-open.invalid/',
                        accepted=False, error_code='E_ENGINE')
+                # Admission is asynchronous. A rejected destination must still
+                # finish the operation instead of remaining accepted forever.
+                retained = {row['operation_id'] for row in
+                            invoke('query', 'operations', '--format', 'json')['operations']}
+                invoke('command', 'tab-give missing-window')
+                deadline = time.monotonic() + 3
+                while True:
+                    transfer = [row for row in invoke('query', 'operations', '--format', 'json')['operations']
+                                if row['operation_id'] not in retained]
+                    assert len(transfer) == 1, transfer
+                    if transfer[0]['status'].startswith('failed'):
+                        break
+                    assert time.monotonic() < deadline, ('rejected transfer remained nonterminal', transfer)
+                    time.sleep(0.05)
+                print('rejected live tab transfer reached terminal failure', flush=True)
                 after_panels = invoke('query', 'active-tab', '--format', 'json')
                 assert after_panels['tabs'][0]['url'] == before['tabs'][0]['url'], after_panels
                 print('native manager commands accepted over IPC without navigating', flush=True)

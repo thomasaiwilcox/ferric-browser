@@ -1904,6 +1904,8 @@ FerricBrowserRuntimeServices {
                     : (kind === "tab-move-context"
                             ? "Context move requires a different same-profile window"
                     : "Tab give requires a different same-profile window")
+            if (operationId.length > 0)
+                sourceUi.complete_transfer_operation(operationId, false)
             return false
         }
         var view = window.detachSourceView(sourceUi, sourceHost)

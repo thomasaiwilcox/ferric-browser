@@ -25,10 +25,17 @@ Item {
     property bool navigationPending: false
     property bool committedContent: false
     property int navigationBaseIndex: 0
-    readonly property int tabIndex: webView.tabIndex >= 0 ? webView.tabIndex : browserUi.active_tab_index
+    readonly property int tabIndex: webView ? webView.tabIndex : -1
+    // A provisional or retired renderer must never borrow the active tab.
+    function hasLiveOwner() {
+        return !!browserUi && !!webView && tabIndex >= 0
+            && typeof webView.ownsTab === "function" && webView.ownsTab()
+    }
+    onBrowserUiChanged: invalidateHistoryProbe()
+    onTabIndexChanged: invalidateHistoryProbe()
     readonly property int engineHistoryIndex: historyCursor.count
-    readonly property bool canNavigateBack: { var revision = browserUi.content_history_revision; return browserUi.content_history_available(tabIndex, -1) }
-    readonly property bool canNavigateForward: { var revision = browserUi.content_history_revision; return browserUi.content_history_available(tabIndex, 1) }
+    readonly property bool canNavigateBack: { if (!hasLiveOwner()) return false; var revision = browserUi.content_history_revision; return browserUi.content_history_available(tabIndex, -1) }
+    readonly property bool canNavigateForward: { if (!hasLiveOwner()) return false; var revision = browserUi.content_history_revision; return browserUi.content_history_available(tabIndex, 1) }
     readonly property var startPage: startLoader.item
     property bool startCreated: false
     visible: true
@@ -71,6 +78,7 @@ Item {
         return null
     }
     function synchronizeHistory() {
+        if (!hasLiveOwner()) return
         if (nativeUrl.length > 0 || webView.loading) return
         if (navigationPending && browserUi.load_state !== "complete") return
         if (typeof webView.runJavaScript !== "function" || typeof browserWindow.browserScriptWorld !== "number") {
@@ -89,6 +97,7 @@ Item {
         var launched = browserWindow.runBrowserScript(webView, BrowserScripts.historyTraversalProbe(), function(value) {
             if (epoch !== historyProbeEpoch) return
             historyProbePending = false
+            if (!hasLiveOwner()) { historyProbeAgain = false; return }
             if (nativeUrl.length > 0 || webView.loading) return
             if (destination !== webView.url.toString() || position !== engineHistoryIndex) {
                 historyRefreshTimer.restart()
@@ -147,6 +156,7 @@ Item {
         pendingSameDocumentNotification = null
     }
     function reconcileHistory() {
+        if (!hasLiveOwner()) return
         var snapshot
         try { snapshot = JSON.parse(browserUi.content_history_export(tabIndex)) } catch (error) { return }
         if (!snapshot || !snapshot.entries || !snapshot.entries[snapshot.cursor]) return
@@ -223,8 +233,9 @@ Item {
         }
         browserUi.content_history_import(tabIndex, JSON.stringify(snapshot))
     }
-    function focusContent() { if (nativeUrl === "rb://start" && startPage) startPage.focusContent() }
+    function focusContent() { if (hasLiveOwner() && nativeUrl === "rb://start" && startPage) startPage.focusContent() }
     function setContentUrl(destination, traversal, engineMoves) {
+        if (!hasLiveOwner()) return
         invalidateHistoryProbe()
         engineTraversalPending = false
         if (destination === "rb://start" || destination === "rb://blank") {
@@ -267,12 +278,14 @@ Item {
         }
     }
     function beginNavigation(engineTraversal) {
+        if (!hasLiveOwner()) return
         if (nativeUrl.length > 0) return
         invalidateHistoryProbe()
         navigationPending = true
         engineTraversalPending = !!engineTraversal && !traversalPending
     }
     function reportUrlChange(index, destination) {
+        if (!hasLiveOwner()) return
         if (index >= 0 && typeof browserUi.navigation_url_changed_for === "function") {
             browserUi.navigation_url_changed_for(index, destination)
         } else {
@@ -280,6 +293,7 @@ Item {
         }
     }
     function settleUnprovenSameDocumentChange(epoch, probedDestination) {
+        if (!hasLiveOwner()) return
         var notification = pendingSameDocumentNotification
         if (!notification || notification.serial !== sameDocumentNotificationSerial
                 || notification.probeEpoch !== epoch
@@ -297,6 +311,7 @@ Item {
         }
     }
     function noteSameDocument(destination) {
+        if (!hasLiveOwner()) return
         if (typeof destination !== "string" || destination.length === 0) {
             historyRefreshTimer.restart()
             return
@@ -329,6 +344,7 @@ Item {
         historyRefreshTimer.restart()
     }
     function noteCommit() {
+        if (!hasLiveOwner()) return
         if (nativeUrl.length > 0) return
         navigationPending = false
         committedContent = true

@@ -1150,7 +1150,8 @@ restored pages remain unloaded until selected. Preview requests and worker
 results use separate typed handoffs, with one consumer for restore payloads.
 Opening a regular profile from a private or temporary manager uses the native
 start page through the existing validated profile-open path, preserving the
-private page's address.
+private page's address. Provisional and retired renderers cannot publish tab
+metadata or native/history state; they must first hold a live stable tab identity.
 
 **TAB-002 — Ordering.** New related tabs follow their opener's group in creation
 order; unrelated tabs append. Closing the active tab selects the next tab at
@@ -2326,8 +2327,9 @@ actions use typed `arguments` objects derived from their registries. Clients
 cannot supply trusted source flags, consent assertions, or native event handles.
 JSON strings are not reparsed as shell or command chains. An optional
 `command.parse` method may validate command text but never execute it as a side
-effect. Site Doctor mutation remains a command/action with normal effect-class
-and confirmation policy; `site.status` is read-only.
+effect. Accepted asynchronous requests must reach a terminal operation status
+when their engine handoff succeeds or is rejected. Site Doctor mutation remains
+a command/action with normal effect-class and confirmation policy; `site.status` is read-only.
 
 **IPC-004 — Query schema.** Tab results include tab/window IDs, profile ID/name,
 optional context ID/name, compositor workspace/output when known, safe URL,

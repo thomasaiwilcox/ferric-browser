@@ -2527,6 +2527,138 @@ void ApplicationTests::productPolishManagementSurfaces() {
     QTRY_VERIFY(!evaluate("testWindow." + visibleProperty).toBool());
 }
 
+
+void ApplicationTests::productPolishNativePageHistory_data() {
+    QTest::addColumn<bool>("secondary");
+    QTest::newRow("primary") << false;
+    QTest::newRow("secondary") << true;
+}
+void ApplicationTests::productPolishNativePageHistory() {
+    QFETCH(bool,secondary);
+    const auto initial=text("current_url");
+    QString owner="({ui:testWindow.browserUi,host:testWindow})";
+    if (secondary) {
+        evaluate("testWindow.browserWindowFactory.createObject(null,{windowStartupUrl:"
+            + quoted(initial) + ",windowProfileName:'native-history-owner',windowProfileLabel:'Native history owner'})");
+        QTRY_COMPARE(evaluate("testWindow.browserWindowRegistry.length").toInt(),2);
+        owner="testWindow.browserWindowRegistry[1]";
+        QTRY_VERIFY(evaluate(owner + ".host.profileBootstrapComplete").toBool());
+    }
+    pageReceiver=owner+".host.activeWebView()";
+    QTRY_VERIFY(page("location.href === " + quoted(initial) + " && document.readyState === 'complete'").toBool());
+    page("window.retainedAcrossNativePages=61");
+    for (const auto &destination : {QString("rb://blank"),QString("rb://start")}) {
+        evaluate(owner + ".host.submitInteractiveCommand(" + quoted("open " + destination) + ")");
+        QTRY_COMPARE(evaluate(pageReceiver + ".nativeUrl").toString(),destination);
+        QTRY_COMPARE(evaluate(owner + ".ui.current_url").toString(),destination);
+    }
+    evaluate(owner + ".host.submitInteractiveCommand('back')");
+    QTRY_COMPARE(evaluate(pageReceiver + ".nativeUrl").toString(),QString("rb://blank"));
+    evaluate(owner + ".host.submitInteractiveCommand('back')");
+    QTRY_COMPARE(evaluate(pageReceiver + ".nativeUrl").toString(),QString());
+    QTRY_COMPARE(evaluate(owner + ".ui.current_url").toString(),initial);
+    QCOMPARE(page("window.retainedAcrossNativePages").toInt(),61);
+    for (const auto &destination : {QString("rb://blank"),QString("rb://start")}) {
+        evaluate(owner + ".host.submitInteractiveCommand('forward')");
+        QTRY_COMPARE(evaluate(pageReceiver + ".nativeUrl").toString(),destination);
+        QTRY_COMPARE(evaluate(owner + ".ui.current_url").toString(),destination);
+    }
+    if (secondary) QCOMPARE(text("current_url"),initial);
+}
+
+void ApplicationTests::productPolishSecondaryHistoryCommands_data() {
+    QTest::addColumn<bool>("forward");
+    QTest::newRow("back") << false;
+    QTest::newRow("forward") << true;
+}
+void ApplicationTests::productPolishSecondaryHistoryCommands() {
+    QFETCH(bool, forward);
+    const auto first = text("current_url");
+    evaluate("testWindow.browserWindowFactory.createObject(null,{windowStartupUrl:"
+        + quoted(first) + ",windowProfileName:'history-owner',windowProfileLabel:'History owner'})");
+    QTRY_COMPARE(evaluate("testWindow.browserWindowRegistry.length").toInt(), 2);
+    const auto token = evaluate("testWindow.browserWindowRegistry[1].windowToken").toString();
+    const auto owner = "testWindow.browserWindowRegistry.find(function(e){return e.windowToken === " + quoted(token) + "})";
+    QTRY_VERIFY(evaluate(owner + ".host.profileBootstrapComplete").toBool());
+    pageReceiver = owner + ".host.activeView";
+    QTRY_VERIFY(page("location.href === " + quoted(first) + " && document.readyState === 'complete'").toBool());
+    const auto second = first + "?history-second=1";
+    evaluate(owner + ".host.submitInteractiveCommand(" + quoted("open " + second) + ")");
+    QTRY_VERIFY(page("location.href === " + quoted(second) + " && document.readyState === 'complete'").toBool());
+    if (forward) {
+        evaluate(owner + ".host.submitInteractiveCommand('back')");
+        QTRY_VERIFY(page("location.href === " + quoted(first)).toBool());
+        QTRY_VERIFY(evaluate(owner + ".host.activeView.contentCanGoForward").toBool());
+    } else QTRY_VERIFY(evaluate(owner + ".host.activeView.contentCanGoBack").toBool());
+    evaluate(owner + ".host.submitInteractiveCommand(" + quoted(forward ? "forward" : "back") + ")");
+    QTRY_COMPARE_WITH_TIMEOUT(page("location.href").toString(),forward ? second : first,2000);
+    QCOMPARE(text("current_url"),first);
+}
+void ApplicationTests::productPolishTransferredSourceClose() {
+    const auto initial = text("current_url");
+    evaluate("testWindow.browserWindowFactory.createObject(null,{windowStartupUrl:"
+        + quoted(initial) + ",windowProfileName:'lifetime-owner',windowProfileLabel:'Lifetime owner'})");
+    QTRY_COMPARE(evaluate("testWindow.browserWindowRegistry.length").toInt(),2);
+    const auto token = evaluate("testWindow.browserWindowRegistry[1].windowToken").toString();
+    const auto source = "testWindow.browserWindowRegistry.find(function(e){return e.windowToken === " + quoted(token) + "})";
+    QTRY_VERIFY(evaluate(source + ".host.profileBootstrapComplete").toBool());
+    pageReceiver = source + ".host.activeView";
+    QTRY_VERIFY(page("location.href === " + quoted(initial) + " && document.readyState === 'complete'").toBool());
+    page("window.retainedAfterOwnerClose=77");
+    const QPointer<QObject> live = evaluate(source + ".host.activeView").value<QObject *>();
+    QVERIFY(evaluate(source + ".ui.execute_secondary_interactive_command('tab-detach')").toBool());
+    evaluate(source + ".host.processRuntimeWork()");
+    QTRY_COMPARE(evaluate("testWindow.browserWindowRegistry.length").toInt(),3);
+    const auto movedToken = evaluate("testWindow.browserWindowRegistry.find(function(e){return e.windowToken !== "
+        + quoted(token) + " && e.host !== testWindow}).windowToken").toString();
+    const auto moved = "testWindow.browserWindowRegistry.find(function(e){return e.windowToken === " + quoted(movedToken) + "})";
+    QTRY_VERIFY(evaluate(moved + ".host.profileBootstrapComplete").toBool());
+    QTRY_VERIFY(live && evaluate(moved + ".host.activeView").value<QObject *>()==live.data());
+    auto child = qobject_cast<QQuickWindow *>(evaluate(source + ".host").value<QObject *>());
+    QVERIFY(child);
+    evaluate(source + ".host.windowShutdownApproved=true");
+    child->close();
+    QTRY_COMPARE(evaluate("testWindow.browserWindowRegistry.length").toInt(),2);
+    for (int cycle=0;cycle<3;++cycle) { engine->collectGarbage(); QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete); QTest::qWait(30); }
+    QVERIFY(live);
+    pageReceiver = moved + ".host.activeView";
+    QCOMPARE(page("window.retainedAfterOwnerClose").toInt(),77);
+    QVERIFY(evaluate(moved + ".host.activeView.profile === " + moved + ".host.windowWebEngineProfile").toBool());
+    QCOMPARE(page("location.href").toString(),initial);
+    QCOMPARE(text("current_url"),initial);
+}
+void ApplicationTests::productPolishProvisionalTransferFallback_data() {
+    QTest::addColumn<bool>("secondary");
+    QTest::newRow("primary") << false;
+    QTest::newRow("secondary") << true;
+}
+void ApplicationTests::productPolishProvisionalTransferFallback() {
+    QFETCH(bool,secondary);
+    const auto initial=text("current_url");
+    QString owner="({ui:testWindow.browserUi,host:testWindow})";
+    if (secondary) {
+        evaluate("testWindow.browserWindowFactory.createObject(null,{windowStartupUrl:"
+            + quoted(initial) + ",windowProfileName:'fallback-owner',windowProfileLabel:'Fallback owner'})");
+        QTRY_COMPARE(evaluate("testWindow.browserWindowRegistry.length").toInt(),2);
+        owner="testWindow.browserWindowRegistry[1]";
+        QTRY_VERIFY(evaluate(owner + ".host.profileBootstrapComplete").toBool());
+    }
+    pageReceiver=owner+".host.activeWebView()";
+    QTRY_VERIFY(page("location.href === " + quoted(initial) + " && document.readyState === 'complete'").toBool());
+    page("window.retainedBeforeFallback=99");
+    QCOMPARE(evaluate(owner + ".host.activeWebView().viewTabs.get(0).url").toString(),initial);
+    QTest::qWait(100);
+    const auto historyBefore=evaluate(owner + ".ui.content_history_export(0)").toString();
+    QVERIFY(evaluate(owner + ".host.prepareTransferFallback()").toBool());
+    QTest::qWait(100);
+    const auto historyAfter=evaluate(owner + ".ui.content_history_export(0)").toString();
+    QCOMPARE(page("location.href").toString(),initial);
+    QCOMPARE(page("window.retainedBeforeFallback").toInt(),99);
+    QCOMPARE(historyAfter,historyBefore);
+    QCOMPARE(evaluate(owner + ".host.activeWebView().viewTabs.get(0).url").toString(),initial);
+    evaluate(owner + ".host.discardPreparedTransferFallback()");
+}
+
 void ApplicationTests::productPolishSecondaryTabs() {
     QTRY_VERIFY(!evaluate("testWindow.browserUi.profile_bootstrap_pending").toBool());
     const auto primaryUrl = text("current_url");

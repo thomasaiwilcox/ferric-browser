@@ -1217,6 +1217,72 @@ terminal transfer failures, popup parity, explicit live-window IPC owner routing
 ordinary startup/error copy, whole-window configured-font review and final
 release/native qualification. This section does not establish whole-product completion.
 
+## Provisional native content and transfer operation ownership
+
+Status: implemented and fully qualified for this batch. Advances TAB-001,
+UI-003 and IPC-003 without adding a command, setting or JSON presentation payload.
+
+The compiled before probe fails in both primary and secondary windows:
+`prepareTransferFallback()` overwrites the current model URL with `about:blank`
+while the actual page, retained JavaScript state and history snapshot remain
+unchanged. The native-content component also allows a native blank initializer
+to publish through index -1 by borrowing the active tab. Native content now
+requires the factory's live ownership check for metadata/history/navigation
+updates and focus. It preserves a negative index, invalidates delayed history
+probes when the owning UI or index changes, and rejects late unowned results.
+Twenty existing component cases and six ownership regressions pass. A retired
+probe result releases its pending request while discarding the facts, so a
+subsequent valid owner can launch a fresh probe.
+
+A disposable live IPC before probe admits `tab-give missing-window` and keeps
+its operation at `accepted` after the destination is rejected. Destination/profile
+rejection now completes the operation as failed through the existing completion
+method. The permanent IPC probe requires terminal failure and preserves the
+active page. The new assertion fails against the before executable.
+
+Copied native probes linked to the qualified engine preserve all frozen source
+inputs while reproducing the defects. Actual secondary Back/Forward commands
+and closing a transferred page's original window followed by GC pass. The
+invoked broken toolbar callbacks belong to hidden, zero-height legacy chrome;
+they are not a confirmed visible-control defect. Permanent native cases now
+cover command history, primary/secondary native-page traversal with retained
+page state, source-close lifetime and provisional fallback model/history state.
+The focused compiled run passes eleven checks, including both owners' native-page
+history, live command history, transfer/source-close lifetime, both provisional
+fallbacks, and shared tab/manager regressions. Live IPC passes the terminal
+failure assertion. The full QML run before the final pending-probe refinement
+passes 431 checks; its component suite now passes all 26.
+
+Final qualification passes formatting, strict workspace Clippy, the full
+repository gate (942 Rust tests passed, two opt-in tests ignored, 432 QML
+checks), adapter startup, live IPC, all 75 compiled production checks, and all
+81 clipboard checks. Embedded-resource parity passes, and the production log
+contains no QML ReferenceError or TypeError. The selected engine archive,
+browser executable and native test executable match the recorded hashes in
+`provisional-owner-final-artifacts.json`. All nine frozen inputs were checked
+before this documentation-only results update. The independent verification
+record is `provisional-owner-final-verification.json`; runner status, logs and
+renders use the same prefix under ignored `target/product-polish/`.
+
+Fresh secondary/popup certificate prompts and secondary profile/session
+managers at 640×480 with 16-point text were inspected. These are focused render
+checks, not completion of the whole-window font/theme walkthrough. Existing Qt
+header and headless-environment warnings remain; release, Wayland, portals and
+real authentication hardware still need their own qualification.
+
+The next live-owner routing probe confirms a separate defect using a disposable
+standalone instance and an immutable before executable. Two ready windows
+advertise the same Core window ID. The child window's unique token is rejected;
+a command using its advertised ID instead adds a tab to the primary window.
+Tab queries reject both selectors, and the CLI windows query rejects a concrete
+selector. Records are `window-routing-before.json`,
+`window-routing-query-before.json` and `window-routing-confirmed-finding.json`.
+The fix must make query identities and actual command/action destinations agree,
+retain destination profile/context/privacy validation, handle closed owners,
+and support active/last-focused routing without an explicit-target fallback.
+Ordinary new-window profile selection and popup parity remain part of this
+investigation. The full original polish objective remains active.
+
 ## Audit status and remaining implementation
 
 These remain part of the original goal, rather than deferred release promises:
@@ -1262,9 +1328,9 @@ These remain part of the original goal, rather than deferred release promises:
    primary/secondary/popup consistency in the final walkthrough. The lifecycle
    investigation above found and fixed real context callbacks and a native
    teardown crash; repeated qualification and the checkpoint gates pass.
-   Shared settings access and ownership is qualified above. Profile and
-   session manager access, popup management, and explicit IPC window routing
-   remain part of this audit. Check whether primary-window surfaces affect
+   Shared settings and profile/session manager access and ownership are
+   qualified above. Popup management and explicit IPC window routing remain
+   part of this audit. Check whether primary-window surfaces affect
    another window's key routing, and use actual configured font sizes in the
    final compact walkthrough so metric-based padding is exercised.
    Page/authentication

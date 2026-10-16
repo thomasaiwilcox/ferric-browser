@@ -84,6 +84,13 @@ class ApplicationTests final : public QObject {
     void productPolishManagementSurfaces();
     void productPolishWindowSettings_data();
     void productPolishWindowSettings();
+    void productPolishNativePageHistory_data();
+    void productPolishNativePageHistory();
+    void productPolishSecondaryHistoryCommands_data();
+    void productPolishSecondaryHistoryCommands();
+    void productPolishTransferredSourceClose();
+    void productPolishProvisionalTransferFallback_data();
+    void productPolishProvisionalTransferFallback();
     void productPolishSecondaryTabs();
     void productPolishSecondaryManagers();
     void productPolishIndependentWindowInput();
