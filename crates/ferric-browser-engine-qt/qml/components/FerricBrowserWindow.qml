@@ -45,6 +45,11 @@ ApplicationWindow {
     property string windowEphemeralInvocationToken: ""
     property var windowSharedProfile: null
     property var windowSharedRequestInterceptor: null
+    property bool windowPopup: false
+    property var windowPopupRequest: null
+    property var windowPopupOpenerUi: null
+    property string windowPopupToken: ""
+    FerricPopupOwnerBridge { id: popupOwnerBridge }
     property var windowTransferView: null
     property var windowTransferSourceUi: null
     property var windowTransferSourceHost: null
@@ -90,12 +95,11 @@ ApplicationWindow {
         && !secondaryUi.external_navigation_visible
     readonly property bool windowTransientProfile:
         windowPrivateProfile || windowEphemeralProfile
+    property var windowProfileResources: null
     readonly property var windowWebEngineProfile:
-        windowSharedProfile || secondaryProfile
+        windowProfileResources ? windowProfileResources.profile : null
     readonly property var windowRequestInterceptor:
-        windowSharedProfile
-        ? (windowSharedRequestInterceptor || rootWindow.primaryRequestInterceptor)
-        : secondaryRequestInterceptor
+        windowProfileResources ? windowProfileResources.interceptor : null
     property var permissionPromptSurface: null
     property var desktopMediaSurface: null
     property var captureIndicatorSurface: null
@@ -114,6 +118,9 @@ ApplicationWindow {
     property string windowShutdownPagePromptReason: ""
     property int windowShutdownPageProbeGeneration: 0
     property var activeDownloads: ({})
+    property var pendingDownloadRequests: ({})
+    property string pendingDownloadId: ""
+    property string pendingDownloadSuggestedName: ""
     property bool caretSelecting: false
 
     Timer {
@@ -247,20 +254,6 @@ ApplicationWindow {
         return false
     }
 
-    function downloadOwnerFor(download) {
-        var view = download && download.view
-        if (!view) {
-            return secondaryWindow
-        }
-        var popups = rootWindow.popupWindowRegistry || []
-        for (var i = 0; i < popups.length; ++i) {
-            if (popups[i] && popups[i].view === view && popups[i].host) {
-                return popups[i].host
-            }
-        }
-        return secondaryWindow
-    }
-
     function checkPageStateBeforeQuit() {
         var generation = ++secondaryWindow.windowShutdownPageProbeGeneration
         var view = secondaryWindow.activeView
@@ -329,7 +322,7 @@ ApplicationWindow {
 
     function cancelDownloadsAndQuit() {
         if (secondaryWindow.pendingDownloadId.length > 0) {
-            secondaryProfile.cancelPendingDownload()
+            secondaryWindow.cancelPendingDownload()
         }
         for (var pendingKey in secondaryWindow.pendingDownloadRequests) {
             var pendingDownload = secondaryWindow.pendingDownloadRequests[pendingKey]
@@ -372,185 +365,150 @@ ApplicationWindow {
         title: "Choose download destination"
         fileMode: FileDialog.SaveFile
         nameFilters: ["All files (*)"]
-        onAccepted: secondaryProfile.acceptPendingDownload()
-        onRejected: secondaryProfile.cancelPendingDownload()
+        onAccepted: secondaryWindow.acceptPendingDownload()
+        onRejected: secondaryWindow.cancelPendingDownload()
     }
 
-    WebEngineProfile {
-        id: secondaryProfile
-        offTheRecord: secondaryWindow.windowTransientProfile
-        storageName: secondaryWindow.windowTransientProfile ? "" : "ferric-browser-" + secondaryWindow.windowProfileName
-        persistentStoragePath: secondaryWindow.windowTransientProfile
-                || secondaryWindow.windowStorageBasePath.length === 0
-                ? ""
-                : secondaryWindow.windowStorageBasePath + "/webengine/"
-                  + secondaryWindow.windowProfileName
-        cachePath: secondaryWindow.windowTransientProfile
-                || secondaryWindow.windowStorageBasePath.length === 0
-                ? ""
-                : secondaryWindow.windowStorageBasePath + "/webengine-cache/"
-                  + secondaryWindow.windowProfileName
-        persistentPermissionsPolicy: WebEngineProfile.AskEveryTime
-        spellCheckEnabled: rootWindow.spellcheckEnabled(secondaryUi)
-        spellCheckLanguages: rootWindow.spellcheckLanguages(secondaryUi)
-        isPushServiceEnabled: rootWindow.pushServiceEnabled(
-            secondaryUi, secondaryWindow.windowTransientProfile)
-
-        function acceptPendingDownload() {
-            var id = secondaryWindow.pendingDownloadId
-            var download = secondaryWindow.pendingDownloadRequests[id]
-            var selectedPath = rootWindow.primaryBrowserUi.local_file_path(secondaryDownloadChooser.selectedFile)
-            if (!download) {
+    function acceptPendingDownload() {
+        var id = secondaryWindow.pendingDownloadId
+        var download = secondaryWindow.pendingDownloadRequests[id]
+        var selectedPath = rootWindow.primaryBrowserUi.local_file_path(secondaryDownloadChooser.selectedFile)
+        if (!download) {
+            secondaryWindow.pendingDownloadId = ""
+            rootWindow.restoreOverlayFocus(secondaryWindow)
+            return
+        }
+        var finalName = secondaryUi.accept_download_path(id, selectedPath)
+        if (finalName.length === 0) {
+            rootWindow.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
+            secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
+        } else {
+            var separator = selectedPath.lastIndexOf("/")
+            var directory = separator > 0 ? selectedPath.slice(0, separator) : "/"
+            var stagingDirectory = rootWindow.downloadStagingDirectory(secondaryUi, id)
+            if (stagingDirectory.length === 0) {
+                rootWindow.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
+                secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
+                delete secondaryWindow.pendingDownloadRequests[id]
                 secondaryWindow.pendingDownloadId = ""
+                secondaryWindow.pendingDownloadSuggestedName = ""
                 rootWindow.restoreOverlayFocus(secondaryWindow)
                 return
             }
-            var finalName = secondaryUi.accept_download_path(id, selectedPath)
-            if (finalName.length === 0) {
+            download.downloadDirectory = stagingDirectory
+            download.downloadFileName = finalName
+            secondaryWindow.activeDownloads[id] = download
+            download.stateChanged.connect(function() {
+                secondaryUi.update_download(
+                    id, secondaryWindow.secondaryDownloadStateName(download),
+                    download.receivedBytes, false)
+            })
+            rootWindow.resolveQtRequest(secondaryUi, download, "download", "accept", [])
+            secondaryUi.update_download(id, "in-progress", 0, false)
+        }
+        delete secondaryWindow.pendingDownloadRequests[id]
+        secondaryWindow.pendingDownloadId = ""
+        secondaryWindow.pendingDownloadSuggestedName = ""
+        rootWindow.restoreOverlayFocus(secondaryWindow)
+    }
+
+    function cancelPendingDownload() {
+        var id = secondaryWindow.pendingDownloadId
+        var download = secondaryWindow.pendingDownloadRequests[id]
+        if (download) {
+            rootWindow.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
+            secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
+        }
+        delete secondaryWindow.pendingDownloadRequests[id]
+        secondaryWindow.pendingDownloadId = ""
+        secondaryWindow.pendingDownloadSuggestedName = ""
+        rootWindow.restoreOverlayFocus(secondaryWindow)
+    }
+
+    function handleDownloadRequested(download) {
+        var id = String(download.id)
+        var safeName = secondaryUi.offer_download(id, download.url.toString(), download.suggestedFileName)
+        var requestedPath = download.savePageFormat === WebEngineDownloadRequest.MimeHtmlSaveFormat
+                ? secondaryUi.take_save_page_path() : ""
+        if (requestedPath.length > 0) {
+            var requestedName = secondaryUi.accept_download_path(id, requestedPath)
+            if (requestedName.length === 0) {
                 rootWindow.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
                 secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
-            } else {
-                var separator = selectedPath.lastIndexOf("/")
-                var directory = separator > 0 ? selectedPath.slice(0, separator) : "/"
-                var stagingDirectory = rootWindow.downloadStagingDirectory(secondaryUi, id)
-                if (stagingDirectory.length === 0) {
-                    rootWindow.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
-                    secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
-                    delete secondaryWindow.pendingDownloadRequests[id]
-                    secondaryWindow.pendingDownloadId = ""
-                    secondaryWindow.pendingDownloadSuggestedName = ""
-                    rootWindow.restoreOverlayFocus(secondaryWindow)
-                    return
-                }
-                download.downloadDirectory = stagingDirectory
-                download.downloadFileName = finalName
-                secondaryWindow.activeDownloads[id] = download
-                download.stateChanged.connect(function() {
-                    secondaryUi.update_download(
-                        id, secondaryWindow.secondaryDownloadStateName(download),
-                        download.receivedBytes, false)
-                })
-                rootWindow.resolveQtRequest(secondaryUi, download, "download", "accept", [])
-                secondaryUi.update_download(id, "in-progress", 0, false)
-            }
-            delete secondaryWindow.pendingDownloadRequests[id]
-            secondaryWindow.pendingDownloadId = ""
-            secondaryWindow.pendingDownloadSuggestedName = ""
-            rootWindow.restoreOverlayFocus(secondaryWindow)
-        }
-
-        function cancelPendingDownload() {
-            var id = secondaryWindow.pendingDownloadId
-            var download = secondaryWindow.pendingDownloadRequests[id]
-            if (download) {
-                rootWindow.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
-                secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
-            }
-            delete secondaryWindow.pendingDownloadRequests[id]
-            secondaryWindow.pendingDownloadId = ""
-            secondaryWindow.pendingDownloadSuggestedName = ""
-            rootWindow.restoreOverlayFocus(secondaryWindow)
-        }
-
-        onDownloadRequested: function(download) {
-            var owner = secondaryWindow.downloadOwnerFor(download)
-            if (owner !== secondaryWindow && owner.handleDownloadRequested) {
-                owner.handleDownloadRequested(download)
                 return
             }
-            var id = String(download.id)
-            var safeName = secondaryUi.offer_download(id, download.url.toString(), download.suggestedFileName)
-            var requestedPath = download.savePageFormat === WebEngineDownloadRequest.MimeHtmlSaveFormat
-                    ? secondaryUi.take_save_page_path() : ""
-            if (requestedPath.length > 0) {
-                var requestedName = secondaryUi.accept_download_path(id, requestedPath)
-                if (requestedName.length === 0) {
-                    rootWindow.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
-                    secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
-                    return
-                }
-                var requestedSeparator = requestedPath.lastIndexOf("/")
-                var requestedDirectory = requestedSeparator > 0
-                        ? requestedPath.slice(0, requestedSeparator) : "/"
-                var stagingDirectory = rootWindow.downloadStagingDirectory(secondaryUi, id)
-                if (stagingDirectory.length === 0) {
-                    rootWindow.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
-                    secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
-                    return
-                }
-                download.downloadDirectory = stagingDirectory
-                download.downloadFileName = requestedName
-                secondaryWindow.activeDownloads[id] = download
-                download.stateChanged.connect(function() {
-                    secondaryUi.update_download(id, secondaryWindow.secondaryDownloadStateName(download), download.receivedBytes, false)
-                })
-                rootWindow.resolveQtRequest(secondaryUi, download, "download", "accept", [])
-                secondaryUi.update_download(id, "in-progress", 0, false)
-                return
-            }
-            var directory = secondaryUi.default_download_directory()
-            if (rootWindow.downloadsAskDestination()) {
-                if (secondaryWindow.pendingDownloadId.length > 0) {
-                    rootWindow.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
-                    secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
-                    return
-                }
-                secondaryWindow.pendingDownloadRequests[id] = download
-                secondaryWindow.pendingDownloadId = id
-                secondaryWindow.pendingDownloadSuggestedName = safeName
-                rootWindow.captureOverlayFocus(secondaryWindow, secondaryWindow.activeView)
-                secondaryUi.update_download(id, "selecting-destination", 0, false)
-                secondaryDownloadChooser.currentFile = rootWindow.fileUrlForPath(
-                    directory + "/" + safeName)
-                secondaryDownloadChooser.open()
-                return
-            }
-            var finalName = secondaryUi.accept_download(id, directory, safeName)
-            if (finalName.length === 0) {
-                rootWindow.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
-                return
-            }
+            var requestedSeparator = requestedPath.lastIndexOf("/")
+            var requestedDirectory = requestedSeparator > 0
+                    ? requestedPath.slice(0, requestedSeparator) : "/"
             var stagingDirectory = rootWindow.downloadStagingDirectory(secondaryUi, id)
             if (stagingDirectory.length === 0) {
-                delete secondaryWindow.activeDownloads[id]
                 rootWindow.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
                 secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
                 return
             }
             download.downloadDirectory = stagingDirectory
-            download.downloadFileName = finalName
+            download.downloadFileName = requestedName
+            secondaryWindow.activeDownloads[id] = download
             download.stateChanged.connect(function() {
                 secondaryUi.update_download(id, secondaryWindow.secondaryDownloadStateName(download), download.receivedBytes, false)
             })
             rootWindow.resolveQtRequest(secondaryUi, download, "download", "accept", [])
-            secondaryWindow.activeDownloads[id] = download
             secondaryUi.update_download(id, "in-progress", 0, false)
+            return
         }
-        onDownloadFinished: function(download) {
-            var owner = secondaryWindow.downloadOwnerFor(download)
-            if (owner !== secondaryWindow && owner.handleDownloadFinished) {
-                owner.handleDownloadFinished(download)
+        var directory = secondaryUi.default_download_directory()
+        if (rootWindow.downloadsAskDestination(secondaryUi)) {
+            if (secondaryWindow.pendingDownloadId.length > 0) {
+                rootWindow.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
+                secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
                 return
             }
-            var id = String(download.id)
-            var state = secondaryWindow.secondaryDownloadStateName(download)
-            if (state === "completed" && !secondaryUi.finalize_download(id)) {
-                state = "interrupted"
-            } else if (state !== "completed") {
-                secondaryUi.discard_download_staging(id)
-            }
+            secondaryWindow.pendingDownloadRequests[id] = download
+            secondaryWindow.pendingDownloadId = id
+            secondaryWindow.pendingDownloadSuggestedName = safeName
+            rootWindow.captureOverlayFocus(secondaryWindow, secondaryWindow.activeView)
+            secondaryUi.update_download(id, "selecting-destination", 0, false)
+            secondaryDownloadChooser.currentFile = rootWindow.fileUrlForPath(
+                directory + "/" + safeName)
+            secondaryDownloadChooser.open()
+            return
+        }
+        var finalName = secondaryUi.accept_download(id, directory, safeName)
+        if (finalName.length === 0) {
+            rootWindow.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
+            return
+        }
+        var stagingDirectory = rootWindow.downloadStagingDirectory(secondaryUi, id)
+        if (stagingDirectory.length === 0) {
             delete secondaryWindow.activeDownloads[id]
-            delete secondaryWindow.pendingDownloadRequests[id]
-            if (secondaryWindow.pendingDownloadId === id) {
-                secondaryWindow.pendingDownloadId = ""
-                secondaryWindow.pendingDownloadSuggestedName = ""
-            }
-            secondaryUi.update_download(id, state, download.receivedBytes, true)
+            rootWindow.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
+            secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
+            return
         }
-        onPresentNotification: function(notification) {
-            rootWindow.presentWebNotification(
-                secondaryUi, notification, secondaryWindow.windowTransientProfile)
+        download.downloadDirectory = stagingDirectory
+        download.downloadFileName = finalName
+        download.stateChanged.connect(function() {
+            secondaryUi.update_download(id, secondaryWindow.secondaryDownloadStateName(download), download.receivedBytes, false)
+        })
+        rootWindow.resolveQtRequest(secondaryUi, download, "download", "accept", [])
+        secondaryWindow.activeDownloads[id] = download
+        secondaryUi.update_download(id, "in-progress", 0, false)
+    }
+    function handleDownloadFinished(download) {
+        var id = String(download.id)
+        var state = secondaryWindow.secondaryDownloadStateName(download)
+        if (state === "completed" && !secondaryUi.finalize_download(id)) {
+            state = "interrupted"
+        } else if (state !== "completed") {
+            secondaryUi.discard_download_staging(id)
         }
+        delete secondaryWindow.activeDownloads[id]
+        delete secondaryWindow.pendingDownloadRequests[id]
+        if (secondaryWindow.pendingDownloadId === id) {
+            secondaryWindow.pendingDownloadId = ""
+            secondaryWindow.pendingDownloadSuggestedName = ""
+        }
+        secondaryUi.update_download(id, state, download.receivedBytes, true)
     }
 
     BrowserUi {
@@ -733,20 +691,6 @@ function onContext_workspaceChanged() {
         confirmedActionHandler: function() {
             secondaryWindow.applySwitcherEngineAction()
         }
-    }
-
-    RequestInterceptor {
-        id: secondaryRequestInterceptor
-        enabled: secondaryUi.blocking_enabled || securityDenyHosts.length > 0
-        blockedHosts: secondaryUi.blocking_hosts
-        exceptionHosts: secondaryUi.blocking_exceptions
-        blockedRuleHosts: secondaryUi.blocking_rule_hosts
-        blockedRuleListIds: secondaryUi.blocking_rule_list_ids
-        exceptionRuleHosts: secondaryUi.blocking_exception_rule_hosts
-        exceptionRuleListIds: secondaryUi.blocking_exception_rule_list_ids
-        adblockEngineHandle: secondaryUi.blocking_adblock_handle
-        bypassSites: secondaryUi.blocking_bypass_sites
-        securityDenyHosts: secondaryUi.blocking_security_deny_hosts
     }
 
     function secondaryDownloadStateName(download) {
@@ -1708,12 +1652,16 @@ function onContext_workspaceChanged() {
         z: 20
         sourceComponent: Component {
             WebEngineView {
+                id: secondaryInspector
+                property var viewHost: secondaryWindow
+                property var viewUi: secondaryUi
                 anchors.fill: parent
                 profile: secondaryWindow.activeView
                         ? secondaryWindow.activeView.profile
                         : secondaryWindow.windowWebEngineProfile
                 inspectedView: secondaryWindow.activeView
                 Accessible.name: "Attached developer tools"
+                Component.onCompleted: rootWindow.profileResourceRegistry.trackView(secondaryInspector,viewHost,viewUi)
             }
         }
     }
@@ -2072,7 +2020,7 @@ function onContext_workspaceChanged() {
         interval: 50
         repeat: true
         onTriggered: {
-            if (secondaryUi.profile_bootstrap_pending) {
+            if (secondaryUi.profile_bootstrap_pending || !secondaryWindow.profileBootstrapComplete) {
                 return
             }
             stop()
@@ -2089,6 +2037,13 @@ function onContext_workspaceChanged() {
     }
 
     Component.onCompleted: {
+        windowProfileResources=rootWindow.profileResourceRegistry.ensure(
+                    windowProfileName,windowTransientProfile,windowStorageBasePath,
+                    windowSharedProfile,windowSharedRequestInterceptor)
+        if (!rootWindow.profileResourceRegistry.retainWindow(windowProfileResources,secondaryWindow,secondaryUi)) {
+            secondaryUi.status_text="This profile couldn't be opened. Try reopening the window."
+            return
+        }
         secondaryWindow.scheduleRuntimeWork(0)
         secondaryWindow.permissionPromptSurface =
                 rootWindow.permissionPromptFactory.createObject(
@@ -2102,6 +2057,17 @@ function onContext_workspaceChanged() {
         secondaryWindow.rendererFailureSurface =
                 rootWindow.rendererFailureFactory.createObject(
                     secondaryWindow.contentItem, { hostWindow: secondaryWindow })
+        if (secondaryWindow.windowPopup) {
+            if (!secondaryWindow.windowPopupRequest
+                    || !popupOwnerBridge.initialize(secondaryWindow.windowPopupOpenerUi,
+                                                    secondaryUi,secondaryWindow.windowPopupToken)) {
+                secondaryWindow.rejectPopupAdmission()
+                return
+            }
+            secondaryWindow.windowPopupOpenerUi=null
+            secondaryWindow.completeProfileBootstrap()
+            return
+        }
         secondaryWindow.syncTabModel()
         rootWindow.installFocusObserver(secondaryWindow.activeView)
         secondaryUi.set_startup_configuration(
@@ -2126,11 +2092,25 @@ function onContext_workspaceChanged() {
                     secondaryWindow.windowProfileName,
                     secondaryWindow.windowEphemeralInvocationToken,
                     secondaryWindow.windowEphemeralProfile)
-        if (!secondaryWindow.windowSharedProfile
-                && !secondaryRequestInterceptor.attach(secondaryProfile)) {
-            secondaryUi.status_text = "Request interceptor unavailable"
-        }
         secondaryProfileBootstrapTimer.start()
+    }
+
+    function rejectPopupAdmission() {
+        profileBootstrapComplete=false
+        Qt.callLater(function() {
+            if (secondaryWindow.runtimeReleased) return
+            secondaryWindow.windowShutdownApproved=true
+            secondaryWindow.close()
+            secondaryWindow.destroy()
+        })
+    }
+
+    function registerWindowOwner() {
+        if (windowPopup)
+            return rootWindow.registerPopupWindow(secondaryWindow,secondaryUi,activeView)
+        return rootWindow.registerBrowserWindow(
+                    secondaryWindow, secondaryUi, activeView,windowWebEngineProfile,
+                    windowProfileName,windowEphemeralInvocationToken,windowEphemeralProfile)
     }
 
     function clearPendingTransfer() {
@@ -2164,14 +2144,27 @@ function onContext_workspaceChanged() {
 
     function completeProfileBootstrap() {
         if (runtimeReleased || profileBootstrapComplete) return
+        rootWindow.profileResourceRegistry.activateWindow(secondaryWindow)
         profileBootstrapComplete = true
         secondaryWindow.syncTabModel()
-        rootWindow.registerBrowserWindow(
-                    secondaryWindow, secondaryUi, secondaryWindow.activeView,
-                    secondaryWindow.windowWebEngineProfile,
-                    secondaryWindow.windowProfileName,
-                    secondaryWindow.windowEphemeralInvocationToken,
-                    secondaryWindow.windowEphemeralProfile)
+        if (!secondaryWindow.registerWindowOwner()) {
+            if (windowPopup) rejectPopupAdmission()
+            return
+        }
+        if (windowPopup) {
+            // The native request exists only during its signal delivery.
+            // The shared controller has created a blank view with the exact
+            // inherited profile; accept before returning to WebEngine.
+            var request=windowPopupRequest
+            var view=activeView
+            if (!request || !view || view.profile!==windowSharedProfile) {
+                rejectPopupAdmission()
+                return
+            }
+            request.openIn(view)
+            windowPopupRequest=null
+            return
+        }
         if (secondaryWindow.windowTransferMode) {
             var bootstrapTabId = secondaryUi.tab_count === 1
                     ? secondaryUi.tab_id_for_index(0) : ""
@@ -2208,6 +2201,7 @@ function onContext_workspaceChanged() {
             secondaryUi.navigate_initial(
                         secondaryWindow.windowStartupUrl, "external-open", false)
         }
+        secondaryWindow.applySwitcherEngineAction()
     }
     Connections {
         target: secondaryUi
@@ -2234,6 +2228,7 @@ function onContext_workspaceChanged() {
     function releaseWindowResources() {
         if (secondaryWindow.runtimeReleased) return
         secondaryWindow.runtimeReleased = true
+        secondaryWindow.devToolsVisible = false
         rootWindow.discardOverlayFocus(secondaryWindow)
         secondaryProfileBootstrapTimer.stop()
         secondaryWindow.cancelPendingTransfer()
@@ -2264,7 +2259,8 @@ function onContext_workspaceChanged() {
             secondaryWindow.devToolsWindow.close()
             secondaryWindow.devToolsWindow = null
         }
-        rootWindow.unregisterBrowserWindow(secondaryUi)
+        if (windowPopup) rootWindow.unregisterPopupWindow(secondaryWindow)
+        else rootWindow.unregisterBrowserWindow(secondaryUi)
         rootWindow.clearCaptureSessionsForHost(secondaryWindow)
         if (rootWindow.pendingDesktopMediaHost === secondaryWindow) {
             rootWindow.clearDesktopMediaRequest(true)
@@ -2285,6 +2281,7 @@ function onContext_workspaceChanged() {
             secondaryWindow.rendererFailureSurface.destroy()
             secondaryWindow.rendererFailureSurface = null
         }
+        rootWindow.profileResourceRegistry.releaseWindow(secondaryWindow)
         secondaryUi.view_closed()
         secondaryUi.release_transient_resources()
     }

@@ -1354,6 +1354,7 @@ FerricBrowserRuntimeChrome {
         if (!requestInterceptor.attach(browserProfile)) {
             browserUi.status_text = "Request interceptor unavailable"
         }
+        window.profileResourceRegistry.activateWindow(window)
         window.profileBootstrapComplete = true
         window.syncTabModel()
         window.registerBrowserWindow(
@@ -1427,6 +1428,15 @@ FerricBrowserRuntimeChrome {
             Qt.quit()
             return
         }
+        window.primaryProfileResources=window.profileResourceRegistry.ensure(
+                    window.profileName,window.temporaryProfile,window.storageBasePath,
+                    window.browserProfile,window.primaryRequestInterceptor,
+                    window.browserProfilePrototypeObject)
+        if (!window.profileResourceRegistry.retainWindow(window.primaryProfileResources,window,browserUi)) {
+            console.error("The primary profile resources could not be initialized")
+            Qt.quit()
+            return
+        }
         browserUi.activate_runtime_wake()
         window.scheduleRuntimeWork(0)
         window.desktopMediaSurface = desktopMediaSurfaceComponent.createObject(
@@ -1496,6 +1506,8 @@ FerricBrowserRuntimeChrome {
             window.rendererFailureSurface.destroy()
             window.rendererFailureSurface = null
         }
+        window.profileResourceRegistry.releaseWindow(window)
+        window.profileResourceRegistry.shutdown()
         browserUi.view_closed()
         browserUi.release_transient_resources()
     }

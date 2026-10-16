@@ -64,11 +64,13 @@ fn primary_web_engine_profile_uses_selected_profile_namespace() {
     assert!(
         !qml.contains("storageName: window.temporaryProfile ? \"\" : \"ferric-browser-default\"")
     );
-    assert!(qml.contains(
-            "storageName: secondaryWindow.windowTransientProfile ? \"\" : \"ferric-browser-\" + secondaryWindow.windowProfileName"
-        ));
+    let resources = include_str!("../../qml/components/FerricProfileResources.qml");
+    let secondary = include_str!("../../qml/components/FerricBrowserWindow.qml");
+    assert!(resources.contains("storageName: resources.transientProfile ? \"\" : \"ferric-browser-\" + resources.profileName"));
+    assert!(secondary.contains("windowProfileName,windowTransientProfile,windowStorageBasePath,"));
+    assert!(secondary.contains("windowSharedProfile,windowSharedRequestInterceptor"));
     assert!(qml.contains("window.storageBasePath + \"/webengine/\" + window.profileName"));
-    assert!(qml.contains("secondaryWindow.windowStorageBasePath + \"/webengine/\""));
+    assert!(resources.contains("resources.storageBase + \"/webengine/\" + resources.profileName"));
     assert!(qml.contains("property string windowStorageBasePath: rootWindow.storageBasePath"));
 }
 

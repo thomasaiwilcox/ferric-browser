@@ -625,10 +625,7 @@ impl qobject::BrowserUi {
             return true;
         }
         this.scroll_positions.insert(tab, (x, y));
-        this.checkpoint.dirty = true;
-        if this.checkpoint.dirty_since_ms.is_none() {
-            this.checkpoint.dirty_since_ms = Some(elapsed_ms(this.binding_clock));
-        }
+        this.checkpoint.mark_dirty(elapsed_ms(this.binding_clock));
         true
     }
 
@@ -637,7 +634,7 @@ impl qobject::BrowserUi {
         let due = {
             let pinned = self.as_ref();
             let rust = pinned.rust();
-            !rust.session_save_pending
+            rust.session_saves.is_empty()
                 && rust.checkpoint.restore_pending.is_none()
                 && rust.checkpoint.dirty
                 && (rust
@@ -660,7 +657,7 @@ impl qobject::BrowserUi {
         let deadline = Instant::now() + Duration::from_secs(2);
         loop {
             self.as_mut().poll_storage_library();
-            if !self.as_ref().rust().session_save_pending {
+            if self.as_ref().rust().session_saves.is_empty() {
                 return !self.as_ref().rust().checkpoint.dirty;
             }
             if Instant::now() >= deadline {

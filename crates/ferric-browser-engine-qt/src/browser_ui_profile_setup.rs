@@ -4,11 +4,11 @@ use super::{
     NetworkPolicyWorker, PathBuf, PendingProfileConfiguration, Pin, PrintWorker, PrivacyKind,
     ProfileDeleteWorker, ProfileListWorker, ProfileOpenEffect, ProfileOpenRequest,
     ProfilePersistence, ProfilePreviewWorker, ProfileStorage, QString, QStringList, RootSpec,
-    RuntimeOverrides, UserscriptManagerWorker, Uuid, Value, atomic_write_private,
-    bootstrap_runtime, bounded_header, cleanup_editor_artifact, cleanup_print_artifact,
-    cleanup_staged_downloads, configured_bindings, desktop_portals, discard_config_edit,
-    discard_editor_request, finish_pending_selection_operation, hyprland, link_cleaning_policy,
-    logging, network_policy, qobject, resolve_browser_roots,
+    RuntimeOverrides, SessionCheckpoint, UserscriptManagerWorker, Uuid, Value,
+    atomic_write_private, bootstrap_runtime, bounded_header, cleanup_editor_artifact,
+    cleanup_print_artifact, cleanup_staged_downloads, configured_bindings, desktop_portals,
+    discard_config_edit, discard_editor_request, finish_pending_selection_operation, hyprland,
+    link_cleaning_policy, logging, network_policy, qobject, resolve_browser_roots,
 };
 
 impl qobject::BrowserUi {
@@ -135,6 +135,12 @@ impl qobject::BrowserUi {
                 return;
             }
         };
+        {
+            let mut rust = self.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            this.profile_open_effect = Some(effect.clone());
+            this.profile_storage_base.clone_from(&storage_base);
+        }
         self.as_mut().clear_session_preview_rows();
         self.as_mut()
             .rust_mut()
@@ -283,8 +289,8 @@ impl qobject::BrowserUi {
             this.session_restore_preview_pending = false;
             this.session_restore_load_append = None;
             this.session_restore_recovery_pending = false;
-            this.session_save_pending = false;
-            this.session_save_checkpoint = false;
+            this.session_saves.clear();
+            this.checkpoint = SessionCheckpoint::default();
             this.session_checkpoint_clear_pending = false;
             this.storage_flush_pending = false;
             this.storage_flush_error = None;
@@ -513,6 +519,7 @@ impl qobject::BrowserUi {
         self.as_mut().set_learning_mode(learning_mode);
         self.as_mut()
             .set_profile_overrides_json(QString::from(profile_overrides_json));
+        self.as_mut().set_blocking_policy_ready(false);
         self.as_mut().set_blocking_hosts(QStringList::default());
         self.as_mut()
             .set_blocking_exceptions(QStringList::default());

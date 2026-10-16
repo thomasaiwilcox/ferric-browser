@@ -73,6 +73,16 @@ FocusScope {
     readonly property alias panelItem: panel
     readonly property alias bodyItem: body
     readonly property alias headerItem: headerScroll
+    // Include the real font-sized frame rows and padding when a small form
+    // requests a natural height. Long headers remain bounded by each dialog.
+    function fittedDialogHeight(preferredBodyHeight) {
+        var headerHeight=headerScroll.visible ? headerScroll.contentLayout.implicitHeight : 0
+        var footerHeight=keyHelpRow.visible ? keyHelpRow.implicitHeight : 0
+        var gaps=frame.spacing * (1 + (headerScroll.visible ? 1 : 0) + (keyHelpRow.visible ? 1 : 0))
+        var contents=contextRow.implicitHeight + headerHeight + footerHeight + gaps
+                + Math.max(minimumBodyHeight,preferredBodyHeight)
+        return 32 * scale + Math.max(contents,headerHeight / 0.45)
+    }
     readonly property bool compactHelp: width < 600 * scale
                                         || keyboardHelpMetrics.width > frame.width
     TextMetrics {

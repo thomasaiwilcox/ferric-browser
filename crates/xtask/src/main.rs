@@ -378,6 +378,7 @@ fn run_check() -> Result<(), String> {
     check_capability_matrix(Path::new("docs/architecture/capabilities.md"))?;
     run_qml_lint()?;
     run_qml_ui_tests()?;
+    run_profile_lifetime_tests()?;
     check_generated_docs()?;
     check_architecture_boundaries()?;
     validate_release_artifacts()?;
@@ -544,6 +545,35 @@ fn run_qml_ui_tests() -> Result<(), String> {
             "{executable} QML interaction tests exited with {status}"
         ))
     }
+}
+
+fn run_profile_lifetime_tests() -> Result<(), String> {
+    run(
+        "cmake",
+        &[
+            "-S",
+            "crates/ferric-browser-engine-qt/tests/profile-lifetime",
+            "-B",
+            "target/profile-lifetime-tests",
+        ],
+    )?;
+    run(
+        "cmake",
+        &[
+            "--build",
+            "target/profile-lifetime-tests",
+            "--parallel",
+            "2",
+        ],
+    )?;
+    run(
+        "ctest",
+        &[
+            "--test-dir",
+            "target/profile-lifetime-tests",
+            "--output-on-failure",
+        ],
+    )
 }
 
 fn run_native_insert_tests() -> Result<(), String> {

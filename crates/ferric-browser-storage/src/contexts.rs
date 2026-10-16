@@ -120,7 +120,7 @@ impl std::fmt::Display for ContextRegistryError {
 
 impl std::error::Error for ContextRegistryError {}
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ContextRegistry {
     path: PathBuf,
     contexts: Vec<ContextRecord>,

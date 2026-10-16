@@ -1,8 +1,8 @@
 use super::{
     Arc, AtomicBool, BrowserApplication, CxxQtType, Event, FeedbackLane, FeedbackState,
     JourneyReopenRecord, Ordering, Pin, QString, StorageCompletion, StorageRequest,
-    SwitcherLibraryIndexResult, SwitcherQueryCache, build_switcher_library_index, elapsed_ms,
-    qobject, safe_ipc_url, switcher_max_results, thread,
+    SwitcherLibraryIndexResult, SwitcherQueryCache, build_switcher_library_index, qobject,
+    safe_ipc_url, switcher_max_results, thread,
 };
 
 impl qobject::BrowserUi {
@@ -329,7 +329,7 @@ impl qobject::BrowserUi {
         let mut library_result = None;
         let mut session_result = None;
         let mut session_restore_result = None;
-        let mut session_save_result = None;
+        let mut session_save_results = Vec::new();
         let mut session_delete_result = None;
         let mut session_checkpoint_clear_result = None;
         let mut history_result = None;
@@ -367,7 +367,8 @@ impl qobject::BrowserUi {
                     session_restore_result = Some(result.map_err(|error| error.message));
                 }
                 StorageCompletion::SessionSave(result) => {
-                    session_save_result = Some(result.map_err(|error| error.message));
+                    session_save_results
+                        .push((effect.ticket, result.map_err(|error| error.message)));
                 }
                 StorageCompletion::SessionDelete(result) => {
                     session_delete_result = Some(result.map_err(|error| error.message));
@@ -467,56 +468,8 @@ impl qobject::BrowserUi {
                 }
             }
         }
-        if let Some(result) = session_save_result {
-            consumed = true;
-            let checkpoint_save = {
-                let mut rust = self.as_mut().rust_mut();
-                let this = rust.as_mut().get_mut();
-                this.session_save_pending = false;
-                this.session_save_checkpoint
-            };
-            match result {
-                Ok(()) => {
-                    let mut rust = self.as_mut().rust_mut();
-                    let this = rust.as_mut().get_mut();
-                    if checkpoint_save {
-                        this.checkpoint.dirty = false;
-                        this.checkpoint.dirty_since_ms = None;
-                        this.checkpoint.restore_pending = None;
-                        this.checkpoint.last_saved_ms = elapsed_ms(this.binding_clock);
-                    }
-                    drop(rust);
-                    self.as_mut().invalidate_session_catalog();
-                    if !checkpoint_save {
-                        self.as_mut().request_session_names();
-                        self.as_mut().publish_management_feedback(
-                            FeedbackLane::SessionSave,
-                            FeedbackState::Succeeded,
-                            "Session saved",
-                            "",
-                        );
-                    }
-                    self.as_mut()
-                        .set_status_text(QString::from(if checkpoint_save {
-                            "Session checkpoint saved"
-                        } else {
-                            "Session saved"
-                        }));
-                }
-                Err(error) => {
-                    if !checkpoint_save {
-                        self.as_mut().publish_management_feedback(
-                            FeedbackLane::SessionSave,
-                            FeedbackState::Failed,
-                            "The session couldn't be saved. Your open tabs are kept.",
-                            &error,
-                        );
-                    }
-                    self.as_mut().set_status_text(QString::from(format!(
-                        "Session snapshot failed; changes retained: {error}"
-                    )));
-                }
-            }
+        for (ticket, result) in session_save_results {
+            consumed |= self.as_mut().complete_session_save(ticket, result);
         }
         if let Some(result) = session_restore_result {
             consumed = true;

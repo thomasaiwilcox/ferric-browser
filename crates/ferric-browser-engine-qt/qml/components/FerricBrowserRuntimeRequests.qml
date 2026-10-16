@@ -201,8 +201,8 @@ FerricBrowserRuntimePresentation {
         return detail
     }
 
-    function downloadsAskDestination() {
-        return browserUi.feature_downloads_ask_destination
+    function downloadsAskDestination(ui) {
+        return (ui || browserUi).feature_downloads_ask_destination
     }
 
     function permissionTypeName(permissionType) {
@@ -328,7 +328,11 @@ FerricBrowserRuntimePresentation {
         window.captureOverlayFocus(hostWindow || window, view)
         window.pageDialogMessage = window.boundedPageDialogText(request.message)
         var title = window.boundedPageDialogText(request.title)
-        window.pageDialogTitle = title.length > 0 ? title : "Page " + kind
+        var fallbackTitle = kind === "confirm" ? "Confirm this page's request"
+                : kind === "prompt" ? "Reply to this page"
+                : kind === "beforeunload" ? "Leave this page?"
+                : "Message from this page"
+        window.pageDialogTitle = title.length > 0 ? title : fallbackTitle
         window.pageDialogOrigin = ui.prompt_origin(String(request.securityOrigin || ""))
                 || "Origin unavailable"
         window.pageDialogDefaultText = window.boundedPageDialogText(request.defaultText)
@@ -368,15 +372,15 @@ FerricBrowserRuntimePresentation {
         window.pageDialogIsAuthentication = true
         var proxyAuthentication = request.type === AuthenticationDialogRequest.AuthenticationTypeProxy
         window.pageDialogTitle = proxyAuthentication
-                ? "Proxy authentication"
-                : "HTTP authentication"
+                ? "Sign in to the proxy"
+                : "Sign in to this site"
         window.pageDialogOrigin = proxyAuthentication
                 ? window.boundedPageDialogText(request.proxyHost)
                 : (ui.prompt_origin(String(request.url || "")) || "Origin unavailable")
         var realm = window.boundedPageDialogText(request.realm)
         window.pageDialogMessage = realm.length > 0
-                ? "Credentials requested for realm: " + realm
-                : "This site is requesting credentials"
+                ? (proxyAuthentication ? "Proxy message: " : "Site message: ") + realm
+                : "Enter your username and password to continue."
         window.pageDialogSuppressChecked = false
         pageDialogPopup.usernameText = ""
         pageDialogPopup.passwordText = ""
@@ -1031,17 +1035,13 @@ FerricBrowserRuntimePresentation {
             return
         }
         if (action === "open-link") {
-            if (host && host.popupPermissionUi !== undefined) {
-                view.url = value
+            ui.navigate(value)
+            if (ui === browserUi) {
+                window.updateActiveTabUrl()
+            } else if (ui.initial_url !== undefined) {
+                view.url = ui.initial_url
             } else {
-                ui.navigate(value)
-                if (ui === browserUi) {
-                    window.updateActiveTabUrl()
-                } else if (ui.initial_url !== undefined) {
-                    view.url = ui.initial_url
-                } else {
-                    view.url = value
-                }
+                view.url = value
             }
             ui.status_text = "Link opened"
         } else if (action === "copy-link") {

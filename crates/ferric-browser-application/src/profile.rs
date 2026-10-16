@@ -59,7 +59,7 @@ pub struct ContextEffect {
     pub context: ContextRecord,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct ActiveProfile {
     pub(crate) generation: u64,
     name: String,

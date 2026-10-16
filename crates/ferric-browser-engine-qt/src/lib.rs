@@ -80,6 +80,7 @@ mod browser_ui_native_prompts;
 mod browser_ui_navigation;
 mod browser_ui_navigation_lifecycle;
 mod browser_ui_persistence;
+mod browser_ui_popup_owner;
 mod browser_ui_popups;
 mod browser_ui_process_actions;
 mod browser_ui_profile_setup;
@@ -97,6 +98,7 @@ mod browser_ui_runtime_config;
 mod browser_ui_runtime_settings;
 mod browser_ui_scope_handoff;
 mod browser_ui_selector_config;
+mod browser_ui_session_save;
 mod browser_ui_sessions;
 mod browser_ui_site;
 mod browser_ui_spatial;
@@ -211,8 +213,8 @@ use browser_ui_management_feedback::{FeedbackLane, FeedbackState};
 use browser_ui_state::PermissionLifetimeKey;
 use browser_ui_state::{
     ContextSnapshot, PendingContextRoute, PendingProfileConfiguration, PendingSelectorValidation,
-    PermissionDecisionKey, ProfilePersistence, SessionCheckpoint, SwitcherQueryCache,
-    permission_session_key,
+    PermissionDecisionKey, ProfilePersistence, SessionCheckpoint, SessionSaveIntent,
+    SwitcherQueryCache, permission_session_key,
 };
 use chrome_preferences::ChromePreferences;
 use command_options::{
@@ -761,6 +763,7 @@ mod qobject {
         #[qproperty(QStringList, blocking_cosmetic_exception_selectors)]
         #[qproperty(QString, blocking_adblock_source_ids)]
         #[qproperty(u64, blocking_adblock_handle)]
+        #[qproperty(bool, blocking_policy_ready)]
         #[qproperty(QStringList, blocking_security_deny_hosts)]
         #[qproperty(bool, blocking_enabled)]
         #[qproperty(i64, blocking_blocked_count)]
@@ -1418,6 +1421,13 @@ mod qobject {
 
         #[qinvokable]
         fn close_popup_tab(self: Pin<&mut BrowserUi>, token: &QString) -> bool;
+
+        // Called by the native QObject bridge after type/thread/alias checks.
+        fn handoff_popup_owner(
+            self: Pin<&mut BrowserUi>,
+            destination: Pin<&mut BrowserUi>,
+            token: &QString,
+        ) -> bool;
 
         #[qinvokable]
         fn configure_profile(
@@ -2184,8 +2194,7 @@ pub struct BrowserUiRust {
     session_restore_preview_pending: bool,
     session_restore_load_append: Option<bool>,
     session_restore_recovery_pending: bool,
-    session_save_pending: bool,
-    session_save_checkpoint: bool,
+    session_saves: BTreeMap<StorageTicket, SessionSaveIntent>,
     session_checkpoint_clear_pending: bool,
     storage_flush_pending: bool,
     storage_flush_error: Option<String>,
@@ -2387,6 +2396,7 @@ pub struct BrowserUiRust {
     blocking_cosmetic_exception_selectors: QStringList,
     blocking_adblock_source_ids: QString,
     blocking_adblock_handle: u64,
+    blocking_policy_ready: bool,
     blocking_security_deny_hosts: QStringList,
     blocking_enabled: bool,
     blocking_blocked_count: i64,
@@ -2422,6 +2432,8 @@ pub struct BrowserUiRust {
     font_scale_probe_worker: Option<SystemFontScaleProbeWorker>,
     network_policy_reload_pending: bool,
     pending_profile_configuration: Option<PendingProfileConfiguration>,
+    profile_open_effect: Option<ProfileOpenEffect>,
+    profile_storage_base: String,
     pending_selector_validation: Option<PendingSelectorValidation>,
     selector_generation: u64,
     selector_config_revision: u64,
@@ -2964,8 +2976,7 @@ impl Default for BrowserUiRust {
             session_restore_preview_pending: false,
             session_restore_load_append: None,
             session_restore_recovery_pending: false,
-            session_save_pending: false,
-            session_save_checkpoint: false,
+            session_saves: BTreeMap::new(),
             session_checkpoint_clear_pending: false,
             storage_flush_pending: false,
             storage_flush_error: None,
@@ -3188,6 +3199,7 @@ impl Default for BrowserUiRust {
             blocking_cosmetic_exception_selectors: QStringList::default(),
             blocking_adblock_source_ids: QString::from("[]"),
             blocking_adblock_handle: 0,
+            blocking_policy_ready: false,
             blocking_security_deny_hosts: QStringList::default(),
             blocking_enabled: false,
             blocking_blocked_count: 0,
@@ -3223,6 +3235,8 @@ impl Default for BrowserUiRust {
             font_scale_probe_worker: None,
             network_policy_reload_pending: false,
             pending_profile_configuration: None,
+            profile_open_effect: None,
+            profile_storage_base: String::new(),
             pending_selector_validation: None,
             selector_generation: 0,
             selector_config_revision: 0,

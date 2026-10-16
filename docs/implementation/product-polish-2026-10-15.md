@@ -2,6 +2,14 @@
 
 Status: active. Branch: `polish/refined-browser-experience`.
 
+Latest verified checkpoint: application-lived native profile resources, a shared
+popup window host, ticket-correlated session saves and content-sized page
+dialogs. The complete local gate, native integration, clipboard, live IPC and
+adapter checks pass; the production dialog renders have been inspected. See
+the shared-host checkpoint below for exact scope and evidence. The full polish
+goal remains active: the new-window probe still reproduces profile inheritance
+and secondary dispatch defects, alongside the remaining audit items.
+
 ## Product intent
 
 Ferric should feel precise and capable to someone who uses commands and plain
@@ -1390,6 +1398,163 @@ callback routing. Secondary download handling also references three pending
 state properties that are absent from that window. These findings remain open
 alongside resource creation-context lifetime, native ownership and final-owner
 cleanup. The experimental reparenting exists only in the ignored probe harness.
+
+## Application-lived profile resources and native teardown
+
+The stage records below retain the intermediate findings and failures. The
+shared-host checkpoint below qualifies the corrected implementation. No
+installation or release qualification is claimed.
+
+Production profile resources now use an application-created context and native
+consumer leases. Ordinary views retain their QObject owner separately from
+visual parenting; pending windows cannot supply policy authority. Retirement
+clears view models and pool entries before deferred native deletion. Request
+handlers live with their profile resources, resolve download ownership through
+the tracked view, and retain the accepted owner through completion/cancellation.
+Secondary windows now declare pending download state and own their chooser
+handlers rather than leaving them on a source-bound WebEngineProfile object.
+Regular windows using the same canonical profile and storage base reuse its
+native resource group; private and temporary groups retain explicit sharing.
+
+The strengthened permanent source-close regression explicitly destroys the
+original QQuickWindow. All three regular/private/ephemeral rows pass on stage1:
+JavaScript state and an unsubmitted form draft survive, the actual destination
+window presents and cancels its download chooser, and the profile disappears
+after the final native consumer closes. The existing production group passes
+77 checks, and all ten live IPC owner checks pass. These are focused stage1
+results, not a completed qualification of the current batch.
+
+A new popup-opener regression then reproduces a remaining defect: destroying
+the opener releases the popup's profile and leaves stale UI references. That
+case is intentionally retained as failing until popup backend/permission and
+native-view ownership are integrated. Popup consumer tracking, opener-independent
+backend state, developer-tools edge cases, new-window/profile inheritance and
+operation completion remain required.
+
+Removing an unused duplicate profile factory exposes a separate stage2 teardown
+crash. Coredump PID 380285 shows QQuickWebEngineProfilePrototype destruction;
+Qt's prototype retains a scoped owner of its profile, conflicting with the new
+lease's separate ownership of that instance. The native lease now retains the
+factory and parents its profile beneath it, deleting pages before the factory.
+The primary resource group supplies its existing prototype explicitly. Eleven
+native unit checks pass, including the added factory-ownership case. Fresh
+stage3 real-WebEngine validation passes all three ordinary lifetime rows (five
+QtTest checks), including final factory/profile cleanup. The crash report and symbolized
+stack are retained under `profile-resources-stage2-core-*.log`; the extracted
+core copy was removed after inspection. Production code uses public Qt APIs.
+
+### Initial popup runtime and integration findings
+
+The initial implementation gave a native popup an independent typed runtime
+before synchronously accepting its WebEngine request. The application inherits
+an already validated profile, configuration, context snapshot and shared profile
+lock; it starts metadata work on a worker. A small native bridge checks QObject
+types, threads and distinct owners before the Rust handoff. The existing reducer
+transfer events move the admitted popup target out of the opener. The popup
+retains the same native profile through the application resource registry and
+no longer falls back to the primary backend when its opener is destroyed.
+
+Blocking policy now publishes an explicit readiness fact. Resource groups retain
+their installed snapshot until a replacement owner has a complete policy, and
+updates publish atomically. Download destination preferences use the requesting
+window's typed preferences. The desktop portal audit confirmed that capability
+results intentionally come from one application-wide probe; that routing is
+preserved.
+
+Evidence for the frozen `popup-owner-stage3` production artifacts:
+
+- The focused native run passes 13 checks. All regular/private/temporary popup
+  cases forcibly destroy the opener and its backend, preserve JavaScript and
+  form state, retain installed policy while its replacement is unready, update
+  the popup's address, present a real popup-owned confirmation and download
+  chooser, and destroy the final native view/profile/backend. Ordinary transfer,
+  popup userscript, permission placement and cross-window clipboard cases also
+  pass in this run.
+- The complete clipboard group passes 81 checks. The larger product-polish
+  group passes 76 and fails four: both popup prompt cases lack a known document;
+  a named session save is rejected; and a private bookmark destination reports
+  completion before its native start page is visible.
+- An isolated rerun reproduces both popup document failures. Session saving and
+  the private transfer pass in isolation, so their broad-run failures remain
+  timing defects requiring investigation. Do not discard them as load noise.
+- A separate production command probe accepts `open` in the popup's runtime,
+  but its WebEngine URL remains unchanged. The popup work timer does not consume
+  engine actions. Command, document observation, keyboard and management parity
+  therefore remain incomplete. Reuse the ordinary window host and controller
+  rather than adding another partial action dispatcher.
+- Strict workspace Clippy passes on the frozen production source. The repository
+  gate passes 434 QML checks and the native lifetime CTest target, then fails
+  eight source-contract assertions expecting the old inline profile ownership.
+  Updated contracts include the new resource components and preserve profile,
+  privacy, typed-policy and native download-owner assertions. Their first rerun
+  passes 472 with one remaining obsolete assertion; that assertion is now
+  corrected but has not been rerun. These test-only edits do not change the
+  production artifacts used by the native checks.
+
+Logs and exact artifact/input hashes are retained under `target/product-polish/`.
+These stage3 failures were required follow-up work, resolved and requalified in
+the checkpoint below. Popup journey provenance/session permission sharing,
+developer-tool lifetime edges, ordinary new-window profile inheritance and the
+original polish audit remain in scope.
+
+## Shared popup host, session saves and page-dialog checkpoint
+
+Qualified locally against 44 frozen inputs in
+`target/product-polish/lifetime-popup-session-v5-source-hashes.json`. The
+checkpoint preserves exact browser, engine archive and native test executable
+hashes in `lifetime-popup-session-v5-checkpoint.json`. This records the current
+batch, not completion of the whole product-polish goal.
+
+- Popups now wrap `FerricBrowserWindow` instead of maintaining another page,
+  command dispatcher and set of request handlers. A native request is accepted
+  synchronously into a blank view using the exact inherited WebEngine profile
+  and an independently owned typed runtime. Ordinary document observation,
+  command entry, settings, managers, tabs, downloads and prompt handling are
+  shared. Registration publishes the popup's own owner identity once.
+- Permanent native coverage opens a real popup, navigates it through the
+  command path, observes its document identity, enters and dismisses command
+  mode with real keys, opens its settings/managers and creates multiple tabs.
+  A nested popup keeps its native profile and JavaScript state when its opener
+  is explicitly destroyed. The regular/private/temporary lifetime cases also
+  retain form drafts and policy, route dialogs/downloads to the surviving
+  window, and verify final native cleanup.
+- Named-session saves use the existing application storage scheduler. One
+  explicit save may queue behind an automatic checkpoint; repeated explicit
+  requests remain bounded. Typed storage tickets correlate completions, and a
+  checkpoint generation prevents an older write from clearing newer changes.
+  Successful automatic saves no longer flood the status bar.
+- A permanent SQLite writer-lock regression reproduces the old busy rejection,
+  then verifies that the queued named save succeeds with the URL captured at
+  submission even if the current tab changes before storage becomes available.
+  Private bookmark transfer now waits for host profile bootstrap as well as
+  backend readiness before reporting completion.
+- Page requests use readable titles, including “Confirm this page's request”
+  and “Sign in to this site”. Site/proxy messages remain literal, origins stay
+  visible and safe cancellation is preserved. Dialogs fit short content while
+  retaining bounded scrolling for long content and large fonts. Final real
+  popup confirmation and sign-in renders were inspected: fields and actions
+  are visible, with no surplus body space or unnecessary short-header scrollbar.
+
+Validation on the final source: formatting, strict all-target workspace Clippy
+and the complete repository gate pass; 960 Rust tests pass with two existing
+ignored tests, and 435 QML checks pass. The native lifetime CTest target passes.
+The production integration group passes 82 checks, the clipboard group passes
+81, and all ten live IPC owner checks pass. Adapter startup passes. The final
+native render run passes four QtTest checks, including setup/cleanup. Earlier
+gate failures from obsolete proxy-title and duplicated-popup status assertions
+are retained in the logs; updated contracts check the actual title and both
+shared status call sites.
+
+The separate `new-window-v5-before.json` probe against the same preserved browser
+still fails: an unspecified profile becomes `secondary` instead of inheriting
+`default`, and a secondary owner's accepted new-window action creates no third
+window. This is the next integration fix; the passing checkpoint does not
+cover or conceal it. Shared child-window hints remain unavailable. Popup
+journey/permission sharing, developer-tool lifetime edges, ordinary status/help
+copy and the configured-font/theme whole-window review remain open. Offscreen
+software rendering does not qualify native Wayland/GPU behavior, physical
+credentials or real-account authentication. No installation or publication
+was performed.
 
 ## Audit status and remaining implementation
 

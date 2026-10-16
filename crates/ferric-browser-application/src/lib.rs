@@ -76,6 +76,49 @@ impl BrowserApplication {
         }
     }
 
+    /// Creates an independent window owner from an already validated profile.
+    /// Profile locks and configuration are retained without reopening files on
+    /// the GUI thread. Durable metadata work remains on its own worker.
+    ///
+    /// # Errors
+    /// Returns an error for an unavailable profile, a privacy mismatch, or a
+    /// metadata worker that cannot start. The source remains unchanged.
+    pub fn inherit_profile(&self, runtime: BrowserRuntime) -> Result<Self, ProfileOpenError> {
+        let profile = self
+            .active_profile
+            .as_ref()
+            .filter(|_| {
+                self.profile_open.is_none()
+                    && self.runtime.view().shutdown() == ferric_browser_core::ShutdownState::Running
+            })
+            .ok_or_else(|| {
+                ProfileOpenError::InvalidRequest("The source profile is not ready".into())
+            })?;
+        if runtime.view().profiles().len() != 1
+            || runtime
+                .view()
+                .profiles()
+                .values()
+                .any(|candidate| candidate.privacy != profile.snapshot().privacy)
+        {
+            return Err(ProfileOpenError::InvalidRequest(
+                "Window profile privacy does not match its source".into(),
+            ));
+        }
+        let mut storage = StorageCoordinator::default();
+        storage
+            .replace(profile.storage_path())
+            .map_err(|error| ProfileOpenError::InvalidRequest(error.to_string()))?;
+        Ok(Self {
+            runtime,
+            configuration: self.configuration.clone(),
+            active_profile: Some(profile.clone()),
+            next_profile_generation: self.next_profile_generation,
+            storage,
+            profile_open: None,
+        })
+    }
+
     /// Creates initial state through the same application boundary used after
     /// startup.
     ///
@@ -692,8 +735,75 @@ mod tests {
             application.contexts().expect("contexts")[0].name,
             "worker-context"
         );
+        let (runtime, _, _) =
+            BrowserRuntime::bootstrap(PrivacyKind::Normal, "child").expect("child runtime");
+        let child = application
+            .inherit_profile(runtime)
+            .expect("inherit ready profile");
+        assert_eq!(child.profile_snapshot(), application.profile_snapshot());
+        assert_eq!(
+            child.configuration_snapshot(),
+            application.configuration_snapshot()
+        );
+        assert_eq!(child.contexts(), application.contexts());
         application.close_profile();
+        assert!(child.storage_is_open());
+        assert!(child.profile_snapshot().is_some());
+        drop(child);
         let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn inherited_profile_rejects_unready_closed_and_wrong_privacy_sources() {
+        for privacy in [
+            PrivacyKind::Normal,
+            PrivacyKind::Private,
+            PrivacyKind::Ephemeral,
+        ] {
+            let (mut source, _, _) =
+                BrowserApplication::bootstrap(Config::default(), privacy, "source")
+                    .expect("source runtime");
+            let child_runtime = || {
+                BrowserRuntime::bootstrap(privacy, "child")
+                    .expect("child runtime")
+                    .0
+            };
+            assert!(source.inherit_profile(child_runtime()).is_err());
+            source
+                .activate_profile(ProfileActivation {
+                    name: "source".into(),
+                    id: None,
+                    privacy,
+                    roots: None,
+                    lock: None,
+                    contexts: None,
+                    storage_path: None,
+                })
+                .expect("activate profile");
+            let wrong_privacy = if privacy == PrivacyKind::Normal {
+                PrivacyKind::Private
+            } else {
+                PrivacyKind::Normal
+            };
+            let wrong_runtime = BrowserRuntime::bootstrap(wrong_privacy, "wrong")
+                .expect("wrong runtime")
+                .0;
+            assert!(source.inherit_profile(wrong_runtime).is_err());
+            let child = source
+                .inherit_profile(child_runtime())
+                .expect("inherit profile");
+            source
+                .dispatch_runtime(RuntimeInput::Lifecycle(Event::RequestShutdown))
+                .expect("begin source shutdown");
+            assert!(source.inherit_profile(child_runtime()).is_err());
+            source.close_profile();
+            assert!(source.inherit_profile(child_runtime()).is_err());
+            assert_eq!(
+                child.profile_snapshot().expect("independent child").privacy,
+                privacy
+            );
+            assert!(!child.storage_is_open());
+        }
     }
 
     #[test]

@@ -207,7 +207,7 @@ impl qobject::BrowserUi {
             || rust.switcher_library_index_building
             || rust.session_restore_preview_pending
             || rust.session_restore_recovery_pending
-            || rust.session_save_pending
+            || !rust.session_saves.is_empty()
             || rust.session_checkpoint_clear_pending
             || rust.storage_flush_pending;
         if worker_pending

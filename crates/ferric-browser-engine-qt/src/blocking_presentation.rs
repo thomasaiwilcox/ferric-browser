@@ -14,7 +14,9 @@ impl qobject::BrowserUi {
         mut self: Pin<&mut Self>,
         policy: network_policy::PolicySnapshot,
     ) {
-        if policy.compile_failures.is_empty() {
+        let valid = policy.compile_failures.is_empty();
+        if valid {
+            self.as_mut().set_blocking_policy_ready(false);
             self.as_mut()
                 .set_blocking_hosts(policy.blocked_hosts.iter().map(QString::from).collect());
             self.as_mut().set_blocking_exceptions(
@@ -110,6 +112,9 @@ impl qobject::BrowserUi {
         ));
         self.as_mut()
             .set_blocking_bypass_sites(policy.bypass_sites.iter().map(QString::from).collect());
+        if valid {
+            self.as_mut().set_blocking_policy_ready(true);
+        }
     }
 
     pub(super) fn reload_blocking_policy(mut self: Pin<&mut Self>) -> bool {

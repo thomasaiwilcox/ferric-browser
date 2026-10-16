@@ -19,7 +19,7 @@ FerricModalSurface {
     keyHelp: "tab/shift-tab controls  ·  enter activate  ·  esc cancel"
     compactKeyHelp: "esc cancel"
     dialogWidth: 620 * scale
-    dialogHeight: 470 * scale
+    dialogHeight: Math.min(470 * scale,fittedDialogHeight(pageForm.contentLayout.implicitHeight))
     initialFocusItem: browserWindow.pageDialogKind() === "prompt" ? pageDialogInput : (
                                                                         browserWindow.pageDialogKind(
                                                                             ) === "authentication"
@@ -66,6 +66,7 @@ FerricModalSurface {
     }
 
     FerricScrollColumn {
+        id: pageForm
         anchors.fill: parent
         hostWindow: dialog.hostWindow
         spacing: 8 * dialog.scale

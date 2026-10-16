@@ -1,0 +1,14 @@
+#include "popup_owner_bridge.h"
+#include "ferric-browser-engine-qt/src/lib.cxxqt.h"
+#include <QThread>
+
+bool FerricPopupOwnerBridge::initialize(QObject *source, QObject *destination,
+                                        const QString &token) {
+    if (!source || !destination || source == destination ||
+        source->thread() != QThread::currentThread() ||
+        destination->thread() != QThread::currentThread())
+        return false;
+    auto *opener = qobject_cast<BrowserUi *>(source);
+    auto *popup = qobject_cast<BrowserUi *>(destination);
+    return opener && popup && opener->handoff_popup_owner(*popup, token);
+}

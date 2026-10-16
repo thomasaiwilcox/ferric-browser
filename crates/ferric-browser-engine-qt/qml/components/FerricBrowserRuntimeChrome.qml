@@ -901,7 +901,14 @@ GridLayout {
                     }
                 }
                 onTabIndexChanged: refreshPromptViewIdentity()
-                onViewUiChanged: refreshPromptViewIdentity()
+                onViewUiChanged: {
+                    refreshPromptViewIdentity()
+                    if (resourceTracked) window.profileResourceRegistry.trackView(webView,viewHost,viewUi)
+                }
+                onViewHostChanged: {
+                    if (resourceTracked) window.profileResourceRegistry.trackView(webView,viewHost,viewUi)
+                }
+                property bool resourceTracked: false
                 property alias nativeUrl: nativeContent.nativeUrl
                 property alias contentTraversalPending: nativeContent.traversalPending
                 readonly property var startPage: nativeContent.startPage
@@ -1001,6 +1008,12 @@ GridLayout {
                     === "require-gesture"
                 Accessible.name: "Web content for tab " + (tabIndex + 1)
                 Component.onCompleted: {
+                    resourceTracked=window.profileResourceRegistry.trackView(webView,viewHost,viewUi)
+                    if (!resourceTracked) {
+                        viewRetired=true
+                        viewUi.status_text="This page couldn't be initialized. Try reopening the window."
+                        return
+                    }
                     refreshPromptViewIdentity()
                     if (viewModel.loaded && !contentInitialized) setContentUrl(viewModel.url || "about:blank", false)
                     refreshEffectiveSiteSettings()
@@ -1259,24 +1272,22 @@ GridLayout {
                     if (!popupAllowed) {
                         return
                     }
+                    var popupToken=viewUi.take_popup_journey_token(request.requestedUrl.toString())
                     var popup = popupWindowComponent.createObject(null, {
                         popupRequest: request,
-                        popupJourneyToken: viewUi.take_popup_journey_token(
-                            request.requestedUrl.toString()),
+                        popupJourneyToken: popupToken,
                         popupProfile: viewProfile,
-                        popupPermissionUi: viewUi,
+                        popupOpenerUi: viewUi,
                         popupContextName: viewUi.context_name,
                         popupContextLabel: viewUi.context_label,
                         popupPrivateProfile: viewTransientProfile,
                         popupEphemeralProfile: viewHost === window ? window.ephemeralProfile : viewHost.windowEphemeralProfile,
+                        popupEphemeralInvocationToken: viewHost === window ? window.ephemeralInvocationToken : viewHost.windowEphemeralInvocationToken,
                         popupProfileName: viewHost === window ? window.profileName : viewHost.windowProfileName
                     })
-                    if (!popup) {
-                        if (viewTabs && tabIndex >= 0) {
-                            viewUi.navigation_failed_for(tabIndex)
-                        } else {
-                            viewUi.navigation_failed()
-                        }
+                    if (!popup || !popup.profileBootstrapComplete) {
+                        viewUi.close_popup_tab(popupToken)
+                        viewUi.status_text="The popup could not be opened. Try opening the link again."
                     }
                 }
             }
@@ -1636,10 +1647,14 @@ GridLayout {
         z: 20
         sourceComponent: Component {
             WebEngineView {
+                id: primaryInspector
+                property var viewHost: window
+                property var viewUi: browserUi
                 anchors.fill: parent
                 profile: browserProfile
                 inspectedView: window.activeWebView()
                 Accessible.name: "Attached developer tools"
+                Component.onCompleted: window.profileResourceRegistry.trackView(primaryInspector,viewHost,viewUi)
             }
         }
     }

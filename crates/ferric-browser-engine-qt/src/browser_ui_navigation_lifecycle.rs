@@ -679,6 +679,7 @@ impl qobject::BrowserUi {
             // the pending handoff before dropping workers so a late result
             // cannot recreate state after the final owner has gone away.
             this.pending_profile_configuration = None;
+            this.session_saves.clear();
             this.config_reload_worker = None;
             this.config_write_worker = None;
             this.profile_delete_worker = None;

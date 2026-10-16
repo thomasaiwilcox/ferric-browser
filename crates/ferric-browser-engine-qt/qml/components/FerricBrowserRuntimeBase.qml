@@ -13,6 +13,9 @@ ApplicationWindow {
     readonly property var modalInputScope: FerricModalInputController { hostWindow: window }
     property bool runtimeDisposing: false
     property bool profileBootstrapComplete: false
+    property var primaryProfileResources: null
+    readonly property alias profileResourceRegistry: profileResources
+    FerricProfileResourceRegistry { id: profileResources; rootWindow: window }
     readonly property alias scriptRunnerObject: scriptRunner
     FerricScriptRunner { id: scriptRunner }
     readonly property alias primaryBrowserUi: browserUi
@@ -895,7 +898,7 @@ ApplicationWindow {
             return false
         }
         if (profile && profile.offTheRecord && ui && ui.set_private_start_owner) {
-            var owner = (window.browserWindowRegistry || []).find(function(entry) { return entry && entry.profile === profile && entry.ui && entry.ui.start_page_owner_token.length > 0 })
+            var owner = window.liveWindowEntries().find(function(entry) { return entry.profile === profile && entry.ui.start_page_owner_token.length > 0 })
             ui.set_private_start_owner(owner ? owner.ui.start_page_owner_token : ui.window_token)
         }
         var entries = (window.browserWindowRegistry || []).filter(function(entry) {
@@ -920,6 +923,11 @@ ApplicationWindow {
         return true
     }
 
+    function liveWindowEntries() {
+        return (window.browserWindowRegistry || []).concat(window.popupWindowRegistry || [])
+                .filter(function(entry) { return entry && entry.host && entry.ui && !entry.host.runtimeReleased })
+    }
+
     function publishBrowserWindowRegistry() {
         var ids = []
         var ownerTokens = []
@@ -927,7 +935,7 @@ ApplicationWindow {
         var privateFlags = []
         var ephemeralFlags = []
         var tabCounts = []
-        var entries = window.browserWindowRegistry || []
+        var entries = window.liveWindowEntries()
         for (var i = 0; i < entries.length && ids.length < 64; ++i) {
             var entry = entries[i]
             if (!entry || !entry.ui || !entry.host) {
@@ -947,13 +955,17 @@ ApplicationWindow {
     }
 
     function updateBrowserWindowView(ui, view) {
-        var entries = window.browserWindowRegistry || []
-        for (var i = 0; i < entries.length; ++i) {
-            if (entries[i] && entries[i].ui === ui) {
-                entries[i].view = view || null
-                window.browserWindowRegistry = entries
-                window.publishBrowserWindowRegistry()
-                return true
+        var groups = [window.browserWindowRegistry || [],window.popupWindowRegistry || []]
+        for (var groupIndex=0;groupIndex<groups.length;++groupIndex) {
+            var entries=groups[groupIndex]
+            for (var i=0;i<entries.length;++i) {
+                if (entries[i] && entries[i].ui===ui) {
+                    entries[i].view=view || null
+                    if (groupIndex===0) window.browserWindowRegistry=entries
+                    else window.popupWindowRegistry=entries
+                    window.publishBrowserWindowRegistry()
+                    return true
+                }
             }
         }
         return false
@@ -962,9 +974,7 @@ ApplicationWindow {
     function browserWindowEntryForTarget(target) {
         var requested = String(target || "")
         if (requested.length === 0) return null
-        var entries = (window.browserWindowRegistry || []).filter(function(entry) {
-            return entry && entry.host && entry.ui
-        })
+        var entries = window.liveWindowEntries()
         var exact = entries.filter(function(entry) { return entry.windowToken === requested })
         if (exact.length === 1) return exact[0]
         // Core IDs are local to each BrowserUi runtime. Keep a unique alias
@@ -978,7 +988,7 @@ ApplicationWindow {
         if (requested.length === 0 || !sourceEntry) {
             return null
         }
-        var entries = window.browserWindowRegistry || []
+        var entries = window.liveWindowEntries()
         for (var i = 0; i < entries.length; ++i) {
             var entry = entries[i]
             if (entry && entry.host && entry.ui && entry !== sourceEntry
@@ -993,7 +1003,7 @@ ApplicationWindow {
     }
 
     function browserWindowEntryForUi(ui) {
-        var entries = window.browserWindowRegistry || []
+        var entries = window.liveWindowEntries()
         for (var i = 0; i < entries.length; ++i) {
             if (entries[i] && entries[i].ui === ui) {
                 return entries[i]
@@ -1007,7 +1017,7 @@ ApplicationWindow {
         if (preferred && (!preferredHost || preferred.host === preferredHost)) {
             return preferred
         }
-        var entries = window.browserWindowRegistry || []
+        var entries = window.liveWindowEntries()
         for (var i = 0; i < entries.length; ++i) {
             var entry = entries[i]
             if (entry && entry.host && entry.ui && entry.host.active) {
@@ -1031,21 +1041,41 @@ ApplicationWindow {
         window.publishBrowserWindowRegistry()
     }
 
-    function registerPopupWindow(hostWindow, openerUi, view) {
-        if (!hostWindow) {
+    function registerPopupWindow(hostWindow, ui, view) {
+        if (!hostWindow || !ui || !ui.register_ipc_owner()) return false
+        ui.set_ipc_window_active(!!hostWindow.active)
+        var previous=(window.popupWindowRegistry || []).find(function(entry) { return entry && entry.host===hostWindow })
+        var profile=hostWindow.windowWebEngineProfile
+        var token=String(hostWindow.windowEphemeralInvocationToken || "")
+        if (previous && previous.ephemeralProfile)
+            window.releaseEphemeralProfileOwner(previous.profile,previous.ephemeralInvocationToken)
+        if (hostWindow.windowEphemeralProfile && !window.retainEphemeralProfileOwner(profile,token))
             return false
+        if (profile && profile.offTheRecord && ui.set_private_start_owner) {
+            var owner=window.liveWindowEntries().find(function(entry) { return entry.profile===profile && entry.ui!==ui && entry.ui.start_page_owner_token.length>0 })
+            ui.set_private_start_owner(owner ? owner.ui.start_page_owner_token : ui.window_token)
         }
         var entries = (window.popupWindowRegistry || []).filter(function(entry) {
             return entry && entry.host && entry.host !== hostWindow
         })
-        entries.push({ host: hostWindow, ui: openerUi || browserUi, view: view || null })
+        entries.push({host:hostWindow,ui:ui,view:view || null,profile:profile,
+            coreWindowId:String(ui.core_window_id || ""),windowToken:String(ui.window_token || ""),
+            profileName:String(hostWindow.windowProfileName || ""),
+            privateProfile:!!hostWindow.windowPrivateProfile,
+            ephemeralProfile:!!hostWindow.windowEphemeralProfile,ephemeralInvocationToken:token})
         window.popupWindowRegistry = entries
+        window.publishBrowserWindowRegistry()
         return true
     }
 
     function unregisterPopupWindow(hostWindow) {
+        var previous=(window.popupWindowRegistry || []).find(function(entry) { return entry && entry.host===hostWindow })
+        if (previous && previous.ui) previous.ui.release_ipc_owner()
+        if (previous && previous.ephemeralProfile)
+            window.releaseEphemeralProfileOwner(previous.profile,previous.ephemeralInvocationToken)
         window.popupWindowRegistry = (window.popupWindowRegistry || []).filter(
                     function(entry) { return entry && entry.host && entry.host !== hostWindow })
+        window.publishBrowserWindowRegistry()
     }
 
     function shutdownParticipantCount() {
@@ -1883,20 +1913,6 @@ ApplicationWindow {
     }
 
     property var browserProfile: null
-
-    Connections {
-        target: browserProfile
-
-        function onDownloadRequested(download) {
-            window.handleDownloadRequested(download)
-        }
-        function onDownloadFinished(download) {
-            window.handleDownloadFinished(download)
-        }
-        function onPresentNotification(notification) {
-            window.presentWebNotification(browserUi, notification, window.temporaryProfile)
-        }
-    }
 
     RequestInterceptor {
         id: requestInterceptor

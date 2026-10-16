@@ -29,6 +29,7 @@ ApplicationWindow {
     }
 
     onClosing: {
+        browserWindow.profileResourceRegistry.releaseView(detachedDevToolsView)
         if (ownerWindow) {
             ownerWindowClosed()
         } else if (inspectView) {
@@ -38,9 +39,16 @@ ApplicationWindow {
 
     WebEngineView {
         id: detachedDevToolsView
+        property var viewHost: devToolsWindow.inspectView ? devToolsWindow.inspectView.viewHost : devToolsWindow.ownerWindow
+        property var viewUi: devToolsWindow.inspectView ? devToolsWindow.inspectView.viewUi : null
         anchors.fill: parent
         profile: devToolsWindow.inspectView ? devToolsWindow.inspectView.profile : null
         inspectedView: devToolsWindow.inspectView
         Accessible.name: "Detached developer tools"
+        Component.onCompleted: browserWindow.profileResourceRegistry.trackView(detachedDevToolsView,viewHost,viewUi)
+    }
+    Component.onDestruction: {
+        if (browserWindow && !browserWindow.runtimeDisposing)
+            browserWindow.profileResourceRegistry.releaseView(detachedDevToolsView)
     }
 }

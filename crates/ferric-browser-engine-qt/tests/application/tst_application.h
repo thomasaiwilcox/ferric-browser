@@ -88,7 +88,11 @@ class ApplicationTests final : public QObject {
     void productPolishNativePageHistory();
     void productPolishSecondaryHistoryCommands_data();
     void productPolishSecondaryHistoryCommands();
+    void productPolishTransferredSourceClose_data();
     void productPolishTransferredSourceClose();
+    void productPolishPopupSourceClose_data();
+    void productPolishPopupSourceClose();
+    void productPolishPopupCommands();
     void productPolishProvisionalTransferFallback_data();
     void productPolishProvisionalTransferFallback();
     void productPolishSecondaryTabs();
@@ -104,6 +108,7 @@ class ApplicationTests final : public QObject {
     void productPolishPopupScripts();
     void productPolishSiteLedger();
     void productPolishSessionPreview();
+    void productPolishSessionSaveBackpressure();
     void productPolishManagerFeedback();
     void productPolishLibrary();
     void productPolishPrivateLibrary();

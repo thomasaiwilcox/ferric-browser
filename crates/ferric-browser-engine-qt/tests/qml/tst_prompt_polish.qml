@@ -292,6 +292,16 @@ TestCase {
         var accept=findChild(view,"pageDialogAccept");accept.forceActiveFocus();keyClick(Qt.Key_Space)
         compare(host.acceptedDialogs,1)
     }
+    function test_short_page_request_uses_its_content_height() {
+        host.dialogKind="confirm"
+        var view=create(pageFixture);view.open();verify(waitForPolish(host))
+        verify(view.panelItem.height<host.height*0.6,"A short request should not leave a tall empty panel")
+        verify(view.headerItem.contentLayout.implicitHeight<=view.headerItem.availableHeight+1,
+               "A short page heading and origin should fit without a header scrollbar")
+        var cancel=findChild(view,"pageDialogCancel")
+        var position=cancel.mapToItem(view.panelItem,0,0)
+        verify(position.y+cancel.height<view.panelItem.height)
+    }
     function test_page_form_data() { return sizes() }
     function test_page_form(data) {
         resize(data);host.dialogKind="authentication"

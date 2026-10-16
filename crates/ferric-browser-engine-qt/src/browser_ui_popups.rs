@@ -167,6 +167,9 @@ impl qobject::BrowserUi {
             return;
         };
         self.as_mut().note_navigation_started(target, &url);
+        if self.as_ref().rust().tab == Some(target.tab) {
+            self.as_mut().set_load_state(QString::from("provisional"));
+        }
     }
 
     pub(super) fn popup_navigation_url_changed(
@@ -197,6 +200,9 @@ impl qobject::BrowserUi {
             .is_ok();
         if changed && record_history {
             self.as_mut().record_same_document_visit(target.tab, &url);
+        }
+        if changed && self.as_ref().rust().tab == Some(target.tab) {
+            self.as_mut().update_current_url(QString::from(url));
         }
     }
 
@@ -241,6 +247,12 @@ impl qobject::BrowserUi {
             },
         );
         if self.as_mut().reduce_event(commit_event).is_ok() {
+            if self.as_ref().rust().tab == Some(target.tab) {
+                self.as_mut()
+                    .update_current_url(QString::from(canonical_url.clone()));
+                self.as_mut().set_page_title(QString::from(title.clone()));
+                self.as_mut().set_load_state(QString::from("committed"));
+            }
             self.as_mut().record_committed_visit(
                 target.tab,
                 &canonical_url,
@@ -263,6 +275,9 @@ impl qobject::BrowserUi {
         let _ = self
             .as_mut()
             .reduce_event(Event::CompleteNavigation { target });
+        if self.as_ref().rust().tab == Some(target.tab) {
+            self.as_mut().set_load_state(QString::from("complete"));
+        }
     }
 
     pub(super) fn popup_navigation_failed(mut self: Pin<&mut Self>, token: &QString) {
@@ -274,6 +289,9 @@ impl qobject::BrowserUi {
         let _ = self.as_mut().take_journey_transition(target);
         let _ = self.as_mut().take_journey_parent(target);
         let _ = self.as_mut().reduce_event(Event::FailNavigation { target });
+        if self.as_ref().rust().tab == Some(target.tab) {
+            self.as_mut().set_load_state(QString::from("failed"));
+        }
     }
 
     pub(super) fn release_popup_journey_token(mut self: Pin<&mut Self>, token: &QString) {

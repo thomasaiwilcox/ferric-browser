@@ -190,7 +190,11 @@ fn scalar_feature_preferences_cross_the_qml_boundary_without_config_parsing() {
     assert!(source.contains("update_feature_preferences"));
     assert!(preferences.contains("struct FeaturePreferences"));
     assert!(qml.contains("return browserUi.feature_switcher_max_results"));
-    assert!(qml.contains("return browserUi.feature_downloads_ask_destination"));
+    assert!(qml.contains("return (ui || browserUi).feature_downloads_ask_destination"));
+    assert!(qml.contains("rootWindow.downloadsAskDestination(secondaryUi)"));
+    let popup = include_str!("../../qml/components/FerricPopupWindow.qml");
+    assert!(popup.contains("FerricBrowserWindow {"));
+    assert!(!popup.contains("downloadsAskDestination"));
     assert!(qml.contains("feature_desktop_notifications_enabled"));
     assert!(qml.contains("feature_desktop_media_keys_enabled"));
     assert!(qml.contains("feature_push_service_enabled"));
@@ -432,8 +436,11 @@ fn authentication_and_client_certificates_stay_in_native_engine_prompts() {
     ]
     .concat();
     assert!(qml.contains("request.proxyHost"));
-    assert!(qml.contains("HTTP authentication"));
-    assert!(qml.contains("Proxy authentication"));
+    assert!(qml.contains("Sign in to this site"));
+    assert!(qml.contains("Confirm this page's request"));
+    assert!(qml.contains("Site message: "));
+    assert!(qml.contains("Sign in to the proxy"));
+    assert!(qml.contains("Proxy message: "));
     assert!(qml.contains("authentication ? \"authentication\" : \"page-dialog\""));
     assert!(qml.contains("\"dialogAccept\", [username, password]"));
     assert!(qml.contains("pageDialogPopup.passwordText = \"\""));
@@ -496,7 +503,8 @@ fn account_flows_keep_tabs_and_popups_on_the_opener_profile() {
     assert!(secondary.contains("transientProfile: secondaryWindow.windowTransientProfile"));
     assert!(controller.contains("viewTransientProfile: transientProfile"));
     assert!(qml.contains("storageName: window.temporaryProfile ? \"\""));
-    assert!(qml.contains("storageName: secondaryWindow.windowTransientProfile ? \"\""));
+    assert!(qml.contains("storageName: resources.transientProfile ? \"\""));
+    assert!(qml.contains("windowSharedProfile,windowSharedRequestInterceptor"));
     assert!(!qml.contains("new WebEngineProfile"));
 }
 
@@ -743,11 +751,15 @@ fn blocking_host_lists_cross_the_qml_boundary_as_string_lists() {
         assert!(!qml.contains(&format!("JSON.parse(secondaryUi.{property})")));
     }
     assert!(qml.contains("blockedHosts: browserUi.blocking_hosts"));
-    assert!(qml.contains("blockedHosts: secondaryUi.blocking_hosts"));
+    assert!(qml.contains("blockedHosts: Array.prototype.slice.call(ui.blocking_hosts)"));
+    assert!(qml.contains("blockedHosts: resources.policySnapshot.blockedHosts"));
+    assert!(source.contains("#[qproperty(bool, blocking_policy_ready)]"));
+    assert!(qml.contains("ui.blocking_policy_ready===false"));
     assert!(!qml.contains("JSON.parse(browserUi.blocking_rule_"));
     assert!(!qml.contains("JSON.parse(secondaryUi.blocking_rule_"));
     assert!(qml.contains("blockedRuleHosts: browserUi.blocking_rule_hosts"));
-    assert!(qml.contains("blockedRuleHosts: secondaryUi.blocking_rule_hosts"));
+    assert!(qml.contains("blockedRuleHosts: Array.prototype.slice.call(ui.blocking_rule_hosts)"));
+    assert!(qml.contains("blockedRuleHosts: resources.policySnapshot.blockedRuleHosts"));
     for property in [
         "blocking_cosmetic_rule_hosts",
         "blocking_cosmetic_rule_selectors",
@@ -937,6 +949,9 @@ fn tab_projection_changes_use_qt_property_setters() {
 #[test]
 fn status_surfaces_report_bounded_navigation_and_activity_state() {
     let qml = QML_SOURCE;
+    let primary = include_str!("../../qml/components/FerricBrowserRuntimeChrome.qml");
+    let shared_window = include_str!("../../qml/components/FerricBrowserWindow.qml");
+    let popup = include_str!("../../qml/components/FerricPopupWindow.qml");
     let status_bar = include_str!("../../qml/components/FerricStatusBar.qml");
     let window_status_bar = include_str!("../../qml/components/FerricWindowStatusBar.qml");
     assert!(qml.contains("function statusTransport(view)"));
@@ -952,7 +967,9 @@ fn status_surfaces_report_bounded_navigation_and_activity_state() {
     assert!(qml.contains("browserUi, window, window.activeWebView()"));
     assert!(qml.contains("secondaryUi, secondaryWindow,"));
     assert!(qml.contains("secondaryWindow.activeView,"));
-    assert!(qml.matches(".statusDetails(").count() >= 3);
+    assert!(primary.contains("accessibleDetails: window.statusDetails("));
+    assert!(shared_window.contains("accessibleDetails: rootWindow.statusDetails("));
+    assert!(popup.contains("FerricBrowserWindow {"));
     assert!(qml.contains("siteDoctorBadge(ui)"));
     assert!(qml.contains("FerricStatusBar {"));
     assert!(status_bar.contains("required property string accessibleDetails"));
@@ -1056,31 +1073,29 @@ fn context_entry_restores_safe_descriptors_lazily_and_focuses_live_members() {
 
 #[test]
 fn popup_windows_capture_opener_context_identity() {
-    let qml = QML_SOURCE;
-    assert!(qml.contains("property string popupContextName"));
-    assert!(qml.contains("property string popupContextLabel"));
-    assert!(qml.contains("property string popupJourneyToken"));
-    assert!(qml.contains("take_popup_journey_token"));
-    assert!(qml.contains("popup_navigation_started"));
-    assert!(qml.contains("popup_navigation_committed"));
-    assert!(qml.contains("release_popup_journey_token"));
+    let qml=QML_SOURCE;
+    let popup=include_str!("../../qml/components/FerricPopupWindow.qml");
+    let host=include_str!("../../qml/components/FerricBrowserWindow.qml");
+    let controller=include_str!("../../qml/components/FerricTabViewController.qml");
+    assert!(popup.contains("FerricBrowserWindow {"));
+    assert!(popup.contains("windowPopup: true"));
+    assert!(popup.contains("windowSharedProfile: popupProfile"));
+    assert!(popup.contains("readonly property var popupPermissionUi: windowUi"));
+    assert!(!popup.contains("WebEngineView {"));
+    assert!(!popup.contains("|| rootWindow.primaryBrowserUi"));
     assert!(qml.contains("popupContextName: viewUi.context_name"));
-    assert!(qml.contains("property string popupProfileName"));
-    assert!(qml.contains("popupWindow.popupProfileName"));
-    assert!(qml.contains("popupWindow.popupEphemeralProfile"));
-    assert!(
-        qml.contains(
-            "popupWindow, popupView,\n                      popupWindow.popupPrivateProfile"
-        )
-    );
-    let controller = include_str!("../../qml/components/FerricTabViewController.qml");
-    let secondary = include_str!("../../qml/components/FerricBrowserWindow.qml");
+    assert!(qml.contains("popupContextLabel: viewUi.context_label"));
+    assert!(qml.contains("popupOpenerUi: viewUi"));
+    assert!(qml.contains("take_popup_journey_token"));
+    assert!(host.contains("popupOwnerBridge.initialize(secondaryWindow.windowPopupOpenerUi,"));
+    assert!(host.contains("request.openIn(view)"));
+    assert!(host.contains("view.profile!==windowSharedProfile"));
+    assert!(host.contains("rootWindow.registerPopupWindow(secondaryWindow,secondaryUi,activeView)"));
+    assert!(host.contains("rootWindow.unregisterPopupWindow(secondaryWindow)"));
     assert!(controller.contains("viewUi: browserUi"));
-    assert!(secondary.contains("browserUi: secondaryUi"));
     assert!(controller.contains("viewHost: browserHost"));
-    assert!(secondary.contains("browserHost: secondaryWindow"));
-    assert!(qml.contains("Ferric Browser popup · context"));
-    assert!(qml.contains("popupPermissionUi: viewUi"));
+    assert!(host.contains("browserHost: secondaryWindow"));
+    assert!(host.contains("browserUi: secondaryUi"));
 }
 
 #[test]
@@ -1147,9 +1162,11 @@ fn required_desktop_portals_gate_file_selection_asynchronously() {
     assert!(qml.contains("pendingFileDialogPortalDeadlineMs"));
     assert!(qml.contains("Desktop portal check timed out; file selection cancelled"));
     assert!(qml.contains("pendingDesktopMediaPortalDeadlineMs"));
-    assert!(qml.contains("popupFilePortalTimer"));
+    assert!(qml.contains("secondaryFilePortalTimer"));
     assert!(qml.contains("function maybeOpenPendingFileDialog()"));
-    assert!(qml.contains("popupWindow.maybeOpenPendingFileDialog()"));
+    let popup = include_str!("../../qml/components/FerricPopupWindow.qml");
+    assert!(popup.contains("FerricBrowserWindow {"));
+    assert!(!popup.contains("pendingFileDialogWaitingForPortal"));
     assert!(qml.contains("secondaryWindow.maybeOpenPendingFileDialog()"));
     assert!(qml.contains("secondaryWindow.pendingFileDialogWaitingForPortal = true"));
     assert!(qml.contains("secondaryWindow.pendingFileDialogPortalDeadlineMs"));
@@ -1321,7 +1338,8 @@ fn ephemeral_hint_target_creates_a_typed_new_window_action() {
     assert!(qml.contains("windowShutdownPromptVisible"));
     assert!(qml.contains("secondaryUi.request_shutdown()"));
     assert!(qml.contains("hasActiveShutdownRequestsFor"));
-    assert!(qml.contains("windowSharedProfile || secondaryProfile"));
+    assert!(qml.contains("windowSharedProfile,windowSharedRequestInterceptor"));
+    assert!(qml.contains("group.profile===profile"));
 }
 
 #[test]
@@ -1985,22 +2003,12 @@ fn native_window_close_requires_a_user_decision_before_shutdown_checks() {
     assert!(surface.contains("promptVisible: window.shutdownConfirmationVisible"));
     assert!(surface.contains("window.continueQuitRequest()"));
 
-    for (name, window_source) in [("secondary", secondary), ("popup", popup)] {
-        assert!(
-            window_source.contains("close.accepted = false"),
-            "{name} must reject the native close event until confirmed"
-        );
-        assert!(
-            window_source.contains("windowCloseConfirmationVisible = true"),
-            "{name} must expose its close confirmation"
-        );
-        assert!(
-            window_source.contains("promptVisible: popupWindow.windowCloseConfirmationVisible")
-                || window_source
-                    .contains("promptVisible: secondaryWindow.windowCloseConfirmationVisible"),
-            "{name} must render the shared keyboard-first confirmation"
-        );
-    }
+    assert!(popup.contains("FerricBrowserWindow {"));
+    assert!(!popup.contains("onClosing:"));
+    assert!(secondary.contains("close.accepted = false"),
+        "Shared child windows must reject the native close event until confirmed");
+    assert!(secondary.contains("windowCloseConfirmationVisible = true"));
+    assert!(secondary.contains("promptVisible: secondaryWindow.windowCloseConfirmationVisible"));
 
     assert!(root.contains("host.continueQuitRequest()"));
     assert!(root.contains("popup.continueQuitRequest()"));
@@ -2028,7 +2036,7 @@ fn webengine_surface_recovery_is_frame_synchronized_and_wired_to_every_window() 
     assert!(!controller.contains(".reload("));
     assert!(!controller.contains("Private"));
 
-    for host in [primary, secondary, popup, devtools] {
+    for host in [primary, secondary, devtools] {
         assert!(host.contains("FerricWebEngineSurfaceRecovery"));
         assert!(host.contains("nativeWayland"));
         assert!(host.contains("softwareRendering"));
@@ -2037,7 +2045,8 @@ fn webengine_surface_recovery_is_frame_synchronized_and_wired_to_every_window() 
     assert!(primary.contains("attachedDevToolsLoader.item"));
     assert!(secondary.contains("secondaryWindow.activeView"));
     assert!(secondary.contains("secondaryDevToolsLoader.item"));
-    assert!(popup.contains("views: [popupView]"));
+    assert!(popup.contains("FerricBrowserWindow {"));
+    assert!(!popup.contains("FerricWebEngineSurfaceRecovery"));
     assert!(devtools.contains("views: [detachedDevToolsView]"));
     assert!(root.contains("property bool nativeWayland: false"));
     assert!(executable.contains("platform.starts_with(\"wayland\")"));
@@ -2060,8 +2069,8 @@ fn statusbar_visibility_is_mode_aware_in_every_browser_window() {
     assert!(primary.contains("statusVisible: window.statusBarVisible"));
     assert!(secondary.contains("statusVisible: secondaryWindow.statusBarVisible"));
     assert!(secondary.contains("anchors.bottomMargin: secondaryWindow.bottomChromeHeight"));
-    assert!(popup.contains("visible: popupWindow.statusBarVisible"));
-    assert!(popup.contains("anchors.bottomMargin: popupWindow.statusBarVisible"));
+    assert!(popup.contains("FerricBrowserWindow {"));
+    assert!(!popup.contains("statusBarVisible"));
 }
 
 #[test]

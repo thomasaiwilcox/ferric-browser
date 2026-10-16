@@ -57,10 +57,7 @@ impl qobject::BrowserUi {
                     .any(|effect| matches!(effect, RuntimeEffect::AppliedEvent(_)))
             });
             if accepted {
-                this.checkpoint.dirty = true;
-                if this.checkpoint.dirty_since_ms.is_none() {
-                    this.checkpoint.dirty_since_ms = Some(elapsed_ms(this.binding_clock));
-                }
+                this.checkpoint.mark_dirty(elapsed_ms(this.binding_clock));
                 for (event_type, payload) in
                     result.as_ref().into_iter().flatten().filter_map(|effect| {
                         if let RuntimeEffect::IpcEvent {
