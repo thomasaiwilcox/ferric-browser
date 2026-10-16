@@ -179,6 +179,10 @@ impl qobject::BrowserUi {
             "major": ferric_browser_ipc::PROTOCOL_MAJOR,
             "minor": ferric_browser_ipc::PROTOCOL_MINOR
         });
+        result["profile_startup"] = self
+            .rust()
+            .profile_startup
+            .snapshot(self.rust().profile_bootstrap_pending);
         result["private_state"] = serde_json::json!("memory-only");
         result["macros"] = macro_state_value(self.rust());
         result["action_audit"] = serde_json::json!({

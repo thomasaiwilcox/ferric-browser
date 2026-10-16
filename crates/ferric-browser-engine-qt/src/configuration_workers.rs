@@ -30,6 +30,12 @@ pub(super) enum ConfigReadOperation {
     Check,
 }
 
+#[derive(Debug)]
+pub(super) struct ConfigReadFailure {
+    pub(super) operation: Option<ConfigReadOperation>,
+    pub(super) detail: String,
+}
+
 enum ConfigReloadRequest {
     Load { path: PathBuf, profile_name: String },
     Check { path: PathBuf },
@@ -37,6 +43,7 @@ enum ConfigReloadRequest {
 
 pub(super) struct ConfigReloadWorker {
     inner: SingleFlightWorker<ConfigReloadRequest, Result<ConfigReloadResult, String>>,
+    pending_operation: Option<ConfigReadOperation>,
 }
 
 pub(super) struct ConfigWriteResult {
@@ -156,7 +163,10 @@ impl ConfigReloadWorker {
             },
         )
         .map_err(|error| error.to_string())?;
-        Ok(Self { inner })
+        Ok(Self {
+            inner,
+            pending_operation: None,
+        })
     }
 
     pub(super) fn request(&mut self, path: PathBuf, profile_name: String) -> Result<(), String> {
@@ -164,7 +174,10 @@ impl ConfigReloadWorker {
             .inner
             .submit(ConfigReloadRequest::Load { path, profile_name })
         {
-            Ok(()) => Ok(()),
+            Ok(()) => {
+                self.pending_operation = Some(ConfigReadOperation::Reload);
+                Ok(())
+            }
             Err(SubmitError::Busy) => Err("configuration reload is already pending".into()),
             Err(SubmitError::QueueFull) => Err("configuration reload queue is full".into()),
             Err(SubmitError::Stopped) => Err("configuration reload worker stopped".into()),
@@ -173,19 +186,24 @@ impl ConfigReloadWorker {
 
     pub(super) fn request_check(&mut self, path: PathBuf) -> Result<(), String> {
         match self.inner.submit(ConfigReloadRequest::Check { path }) {
-            Ok(()) => Ok(()),
+            Ok(()) => {
+                self.pending_operation = Some(ConfigReadOperation::Check);
+                Ok(())
+            }
             Err(SubmitError::Busy) => Err("configuration read is already pending".into()),
             Err(SubmitError::QueueFull) => Err("configuration read queue is full".into()),
             Err(SubmitError::Stopped) => Err("configuration reload worker stopped".into()),
         }
     }
 
-    pub(super) fn poll(&mut self) -> Option<Result<ConfigReloadResult, String>> {
-        match self.inner.poll() {
-            WorkerPoll::Pending => None,
-            WorkerPoll::Ready(result) => Some(result),
-            WorkerPoll::Stopped => Some(Err("configuration reload worker stopped".into())),
-        }
+    pub(super) fn poll(&mut self) -> Option<Result<ConfigReloadResult, ConfigReadFailure>> {
+        let result = match self.inner.poll() {
+            WorkerPoll::Pending => return None,
+            WorkerPoll::Ready(result) => result,
+            WorkerPoll::Stopped => Err("configuration reload worker stopped".into()),
+        };
+        let operation = self.pending_operation.take();
+        Some(result.map_err(|detail| ConfigReadFailure { operation, detail }))
     }
 
     pub(super) fn is_pending(&self) -> bool {

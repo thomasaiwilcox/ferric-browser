@@ -123,9 +123,12 @@ ApplicationWindow {
     readonly property bool statusBarVisible:
         (window.commandNoticeVisible && !window.inputBarActive)
         || statusBarVisibleForMode(browserUi.mode)
+    readonly property real bottomControlsHeight:
+        inputBarActive ? inputBarHeight : (statusBarVisible ? statusBarHeight : 0)
+    property real profileNoticeHeight: 0
+    property bool profileNoticeInputActive: false
     readonly property real bottomChromeHeight:
-        (inputBarActive ? inputBarHeight
-         : (statusBarVisible ? statusBarHeight : 0))
+        bottomControlsHeight + profileNoticeHeight
         + (tabStripVisible && tabPosition === "bottom"
            ? tabBarHeight : 0)
     readonly property real chromeOpacity: 1.0
@@ -176,9 +179,8 @@ ApplicationWindow {
                                          ? Screen.devicePixelRatio : 1.0
     readonly property real logicalPixelDensity: Screen.logicalPixelDensity > 0
                                                 ? Screen.logicalPixelDensity : 1.0
-    readonly property string displayScaleLabel: Math.round(window.displayScale * 100)
-                                               + "% (" + Math.round(window.logicalPixelDensity)
-                                               + " logical dpi)"
+    readonly property string displayScaleLabel: ChromePresentation.displayScaleLabel(
+                                                   window.displayScale, window.logicalPixelDensity)
     FontMetrics {
         id: chromeFontMetrics
         font: window.font
@@ -741,6 +743,7 @@ ApplicationWindow {
                     && (!!window.pendingContextMenuRequest
                         || window.pendingContextMenuLeaseToken.length > 0))
                 || (window.contextRouteUi === ui && window.contextRouteVisible)
+                || (window.diagnosticsUi === ui && window.diagnosticsVisible)
     }
 
     function captureOverlayFocus(hostWindow, fallbackTarget) {
@@ -919,7 +922,7 @@ ApplicationWindow {
 
     function registerBrowserWindow(hostWindow, ui, view, profile, profileName,
                                    invocationToken, isEphemeral) {
-        if (!hostWindow || !ui) {
+        if (!hostWindow || !ui || !ui.profile_available()) {
             return false
         }
         if (!ui.register_ipc_owner()) return false
@@ -1070,6 +1073,7 @@ ApplicationWindow {
     }
 
     function unregisterBrowserWindow(ui) {
+        if (window.diagnosticsUi === ui) window.closeDiagnostics()
         if (ui) ui.release_ipc_owner()
         var entries = window.browserWindowRegistry || []
         for (var i = 0; i < entries.length; ++i) {
@@ -1084,7 +1088,7 @@ ApplicationWindow {
     }
 
     function registerPopupWindow(hostWindow, ui, view) {
-        if (!hostWindow || !ui || !ui.register_ipc_owner()) return false
+        if (!hostWindow || !ui || !ui.profile_available() || !ui.register_ipc_owner()) return false
         ui.set_ipc_window_active(!!hostWindow.active)
         var previous=(window.popupWindowRegistry || []).find(function(entry) { return entry && entry.host===hostWindow })
         var profile=hostWindow.windowWebEngineProfile
@@ -1111,6 +1115,7 @@ ApplicationWindow {
     }
 
     function unregisterPopupWindow(hostWindow) {
+        if (window.diagnosticsHost === hostWindow) window.closeDiagnostics()
         var previous=(window.popupWindowRegistry || []).find(function(entry) { return entry && entry.host===hostWindow })
         if (previous && previous.ui) previous.ui.release_ipc_owner()
         if (previous && previous.ephemeralProfile)
@@ -1766,6 +1771,12 @@ ApplicationWindow {
         site_doctor: ({ active: ({ kind: "" }), experiments: [] }),
         interaction: ({})
     })
+    property var diagnosticsUi: null
+    property var diagnosticsHost: null
+    readonly property var diagnosticsAppearance: diagnosticsHost && diagnosticsHost !== window
+                                               ? diagnosticsHost.chromeAppearance : window
+    property var diagnosticsExportUi: null
+    property string diagnosticsStartupDetails: ""
     property bool diagnosticsVisible: false
     property string diagnosticsText: ""
     property string diagnosticsExportNotice: ""
@@ -1864,31 +1875,78 @@ ApplicationWindow {
     property int libraryPageSize: 100
     property int libraryTotalEntries: 0
     property bool linkPreviewVisible: false
-    property var hintResults: []
-    property var hintViewport: ({ width: 0, height: 0 })
-    property string hintInput: ""
-    property var hintState: ({ mode: "label", prefix: "", query: "", matching_labels: [], active_label: "", remaining: 0, total: 0 })
-    property string targetSearchSelectedIdentity: ""
-    property string targetSearchSelectedMeaning: ""
-    property bool targetSearchSelectionInitialized: false
-    property string hintScopeHandoffLeaseId: ""
-    property var scopedGridHandoffView: null
-    property string scopedGridHandoffLeaseId: ""
-    property bool hintCollectionTruncated: false
-    property int hintDirtyRevision: 0
-    property bool hintRefreshPending: false
-    property int hintCollectionEpoch: 0
-    property var hintTrackingView: null
-    readonly property alias hintFrameProvider: hintFrameProviderObject
-    FerricHintFrameProvider { id: hintFrameProviderObject; browserWindow: window }
-    property bool rapidHintConfirmationVisible: false
+    property alias hintResults: primaryHintWorkspace.hintResults
+    property alias hintViewport: primaryHintWorkspace.hintViewport
+    property alias hintInput: primaryHintWorkspace.hintInput
+    property alias hintState: primaryHintWorkspace.hintState
+    property alias targetSearchSelectedIdentity: primaryHintWorkspace.targetSearchSelectedIdentity
+    property alias targetSearchSelectedMeaning: primaryHintWorkspace.targetSearchSelectedMeaning
+    property alias targetSearchSelectionInitialized: primaryHintWorkspace.targetSearchSelectionInitialized
+    property alias hintScopeHandoffLeaseId: primaryHintWorkspace.hintScopeHandoffLeaseId
+    property alias scopedGridHandoffView: primaryHintWorkspace.scopedGridHandoffView
+    property alias scopedGridHandoffLeaseId: primaryHintWorkspace.scopedGridHandoffLeaseId
+    property alias hintCollectionTruncated: primaryHintWorkspace.hintCollectionTruncated
+    property alias hintDirtyRevision: primaryHintWorkspace.hintDirtyRevision
+    property alias hintRefreshPending: primaryHintWorkspace.hintRefreshPending
+    property alias hintCollectionEpoch: primaryHintWorkspace.hintCollectionEpoch
+    property alias hintTrackingView: primaryHintWorkspace.hintTrackingView
+    property alias rapidHintConfirmationVisible: primaryHintWorkspace.rapidHintConfirmationVisible
+    property alias activeHintScopeLeaseId: primaryHintWorkspace.activeHintScopeLeaseId
+    property alias activeSpatialScopeLeaseId: primaryHintWorkspace.activeSpatialScopeLeaseId
+    property alias activeSpatialScopeView: primaryHintWorkspace.activeSpatialScopeView
+    property alias spatialAdapterEnabled: primaryHintWorkspace.spatialAdapterEnabled
+    property alias spatialAdapterTargetItem: primaryHintWorkspace.spatialAdapterTargetItem
+    property alias spatialAdapterSurfaceSerial: primaryHintWorkspace.spatialAdapterSurfaceSerial
+    property alias spatialAdapterSurfaceRevision: primaryHintWorkspace.spatialAdapterSurfaceRevision
+    readonly property alias hintWorkspace: primaryHintWorkspace
+    readonly property alias hintFrameProvider: primaryHintWorkspace.hintFrameProvider
+    FerricHintWorkspace {
+        id: primaryHintWorkspace
+        hostWindow: window
+        rootWindow: window
+        browserUi: window.primaryBrowserUi
+        activeView: window.activeWebView()
+        appearance: window
+        anchors.fill: window.webViewsObject
+    }
     property string copiedText: ""
     property string copiedValue: ""
-    onCopyNoticeVisibleChanged: if (!copyNoticeVisible) { copiedValue = ""; copiedText = "" }
     property bool copyNoticeSensitive: false
     property bool copyNoticeVisible: false
+    property bool copyNoticePrimary: false
+    property var copyNoticeUi: null
+    property var copyNoticeHost: null
+    property var copyNoticeView: null
+    property string copyNoticeWindowId: ""
+    property var copyNoticeSurfaceObject: null
+    readonly property bool copyNoticeInputActive: !!copyNoticeSurfaceObject && copyNoticeSurfaceObject.inputActive
+    readonly property var copyNoticeAppearance: copyNoticeHost && copyNoticeHost.chromeAppearance
+                                               ? copyNoticeHost.chromeAppearance : window
+    readonly property bool copyNoticeOwnerCurrent: {
+        if (!copyNoticeUi || !copyNoticeHost || runtimeDisposing
+                || copyNoticeHost.runtimeReleased === true || copyNoticeHost.runtimeDisposing === true
+                || String(copyNoticeUi.core_window_id) !== copyNoticeWindowId
+                || copyNoticeHost.activeWebView() !== copyNoticeView) return false
+        var owner = window.browserWindowEntryForUi(copyNoticeUi)
+        return !!owner && owner.host === copyNoticeHost
+    }
+    onCopyNoticeOwnerCurrentChanged: {
+        if (copyNoticeVisible && !copyNoticeOwnerCurrent) Qt.callLater(function() {
+            // Clear outside the binding evaluation that detected invalidation.
+            if (window.copyNoticeVisible && !window.copyNoticeOwnerCurrent) window.copyNoticeVisible = false
+        })
+    }
+    onCopyNoticeVisibleChanged: {
+        if (!copyNoticeVisible) {
+            copiedValue = ""; copiedText = ""; copyNoticeSensitive = false
+            copyNoticeUi = null; copyNoticeHost = null; copyNoticeView = null
+            copyNoticeWindowId = ""; copyNoticePrimary = false
+        }
+    }
     readonly property bool browserChromeInputActive:
-        window.inputBarActive
+        window.profileNoticeInputActive
+        || (window.copyNoticeInputActive && window.copyNoticeHost === window)
+        || window.inputBarActive
         || (window.activeWebView() && window.activeWebView().nativeUrl === "rb://start" && window.activeWebView().startPage && window.activeWebView().startPage.inputActive)
         || window.applicationShutdownForcePromptVisible
         || window.devToolsVisible
@@ -1896,6 +1954,7 @@ ApplicationWindow {
         || (window.rendererFailureVisible && (window.rendererFailureHost || window) === window)
         || window.recoveryAvailable
         || window.rapidHintConfirmationVisible
+        || browserUi.target_search_active
         || browserUi.navigation_failure_visible
         || (window.contextRouteVisible && (window.contextRouteHost || window) === window)
         || window.contextMoveVisible
@@ -1910,7 +1969,7 @@ ApplicationWindow {
         || window.shutdownPagePromptVisible
         || window.switcherVisible
         || window.siteLedgerVisible
-        || window.diagnosticsVisible
+        || (window.diagnosticsVisible && (window.diagnosticsHost || window) === window)
         || window.bindingHelpVisible
         || window.settingsVisible
         || window.libraryManagerVisible
@@ -2299,7 +2358,7 @@ ApplicationWindow {
 
     onActiveChanged: {
         browserUi.set_ipc_window_active(active)
-        if (!active) window.copyNoticeVisible = false
+        if (!active && window.copyNoticeHost === window) window.copyNoticeVisible = false
         if (!active && browserUi.hint_pointer_mode) {
             browserUi.hint_pointer_invalidated("window-inactive")
         }

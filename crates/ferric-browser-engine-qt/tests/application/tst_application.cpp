@@ -214,12 +214,22 @@ void ApplicationTests::init() {
         QVERIFY(blockedRoot.open(QIODevice::WriteOnly));
         blockedRoot.write("fixture blocks profile directory");
     }
+    QString startupConfigPath;
+    if (testName == "productPolishStartupProblems" || testName == "productPolishProfileRecovery") {
+        startupConfigPath = directory.filePath(testName=="productPolishProfileRecovery"
+            ? "configuration/root/config.toml" : "private-startup-config.toml");
+        QVERIFY(QDir().mkpath(QFileInfo(startupConfigPath).absolutePath()));
+        QFile invalidConfig(startupConfigPath);
+        QVERIFY(invalidConfig.open(QIODevice::WriteOnly));
+        invalidConfig.write("schema_version = [ malformed private setting");
+    }
     engine->setInitialProperties(
         {{"temporaryProfile", !durable},
          {"storageBasePath", storageBase},
          {"softwareRendering", true},
          {"nativeWayland", QGuiApplication::platformName() == "wayland"},
          {"startupConfigJson", startupConfig},
+         {"startupConfigPath", startupConfigPath},
          {"startupConfigBaseJson", startupConfig},
          {"startupCliOverridesJson", "{\"schema_version\":3}"},
          {"startupProfileOverridesJson", "{\"schema_version\":3}"},
@@ -553,7 +563,7 @@ void ApplicationTests::typeText(const QString &text) {
             character.isUpper() ? Qt::ShiftModifier : Qt::NoModifier);
     }
 }
-QString ApplicationTests::hintLabel(const QString &name) {
+QString ApplicationTests::hintLabel(const QString &name, const QString &ownerUi) {
     // Wait for the mode footer's first viewport update and the corresponding
     // dirty-snapshot refresh before aiming at a label.
     QTest::qWait(180);
@@ -561,7 +571,7 @@ QString ApplicationTests::hintLabel(const QString &name) {
     deadline.start();
     do {
         const auto values =
-            QJsonDocument::fromJson(text("hint_values").toUtf8()).array();
+            QJsonDocument::fromJson(evaluate(ownerUi+".hint_values").toString().toUtf8()).array();
         for (const auto &value : values) {
             const auto object = value.toObject();
             if (object.value("text").toString() == name)
@@ -571,7 +581,7 @@ QString ApplicationTests::hintLabel(const QString &name) {
     } while (deadline.elapsed() < 5000);
     return {};
 }
-bool ApplicationTests::chooseCapability(const QString &name) {
+bool ApplicationTests::chooseCapability(const QString &name, QQuickWindow *ownerWindow) {
     const auto action = "hint.capability." + name;
     const auto index =
         evaluate("testWindow.contextMenuItems.findIndex(function("
@@ -580,10 +590,12 @@ bool ApplicationTests::chooseCapability(const QString &name) {
             .toInt();
     if (index < 0)
         return false;
+    if (!ownerWindow) ownerWindow = window;
     QTest::qWait(80);
-    for (int i = 0; i < index; ++i)
-        key(Qt::Key_Down);
-    key(Qt::Key_Return);
+    for (int i = 0; i < index; ++i) {
+        QTest::keyClick(ownerWindow, Qt::Key_Down);QTest::qWait(30);
+    }
+    QTest::keyClick(ownerWindow, Qt::Key_Return);QTest::qWait(30);
     return true;
 }
 void ApplicationTests::nativePointerRequiresLocalEntryAndClicksOnce() {
@@ -1519,7 +1531,7 @@ void ApplicationTests::hintCollisionCyclesActualMarkers() {
     QVERIFY(!hintLabel("Overlapping control").isEmpty());
     QTRY_VERIFY(!evaluate("testWindow.hintRefreshPending").toBool());
     const auto before=evaluate("testWindow.hintState.active_label").toString();
-    QCOMPARE(evaluate("testWindow.hintCollisionLabels("+quoted(before)+").length").toInt(),2);
+    QCOMPARE(evaluate("testWindow.hintWorkspace.hintCollisionLabels("+quoted(before)+").length").toInt(),2);
     key(Qt::Key_Space);
     QVERIFY(evaluate("testWindow.hintState.active_label").toString()!=before);
     auto panel=window->findChild<QObject*>("hintStackPanel");
@@ -2221,8 +2233,9 @@ void ApplicationTests::productPolishTlsPrompt() {
     QString entry = "testWindow";
     if (hostKind == 1) {
         QVERIFY(evaluate("testWindow.openEphemeralWindow(" + quoted(text("current_url")) + ")").toBool());
+        QTRY_VERIFY(evaluate("testWindow.browserWindowRegistry.length > 1").toBool());
         entry = "testWindow.browserWindowRegistry[testWindow.browserWindowRegistry.length-1].host";
-        QTRY_VERIFY(evaluate(entry + ".profileBootstrapComplete").toBool());
+        QTRY_VERIFY(evaluate(entry + ".profileBootstrapComplete && !!" + entry + ".activeView").toBool());
         pageReceiver = entry + ".activeView";
     } else if (hostKind == 2) {
         QVERIFY(command("bind p hint --target pointer links"));
@@ -2316,8 +2329,9 @@ void ApplicationTests::productPolishIdentityWindows() {
         pageReceiver = "testWindow.popupWindowRegistry[0].view";
     } else {
         QVERIFY(evaluate("testWindow.openEphemeralWindow(" + quoted(text("current_url")) + ")").toBool());
+        QTRY_VERIFY(evaluate("testWindow.browserWindowRegistry.length > 1").toBool());
         entry = "testWindow.browserWindowRegistry[testWindow.browserWindowRegistry.length-1].host";
-        QTRY_VERIFY(evaluate(entry + ".profileBootstrapComplete").toBool());
+        QTRY_VERIFY(evaluate(entry + ".profileBootstrapComplete && !!" + entry + ".activeView").toBool());
         pageReceiver = entry + ".activeView";
     }
     auto host = qobject_cast<QQuickWindow *>(evaluate(entry).value<QObject *>());
@@ -2367,8 +2381,9 @@ void ApplicationTests::productPolishPromptTeardown() {
         pageReceiver = "testWindow.popupWindowRegistry[0].view";
     } else {
         QVERIFY(evaluate("testWindow.openEphemeralWindow(" + quoted(text("current_url")) + ")").toBool());
+        QTRY_VERIFY(evaluate("testWindow.browserWindowRegistry.length > 1").toBool());
         entry = "testWindow.browserWindowRegistry[testWindow.browserWindowRegistry.length-1].host";
-        QTRY_VERIFY(evaluate(entry + ".profileBootstrapComplete").toBool());
+        QTRY_VERIFY(evaluate(entry + ".profileBootstrapComplete && !!" + entry + ".activeView").toBool());
         pageReceiver = entry + ".activeView";
     }
     QTRY_VERIFY(page("document.getElementById('button') !== null").toBool());
@@ -2900,8 +2915,21 @@ void ApplicationTests::productPolishNewWindows() {
     }
     if (!privateProfile && !temporaryProfile) {
         const auto profile=evaluate(owner+".profileName").toString();
+        const auto definitions=evaluate(owner+".ui.contexts_json").toString();
+        QVERIFY(evaluate(owner+".ui.execute_command("+quoted("context-create polish-discard --profile "+profile)+")").toBool());
+        QTRY_VERIFY(evaluate(owner+".ui.context_choice_names.indexOf('polish-discard')>=0").toBool());
+        QVERIFY(evaluate(owner+".ui.execute_command('context-delete polish-discard --confirm')").toBool());
+        QTRY_VERIFY(evaluate(owner+".ui.context_choice_names.indexOf('polish-discard')<0").toBool());
+        QCOMPARE(evaluate(owner+".ui.contexts_json").toString(),definitions);
+        QVERIFY(evaluate(owner+".ui.context_choice_names.indexOf('polish-work')<0").toBool());
         QVERIFY(evaluate(owner+".ui.execute_command("+quoted("context-create polish-work --profile "+profile)+")").toBool());
-        QTRY_VERIFY(evaluate(owner+".ui.status_text.indexOf('Context created: polish-work')===0").toBool());
+        // Page loading can replace a status notice before the next test tick.
+        // Observe the committed catalog and profile, not transient prose.
+        QTRY_VERIFY2(evaluate(owner+".ui.context_choice_names.indexOf('polish-work')>=0").toBool(),
+            qPrintable(evaluate(owner+".ui.status_text").toString()));
+        QCOMPARE(evaluate(owner+".ui.context_choice_profiles["+owner+".ui.context_choice_names.indexOf('polish-work')]").toString(),profile);
+        QCOMPARE(evaluate(owner+".ui.context_choice_labels["+owner+".ui.context_choice_names.indexOf('polish-work')]").toString(),QString("polish-work"));
+        QCOMPARE(evaluate(owner+".ui.contexts_json").toString(),definitions);
         evaluate(owner+".ui.set_context_entry_reuse(true)");
         QVERIFY(evaluate(owner+".ui.execute_command('context-enter polish-work')").toBool());
         evaluate(owner+".ui.set_context_entry_reuse(false)");
@@ -2948,6 +2976,12 @@ void ApplicationTests::productPolishNewWindows() {
     QCOMPARE(evaluate(destination+".ephemeralProfile").toBool(),!explicitProfile && temporaryProfile);
     QCOMPARE(evaluate(destination+".ui.context_name").toString(),
         !privateProfile && !temporaryProfile ? QString("polish-work") : QString());
+    if (!privateProfile && !temporaryProfile) {
+        QVERIFY(evaluate(destination+".ui.context_choice_names.indexOf('polish-work')>=0").toBool());
+        QVERIFY(evaluate(destination+".ui.context_choice_names.indexOf('polish-discard')<0").toBool());
+    } else if (!explicitProfile) {
+        QCOMPARE(evaluate(destination+".ui.context_choice_names.length").toInt(),0);
+    }
     if (explicitProfile) {
         QCOMPARE(evaluate(destination+".profile").value<QObject *>(),evaluate("testWindow.browserProfile").value<QObject *>());
         QVERIFY(evaluate(destination+".profile").value<QObject *>()!=sourceProfile);
@@ -3002,6 +3036,132 @@ void ApplicationTests::productPolishNewWindows() {
         QCOMPARE(page("location.href").toString(),desired);
     }
     pageReceiver="testWindow.activeWebView()";
+}
+
+void ApplicationTests::productPolishSecondaryHints_data() {
+    QTest::addColumn<QString>("kind");
+    QTest::addColumn<bool>("pointer");
+    for (const auto &kind : {"secondary", "private", "popup"}) {
+        QTest::newRow(kind) << QString::fromLatin1(kind) << false;
+        QTest::newRow((QByteArray(kind)+"-pointer").constData()) << QString::fromLatin1(kind) << true;
+    }
+}
+
+void ApplicationTests::productPolishSecondaryHints() {
+    QTest::failOnWarning(QRegularExpression(".*(invalid context|TypeError|ReferenceError|Binding loop).*"));
+    QFETCH(QString, kind);QFETCH(bool, pointer);
+    const auto initial=text("current_url");
+    QString entry;
+    if (kind=="popup") {
+        QVERIFY(command("bind p hint --target pointer links"));key(Qt::Key_P);
+        typeText(hintLabel("Open popup"));key(Qt::Key_Return);
+        QTRY_COMPARE(evaluate("testWindow.popupWindowRegistry.length").toInt(),1);
+        entry="testWindow.popupWindowRegistry[0]";
+    } else {
+        evaluate("testWindow.browserWindowFactory.createObject(null,{windowStartupUrl:"+quoted(initial)
+            +",windowProfileName:'hint-owner',windowProfileLabel:'Hint owner',windowPrivateProfile:"
+            +(kind=="private" ? "true" : "false")+"})");
+        QTRY_COMPARE(evaluate("testWindow.browserWindowRegistry.length").toInt(),2);
+        entry="testWindow.browserWindowRegistry[1]";
+    }
+    QTRY_VERIFY(evaluate(entry+".host.profileBootstrapComplete && !"+entry+".ui.profile_bootstrap_pending").toBool());
+    auto child=qobject_cast<QQuickWindow *>(evaluate(entry+".host").value<QObject *>());QVERIFY(child);
+    pageReceiver=entry+".host.activeView";
+    const auto documentUrl=kind=="popup" ? QUrl(initial).resolved(QUrl("/popup.html")).toString() : initial;
+    QTRY_VERIFY(page("location.href === "+quoted(documentUrl)+" && document.readyState==='complete'").toBool());
+    QTRY_VERIFY(!evaluate("testWindow.browserUi.hint_pointer_pending").toBool());
+    // Keep a different hint session in the inactive primary window. Child
+    // gestures must leave its labels, selection and navigation untouched.
+    QVERIFY(command("hint links"));
+    QVERIFY(!hintLabel("Same document").isEmpty());
+    const auto primaryHints=text("hint_values");
+    QVERIFY(evaluate(entry+".ui.set_runtime_setting('ui.tabs','always',true)").toBool());
+    const auto position=kind=="secondary" ? "bottom" : kind=="private" ? "left" : "right";
+    QVERIFY(evaluate(entry+".ui.set_runtime_setting('ui.tab_position',"+quoted(position)+",true)").toBool());
+    QVERIFY(evaluate(entry+".ui.set_runtime_setting('ui.font_size_pt','16',true)").toBool());
+    evaluate(pageReceiver+".zoomFactor="+QString::number(pointer ? 1.25 : 0.8));
+    child->requestActivate();QTRY_VERIFY(child->isActive());evaluate(pageReceiver+".forceActiveFocus()");
+    const auto request=pointer ? "hint --target pointer links" : "hint links";
+    QVERIFY2(evaluate(entry+".ui.execute_secondary_interactive_command("+quoted(QString("bind h ")+request)+")").toBool(),
+        qPrintable(evaluate(entry+".ui.status_text").toString()));
+    QTest::keyClick(child,Qt::Key_H);
+    evaluate(entry+".host.processRuntimeWork()");
+    QTRY_VERIFY(evaluate(entry+".ui.hint_visible").toBool());
+    const auto label=hintLabel("Same document",entry+".ui");QVERIFY(!label.isEmpty());
+    auto overlay=findVisualItem(child->contentItem(),"hintOverlay");QVERIFY(overlay);QVERIFY(overlay->isVisible());
+    QCOMPARE(overlay->window(),child);
+    auto view=qobject_cast<QQuickItem *>(evaluate(pageReceiver).value<QObject *>());QVERIFY(view);
+    QVERIFY(qAbs(overlay->width()-view->width())<=1);QVERIFY(qAbs(overlay->height()-view->height())<=1);
+    const auto overlayOrigin=overlay->mapToScene(QPointF());
+    const auto viewOrigin=view->mapToScene(QPointF());
+    QVERIFY(qAbs(overlayOrigin.x()-viewOrigin.x())<=1);QVERIFY(qAbs(overlayOrigin.y()-viewOrigin.y())<=1);
+    const auto artifacts=qEnvironmentVariable("FERRIC_TEST_ARTIFACT_DIR");
+    if (!artifacts.isEmpty()) {
+        QDir().mkpath(artifacts);QVERIFY(child->grabWindow().save(artifacts+"/production-hints-"
+            +QString::fromLatin1(QTest::currentDataTag())+".png"));
+    }
+    for (const auto character : label) {
+        QTest::keyClick(child,Qt::Key(character.toUpper().unicode()),character.isUpper() ? Qt::ShiftModifier : Qt::NoModifier);
+        QTest::qWait(30);
+    }
+    QTest::keyClick(child,Qt::Key_Return);
+    QTRY_VERIFY(page("location.hash==='#fragment'").toBool());
+    if (pointer) {QCOMPARE(page("window.lastClicked").toString(),QString("same"));QVERIFY(page("window.lastTrusted").toBool());}
+    QTRY_VERIFY(!evaluate(entry+".ui.hint_visible").toBool());
+    QCOMPARE(text("hint_values"),primaryHints);QCOMPARE(text("current_url"),initial);
+    QVERIFY(evaluate("testWindow.browserUi.hint_visible").toBool());
+    if (!pointer) {
+        // The searchable control list takes focus in this window and requires
+        // confirmation. It must not activate a result just from query text.
+        QVERIFY(evaluate(entry+".ui.execute_secondary_interactive_command('bind t target-search controls')").toBool());
+        QTest::keyClick(child,Qt::Key_T);
+        QTRY_VERIFY(evaluate(entry+".ui.target_search_active").toBool());
+        auto searchInput=findVisualItem(child->contentItem(),"targetSearchInput");QVERIFY(searchInput);
+        QTRY_VERIFY(searchInput->hasActiveFocus());
+        for (const auto character : QString("activate exact button")) {
+            QTest::keyClick(child,Qt::Key(character.toUpper().unicode()),character.isUpper() ? Qt::ShiftModifier : Qt::NoModifier);
+            QTest::qWait(30);
+        }
+        QTRY_COMPARE(evaluate(entry+".host.hintWorkspace.hintState.query").toString(),QString("activate exact button"));
+        QTRY_COMPARE(evaluate(entry+".host.hintWorkspace.targetSearchRows().length").toInt(),1);
+        QTRY_VERIFY(!evaluate(entry+".host.hintWorkspace.targetSearchSelectedIdentity").toString().isEmpty());
+        QCOMPARE(page("window.clicks").toInt(),0);
+        if (!artifacts.isEmpty()) QVERIFY(child->grabWindow().save(artifacts+"/production-target-search-"+kind+".png"));
+        QTest::keyClick(child,Qt::Key_Return);
+        QTRY_COMPARE(page("window.clicks").toInt(),1);
+        QTRY_VERIFY(!evaluate(entry+".ui.target_search_active").toBool());
+        QTRY_VERIFY(evaluate("(function(){var item="+entry+".host.activeFocusItem;while(item && item!=="+pageReceiver+")item=item.parent;return !!item})()").toBool());
+        // Region actions use the shared palette but retain the requesting
+        // workspace through its Grid handoff and native coordinate checks.
+        QVERIFY(evaluate(entry+".ui.execute_secondary_interactive_command('bind r hint --target choose regions')").toBool());
+        QTest::keyClick(child,Qt::Key_R);
+        const auto region=hintLabel("Scoped panel",entry+".ui");QVERIFY(!region.isEmpty());
+        for (const auto character : region) { QTest::keyClick(child,Qt::Key(character.toUpper().unicode()));QTest::qWait(30); }
+        QTRY_VERIFY2_WITH_TIMEOUT(evaluate("testWindow.pendingContextMenuUi === "+entry+".ui && testWindow.contextMenuItems.length>0").toBool(),
+            qPrintable(evaluate(entry+".ui.status_text").toString()),5000);
+        QVERIFY(chooseCapability("grid-within", child));
+        QTRY_VERIFY(evaluate(entry+".ui.spatial_visible").toBool());
+        QVERIFY(evaluate(entry+".host.hintWorkspace.spatialAdapterTargetItem === "+pageReceiver).toBool());
+        if (!artifacts.isEmpty()) QVERIFY(child->grabWindow().save(artifacts+"/production-scoped-grid-"+kind+".png"));
+        QTest::keyClick(child,Qt::Key_1);QTest::keyClick(child,Qt::Key_Return);
+        QTRY_COMPARE(page("window.scopedClicks || 0").toInt(),1);
+        QVERIFY(page("window.lastTrusted").toBool());
+        QCOMPARE(text("hint_values"),primaryHints);QCOMPARE(text("current_url"),initial);
+        QVERIFY(evaluate(entry+".ui.execute_secondary_interactive_command('hint links')").toBool());
+        QVERIFY(!hintLabel("Same document",entry+".ui").isEmpty());
+        QTest::keyClick(child,Qt::Key_Escape);
+        QTRY_VERIFY(!evaluate(entry+".ui.hint_visible").toBool());
+        QVERIFY(evaluate("testWindow.browserUi.hint_visible").toBool());
+    }
+    if (!pointer) {
+        // Closing with a live collector must retire only this owner's leases.
+        QVERIFY(evaluate(entry+".ui.execute_secondary_interactive_command('hint links')").toBool());
+        QVERIFY(!hintLabel("Same document",entry+".ui").isEmpty());
+    }
+    evaluate(entry+".host.windowShutdownApproved=true");QVERIFY(child->close());
+    QTRY_COMPARE(evaluate("testWindow.browserWindowRegistry.length").toInt(),1);
+    QVERIFY(evaluate("testWindow.browserUi.hint_visible").toBool());
+    QCOMPARE(text("hint_values"),primaryHints);
 }
 
 void ApplicationTests::productPolishPopupCommands() {
@@ -3378,6 +3538,7 @@ void ApplicationTests::productPolishWindowSettings() {
 
 void ApplicationTests::productPolishIndependentWindowInput() {
     QVERIFY(evaluate("testWindow.openEphemeralWindow('rb://blank')").toBool());
+    QTRY_VERIFY(evaluate("testWindow.browserWindowRegistry.length > 1").toBool());
     const auto entry = QString("testWindow.browserWindowRegistry[testWindow.browserWindowRegistry.length-1]");
     auto child = qobject_cast<QQuickWindow *>(evaluate(entry + ".host").value<QObject *>());
     QVERIFY(child);
@@ -4032,6 +4193,279 @@ void ApplicationTests::productPolishLocalFilePaths() {
     }
 }
 
+void ApplicationTests::productPolishStartupProblems() {
+    QTRY_VERIFY(!evaluate("testWindow.browserUi.profile_bootstrap_pending").toBool());
+    const auto configPath = directory.filePath("private-startup-config.toml");
+    const auto originalWindow = text("core_window_id");
+    const auto originalUrl = text("current_url");
+    // Observe a real asynchronous watcher failure, rather than whichever
+    // startup/navigation status happens to win the initial event ordering.
+    QFile invalidConfig(configPath);
+    QVERIFY(invalidConfig.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    invalidConfig.write("schema_version = [ malformed private setting after watcher");
+    invalidConfig.close();
+    QTRY_VERIFY(evaluate("testWindow.browserUi.profile_startup_details()").toString().contains("after watcher"));
+    QVERIFY(evaluate("testWindow.browserUi.profile_startup_notice").toString().contains("settings couldn't be loaded"));
+    // Navigation may replace transient startup status; the retained local
+    // issue and the diagnostics summary must still explain the degradation.
+    QVERIFY(!text("status_text").contains(configPath));
+    QVERIFY(evaluate("testWindow.browserUi.profile_startup_details()").toString().contains(configPath));
+    // A rejected replacement must leave the usable profile and its original
+    // configuration failure intact, while retaining the latest attempt too.
+    evaluate("testWindow.browserUi.configure_profile(false,false,'Invalid replacement','',testWindow.storageBasePath)");
+    QTRY_VERIFY(!evaluate("testWindow.browserUi.profile_bootstrap_pending").toBool());
+    QCOMPARE(text("core_window_id"), originalWindow);
+    QCOMPARE(text("current_url"), originalUrl);
+    QVERIFY(evaluate("testWindow.browserUi.profile_startup_notice").toString().contains("couldn't be opened"));
+    const auto detail = evaluate("testWindow.browserUi.profile_startup_details()").toString();
+    QVERIFY(detail.contains("Latest profile attempt"));
+    QVERIFY(detail.contains(configPath));
+    QVERIFY(detail.contains("\n1 |"));
+    QVERIFY(!detail.contains(QChar(0xfffd)));
+    evaluate("testWindow.showDiagnostics()");
+    QTRY_VERIFY(evaluate("testWindow.browserUi.diagnostics_available").toBool());
+    const auto reportText = evaluate("testWindow.diagnosticsText").toString();
+    const auto report = QJsonDocument::fromJson(reportText.toUtf8()).object();
+    const auto startup = report["profile_startup"].toObject();
+    QCOMPARE(startup["latest_attempt"].toObject()["status"].toString(), QString("failed"));
+    QCOMPARE(startup["latest_attempt"].toObject()["failure_category"].toString(), QString("profile-open"));
+    QVERIFY(startup["active_profile"].toObject()["issues"].toArray().contains("configuration"));
+    QVERIFY(evaluate("testWindow.browserUi.diagnostics_summary.join(' ')").toString().contains("Some settings couldn't be loaded"));
+    QVERIFY(!reportText.contains("private-startup-config"));
+    QVERIFY(!reportText.contains("malformed private setting"));
+    auto toggle = findVisualItem(window->contentItem(), "diagnosticsStartupToggle");
+    auto details = findVisualItem(window->contentItem(), "diagnosticsStartupText");
+    QVERIFY(toggle && details);
+    QVERIFY(!details->isVisible());
+    QVERIFY(QMetaObject::invokeMethod(toggle, "click"));
+    QTRY_VERIFY(details->isVisible());
+    QCOMPARE(details->property("text").toString(), detail);
+    const auto artifacts = qEnvironmentVariable("FERRIC_TEST_ARTIFACT_DIR");
+    if (!artifacts.isEmpty()) {
+        QDir().mkpath(artifacts);
+        QVERIFY(window->grabWindow().save(artifacts+"/production-local-startup-details.png"));
+    }
+    const auto path = directory.filePath("startup-report.json");
+    QVERIFY(evaluate("testWindow.browserUi.export_diagnostics("+quoted(path)+")").toBool());
+    QFile saved(path);QVERIFY(saved.open(QIODevice::ReadOnly));
+    const auto payload = saved.readAll();
+    QVERIFY(!payload.contains("private-startup-config"));
+    QVERIFY(!payload.contains("malformed private setting"));
+    evaluate("testWindow.closeDiagnostics()");
+}
+
+void ApplicationTests::productPolishProfileRecovery_data() {
+    QTest::addColumn<QString>("position");
+    for (const auto &position : {"top", "bottom", "left", "right"})
+        QTest::newRow(position) << QString::fromLatin1(position);
+}
+
+void ApplicationTests::productPolishProfileRecovery() {
+    QTest::failOnWarning(QRegularExpression(".*(invalid context|TypeError|ReferenceError|Binding loop).*"));
+    QFETCH(QString, position);
+    QTRY_VERIFY(!evaluate("testWindow.browserUi.profile_bootstrap_pending").toBool());
+    QVERIFY(evaluate("testWindow.browserUi.set_runtime_setting('ui.statusbar','never',true)").toBool());
+    QVERIFY(evaluate("testWindow.browserUi.set_runtime_setting('ui.tabs','always',true)").toBool());
+    QVERIFY(evaluate("testWindow.browserUi.set_runtime_setting('ui.tab_position',"+quoted(position)+",true)").toBool());
+    auto notice=findVisualItem(window->contentItem(),"profileHealthNotice");
+    auto action=findVisualItem(window->contentItem(),"profileHealthDetails");
+    QVERIFY(notice && action);QTRY_VERIFY(notice->isVisible());
+    evaluate("testWindow.browserUi.status_text='A later navigation status'");
+    QVERIFY(!evaluate("testWindow.statusBarVisible").toBool());
+    QVERIFY(text("profile_startup_notice").contains("settings couldn't be loaded"));
+    QTRY_VERIFY(evaluate("(()=>{var v=testWindow.activeWebView();return v.mapToItem(testWindow.contentItem,0,v.height).y})()").toDouble()
+        <= notice->mapToItem(window->contentItem(),QPointF()).y()+1);
+    page("window.profileRecoverySentinel=47;true");
+    const auto artifacts=qEnvironmentVariable("FERRIC_TEST_ARTIFACT_DIR");
+    if (!artifacts.isEmpty()) {
+        QDir().mkpath(artifacts);
+        QVERIFY(window->grabWindow().save(artifacts+"/production-profile-notice-"+position+".png"));
+    }
+    action->forceActiveFocus();QTRY_VERIFY(action->hasActiveFocus());
+    key(Qt::Key_Return);
+    QTRY_VERIFY(evaluate("testWindow.diagnosticsVisible").toBool());
+    QCOMPARE(evaluate("testWindow.diagnosticsUi").value<QObject *>(),evaluate("testWindow.browserUi").value<QObject *>());
+    QTRY_VERIFY(evaluate("testWindow.browserUi.diagnostics_available").toBool());
+    key(Qt::Key_Escape);QTRY_VERIFY(!evaluate("testWindow.diagnosticsVisible").toBool());
+    const auto includePath=directory.filePath("configuration/included/settings.toml");
+    QVERIFY(QDir().mkpath(QFileInfo(includePath).absolutePath()));
+    QFile included(includePath);QVERIFY(included.open(QIODevice::WriteOnly|QIODevice::Truncate));
+    included.write("[ui]\nfont_size_pt=12\n");
+    if (position=="bottom") included.write("[hints.selectors.all]\nmode='replace'\nselectors=['button[data-recovery]']\n");
+    included.close();
+    QFile corrected(text("config_path"));
+    QVERIFY(corrected.open(QIODevice::WriteOnly|QIODevice::Truncate));
+    corrected.write("schema_version=3\ninclude=['../included/settings.toml']\n");corrected.close();
+    QVERIFY(command("config-reload"));
+    QTRY_COMPARE(text("profile_startup_notice"),QString());
+    QTRY_VERIFY(!notice->isVisible());
+    QCOMPARE(evaluate("testWindow.browserUi.profile_startup_details()").toString(),QString());
+    QCOMPARE(page("window.profileRecoverySentinel").toInt(),47);
+    key(Qt::Key_Colon);QTRY_COMPARE(text("mode"),QString("command"));
+    key(Qt::Key_Escape);QTRY_COMPARE(text("mode"),QString("normal"));
+    // Inherited windows must not resurrect a recovered startup failure from
+    // the cached admission effect.
+    QVERIFY(command("open --target window "+text("current_url")));
+    QTRY_COMPARE(evaluate("testWindow.browserWindowRegistry.length").toInt(),2);
+    QTRY_VERIFY(evaluate("testWindow.browserWindowRegistry[1].host.profileBootstrapComplete").toBool());
+    QCOMPARE(evaluate("testWindow.browserWindowRegistry[1].ui.profile_startup_notice").toString(),QString());
+    QCOMPARE(evaluate("testWindow.browserWindowRegistry[1].ui.profile_startup_details()").toString(),QString());
+    QTRY_COMPARE(evaluate("testWindow.browserWindowRegistry[1].ui.chrome_font_size_pt").toDouble(),12.0);
+    QVERIFY(included.open(QIODevice::WriteOnly|QIODevice::Truncate));
+    included.write("[ui]\nfont_size_pt=16\n# changed included settings\n");
+    if (position=="bottom") included.write("[hints.selectors.all]\nmode='replace'\nselectors=['button[data-recovery]']\n");
+    included.close();
+    QTRY_COMPARE_WITH_TIMEOUT(evaluate("testWindow.browserUi.chrome_font_size_pt").toDouble(),16.0,8000);
+    QTRY_COMPARE_WITH_TIMEOUT(evaluate("testWindow.browserWindowRegistry[1].ui.chrome_font_size_pt").toDouble(),16.0,8000);
+    QCOMPARE(page("window.profileRecoverySentinel").toInt(),47);
+    evaluate("testWindow.browserWindowRegistry[1].host.windowShutdownApproved=true;testWindow.browserWindowRegistry[1].host.close()");
+}
+
+void ApplicationTests::productPolishFailedProfileDiagnostics() {
+    QTest::failOnWarning(QRegularExpression(".*(invalid context|TypeError|ReferenceError|Binding loop).*"));
+    QPointer<QQuickWindow> child=qobject_cast<QQuickWindow *>(evaluate(
+        "testWindow.browserWindowFactory.createObject(null,{windowProfileName:'',windowProfileLabel:'Failed profile'})").value<QObject *>());
+    QVERIFY(child);engine->rootContext()->setContextProperty("failedStartupHost",child.data());
+    QTRY_VERIFY(!evaluate("failedStartupHost.windowUi.profile_bootstrap_pending").toBool());
+    QTRY_VERIFY(evaluate("failedStartupHost.windowUi.profile_startup_notice.length>0").toBool());
+    QVERIFY(!evaluate("failedStartupHost.windowUi.profile_available()").toBool());
+    QVERIFY(!evaluate("failedStartupHost.profileBootstrapComplete").toBool());
+    QVERIFY(evaluate("testWindow.browserWindowEntryForUi(failedStartupHost.windowUi)===null").toBool());
+    // An explicit host must match the requested QObject even for read-only
+    // diagnostics; a failed startup is never authority for another window.
+    evaluate("testWindow.showDiagnostics(testWindow.browserUi,failedStartupHost)");
+    QVERIFY(!evaluate("testWindow.diagnosticsVisible").toBool());
+    evaluate("testWindow.showDiagnostics(failedStartupHost.windowUi,testWindow)");
+    QVERIFY(!evaluate("testWindow.diagnosticsVisible").toBool());
+    auto action=findVisualItem(child->contentItem(),"profileHealthDetails");
+    QVERIFY(action);QTRY_VERIFY(action->isVisible());
+    child->requestActivate();QTRY_VERIFY(child->isActive());action->forceActiveFocus();
+    QTest::keyClick(child,Qt::Key_Return);
+    QTRY_VERIFY(evaluate("testWindow.diagnosticsVisible && testWindow.diagnosticsUi===failedStartupHost.windowUi").toBool());
+    QTRY_VERIFY(evaluate("failedStartupHost.windowUi.diagnostics_available").toBool());
+    const auto report=QJsonDocument::fromJson(evaluate("testWindow.diagnosticsText").toString().toUtf8()).object();
+    QCOMPARE(report["profile_startup"].toObject()["active_profile"].toObject()["status"].toString(),QString("unavailable"));
+    const auto artifacts=qEnvironmentVariable("FERRIC_TEST_ARTIFACT_DIR");
+    if (!artifacts.isEmpty()) {
+        QDir().mkpath(artifacts);
+        QVERIFY(child->grabWindow().save(artifacts+"/production-failed-profile-diagnostics.png"));
+    }
+    evaluate("failedStartupHost.windowShutdownApproved=true");QVERIFY(child->close());
+    QTRY_VERIFY(!evaluate("testWindow.diagnosticsVisible").toBool());
+    engine->rootContext()->setContextProperty("failedStartupHost",QVariant::fromValue<QObject *>(nullptr));
+    child->deleteLater();QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
+    QTRY_VERIFY(child.isNull());
+}
+
+void ApplicationTests::productPolishDiagnosticOwners_data() {
+    QTest::addColumn<QString>("kind");
+    QTest::addColumn<QString>("position");
+    QTest::newRow("secondary") << QString("secondary") << QString("top");
+    QTest::newRow("private") << QString("private") << QString("top");
+    QTest::newRow("popup") << QString("popup") << QString("top");
+    QTest::newRow("secondary-bottom") << QString("secondary") << QString("bottom");
+    QTest::newRow("private-left") << QString("private") << QString("left");
+    QTest::newRow("popup-right") << QString("popup") << QString("right");
+}
+
+void ApplicationTests::productPolishDiagnosticOwners() {
+    QTest::failOnWarning(QRegularExpression(".*(invalid context|TypeError|ReferenceError|Binding loop).*"));
+    QFETCH(QString, kind);
+    QFETCH(QString, position);
+    const auto initial = text("current_url");
+    QString owner;
+    if (kind == "popup") {
+        QVERIFY(command("bind p hint --target pointer links"));key(Qt::Key_P);
+        typeText(hintLabel("Open popup"));key(Qt::Key_Return);
+        QTRY_COMPARE(evaluate("testWindow.popupWindowRegistry.length").toInt(), 1);
+        owner = "testWindow.popupWindowRegistry[0]";
+    } else {
+        evaluate("testWindow.browserWindowFactory.createObject(null,{windowStartupUrl:"+quoted(initial)
+            +",windowProfileName:'diagnostic-owner',windowProfileLabel:'Diagnostic owner',windowPrivateProfile:"
+            +(kind=="private" ? "true" : "false")+"})");
+        QTRY_COMPARE(evaluate("testWindow.browserWindowRegistry.length").toInt(), 2);
+        owner = "testWindow.browserWindowRegistry[1]";
+    }
+    QTRY_VERIFY(evaluate(owner+".host.profileBootstrapComplete && !"+owner+".ui.profile_bootstrap_pending").toBool());
+    QPointer<QQuickWindow> child = qobject_cast<QQuickWindow *>(evaluate(owner+".host").value<QObject *>());
+    QVERIFY(child);
+    pageReceiver = owner+".host.activeView";
+    QTRY_VERIFY(!evaluate(pageReceiver+".loading").toBool());
+    const auto documentUrl = kind=="popup" ? QUrl(initial).resolved(QUrl("/popup.html")).toString() : initial;
+    QTRY_VERIFY(page("location.href === "+quoted(documentUrl)+" && document.readyState === 'complete'").toBool());
+    QCOMPARE(page("window.diagnosticOwnerSentinel=83;window.diagnosticOwnerSentinel").toInt(),83);
+    QVERIFY(evaluate(owner+".ui.set_runtime_setting('ui.font_size_pt','15',true)").toBool());
+    QVERIFY(evaluate(owner+".ui.set_runtime_setting('ui.statusbar','never',true)").toBool());
+    QVERIFY(evaluate(owner+".ui.set_runtime_setting('ui.tabs','always',true)").toBool());
+    QVERIFY(evaluate(owner+".ui.set_runtime_setting('ui.tab_position',"+quoted(position)+",true)").toBool());
+    evaluate(owner+".ui.configure_profile(false,false,'Failed replacement','',testWindow.storageBasePath)");
+    QTRY_VERIFY(evaluate(owner+".ui.profile_startup_notice.indexOf('current profile is still active')>=0").toBool());
+    auto notice=findVisualItem(child->contentItem(),"profileHealthNotice");
+    QVERIFY(notice);QTRY_VERIFY(notice->isVisible());
+    QTRY_VERIFY(evaluate("(()=>{var h="+owner+".host,v=h.activeView;return v.mapToItem(h.contentItem,0,v.height).y})()").toDouble()
+        <= notice->mapToItem(child->contentItem(),QPointF()).y()+1);
+    evaluate("testWindow.browserUi.record_request_resolution('certificate','resolved')");
+    evaluate(owner+".ui.record_request_resolution('page-dialog','resolved')");
+    QVERIFY2(evaluate(owner+".ui.execute_secondary_interactive_command('diagnostics')").toBool(),qPrintable(evaluate(owner+".ui.status_text").toString()));
+    evaluate(owner+".host.processRuntimeWork()");
+    QTRY_VERIFY(evaluate("testWindow.diagnosticsVisible && testWindow.diagnosticsUi === "+owner
+        +".ui && testWindow.diagnosticsHost === "+owner+".host").toBool());
+    auto close = findVisualItem(child->contentItem(), "diagnosticsClose");
+    QVERIFY(close);QCOMPARE(close->window(), child.data());
+    auto diagnostics=findVisualItem(child->contentItem(),"browserDiagnostics");
+    QVERIFY(diagnostics);
+    auto title=findVisualItem(diagnostics,"dialogTitleLabel");
+    QVERIFY(title);
+    QTRY_COMPARE(title->property("font").value<QFont>().pointSizeF(),child->property("font").value<QFont>().pointSizeF()+1);
+    QVERIFY(evaluate("testWindow.diagnosticsAppearance === "+owner+".host.chromeAppearance").toBool());
+    QTRY_VERIFY(evaluate(owner+".ui.diagnostics_available").toBool());
+    QVERIFY(!evaluate("testWindow.browserUi.diagnostics_available").toBool());
+    const auto preview = evaluate("testWindow.diagnosticsText").toString();
+    const auto report = QJsonDocument::fromJson(preview.toUtf8()).object();
+    const auto counts = report["request_resolutions"].toObject()["counts"].toArray();
+    bool ownRecord=false;
+    for (const auto &value : counts) {
+        const auto row=value.toObject();
+        QVERIFY(row["kind"] != "certificate");
+        if (row["kind"]=="page-dialog") ownRecord=true;
+    }
+    QVERIFY(ownRecord);
+    if (kind=="private") QVERIFY(evaluate(owner+".ui.diagnostics_summary.join(' ').indexOf('kept in memory')>=0").toBool());
+    auto copy = findVisualItem(child->contentItem(), "diagnosticsCopy");
+    QVERIFY(copy);QVERIFY(QMetaObject::invokeMethod(copy, "click"));
+    QCOMPARE(QGuiApplication::clipboard()->text(), preview);
+    QVERIFY(!evaluate("testWindow.copyNoticeVisible").toBool());
+    QCOMPARE(evaluate("testWindow.diagnosticsExportNotice").toString(),QString("Report preview copied"));
+    const auto artifacts=qEnvironmentVariable("FERRIC_TEST_ARTIFACT_DIR");
+    if (!artifacts.isEmpty()) {
+        QDir().mkpath(artifacts);
+        QVERIFY(child->grabWindow().save(artifacts+"/production-diagnostics-"+QString::fromLatin1(QTest::currentDataTag())+".png"));
+    }
+    auto save = findVisualItem(child->contentItem(), "diagnosticsSave");
+    QVERIFY(save);QVERIFY(QMetaObject::invokeMethod(save, "click"));
+    auto chooser = window->findChild<QObject *>("diagnosticsExportChooser");
+    QVERIFY(chooser);QTRY_VERIFY(chooser->property("visible").toBool());
+    QCOMPARE(chooser->property("parentWindow").value<QObject *>(), child.data());
+    QVERIFY(QMetaObject::invokeMethod(chooser, "reject"));
+    child->requestActivate();QTRY_VERIFY(child->isActive());
+    QTest::keyClick(child, Qt::Key_Escape);
+    QTRY_VERIFY(!evaluate("testWindow.diagnosticsVisible").toBool());
+    QVERIFY(!evaluate(owner+".ui.diagnostics_available").toBool());
+    QCOMPARE(page("window.diagnosticOwnerSentinel").toInt(),83);
+    // Closing an owner cancels its pending review and reparents the shared
+    // presentation before that window's native content is destroyed.
+    auto noticeAction=findVisualItem(child->contentItem(),"profileHealthDetails");
+    QVERIFY(noticeAction);noticeAction->forceActiveFocus();QTRY_VERIFY(noticeAction->hasActiveFocus());
+    QTest::keyClick(child,Qt::Key_Return);
+    QTRY_VERIFY(evaluate("testWindow.diagnosticsVisible && testWindow.diagnosticsUi === "+owner+".ui").toBool());
+    evaluate(owner+".host.windowShutdownApproved=true");
+    QVERIFY(child->close());
+    QTRY_VERIFY(!evaluate("testWindow.diagnosticsVisible").toBool());
+    child->deleteLater();QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
+    QTRY_VERIFY(child.isNull());
+    QCOMPARE(text("current_url"), initial);
+}
+
 void ApplicationTests::productPolishDiagnosticLifecycle_data() {
     QTest::addColumn<bool>("privateRoot");
     QTest::newRow("regular") << false;
@@ -4442,4 +4876,112 @@ void ApplicationTests::clipboardOtherWindows() {
                QString("Other-window-paste"));
   evaluate(entry + ".host.destroy()");
   pageReceiver = "testWindow.activeWebView()";
+}
+
+static QQuickItem *visibleCopyAgain(QQuickItem *item) {
+    if (item->isVisible() && item->property("text").toString()=="Copy again") return item;
+    for (auto child : item->childItems()) if (auto found=visibleCopyAgain(child)) return found;
+    return nullptr;
+}
+void ApplicationTests::productPolishCopyFeedback_data() {
+    QTest::addColumn<QString>("kind");QTest::addColumn<QString>("scenario");
+    for (const auto kind : {"secondary","private","popup"}) {
+        for (const auto scenario : {"placement","repeat-owner","unavailable-primary"})
+            QTest::newRow((QByteArray(kind)+"-"+scenario).constData()) << QString(kind) << QString(scenario);
+    }
+}
+void ApplicationTests::productPolishCopyFeedback() {
+    QTest::failOnWarning(QRegularExpression(".*(invalid context|TypeError|ReferenceError|Binding loop).*"));
+    QFETCH(QString,kind);QFETCH(QString,scenario);const bool repeat=scenario=="repeat-owner";QString entry;
+    const auto initial=text("current_url");
+    if (kind=="popup") {
+        QVERIFY(command("bind p hint --target pointer links"));key(Qt::Key_P);
+        typeText(hintLabel("Open popup"));key(Qt::Key_Return);
+        QTRY_COMPARE(evaluate("testWindow.popupWindowRegistry.length").toInt(),1);
+        entry="testWindow.popupWindowRegistry[0]";
+    } else {
+        evaluate("testWindow.browserWindowFactory.createObject(null,{windowStartupUrl:"+quoted(initial)
+            +",windowProfileName:'copy-feedback-owner',windowProfileLabel:'Copy feedback',windowPrivateProfile:"
+            +(kind=="private" ? "true" : "false")+"})");
+        QTRY_COMPARE(evaluate("testWindow.browserWindowRegistry.length").toInt(),2);
+        entry="testWindow.browserWindowRegistry[1]";
+    }
+    QTRY_VERIFY(evaluate(entry+".host.profileBootstrapComplete && !"+entry+".ui.profile_bootstrap_pending").toBool());
+    auto child=qobject_cast<QQuickWindow *>(evaluate(entry+".host").value<QObject *>());QVERIFY(child);
+    pageReceiver=entry+".host.activeView";
+    QTRY_VERIFY(page("document.readyState==='complete' && document.getElementById('button')!==null").toBool());
+    QVERIFY(evaluate(entry+".ui.set_runtime_setting('ui.font_size_pt','16',true)").toBool());
+    QVERIFY(evaluate(entry+".ui.set_runtime_setting('ui.tabs','always',true)").toBool());
+    const auto tabPosition=kind=="secondary" ? "bottom" : kind=="private" ? "left" : "right";
+    QVERIFY(evaluate(entry+".ui.set_runtime_setting('ui.tab_position',"+quoted(tabPosition)+",true)").toBool());
+    child->requestActivate();QTRY_VERIFY(child->isActive());
+    const auto copied=QString("https://example.test/copied-")+kind;
+    QVERIFY(evaluate("testWindow.copyToClipboard("+quoted(copied)+",false,false,"+entry+".ui)").toBool());
+    QCOMPARE(QGuiApplication::clipboard()->text(),copied);
+    QVERIFY(!child->grabWindow().isNull());
+    if (!repeat) QTRY_VERIFY2_WITH_TIMEOUT(visibleCopyAgain(child->contentItem()),"Copy feedback must appear in the window that initiated it",1500);
+    auto childAgain=visibleCopyAgain(child->contentItem());
+    auto primaryAgain=visibleCopyAgain(window->contentItem());
+    qInfo()<<"copy notice hosts"<<kind<<"primary"<<(primaryAgain!=nullptr)<<"child"<<(childAgain!=nullptr);
+    const auto artifacts=qEnvironmentVariable("FERRIC_TEST_ARTIFACT_DIR");
+    if (!artifacts.isEmpty() && !repeat) {
+        QDir().mkpath(artifacts);QVERIFY(window->grabWindow().save(artifacts+"/production-copy-feedback-root-"+kind+".png"));
+        QVERIFY(child->grabWindow().save(artifacts+"/production-copy-feedback-child-"+kind+".png"));
+    }
+    if (scenario=="unavailable-primary") {
+        if (QGuiApplication::clipboard()->supportsSelection()) QSKIP("Failure fixture needs an unavailable primary selection");
+        QVERIFY(!evaluate("testWindow.copyToClipboard('must-not-fall-back',false,true,"+entry+".ui)").toBool());
+        QCOMPARE(QGuiApplication::clipboard()->text(),copied);
+        QVERIFY(!evaluate("testWindow.copyNoticeVisible").toBool());
+        QVERIFY(evaluate("testWindow.copiedValue").toString().isEmpty());
+        QCOMPARE(evaluate(entry+".ui.status_text").toString(),QString("Primary selection is unavailable"));
+    } else if (!repeat) {
+        QVERIFY2(childAgain,"Copy feedback must appear in the window that initiated it");
+        QVERIFY2(!primaryAgain,"A child copy must not display its feedback in the primary window");
+        QCOMPARE(childAgain->property("font").value<QFont>().pointSizeF(),evaluate(entry+".host.font.pointSize").toDouble());
+        auto notice=findVisualItem(child->contentItem(),"copyNotice");QVERIFY(notice);
+        auto view=qobject_cast<QQuickItem *>(evaluate(pageReceiver).value<QObject *>());QVERIFY(view);
+        const auto origin=notice->mapToItem(view,QPointF());
+        QVERIFY(origin.x()>=-1 && origin.y()>=-1);
+        QVERIFY(origin.x()+notice->width()<=view->width()+1);
+        QVERIFY(origin.y()+notice->height()<=view->height()+1);
+    } else {
+        auto again=childAgain ? childAgain : primaryAgain;QVERIFY(again);
+        auto noticeWindow=again->window();noticeWindow->requestActivate();QTRY_VERIFY(noticeWindow->isActive());
+        evaluate("testWindow.browserUi.status_text='Title copy pending';"+entry+".ui.status_text='URL copy pending'");
+        QGuiApplication::clipboard()->setText("repeat-sentinel");
+        // Status/font/tab changes can move a bottom-anchored control. Click
+        // the geometry of a rendered frame, as a person using the UI does.
+        QVERIFY(!noticeWindow->grabWindow().isNull());
+        QVERIFY(again->isVisible());
+        const auto point=again->mapToScene(QPointF(again->width()/2,again->height()/2));
+        QTest::mouseClick(noticeWindow,Qt::LeftButton,Qt::NoModifier,point.toPoint());
+        qInfo()<<"copy repeat status owners"<<text("status_text")<<evaluate(entry+".ui.status_text");
+        QCOMPARE(QGuiApplication::clipboard()->text(),copied);
+        QCOMPARE(evaluate(entry+".ui.status_text").toString(),QString("URL copied"));
+        QCOMPARE(text("status_text"),QString("Title copy pending"));
+        page("window.copyFeedbackKeyups=[];document.addEventListener('keyup',e=>window.copyFeedbackKeyups.push(e.key));true");
+        again->forceActiveFocus();QTRY_VERIFY(again->hasActiveFocus());
+        if (kind=="private") { QTest::qWait(6100);QVERIFY(evaluate("testWindow.copyNoticeVisible").toBool()); }
+        evaluate("testWindow.browserUi.status_text='Title copy pending';"+entry+".ui.status_text='URL copy pending'");
+        QGuiApplication::clipboard()->setText("keyboard-repeat-sentinel");
+        QTest::keyClick(noticeWindow,Qt::Key_Return);
+        QCOMPARE(QGuiApplication::clipboard()->text(),copied);
+        QCOMPARE(evaluate(entry+".ui.status_text").toString(),QString("URL copied"));
+        QCOMPARE(text("status_text"),QString("Title copy pending"));
+        QTest::keyClick(noticeWindow,Qt::Key_Escape);
+        QTRY_VERIFY(!evaluate("testWindow.copyNoticeVisible").toBool());
+        QTRY_VERIFY(evaluate("(function(){var item="+entry+".host.activeFocusItem;while(item && item!=="+pageReceiver+")item=item.parent;return !!item})()").toBool());
+        QTest::qWait(50);
+        QCOMPARE(page("window.copyFeedbackKeyups.filter(k=>k==='Enter'||k==='Escape').length").toInt(),0);
+    }
+    evaluate(entry+".host.windowShutdownApproved=true");QVERIFY(child->close());
+    QTRY_VERIFY(!evaluate("testWindow.copyNoticeVisible").toBool());
+    QTRY_VERIFY(evaluate("testWindow.copiedValue.length===0 && testWindow.copyNoticeUi===null").toBool());
+    // Reparenting into an owner must not destroy the shared feedback surface
+    // when that owner closes. A subsequent primary copy still has its control.
+    window->requestActivate();QTRY_VERIFY(window->isActive());
+    QVERIFY(evaluate("testWindow.copyToClipboard('primary-after-owner-close',false,false,testWindow.browserUi)").toBool());
+    QTRY_VERIFY(visibleCopyAgain(window->contentItem()));
+    QCOMPARE(QGuiApplication::clipboard()->text(),QString("primary-after-owner-close"));
 }

@@ -90,6 +90,24 @@ fn unavailable(request: &Request) -> Response {
     )
 }
 
+fn missing_owner(request: &Request, selector: Option<&str>) -> Response {
+    if request.method == "operations.cancel" {
+        failure(
+            request,
+            ErrorCode::NotFound,
+            "The requested operation is no longer available. Refresh the operation list.",
+        )
+    } else if matches!(selector, None | Some("active" | "last-focused")) {
+        failure(
+            request,
+            ErrorCode::Busy,
+            "No browser window is ready. Try again shortly.",
+        )
+    } else {
+        unavailable(request)
+    }
+}
+
 fn instance_shutdown(request: &Request) -> bool {
     super::is_mutating_ipc_method(&request.method)
         && directory()
@@ -233,6 +251,7 @@ fn collect_query(pending: PendingRequest, key: &'static str, owners: Vec<Owner>,
         let request = request.clone();
         let _ = owner.thread.queue(move |mut ui| {
             if ui.as_ref().rust().window != owner.window
+                || !ui.as_ref().get_ref().profile_available()
                 || ui.as_ref().rust().profile_bootstrap_pending
                 || ui.as_ref().rust().ipc_owner.is_none()
             {
@@ -261,7 +280,7 @@ impl<H: Clone> Directory<H> {
             Some("active") | None => self
                 .owners
                 .values()
-                .filter(|owner| owner.active)
+                .filter(|owner| owner.active && owner.window.is_some())
                 .max_by_key(|owner| owner.focused)
                 .or_else(|| self.last_focused())
                 .cloned(),
@@ -284,6 +303,7 @@ impl<H: Clone> Directory<H> {
     fn last_focused(&self) -> Option<&Owner<H>> {
         self.owners
             .values()
+            .filter(|owner| owner.window.is_some())
             .max_by_key(|owner| (owner.focused, std::cmp::Reverse(owner.order)))
     }
 }
@@ -379,6 +399,7 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn refresh_ipc_owner(self: Pin<&mut Self>) {
+        let profile_available = self.as_ref().get_ref().profile_available();
         let rust = self.as_ref().get_ref().rust();
         let Some(lease) = rust.ipc_owner.as_ref() else {
             return;
@@ -389,7 +410,7 @@ impl qobject::BrowserUi {
         let Some(owner) = directory.owners.get_mut(&lease.0) else {
             return;
         };
-        let window = (!rust.profile_bootstrap_pending)
+        let window = (!rust.profile_bootstrap_pending && profile_available)
             .then_some(rust.window)
             .flatten();
         let changed = owner.window != window;
@@ -509,16 +530,7 @@ impl qobject::BrowserUi {
             }
         });
         let Some(owner) = selected else {
-            let response = if request.method == "operations.cancel" {
-                failure(
-                    &request,
-                    ErrorCode::NotFound,
-                    "The requested operation is no longer available. Refresh the operation list.",
-                )
-            } else {
-                unavailable(&request)
-            };
-            let _ = pending.respond(&response);
+            let _ = pending.respond(&missing_owner(&request, selector));
             return;
         };
         let Some(window) = owner.window else {
@@ -546,6 +558,7 @@ impl qobject::BrowserUi {
                 return;
             }
             if ui.as_ref().rust().window != Some(window)
+                || !ui.as_ref().get_ref().profile_available()
                 || ui.as_ref().rust().profile_bootstrap_pending
                 || ui.as_ref().rust().ipc_owner.is_none()
             {
@@ -627,6 +640,57 @@ mod tests {
             token
         );
         assert_eq!(directory.selected(Some("active")).unwrap().token, token);
+    }
+
+    #[test]
+    fn missing_implicit_window_is_retryable_but_explicit_stale_identity_is_preserved() {
+        let query = request("windows.query", json!({}));
+        for selector in [None, Some("active"), Some("last-focused")] {
+            assert_eq!(
+                missing_owner(&query, selector).error.unwrap().code,
+                "E_BUSY"
+            );
+        }
+        assert_eq!(
+            missing_owner(&query, Some("windowid-99"))
+                .error
+                .unwrap()
+                .code,
+            "E_STALE_TARGET"
+        );
+        let cancel = request("operations.cancel", json!({"operation_id":"missing"}));
+        assert_eq!(
+            missing_owner(&cancel, None).error.unwrap().code,
+            "E_NOT_FOUND"
+        );
+    }
+
+    #[test]
+    fn unadmitted_controller_leases_are_never_implicit_window_targets() {
+        let ready = owner(11, 1, 4, false);
+        let token = ready.token.clone();
+        let mut starting = owner(22, 2, 99, true);
+        starting.window = None;
+        let starting_token = starting.token.clone();
+        let mut directory = Directory::default();
+        directory.owners.insert(token.clone(), ready);
+        directory.owners.insert(starting_token.clone(), starting);
+        for selector in [None, Some("active"), Some("last-focused")] {
+            assert_eq!(directory.selected(selector).unwrap().token, token);
+        }
+        // Explicitly naming an unavailable owner keeps that identity. The
+        // dispatcher will reject it instead of selecting a different window.
+        assert!(
+            directory
+                .selected(Some(&starting_token))
+                .unwrap()
+                .window
+                .is_none()
+        );
+        directory.owners.remove(&token);
+        for selector in [None, Some("active"), Some("last-focused")] {
+            assert!(directory.selected(selector).is_none());
+        }
     }
 
     #[test]

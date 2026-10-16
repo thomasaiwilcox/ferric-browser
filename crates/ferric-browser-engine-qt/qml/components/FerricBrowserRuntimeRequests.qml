@@ -17,12 +17,8 @@ FerricBrowserRuntimePresentation {
     Connections {
         target: browserUi
         function onActive_tab_indexChanged() {
-            window.copyNoticeVisible = false
+            if (window.copyNoticeHost === window) window.copyNoticeVisible = false
             window.noteTabActivity()
-            if (window.hintTrackingView
-                    && window.activeWebView() !== window.hintTrackingView) {
-                window.closeHints()
-            }
         }
         function onTab_countChanged() {
             window.noteTabActivity()
@@ -46,26 +42,7 @@ FerricBrowserRuntimePresentation {
             } else {
                 window.restoreModeFocus()
             }
-            if (browserUi.mode === "hint") {
-                Qt.callLater(function() {
-                    if (browserUi.mode === "hint") window.startHintCollection()
-                })
-            } else {
-                window.stopHintTracking()
-                if (browserUi.mode !== "caret") {
-                    window.caretSelecting = false
-                }
-                window.rapidHintConfirmationVisible = false
-                if (window.hintResults.length > 0) {
-                    window.hintResults = []
-                    window.hintInput = ""
-                }
-            }
-        }
-        function onHint_visibleChanged() {
-            if (!browserUi.hint_visible) {
-                window.stopHintTracking()
-            }
+            if (browserUi.mode !== "hint" && browserUi.mode !== "caret") window.caretSelecting = false
         }
         function onConfig_jsonChanged() {
             window.refreshChromeAppearance()
@@ -967,7 +944,8 @@ FerricBrowserRuntimePresentation {
                 && !!window.pendingContextMenuRequest.hintAction
         window.clearContextMenuRequest(isHintAction)
         if (isHintAction) {
-            window.activateHint(value, item.actionId || "")
+            if (host && host.hintWorkspace && host.hintWorkspace.browserUi === ui)
+                host.hintWorkspace.activateHint(value, item.actionId || "")
             return
         }
         if (item.actionId && item.actionId.length > 0) {

@@ -63,12 +63,42 @@ pub(super) fn summary(snapshot: &Value, private: bool) -> Vec<String> {
             _ => "Not checked",
         }
     };
-    vec![
+    let mut rows = vec![
         format!("Ferric Browser: {}", version("/application/version")),
         format!("Web engine: {}", version("/build/qt_webengine/value")),
         format!("Compatibility: {engine}"),
         format!("Profile storage: {storage}"),
-    ]
+    ];
+    if let Some(startup) = snapshot.get("profile_startup") {
+        let latest = match startup
+            .pointer("/latest_attempt/status")
+            .and_then(Value::as_str)
+        {
+            Some("pending") => "Opening profile",
+            Some("failed") => "Latest profile attempt failed — review local startup details",
+            Some("ready") => "Profile opened",
+            _ => "Not checked",
+        };
+        rows.push(format!("Startup: {latest}"));
+        if let Some(issues) = startup
+            .pointer("/active_profile/issues")
+            .and_then(Value::as_array)
+        {
+            for issue in issues {
+                let message = match issue.as_str() {
+                    Some("profile-storage") => "History and saved data are unavailable",
+                    Some("configuration") => "Some settings couldn't be loaded",
+                    Some("contexts") => "Some browsing contexts couldn't be loaded",
+                    Some("network-policy") => "Network filtering couldn't be prepared",
+                    _ => continue,
+                };
+                rows.push(format!(
+                    "Active profile: {message} — review local startup details"
+                ));
+            }
+        }
+    }
+    rows
 }
 
 #[cfg(test)]
@@ -88,6 +118,18 @@ mod tests {
             let snapshot = json!({"storage":{"health":{"status":status,"value":value}}});
             assert!(summary(&snapshot, false).join("\n").contains(expected));
         }
+    }
+
+    #[test]
+    fn startup_summary_separates_failed_attempt_from_retained_active_profile() {
+        let snapshot = json!({"profile_startup": {
+            "latest_attempt": {"status":"failed"},
+            "active_profile": {"issues":["configuration", "https://private.test"]}
+        }});
+        let text = summary(&snapshot, false).join("\n");
+        assert!(text.contains("Latest profile attempt failed"));
+        assert!(text.contains("Some settings couldn't be loaded"));
+        assert!(!text.contains("private.test"));
     }
 
     #[test]

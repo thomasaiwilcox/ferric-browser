@@ -80,6 +80,7 @@ const QML_SOURCE: &str = concat!(
     include_str!("../qml/components/FerricBrowserRuntimeRequests.qml"),
     include_str!("../qml/components/FerricBrowserRuntimeChrome.qml"),
     include_str!("../qml/components/FerricBrowserRuntimeSurface.qml"),
+    include_str!("../qml/components/FerricHintWorkspace.qml"),
     include_str!("../qml/components/FerricFocusOverlayController.qml"),
     include_str!("../qml/components/FerricChromePresentationController.qml"),
     include_str!("../qml/components/FerricWindowRegistryController.qml"),

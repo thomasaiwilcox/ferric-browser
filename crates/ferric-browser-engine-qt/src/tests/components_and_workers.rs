@@ -789,7 +789,7 @@ fn one_shot_background_hints_use_the_background_route_and_exit_hint_mode() {
     let source = include_str!("../browser_ui_hint_selection.rs");
     let ipc = include_str!("../browser_ui_ipc.rs");
     let ipc_preparation = include_str!("../browser_ui_ipc_preparation.rs");
-    let qml = include_str!("../../qml/components/FerricBrowserRuntimePresentation.qml");
+    let qml = include_str!("../../qml/components/FerricHintWorkspace.qml");
 
     assert!(source.contains("hint_rapid_target == \"tab-bg\""));
     assert!(source.matches("open_hint_in_background_tab(").count() >= 3);
@@ -1012,7 +1012,8 @@ fn config_reload_worker_loads_and_validates_off_thread() {
         Err(error) => error,
         Ok(_) => panic!("invalid contexts must reject reload"),
     };
-    assert!(invalid_contexts.contains("contexts configuration is invalid"));
+    assert_eq!(invalid_contexts.operation, Some(ConfigReadOperation::Reload));
+    assert!(invalid_contexts.detail.contains("contexts configuration is invalid"));
     let _ = fs::remove_file(&contexts_path);
 
     worker
@@ -1030,6 +1031,24 @@ fn config_reload_worker_loads_and_validates_off_thread() {
         .expect("valid checked configuration");
     assert_eq!(check.operation, ConfigReadOperation::Check);
     assert_eq!(check.loaded.sources.len(), 1);
+
+    fs::write(&path, "schema_version = [ malformed private setting").expect("broken config");
+    worker.request_check(path.clone()).expect("invalid check request");
+    // A rejected competing reload cannot relabel the accepted check's error.
+    assert!(worker.request(path.clone(), "default".into()).is_err());
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let failure = loop {
+        if let Some(result) = worker.poll() {
+            break match result {
+                Err(error) => error,
+                Ok(_) => panic!("invalid check must fail"),
+            };
+        }
+        assert!(Instant::now() < deadline, "invalid check response timed out");
+        thread::sleep(Duration::from_millis(1));
+    };
+    assert_eq!(failure.operation, Some(ConfigReadOperation::Check));
+    assert!(failure.detail.contains("malformed private setting"));
 
     drop(worker);
     let _ = fs::remove_file(&path);

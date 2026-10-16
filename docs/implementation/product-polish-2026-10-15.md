@@ -2,13 +2,59 @@
 
 Status: active. Branch: `polish/refined-browser-experience`.
 
-Latest verified checkpoint: new-window creation and profile/context inheritance
-across primary, secondary and popup owners, including private/temporary identity
-and routing decisions in the requesting window. The local gate, broad native
-integration, clipboard, live IPC and adapter checks pass. Production captures
-confirm dialog placement and readable controls; routing-card spacing remains a
-visual follow-up. The full polish goal remains active, including shared child
-hints, continuing permission/journey state and the remaining audit below.
+Latest verified checkpoint: `window-owners-v1`. Its frozen source combines
+persistent profile-health notices, local startup details and safe diagnostic
+exports, natural routing-card spacing, window-owned hint workspaces, and copy
+feedback in the requesting window. The complete original polish goal remains
+open; the audit below still applies.
+
+Profile-health notices remain reachable with the status bar hidden. Background
+settings failures preserve working settings and place bounded causes behind a
+local diagnostics disclosure; report exports contain typed categories. Failed
+initial profiles remain unavailable to page/window/IPC selection while their own
+local diagnostics remain reachable. Recovery clears the matching issue, and
+new windows retain inherited include-file watches.
+
+Hints, target search, region actions and native pointer integration share one
+workspace per native window. Rust retains selection and action authority;
+view/frame leases, viewport, input and focus belong to the requesting window.
+Ordinary and pointer journeys pass in secondary, private and popup owners while
+primary hints remain independent. Article-title navigation passes at 80%, 100%
+and 125% zoom.
+
+Copy notices use the requesting window's viewport and configured font, retain
+hidden sensitive content, and clear retained values when their owner changes
+or closes. Copy again preserves its native owner and clipboard destination.
+Unavailable primary selection reports failure without replacing the regular
+clipboard. Successful native primary-selection transport remains separately
+unqualified in the offscreen environment.
+
+Context movement choices now project the committed active registry after
+startup and successful mutations, including command-created contexts. Creation,
+deletion, destination inheritance and empty private choices pass native tests.
+Already-open peer windows still need catalog propagation; its separate patch
+passes 23 application tests but awaits Qt delivery and lifecycle qualification.
+
+Fresh qualification passes strict workspace Clippy, the repository gate (970
+Rust passed, two ignored; 452 QML passed), 103 focused source prompt checks,
+50 focused native checks, 126 broad browser checks, 81 clipboard checks and 13
+live IPC checks. All 53 legacy hint/frame/pointer checks, three article-title
+zoom cases and 1,000 hint start/cancel cycles pass. Adapter startup and 18 final
+capture checks pass. All 22 final captures and six compiled copy-feedback
+captures were inspected. Source/artifact hashes, commands and logs are recorded
+under ignored `target/product-polish/window-owners-v1-checkpoint.json`.
+
+Nested Wayland startup passes with a private compositor/profile. Editable-page
+input qualification could not run because the compositor lacks the required
+virtual-keyboard protocol. This is startup evidence, not input, GPU, portal,
+account or hardware qualification.
+
+Visual review also found cramped editing space in compact private Settings
+with validation feedback, plus an underlying tab tooltip above one private
+target-search capture. Reproduce focused editing and tooltip lifetime before
+choosing those fixes. These findings, existing-window context synchronization,
+and the original remaining audit stay in scope. No installation or publication
+has been performed.
 
 ## Product intent
 

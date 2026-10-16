@@ -162,6 +162,7 @@ mod page_document_identity;
 mod presentation_text;
 mod process_output;
 mod profile_management;
+mod profile_startup;
 mod profile_workers;
 mod renderer_lifecycle;
 mod runtime_bridge;
@@ -549,6 +550,7 @@ mod qobject {
         #[qproperty(bool, diagnostics_pending)]
         #[qproperty(QString, diagnostics_preview)]
         #[qproperty(QString, diagnostics_error)]
+        #[qproperty(QString, profile_startup_notice)]
         #[qproperty(QString, library_error)]
         #[qproperty(QString, profile_action_id)]
         #[qproperty(QString, profile_action_state)]
@@ -1439,6 +1441,9 @@ mod qobject {
         fn assign_window_context(self: Pin<&mut BrowserUi>, name: &QString) -> bool;
 
         #[qinvokable]
+        fn profile_available(self: &BrowserUi) -> bool;
+
+        #[qinvokable]
         fn configure_profile(
             self: Pin<&mut BrowserUi>,
             private_profile: bool,
@@ -1562,6 +1567,9 @@ mod qobject {
             origin: &QString,
             result: &QString,
         ) -> bool;
+
+        #[qinvokable]
+        fn profile_startup_details(self: &BrowserUi) -> QString;
 
         #[qinvokable]
         fn request_diagnostics(self: Pin<&mut BrowserUi>) -> bool;
@@ -2118,6 +2126,7 @@ pub struct BrowserUiRust {
     diagnostics_pending: bool,
     diagnostics_preview: QString,
     diagnostics_error: QString,
+    profile_startup_notice: QString,
     library_error: QString,
     storage_library_refresh_again: bool,
     storage_library_read_pending: bool,
@@ -2442,6 +2451,7 @@ pub struct BrowserUiRust {
     network_policy_reload_pending: bool,
     pending_profile_configuration: Option<PendingProfileConfiguration>,
     profile_open_effect: Option<ProfileOpenEffect>,
+    profile_startup: profile_startup::ProfileStartup,
     profile_storage_base: String,
     pending_selector_validation: Option<PendingSelectorValidation>,
     selector_generation: u64,
@@ -2900,6 +2910,7 @@ impl Default for BrowserUiRust {
             diagnostics_pending: false,
             diagnostics_preview: QString::default(),
             diagnostics_error: QString::default(),
+            profile_startup_notice: QString::default(),
             library_error: QString::default(),
             storage_library_refresh_again: false,
             storage_library_read_pending: false,
@@ -3245,6 +3256,7 @@ impl Default for BrowserUiRust {
             network_policy_reload_pending: false,
             pending_profile_configuration: None,
             profile_open_effect: None,
+            profile_startup: profile_startup::ProfileStartup::default(),
             profile_storage_base: String::new(),
             pending_selector_validation: None,
             selector_generation: 0,

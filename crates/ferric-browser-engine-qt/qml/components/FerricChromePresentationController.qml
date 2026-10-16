@@ -59,14 +59,9 @@ QtObject {
         window.tabsMode = ui.chrome_tabs_mode
         window.tabPosition = ui.chrome_tab_position
         window.systemReducedMotionStatus = ui.system_reduced_motion_status
-        if (ui.chrome_reduced_motion === "on") {
-            window.reducedMotionActive = true
-        } else if (ui.chrome_reduced_motion === "off") {
-            window.reducedMotionActive = false
-        } else {
-            window.reducedMotionActive = ui.system_reduced_motion_status === "available"
-                    ? ui.system_reduced_motion_enabled : true
-        }
+        window.reducedMotionActive = ChromePresentation.reducedMotion(
+                    ui.chrome_reduced_motion, ui.system_reduced_motion_status,
+                    ui.system_reduced_motion_enabled)
         window.themeContrastStatus = ui.theme_contrast_status
         window.themeContrastWarning = (window.themeContrastStatus === "warning"
                 || window.renderedThemeContrastStatus === "warning")

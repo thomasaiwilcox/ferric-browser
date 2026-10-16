@@ -8,6 +8,8 @@ Item {
     id: root
     objectName: "browserFileDialogs"
 
+    property var diagnosticsHostWindow: null
+
     signal downloadAccepted()
     signal downloadRejected()
     signal journeyExportAccepted()
@@ -42,6 +44,7 @@ Item {
     function openDownload() { downloadChooser.open() }
     function openJourneyExport() { journeyExportChooser.open() }
     function openDiagnosticsExport() { diagnosticsExportChooser.open() }
+    function closeDiagnosticsExport() { diagnosticsExportChooser.close() }
     function openEngineFile() { engineFileChooser.open() }
     function openEngineFolder() { engineFolderChooser.open() }
     function openUserscriptManifest() { userscriptManifestChooser.open() }
@@ -68,6 +71,7 @@ Item {
 
     FileDialog {
         id: diagnosticsExportChooser
+        parentWindow: root.diagnosticsHostWindow
         objectName: "diagnosticsExportChooser"
         title: "Choose diagnostics export destination"
         fileMode: FileDialog.SaveFile

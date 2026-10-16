@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import QtQuick.Dialogs
 import QtWebEngine
 import io.github.ferricbrowser 1.0
+import "../scripts/ChromePresentation.js" as ChromePresentation
 
 ApplicationWindow {
     required property var rootWindow
@@ -31,6 +32,9 @@ ApplicationWindow {
     palette.link: secondaryAppearance.accentColor
     property string windowStartupUrl: "about:blank"
     readonly property alias windowUi: secondaryUi
+    readonly property alias chromeAppearance: secondaryAppearance
+    readonly property string displayScaleLabel: ChromePresentation.displayScaleLabel(
+                                                   Screen.devicePixelRatio, Screen.logicalPixelDensity)
     signal bookmarkTransferStarted(var destinationUi, bool queued)
     property string windowBookmarkTransferUrl: ""
     property string windowBookmarkTransferTitle: ""
@@ -71,10 +75,13 @@ ApplicationWindow {
     readonly property bool statusBarVisible:
         (secondaryWindow.commandNoticeVisible && !secondaryWindow.inputBarActive)
         || secondaryAppearance.statusBarVisibleForMode(secondaryUi.mode)
-    readonly property real bottomChromeHeight:
+    readonly property real bottomControlsHeight:
         inputBarActive ? secondaryAppearance.inputBarHeight
                        : (statusBarVisible ? secondaryAppearance.statusBarHeight : 0)
+    readonly property real bottomChromeHeight: bottomControlsHeight + secondaryProfileNotice.height
     readonly property var activeView: tabViewAt(secondaryUi.active_tab_index)
+    readonly property alias hintWorkspace: secondaryHintWorkspace
+    readonly property bool rapidHintConfirmationVisible: secondaryHintWorkspace.rapidHintConfirmationVisible
     readonly property alias tabsModel: secondaryTabs
     property alias tabViews: secondaryTabController.tabViews
     function tabViewAt(index) { return index >= 0 && index < tabViews.length ? tabViews[index] : null }
@@ -83,7 +90,11 @@ ApplicationWindow {
     readonly property bool browserKeyFocusActive:
         secondaryWindow.profileBootstrapComplete
         && !secondaryWindow.inputBarActive
+        && !secondaryProfileNotice.inputActive
+        && !(rootWindow.copyNoticeInputActive && rootWindow.copyNoticeHost === secondaryWindow)
         && !secondaryWindow.devToolsVisible
+        && !secondaryHintWorkspace.rapidHintConfirmationVisible
+        && !secondaryUi.target_search_active
         && !rootWindow.presentedPromptActiveFor(secondaryUi)
         && !(rootWindow.rendererFailureVisible && rootWindow.rendererFailureHost === secondaryWindow)
         && !secondarySettings.active
@@ -210,6 +221,7 @@ ApplicationWindow {
 
     onActiveChanged: {
         secondaryUi.set_ipc_window_active(active)
+        if (!active && rootWindow.copyNoticeHost === secondaryWindow) rootWindow.copyNoticeVisible = false
         if (!active && secondaryUi.mode === "pass-through-once") {
             secondaryUi.escape()
         }
@@ -514,7 +526,7 @@ ApplicationWindow {
 
     BrowserUi {
         id: secondaryUi
-        hint_chrome_available: false
+        hint_chrome_available: true
         status_text: "Ready"
         onRuntime_work_available: secondaryWindow.scheduleRuntimeWork(0)
         onStatus_textChanged: {
@@ -983,6 +995,7 @@ function onContext_workspaceChanged() {
                     : "No unpinned tabs available to close"
             return
         }
+        if (action === "show-diagnostics") { rootWindow.showDiagnostics(secondaryUi); return }
         if (action === "show-profiles") { secondaryManagers.showProfiles(); return }
         if (action === "show-sessions") { secondaryManagers.showSessions(); return }
         if (action.indexOf("profile-delete\t") === 0) {
@@ -1631,6 +1644,15 @@ function onContext_workspaceChanged() {
             + (secondaryWindow.tabStripVisible && secondaryWindow.tabPosition === "bottom" ? secondaryTabStrip.height : 0)
         currentIndex: secondaryWindow.activeView ? secondaryWindow.activeView.StackLayout.index : -1
     }
+    FerricHintWorkspace {
+        id: secondaryHintWorkspace
+        hostWindow: secondaryWindow
+        rootWindow: secondaryWindow.rootWindow
+        browserUi: secondaryUi
+        activeView: secondaryWindow.activeView
+        appearance: secondaryAppearance
+        anchors.fill: secondaryViews
+    }
     FerricTabViewController {
         id: secondaryTabController
         ready: secondaryWindow.profileBootstrapComplete && !secondaryWindow.runtimeReleased
@@ -1848,6 +1870,18 @@ function onContext_workspaceChanged() {
         }
     }
 
+    FerricProfileNotice {
+        id: secondaryProfileNotice
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: secondaryWindow.bottomControlsHeight
+        browserWindow: secondaryAppearance
+        hostWindow: secondaryWindow
+        noticeText: secondaryUi.profile_startup_notice
+        onDetailsRequested: rootWindow.showDiagnostics(secondaryUi, secondaryWindow)
+    }
+
     Rectangle {
         id: secondarySearchBar
         anchors.left: parent.left
@@ -1912,6 +1946,7 @@ function onContext_workspaceChanged() {
         statusVisible: secondaryWindow.statusBarVisible
         mode: secondaryUi.mode
         displayUrl: secondaryUi.display_url
+        hintPreviewText: secondaryUi.mode === "hint" && !secondaryUi.target_search_active ? secondaryHintWorkspace.previewText : ""
         statusText: secondaryWindow.commandNoticeVisible
                     ? secondaryWindow.commandNoticeText : secondaryUi.status_text
         profileLabel: secondaryWindow.windowEphemeralProfile ? "EPHEMERAL"
@@ -2159,7 +2194,7 @@ function onContext_workspaceChanged() {
     }
 
     function completeProfileBootstrap() {
-        if (runtimeReleased || profileBootstrapComplete
+        if (runtimeReleased || profileBootstrapComplete || !secondaryUi.profile_available()
                 || (!windowPopup && secondaryUi.profile_bootstrap_pending)) return
         rootWindow.profileResourceRegistry.activateWindow(secondaryWindow)
         profileBootstrapComplete = true
@@ -2227,7 +2262,10 @@ function onContext_workspaceChanged() {
     }
     Connections {
         target: secondaryUi
-        function onActive_tab_indexChanged() { secondaryWindow.noteTabActivity(); secondaryWindow.scheduleRuntimeWork(0) }
+        function onActive_tab_indexChanged() {
+            if (rootWindow.copyNoticeHost === secondaryWindow) rootWindow.copyNoticeVisible = false
+            secondaryWindow.noteTabActivity(); secondaryWindow.scheduleRuntimeWork(0)
+        }
         function onTab_countChanged() { secondaryWindow.scheduleRuntimeWork(0) }
     }
 

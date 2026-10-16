@@ -55,13 +55,11 @@ fn secondary_command_supported(command: &ParsedCommand) -> bool {
             | "context-list"
             | "context-route"
             | "context-save"
-            | "diagnostics"
             | "download-cancel"
             | "download-pause"
             | "download-resume"
             | "download-retry"
             | "downloads"
-            | "hint"
             | "history"
             | "journey"
             | "link-cleaning-update"
@@ -94,6 +92,15 @@ mod settings_surface_tests {
             arguments: arguments.iter().map(|value| (*value).to_owned()).collect(),
         };
         assert!(secondary_command_supported(&command("settings", &[])));
+        for arguments in [
+            vec!["links"],
+            vec!["--target", "pointer", "links"],
+            vec!["--target", "choose"],
+        ] {
+            assert!(secondary_command_supported(&command("hint", &arguments)));
+        }
+        assert!(secondary_command_supported(&command("grid", &[])));
+        assert!(secondary_command_supported(&command("target-search", &[])));
         assert!(secondary_command_supported(&command(
             "help",
             &["ui.font_size_pt"]
@@ -281,7 +288,7 @@ mod tests {
 
     #[test]
     fn secondary_windows_reject_commands_their_chrome_cannot_present() {
-        for name in ["history", "downloads", "help", "diagnostics", "switcher"] {
+        for name in ["history", "downloads", "help", "switcher"] {
             assert!(!secondary_command_supported(&command(name, &[])), "{name}");
         }
         for name in [
@@ -289,6 +296,7 @@ mod tests {
             "zoom",
             "get",
             "version",
+            "diagnostics",
             "history-open",
             "tab-close",
             "tab-open",

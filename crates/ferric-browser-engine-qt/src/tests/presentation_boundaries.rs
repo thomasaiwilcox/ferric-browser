@@ -173,10 +173,12 @@ fn accessibility_surface_reports_theme_contrast_and_reduced_motion() {
     assert!(qml.contains("system_reduced_motion_enabled"));
     assert!(qml.contains("system_font_scale_status"));
     assert!(qml.contains("system_font_scale"));
-    assert!(qml.contains("ui.system_reduced_motion_status === \"available\""));
+    assert!(qml.contains("ChromePresentation.reducedMotion("));
+    let presentation = include_str!("../../qml/scripts/ChromePresentation.js");
+    assert!(presentation.contains("systemStatus === \"available\""));
     assert!(source.contains("chrome_reduced_motion"));
     assert!(preferences.contains("struct ChromePreferences"));
-    assert!(qml.contains("ui.chrome_reduced_motion === \"on\""));
+    assert!(qml.contains("ui.chrome_reduced_motion"));
     assert!(qml.contains("window.chromeFontFamily = ui.chrome_font_family"));
     assert!(qml.contains("diagnostics.browserWindow.reducedMotionActive"));
 }
@@ -370,7 +372,9 @@ fn spatial_grid_owns_complete_input_gestures_and_stale_surface_callbacks() {
     assert!(adapter_source.contains("surfaceExhausted_ = true"));
     assert!(!adapter_source.contains("QCursor::setPos"));
 
-    assert!(qml.contains("inputBlocked: window.browserChromeInputActive"));
+    assert!(qml.contains("inputBlocked: window.inputBlocked"));
+    assert!(qml.contains("hostWindow === rootWindow"));
+    assert!(qml.contains("? rootWindow.browserChromeInputActive : !hostWindow.browserKeyFocusActive"));
     assert!(qml.contains("enabled: browserUi.spatial_visible"));
     assert!(!qml.contains("spatialPointerAdapter.enabled = true"));
     assert!(qml.contains("var sessionId = browserUi.spatial_session_id"));
@@ -557,8 +561,9 @@ fn context_routes_are_pre_navigation_and_browser_confirmed() {
     assert!(qml.contains("pendingWorkspaceRouteHost"));
     assert!(qml.contains("onContext_workspaceChanged"));
     assert!(qml.contains(
-            "Existing redirects, popups, forms, permissions, and authentication chains are never moved automatically."
+            "Other open tabs and sign-in flows keep their current profile."
         ));
+    assert!(qml.contains("Routing is chosen before navigation; existing page state is not transferred between profiles."));
     assert!(qml.contains("windowStartupContext"));
 }
 
@@ -1141,7 +1146,9 @@ fn diagnostics_export_requires_explicit_local_save_and_never_overwrites() {
     assert!(qml.contains("fileDialogSurfaces.openDiagnosticsExport()"));
     assert!(dialogs.contains("title: \"Choose diagnostics export destination\""));
     assert!(qml.contains("Save report"));
-    assert!(qml.contains("browserUi.export_diagnostics(path)"));
+    assert!(qml.contains("ui.export_diagnostics(path)"));
+    assert!(qml.contains("window.diagnosticsOwner(ui, window.diagnosticsHost)"));
+    assert!(qml.contains("window.diagnosticsExportUi !== ui"));
 }
 
 #[test]
@@ -1346,7 +1353,7 @@ fn ephemeral_hint_target_creates_a_typed_new_window_action() {
 
 #[test]
 fn foreground_hint_tab_materializes_the_view_before_navigation() {
-    let qml = include_str!("../../qml/components/FerricBrowserRuntimePresentation.qml");
+    let qml = include_str!("../../qml/components/FerricHintWorkspace.qml");
     let foreground = qml
         .split("result.action === \"tab\"")
         .nth(1)
@@ -1539,7 +1546,7 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(qml.contains("window.showCommandNotice(browserUi.status_text, !targetSelected)"));
     assert!(qml.contains("action.indexOf(\"scroll-target\\t\") === 0"));
     assert!(qml.contains("id: secondaryUi"));
-    assert!(qml.contains("hint_chrome_available: false"));
+    assert!(qml.contains("hint_chrome_available: true"));
     assert!(script.contains("window.__ferric_browserScrollTargetState"));
     assert!(!script.contains("window.__ferric_browserScrollTarget="));
     assert!(!script.contains("window.__ferric_browserScrollTarget&&"));
@@ -1657,25 +1664,25 @@ fn target_search_is_local_native_ranked_and_identity_bound() {
 #[test]
 fn enhanced_hint_presentation_keeps_keyboard_policy_out_of_qml() {
     let qml = QML_SOURCE;
-    let base = include_str!("../../qml/components/FerricBrowserRuntimeBase.qml");
-    let requests = include_str!("../../qml/components/FerricBrowserRuntimeRequests.qml");
+    let workspace = include_str!("../../qml/components/FerricHintWorkspace.qml");
+    let surface = include_str!("../../qml/components/FerricBrowserRuntimeSurface.qml");
     let overlay = include_str!("../../qml/components/FerricHintOverlay.qml");
     let menu = include_str!("../../qml/components/FerricContextMenu.qml");
 
     assert!(qml.contains("update_hint_interaction(action, text || \"\")"));
-    assert!(qml.contains("window.applyHintInteraction(\"text-mode\", \"\")"));
-    assert!(qml.contains("window.applyHintInteraction(\"rotate\", \"\")"));
+    assert!(surface.contains("hints.applyHintInteraction(\"text-mode\", \"\")"));
+    assert!(surface.contains("hints.applyHintInteraction(\"rotate\", \"\")"));
     assert!(qml.contains("return BrowserScripts.hintDirtyRevision()"));
     assert!(qml.contains("browserUi.mode !== \"hint\" || window.hintTrackingView !== view"));
     assert!(qml.contains("window.hintCollectionEpoch !== collectionEpoch"));
     assert!(qml.contains("function stopHintTracking()"));
     assert!(qml.contains("window.showCommandNotice(hintFailure, true)"));
     assert!(qml.contains("window.hintViewport = ({"));
-    assert!(base.contains("property var hintTrackingView: null"));
-    assert!(base.contains("property var hintViewport: ({ width: 0, height: 0 })"));
-    assert!(base.contains("property int hintCollectionEpoch: 0"));
-    assert!(requests.contains("function onHint_visibleChanged()"));
-    assert!(requests.contains("window.activeWebView() !== window.hintTrackingView"));
+    assert!(workspace.contains("property var hintTrackingView: null"));
+    assert!(workspace.contains("property var hintViewport: ({ width: 0, height: 0 })"));
+    assert!(workspace.contains("property int hintCollectionEpoch: 0"));
+    assert!(workspace.contains("function onHint_visibleChanged()"));
+    assert!(workspace.contains("activeView !== hintTrackingView"));
     assert!(overlay.contains("unmatchedPolicy !== \"hide\""));
     assert!(overlay.contains("unmatchedPolicy === \"show\""));
     assert!(overlay.contains("<u>"));
@@ -1683,7 +1690,7 @@ fn enhanced_hint_presentation_keeps_keyboard_policy_out_of_qml() {
     assert!(overlay.contains("HintPresentation.layout("));
     assert!(overlay.contains("matchingLabelLookup"));
     let presentation = include_str!("../../qml/scripts/HintPresentation.js");
-    for source in [overlay,presentation] {
+    for source in [overlay, presentation] {
         assert!(!source.contains("execute_command("));
         assert!(!source.contains("runJavaScript("));
         assert!(!source.contains("select_hint("));
@@ -1695,15 +1702,15 @@ fn enhanced_hint_presentation_keeps_keyboard_policy_out_of_qml() {
 #[test]
 fn native_pointer_hint_waits_for_enter_release_and_uses_the_existing_adapter_once() {
     let surface = include_str!("../../qml/components/FerricBrowserRuntimeSurface.qml");
-    let chrome = include_str!("../../qml/components/FerricBrowserRuntimeChrome.qml");
-    let presentation = include_str!("../../qml/components/FerricBrowserRuntimePresentation.qml");
+    let chrome = include_str!("../../qml/components/FerricHintWorkspace.qml");
+    let presentation = chrome;
     let scripts = BROWSER_SCRIPT_SOURCE;
     let base = include_str!("../../qml/components/FerricBrowserRuntimeBase.qml");
     let pointer = include_str!("../browser_ui_hint_pointer.rs");
 
     assert!(surface.contains("ui.hint_pointer_state !== \"selecting\""));
-    assert!(surface.contains("window.releaseHintPointerConfirmation()"));
-    assert!(surface.contains("if (!event.isAutoRepeat) window.beginHintPointerConfirmation()"));
+    assert!(surface.contains("hints.releaseHintPointerConfirmation()"));
+    assert!(surface.contains("if (!event.isAutoRepeat) hints.beginHintPointerConfirmation()"));
     assert!(base.contains("onKeyReleased: function(key, modifiers)"));
     assert!(chrome.contains("hintPointerPreflightTimer\n        interval: 250"));
     assert!(chrome.contains("hintPointerPreflightScript(candidate, viewWidth, viewHeight)"));
@@ -1713,15 +1720,16 @@ fn native_pointer_hint_waits_for_enter_release_and_uses_the_existing_adapter_onc
     assert!(presentation.contains("Pointer mode treats marker activation as selection only"));
     assert!(pointer.contains("PREFLIGHT_LIFETIME: Duration = Duration::from_millis(250)"));
     assert!(pointer.contains("LocalInteractionOperation::HintPointerDispatch"));
-    assert!(scripts.contains("function hintPointerPreflight(candidate, viewWidth, viewHeight, selectorSnapshot)"));
+    assert!(scripts.contains(
+        "function hintPointerPreflight(candidate, viewWidth, viewHeight, selectorSnapshot)"
+    ));
     assert!(scripts.contains("function ftPointerDeepHit(doc,x,y)"));
     assert!(pointer.contains("no retry or fallback"));
 }
 
 #[test]
 fn page_backed_hints_close_after_the_renderer_consumes_the_retained_record() {
-    let presentation =
-        include_str!("../../qml/components/FerricBrowserRuntimePresentation.qml");
+    let presentation = include_str!("../../qml/components/FerricHintWorkspace.qml");
 
     for (action, next_action) in [
         ("focus", "scroll-target"),
@@ -1744,7 +1752,11 @@ fn page_backed_hints_close_after_the_renderer_consumes_the_retained_record() {
         };
         let branch = &presentation[start..end];
         let launch = branch
-            .find(if action == "scroll-target" { "window.runBrowserScript(" } else { "window.hintFrameProvider.action(" })
+            .find(if action == "scroll-target" {
+                "window.runBrowserScript("
+            } else {
+                "window.hintFrameProvider.action("
+            })
             .unwrap_or_else(|| panic!("missing {action} renderer launch"));
         let close = branch
             .find("window.closeHints()")

@@ -11,6 +11,7 @@ Rectangle {
     required property bool statusVisible
     required property string mode
     required property string displayUrl
+    property string hintPreviewText: ""
     required property string statusText
     required property string profileLabel
     required property color statusColor
@@ -27,7 +28,7 @@ Rectangle {
     opacity: browserWindow.chromeOpacity
 
     Accessible.name: "Browser status bar. " + mode + ". " + displayUrl
-        + ". " + statusText + accessibleDetails + ". " + ChromePresentation.inputModeDescription(mode)
+        + ". " + hintPreviewText + ". " + statusText + accessibleDetails + ". " + ChromePresentation.inputModeDescription(mode)
     Accessible.role: Accessible.StatusBar
 
     RowLayout {
@@ -71,9 +72,11 @@ Rectangle {
             Layout.fillWidth: true
             Layout.leftMargin: 8
             Layout.rightMargin: 8
-            text: statusBar.browserWindow.addressPresentation(
+            text: statusBar.hintPreviewText.length > 0 ? statusBar.hintPreviewText
+                  : statusBar.browserWindow.addressPresentation(
                       statusBar.displayUrl,
                       width / Math.max(1, font.pixelSize * 0.56))
+            textFormat: Text.PlainText
             color: /^https:/i.test(statusBar.displayUrl)
                    ? statusBar.browserWindow.successColor
                    : statusBar.browserWindow.primaryTextColor

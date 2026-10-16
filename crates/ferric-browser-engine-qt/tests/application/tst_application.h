@@ -30,14 +30,16 @@ class ApplicationTests final : public QObject {
     static QString quoted(const QString &value);
     QVariant page(const QString &source, int world = 0);
     void typeText(const QString &text);
-    QString hintLabel(const QString &name);
-    bool chooseCapability(const QString &name);
+    QString hintLabel(const QString &name, const QString &ownerUi = QStringLiteral("testWindow.browserUi"));
+    bool chooseCapability(const QString &name, QQuickWindow *ownerWindow = nullptr);
     void key(int value, Qt::KeyboardModifiers modifiers = Qt::NoModifier);
 
   public:
     Q_INVOKABLE void accept(const QVariant &value);
     Q_INVOKABLE void frameOperationComplete(const QVariant &value);
   private slots:
+    void productPolishCopyFeedback_data();
+    void productPolishCopyFeedback();
     void crossOriginConsentHints_data();
     void crossOriginConsentHints();
     void crossOriginFrameInvalidation_data();
@@ -93,6 +95,8 @@ class ApplicationTests final : public QObject {
     void productPolishPopupSourceClose_data();
     void productPolishPopupSourceClose();
     void productPolishPopupCommands();
+    void productPolishSecondaryHints_data();
+    void productPolishSecondaryHints();
     void productPolishNewWindowRouting_data();
     void productPolishNewWindowRouting();
     void productPolishNewWindows_data();
@@ -116,6 +120,12 @@ class ApplicationTests final : public QObject {
     void productPolishManagerFeedback();
     void productPolishLibrary();
     void productPolishPrivateLibrary();
+    void productPolishStartupProblems();
+    void productPolishProfileRecovery_data();
+    void productPolishProfileRecovery();
+    void productPolishFailedProfileDiagnostics();
+    void productPolishDiagnosticOwners_data();
+    void productPolishDiagnosticOwners();
     void productPolishDiagnosticReport();
     void productPolishDiagnosticLifecycle_data();
     void productPolishDiagnosticLifecycle();

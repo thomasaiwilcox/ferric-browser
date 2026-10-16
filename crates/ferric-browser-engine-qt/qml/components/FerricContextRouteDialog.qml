@@ -13,16 +13,16 @@ FerricCommandDialog {
 
     visible: browserWindow.contextRouteVisible
     commandText: ":context-route"
-    title: "Use browsing context " + (routeUi.context_route_context || "") + "?"
-    message: "Use this context’s profile and site settings for this navigation?"
+    title: "Use context " + (routeUi.context_route_context || "") + "?"
+    message: "Open this address with the context's profile and site settings?"
     dialogWidth: 680 * scale
-    dialogHeight: 430 * scale
+    dialogHeight: Math.min(430 * scale, fittedCommandDialogHeight())
     cancelAction: "normal"
     actions: [
         {
             id: "normal",
             key: "n",
-            label: "Open normally",
+            label: "Keep current profile",
             safe: true,
             shortcuts: ["N"]
         },
@@ -50,12 +50,13 @@ FerricCommandDialog {
     }
 
     ColumnLayout {
-        anchors.fill: parent
+        width: parent.width
+        height: implicitHeight
         spacing: 8 * dialog.scale
 
         Label {
             Layout.fillWidth: true
-            text: "Target profile: " + (dialog.routeUi.context_route_profile || "unavailable")
+            text: "Profile: " + (dialog.routeUi.context_route_profile || "unavailable")
             color: dialog.browserWindow.secondaryTextColor
             textFormat: Text.PlainText
             wrapMode: Text.Wrap
@@ -76,7 +77,7 @@ FerricCommandDialog {
         }
         Label {
             Layout.fillWidth: true
-            text: "This choice applies before navigation. Existing redirects, popups, forms, permissions, and authentication chains are never moved automatically."
+            text: "Other open tabs and sign-in flows keep their current profile."
             color: dialog.browserWindow.warningColor
             wrapMode: Text.WordWrap
         }
@@ -100,6 +101,7 @@ FerricCommandDialog {
             visible: routeDetails.checked
             text: "Rule: " + (dialog.routeUi.context_route_id || "Unavailable") + "\nBehavior: " + (
                       dialog.routeUi.context_route_behavior || "Unavailable")
+                  + "\nRouting is chosen before navigation; existing page state is not transferred between profiles."
             textFormat: TextEdit.PlainText
             readOnly: true
             selectByMouse: true

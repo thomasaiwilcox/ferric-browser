@@ -538,27 +538,6 @@ impl qobject::BrowserUi {
         let json = serde_json::to_string(config)
             .map_err(|error| format!("could not serialize contexts configuration: {error}"))?;
         self.as_mut().set_contexts_json(QString::from(json));
-        self.as_mut().set_context_choice_names(
-            config
-                .contexts
-                .iter()
-                .map(|context| QString::from(&context.name))
-                .collect(),
-        );
-        self.as_mut().set_context_choice_labels(
-            config
-                .contexts
-                .iter()
-                .map(|context| QString::from(&context.label))
-                .collect(),
-        );
-        self.as_mut().set_context_choice_profiles(
-            config
-                .contexts
-                .iter()
-                .map(|context| QString::from(&context.profile))
-                .collect(),
-        );
         Ok(())
     }
 

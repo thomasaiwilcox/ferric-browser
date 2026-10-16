@@ -145,6 +145,19 @@ impl qobject::BrowserUi {
         )
     }
 
+    pub(super) fn report_config_reload_failure(mut self: Pin<&mut Self>, error: &str) {
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .profile_startup
+            .settings_failed(error);
+        self.as_mut().sync_profile_startup_notice();
+        self.as_mut().set_status_text(QString::from(
+            "Settings changes couldn't be loaded. Your current settings are still active. Open :diagnostics for details.",
+        ));
+    }
+
     pub(super) fn commit_reloaded_config(
         mut self: Pin<&mut Self>,
         candidate: Value,
@@ -152,14 +165,24 @@ impl qobject::BrowserUi {
         status: &str,
         fingerprint: String,
     ) -> Result<Value, String> {
-        self.as_mut().commit_validated_configuration(
+        let committed = self.as_mut().commit_validated_configuration(
             candidate,
             layers,
             status,
             None,
             ConfigurationApplyBoundary::Reload,
             fingerprint,
-        )
+        )?;
+        {
+            let mut rust = self.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            this.profile_startup.settings_recovered();
+            if let Some(effect) = this.profile_open_effect.as_mut() {
+                effect.configuration_error = None;
+            }
+        }
+        self.as_mut().sync_profile_startup_notice();
+        Ok(committed)
     }
 
     pub(super) fn commit_runtime_config_persisted(

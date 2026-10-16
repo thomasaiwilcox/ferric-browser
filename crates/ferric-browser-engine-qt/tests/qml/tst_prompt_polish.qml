@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import QtTest
 import QtWebEngine
 import "../../qml/components"
+import "../../qml/scripts/ChromePresentation.js" as ChromePresentation
 TestCase {
     id: test
     name: "PromptPolish"
@@ -30,6 +31,11 @@ TestCase {
         property color errorColor: "#f38ba8"
         property color selectionColor: "#45475a"
         property color selectionTextColor: "#cdd6f4"
+        property bool diagnosticsVisible: false
+        property string displayScaleLabel: "100%"
+        property string chromeFontFamily: font.family
+        property bool reducedMotionActive: false
+        property string themeContrastWarning: ""
         property bool temporaryProfile: false
         property bool ephemeralProfile: false
         property color successColor: "#a6e3a1"
@@ -143,6 +149,19 @@ TestCase {
         function cancel_external_navigation() { external_navigation_visible=false }
     }
     Component { id: externalFixture; FerricExternalNavigationDialog { browserWindow: host; browserUi: externalUi } }
+    Component { id: profileNoticeFixture; FerricProfileNotice {
+        anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
+        browserWindow: host; hostWindow: host
+        noticeText: "Some settings couldn't be loaded."
+    } }
+    Component { id: copyNoticeFixture; FerricCopyNotice {
+        browserWindow: host; hostWindow: host; noticeVisible: true
+        copiedText: "<b>Literal copied content</b>".repeat(50); sensitive: false
+        property int repeatRequests: 0
+        onCopyAgainRequested: repeatRequests += 1
+        onDismissalRequested: noticeVisible=false
+    } }
+    Component { id: diagnosticsFixture; FerricDiagnostics { browserWindow: host; previewText: '{"profile_startup":{"status":"degraded"}}'; summaryRows: ["Some settings could not be loaded"]; reportAvailable: true; startupDetails: "Settings: <b>/private/config.toml</b>\n".repeat(50); onCloseRequested: host.diagnosticsVisible=false } }
     Component { id: routeFixture; FerricContextRouteDialog { browserWindow: host } }
     Component { id: crashFixture; FerricRendererFailurePrompt { browserWindow: host } }
     Component { id: permissionFixture; FerricPermissionPrompt { browserWindow: host } }
@@ -161,7 +180,10 @@ TestCase {
         host.pendingWebAuthState=WebEngineWebAuthUxRequest.WebAuthUxState.SelectAccount
         host.pendingWebAuthRelyingParty="example.test"
         host.desktopMediaPromptVisible=false
+        host.diagnosticsVisible=false
         host.contextRouteVisible=false;host.rendererFailureVisible=false;externalUi.external_navigation_visible=false
+        host.contextRouteHost=host
+        host.contextRouteUi={context_route_context:"Research",context_route_profile:"work",context_route_id:"internal-rule-id",context_route_behavior:"prompt",context_route_url:"https://example.test"}
         host.permissionPromptVisible=false
         host.pendingPermissionOrigin="https://example.test"
         host.pendingPermissionName="camera"
@@ -442,6 +464,132 @@ TestCase {
         keyClick(Qt.Key_Escape);compare(externalUi.external_navigation_visible,false)
     }
     function test_route_and_recovery_details_data() { return sizes() }
+    function test_scale_metadata_uses_correct_density_units() {
+        compare(ChromePresentation.displayScaleLabel(1,96/25.4), "100% (96 logical dpi)")
+        compare(ChromePresentation.displayScaleLabel(2,144/25.4), "200% (144 logical dpi)")
+        compare(ChromePresentation.displayScaleLabel(NaN,0), "Scale unavailable")
+        compare(ChromePresentation.reducedMotion("on","available",false),true)
+        compare(ChromePresentation.reducedMotion("off","available",true),false)
+        compare(ChromePresentation.reducedMotion("system","unknown",false),true)
+        compare(ChromePresentation.reducedMotion("system","available",false),false)
+    }
+    function test_profile_notice_survives_navigation_and_bounds_content_data() {
+        return [{tag:"normal",width:900,height:700,font:10}, {tag:"compact",width:390,height:480,font:16},
+                {tag:"large-text",width:640,height:500,font:20}, {tag:"largest-text",width:900,height:700,font:60}]
+    }
+    function test_profile_notice_survives_navigation_and_bounds_content(data) {
+        resize(data)
+        var view=create(profileNoticeFixture)
+        verify(view.visible);verify(view.height>0 && view.height<=host.contentItem.height*0.4+1)
+        var message=findChild(view,"profileHealthMessage")
+        compare(message.textFormat,Text.PlainText)
+        view.noticeText="<b>Literal settings failure</b> ".repeat(40)
+        verify(waitForPolish(host))
+        verify(view.height<=host.contentItem.height*0.4+1)
+        var action=findChild(view,"profileHealthDetails")
+        var requested=createTemporaryObject(spyFixture,view,{target:view,signalName:"detailsRequested"})
+        action.forceActiveFocus()
+        tryCompare(view,"inputActive",true)
+        waitInside(action,view)
+        keyClick(Qt.Key_Return);compare(requested.count,1)
+        keyClick(Qt.Key_Space);compare(requested.count,2)
+        capture("profile-notice-"+data.tag)
+        view.noticeText=""
+        tryCompare(view,"visible",false);tryCompare(view,"height",0);tryCompare(view,"inputActive",false)
+    }
+    function test_copy_feedback_names_its_destination() {
+        var view=create(copyNoticeFixture)
+        var title=findChild(view,"copyNoticeTitle")
+        compare(title.text,"Copied to clipboard")
+        view.primarySelection=true
+        compare(title.text,"Copied to primary selection")
+    }
+    function test_copy_feedback_controls_remain_reachable_data() {
+        return [{tag:"normal",width:900,height:700,font:10},
+                {tag:"compact",width:390,height:480,font:10},
+                {tag:"large-text",width:640,height:500,font:20},
+                {tag:"largest-text",width:390,height:480,font:60}]
+    }
+    function test_copy_feedback_controls_remain_reachable(data) {
+        host.width=data.width;host.height=data.height;host.font.pointSize=data.font
+        var view=create(copyNoticeFixture)
+        var text=findChild(view,"copyNoticeText")
+        compare(text.textFormat,Text.PlainText);verify(text.text.indexOf("<b>")>=0)
+        var again=findChild(view,"copyNoticeAgain")
+        again.forceActiveFocus();tryCompare(again,"activeFocus",true);tryCompare(view,"inputActive",true)
+        var body=findChild(view,"copyNoticeBody")
+        body.scheduleFocus();verify(waitForPolish(host));wait(30)
+        var point=again.mapToItem(body.contentItem,0,0)
+        verify(point.x>=-1 && point.x+again.width<=body.contentItem.width+1,"Copy again must fit the viewport width")
+        verify(point.y>=-1 && point.y+again.height<=body.contentItem.height+1,"Focused action must remain fully reachable")
+        keyClick(Qt.Key_Return);compare(view.repeatRequests,1)
+        capture("copy-feedback-"+data.tag)
+        keyClick(Qt.Key_Escape);tryCompare(view,"visible",false);tryCompare(view,"inputActive",false)
+    }
+    function test_diagnostics_summary_keeps_natural_row_spacing() {
+        host.diagnosticsVisible=true
+        var view=create(diagnosticsFixture)
+        var body=findChild(view,"diagnosticsBody")
+        var content=findChild(view,"diagnosticsContent")
+        verify(waitForPolish(host))
+        verify(content.height <= content.implicitHeight + 1)
+        verify(content.y <= 1)
+        var originalHeight=content.height
+        host.height += 300
+        verify(waitForPolish(host))
+        verify(Math.abs(content.height-originalHeight)<=1,"Extra window height must not spread the summary rows")
+        verify(content.height < body.height)
+    }
+    function test_startup_details_are_local_literal_and_collapsed_data() {
+        return [{tag:"normal",width:900,height:700,font:10}, {tag:"compact",width:390,height:480,font:10}, {tag:"large-text",width:640,height:500,font:16}]
+    }
+    function test_startup_details_are_local_literal_and_collapsed(data) {
+        host.width=data.width;host.height=data.height;host.font.pointSize=data.font
+        host.diagnosticsVisible=true
+        var view=create(diagnosticsFixture)
+        var detail=findChild(view,"diagnosticsStartupText")
+        tryCompare(detail,"visible",false)
+        var toggle=findChild(view,"diagnosticsStartupToggle")
+        verify(toggle.visible)
+        toggle.clicked()
+        tryCompare(detail,"visible",true)
+        compare(detail.textFormat,TextEdit.PlainText)
+        verify(detail.text.indexOf("<b>/private/config.toml</b>")>=0)
+        verify(view.previewText.indexOf("/private/")<0)
+        detail.forceActiveFocus();keyClick(Qt.Key_End,Qt.ControlModifier)
+        verify(waitForPolish(host))
+        capture("startup-details-"+data.tag)
+        keyClick(Qt.Key_Escape)
+        tryCompare(host,"diagnosticsVisible",false)
+    }
+    function test_short_route_fits_its_content_data() {
+        return [{tag:"default",width:900,height:700,font:10},
+                {tag:"large-text",width:1200,height:900,font:16},
+                {tag:"larger-text",width:1400,height:1100,font:20}]
+    }
+    function test_short_route_fits_its_content(data) {
+        resize(data)
+        host.contextRouteVisible=true
+        var route=create(routeFixture)
+        verify(waitForPolish(host))
+        verify(route.panelItem.height<host.height*0.65,"A short route choice should not occupy a tall empty card")
+        var detailScroll=findChild(route,"commandDialogDetailScroll")
+        verify(detailScroll.contentLayout.implicitHeight<=detailScroll.availableHeight+1,
+               JSON.stringify({contents:detailScroll.contentLayout.implicitHeight,viewport:detailScroll.availableHeight,
+                               padding:detailScroll.topPadding+detailScroll.bottomPadding,panel:route.panelItem.height}))
+        var safe=findChild(route,"commandDialogAction-normal")
+        tryCompare(safe,"activeFocus",true)
+        waitInside(safe,findChild(route,"commandDialogActionScroll"))
+        var heightBefore=route.panelItem.height
+        capture("context-route-short-"+data.tag)
+        var button=findChild(route,"contextRouteDetailsButton")
+        button.forceActiveFocus();keyClick(Qt.Key_Return)
+        verify(waitForPolish(host))
+        verify(route.panelItem.height>=heightBefore)
+        keyClick(Qt.Key_Return)
+        tryVerify(function(){return Math.abs(route.panelItem.height-heightBefore)<2})
+        keyClick(Qt.Key_Escape);compare(host.contextRouteVisible,false)
+    }
     function test_route_and_recovery_details(data) {
         resize(data);host.contextRouteVisible=true
         host.contextRouteUi={context_route_context:"<b>Research</b>",context_route_profile:"work",context_route_id:"internal-rule-id",context_route_behavior:"prompt",context_route_url:"https://example.test/"+"long-address".repeat(200)}
@@ -454,6 +602,7 @@ TestCase {
         verify(button.contentItem.height>=button.contentItem.implicitHeight-1)
         compare(details.visible,true);verify(details.text.indexOf("internal-rule-id")>=0)
         compare(host.contextRouteVisible,true)
+        capture("context-route-details-"+data.tag)
         keyClick(Qt.Key_Escape);compare(host.contextRouteVisible,false)
         host.rendererFailureVisible=true
         var crash=create(crashFixture)

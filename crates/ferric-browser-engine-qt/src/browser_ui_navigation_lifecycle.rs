@@ -770,6 +770,7 @@ impl qobject::BrowserUi {
                 cancellations.clear();
             }
         }
+        self.as_mut().sync_context_choices();
         self.as_mut().sync_macro_status_text();
         self.as_mut().set_active_tab_index(0);
         self.as_mut().set_tab_count(0);

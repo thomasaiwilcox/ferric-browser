@@ -153,9 +153,6 @@ impl qobject::BrowserUi {
                     }
                     Err(error) => self.as_mut().finish_configure_profile(pending, Err(error)),
                 }
-            } else {
-                self.as_mut()
-                    .set_status_text(QString::from("Profile bootstrap result was stale"));
             }
         }
         let network_policy_result = {
@@ -179,14 +176,32 @@ impl qobject::BrowserUi {
                 .get_mut()
                 .network_policy_reload_pending = false;
             match result {
-                Ok(policy) => self.as_mut().apply_network_policy_snapshot(policy),
-                Err(error) => self.as_mut().set_status_text(QString::from(format!(
-                    "Network policy unavailable: {error}"
-                ))),
-            }
-            if reload_requested {
-                self.as_mut()
-                    .set_status_text(QString::from("Blocklist policy reloaded"));
+                Ok(policy) => {
+                    self.as_mut()
+                        .rust_mut()
+                        .as_mut()
+                        .get_mut()
+                        .profile_startup
+                        .network_result(None);
+                    self.as_mut().sync_profile_startup_notice();
+                    self.as_mut().apply_network_policy_snapshot(policy);
+                    if reload_requested {
+                        self.as_mut()
+                            .set_status_text(QString::from("Network filtering updated"));
+                    }
+                }
+                Err(error) => {
+                    self.as_mut()
+                        .rust_mut()
+                        .as_mut()
+                        .get_mut()
+                        .profile_startup
+                        .network_result(Some(&error));
+                    self.as_mut().sync_profile_startup_notice();
+                    self.as_mut().set_status_text(QString::from(
+                        "Network filtering couldn't be prepared. Open :diagnostics for details.",
+                    ));
+                }
             }
             self.as_mut().set_profile_bootstrap_pending(false);
         }
@@ -566,9 +581,7 @@ impl qobject::BrowserUi {
                     let new_base = match serde_json::to_value(&result.loaded.config) {
                         Ok(value) => value,
                         Err(error) => {
-                            self.set_status_text(QString::from(format!(
-                                "Configuration reload rejected: {error}"
-                            )));
+                            self.report_config_reload_failure(&error.to_string());
                             return;
                         }
                     };
@@ -581,18 +594,14 @@ impl qobject::BrowserUi {
                     ) {
                         Ok(candidate) => candidate,
                         Err(error) => {
-                            self.set_status_text(QString::from(format!(
-                                "Configuration reload rejected: {error}"
-                            )));
+                            self.report_config_reload_failure(&error);
                             return;
                         }
                     };
                     let base_json = match serde_json::to_string(&new_base) {
                         Ok(value) => value,
                         Err(error) => {
-                            self.set_status_text(QString::from(format!(
-                                "Configuration reload rejected: {error}"
-                            )));
+                            self.report_config_reload_failure(&error.to_string());
                             return;
                         }
                     };
@@ -634,9 +643,7 @@ impl qobject::BrowserUi {
                         "Configuration reloaded",
                         validation_fingerprint,
                     ) {
-                        self.set_status_text(QString::from(format!(
-                            "Configuration reload rejected: {error}"
-                        )));
+                        self.report_config_reload_failure(&error);
                         return;
                     }
                     {
@@ -648,6 +655,9 @@ impl qobject::BrowserUi {
                         if let Some(profiles_path) = profiles_path {
                             watched_sources.push(profiles_path);
                         }
+                        if let Some(effect) = this.profile_open_effect.as_mut() {
+                            effect.config_sources.clone_from(&watched_sources);
+                        }
                         this.config_watch.set_sources(&path, &watched_sources);
                     }
                     self.as_mut().set_config_base_json(QString::from(base_json));
@@ -655,9 +665,15 @@ impl qobject::BrowserUi {
                         serde_json::to_string(&profile_overrides).unwrap_or_else(|_| "{}".into()),
                     ));
                 }
-                Err(error) => self.as_mut().set_status_text(QString::from(format!(
-                    "Configuration reload rejected: {error}"
-                ))),
+                Err(error) if error.operation == Some(ConfigReadOperation::Check) => {
+                    // An explicit check deliberately returns its diagnostic.
+                    // Background reloads retain detail behind local disclosure.
+                    self.as_mut().set_status_text(QString::from(format!(
+                        "Configuration check failed: {}",
+                        error.detail
+                    )));
+                }
+                Err(error) => self.as_mut().report_config_reload_failure(&error.detail),
             }
         }
         if should_reload {
@@ -675,9 +691,7 @@ impl qobject::BrowserUi {
                     .set_status_text(QString::from("Configuration reload queued"));
             }
             if let Some(Err(error)) = request {
-                self.set_status_text(QString::from(format!(
-                    "Configuration reload unavailable: {error}"
-                )));
+                self.report_config_reload_failure(&error);
             }
         }
     }

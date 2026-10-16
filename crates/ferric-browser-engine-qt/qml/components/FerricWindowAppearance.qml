@@ -15,6 +15,19 @@ QtObject {
     property var metrics: FontMetrics {
         font: appearance.font
     }
+    readonly property string chromeFontFamily: font.family
+    readonly property string displayScaleLabel: hostWindow ? hostWindow.displayScaleLabel || "Scale unavailable" : "Scale unavailable"
+    readonly property bool reducedMotionActive: ChromePresentation.reducedMotion(
+                                                   browserUi.chrome_reduced_motion,
+                                                   browserUi.system_reduced_motion_status,
+                                                   browserUi.system_reduced_motion_enabled)
+    readonly property string themeContrastWarning: browserUi.theme_contrast_status === "warning"
+                                                   || ChromePresentation.contrastReport({
+                                                       primaryText: primaryTextColor, background: backgroundColor,
+                                                       secondaryText: secondaryTextColor, surface: surfaceColor,
+                                                       mutedText: mutedTextColor, panel: panelColor,
+                                                       accent: accentColor }).status === "warning"
+                                                   ? browserUi.theme_contrast_reason || "Some theme colors have low contrast." : ""
     readonly property real chromeScale: Math.max(1, metrics.height / 14)
     readonly property real chromePadding: Math.max(4, Math.ceil(metrics.height * 0.25))
     readonly property real chromeRowHeight: Math.ceil(metrics.height + chromePadding * 1.25)

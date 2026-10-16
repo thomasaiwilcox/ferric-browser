@@ -34,6 +34,14 @@ FerricModalSurface {
 
     FontMetrics { id: choiceMetrics; font: dialog.browserWindow.font }
 
+    function fittedCommandDialogHeight() {
+        // Layouts round each track separately. Round the measured content and
+        // gap up too, so fractional font scaling doesn't create a tiny scrollbar.
+        var detailHeight = detailScroll.visible
+                ? Math.ceil(details.implicitHeight) + Math.ceil(bodyColumn.spacing) : 0
+        return fittedDialogHeight(detailHeight + Math.ceil(actionScroll.contentLayout.implicitHeight))
+    }
+
     function actionEnabled(index) {
         if (index < 0 || index >= actions.length) {
             return false;
@@ -197,6 +205,7 @@ FerricModalSurface {
     }
 
     ColumnLayout {
+        id: bodyColumn
         anchors.fill: parent
         spacing: 8 * dialog.scale
 

@@ -97,7 +97,9 @@ fn scroll_target_command_uses_the_shared_executor_and_owned_view_actions() {
     assert!(secondary.contains("secondaryUi.tab_index_for_id(scrollTargetParts[1])"));
     assert!(secondary.contains("secondaryUi, scrollTargetView,"));
     assert!(qml.contains("id: secondaryUi"));
-    assert!(qml.contains("hint_chrome_available: false"));
+    assert!(secondary.contains("hint_chrome_available: true"));
+    assert!(secondary.contains("FerricHintWorkspace {"));
+    assert!(secondary.contains("browserUi: secondaryUi"));
     let primary_scroll_target = primary
         .find("if (action.indexOf(\"scroll-target\\t\") === 0)")
         .expect("primary scroll-target branch");

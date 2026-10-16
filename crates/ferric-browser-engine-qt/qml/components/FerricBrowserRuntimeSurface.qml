@@ -980,6 +980,8 @@ FerricBrowserRuntimeChrome {
             return false
         }
         var nativeView = host && host.activeView !== undefined ? host.activeView : (ui === browserUi ? window.activeWebView() : null)
+        var hints = host && host.hintWorkspace && host.hintWorkspace.browserUi === ui
+                ? host.hintWorkspace : null
         var logicalText = window.logicalNormalKeyText(event)
         var handled = false
         var passing = ui.mode === "pass-through" || ui.mode === "pass-through-once"
@@ -1015,8 +1017,8 @@ FerricBrowserRuntimeChrome {
             if (ui.mode === "grid" && event.modifiers !== Qt.NoModifier) {
                 // Unsupported modified Escape is consumed while Grid owns the
                 // keyboard, but does not mutate the spatial session.
-            } else if (ui === browserUi && ui.mode === "hint") {
-                window.closeHints()
+            } else if (hints && ui.mode === "hint") {
+                hints.closeHints()
             } else {
                 ui.escape()
             }
@@ -1051,39 +1053,39 @@ FerricBrowserRuntimeChrome {
                 ui.enter_search(logicalText === "?")
             }
             handled = true
-        } else if (ui === browserUi && ui.mode === "hint"
+        } else if (hints && ui.mode === "hint"
                    && ui.hint_pointer_mode
                    && ui.hint_pointer_state !== "selecting") {
             // Enter release owns preflight. While it is pending, Escape above
             // cancels and all other target input is consumed.
             handled = true
-        } else if (ui === browserUi && ui.mode === "hint") {
+        } else if (hints && ui.mode === "hint") {
             var control = (event.modifiers & Qt.ControlModifier) !== 0
             var shift = (event.modifiers & Qt.ShiftModifier) !== 0
             if (control && event.key === Qt.Key_U) {
-                window.applyHintInteraction("clear", "")
+                hints.applyHintInteraction("clear", "")
             } else if (event.key === Qt.Key_Backspace) {
-                window.applyHintInteraction("backspace", "")
+                hints.applyHintInteraction("backspace", "")
             } else if (event.key === Qt.Key_Tab || event.key === Qt.Key_Right
                        || event.key === Qt.Key_Down) {
-                window.applyHintInteraction(shift ? "previous" : "next", "")
+                hints.applyHintInteraction(shift ? "previous" : "next", "")
             } else if (event.key === Qt.Key_Backtab || event.key === Qt.Key_Left
                        || event.key === Qt.Key_Up) {
-                window.applyHintInteraction("previous", "")
+                hints.applyHintInteraction("previous", "")
             } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
                 if (ui.hint_pointer_mode) {
-                    if (!event.isAutoRepeat) window.beginHintPointerConfirmation()
+                    if (!event.isAutoRepeat) hints.beginHintPointerConfirmation()
                 } else {
-                    window.applyHintInteraction("activate", "")
+                    hints.applyHintInteraction("activate", "")
                 }
             } else if (control && event.key === Qt.Key_Space) {
-                window.applyHintInteraction("rotate", "")
-            } else if (logicalText === "/" && window.hintState.mode === "label") {
-                window.applyHintInteraction("text-mode", "")
-            } else if (logicalText === " " && window.hintState.mode === "label") {
-                window.applyHintInteraction("rotate", "")
+                hints.applyHintInteraction("rotate", "")
+            } else if (logicalText === "/" && hints.hintState.mode === "label") {
+                hints.applyHintInteraction("text-mode", "")
+            } else if (logicalText === " " && hints.hintState.mode === "label") {
+                hints.applyHintInteraction("rotate", "")
             } else if (logicalText.length === 1) {
-                window.applyHintInteraction("character", logicalText)
+                hints.applyHintInteraction("character", logicalText)
             }
             handled = true
         } else if (ui.mode === "caret" && (logicalText === "Ctrl+x" || logicalText === "Ctrl+v" || logicalText === "Ctrl+Shift+v")) {
@@ -1135,10 +1137,12 @@ FerricBrowserRuntimeChrome {
     }
 
     function handleBrowserKeyRelease(ui, host, key, modifiers) {
-        if (ui === browserUi && ui.mode === "hint" && ui.hint_pointer_mode
+        var hints = host && host.hintWorkspace && host.hintWorkspace.browserUi === ui
+                ? host.hintWorkspace : null
+        if (hints && ui.mode === "hint" && ui.hint_pointer_mode
                 && ui.hint_pointer_state === "awaiting-confirmation-release"
                 && (key === Qt.Key_Return || key === Qt.Key_Enter)) {
-            window.releaseHintPointerConfirmation()
+            hints.releaseHintPointerConfirmation()
             return true
         }
         return false
@@ -1307,7 +1311,8 @@ FerricBrowserRuntimeChrome {
     }
 
     function completeProfileBootstrap() {
-        if (window.runtimeDisposing || window.profileBootstrapComplete) return
+        if (window.runtimeDisposing || window.profileBootstrapComplete
+                || browserUi.profile_bootstrap_pending || !browserUi.profile_available()) return
         window.refreshSpellcheckInventory(browserUi)
         browserProfile.spellCheckEnabled = window.spellcheckEnabled(browserUi)
         browserProfile.spellCheckLanguages = window.spellcheckLanguages(browserUi)

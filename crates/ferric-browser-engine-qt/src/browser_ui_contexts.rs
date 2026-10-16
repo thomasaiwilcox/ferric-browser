@@ -54,7 +54,36 @@ impl qobject::BrowserUi {
             .and_then(BrowserApplication::contexts)
             .map(ContextSnapshot::from_records);
         self.as_mut().rust_mut().as_mut().get_mut().contexts = snapshot;
+        self.as_mut().sync_context_choices();
         Ok(effect)
+    }
+
+    /// Publish the committed registry, including command-created contexts.
+    /// Routing definitions remain independent inputs in `contexts_json`.
+    pub(super) fn sync_context_choices(mut self: Pin<&mut Self>) {
+        let records = self.as_ref().rust().contexts.clone().unwrap_or_default();
+        self.as_mut().set_context_choice_labels(
+            records
+                .contexts()
+                .iter()
+                .map(|context| QString::from(&context.label))
+                .collect(),
+        );
+        self.as_mut().set_context_choice_profiles(
+            records
+                .contexts()
+                .iter()
+                .map(|context| QString::from(&context.profile))
+                .collect(),
+        );
+        // Names are the presentation readiness signal; publish them last.
+        self.set_context_choice_names(
+            records
+                .contexts()
+                .iter()
+                .map(|context| QString::from(&context.name))
+                .collect(),
+        );
     }
 
     #[allow(clippy::too_many_lines)]

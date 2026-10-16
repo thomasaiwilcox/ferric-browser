@@ -15,13 +15,10 @@ FerricBrowserRuntimeRequests {
     webViewComponentObject: webViewComponent
     webViewsObject: webViews
 
+    copyNoticeSurfaceObject: copyNoticeSurface
     readonly property alias commandSurfaceObject: commandSurface
     readonly property alias searchSurfaceObject: searchSurface
     readonly property alias attachedDevToolsLoaderObject: attachedDevToolsLoader
-    property alias spatialAdapterEnabled: spatialPointerAdapter.enabled
-    property alias spatialAdapterTargetItem: spatialPointerAdapter.targetItem
-    property alias spatialAdapterSurfaceSerial: spatialPointerAdapter.surfaceSerial
-    property alias spatialAdapterSurfaceRevision: spatialPointerAdapter.surfaceRevision
 
     Component {
         id: popupWindowComponent
@@ -647,20 +644,49 @@ GridLayout {
         }
     }
 
+    profileNoticeHeight: profileNotice.height
+    profileNoticeInputActive: profileNotice.inputActive
+    FerricProfileNotice {
+        id: profileNotice
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: window.bottomControlsHeight
+        browserWindow: window
+        hostWindow: window
+        noticeText: browserUi.profile_startup_notice
+        onDetailsRequested: window.showDiagnostics(browserUi, window)
+    }
+
     FerricDiagnostics {
+        hostWindow: window.diagnosticsHost || window
+        parent: hostWindow && hostWindow.contentItem ? hostWindow.contentItem : null
+        startupDetails: window.diagnosticsStartupDetails
         previewText: window.diagnosticsText
-        summaryRows: browserUi.diagnostics_summary
-        reportAvailable: browserUi.diagnostics_available
-        reportPending: browserUi.diagnostics_pending
-        reportError: browserUi.diagnostics_error
+        summaryRows: (window.diagnosticsUi ? window.diagnosticsUi.diagnostics_summary : [])
+        reportAvailable: (window.diagnosticsUi ? window.diagnosticsUi.diagnostics_available : false)
+        reportPending: (window.diagnosticsUi ? window.diagnosticsUi.diagnostics_pending : false)
+        reportError: (window.diagnosticsUi ? window.diagnosticsUi.diagnostics_error : "")
         exportNotice: window.diagnosticsExportNotice
         exportDetail: window.diagnosticsExportDetail
-        browserWindow: window
+        visible: window.diagnosticsVisible
+        browserWindow: window.diagnosticsAppearance
         onCloseRequested: window.closeDiagnostics()
         onRefreshRequested: window.refreshDiagnostics()
-        onCopyRequested: if (browserUi.diagnostics_available) window.copyToClipboard(window.diagnosticsText, true)
+        onCopyRequested: {
+            var ui = window.diagnosticsUi
+            if (!ui || !ui.diagnostics_available) return
+            if (ui.write_clipboard(window.diagnosticsText, false)) {
+                window.diagnosticsExportNotice = "Report preview copied"
+                window.diagnosticsExportDetail = ""
+            } else {
+                window.diagnosticsExportNotice = "The report preview couldn't be copied."
+                window.diagnosticsExportDetail = String(ui.status_text)
+            }
+        }
         onSaveRequested: {
-            if (!browserUi.diagnostics_available) return
+            if (!(window.diagnosticsUi ? window.diagnosticsUi.diagnostics_available : false)) return
+            window.diagnosticsExportUi = window.diagnosticsUi
             fileDialogSurfaces.diagnosticsExportCurrentFile = "ferric-browser-diagnostics.json"
             fileDialogSurfaces.openDiagnosticsExport()
         }
@@ -1295,348 +1321,6 @@ GridLayout {
         }
     }
 
-    FerricPagePointerAdapter {
-        id: spatialPointerAdapter
-        enabled: browserUi.spatial_visible || browserUi.hint_pointer_pending
-                 || window.scopedGridHandoffView !== null
-        targetItem: window.scopedGridHandoffView !== null
-                    ? window.scopedGridHandoffView
-                    : (browserUi.spatial_visible || browserUi.hint_pointer_mode)
-                      ? window.activeWebView() : null
-        targetWindow: window
-        inputBlocked: window.browserChromeInputActive
-        // S19 stays fail-closed until the native Wayland gesture gate passes.
-        doubleClickEnabled: false
-        onDispatchAcknowledged: function(requestId, sessionId, serial, revision, outcome) {
-            if (browserUi.hint_pointer_pending) {
-                browserUi.hint_pointer_dispatch_ack(
-                            requestId, sessionId, serial, revision, outcome)
-            } else {
-                browserUi.spatial_dispatch_ack(
-                            requestId, sessionId, serial, revision,
-                            outcome === "unavailable" ? "rejected" : outcome)
-                if (outcome === "unavailable") {
-                    browserUi.status_text =
-                            "Native double-click remains unavailable pending Wayland qualification"
-                }
-            }
-        }
-        onInvalidated: function(reason) {
-            if (browserUi.hint_pointer_pending) {
-                browserUi.hint_pointer_invalidated(reason)
-                return
-            }
-            // Initial target binding can advance the adapter stamp before the
-            // first geometry observation. Once a root is installed, every
-            // later invalidation is authoritative.
-            if (browserUi.spatial_visible && browserUi.spatial_root_width > 0) {
-                browserUi.spatial_invalidated(reason)
-            }
-        }
-        onPhysicalPointerDetected: function(reason) {
-            if (browserUi.hint_pointer_pending) {
-                browserUi.hint_pointer_invalidated(reason)
-            } else if (browserUi.spatial_visible) {
-                browserUi.spatial_invalidated(reason)
-            }
-        }
-        onSurfaceChanged: {
-            if (browserUi.hint_pointer_pending) {
-                browserUi.hint_pointer_invalidated("geometry-changed")
-            } else if (browserUi.spatial_visible && browserUi.spatial_root_width > 0) {
-                browserUi.spatial_invalidated("geometry-changed")
-            }
-        }
-    }
-
-    property bool spatialScopeGeometryPending: false
-
-    function releaseSpatialScopeLease() {
-        spatialScopeGeometryTimer.stop()
-        spatialScopeDispatchTimer.stop()
-        spatialScopeGeometryPending = false
-        var leaseId = String(window.activeSpatialScopeLeaseId || "")
-        var view = window.activeSpatialScopeView
-        window.activeSpatialScopeLeaseId = ""
-        window.activeSpatialScopeView = null
-        if (leaseId.length > 0 && view) {
-            window.runBrowserScript(
-                        view, BrowserScripts.hintClearScopeLease(leaseId), function(value) {})
-        }
-    }
-
-    Timer {
-        id: spatialScopeGeometryTimer
-        interval: 100
-        repeat: true
-        running: browserUi.spatial_visible
-                 && browserUi.spatial_selecting
-                 && browserUi.spatial_scope_lease_id.length > 0
-        onTriggered: {
-            if (window.spatialScopeGeometryPending) return
-            var view = window.activeSpatialScopeView
-            var leaseId = String(browserUi.spatial_scope_lease_id || "")
-            var sessionId = String(browserUi.spatial_session_id || "")
-            if (!view || leaseId.length === 0 || view !== window.activeWebView()
-                    || spatialPointerAdapter.targetItem !== view) {
-                browserUi.spatial_invalidated("target-changed")
-                return
-            }
-            window.spatialScopeGeometryPending = true
-            var started = window.runBrowserScript(
-                        view, BrowserScripts.spatialScopeGeometry(leaseId), function(value) {
-                window.spatialScopeGeometryPending = false
-                if (!browserUi.spatial_visible
-                        || String(browserUi.spatial_session_id || "") !== sessionId
-                        || String(browserUi.spatial_scope_lease_id || "") !== leaseId
-                        || window.activeSpatialScopeView !== view) {
-                    return
-                }
-                browserUi.spatial_scope_geometry_validated(
-                            "", JSON.stringify(value || {}),
-                            spatialPointerAdapter.surfaceSerial,
-                            spatialPointerAdapter.surfaceRevision,
-                            view.width, view.height, Number(view.zoomFactor))
-            })
-            if (!started) {
-                window.spatialScopeGeometryPending = false
-                browserUi.spatial_invalidated("renderer-unavailable")
-            }
-        }
-    }
-
-    Timer {
-        id: spatialScopeDispatchTimer
-        interval: 250
-        repeat: false
-        onTriggered: browserUi.spatial_invalidated("renderer-unavailable")
-    }
-
-    Connections {
-        target: browserUi
-        function onSpatial_visibleChanged() {
-            if (!browserUi.spatial_visible) {
-                window.releaseSpatialScopeLease()
-                return
-            }
-            var sessionId = browserUi.spatial_session_id
-            Qt.callLater(function() {
-                if (!browserUi.spatial_visible
-                        || browserUi.spatial_session_id !== sessionId) {
-                    return
-                }
-                var view = window.activeWebView()
-                if (view && view.width > 0 && view.height > 0) {
-                    browserUi.spatial_surface_ready(
-                                view.width, view.height,
-                                spatialPointerAdapter.surfaceSerial,
-                                spatialPointerAdapter.surfaceRevision)
-                } else {
-                    browserUi.spatial_invalidated("surface-unavailable")
-                }
-            })
-        }
-        function onSpatial_dispatch_requestChanged() {
-            var payload = browserUi.spatial_dispatch_request
-            if (!payload || payload.length === 0) {
-                return
-            }
-            var request
-            try {
-                request = JSON.parse(payload)
-            } catch (error) {
-                browserUi.spatial_invalidated("dispatch-rejected")
-                return
-            }
-            // Keep `enabled` declaratively bound to the owning Grid or Hint
-            // lifecycle so teardown releases the adapter's session. Never
-            // assign here: that would replace the QML binding.
-            if (!spatialPointerAdapter.enabled) {
-                browserUi.spatial_invalidated("dispatch-rejected")
-                return
-            }
-            var scopeLeaseId = String(request.scope_lease_id || "")
-            if (scopeLeaseId.length > 0) {
-                var view = window.activeSpatialScopeView
-                var sessionId = String(request.session_id || "")
-                var zoomFactor = view ? Number(view.zoomFactor) : NaN
-                if (!view || view !== window.activeWebView()
-                        || spatialPointerAdapter.targetItem !== view
-                        || scopeLeaseId !== String(browserUi.spatial_scope_lease_id || "")) {
-                    browserUi.spatial_invalidated("target-changed")
-                    return
-                }
-                spatialScopeDispatchTimer.restart()
-                var started = window.runBrowserScript(
-                            view, BrowserScripts.spatialScopeGeometry(scopeLeaseId), function(value) {
-                    spatialScopeDispatchTimer.stop()
-                    if (!browserUi.spatial_visible
-                            || String(browserUi.spatial_session_id || "") !== sessionId
-                            || String(browserUi.spatial_scope_lease_id || "") !== scopeLeaseId
-                            || window.activeWebView() !== view
-                            || window.activeSpatialScopeView !== view
-                            || spatialPointerAdapter.targetItem !== view
-                            || browserUi.mode !== "grid"
-                            || Number(view.zoomFactor) !== zoomFactor) {
-                        browserUi.spatial_invalidated("target-changed")
-                        return
-                    }
-                    if (!browserUi.spatial_scope_geometry_validated(
-                                request.request_id, JSON.stringify(value || {}),
-                                spatialPointerAdapter.surfaceSerial,
-                                spatialPointerAdapter.surfaceRevision,
-                                view.width, view.height, Number(view.zoomFactor))) {
-                        return
-                    }
-                    spatialPointerAdapter.dispatch(
-                                request.request_id, request.session_id,
-                                request.serial, request.revision,
-                                Number(request.x), Number(request.y), request.action)
-                })
-                if (!started) {
-                    spatialScopeDispatchTimer.stop()
-                    browserUi.spatial_invalidated("renderer-unavailable")
-                }
-                return
-            }
-            spatialPointerAdapter.dispatch(
-                        request.request_id, request.session_id,
-                        request.serial, request.revision,
-                        Number(request.x), Number(request.y), request.action)
-        }
-        function onHint_pointer_dispatch_requestChanged() {
-            var payload = browserUi.hint_pointer_dispatch_request
-            if (!payload || payload.length === 0) return
-            var request
-            try {
-                request = JSON.parse(payload)
-            } catch (error) {
-                browserUi.hint_pointer_invalidated("dispatch-rejected")
-                return
-            }
-            if (!spatialPointerAdapter.enabled || !browserUi.hint_pointer_pending) {
-                browserUi.hint_pointer_invalidated("dispatch-rejected")
-                return
-            }
-            spatialPointerAdapter.dispatch(
-                        request.request_id, request.session_id,
-                        request.serial, request.revision,
-                        Number(request.x), Number(request.y), request.action)
-        }
-    }
-
-    Timer {
-        id: hintPointerPreflightTimer
-        interval: 250
-        repeat: false
-        onTriggered: browserUi.hint_pointer_timeout()
-    }
-
-    Timer {
-        id: hintPointerDispatchTimer
-        interval: 2100
-        repeat: false
-        onTriggered: browserUi.hint_pointer_timeout()
-    }
-
-    Connections {
-        target: browserUi
-        function onHint_pointer_stateChanged() {
-            if (browserUi.hint_pointer_state !== "preflight") {
-                hintPointerPreflightTimer.stop()
-            }
-            if (browserUi.hint_pointer_state !== "dispatch-pending") {
-                hintPointerDispatchTimer.stop()
-            }
-        }
-    }
-
-    function releaseHintPointerConfirmation() {
-        if (!browserUi.hint_pointer_mode
-                || browserUi.hint_pointer_state !== "awaiting-confirmation-release") {
-            return false
-        }
-        var view = window.activeWebView()
-        var label = String(window.hintState.active_label || "")
-        var candidate = null
-        for (var index = 0; index < window.hintResults.length; ++index) {
-            if (String(window.hintResults[index].label) === label) {
-                candidate = window.hintResults[index]
-                break
-            }
-        }
-        if (!view || !candidate || view !== window.hintTrackingView
-                || spatialPointerAdapter.targetItem !== view
-                || window.hintRefreshPending || view.width <= 0 || view.height <= 0) {
-            browserUi.hint_pointer_invalidated("preflight-rejected")
-            return true
-        }
-        var response = {}
-        try {
-            response = JSON.parse(browserUi.hint_pointer_confirmation_released(
-                spatialPointerAdapter.surfaceSerial,
-                spatialPointerAdapter.surfaceRevision,
-                view.width,
-                view.height))
-        } catch (error) {
-            response = {}
-        }
-        if (!response.ok || !response.request_id) return true
-        var requestId = String(response.request_id)
-        var viewWidth = view.width
-        var viewHeight = view.height
-        var zoomFactor = Number(view.zoomFactor)
-        hintPointerPreflightTimer.restart()
-        var started = window.runBrowserScript(
-                    view,
-                    window.hintPointerPreflightScript(candidate, viewWidth, viewHeight),
-                    function(value) {
-            hintPointerPreflightTimer.stop()
-            if (browserUi.mode !== "hint" || !browserUi.hint_pointer_mode
-                    || browserUi.hint_pointer_state !== "preflight"
-                    || window.activeWebView() !== view
-                    || window.hintTrackingView !== view
-                    || spatialPointerAdapter.targetItem !== view
-                    || Number(view.zoomFactor) !== zoomFactor) {
-                if (browserUi.hint_pointer_state === "preflight") {
-                    browserUi.hint_pointer_invalidated("target-changed")
-                }
-                return
-            }
-            var accepted = false
-            try {
-                accepted = browserUi.complete_hint_pointer_preflight(
-                    requestId, JSON.stringify(value || {}),
-                    spatialPointerAdapter.surfaceSerial,
-                    spatialPointerAdapter.surfaceRevision,
-                    view.width, view.height)
-            } catch (error) {
-                browserUi.hint_pointer_invalidated("preflight-rejected")
-                return
-            }
-            if (accepted && browserUi.hint_pointer_state === "dispatch-pending") {
-                hintPointerDispatchTimer.restart()
-            }
-        })
-        if (!started) {
-            hintPointerPreflightTimer.stop()
-            browserUi.hint_pointer_invalidated("renderer-unavailable")
-        }
-        return true
-    }
-
-    FerricSpatialGridOverlay {
-        id: spatialGridOverlay
-        anchors.fill: webViews
-        z: 31
-        browserUi: window.browserUi
-        chromeScale: window.chromeScale
-        labelColor: window.selectionTextColor
-        labelBackground: window.selectionColor
-        crosshairColor: window.accentColor
-        doubleClickEnabled: spatialPointerAdapter.doubleClickEnabled
-    }
-
     Loader {
         id: attachedDevToolsLoader
         anchors.left: parent.left
@@ -1660,100 +1344,17 @@ GridLayout {
         }
     }
 
-    Timer {
-        interval: 80
-        repeat: true
-        running: browserUi.hint_visible
-        onTriggered: window.pollHintRefresh()
-    }
-
-    function hintCollisionLabels(label) { return hintOverlaySurface.collisionLabels(label) }
-    function expandHintStack() { hintOverlaySurface.stackExpanded = true }
-
-    FerricHintOverlay {
-        id: hintOverlaySurface
-        anchors.fill: webViews
-        browserWindow: window
-        hintsVisible: browserUi.hint_visible && !browserUi.hint_pointer_pending
-                      && !browserUi.target_search_active
-        hintResults: window.hintResults
-        sourceViewport: window.hintViewport
-        hintState: window.hintState
-        unmatchedPolicy: browserUi.hint_unmatched_policy
-        markerScale: browserUi.hint_marker_scale
-        interactionActive: browserUi.hint_visible
-        onSelectionRequested: function(label) { window.applyHintInteraction("select",label) }
-        onActivationRequested: function(label) { window.activateHint(label, "", true) }
-        onActionsRequested: function(label) { window.showHintActions(label) }
-    }
-
-    FerricTargetSearch {
-        id: targetSearchPopup
-        objectName: "targetSearchPopup"
-        browserWindow: window
-        searchVisible: browserUi.target_search_active
-        query: String(window.hintState.query || "")
-        scope: browserUi.target_search_scope
-        rows: window.targetSearchRows()
-        selectedIdentity: window.targetSearchSelectedIdentity
-        selectedMeaning: window.targetSearchSelectedMeaning
-        onOpening: window.captureOverlayFocus(window, window.activeWebView())
-        onClosed: window.restoreOverlayFocus()
-        onQueryEdited: function(value) { window.applyTargetSearchQuery(value) }
-        onMoveRequested: function(delta) { window.moveTargetSearchSelection(delta) }
-        onSelectionRequested: function(identity) { window.selectTargetSearchIdentity(identity) }
-        onConfirmRequested: window.confirmTargetSearchSelection()
-        onCancelRequested: browserUi.cancel_target_search()
-    }
-
-    Connections {
-        target: browserUi
-        function onTarget_search_activeChanged() {
-            var searchActive = browserUi.target_search_active
-            window.hintCollectionEpoch += 1
-            window.hintRefreshPending = false
-            if (browserUi.target_search_active) {
-                window.targetSearchSelectedIdentity = ""
-                window.targetSearchSelectedMeaning = ""
-                window.targetSearchSelectionInitialized = false
-            } else {
-                window.targetSearchSelectedIdentity = ""
-                window.targetSearchSelectedMeaning = ""
-                window.targetSearchSelectionInitialized = false
-            }
-            targetSearchRefreshTimer.restart()
-        }
-    }
-
-    Timer {
-        id: targetSearchRefreshTimer
-        interval: 0
-        onTriggered: {
-            if (browserUi.mode !== "hint") return
-            window.startHintCollection()
-            if (browserUi.target_search_active) targetSearchPopup.focusInput()
-        }
-    }
-
-    FerricRapidHintConfirmation {
-        browserWindow: window
-        onContinueRequested: {
-            if (browserUi.confirm_rapid_hint_tabs()) {
-                window.rapidHintConfirmationVisible = false
-                Qt.callLater(window.startHintCollection)
-            }
-        }
-        onCancelRequested: {
-            window.rapidHintConfirmationVisible = false
-            window.closeHints()
-        }
-    }
-
     FerricCopyNotice {
-        browserWindow: window
-        onCopyAgainRequested: window.copyToClipboard(
-                                  window.copiedValue, !window.copyNoticeSensitive)
-        onDismissalRequested: window.copyNoticeVisible = false
+        id: copyNoticeSurface
+        parent: window.copyNoticeView || (window.copyNoticeHost || window).contentItem
+        browserWindow: window.copyNoticeAppearance
+        hostWindow: window.copyNoticeHost || window
+        noticeVisible: window.copyNoticeVisible && window.copyNoticeOwnerCurrent
+        copiedText: window.copiedText
+        sensitive: window.copyNoticeSensitive
+        primarySelection: window.copyNoticePrimary
+        onCopyAgainRequested: window.repeatClipboardCopy()
+        onDismissalRequested: window.dismissCopyNotice()
     }
 
     FerricStatusBar {
@@ -1761,7 +1362,7 @@ GridLayout {
         statusVisible: window.statusBarVisible
         mode: browserUi.mode
         displayUrl: browserUi.display_url
-        hintPreviewText: browserUi.mode === "hint" && !browserUi.target_search_active ? hintOverlaySurface.previewText : ""
+        hintPreviewText: browserUi.mode === "hint" && !browserUi.target_search_active ? window.hintWorkspace.previewText : ""
         statusText: window.commandNoticeVisible
                     ? window.commandNoticeText : browserUi.status_text
         statusError: window.commandNoticeVisible && window.commandNoticeError

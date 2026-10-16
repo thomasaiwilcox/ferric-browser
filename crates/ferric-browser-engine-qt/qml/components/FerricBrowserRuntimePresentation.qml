@@ -12,9 +12,6 @@ import "../scripts/SpellcheckPresentation.js" as SpellcheckPresentation
 FerricBrowserRuntimeServices {
     id: window
 
-    property string activeHintScopeLeaseId: ""
-    property string activeSpatialScopeLeaseId: ""
-    property var activeSpatialScopeView: null
 
     readonly property var clipboardBridge: window.clipboardBridgeObject
     readonly property var activationOutcomeTimer: window.activationOutcomeTimerObject
@@ -906,10 +903,13 @@ FerricBrowserRuntimeServices {
 
     function finishDiagnosticsExport() {
         var selected = fileDialogSurfaces.diagnosticsExportSelectedFile
-        var path = browserUi.local_file_path(selected || "")
-        if (!path || !browserUi.export_diagnostics(path)) {
+        var ui = window.diagnosticsUi
+        if (!window.diagnosticsOwner(ui, window.diagnosticsHost)
+                || (window.diagnosticsExportUi && window.diagnosticsExportUi !== ui)) return
+        var path = ui.local_file_path(selected || "")
+        if (!path || !ui.export_diagnostics(path)) {
             window.diagnosticsExportNotice = "The report couldn't be saved. Review the details and try again."
-            window.diagnosticsExportDetail = path ? String(browserUi.status_text) : "Choose a local file on this computer."
+            window.diagnosticsExportDetail = path ? String(ui.status_text) : "Choose a local file on this computer."
         } else {
             window.diagnosticsExportDetail = ""
             window.diagnosticsExportNotice = "Report saved. Refresh to prepare another report."
@@ -1092,87 +1092,55 @@ FerricBrowserRuntimeServices {
     }
 
     function hintSelectorPolicySnapshot(family) {
-        return browserUi.hint_selector_policy(family)
+        return window.hintWorkspace.hintSelectorPolicySnapshot(family)
     }
 
     function hintCollectorScript(family, selectorSnapshot, scopeLeaseId, includeFacets) {
-        return BrowserScripts.hintCollector(
-                    family, browserUi.hint_proxy_targets_enabled, selectorSnapshot,
-                    scopeLeaseId, includeFacets)
+        return window.hintWorkspace.hintCollectorScript(family, selectorSnapshot, scopeLeaseId, includeFacets)
     }
 
     function targetSearchIdentity(candidate) {
-        return TargetSearchPresentation.identity(candidate)
+        return window.hintWorkspace.targetSearchIdentity(candidate)
     }
 
     function targetSearchMeaning(candidate) {
-        return TargetSearchPresentation.meaning(candidate)
+        return window.hintWorkspace.targetSearchMeaning(candidate)
     }
 
     function targetSearchRows() {
-        return TargetSearchPresentation.rows(
-                    window.hintResults,
-                    window.hintState && window.hintState.matching_labels || [])
+        return window.hintWorkspace.targetSearchRows()
     }
 
     function reconcileTargetSearchSelection() {
-        if (!browserUi.target_search_active) return
-        var next = TargetSearchPresentation.reconcile(window.targetSearchRows(), {
-            identity: window.targetSearchSelectedIdentity,
-            meaning: window.targetSearchSelectedMeaning,
-            initialized: window.targetSearchSelectionInitialized
-        })
-        window.targetSearchSelectedIdentity = next.identity
-        window.targetSearchSelectedMeaning = next.meaning
-        window.targetSearchSelectionInitialized = next.initialized
+        return window.hintWorkspace.reconcileTargetSearchSelection()
     }
 
     function applyTargetSearchQuery(query) {
-        window.applyHintInteraction("set-query", String(query || ""))
-        window.reconcileTargetSearchSelection()
+        return window.hintWorkspace.applyTargetSearchQuery(query)
     }
 
     function selectTargetSearchIdentity(identity) {
-        var next = TargetSearchPresentation.select(window.targetSearchRows(), identity)
-        if (!next) return
-        window.targetSearchSelectedIdentity = next.identity
-        window.targetSearchSelectedMeaning = next.meaning
-        window.targetSearchSelectionInitialized = next.initialized
+        return window.hintWorkspace.selectTargetSearchIdentity(identity)
     }
 
     function moveTargetSearchSelection(delta) {
-        var rows = window.targetSearchRows()
-        if (rows.length === 0) return
-        var next = TargetSearchPresentation.move(rows, {
-            identity: window.targetSearchSelectedIdentity,
-            meaning: window.targetSearchSelectedMeaning
-        }, delta)
-        if (!next) return
-        window.targetSearchSelectedIdentity = next.identity
-        window.targetSearchSelectedMeaning = next.meaning
-        window.targetSearchSelectionInitialized = next.initialized
+        return window.hintWorkspace.moveTargetSearchSelection(delta)
     }
 
     function confirmTargetSearchSelection() {
-        var selected = TargetSearchPresentation.selectedRow(window.targetSearchRows(), {
-            identity: window.targetSearchSelectedIdentity,
-            meaning: window.targetSearchSelectedMeaning
-        })
-        if (!selected) return false
-        window.activateHint(selected.label, "", true)
-        return true
+        return window.hintWorkspace.confirmTargetSearchSelection()
     }
 
     function hintDirtyRevisionScript() {
-        return BrowserScripts.hintDirtyRevision()
+        return window.hintWorkspace.hintDirtyRevisionScript()
     }
 
     function hintStopTrackingScript(scopeLeaseId) {
-        return BrowserScripts.hintStopTracking(scopeLeaseId)
+        return window.hintWorkspace.hintStopTrackingScript(scopeLeaseId)
     }
 
     function spatialScopeGeometryScript(scopeLeaseId) {
-        return BrowserScripts.spatialScopeGeometry(scopeLeaseId)
+        return window.hintWorkspace.spatialScopeGeometryScript(scopeLeaseId)
     }
 
     function selectionScript() {
@@ -1196,464 +1164,59 @@ FerricBrowserRuntimeServices {
     }
 
     function hintFreshScript(candidate) {
-        return BrowserScripts.hintFresh(
-                    candidate, hintSelectorPolicySnapshot(browserUi.hint_family))
+        return window.hintWorkspace.hintFreshScript(candidate)
     }
 
     function completeHintScopeHandoff(view, request, candidate, actionEpoch) {
-        if (!request || typeof request.lease_id !== "string"
-                || window.activeWebView() !== view
-                || window.hintTrackingView !== view
-                || browserUi.mode !== "hint") {
-            window.closeHints()
-            return
-        }
-        window.hintScopeHandoffLeaseId = request.lease_id
-        var finishHandoff = function() {
-            if (window.hintScopeHandoffLeaseId === request.lease_id) window.hintScopeHandoffLeaseId = ""
-        }
-        var selectorSnapshot = window.hintSelectorPolicySnapshot(browserUi.hint_family)
-        var acquireStarted = window.runBrowserScript(
-                    view,
-                    "JSON.stringify(" + BrowserScripts.hintAcquireScopeLease(request, candidate, selectorSnapshot) + ")",
-                    function(receiptJson) {
-            // Preserve explicit null fields across WebEngine's QVariant bridge.
-            var receipt = null
-            try { receipt = JSON.parse(receiptJson) } catch (error) {}
-            if (window.hintCollectionEpoch !== actionEpoch
-                    || window.activeWebView() !== view
-                    || window.hintTrackingView !== view
-                    || browserUi.mode !== "hint") {
-                if (receipt && receipt.ok === true) {
-                    window.runBrowserScript(
-                                view, BrowserScripts.hintClearScopeLease(request.lease_id),
-                                function(value) {})
-                }
-                finishHandoff()
-                return
-            }
-            if (!receipt || receipt.ok !== true) {
-                var reason = receipt && receipt.error === "weak-reference-unavailable"
-                        ? "Scoped Hint needs weak references; use full-page Grid instead"
-                        : "Scoped Hint failed closed: the selected region is stale"
-                window.closeHints()
-                browserUi.status_text = reason
-                window.showCommandNotice(reason, true)
-                return
-            }
-            var stopStarted = window.runBrowserScript(
-                        view, window.hintStopTrackingScript(request.lease_id), function(stopped) {
-                if (window.hintCollectionEpoch !== actionEpoch
-                        || window.activeWebView() !== view
-                        || window.hintTrackingView !== view
-                        || browserUi.mode !== "hint") {
-                    window.runBrowserScript(
-                                view, BrowserScripts.hintClearScopeLease(request.lease_id),
-                                function(value) {})
-                    finishHandoff()
-                    return
-                }
-                if (stopped !== true
-                        || !browserUi.complete_hint_scope_handoff(
-                            request.lease_id, JSON.stringify(receipt))) {
-                    window.runBrowserScript(
-                                view, BrowserScripts.hintClearScopeLease(request.lease_id),
-                                function(value) {})
-                    window.closeHints()
-                    browserUi.status_text = "Scoped Hint failed closed: the lease became stale"
-                    window.showCommandNotice(browserUi.status_text, true)
-                    return
-                }
-                window.activeHintScopeLeaseId = request.lease_id
-                finishHandoff()
-                window.hintResults = []
-                window.hintInput = ""
-                window.hintRefreshPending = false
-                window.startHintCollection()
-            })
-            if (!stopStarted && window.hintCollectionEpoch === actionEpoch) {
-                window.closeHints()
-                browserUi.status_text = "Scoped Hint source registry could not be released"
-                window.showCommandNotice(browserUi.status_text, true)
-            }
-        })
-        if (!acquireStarted && window.hintCollectionEpoch === actionEpoch) {
-            window.closeHints()
-            browserUi.status_text = "Scoped Hint lease could not be acquired"
-            window.showCommandNotice(browserUi.status_text, true)
-        }
+        return window.hintWorkspace.completeHintScopeHandoff(view, request, candidate, actionEpoch)
     }
 
     function completeGridScopeHandoff(view, request, candidate, actionEpoch) {
-        if (!request || typeof request.lease_id !== "string"
-                || window.activeWebView() !== view
-                || window.hintTrackingView !== view
-                || browserUi.mode !== "hint") {
-            window.closeHints()
-            return
-        }
-        window.scopedGridHandoffView = view
-        window.scopedGridHandoffLeaseId = request.lease_id
-        var finishSurfaceHandoff = function() {
-            if (window.scopedGridHandoffLeaseId === request.lease_id) {
-                window.scopedGridHandoffView = null
-                window.scopedGridHandoffLeaseId = ""
-            }
-        }
-        var selectorSnapshot = window.hintSelectorPolicySnapshot(browserUi.hint_family)
-        var acquireStarted = window.runBrowserScript(
-                    view,
-                    "JSON.stringify(" + BrowserScripts.hintAcquireScopeLease(
-                        request, candidate, selectorSnapshot) + ")", function(receiptJson) {
-            var receipt = null
-            try { receipt = JSON.parse(receiptJson) } catch (error) {}
-            var clearLease = function() {
-                finishSurfaceHandoff()
-                window.runBrowserScript(
-                            view, BrowserScripts.hintClearScopeLease(request.lease_id),
-                            function(value) {})
-            }
-            if (window.hintCollectionEpoch !== actionEpoch
-                    || window.activeWebView() !== view
-                    || window.hintTrackingView !== view
-                    || browserUi.mode !== "hint") {
-                if (receipt && receipt.ok === true) clearLease()
-                else finishSurfaceHandoff()
-                return
-            }
-            if (!receipt || receipt.ok !== true) {
-                finishSurfaceHandoff()
-                window.closeHints()
-                browserUi.status_text = receipt && receipt.error === "weak-reference-unavailable"
-                        ? "Scoped Grid needs weak references; use full-page Grid instead"
-                        : "Scoped Grid failed closed: the selected surface is stale"
-                window.showCommandNotice(browserUi.status_text, true)
-                return
-            }
-            var stopStarted = window.runBrowserScript(
-                        view, window.hintStopTrackingScript(request.lease_id), function(stopped) {
-                if (window.hintCollectionEpoch !== actionEpoch
-                        || window.activeWebView() !== view
-                        || window.hintTrackingView !== view
-                        || browserUi.mode !== "hint") {
-                    clearLease()
-                    return
-                }
-                if (stopped !== true || !window.spatialAdapterEnabled
-                        || window.spatialAdapterTargetItem !== view
-                        || view.width <= 0 || view.height <= 0) {
-                    clearLease()
-                    window.closeHints()
-                    browserUi.status_text = "Scoped Grid failed closed: page surface changed"
-                    window.showCommandNotice(browserUi.status_text, true)
-                    return
-                }
-                var zoomFactor = Number(view.zoomFactor)
-                var started = window.runBrowserScript(
-                            view, window.spatialScopeGeometryScript(request.lease_id), function(value) {
-                    if (window.hintCollectionEpoch !== actionEpoch
-                            || window.activeWebView() !== view
-                            || window.hintTrackingView !== view
-                            || browserUi.mode !== "hint"
-                            || window.spatialAdapterTargetItem !== view
-                            || Number(view.zoomFactor) !== zoomFactor) {
-                        clearLease()
-                        return
-                    }
-                    var accepted = false
-                    try {
-                        accepted = browserUi.complete_grid_scope_handoff(
-                                    request.lease_id, JSON.stringify(receipt),
-                                    JSON.stringify(value || {}),
-                                    window.spatialAdapterSurfaceSerial,
-                                    window.spatialAdapterSurfaceRevision,
-                                    view.width, view.height, zoomFactor)
-                    } catch (error) {
-                        accepted = false
-                    }
-                    if (!accepted) {
-                        clearLease()
-                        window.closeHints()
-                        browserUi.status_text = "Scoped Grid failed closed: scope geometry was stale"
-                        window.showCommandNotice(browserUi.status_text, true)
-                        return
-                    }
-                    finishSurfaceHandoff()
-                    window.activeSpatialScopeLeaseId = request.lease_id
-                    window.activeSpatialScopeView = view
-                    window.activeHintScopeLeaseId = ""
-                    window.hintTrackingView = null
-                    window.hintCollectionEpoch += 1
-                    window.hintResults = []
-                    window.hintInput = ""
-                    window.hintRefreshPending = false
-                })
-                if (!started) {
-                    clearLease()
-                    window.closeHints()
-                    browserUi.status_text = "Scoped Grid failed closed: renderer unavailable"
-                    window.showCommandNotice(browserUi.status_text, true)
-                }
-            })
-            if (!stopStarted && window.hintCollectionEpoch === actionEpoch) {
-                clearLease()
-                window.closeHints()
-                browserUi.status_text = "Scoped Grid could not release the source Hint registry"
-                window.showCommandNotice(browserUi.status_text, true)
-            }
-        })
-        if (!acquireStarted && window.hintCollectionEpoch === actionEpoch) {
-            finishSurfaceHandoff()
-            window.closeHints()
-            browserUi.status_text = "Scoped Grid lease could not be acquired"
-            window.showCommandNotice(browserUi.status_text, true)
-        }
+        return window.hintWorkspace.completeGridScopeHandoff(view, request, candidate, actionEpoch)
     }
 
     function hintPointerPreflightScript(candidate, viewWidth, viewHeight) {
-        return BrowserScripts.hintPointerPreflight(
-                    candidate, viewWidth, viewHeight,
-                    hintSelectorPolicySnapshot(browserUi.hint_family))
+        return window.hintWorkspace.hintPointerPreflightScript(candidate, viewWidth, viewHeight)
     }
 
     function hintFocusScript(candidate) {
-        return BrowserScripts.hintFocus(
-                    candidate, hintSelectorPolicySnapshot(browserUi.hint_family))
+        return window.hintWorkspace.hintFocusScript(candidate)
     }
 
     function hintClickScript(candidate) {
-        return BrowserScripts.hintClick(
-                    candidate, hintSelectorPolicySnapshot(browserUi.hint_family))
+        return window.hintWorkspace.hintClickScript(candidate)
     }
 
     function hintSetScrollTargetScript(elementId, framePath) {
-        return BrowserScripts.hintSetScrollTarget(elementId, framePath)
+        return window.hintWorkspace.hintSetScrollTargetScript(elementId, framePath)
     }
 
     function startHintCollection() {
-        if (window.pendingContextMenuRequest && window.pendingContextMenuRequest.hintAction) return
-        if (browserUi.hint_pointer_mode
-                && browserUi.hint_pointer_state !== "selecting") {
-            return
-        }
-        var view = window.activeWebView()
-        if (!view) {
-            window.closeHints()
-            return
-        }
-        if (window.hintRefreshPending) {
-            return
-        }
-        if (window.hintTrackingView && window.hintTrackingView !== view) {
-            window.closeHints()
-            return
-        }
-        window.hintTrackingView = view
-        var collectionEpoch = window.hintCollectionEpoch + 1
-        window.hintCollectionEpoch = collectionEpoch
-        window.hintRefreshPending = true
-        var selectorSnapshot = window.hintSelectorPolicySnapshot(browserUi.hint_family)
-        if (!selectorSnapshot) {
-            window.hintRefreshPending = false
-            window.closeHints()
-            var selectorFailure = "Hint selectors unavailable"
-            browserUi.status_text = selectorFailure
-            window.showCommandNotice(selectorFailure, true)
-            return
-        }
-        window.hintFrameProvider.collect(
-                    view,
-                    window.hintCollectorScript(
-                        browserUi.hint_family, selectorSnapshot,
-                        window.activeHintScopeLeaseId,
-                        browserUi.target_search_active
-                            && browserUi.target_search_scope === "all"),
-                    {family:browserUi.hint_family,proxy:browserUi.hint_proxy_targets_enabled,selectors:selectorSnapshot,scope:window.activeHintScopeLeaseId,pointer:browserUi.hint_pointer_mode}, function(value) {
-            if (window.hintCollectionEpoch !== collectionEpoch) {
-                return
-            }
-            window.hintRefreshPending = false
-            if (browserUi.mode !== "hint" || window.hintTrackingView !== view) {
-                return
-            }
-            if (value && value.error) {
-                window.hintResults = []
-                window.closeHints()
-                browserUi.status_text = "Hint collection failed closed: " + String(value.error)
-                window.showCommandNotice(browserUi.status_text, true)
-                return
-            }
-            window.hintDirtyRevision = Number(value && value.revision || 0)
-            var wasTruncated = window.hintCollectionTruncated
-            window.hintCollectionTruncated = !!(value && value.truncated)
-            var collectedViewport = value && value.viewport ? value.viewport : ({})
-            var collectedWidth = Number(collectedViewport.width || 0)
-            var collectedHeight = Number(collectedViewport.height || 0)
-            window.hintViewport = ({
-                width: Number.isFinite(collectedWidth) && collectedWidth > 0
-                       ? collectedWidth : 0,
-                height: Number.isFinite(collectedHeight) && collectedHeight > 0
-                        ? collectedHeight : 0
-            })
-            var payload = value && value.candidates !== undefined
-                    ? {candidates: value.candidates,
-                       selector_revision: value.selector_revision}
-                    : {candidates: value || []}
-            if (window.activeHintScopeLeaseId.length > 0) {
-                payload.scope_lease_id = window.activeHintScopeLeaseId
-            }
-            var response = {}
-            try {
-                response = JSON.parse(browserUi.begin_hint_session(JSON.stringify(payload)))
-            } catch (error) {
-                response = {}
-            }
-            if (browserUi.target_search_active && !response.error) {
-                window.hintState = response.state || window.hintState
-                window.hintInput = window.hintState.query || ""
-                window.hintResults = response.hints || []
-                window.reconcileTargetSearchSelection()
-                if (window.hintResults.length === 0) {
-                    browserUi.status_text = window.hintCollectionTruncated
-                            ? "Visible target collection reached its inspection limit"
-                            : "No visible targets"
-                }
-                return
-            }
-            if (!response.hints || response.hints.length === 0) {
-                var hintFailure = response.state && response.state.refresh_required
-                        ? "New controls available—restart hints"
-                        : window.hintCollectionTruncated
-                        ? "Hint collection truncated at resource limits; no visible targets were found in the inspected region"
-                        : response.error
-                        ? browserUi.status_text : "No visible hint targets"
-                window.hintResults = []
-                window.closeHints()
-                browserUi.status_text = hintFailure
-                window.showCommandNotice(hintFailure, true)
-                return
-            }
-            var requiredRestart = !!(window.hintState && window.hintState.refresh_required)
-            window.hintState = response.state || window.hintState
-            window.hintInput = window.hintState.mode === "text"
-                    ? "/" + window.hintState.query : window.hintState.prefix
-            window.hintResults = response.hints
-            if (window.hintState.refresh_required) {
-                browserUi.status_text = "New controls available—restart hints"
-                if (!requiredRestart) window.showCommandNotice(browserUi.status_text,false)
-            } else if (window.hintCollectionTruncated) {
-                var truncationNotice = "Some targets may be missing · narrow hints or select a region"
-                browserUi.status_text = truncationNotice
-                if (!wasTruncated) window.showCommandNotice(truncationNotice, false)
-            }
-            if (response.first_label) {
-                Qt.callLater(function() { window.activateHint(String(response.first_label)) })
-            }
-        })
+        return window.hintWorkspace.startHintCollection()
     }
 
     function pollHintRefresh() {
-        var view = window.activeWebView()
-        if (!view || !browserUi.hint_visible || window.hintRefreshPending
-                || (browserUi.hint_pointer_mode
-                    && browserUi.hint_pointer_state !== "selecting")) {
-            return
-        }
-        window.hintFrameProvider.dirty(function(value) {
-            // A palette captures one session. Refreshing underneath it would
-            // invalidate its permit; final selection still checks fresh DOM.
-            if (window.pendingContextMenuRequest && window.pendingContextMenuRequest.hintAction) return
-            if (value && value.dirty === true
-                    && Number(value.revision || 0) !== window.hintDirtyRevision) {
-                window.startHintCollection()
-            }
-        })
+        return window.hintWorkspace.pollHintRefresh()
     }
 
     function applyHintInteraction(action, text) {
-        var response = {}
-        try {
-            response = JSON.parse(browserUi.update_hint_interaction(action, text || ""))
-        } catch (error) {
-            return false
-        }
-        if (response.state) {
-            window.hintState = response.state
-            window.hintInput = response.state.mode === "text"
-                    ? "/" + response.state.query : response.state.prefix
-        }
-        if (browserUi.target_search_active && response.outcome !== "activate") {
-            window.reconcileTargetSearchSelection()
-        }
-        if (response.outcome === "activate") {
-            window.activateHint(String(response.label || ""), "", true)
-        } else if (response.outcome === "cancel") {
-            window.closeHints()
-        } else if (response.outcome === "rotate") {
-            window.rotateHintCollision()
-        }
-        return true
+        return window.hintWorkspace.applyHintInteraction(action, text)
     }
 
     function beginHintPointerConfirmation() {
-        try {
-            var response = JSON.parse(browserUi.hint_pointer_confirmation_pressed())
-            if (response.ok !== true) return false
-            // Freeze the displayed session for this explicit gesture. An older
-            // passive callback must not replace its freshly checked authority.
-            // Enter release still performs full DOM and native preflight.
-            window.hintCollectionEpoch += 1
-            window.hintRefreshPending = false
-            return true
-        } catch (error) {
-            return false
-        }
+        return window.hintWorkspace.beginHintPointerConfirmation()
     }
 
     function rotateHintCollision() {
-        var active = String(window.hintState.active_label || "")
-        var labels = window.hintCollisionLabels(active)
-        if (labels.length < 2) return
-        var next = labels[(labels.indexOf(active)+1)%labels.length]
-        window.applyHintInteraction("select",String(next))
-        window.expandHintStack()
+        return window.hintWorkspace.rotateHintCollision()
     }
 
     function closeHints() {
-        window.hintScopeHandoffLeaseId = ""
-        window.scopedGridHandoffView = null
-        window.scopedGridHandoffLeaseId = ""
-        if (window.pendingContextMenuRequest && window.pendingContextMenuRequest.hintAction) {
-            window.clearContextMenuRequest()
-        }
-        window.hintCollectionEpoch += 1
-        window.activeHintScopeLeaseId = ""
-        window.stopHintTracking()
-        window.hintRefreshPending = false
-        window.hintCollectionTruncated = false
-        window.hintInput = ""
-        window.hintViewport = ({ width: 0, height: 0 })
-        window.hintState = ({ mode: "label", prefix: "", query: "", matching_labels: [], active_label: "", remaining: 0, total: 0 })
-        window.hintResults = []
-        window.targetSearchSelectedIdentity = ""
-        window.targetSearchSelectedMeaning = ""
-        window.targetSearchSelectionInitialized = false
-        window.rapidHintConfirmationVisible = false
-        browserUi.cancel_hints()
+        return window.hintWorkspace.closeHints()
     }
 
     function stopHintTracking() {
-        window.hintFrameProvider.stop()
-        var view = window.hintTrackingView
-        window.hintTrackingView = null
-        if (view) {
-            var preservedLease = window.hintScopeHandoffLeaseId || window.scopedGridHandoffLeaseId
-            if (!preservedLease && browserUi.spatial_visible
-                    && window.activeSpatialScopeView === view) {
-                preservedLease = window.activeSpatialScopeLeaseId
-            }
-            window.runBrowserScript(view, window.hintStopTrackingScript(preservedLease), function(value) {})
-        }
+        return window.hintWorkspace.stopHintTracking()
     }
 
     function openEphemeralWindow(url, requestedToken) {
@@ -2059,19 +1622,22 @@ FerricBrowserRuntimeServices {
     }
 
     function showHintActions(label) {
-        window.activateHint(label, "hint.choose")
+        return window.hintWorkspace.showHintActions(label)
     }
 
-    function openHintActionPalette(label, capabilities) {
-        var view = window.activeWebView()
+    function openHintActionPalette(label, capabilities, workspace) {
+        workspace = workspace || window.hintWorkspace
+        var browserUi = workspace.browserUi
+        var host = workspace.hostWindow
+        var view = workspace.activeWebView()
         if (!view) {
-            window.closeHints()
+            workspace.closeHints()
             return
         }
         var selected = null
-        for (var candidateIndex = 0; candidateIndex < window.hintResults.length; ++candidateIndex) {
-            if (String(window.hintResults[candidateIndex].label) === String(label)) {
-                selected = window.hintResults[candidateIndex]
+        for (var candidateIndex = 0; candidateIndex < workspace.hintResults.length; ++candidateIndex) {
+            if (String(workspace.hintResults[candidateIndex].label) === String(label)) {
+                selected = workspace.hintResults[candidateIndex]
                 break
             }
         }
@@ -2121,313 +1687,16 @@ FerricBrowserRuntimeServices {
         window.pendingContextMenuRequest = { hintAction: true }
         window.pendingContextMenuView = view
         window.pendingContextMenuUi = browserUi
-        window.pendingContextMenuHost = window
+        window.pendingContextMenuHost = host
         window.contextMenuItems = items
-        window.captureOverlayFocus(window, view)
-        contextMenu.openAt(window, Math.round(window.width / 2),
-                           Math.round(window.height / 2))
+        window.captureOverlayFocus(host, view)
+        contextMenu.openAt(host, Math.round(host.width / 2),
+                           Math.round(host.height / 2))
         browserUi.status_text = "Hint actions"
     }
 
     function activateHint(label, actionId, localSelection) {
-        if (browserUi.hint_pointer_mode) {
-            // Pointer mode treats marker activation as selection only. Enter
-            // release owns the separate preflight and native dispatch gesture.
-            window.applyHintInteraction("select", String(label))
-            return
-        }
-        var selected = null
-        for (var i = 0; i < window.hintResults.length; ++i) {
-            if (window.hintResults[i].label === label) {
-                selected = window.hintResults[i]
-                break
-            }
-        }
-        var view = window.activeWebView()
-        var explicitSelection = localSelection === true || !!actionId
-        if (!selected || !view || window.hintRefreshPending && !explicitSelection) {
-            if (!selected || !view) {
-                window.closeHints()
-            } else if (actionId && actionId !== "hint.choose") {
-                browserUi.cancel_hint_palette()
-            }
-            return
-        }
-        // A local confirmation freezes the displayed identity even if a passive
-        // collection is pending. Its late result cannot overwrite this request;
-        // the exact retained receiver still has to pass fresh validation below.
-        if (window.hintRefreshPending) window.hintCollectionEpoch += 1
-        // A keyboard/overlay selection is a new local palette entry. An
-        // automatic --first completion cannot acquire that authority.
-        if (!actionId && localSelection === true
-                && (browserUi.hint_target === "choose"
-                    || selected.kind === "region" || selected.kind === "scrollable-region"
-                    || selected.kind === "surface" || selected.kind === "focusable-surface" || selected.kind === "frame")) {
-            actionId = "hint.choose"
-        }
-        var activationEpoch = window.hintCollectionEpoch
-        var frameEntrySelectors = window.hintSelectorPolicySnapshot(browserUi.hint_family)
-        window.hintRefreshPending = true
-        var activationStarted = window.hintFrameProvider.fresh(
-                    selected, window.hintFreshScript(selected), function(value) {
-            if (window.hintCollectionEpoch !== activationEpoch
-                    || window.activeWebView() !== view
-                    || window.hintTrackingView !== view
-                    || browserUi.mode !== "hint") {
-                if (window.hintCollectionEpoch === activationEpoch) {
-                    window.hintRefreshPending = false
-                }
-                return
-            }
-            // Consume this callback token before asking Rust to select the label.
-            // A duplicate completion from the same page operation cannot dispatch twice.
-            window.hintCollectionEpoch += 1
-            var actionEpoch = window.hintCollectionEpoch
-            var result = {}
-            try {
-                if (actionId && actionId.length > 0) {
-                    result = JSON.parse(browserUi.select_hint_action(
-                                label, JSON.stringify(value), actionId))
-                } else {
-                    result = JSON.parse(browserUi.select_hint(label, JSON.stringify(value)))
-                }
-            } catch (error) {
-                result = {}
-            }
-            if (result.error === "stale-selector-policy") {
-                window.closeHints()
-                browserUi.status_text = "Hint selector policy changed; targets were refreshed"
-                window.showCommandNotice(browserUi.status_text, true)
-                return
-            }
-            var pageActionPending = result.action === "hint-inside-frame" || result.action === "focus"
-                    || result.action === "click" || result.action === "scroll-target"
-                    || result.action === "hint-within"
-                    || result.action === "target-search-within"
-                    || result.action === "grid-within"
-            if (!pageActionPending && browserUi.mode !== "hint") {
-                window.activeHintScopeLeaseId = ""
-                window.stopHintTracking()
-            }
-            if (!pageActionPending) {
-                window.hintRefreshPending = false
-            }
-            if ((result.action === "hint-inside-frame" || result.action === "focus" || result.action === "click"
-                 || result.action === "scroll-target" || result.action === "hint-within"
-                 || result.action === "target-search-within"
-                 || result.action === "grid-within")
-                    && (window.hintCollectionEpoch !== actionEpoch
-                        || window.activeWebView() !== view
-                        || window.hintTrackingView !== view
-                        || browserUi.mode !== "hint")) {
-                if (window.hintCollectionEpoch === actionEpoch
-                        && window.hintTrackingView === view) {
-                    window.closeHints()
-                }
-                return
-            }
-            if (result.action === "hint-within"
-                    || result.action === "target-search-within") {
-                window.completeHintScopeHandoff(
-                            view, result.scope_lease, value, actionEpoch)
-            } else if (result.action === "grid-within") {
-                window.completeGridScopeHandoff(
-                            view, result.scope_lease, value, actionEpoch)
-            } else if (result.action === "navigate") {
-                window.hintResults = []
-                window.hintInput = ""
-                window.executePendingEngineAction()
-            } else if (result.action === "choose") {
-                var capabilities = result.capabilities
-                if (selected.frame_owner && capabilities) capabilities = capabilities.filter(function(capability) {return capability.id === "hint-inside-frame" || capability.id === "focus"})
-                window.openHintActionPalette(label, capabilities)
-            } else if (result.action === "tab") {
-                window.hintResults = []
-                window.hintInput = ""
-                // The engine has already inserted and selected the new tab.
-                // Materialize its QML view before applying the queued load.
-                window.syncTabModel()
-                window.executePendingEngineAction()
-            } else if (result.action === "window") {
-                window.hintResults = []
-                window.hintInput = ""
-                window.executePendingEngineAction()
-            } else if (result.action === "yank") {
-                if (browserUi.mode === "hint") {
-                    window.hintResults = window.hintResults.filter(function(candidate) {
-                        return String(candidate.label) !== String(label)
-                    })
-                    Qt.callLater(window.startHintCollection)
-                } else {
-                    window.hintResults = []
-                    window.hintInput = ""
-                }
-            } else if (result.action === "clean-yank") {
-                if (browserUi.mode === "hint") {
-                    window.hintResults = window.hintResults.filter(function(candidate) {
-                        return String(candidate.label) !== String(label)
-                    })
-                    Qt.callLater(window.startHintCollection)
-                } else {
-                    window.hintResults = []
-                    window.hintInput = ""
-                }
-            } else if (result.action === "tab-bg") {
-                window.hintResults = []
-                window.hintInput = ""
-                window.syncTabModel()
-                window.executePendingEngineAction()
-                // Only rapid background hints remain in Hint mode. A one-shot
-                // `;b` selection must return to Normal mode after opening.
-                if (browserUi.mode === "hint") {
-                    window.hintResults = window.hintResults.filter(function(candidate) {
-                        return String(candidate.label) !== String(label)
-                    })
-                    Qt.callLater(window.startHintCollection)
-                }
-            } else if (result.action === "userscript") {
-                if (browserUi.mode === "hint") {
-                    window.hintResults = window.hintResults.filter(function(candidate) {
-                        return String(candidate.label) !== String(label)
-                    })
-                    Qt.callLater(window.startHintCollection)
-                } else {
-                    window.hintResults = []
-                    window.hintInput = ""
-                }
-            } else if (result.action === "download") {
-                if (browserUi.mode === "hint") {
-                    window.hintResults = window.hintResults.filter(function(candidate) {
-                        return String(candidate.label) !== String(label)
-                    })
-                    Qt.callLater(window.startHintCollection)
-                } else {
-                    window.hintResults = []
-                    window.hintInput = ""
-                }
-            } else if (result.action === "ephemeral") {
-                window.hintResults = []
-                window.hintInput = ""
-                window.openEphemeralWindow(
-                            result.url, window.ephemeralTokenForUi(browserUi))
-            } else if (result.error === "rapid-tab-limit") {
-                window.hintResults = []
-                window.hintInput = ""
-                window.rapidHintConfirmationVisible = true
-            } else if (result.action === "hint-inside-frame") {
-                window.hintFrameProvider.enter(value, frameEntrySelectors, function(entered) {
-                    if (window.hintCollectionEpoch !== actionEpoch || window.activeWebView() !== view || browserUi.mode !== "hint") return
-                    window.hintRefreshPending = false
-                    if (!entered || !entered.ok) {
-                        window.closeHints()
-                        browserUi.status_text = "Cannot hint inside this frame; use Focus then pass-through, or Grid"
-                        window.showCommandNotice(browserUi.status_text, true)
-                        return
-                    }
-                    browserUi.cancel_hint_palette()
-                    window.hintResults = []
-                    window.startHintCollection()
-                })
-            } else if (result.action === "focus") {
-                var focusScript = window.hintFocusScript(value)
-                var focusStarted = window.hintFrameProvider.action(value, focusScript, function(value) {
-                    if (window.hintCollectionEpoch !== actionEpoch
-                            || window.activeWebView() !== view
-                            || window.hintTrackingView !== view
-                            || browserUi.mode !== "hint") {
-                        if (window.hintCollectionEpoch === actionEpoch
-                                && window.hintTrackingView === view) {
-                            window.closeHints()
-                        }
-                        return
-                    }
-                    window.closeHints()
-                    if (value !== true) {
-                        browserUi.status_text = "Hint focus target is no longer available"
-                        window.showCommandNotice(browserUi.status_text, true)
-                        return
-                    }
-                    browserUi.enter_insert()
-                })
-                if (!focusStarted) {
-                    if (window.hintCollectionEpoch !== actionEpoch) {
-                        return
-                    }
-                    window.closeHints()
-                    browserUi.status_text = "Hint focus target is no longer available"
-                    window.showCommandNotice(browserUi.status_text, true)
-                }
-            } else if (result.action === "scroll-target") {
-                var targetScript = window.hintSetScrollTargetScript(
-                            result.element_id, result.frame_path)
-                var targetStarted = window.runBrowserScript(view, targetScript, function(value) {
-                    if (window.hintCollectionEpoch !== actionEpoch
-                            || window.activeWebView() !== view
-                            || window.hintTrackingView !== view
-                            || browserUi.mode !== "hint") {
-                        if (window.hintCollectionEpoch === actionEpoch
-                                && window.hintTrackingView === view) {
-                            window.closeHints()
-                        }
-                        return
-                    }
-                    window.closeHints()
-                    var targetSelected = value && typeof value === "object"
-                            && value.ok === true && value.policy === "element"
-                    browserUi.status_text = targetSelected
-                            ? "Scroll target: selected region"
-                            : "Scroll target selection failed: region is no longer available"
-                    window.showCommandNotice(browserUi.status_text, !targetSelected)
-                }, window.browserScriptWorld)
-                if (!targetStarted) {
-                    if (window.hintCollectionEpoch !== actionEpoch) {
-                        return
-                    }
-                    window.closeHints()
-                    browserUi.status_text =
-                            "Scroll target selection failed: region is no longer available"
-                    window.showCommandNotice(browserUi.status_text, true)
-                }
-            } else if (result.action === "click") {
-                var clickScript = window.hintClickScript(value)
-                var clickStarted = window.hintFrameProvider.action(value, clickScript, function(value) {
-                    if (window.hintCollectionEpoch !== actionEpoch
-                            || window.activeWebView() !== view
-                            || window.hintTrackingView !== view
-                            || browserUi.mode !== "hint") {
-                        if (window.hintCollectionEpoch === actionEpoch
-                                && window.hintTrackingView === view) {
-                            window.closeHints()
-                        }
-                        return
-                    }
-                    window.closeHints()
-                    browserUi.status_text = value === true
-                            ? "Hint target activated"
-                            : value === false ? "Hint target is no longer clickable"
-                            : "Activation result unavailable; check the page before trying again"
-                    window.showCommandNotice(browserUi.status_text, value !== true)
-                })
-                if (!clickStarted) {
-                    if (window.hintCollectionEpoch !== actionEpoch) {
-                        return
-                    }
-                    window.closeHints()
-                    browserUi.status_text = "Hint target is no longer clickable"
-                    window.showCommandNotice(browserUi.status_text, true)
-                }
-            } else {
-                window.hintResults = []
-                window.hintInput = ""
-                var rejectionStatus = browserUi.status_text
-                window.closeHints()
-                browserUi.status_text = rejectionStatus
-            }
-        })
-        if (!activationStarted && window.hintCollectionEpoch === activationEpoch) {
-            window.hintRefreshPending = false
-            window.closeHints()
-        }
+        return window.hintWorkspace.activateHint(label, actionId, localSelection)
     }
 
 }

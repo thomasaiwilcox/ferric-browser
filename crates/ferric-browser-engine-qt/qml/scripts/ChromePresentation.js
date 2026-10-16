@@ -4,6 +4,20 @@
 // storage, or page access; it only projects already-validated chrome facts.
 var VERSION = "4"
 
+// Qt Quick's logicalPixelDensity is pixels/mm, not DPI.
+function displayScaleLabel(devicePixelRatio, logicalPixelsPerMillimeter) {
+    var ratio = Number(devicePixelRatio)
+    var density = Number(logicalPixelsPerMillimeter)
+    var scale = isFinite(ratio) && ratio > 0 ? Math.round(ratio * 100) + "%" : "Scale unavailable"
+    return scale + (isFinite(density) && density > 0
+                    ? " (" + Math.round(density * 25.4) + " logical dpi)" : "")
+}
+
+function reducedMotion(setting, systemStatus, systemEnabled) {
+    return setting === "on" ? true : setting === "off" ? false
+         : systemStatus === "available" ? systemEnabled === true : true
+}
+
 function byteSize(bytes) {
     var value = Number(bytes)
     if (!isFinite(value) || value < 0) return "Size unknown"

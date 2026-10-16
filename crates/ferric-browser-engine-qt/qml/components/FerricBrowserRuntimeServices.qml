@@ -608,7 +608,11 @@ FerricBrowserRuntimeBase {
         id: copyNoticeTimer
         interval: 6000
         repeat: false
-        onTriggered: window.copyNoticeVisible = false
+        onTriggered: {
+            var surface = window.copyNoticeSurfaceObject
+            if (surface && (surface.inputActive || surface.hovered)) restart()
+            else window.copyNoticeVisible = false
+        }
     }
 
     Timer {
@@ -662,12 +666,13 @@ FerricBrowserRuntimeBase {
 
     FerricFileDialogSurfaces {
         id: fileDialogSurfaces
+        diagnosticsHostWindow: window.diagnosticsHost || window
         onDownloadAccepted: window.acceptPendingDownload()
         onDownloadRejected: window.cancelPendingDownload()
         onJourneyExportAccepted: window.finishJourneyExport()
         onJourneyExportRejected: window.journeyExportPreviewVisible = true
         onDiagnosticsExportAccepted: window.finishDiagnosticsExport()
-        onDiagnosticsExportRejected: window.diagnosticsVisible = true
+        onDiagnosticsExportRejected: if (window.diagnosticsUi) window.diagnosticsVisible = true
         onEngineFileAccepted: window.acceptEngineFileDialog()
         onEngineFileRejected: window.rejectEngineFileDialog()
         onEngineFolderAccepted: window.acceptEngineFolderDialog()
@@ -748,22 +753,49 @@ FerricBrowserRuntimeBase {
     }
 
     function copyToClipboard(value, exposeValue, primary, ownerUi) {
-        if (!value || value.length === 0) {
-            return false
-        }
-        if (exposeValue === undefined) {
-            exposeValue = true
-        }
+        if (!value || value.length === 0) return false
         var ui = ownerUi || browserUi
-        if (!ui.write_clipboard(value, primary === true)) {
-            return false
-        }
+        var owner = window.browserWindowEntryForUi(ui)
+        if (!owner || !owner.host || owner.host.runtimeReleased === true) return false
+        window.copyNoticeVisible = false
+        if (!ui.write_clipboard(value, primary === true)) return false
+        window.copyNoticeUi = ui
+        window.copyNoticeHost = owner.host
+        window.copyNoticeView = owner.host.activeWebView()
+        window.copyNoticeWindowId = String(ui.core_window_id)
+        window.copyNoticePrimary = primary === true
         window.copiedValue = value
-        window.copyNoticeSensitive = !exposeValue
-        window.copiedText = exposeValue ? value : "Content hidden"
+        var expose = exposeValue === undefined ? true : !!exposeValue
+        window.copyNoticeSensitive = !expose
+        window.copiedText = expose ? value : "Content hidden"
         window.copyNoticeVisible = true
         copyNoticeTimer.restart()
         return true
+    }
+
+    function repeatClipboardCopy() {
+        if (!window.copyNoticeOwnerCurrent) {
+            window.copyNoticeVisible = false
+            return false
+        }
+        // Keep the focused control and displayed value stable on repetition.
+        // The same native writer owns policy for both initial and repeat writes.
+        if (!window.copyNoticeUi.write_clipboard(window.copiedValue, window.copyNoticePrimary)) {
+            window.copyNoticeVisible = false
+            return false
+        }
+        copyNoticeTimer.restart()
+        return true
+    }
+
+    function dismissCopyNotice() {
+        var ui = window.copyNoticeUi
+        var host = window.copyNoticeHost
+        var view = window.copyNoticeView
+        var restorePage = window.copyNoticeOwnerCurrent && window.copyNoticeInputActive
+        window.copyNoticeVisible = false
+        if (restorePage && host && host.active && view && !window.nativePromptActiveFor(ui)
+                && (!host.modalInputScope || !host.modalInputScope.activeSurface)) view.forceActiveFocus()
     }
 
     function fileDialogNameFilters(request) {
@@ -1278,16 +1310,32 @@ FerricBrowserRuntimeBase {
         if (window.siteLedgerVisible) window.showSiteLedger()
     }
 
+    // Reading a failed startup's own diagnostics does not require an admitted
+    // page. Validate the QObject/host pair without granting page authority.
+    function diagnosticsOwner(ui, host) {
+        if (!ui) return null
+        var owner = window.browserWindowEntryForUi(ui)
+        if (owner) return !host || owner.host === host ? owner : null
+        host = host || (ui === browserUi ? window : null)
+        if (!host || host.runtimeReleased === true || host.runtimeDisposing === true) return null
+        if (host === window ? ui !== browserUi
+                : host.rootWindow !== window || host.windowUi !== ui) return null
+        return {ui: ui, host: host, view: host.activeWebView()}
+    }
+
     function refreshDiagnostics() {
+        var ui = window.diagnosticsUi
+        if (!window.diagnosticsOwner(ui, window.diagnosticsHost)) return
         window.diagnosticsExportNotice = ""
         window.diagnosticsExportDetail = ""
-        browserUi.request_diagnostics()
+        window.diagnosticsStartupDetails = String(ui.profile_startup_details())
+        ui.request_diagnostics()
     }
 
     Connections {
-        target: browserUi
+        target: window.diagnosticsUi
         function onDiagnostics_previewChanged() {
-            window.diagnosticsText = String(browserUi.diagnostics_preview)
+            window.diagnosticsText = window.diagnosticsUi ? String(window.diagnosticsUi.diagnostics_preview) : ""
         }
     }
 
@@ -1297,21 +1345,32 @@ FerricBrowserRuntimeBase {
         engineUpdateNotice = String(values[1] || "")
     }
 
-    function showDiagnostics() {
-        if (!window.diagnosticsVisible) {
-            window.openInternalSurface()
-        }
+    function showDiagnostics(ui, host) {
+        ui = ui || browserUi
+        var owner = window.diagnosticsOwner(ui, host)
+        if (!owner) return
+        if (window.diagnosticsUi) window.closeDiagnostics()
+        window.diagnosticsUi = ui
+        window.diagnosticsHost = owner.host
+        window.diagnosticsText = ""
+        window.captureOverlayFocus(owner.host, owner.view)
         window.refreshDiagnostics()
         window.diagnosticsVisible = true
     }
 
     function closeDiagnostics() {
         var wasVisible = window.diagnosticsVisible
+        var host = window.diagnosticsHost
+        var ui = window.diagnosticsUi
+        fileDialogSurfaces.closeDiagnosticsExport()
         window.diagnosticsVisible = false
-        browserUi.cancel_diagnostics()
-        if (wasVisible) {
-            window.closeInternalSurface()
-        }
+        window.diagnosticsExportUi = null
+        window.diagnosticsUi = null
+        window.diagnosticsHost = null
+        window.diagnosticsText = ""
+        window.diagnosticsStartupDetails = ""
+        if (ui) ui.cancel_diagnostics()
+        if (wasVisible) window.restoreOverlayFocus(host)
     }
 
     function rebuildBindingHelpRows() {

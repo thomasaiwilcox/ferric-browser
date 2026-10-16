@@ -275,6 +275,9 @@ impl qobject::BrowserUi {
                         if let Some(profile_path) = profiles_path {
                             watched_sources.push(profile_path);
                         }
+                        if let Some(effect) = this.profile_open_effect.as_mut() {
+                            effect.config_sources.clone_from(&watched_sources);
+                        }
                         this.config_watch.set_sources(&path, &watched_sources);
                         drop(rust);
                         self.as_mut().set_config_base_json(QString::from(base_json));
@@ -283,9 +286,7 @@ impl qobject::BrowserUi {
                                 .unwrap_or_else(|_| "{}".into()),
                         ));
                     }
-                    Err(error) => self.as_mut().set_status_text(QString::from(format!(
-                        "Configuration reload rejected: {error}"
-                    ))),
+                    Err(error) => self.as_mut().report_config_reload_failure(&error),
                 }
             }
             PendingSelectorAction::Profile {
@@ -334,9 +335,10 @@ impl qobject::BrowserUi {
                     }
                 }
             }
-            PendingSelectorAction::RuntimeConfig { .. }
-            | PendingSelectorAction::Reload { .. }
-            | PendingSelectorAction::Check { .. } => {
+            PendingSelectorAction::Reload { .. } => {
+                self.as_mut().report_config_reload_failure(&diagnostic);
+            }
+            PendingSelectorAction::RuntimeConfig { .. } | PendingSelectorAction::Check { .. } => {
                 self.as_mut().set_status_text(QString::from(diagnostic));
             }
         }

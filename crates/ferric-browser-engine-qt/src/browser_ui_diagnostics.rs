@@ -13,6 +13,15 @@ pub(super) struct PendingDiagnostic {
 }
 
 impl qobject::BrowserUi {
+    pub(super) fn sync_profile_startup_notice(mut self: Pin<&mut Self>) {
+        let notice = QString::from(self.as_ref().rust().profile_startup.notice());
+        self.as_mut().set_profile_startup_notice(notice);
+    }
+
+    pub(super) fn profile_startup_details(&self) -> QString {
+        QString::from(self.rust().profile_startup.local_details())
+    }
+
     // The QObject receiver is required by Qt's scalar invokable contract.
     #[allow(clippy::unused_self)]
     pub(super) fn engine_update_notice(&self) -> QStringList {
