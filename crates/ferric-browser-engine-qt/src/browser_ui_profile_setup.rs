@@ -30,6 +30,7 @@ impl qobject::BrowserUi {
         profile_name: &QString,
         storage_base: &QString,
     ) {
+        let context_catalog_revision = super::live_ipc_owners::context_catalog_revision();
         self.as_mut()
             .rust_mut()
             .as_mut()
@@ -135,6 +136,7 @@ impl qobject::BrowserUi {
             .as_mut()
             .get_mut()
             .pending_profile_configuration = Some(PendingProfileConfiguration {
+            context_catalog_revision,
             private_profile,
             profile_name,
             storage_base,
@@ -153,6 +155,7 @@ impl qobject::BrowserUi {
         setup: Result<ProfileOpenEffect, String>,
     ) {
         let PendingProfileConfiguration {
+            context_catalog_revision,
             private_profile,
             profile_name,
             storage_base,
@@ -262,6 +265,7 @@ impl qobject::BrowserUi {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
             this.state = Some(state);
+            this.context_catalog_revision = context_catalog_revision;
             this.journey_durable_ids.borrow_mut().clear();
             this.journey_export_payload = None;
             this.journey_export_preview_text = QString::default();

@@ -195,6 +195,7 @@ impl qobject::BrowserUi {
             .capture_target(tab)
             .ok_or("the window page could not start")?;
         let pending = PendingProfileConfiguration {
+            context_catalog_revision: source.context_catalog_revision,
             private_profile: profile.privacy != PrivacyKind::Normal,
             profile_name: source.profile_name.clone(),
             storage_base: source.profile_storage_base.clone(),

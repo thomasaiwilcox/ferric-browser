@@ -254,13 +254,13 @@ Item {
             })
             if (!stopStarted && window.hintCollectionEpoch === actionEpoch) {
                 window.closeHints()
-                browserUi.status_text = "Scoped Hint source registry could not be released"
+                browserUi.status_text = "Region hints couldn't reset. Start hints again."
                 window.showCommandNotice(browserUi.status_text, true)
             }
         })
         if (!acquireStarted && window.hintCollectionEpoch === actionEpoch) {
             window.closeHints()
-            browserUi.status_text = "Scoped Hint lease could not be acquired"
+            browserUi.status_text = "Region hints couldn't start. Select the region again."
             window.showCommandNotice(browserUi.status_text, true)
         }
     }
@@ -379,14 +379,14 @@ Item {
             if (!stopStarted && window.hintCollectionEpoch === actionEpoch) {
                 clearLease()
                 window.closeHints()
-                browserUi.status_text = "Scoped Grid could not release the source Hint registry"
+                browserUi.status_text = "Region Grid couldn't reset. Start hints again."
                 window.showCommandNotice(browserUi.status_text, true)
             }
         })
         if (!acquireStarted && window.hintCollectionEpoch === actionEpoch) {
             finishSurfaceHandoff()
             window.closeHints()
-            browserUi.status_text = "Scoped Grid lease could not be acquired"
+            browserUi.status_text = "Region Grid couldn't start. Select the region again."
             window.showCommandNotice(browserUi.status_text, true)
         }
     }

@@ -209,8 +209,13 @@ TestCase {
             var y=editor.mapToItem(scroll,0,0).y
             return y>=0 && y+editor.height<=scroll.height+1
         })
-        editor.text="0";editor.accepted();verify(waitForPolish(host))
-        verify(view.noticeFailed)
+        keyClick(Qt.Key_A, Qt.ControlModifier)
+        keyClick(Qt.Key_0)
+        keyClick(Qt.Key_Return)
+        verify(waitForPolish(host))
+        tryCompare(view,"noticeFailed",true)
+        compare(owner.calls[owner.calls.length-1].value,"0")
+        compare(editor.text,"0")
         tryVerify(function() {
             var y=editor.mapToItem(scroll,0,0).y
             return y>=0 && y+editor.height<=scroll.height+1

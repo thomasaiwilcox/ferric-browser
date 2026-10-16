@@ -21,12 +21,14 @@ use ferric_browser_storage::{
 };
 
 mod configuration;
+mod contexts;
 mod profile;
 mod profile_open;
 mod storage;
 
 use configuration::ConfigurationState;
 pub use configuration::{ConfigurationLayers, ConfigurationSnapshot, PreparedConfigurationUpdate};
+pub use contexts::ContextCatalog;
 pub use ferric_browser_storage::StorageCommand as StorageRequest;
 use profile::ActiveProfile;
 use profile::ProfileActivation;

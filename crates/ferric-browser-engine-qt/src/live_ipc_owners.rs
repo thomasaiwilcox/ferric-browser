@@ -3,6 +3,7 @@
 
 use super::qobject;
 use cxx_qt::{CxxQtThread, CxxQtType, Threading};
+use ferric_browser_application::ContextCatalog;
 use ferric_browser_core::WindowId;
 use ferric_browser_ipc::{ErrorCode, PendingRequest, PublicError, Request, Response};
 use serde_json::{Value, json};
@@ -21,6 +22,7 @@ struct Owner<H = CxxQtThread<qobject::BrowserUi>> {
     active: bool,
     focused: u64,
     order: u64,
+    context_catalog: Option<(u64, Arc<ContextCatalog>)>,
 }
 
 struct Directory<H = CxxQtThread<qobject::BrowserUi>> {
@@ -54,6 +56,10 @@ pub(super) fn has_window_target(selector: &str) -> bool {
         .ok()
         .and_then(|directory| directory.selected(Some(selector)))
         .is_some_and(|owner| owner.window.is_some())
+}
+
+pub(super) fn context_catalog_revision() -> u64 {
+    directory().lock().map_or(0, |directory| directory.clock)
 }
 
 pub(super) struct OwnerLease(String);
@@ -353,6 +359,71 @@ fn target_request(mut request: Request, window: WindowId) -> Request {
 }
 
 impl qobject::BrowserUi {
+    pub(super) fn remember_context_catalog(
+        self: Pin<&mut Self>,
+        revision: u64,
+        catalog: Arc<ContextCatalog>,
+    ) {
+        let rust = self.as_ref();
+        let Some(lease) = rust.rust().ipc_owner.as_ref() else {
+            return;
+        };
+        if let Ok(mut directory) = directory().lock()
+            && let Some(owner) = directory.owners.get_mut(&lease.0)
+        {
+            owner.context_catalog = Some((revision, catalog));
+        }
+    }
+
+    /// Reuse lifetime-safe native owner delivery for committed catalog updates.
+    /// Revision checks prevent an older queued update replacing a newer edit.
+    pub(super) fn publish_context_catalog(mut self: Pin<&mut Self>) {
+        let Some(catalog) = self
+            .as_ref()
+            .rust()
+            .state
+            .as_ref()
+            .and_then(ferric_browser_application::BrowserApplication::context_catalog)
+        else {
+            return;
+        };
+        let token = self.as_ref().rust().window_token.to_string();
+        let catalog = Arc::new(catalog);
+        let Some((revision, owners)) = directory().lock().ok().map(|mut directory| {
+            directory.clock = directory.clock.saturating_add(1);
+            let revision = directory.clock;
+            if let Some(owner) = directory.owners.get_mut(&token) {
+                owner.context_catalog = Some((revision, Arc::clone(&catalog)));
+            }
+            (
+                revision,
+                directory
+                    .owners
+                    .values()
+                    .filter(|owner| owner.token != token && owner.window.is_some())
+                    .cloned()
+                    .collect::<Vec<_>>(),
+            )
+        }) else {
+            return;
+        };
+        self.as_mut()
+            .rust_mut()
+            .as_mut()
+            .get_mut()
+            .context_catalog_revision = revision;
+        for owner in owners {
+            let catalog = Arc::clone(&catalog);
+            let _ = owner.thread.queue(move |mut ui| {
+                if ui.as_ref().rust().window == owner.window
+                    && ui.as_ref().rust().ipc_owner.is_some()
+                {
+                    ui.as_mut().receive_context_catalog(catalog, revision);
+                }
+            });
+        }
+    }
+
     pub(super) fn register_ipc_controller(mut self: Pin<&mut Self>) {
         if !self.as_mut().register_ipc_owner() {
             return;
@@ -390,6 +461,7 @@ impl qobject::BrowserUi {
                 active: false,
                 focused: 0,
                 order,
+                context_catalog: None,
             },
         );
         drop(directory);
@@ -425,6 +497,27 @@ impl qobject::BrowserUi {
         }
         if directory.controller.as_deref() == Some(lease.0.as_str()) {
             directory.shutdown = rust.ipc_shutdown_gate;
+        }
+        let catalogs = if changed && window.is_some() {
+            directory
+                .owners
+                .values()
+                .filter(|owner| owner.token != lease.0)
+                .filter_map(|owner| owner.context_catalog.clone())
+                .filter(|(revision, _)| *revision > rust.context_catalog_revision)
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+        drop(directory);
+        // A window may finish bootstrap after the original delivery. Catch up
+        // from committed envelopes retained by live owners, not from GUI JSON.
+        for (revision, catalog) in catalogs {
+            let _ = self.as_ref().get_ref().qt_thread().queue(move |mut ui| {
+                if ui.as_ref().rust().window == window && ui.as_ref().rust().ipc_owner.is_some() {
+                    ui.as_mut().receive_context_catalog(catalog, revision);
+                }
+            });
         }
     }
 
@@ -587,6 +680,7 @@ mod tests {
             active,
             focused,
             order,
+            context_catalog: None,
         }
     }
 

@@ -55,7 +55,44 @@ impl qobject::BrowserUi {
             .map(ContextSnapshot::from_records);
         self.as_mut().rust_mut().as_mut().get_mut().contexts = snapshot;
         self.as_mut().sync_context_choices();
+        self.as_mut().publish_context_catalog();
         Ok(effect)
+    }
+
+    pub(super) fn receive_context_catalog(
+        mut self: Pin<&mut Self>,
+        catalog: std::sync::Arc<ferric_browser_application::ContextCatalog>,
+        revision: u64,
+    ) {
+        let accepted = {
+            let mut rust = self.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            !this.profile_bootstrap_pending
+                && revision > this.context_catalog_revision
+                && this
+                    .state
+                    .as_mut()
+                    .is_some_and(|state| state.refresh_context_catalog(&catalog))
+        };
+        if !accepted {
+            return;
+        }
+        let snapshot = self
+            .as_ref()
+            .rust()
+            .state
+            .as_ref()
+            .and_then(BrowserApplication::contexts)
+            .map(ContextSnapshot::from_records);
+        {
+            let mut rust = self.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            this.context_catalog_revision = revision;
+            this.contexts = snapshot;
+        }
+        self.as_mut().remember_context_catalog(revision, catalog);
+        self.as_mut().sync_context_choices();
+        self.sync_context_metadata();
     }
 
     /// Publish the committed registry, including command-created contexts.

@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Window
 import QtQuick.Controls
 import QtQuick.Layouts
 
@@ -8,6 +9,8 @@ GridLayout {
     required property var tabsModel
     required property int activeTabIndex
     property bool vertical: false
+    property bool tooltipsEnabled: true
+    property var tooltipRow: null
     signal selectRequested(int index)
     signal closeRequested(int index)
     signal newRequested()
@@ -19,6 +22,51 @@ GridLayout {
     Accessible.role: Accessible.PageTabList
     Accessible.name: "Browser tabs"
     Accessible.description: tabList.count + " browser tabs"
+
+    // One tooltip per strip; page titles always remain literal text.
+    ToolTip {
+        id: titleTooltip
+        objectName: "tabTitleTooltip"
+        parent: tabStrip.tooltipRow || tabStrip
+        visible: tabStrip.tooltipsEnabled && !!tabStrip.tooltipRow
+                 && tabStrip.tooltipRow.titleElided
+        delay: 600
+        text: tabStrip.tooltipRow ? tabStrip.tooltipRow.title : ""
+        font: tabStrip.browserWindow.font
+        readonly property var hostWindow: tabStrip.Window.window
+        readonly property point anchorPosition: tabStrip.tooltipRow && hostWindow
+            ? tabStrip.tooltipRow.mapToItem(hostWindow.contentItem,0,0) : Qt.point(0,0)
+        readonly property bool anchorOnLeft: !hostWindow || anchorPosition.x < hostWindow.width / 2
+        readonly property real maximumWidth: {
+            var width = hostWindow ? hostWindow.width : tabStrip.width
+            var space = width - 16
+            if (tabStrip.vertical && tabStrip.tooltipRow)
+                space = anchorOnLeft ? width-anchorPosition.x-tabStrip.tooltipRow.width-12 : anchorPosition.x-12
+            return Math.max(1,Math.min(720,space))
+        }
+        readonly property real maximumHeight: Math.max(1, (hostWindow ? hostWindow.height : 700) / 2 - 16)
+        width: Math.min(implicitWidth, maximumWidth)
+        height: Math.min(implicitHeight, maximumHeight)
+        x: tabStrip.vertical ? (anchorOnLeft ? parent.width+6 : -width-6) : (parent.width-width)/2
+        y: tabStrip.vertical ? (parent.height-height)/2
+           : hostWindow && anchorPosition.y > hostWindow.height/2 ? -height-6 : parent.height+6
+        FontMetrics { id: tooltipMetrics; font: titleTooltip.font }
+        contentItem: Label {
+            text: titleTooltip.text
+            textFormat: Text.PlainText
+            font: titleTooltip.font
+            wrapMode: Text.Wrap
+            maximumLineCount: Math.max(1, Math.min(8, Math.floor((titleTooltip.maximumHeight
+                - titleTooltip.topPadding - titleTooltip.bottomPadding) / tooltipMetrics.height)))
+            elide: Text.ElideRight
+            color: tabStrip.browserWindow.primaryTextColor
+        }
+        background: Rectangle {
+            color: tabStrip.browserWindow.panelColor
+            border.color: tabStrip.browserWindow.borderColor
+            radius: 3
+        }
+    }
 
     function ensureActiveTabVisible() {
         if (visible && activeTabIndex >= 0 && activeTabIndex < tabList.count) {
@@ -84,12 +132,15 @@ GridLayout {
             Accessible.name: "Tab " + (tabIndex + 1) + ": "
                              + (tabRow.title || "New tab")
             Accessible.selected: tabIndex === tabStrip.activeTabIndex
-            ToolTip.visible: tabHover.hovered && tabTitle.implicitWidth > tabTitle.width
-            ToolTip.delay: 600
-            ToolTip.text: tabRow.title || "New tab"
+            readonly property bool titleElided: tabTitle.implicitWidth > tabTitle.width
+            Component.onDestruction: if (tabStrip.tooltipRow === tabRow) tabStrip.tooltipRow = null
 
             HoverHandler {
                 id: tabHover
+                onHoveredChanged: {
+                    if (hovered) tabStrip.tooltipRow = tabRow
+                    else if (tabStrip.tooltipRow === tabRow) tabStrip.tooltipRow = null
+                }
             }
 
             MouseArea {

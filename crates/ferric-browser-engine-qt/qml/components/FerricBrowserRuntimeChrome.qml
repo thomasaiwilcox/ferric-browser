@@ -71,6 +71,8 @@ GridLayout {
     FerricTabStrip {
         id: compactTabStrip
         browserWindow: window
+        tooltipsEnabled: window.active && !window.browserChromeInputActive
+                         && browserUi.mode !== "hint" && browserUi.mode !== "grid"
         tabsModel: tabs
         activeTabIndex: browserUi.active_tab_index
         vertical: window.sideTabs

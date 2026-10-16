@@ -1620,6 +1620,8 @@ function onContext_workspaceChanged() {
         vertical: secondaryWindow.sideTabs
         visible: secondaryWindow.tabStripVisible
         browserWindow: secondaryAppearance
+        tooltipsEnabled: secondaryWindow.active && secondaryWindow.browserKeyFocusActive
+                         && secondaryUi.mode !== "hint" && secondaryUi.mode !== "grid"
         tabsModel: secondaryTabs
         activeTabIndex: secondaryUi.active_tab_index
         onSelectRequested: function(index) {

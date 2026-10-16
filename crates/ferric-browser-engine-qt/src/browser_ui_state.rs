@@ -78,6 +78,7 @@ impl ContextSnapshot {
 }
 
 pub(super) struct PendingProfileConfiguration {
+    pub(super) context_catalog_revision: u64,
     pub(super) private_profile: bool,
     pub(super) profile_name: String,
     pub(super) storage_base: String,

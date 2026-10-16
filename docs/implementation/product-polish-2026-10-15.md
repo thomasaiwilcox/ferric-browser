@@ -2,11 +2,9 @@
 
 Status: active. Branch: `polish/refined-browser-experience`.
 
-Latest verified checkpoint: `window-owners-v1`. Its frozen source combines
-persistent profile-health notices, local startup details and safe diagnostic
-exports, natural routing-card spacing, window-owned hint workspaces, and copy
-feedback in the requesting window. The complete original polish goal remains
-open; the audit below still applies.
+Latest verified checkpoint: `context-catalog-v3`. It builds on window-owned
+hints, copy feedback, profile-health notices and diagnostics. The complete
+original polish goal remains open; the audit below still applies.
 
 Profile-health notices remain reachable with the status bar hidden. Background
 settings failures preserve working settings and place bounded causes behind a
@@ -29,32 +27,41 @@ Unavailable primary selection reports failure without replacing the regular
 clipboard. Successful native primary-selection transport remains separately
 unqualified in the offscreen environment.
 
-Context movement choices now project the committed active registry after
-startup and successful mutations, including command-created contexts. Creation,
-deletion, destination inheritance and empty private choices pass native tests.
-Already-open peer windows still need catalog propagation; its separate patch
-passes 23 application tests but awaits Qt delivery and lifecycle qualification.
+Context movement choices now project the committed registry in existing windows
+that share durable storage. Creation and deletion propagate in both directions;
+private and unrelated roots remain independent. Windows catch updates delivered
+during startup. Rejected profile replacements preserve delivery to the retained
+active profile. Regression tests reproduce the prior startup and replacement
+failures against earlier immutable engines; fresh application and real CLI
+checks verify the repaired paths without changing profile identity.
 
-Fresh qualification passes strict workspace Clippy, the repository gate (970
-Rust passed, two ignored; 452 QML passed), 103 focused source prompt checks,
-50 focused native checks, 126 broad browser checks, 81 clipboard checks and 13
-live IPC checks. All 53 legacy hint/frame/pointer checks, three article-title
-zoom cases and 1,000 hint start/cancel cycles pass. Adapter startup and 18 final
-capture checks pass. All 22 final captures and six compiled copy-feedback
-captures were inspected. Source/artifact hashes, commands and logs are recorded
-under ignored `target/product-polish/window-owners-v1-checkpoint.json`.
+Tab tooltips render titles literally, follow their owning window's font and
+available space, and close when an interactive browser surface takes over.
+Compact Settings was verified with actual keyboard editing and validation in
+the rendered window; the earlier cramped image had retained search focus.
+The focused editor stays visible at 640 × 480, including private profiles.
+
+Fresh qualification passes strict workspace Clippy, the repository gate (971
+Rust passed, two ignored; 458 QML passed), focused source suites of 103 prompt,
+40 chrome and 20 Settings checks, 55 focused native checks, 128 broad browser
+checks, 81 clipboard checks and 13 live IPC checks. All 53 legacy hint/frame/
+pointer checks, three article-title zoom cases and 1,000 hint start/cancel
+cycles pass. Adapter startup and 19 final capture checks pass. All final
+captures were inspected. Frozen source/artifact hashes, commands and logs are
+recorded under ignored `target/product-polish/context-catalog-v3-checkpoint.json`.
 
 Nested Wayland startup passes with a private compositor/profile. Editable-page
 input qualification could not run because the compositor lacks the required
 virtual-keyboard protocol. This is startup evidence, not input, GPU, portal,
 account or hardware qualification.
 
-Visual review also found cramped editing space in compact private Settings
-with validation feedback, plus an underlying tab tooltip above one private
-target-search capture. Reproduce focused editing and tooltip lifetime before
-choosing those fixes. These findings, existing-window context synchronization,
-and the original remaining audit stay in scope. No installation or publication
-has been performed.
+The next confirmed issue is clean-link preview ownership: interactive commands
+in secondary, private and popup windows currently reject requests instead of
+presenting the preview locally. An isolated presentation prototype and native
+regressions are in progress; no production fix is claimed yet. Remaining
+interactive command admission, context/configuration coherence, permission
+sharing and developer-tools lifetimes also remain in the original audit.
+No installation or publication has been performed.
 
 ## Product intent
 

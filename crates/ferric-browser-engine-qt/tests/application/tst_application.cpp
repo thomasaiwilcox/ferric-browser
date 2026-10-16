@@ -2870,6 +2870,47 @@ void ApplicationTests::productPolishNewWindowRouting() {
     pageReceiver="testWindow.activeWebView()";
 }
 
+void ApplicationTests::productPolishContextCatalogRetainedAfterFailedProfile() {
+    const auto profile=evaluate("testWindow.browserWindowRegistry[0].profileName").toString();
+    const auto initialWindow=text("core_window_id");
+    QVERIFY(command("context-create polish-retained --profile "+profile));
+    QTRY_VERIFY(evaluate("testWindow.browserUi.context_choice_names.indexOf('polish-retained')>=0").toBool());
+    QVERIFY(command("window-new"));
+    evaluate("testWindow.completeBrowserKeyAction(testWindow.browserUi,testWindow)");
+    QTRY_COMPARE(evaluate("testWindow.browserWindowRegistry.length").toInt(),2);
+    QTRY_VERIFY(evaluate("testWindow.browserWindowRegistry[1].host.profileBootstrapComplete").toBool());
+    QVERIFY(evaluate("(function(){var peer=testWindow.browserWindowRegistry[1];var accepted=peer.ui.execute_command('context-delete polish-retained --confirm');testWindow.browserUi.configure_profile(false,false,'','',testWindow.storageBasePath);return accepted})()").toBool());
+    QTRY_VERIFY(!evaluate("testWindow.browserUi.profile_bootstrap_pending").toBool());
+    QCOMPARE(text("core_window_id"),initialWindow);
+    QTRY_VERIFY2(evaluate("testWindow.browserUi.context_choice_names.indexOf('polish-retained')<0").toBool(),"A failed replacement must preserve delivery to the retained active profile");
+}
+
+void ApplicationTests::productPolishContextCatalogBootstrap() {
+    const auto profile=evaluate("testWindow.browserWindowRegistry[0].profileName").toString();
+    QVERIFY(command("context-create polish-bootstrap --profile "+profile));
+    QTRY_VERIFY(evaluate("testWindow.browserUi.context_choice_names.indexOf('polish-bootstrap')>=0").toBool());
+    auto object=evaluate("testWindow.browserWindowFactory.createObject(null,{"
+        "windowStartupUrl:'rb://blank',windowProfileName:"+quoted(profile)+","
+        "windowProfileLabel:'Bootstrap catalog',windowStorageBasePath:testWindow.storageBasePath,"
+        "windowSharedProfile:testWindow.browserProfile,windowInheritedUi:testWindow.browserUi})").value<QObject *>();
+    QPointer<QQuickWindow> child=qobject_cast<QQuickWindow *>(object);
+    QVERIFY(child);
+    engine->rootContext()->setContextProperty("catalogBootstrapWindow",child.data());
+    // Its typed profile has been inherited, but GUI admission still awaits
+    // asynchronous filtering setup. No event loop has run since construction.
+    QVERIFY(!child->property("profileBootstrapComplete").toBool());
+    QVERIFY(command("context-delete polish-bootstrap --confirm"));
+    QTRY_VERIFY(child->property("profileBootstrapComplete").toBool());
+    const auto entry=QString("testWindow.browserWindowRegistry.find(function(e){return e.host===catalogBootstrapWindow})");
+    QTRY_VERIFY(evaluate("!!("+entry+")").toBool());
+    QTRY_VERIFY2(evaluate(entry+".ui.context_choice_names.indexOf('polish-bootstrap')<0").toBool(),
+        "Admission must catch a committed deletion delivered during bootstrap");
+    evaluate("catalogBootstrapWindow.windowShutdownApproved=true");
+    QVERIFY(child->close());child->deleteLater();
+    QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
+    QTRY_VERIFY(child.isNull());
+}
+
 void ApplicationTests::productPolishNewWindows_data() {
     QTest::addColumn<QString>("sourceKind");
     QTest::addColumn<bool>("privateProfile");
@@ -2979,6 +3020,22 @@ void ApplicationTests::productPolishNewWindows() {
     if (!privateProfile && !temporaryProfile) {
         QVERIFY(evaluate(destination+".ui.context_choice_names.indexOf('polish-work')>=0").toBool());
         QVERIFY(evaluate(destination+".ui.context_choice_names.indexOf('polish-discard')<0").toBool());
+        const auto sourceProfileName=evaluate(owner+".profileName").toString();
+        const auto primaryChoices=evaluate("JSON.stringify(testWindow.browserUi.context_choice_names)").toString();
+        // Both windows already exist: concurrent creations must converge, and
+        // deleting in either owner must remove the other owner's stale choice.
+        QVERIFY(evaluate(owner+".ui.execute_command("+quoted("context-create polish-shared-a --profile "+sourceProfileName)+")").toBool());
+        QVERIFY(evaluate(destination+".ui.execute_command("+quoted("context-create polish-shared-b --profile "+sourceProfileName)+")").toBool());
+        for (const auto &entry : {owner,destination}) {
+            QTRY_VERIFY(evaluate(entry+".ui.context_choice_names.indexOf('polish-shared-a')>=0 && "+entry+".ui.context_choice_names.indexOf('polish-shared-b')>=0").toBool());
+        }
+        QVERIFY(evaluate(destination+".ui.execute_command('context-delete polish-shared-a --confirm')").toBool());
+        QVERIFY(evaluate(owner+".ui.execute_command('context-delete polish-shared-b --confirm')").toBool());
+        for (const auto &entry : {owner,destination}) {
+            QTRY_VERIFY(evaluate(entry+".ui.context_choice_names.indexOf('polish-shared-a')<0 && "+entry+".ui.context_choice_names.indexOf('polish-shared-b')<0").toBool());
+        }
+        if (sourceKind!="primary")
+            QCOMPARE(evaluate("JSON.stringify(testWindow.browserUi.context_choice_names)").toString(),primaryChoices);
     } else if (!explicitProfile) {
         QCOMPARE(evaluate(destination+".ui.context_choice_names.length").toInt(),0);
     }
@@ -3034,6 +3091,20 @@ void ApplicationTests::productPolishNewWindows() {
         QTRY_VERIFY(sourceWindow.isNull());
         QCOMPARE(page("window.newWindowRetainedState").toInt(),47);
         QCOMPARE(page("location.href").toString(),desired);
+    }
+    if (sourceKind=="primary" && !privateProfile && !temporaryProfile) {
+        const auto profile=evaluate(nextOwner+".profileName").toString();
+        QVERIFY(evaluate(nextOwner+".ui.execute_command("+quoted("context-create polish-lifetime --profile "+profile)+")").toBool());
+        QTRY_VERIFY(evaluate(blank+".ui.context_choice_names.indexOf('polish-lifetime')>=0").toBool());
+        QPointer<QQuickWindow> retiring=qobject_cast<QQuickWindow *>(evaluate(blank+".host").value<QObject *>());
+        QVERIFY(retiring);
+        // Delete the receiving QObject before its queued catalog delivery runs.
+        QVERIFY(evaluate(nextOwner+".ui.execute_command('context-delete polish-lifetime --confirm')").toBool());
+        evaluate(blank+".host.windowShutdownApproved=true");
+        QVERIFY(retiring->close());retiring->deleteLater();
+        QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
+        QTRY_VERIFY(retiring.isNull());
+        QVERIFY(evaluate(nextOwner+".ui.context_choice_names.indexOf('polish-lifetime')<0").toBool());
     }
     pageReceiver="testWindow.activeWebView()";
 }
@@ -3498,7 +3569,7 @@ void ApplicationTests::productPolishWindowSettings() {
     QVERIFY(workspace->setProperty("settingsSearch", "ui.font_size_pt"));
     engine->rootContext()->setContextProperty("settingsWorkspaceUnderTest", workspace);
     evaluate("settingsWorkspaceUnderTest.refreshSettings()");
-    auto editor = findVisualItem(child->contentItem(), "settingTextEditor");
+    QPointer<QQuickItem> editor = findVisualItem(child->contentItem(), "settingTextEditor");
     QTRY_VERIFY((editor = findVisualItem(child->contentItem(), "settingTextEditor")));
     QVERIFY(workspace->setProperty("settingsTemporary", true));
     QVERIFY(editor->setProperty("text", "14"));
@@ -3511,12 +3582,30 @@ void ApplicationTests::productPolishWindowSettings() {
     // the primary message or applying it to either window.
     editor = findVisualItem(child->contentItem(), "settingTextEditor");
     QVERIFY(editor);
-    QVERIFY(editor->setProperty("text", "0"));
-    QVERIFY(QMetaObject::invokeMethod(editor, "accepted"));
-    QVERIFY(workspace->property("noticeFailed").toBool());
+    child->resize(640, 480);
+    child->requestActivate();
+    QTRY_VERIFY(child->isActive());
+    QVERIFY(!child->grabWindow().isNull());
+    QTest::qWait(100);
+    editor->forceActiveFocus();
+    QTRY_VERIFY(editor->hasActiveFocus());
+    QTest::keyClick(child, Qt::Key_A, Qt::ControlModifier);
+    QTest::keyClick(child, Qt::Key_0);
+    QTest::keyClick(child, Qt::Key_Return);
+    QTRY_VERIFY2(workspace->property("noticeFailed").toBool(),
+        qPrintable(QString("editor=%1; status=%2").arg(editor ? editor->property("text").toString() : QString("destroyed"),
+            evaluate(entry + ".ui.status_text").toString())));
+    QVERIFY(editor);
     QVERIFY(!workspace->property("noticeDetail").toString().isEmpty());
     QCOMPARE(editor->property("text").toString(), QString("0"));
     QCOMPARE(evaluate(entry + ".ui.chrome_font_size_pt").toDouble(), 14.0);
+    auto form = findVisualItem(child->contentItem(), "settingsScroll");
+    QVERIFY(form);
+    auto viewport = qobject_cast<QQuickItem *>(form->property("contentItem").value<QObject *>());
+    QVERIFY(viewport);
+    QTRY_VERIFY2(viewport->mapRectToScene(viewport->boundingRect()).adjusted(-1,-1,1,1)
+        .contains(editor->mapRectToScene(editor->boundingRect())),
+        "The focused invalid setting must remain fully visible in the compact form");
     const auto artifacts = qEnvironmentVariable("FERRIC_TEST_ARTIFACT_DIR");
     if (!artifacts.isEmpty()) {
         child->resize(640, 480);

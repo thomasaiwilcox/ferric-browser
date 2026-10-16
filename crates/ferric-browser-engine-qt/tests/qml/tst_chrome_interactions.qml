@@ -518,6 +518,10 @@ TestCase {
     }
 
     function init() {
+        failOnWarning(/TypeError|ReferenceError|Cannot assign|Unable to assign|Binding loop/)
+        testWindow.width = 900
+        testWindow.height = 700
+        theme.font = Qt.font({family:"monospace",pointSize:10})
         settingsModel.clear()
         settingsModel.append({ key: "ui.reduced_motion", label: "Reduced motion",
                                type: "enum", scope: "global", apply: "live",
@@ -644,6 +648,65 @@ TestCase {
         verify(list)
         mouseWheel(list, 20, 15, 0, -120)
         compare(selectedTabs, 1)
+    }
+
+    function test_tab_tooltip_closes_when_its_host_blocks_input() {
+        tabsModel.setProperty(0, "title", "A long literal tab title <b>that must be truncated</b>")
+        var strip = createTemporaryObject(tabFixture, testWindow.contentItem, {width:220})
+        verify(strip)
+        var list = findChild(strip, "tabList")
+        tryVerify(function() { return list.itemAtIndex(0) !== null })
+        var row = list.itemAtIndex(0)
+        var tooltip = findChild(strip,"tabTitleTooltip")
+        verify(tooltip)
+        mouseMove(row, 20, row.height / 2)
+        tryVerify(function() { return tooltip.visible })
+        compare(tooltip.contentItem.textFormat,Text.PlainText)
+        compare(tooltip.contentItem.text,tabsModel.get(0).title)
+        strip.tooltipsEnabled = false
+        tryVerify(function() { return !tooltip.visible })
+        wait(650)
+        verify(!tooltip.visible)
+        strip.tooltipsEnabled = true
+        tryVerify(function() { return tooltip.visible })
+        mouseMove(testWindow.contentItem, 800, 600)
+        tryVerify(function() { return !tooltip.visible })
+    }
+
+    function test_tab_tooltip_is_bounded_and_drops_removed_rows_data() {
+        return [{tag:"normal",width:900,height:700,font:10,placement:"top"},
+                {tag:"narrow",width:390,height:600,font:20,placement:"bottom"},
+                {tag:"largest-text",width:640,height:480,font:60,placement:"top"},
+                {tag:"left",width:640,height:480,font:20,placement:"left"},
+                {tag:"right",width:640,height:480,font:20,placement:"right"}]
+    }
+    function test_tab_tooltip_is_bounded_and_drops_removed_rows(data) {
+        testWindow.width=data.width;testWindow.height=data.height
+        theme.font=Qt.font({family:"monospace",pointSize:data.font})
+        tabsModel.clear()
+        var title="<b>"+"A long literal page title & text ".repeat(50)+"</b>"
+        tabsModel.append({title:title,pinned:false,muted:false})
+        var strip=createTemporaryObject(tabFixture,testWindow.contentItem,{width:220})
+        verify(strip)
+        strip.vertical=data.placement==="left" || data.placement==="right"
+        if(strip.vertical) strip.height=testWindow.height
+        if(data.placement==="right") strip.x=testWindow.width-strip.width
+        if(data.placement==="bottom") strip.y=testWindow.height-strip.height
+        var list=findChild(strip,"tabList")
+        tryVerify(function() { return list.itemAtIndex(0)!==null })
+        var row=list.itemAtIndex(0)
+        var tooltip=findChild(strip,"tabTitleTooltip");verify(tooltip)
+        mouseMove(row,20,row.height/2)
+        tryVerify(function() { return tooltip.visible })
+        compare(tooltip.contentItem.textFormat,Text.PlainText)
+        compare(tooltip.contentItem.text,title)
+        verify(tooltip.width<=testWindow.width-16+1)
+        verify(tooltip.height<=testWindow.height/2+1)
+        if(testArtifactDirectory.length>0)
+            grabImage(testWindow.contentItem).save(testArtifactDirectory+"/tab-tooltip-"+data.tag+".png")
+        tabsModel.clear()
+        tryVerify(function() { return strip.tooltipRow===null })
+        tryVerify(function() { return !tooltip.visible })
     }
 
     function test_completion_selection_replaces_only_the_active_token() {
