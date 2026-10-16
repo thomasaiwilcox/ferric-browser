@@ -26,8 +26,9 @@ FocusScope {
     property int currentIndex: 0
     property var previousFocusItem: null
     property bool decisionTaken: false
-    readonly property real scale: themeWindow.chromeScale === undefined
-                                  ? 1 : themeWindow.chromeScale
+    readonly property real scale: Math.min(
+        Math.max(1, Math.min(width / 800, height / 650)),
+        themeWindow.chromeScale === undefined ? 1 : themeWindow.chromeScale)
 
     signal keepRequested()
     signal proceedRequested()

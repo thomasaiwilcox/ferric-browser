@@ -18,7 +18,8 @@ TestCase {
         visible: true
         font.family: "monospace"
         font.pointSize: 10
-        property real chromeScale: 1
+        FontMetrics { id: actualFontMetrics; font: host.font }
+        property real chromeScale: Math.max(1, actualFontMetrics.height / 14)
         property real chromeRowHeight: 24
         property color backgroundColor: "#181825"
         property color surfaceColor: "#313244"

@@ -2826,6 +2826,11 @@ void ApplicationTests::productPolishUserscriptFeedback() {
     QTRY_VERIFY(toggle->property("checked").toBool());
     QVERIFY(workspace->property("noticeFailed").toBool());
     QVERIFY(!workspace->property("noticeDetail").toString().isEmpty());
+    // Keep the complete worker error in explicit disclosure, and give the
+    // ordinary status bar a readable summary instead of raw diagnostics.
+    const auto errorDetail = workspace->property("noticeDetail").toString();
+    QCOMPARE(text("userscript_install_state"), "error:" + errorDetail);
+    QVERIFY2(!text("status_text").contains(errorDetail), qPrintable(errorDetail));
     QVERIFY(QFile::remove(scriptsDirectory));
     QVERIFY(QDir().rename(backupDirectory, scriptsDirectory));
     QVERIFY(QMetaObject::invokeMethod(toggle, "click"));

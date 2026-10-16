@@ -926,6 +926,42 @@ forwarding boundary and ordinary failure copy remains required.
 The original manager/popup/routing, status-copy and whole-window finish remain
 required. Component renders do not establish complete application consistency.
 
+## Close-dialog spacing and ordinary userscript failures
+
+Status: implemented and qualified on the frozen source.
+
+The separate close-window/shutdown surface now limits extra spacing by its
+own host-window dimensions, even when another window supplies its theme. Text
+retains the configured font. The actual-font test at 390×600/20 pt now keeps
+both safe and destructive actions inside the panel, with long copy scrollable.
+Product, navigation and library fixtures use real FontMetrics instead of a
+fixed scale while varying their font. All 402 QML checks pass on this source
+(`status-shutdown-qml-full.log`).
+
+Asynchronous userscript install, removal and toggle failures now give short
+status notices pointing to Settings. The complete worker error remains in the
+existing operation state and explicit Settings details. The existing native
+worker-failure scenario now verifies that the complete error reaches those
+details and is absent from ordinary status. Against the prior compiled backend,
+it reproduces raw `Not a directory (os error 20)` implementation text in the
+status (`status-shutdown-worker-diagnostic-before.log`). This fixture does not
+include an absolute path in its worker error; an initial path-specific assertion
+was corrected to test the actual diagnostic boundary.
+
+Strict workspace Clippy passed on this Rust change
+(`status-shutdown-clippy.log`, original process exit zero). The final repository
+gate passed 922 Rust tests (two ignored) and all 402 QML checks. All 66 embedded
+application checks passed in 144.9 seconds, including the real-worker disclosure
+assertion that fails against the previous backend. All 81 clipboard checks,
+bounded adapter startup and the standalone CLI/IPC probe passed. The engine
+archive SHA-256 is
+`912d4829c279218fed09c174699e4f3cb1fd85e47f9fede558101b0e8d64d1a0`.
+Source, application and phase records are in `status-shutdown-source-hashes.json`,
+`status-shutdown-final-artifacts.json` and `status-shutdown-final-status.json`.
+
+Startup, inventory and synchronous submission errors, the typed CLI boundary,
+window managers and the remaining full-goal walkthrough still require work.
+
 ## Audit status and remaining implementation
 
 These remain part of the original goal, rather than deferred release promises:

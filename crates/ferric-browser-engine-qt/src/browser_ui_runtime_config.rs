@@ -220,9 +220,9 @@ impl qobject::BrowserUi {
                             .set_userscript_install_state(QString::from("installed"));
                     }
                     Err(error) => {
-                        self.as_mut().set_status_text(QString::from(format!(
-                            "Userscript installation failed: {error}"
-                        )));
+                        self.as_mut().set_status_text(QString::from(
+                            "Userscript installation failed. See Settings for details.",
+                        ));
                         self.as_mut()
                             .set_userscript_install_state(QString::from(format!("error:{error}")));
                     }
@@ -236,9 +236,9 @@ impl qobject::BrowserUi {
                             .set_userscript_install_state(QString::from("removed"));
                     }
                     Err(error) => {
-                        self.as_mut().set_status_text(QString::from(format!(
-                            "Userscript removal failed: {error}"
-                        )));
+                        self.as_mut().set_status_text(QString::from(
+                            "Userscript removal failed. See Settings for details.",
+                        ));
                         self.as_mut()
                             .set_userscript_install_state(QString::from(format!("error:{error}")));
                     }
@@ -259,9 +259,9 @@ impl qobject::BrowserUi {
                             }));
                     }
                     Err(error) => {
-                        self.as_mut().set_status_text(QString::from(format!(
-                            "Userscript change rejected: {error}"
-                        )));
+                        self.as_mut().set_status_text(QString::from(
+                            "Userscript update failed. See Settings for details.",
+                        ));
                         self.as_mut()
                             .set_userscript_install_state(QString::from(format!("error:{error}")));
                     }
