@@ -2289,25 +2289,28 @@ fn software_rendering_is_a_gui_only_startup_option() {
 #[test]
 fn cli_errors_use_stable_codes() {
     let error = run(&["--unknown".into()]).expect_err("unknown option is rejected");
-    assert_eq!(error.code, ErrorCode::InvalidArgument);
+    assert_eq!(error.code(), ErrorCode::InvalidArgument);
     assert_eq!(error.status(), 2);
-    let config_error = CliError::from_run(RunError::config("invalid test config"));
-    assert_eq!(config_error.code, ErrorCode::Config);
+    let config_error = CliError::config("invalid test config");
+    assert_eq!(config_error.code(), ErrorCode::Config);
     assert_eq!(config_error.status(), 2);
-    let storage_error = CliError::from_run(RunError::storage("unavailable test storage"));
-    assert_eq!(storage_error.code, ErrorCode::Storage);
+    let storage_error = CliError::storage("unavailable test storage");
+    assert_eq!(storage_error.code(), ErrorCode::Storage);
     assert_eq!(storage_error.status(), 1);
-    let instance_error = CliError::from_run(RunError::no_instance("missing test instance"));
-    assert_eq!(instance_error.code, ErrorCode::NoInstance);
+    let instance_error = CliError::no_instance("missing test instance");
+    assert_eq!(instance_error.code(), ErrorCode::NoInstance);
     assert_eq!(instance_error.status(), 3);
-    assert_eq!(error.user_message, "The command-line request is invalid.");
+    assert_eq!(
+        error.into_protocol().message,
+        "The command-line request is invalid."
+    );
     let error = run(&[
         "--safe-mode".into(),
         "--basedir".into(),
         "/tmp/ferric-invalid-combination".into(),
     ])
     .expect_err("post-parse option conflict is rejected");
-    assert_eq!(error.code, ErrorCode::InvalidArgument);
+    assert_eq!(error.code(), ErrorCode::InvalidArgument);
     assert_eq!(error.status(), 2);
     assert!(wants_structured_error(&[
         "query".into(),
@@ -2316,24 +2319,21 @@ fn cli_errors_use_stable_codes() {
         "json".into(),
     ]));
     assert!(!wants_structured_error(&["query".into(), "tabs".into()]));
-    let structured = serde_json::from_str::<serde_json::Value>(&structured_cli_error_with_id(
-        ErrorCode::Timeout,
-        6,
-        "slow",
-        "err-test",
-    ))
-    .expect("structured CLI errors are JSON");
+    let protocol =
+        CliError::local(ErrorCode::Timeout, "slow", "sensitive local cause").into_protocol();
+    let structured = cli_error::structured(&protocol);
     assert_eq!(structured["error"]["code"], "E_TIMEOUT");
     assert_eq!(structured["error"]["status"], 6);
     assert_eq!(structured["error"]["message"], "slow");
     assert_eq!(
         structured["error"]["preserved"],
-        "the timed-out operation was not committed"
+        "request completion is unconfirmed"
     );
     assert_eq!(
         structured["error"]["next_action"],
-        "check the target and retry"
+        "check current state before retrying"
     );
+    assert!(!structured.to_string().contains("sensitive local cause"));
     assert!(
         structured["error"]["correlation_id"]
             .as_str()
@@ -2405,7 +2405,7 @@ fn forwarded_cli_context_preserves_cli_source() {
         "command": "back",
         "arguments": {}
     });
-    add_cli_context(&mut params, &CliOptions::default(), None);
+    add_cli_context(&mut params, &CliOptions::default(), None).expect("CLI context");
     assert_eq!(params["context"]["source"], "cli");
 }
 

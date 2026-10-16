@@ -9,31 +9,14 @@ use super::{
 };
 
 impl qobject::BrowserUi {
-    pub(super) fn execute_ipc_command_with_operation(
+    // Existing effect handlers retain their own validation and safe fallback
+    // classification until they can supply a more specific public error.
+    pub(super) fn execute_adapter_ipc_command(
         mut self: Pin<&mut Self>,
-        command: ParsedCommand,
+        mut command: ParsedCommand,
         route: &IpcRoute,
         operation_id: Option<&str>,
     ) -> Result<Value, String> {
-        let expanded = self
-            .as_ref()
-            .rust()
-            .registry
-            .expand_command(command)
-            .map_err(|error| error.to_string())?;
-        super::browser_ui_hint_pointer::reject_external_hint_interaction_chain(&expanded)?;
-        if expanded.len() != 1 {
-            let mut result = None;
-            for command in expanded {
-                result = Some(self.as_mut().execute_ipc_command_with_operation(
-                    command,
-                    route,
-                    operation_id,
-                )?);
-            }
-            return Ok(result.unwrap_or_else(|| serde_json::json!({"status": "accepted"})));
-        }
-        let mut command = expanded.into_iter().next().expect("one expanded command");
         if matches!(
             command.name.as_str(),
             "tab-new" | "start-page" | "start-page-view" | "start-page-cycle" | "favourite-add"
@@ -60,14 +43,17 @@ impl qobject::BrowserUi {
             if current_url.is_empty() {
                 return Err("open-current requires a committed URL".into());
             }
-            return self.as_mut().execute_ipc_command_with_operation(
-                ParsedCommand {
-                    name: target.into(),
-                    arguments: vec![current_url],
-                },
-                route,
-                operation_id,
-            );
+            return self
+                .as_mut()
+                .execute_ipc_command_with_operation(
+                    ParsedCommand {
+                        name: target.into(),
+                        arguments: vec![current_url],
+                    },
+                    route,
+                    operation_id,
+                )
+                .map_err(|error| error.to_string());
         }
         if matches!(command.name.as_str(), "quit" | "window-close") {
             if route.context.is_some() || !command.arguments.is_empty() {
@@ -125,9 +111,6 @@ impl qobject::BrowserUi {
             }
             self.as_ref().validate_ipc_route(route)?;
             return self.as_mut().execute_config_get_command(&command);
-        }
-        if let Some(result) = self.as_mut().dispatch_support_command(&command, route) {
-            return result;
         }
         if command.name == "config-export" {
             if route.context.is_some() {
@@ -767,9 +750,10 @@ impl qobject::BrowserUi {
                 return Ok(result);
             }
             let (mapped, action_id) = parse_action_invocation(&command)?;
-            let mut result =
-                self.as_mut()
-                    .execute_ipc_command_with_operation(mapped, route, operation_id)?;
+            let mut result = self
+                .as_mut()
+                .execute_ipc_command_with_operation(mapped, route, operation_id)
+                .map_err(|error| error.to_string())?;
             result["action_id"] = Value::String(action_id);
             return Ok(result);
         }

@@ -145,7 +145,6 @@ impl qobject::BrowserUi {
                         Response::success(request.id.clone(), result)
                     }
                     Err(error) => {
-                        let error = PublicError::engine(error);
                         let category = action_failure_category(error.code());
                         self.as_mut().record_action_audit(
                             &action_id,

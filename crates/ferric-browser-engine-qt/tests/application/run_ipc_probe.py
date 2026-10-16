@@ -24,7 +24,7 @@ def main():
         with tempfile.TemporaryFile(mode='w+') as log:
             app = subprocess.Popen([*prefix, '--software-rendering', '--userscripts-off', 'open', 'rb://blank'],
                                    env=env, stdout=log, stderr=log)
-            def invoke(*arguments, accepted=True):
+            def invoke(*arguments, accepted=True, error_code=None):
                 result = subprocess.run([*prefix, *arguments], env=env, capture_output=True,
                                         text=True, timeout=30 if arguments[0] == 'diagnostics' else 12)
                 if accepted:
@@ -34,8 +34,15 @@ def main():
                         return value.get('result', value)
                     return result.stdout
                 assert result.returncode != 0, (arguments, result.stdout)
+                if error_code:
+                    if '--format' in arguments:
+                        failure = json.loads(result.stderr)['error']
+                        assert failure['code'] == error_code, failure
+                        assert failure['correlation_id'] == failure['details']['correlation_id'], failure
+                    else:
+                        assert result.stderr.startswith('ferric-browser: ' + error_code + ':'), result.stderr
                 print('remote rejection', arguments, result.stderr.strip(), flush=True)
-                return None
+                return result.stderr
             try:
                 deadline = time.monotonic() + 20
                 while True:
@@ -76,10 +83,29 @@ def main():
                 reserved = invoke('query', 'binding-explain', ':', '--mode', 'normal', '--format', 'json')
                 assert reserved['mixed_routing']['owner'] == 'browser', reserved
                 for panel in ('settings', 'profiles', 'sessions'):
-                    invoke('command', panel + ' unexpected', accepted=False)
-                    invoke('command', '--window', '123e4567-e89b-12d3-a456-426614174000',
-                           '--', panel, accepted=False)
+                    rejected = invoke('command', panel + ' unexpected', accepted=False,
+                                      error_code='E_INVALID_ARGUMENT')
+                    assert 'does not accept arguments' in rejected, rejected
+                    invoke('command', '--window', 'not-a-window',
+                           '--', panel, accepted=False, error_code='E_INVALID_ARGUMENT')
+                    invoke('command', '--window', 'windowid-18446744073709551615',
+                           '--', panel, accepted=False, error_code='E_STALE_TARGET')
                     invoke('command', panel)
+                rejected = invoke('query', 'tabs', '--window', 'not-a-window', '--format', 'json',
+                                  accepted=False, error_code='E_INVALID_ARGUMENT')
+                assert 'window' in json.loads(rejected)['error']['message'], rejected
+                rejected = invoke('command', 'open https://should-not-open.invalid/ ;; settings unexpected',
+                                  accepted=False, error_code='E_INVALID_ARGUMENT')
+                assert 'earlier requests were accepted' not in rejected, rejected
+                rejected = invoke('command', 'reload ;; get no.such.setting ;; open https://should-not-open.invalid/',
+                                  accepted=False, error_code='E_ENGINE')
+                assert 'earlier requests were accepted' in rejected, rejected
+                # Command-authored selectors must reach route validation; an
+                # unknown owner must never silently navigate the default one.
+                invoke('command', 'open --profile no-such-profile https://should-not-open.invalid/',
+                       accepted=False, error_code='E_ENGINE')
+                invoke('command', 'open --context no-such-context https://should-not-open.invalid/',
+                       accepted=False, error_code='E_ENGINE')
                 after_panels = invoke('query', 'active-tab', '--format', 'json')
                 assert after_panels['tabs'][0]['url'] == before['tabs'][0]['url'], after_panels
                 print('native manager commands accepted over IPC without navigating', flush=True)

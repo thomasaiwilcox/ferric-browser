@@ -69,10 +69,21 @@ pub struct Request {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Response {
     pub id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present_result"
+    )]
     pub result: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<ProtocolError>,
+}
+
+// A successful null result is present data, distinct from an absent result.
+fn present_result<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Value>, D::Error> {
+    Value::deserialize(deserializer).map(Some)
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -653,8 +664,8 @@ impl ErrorCode {
                 "wait for it to finish and retry",
             ),
             Self::Timeout => (
-                "the timed-out operation was not committed",
-                "check the target and retry",
+                "request completion is unconfirmed",
+                "check current state before retrying",
             ),
             Self::Protocol => (
                 "the request was not executed",
@@ -737,10 +748,7 @@ impl Response {
         details.insert("preserved".into(), Value::String(preserved.into()));
         details.insert("next_action".into(), Value::String(next_action.into()));
         error.code = code.as_str().into();
-        error.message = format!(
-            "{}. Preserved: {preserved}. Next action: {next_action}. [correlation {correlation_id}]",
-            redact_text(error.message.trim_end_matches('.'))
-        );
+        error.message = redact_text(&error.message);
         error.details = Some(json!(details));
         Self {
             id: id.into(),
@@ -903,7 +911,10 @@ pub struct HelloResult {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum FrameError {
-    Io(String),
+    Io {
+        kind: io::ErrorKind,
+        message: String,
+    },
     ZeroLength,
     TooLarge(usize),
     InvalidUtf8,
@@ -914,7 +925,7 @@ pub enum FrameError {
 impl std::fmt::Display for FrameError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Io(message) => write!(formatter, "IPC I/O error: {message}"),
+            Self::Io { message, .. } => write!(formatter, "IPC I/O error: {message}"),
             Self::ZeroLength => formatter.write_str("IPC frame length must be nonzero"),
             Self::TooLarge(length) => write!(formatter, "IPC frame is too large: {length} bytes"),
             Self::InvalidUtf8 => formatter.write_str("IPC frame is not UTF-8"),
@@ -926,6 +937,15 @@ impl std::fmt::Display for FrameError {
 
 impl std::error::Error for FrameError {}
 
+impl From<io::Error> for FrameError {
+    fn from(error: io::Error) -> Self {
+        Self::Io {
+            kind: error.kind(),
+            message: error.to_string(),
+        }
+    }
+}
+
 /// Reads one four-byte big-endian length-prefixed JSON frame.
 ///
 /// # Errors
@@ -934,11 +954,16 @@ impl std::error::Error for FrameError {}
 /// incomplete payloads.
 pub fn read_frame(reader: &mut impl Read) -> Result<Option<Vec<u8>>, FrameError> {
     let mut length_bytes = [0_u8; 4];
-    match reader.read_exact(&mut length_bytes) {
+    match reader.read_exact(&mut length_bytes[..1]) {
         Ok(()) => {}
         Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => return Ok(None),
-        Err(error) => return Err(FrameError::Io(error.to_string())),
+        Err(error) => return Err(error.into()),
     }
+    // A clean EOF is valid between frames. An interrupted length prefix is
+    // an incomplete frame, not a cleanly closed connection.
+    reader
+        .read_exact(&mut length_bytes[1..])
+        .map_err(FrameError::from)?;
     let length = u32::from_be_bytes(length_bytes) as usize;
     if length == 0 {
         return Err(FrameError::ZeroLength);
@@ -947,9 +972,7 @@ pub fn read_frame(reader: &mut impl Read) -> Result<Option<Vec<u8>>, FrameError>
         return Err(FrameError::TooLarge(length));
     }
     let mut payload = vec![0_u8; length];
-    reader
-        .read_exact(&mut payload)
-        .map_err(|error| FrameError::Io(error.to_string()))?;
+    reader.read_exact(&mut payload).map_err(FrameError::from)?;
     Ok(Some(payload))
 }
 
@@ -970,7 +993,7 @@ pub fn write_frame(writer: &mut impl Write, payload: &[u8]) -> Result<(), FrameE
         .write_all(&length.to_be_bytes())
         .and_then(|()| writer.write_all(payload))
         .and_then(|()| writer.flush())
-        .map_err(|error| FrameError::Io(error.to_string()))
+        .map_err(FrameError::from)
 }
 
 /// Parses a JSON request and enforces the bounded object/depth contract.
@@ -1493,6 +1516,34 @@ mod tests {
     }
 
     #[test]
+    fn response_null_results_roundtrip_without_accepting_duplicate_fields() {
+        let response = Response::success("null", Value::Null);
+        let encoded = serde_json::to_vec(&response).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<Response>(&encoded).unwrap(),
+            response
+        );
+        let missing: Response = serde_json::from_str(r#"{"id":"missing"}"#).unwrap();
+        assert!(missing.result.is_none());
+        assert!(
+            serde_json::from_str::<Response>(r#"{"id":"bad","result":null,"result":{}}"#).is_err()
+        );
+    }
+
+    #[test]
+    fn truncated_frame_prefix_retains_the_io_category() {
+        let error = read_frame(&mut std::io::Cursor::new([0_u8, 0_u8])).unwrap_err();
+        assert!(matches!(
+            error,
+            FrameError::Io {
+                kind: io::ErrorKind::UnexpectedEof,
+                ..
+            }
+        ));
+        assert!(read_frame(&mut std::io::Cursor::new([])).unwrap().is_none());
+    }
+
+    #[test]
     fn instance_lock_crash_test_child() {
         let Ok(root) = std::env::var("FERRIC_BROWSER_INSTANCE_LOCK_CHILD_ROOT") else {
             return;
@@ -1621,16 +1672,7 @@ mod tests {
         );
         let error = response.error.expect("error response");
         assert_eq!(error.code, "E_INVALID_ARGUMENT");
-        assert!(
-            error
-                .message
-                .contains("Preserved: no browser state was changed")
-        );
-        assert!(
-            error
-                .message
-                .contains("Next action: correct the arguments and retry")
-        );
+        assert_eq!(error.message, "bad request");
         let details = error.details.expect("error details");
         assert_eq!(details["preserved"], "no browser state was changed");
         assert_eq!(details["next_action"], "correct the arguments and retry");

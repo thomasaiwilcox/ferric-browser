@@ -1,15 +1,63 @@
 use super::{
-    CxxQtType, Effect, EngineEffect, IpcRoute, ParsedCommand, Pin, RuntimeDispatch, Value,
-    ipc_command_invocation, qobject,
+    CxxQtType, Effect, EngineEffect, IpcRoute, ParsedCommand, Pin, PublicError, RuntimeDispatch,
+    Value, ipc_command_invocation, qobject,
 };
+use ferric_browser_ipc::ErrorCode;
 
 impl qobject::BrowserUi {
+    pub(super) fn execute_ipc_command_with_operation(
+        mut self: Pin<&mut Self>,
+        command: ParsedCommand,
+        route: &IpcRoute,
+        operation_id: Option<&str>,
+    ) -> Result<Value, PublicError> {
+        let expanded = self
+            .as_ref()
+            .rust()
+            .registry
+            .expand_command(command)
+            .map_err(|error| {
+                PublicError::new(
+                    ErrorCode::InvalidArgument,
+                    "The command couldn't be expanded. Check its definition.",
+                    error.to_string(),
+                )
+            })?;
+        super::browser_ui_hint_pointer::reject_external_hint_interaction_chain(&expanded).map_err(
+            |error| {
+                PublicError::new(
+                    ErrorCode::Denied,
+                    "Use hints from the browser window.",
+                    error,
+                )
+            },
+        )?;
+        if expanded.len() != 1 {
+            let mut result = None;
+            for command in expanded {
+                result = Some(self.as_mut().execute_ipc_command_with_operation(
+                    command,
+                    route,
+                    operation_id,
+                )?);
+            }
+            return Ok(result.unwrap_or_else(|| serde_json::json!({"status": "accepted"})));
+        }
+        let command = expanded.into_iter().next().expect("one expanded command");
+        if let Some(result) = self.as_mut().dispatch_support_command(&command, route) {
+            return result;
+        }
+        self.execute_adapter_ipc_command(command, route, operation_id)
+            .map_err(PublicError::engine)
+    }
+
     pub(super) fn execute_ipc_command(
         self: Pin<&mut Self>,
         command: ParsedCommand,
         route: &IpcRoute,
     ) -> Result<Value, String> {
         self.execute_ipc_command_with_operation(command, route, None)
+            .map_err(|error| error.to_string())
     }
 
     pub(super) fn dispatch_fallback_ipc_command(

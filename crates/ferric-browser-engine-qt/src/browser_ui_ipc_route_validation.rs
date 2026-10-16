@@ -4,15 +4,32 @@
 //! onto live browser state. It deliberately does not inspect JSON or execute
 //! commands.
 
-use super::{CxxQtType, DispatchTarget, IpcOpenTarget, IpcRoute, WindowId, qobject};
+use ferric_browser_ipc::ErrorCode;
+
+use super::{CxxQtType, DispatchTarget, IpcOpenTarget, IpcRoute, PublicError, WindowId, qobject};
 
 impl qobject::BrowserUi {
-    pub(super) fn ipc_route_window(&self, route: &IpcRoute) -> Result<WindowId, String> {
+    fn ipc_state_unavailable(&self) -> PublicError {
+        let (code, message) = if self.rust().profile_bootstrap_pending {
+            (
+                ErrorCode::Busy,
+                "The browser is still starting. Try again shortly.",
+            )
+        } else {
+            (
+                ErrorCode::Engine,
+                "This browser window is unavailable. Check its status or restart it.",
+            )
+        };
+        PublicError::new(code, message, "core state unavailable")
+    }
+
+    pub(super) fn ipc_route_window(&self, route: &IpcRoute) -> Result<WindowId, PublicError> {
         let state = self
             .rust()
             .state
             .as_ref()
-            .ok_or_else(|| "core state unavailable".to_owned())?;
+            .ok_or_else(|| self.ipc_state_unavailable())?;
         match route.selector {
             DispatchTarget::Active => state.active_window(),
             DispatchTarget::LastFocused => state.last_focused_window().or(state.active_window()),
@@ -20,15 +37,26 @@ impl qobject::BrowserUi {
             DispatchTarget::Tab(tab) => state.tabs().get(&tab).map(|tab| tab.window),
         }
         .and_then(|window| state.windows().get(&window).map(|_| window))
-        .ok_or_else(|| "requested window is not available".to_owned())
+        .ok_or_else(|| {
+            PublicError::new(
+                ErrorCode::StaleTarget,
+                "The requested browser window is no longer available. Refresh the window list.",
+                "requested window unavailable",
+            )
+        })
     }
 
     pub(super) fn validate_ipc_route(&self, route: &IpcRoute) -> Result<(), String> {
+        self.validate_ipc_route_public(route)
+            .map_err(|error| error.to_string())
+    }
+
+    pub(super) fn validate_ipc_route_public(&self, route: &IpcRoute) -> Result<(), PublicError> {
         let state = self
             .rust()
             .state
             .as_ref()
-            .ok_or_else(|| "core state unavailable".to_owned())?;
+            .ok_or_else(|| self.ipc_state_unavailable())?;
         let window = self.ipc_route_window(route)?;
         if let Some(context_name) = route.context.as_deref() {
             let context = self
@@ -41,21 +69,39 @@ impl qobject::BrowserUi {
                         .iter()
                         .find(|context| context.name == context_name)
                 })
-                .ok_or_else(|| format!("context not found: {context_name}"))?;
+                .ok_or_else(|| {
+                    PublicError::new(
+                        ErrorCode::NotFound,
+                        "The requested context was not found. Refresh the context list.",
+                        format!("context not found: {context_name}"),
+                    )
+                })?;
             if route.open_target == IpcOpenTarget::PrivateWindow {
-                return Err("private-window cannot use a durable context".into());
+                return Err(PublicError::new(
+                    ErrorCode::Denied,
+                    "Private windows cannot use a saved context.",
+                    "private-window cannot use a durable context",
+                ));
             }
             if !matches!(route.open_target, IpcOpenTarget::Window)
                 && context.profile != self.rust().profile_name
             {
-                return Err("context belongs to a different profile".into());
+                return Err(PublicError::new(
+                    ErrorCode::Denied,
+                    "The requested context belongs to another profile. Open its profile first.",
+                    "context belongs to a different profile",
+                ));
             }
             if route
                 .profile
                 .as_deref()
                 .is_some_and(|profile| profile != context.profile)
             {
-                return Err("profile and context selectors disagree".into());
+                return Err(PublicError::new(
+                    ErrorCode::InvalidArgument,
+                    "The profile and context selectors refer to different profiles.",
+                    "profile and context selectors disagree",
+                ));
             }
         }
         if let Some(profile) = route.profile.as_deref()
@@ -68,9 +114,19 @@ impl qobject::BrowserUi {
                 .profiles()
                 .values()
                 .find(|candidate| candidate.label == profile)
-                .ok_or_else(|| format!("profile not found: {profile}"))?;
+                .ok_or_else(|| {
+                    PublicError::new(
+                        ErrorCode::NotFound,
+                        "The requested profile was not found. Refresh the profile list.",
+                        format!("profile not found: {profile}"),
+                    )
+                })?;
             if requested.id != state.windows()[&window].profile {
-                return Err("the requested profile is not an active GUI profile".into());
+                return Err(PublicError::new(
+                    ErrorCode::Denied,
+                    "The requested profile is not open in this window. Open its profile first.",
+                    "the requested profile is not an active GUI profile",
+                ));
             }
         }
         Ok(())

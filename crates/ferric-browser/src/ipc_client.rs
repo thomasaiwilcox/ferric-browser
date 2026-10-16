@@ -1,12 +1,12 @@
 //! Local instance discovery, forwarding, diagnostics, and IPC transport.
 
 use super::{
-    BTreeSet, CliOptions, CommandRegistry, Duration, HelloResult, InstanceError, InstanceLock,
-    InstancePaths, InstanceRuntime, InstanceStart, MAX_DIAGNOSTIC_PROFILES, PROTOCOL_MAJOR,
-    PROTOCOL_MINOR, ParseInput, Path, Request, Response, RootSpec, StorageRoots, UnixStream, Uuid,
-    command_params, crash_diagnostics, ferric_browser_engine_qt, fs, inspect_store,
-    instance_identity, instance_paths, parse_chain, read_frame, transient_marker_scan,
-    validate_format, write_frame,
+    BTreeSet, CliError, CliOptions, CommandRegistry, Duration, ErrorCode, HelloResult,
+    InstanceError, InstanceLock, InstancePaths, InstanceRuntime, InstanceStart,
+    MAX_DIAGNOSTIC_PROFILES, PROTOCOL_MAJOR, PROTOCOL_MINOR, ParseInput, Path, Request, Response,
+    RootSpec, StorageRoots, UnixStream, Uuid, command_params, crash_diagnostics,
+    ferric_browser_engine_qt, fs, inspect_store, instance_identity, instance_paths, parse_chain,
+    read_frame, transient_marker_scan, validate_format, write_frame,
 };
 
 pub(super) fn acquire_instance(
@@ -68,7 +68,7 @@ pub(super) fn forward_open(
     target: Option<&str>,
     clean_link: bool,
     options: &CliOptions,
-) -> Result<(), String> {
+) -> Result<(), CliError> {
     let mut arguments = serde_json::json!({"input": input, "external": true});
     if let Some(target) = target {
         arguments["target"] = serde_json::Value::String(target.to_owned());
@@ -80,7 +80,7 @@ pub(super) fn forward_open(
         "command": "open",
         "arguments": arguments
     });
-    add_cli_context(&mut params, options, None);
+    add_cli_context(&mut params, options, None)?;
     let response = instance_request(
         paths,
         &Request {
@@ -90,12 +90,9 @@ pub(super) fn forward_open(
         },
     )?;
     if let Some(error) = response.error {
-        return Err(format!(
-            "instance rejected startup input ({}): {}",
-            error.code, error.message
-        ));
+        return Err(CliError::Protocol(error));
     }
-    for additional in additional_inputs {
+    for (offset, additional) in additional_inputs.iter().enumerate() {
         let mut params = if let Some(target) = target {
             serde_json::json!({
                 "command": "open",
@@ -107,7 +104,7 @@ pub(super) fn forward_open(
                 "arguments": {"input": additional, "background": false}
             })
         };
-        add_cli_context(&mut params, options, None);
+        add_cli_context(&mut params, options, None)?;
         let response = instance_request(
             paths,
             &Request {
@@ -115,12 +112,10 @@ pub(super) fn forward_open(
                 method: "command.execute".into(),
                 params,
             },
-        )?;
+        )
+        .map_err(|error| error.after_accepted("startup input", offset + 1))?;
         if let Some(error) = response.error {
-            return Err(format!(
-                "additional startup input was rejected ({}): {}",
-                error.code, error.message
-            ));
+            return Err(CliError::Protocol(error).after_accepted("startup input", offset + 1));
         }
     }
     println!(
@@ -135,7 +130,7 @@ pub(super) fn forward_open(
     Ok(())
 }
 
-pub(super) fn forward_focus(paths: &InstancePaths) -> Result<(), String> {
+pub(super) fn forward_focus(paths: &InstancePaths) -> Result<(), CliError> {
     let response = instance_request(
         paths,
         &Request {
@@ -145,10 +140,7 @@ pub(super) fn forward_focus(paths: &InstancePaths) -> Result<(), String> {
         },
     )?;
     if let Some(error) = response.error {
-        return Err(format!(
-            "focus request failed ({}): {}",
-            error.code, error.message
-        ));
+        return Err(CliError::Protocol(error));
     }
     println!("Focused the running Ferric Browser instance");
     Ok(())
@@ -159,16 +151,45 @@ pub(super) fn forward_command(
     text: &str,
     window: Option<&str>,
     options: &CliOptions,
-) -> Result<(), String> {
-    let commands = parse_chain(text, ParseInput::Cli).map_err(|error| error.to_string())?;
+) -> Result<(), CliError> {
+    let commands =
+        parse_chain(text, ParseInput::Cli).map_err(|error| CliError::command_error(&error))?;
     let commands = CommandRegistry::default_v1()
         .expand_chain(commands)
-        .map_err(|error| error.to_string())?;
-    ferric_browser_engine_qt::reject_external_hint_interaction_chain(&commands)?;
-    for command in commands {
-        let name = command.name.clone();
-        let mut params = command_params(&command)?;
-        add_cli_context(&mut params, options, window);
+        .map_err(|error| CliError::command_error(&error))?;
+    ferric_browser_engine_qt::reject_external_hint_interaction_chain(&commands).map_err(
+        |error| {
+            CliError::local(
+                ErrorCode::Denied,
+                "Use hints from the browser window.",
+                error,
+            )
+        },
+    )?;
+    // Finish local encoding before sending any request in the chain.
+    let registry = CommandRegistry::default_v1();
+    let parameters = commands
+        .iter()
+        .map(|command| {
+            let mut params = command_params(command).map_err(|cause| {
+                let message = if registry
+                    .resolve(&command.name)
+                    .is_ok_and(|definition| definition.arguments.is_empty())
+                {
+                    format!("{} does not accept arguments.", command.name)
+                } else {
+                    format!(
+                        "Invalid arguments for {}. Check :help {} in the browser.",
+                        command.name, command.name
+                    )
+                };
+                CliError::local(ErrorCode::InvalidArgument, &message, cause)
+            })?;
+            add_cli_context(&mut params, options, window)?;
+            Ok(params)
+        })
+        .collect::<Result<Vec<_>, CliError>>()?;
+    for (accepted, params) in parameters.into_iter().enumerate() {
         let response = instance_request(
             paths,
             &Request {
@@ -176,12 +197,10 @@ pub(super) fn forward_command(
                 method: "command.execute".into(),
                 params,
             },
-        )?;
+        )
+        .map_err(|error| error.after_accepted("command", accepted))?;
         if let Some(error) = response.error {
-            return Err(format!(
-                "command {name} failed ({}): {}",
-                error.code, error.message
-            ));
+            return Err(CliError::Protocol(error).after_accepted("command", accepted));
         }
     }
     println!("Command accepted by the running Ferric Browser instance");
@@ -192,26 +211,40 @@ pub(super) fn add_cli_context(
     params: &mut serde_json::Value,
     options: &CliOptions,
     window: Option<&str>,
-) {
-    let mut context = serde_json::Map::new();
+) -> Result<(), CliError> {
+    let object = params
+        .as_object_mut()
+        .ok_or_else(|| CliError::invalid("command envelope is not an object"))?;
+    let mut context = match object.get("context") {
+        Some(serde_json::Value::Object(context)) => context.clone(),
+        None | Some(serde_json::Value::Null) => serde_json::Map::new(),
+        Some(_) => return Err(CliError::invalid("command context is not an object")),
+    };
+    for (key, requested) in [
+        ("window", window),
+        ("profile", options.profile.as_deref()),
+        ("context", options.context.as_deref()),
+    ] {
+        if let Some(requested) = requested {
+            if requested.is_empty()
+                || context
+                    .get(key)
+                    .is_some_and(|value| !value.is_null() && value.as_str() != Some(requested))
+            {
+                return Err(CliError::local(
+                    ErrorCode::InvalidArgument,
+                    &format!(
+                        "Conflicting or empty {key} selectors. Use one {key} for this request."
+                    ),
+                    "CLI selector disagrees with the encoded command",
+                ));
+            }
+            context.insert(key.into(), serde_json::Value::String(requested.into()));
+        }
+    }
     context.insert("source".into(), serde_json::Value::String("cli".into()));
-    if let Some(window) = window {
-        context.insert("window".into(), serde_json::Value::String(window.into()));
-    }
-    if let Some(profile) = options.profile.as_deref() {
-        context.insert("profile".into(), serde_json::Value::String(profile.into()));
-    }
-    if let Some(context_name) = options.context.as_deref() {
-        context.insert(
-            "context".into(),
-            serde_json::Value::String(context_name.into()),
-        );
-    }
-    if let Some(object) = params.as_object_mut()
-        && !context.is_empty()
-    {
-        object.insert("context".into(), serde_json::Value::Object(context));
-    }
+    object.insert("context".into(), serde_json::Value::Object(context));
+    Ok(())
 }
 
 pub(super) fn forward_query(
@@ -219,7 +252,7 @@ pub(super) fn forward_query(
     method: &str,
     params: serde_json::Value,
     format: &str,
-) -> Result<(), String> {
+) -> Result<(), CliError> {
     let response = instance_request(
         paths,
         &Request {
@@ -229,12 +262,16 @@ pub(super) fn forward_query(
         },
     )?;
     if let Some(error) = response.error {
-        return Err(format!("query failed ({}): {}", error.code, error.message));
+        return Err(CliError::Protocol(error));
     }
-    print_response_result(response, format)
+    print_response_result(response, format).map_err(CliError::from)
 }
 
-pub(super) fn forward_activate(paths: &InstancePaths, kind: &str, id: &str) -> Result<(), String> {
+pub(super) fn forward_activate(
+    paths: &InstancePaths,
+    kind: &str,
+    id: &str,
+) -> Result<(), CliError> {
     let response = instance_request(
         paths,
         &Request {
@@ -244,12 +281,9 @@ pub(super) fn forward_activate(paths: &InstancePaths, kind: &str, id: &str) -> R
         },
     )?;
     if let Some(error) = response.error {
-        return Err(format!(
-            "activation failed ({}): {}",
-            error.code, error.message
-        ));
+        return Err(CliError::Protocol(error));
     }
-    print_response_result(response, "json")
+    print_response_result(response, "json").map_err(CliError::from)
 }
 
 pub(super) fn print_response_result(response: Response, format: &str) -> Result<(), String> {
@@ -268,27 +302,29 @@ pub(super) fn print_diagnostics(
     storage_base: Option<&str>,
     instance_selector: Option<&str>,
     allow_live_instance: bool,
-) -> Result<(), String> {
+) -> Result<(), CliError> {
     validate_format(format)?;
     if allow_live_instance
         && let Ok(paths) = existing_instance_paths(storage_base.map(Path::new), instance_selector)
         && paths.socket.exists()
-        && let Ok(response) = instance_request(
+    {
+        match instance_request(
             &paths,
             &Request {
                 id: format!("diagnostics-{}", Uuid::new_v4()),
                 method: "diagnostics.get".into(),
                 params: serde_json::Value::Null,
             },
-        )
-    {
-        if let Some(error) = response.error {
-            return Err(format!(
-                "running instance diagnostics failed ({}): {}",
-                error.code, error.message
-            ));
+        ) {
+            Ok(response) => {
+                if let Some(error) = response.error {
+                    return Err(CliError::Protocol(error));
+                }
+                return print_response_result(response, format).map_err(CliError::from);
+            }
+            Err(error) if error.code() == ErrorCode::NoInstance => {}
+            Err(error) => return Err(error),
         }
-        return print_response_result(response, format);
     }
     let mut diagnostics = ferric_browser_engine_qt::diagnostics_snapshot();
     let roots = if let Some(base) = storage_base {
@@ -423,15 +459,21 @@ pub(super) fn storage_diagnostics(roots: &StorageRoots) -> serde_json::Value {
 }
 
 pub(super) fn finish_forward(
-    result: Result<(), String>,
+    result: Result<(), CliError>,
     temporary_roots: Option<StorageRoots>,
-) -> Result<(), String> {
+) -> Result<(), CliError> {
     let cleanup = temporary_roots
         .map(StorageRoots::cleanup)
         .transpose()
         .map_err(|error| format!("could not clean temporary base directory: {error}"));
     match (result, cleanup) {
-        (Err(error), _) | (Ok(()), Err(error)) => Err(error),
+        (Err(error), _) => Err(error),
+        (Ok(()), Err(error)) => Err(CliError::local(
+            ErrorCode::Io,
+            "The request was accepted, but temporary files couldn't be removed.",
+            error,
+        )
+        .completion_unknown()),
         (Ok(()), Ok(_)) => Ok(()),
     }
 }
@@ -439,14 +481,18 @@ pub(super) fn finish_forward(
 pub(super) fn instance_request(
     paths: &InstancePaths,
     request: &Request,
-) -> Result<Response, String> {
-    let mut stream = UnixStream::connect(&paths.socket)
-        .map_err(|error| format!("could not connect to running instance: {error}"))?;
+) -> Result<Response, CliError> {
+    let mut stream = UnixStream::connect(&paths.socket).map_err(|error| match error.kind() {
+        std::io::ErrorKind::NotFound | std::io::ErrorKind::ConnectionRefused => {
+            CliError::no_instance(error.to_string())
+        }
+        _ => transport_io(error.kind(), error.to_string()),
+    })?;
     let timeout = Some(Duration::from_secs(5));
     stream
         .set_read_timeout(timeout)
         .and_then(|()| stream.set_write_timeout(timeout))
-        .map_err(|error| format!("could not configure IPC timeout: {error}"))?;
+        .map_err(|error| transport_io(error.kind(), error.to_string()))?;
 
     let hello = Request {
         id: format!("hello-{}", std::process::id()),
@@ -459,18 +505,28 @@ pub(super) fn instance_request(
     };
     let hello_response = ipc_roundtrip(&mut stream, &hello)?;
     if let Some(error) = hello_response.error {
-        return Err(format!(
-            "running instance rejected handshake ({}): {}",
-            error.code, error.message
-        ));
+        return Err(CliError::Protocol(error));
     }
-    let hello_result = hello_response
-        .result
-        .ok_or_else(|| "running instance rejected IPC handshake".to_owned())?;
-    let hello_result: HelloResult = serde_json::from_value(hello_result)
-        .map_err(|error| format!("running instance returned an invalid handshake: {error}"))?;
+    let hello_result = hello_response.result.ok_or_else(|| {
+        CliError::local(
+            ErrorCode::Protocol,
+            "The running browser did not accept the connection.",
+            "missing handshake result",
+        )
+    })?;
+    let hello_result: HelloResult = serde_json::from_value(hello_result).map_err(|error| {
+        CliError::local(
+            ErrorCode::Protocol,
+            "The running browser sent an invalid handshake.",
+            error.to_string(),
+        )
+    })?;
     if hello_result.protocol_major != PROTOCOL_MAJOR {
-        return Err("running instance uses an incompatible IPC protocol".into());
+        return Err(CliError::local(
+            ErrorCode::Protocol,
+            "The running browser uses an incompatible protocol. Restart it with the installed version.",
+            "protocol major version mismatch",
+        ));
     }
 
     // Live diagnostic collection has a 15-second server deadline. Keep the
@@ -479,7 +535,7 @@ pub(super) fn instance_request(
     if request.method == "diagnostics.get" {
         stream
             .set_read_timeout(Some(Duration::from_secs(20)))
-            .map_err(|error| format!("could not configure diagnostics timeout: {error}"))?;
+            .map_err(|error| transport_io(error.kind(), error.to_string()))?;
     }
 
     ipc_roundtrip(&mut stream, request)
@@ -488,12 +544,71 @@ pub(super) fn instance_request(
 pub(super) fn ipc_roundtrip(
     stream: &mut UnixStream,
     request: &Request,
-) -> Result<Response, String> {
-    let payload = serde_json::to_vec(request)
-        .map_err(|error| format!("could not encode IPC request: {error}"))?;
-    write_frame(stream, &payload).map_err(|error| error.to_string())?;
-    let payload = read_frame(stream)
-        .map_err(|error| error.to_string())?
-        .ok_or_else(|| "running instance closed the IPC connection".to_owned())?;
-    serde_json::from_slice(&payload).map_err(|error| format!("invalid IPC response: {error}"))
+) -> Result<Response, CliError> {
+    let payload = serde_json::to_vec(request).map_err(|error| {
+        CliError::local(
+            ErrorCode::Protocol,
+            "The browser request couldn't be encoded.",
+            error.to_string(),
+        )
+    })?;
+    let result = (|| {
+        write_frame(stream, &payload).map_err(frame_failure)?;
+        let payload = read_frame(stream).map_err(frame_failure)?.ok_or_else(|| {
+            CliError::local(
+                ErrorCode::Io,
+                "The browser closed the connection before replying.",
+                "IPC response EOF",
+            )
+        })?;
+        let response: Response = serde_json::from_slice(&payload).map_err(|error| {
+            CliError::local(
+                ErrorCode::Protocol,
+                "The running browser sent an invalid response.",
+                error.to_string(),
+            )
+        })?;
+        if response.id != request.id || response.error.is_some() == response.result.is_some() {
+            return Err(CliError::local(
+                ErrorCode::Protocol,
+                "The browser response did not match the request.",
+                "mismatched response ID or result/error shape",
+            ));
+        }
+        Ok(response)
+    })();
+    result.map_err(|error| {
+        if request.method == "hello" {
+            error
+        } else {
+            error.completion_unknown()
+        }
+    })
+}
+
+fn frame_failure(error: ferric_browser_ipc::FrameError) -> CliError {
+    match error {
+        ferric_browser_ipc::FrameError::Io { kind, message } => transport_io(kind, message),
+        _ => CliError::local(
+            ErrorCode::Protocol,
+            "The running browser sent an invalid message.",
+            error.to_string(),
+        ),
+    }
+}
+
+fn transport_io(kind: std::io::ErrorKind, context: String) -> CliError {
+    match kind {
+        std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock => CliError::local(
+            ErrorCode::Timeout,
+            "The running browser did not reply in time.",
+            context,
+        ),
+        std::io::ErrorKind::PermissionDenied => CliError::local(
+            ErrorCode::Denied,
+            "Access to the browser connection was denied.",
+            context,
+        ),
+        _ => CliError::local(ErrorCode::Io, "The browser connection failed.", context),
+    }
 }

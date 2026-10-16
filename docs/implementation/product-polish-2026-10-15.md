@@ -962,6 +962,82 @@ Source, application and phase records are in `status-shutdown-source-hashes.json
 Startup, inventory and synchronous submission errors, the typed CLI boundary,
 window managers and the remaining full-goal walkthrough still require work.
 
+## CLI failure and selector boundary
+
+Status: qualified locally; retained in the polish branch.
+
+This advances DIAG-003 and the command/IPC target contracts. A disposable live
+probe showed an invalid-window query returning `E_INVALID_ARGUMENT` over IPC
+but becoming a generic `E_ENGINE` failure in the CLI. Forwarding now retains
+the protocol error through handshake, command, query, focus, activation, open,
+diagnostics and cleanup. The CLI reuses the server's correlation and guidance,
+and maps its canonical code to the public exit status. Shared `PublicError`
+replaces the CLI's duplicate startup-error translation layer.
+
+Wire failure messages contain a concise, redacted reason. Guidance and opaque
+references remain structured metadata. CLI text separates reason, state and
+next action, with an accessible reference for unexpected technical failures.
+Legacy peers retain their complete guidance without printing it twice; missing
+legacy metadata receives safe fallbacks. Raw local diagnostic context is not
+newly exposed by selecting JSON output.
+
+Panel argument and route failures now select typed categories where validation
+occurs. Other existing effect handlers retain their conservative generic
+category until their own sources can supply a typed public failure. They are
+not classified by matching error prose. The typed dispatch wrapper lives with
+runtime IPC dispatch, keeping the existing effect-handler module under its
+1,000-line cap. Its pre-context-assignment validation guard remains covered.
+
+Transport failures retain their I/O kind, reject mismatched request IDs and
+ambiguous responses, and distinguish clean EOF from an incomplete length
+prefix. Timeout/closed-response messages report unconfirmed completion rather
+than promising that no operation was committed. CLI chains encode and check
+all local selectors before sending anything. Later server failures count
+accepted requests without claiming that asynchronous effects completed or
+were rolled back. Live diagnostics transport failures cannot masquerade as
+successful offline reports.
+
+A stronger regression also reproduced CLI annotation discarding a command's
+profile/context selectors (`cli-selector-loss-before.log`: `work` became null).
+Annotations now preserve authored selectors, merge matching CLI selectors and
+reject conflicts before connecting. The live probe also checks that unknown
+command-authored owners cannot navigate the default profile.
+
+Focused evidence: all 107 application unit tests pass. Real Unix-socket regressions cover
+every forwarding path, stable codes/statuses, correlation/redaction, legacy
+metadata, incomplete replies, cleanup failures, admission counts and local
+chain preflight. Shared IPC unit tests pass with the framing and concise-message
+changes. Final formatting, strict workspace Clippy and the full repository gate
+pass: 940 Rust tests passed, two opt-in tests ignored, and 402 QML checks passed.
+The rebuilt production application group passed all 66 checks; the clipboard
+group passed all 81 checks. Bounded adapter startup and the expanded standalone
+IPC probe also passed. `cli-error-final-status.json` records each phase and
+`cli-error-final-artifacts.json` records the exact Cargo-discovered engine archive
+and application digests. The engine snapshot SHA-256 is
+`d6c87c866db0afbb8be13d4fefd5629ab41693b35e2e4bbabd9a575027101c4c`.
+
+Qualification corrected two test assumptions: a missing window must use the
+stable `windowid-N` syntax, with malformed syntax tested separately; and the
+external hint guard now maps its failure to a typed denial. The source check
+now verifies that denial precedes command dispatch. Both initial failures are
+retained alongside the passing logs. Neither correction changed application
+behavior; the final test source passed strict Clippy and the complete gate.
+
+The new response guard also exposed the shared deserializer collapsing a valid
+successful JSON null into an absent result (`cli-null-result-before.log`). The
+protocol field now preserves that distinction for every client, while retaining
+duplicate-field rejection; the socket-level null-result regression exercises
+the full client path. Three initial Clippy findings in the new formatter were
+corrected before final qualification. Missing core state is described as Busy
+only when profile bootstrap is actually pending; otherwise it retains a
+conservative unavailable-window failure.
+
+Startup/inventory/synchronous notices and remaining generic local/effect
+failure projections still require review. Profile/session manager access in
+other windows, popup management/input parity, explicit live-window IPC routing,
+the whole-window configured-font walkthrough and final release qualification
+remain part of the original goal.
+
 ## Audit status and remaining implementation
 
 These remain part of the original goal, rather than deferred release promises:

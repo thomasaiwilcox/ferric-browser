@@ -498,10 +498,10 @@ fn account_flows_keep_tabs_and_popups_on_the_opener_profile() {
 
 #[test]
 fn context_routes_validate_before_assigning_window_membership() {
-    let source = ADAPTER_SOURCE;
+    let source = include_str!("../browser_ui_ipc.rs");
     let command_start = source
-        .find("fn execute_ipc_command_with_operation(")
-        .expect("IPC command executor exists");
+        .find("fn execute_adapter_ipc_command(")
+        .expect("IPC effect handler exists");
     let command_source = &source[command_start..];
     let assign = command_source
         .find("self.as_mut().assign_ipc_context(route)?;")
@@ -1592,7 +1592,15 @@ fn target_search_is_local_native_ranked_and_identity_bound() {
         .expect("native target search popup");
 
     assert!(ADAPTER_SOURCE.contains("command.name == \"target-search\""));
-    assert!(ADAPTER_SOURCE.contains("reject_external_hint_interaction_chain(&expanded)?"));
+    let ipc_dispatch = include_str!("../browser_ui_ipc_runtime_dispatch.rs");
+    let hint_guard = ipc_dispatch
+        .find("reject_external_hint_interaction_chain(&expanded)")
+        .expect("external hint guard");
+    let command_dispatch = ipc_dispatch
+        .find("dispatch_support_command(&command, route)")
+        .expect("command dispatch");
+    assert!(hint_guard < command_dispatch);
+    assert!(ipc_dispatch[hint_guard..command_dispatch].contains("ErrorCode::Denied"));
     let local_only_source = include_str!("../browser_ui_hint_pointer.rs");
     assert!(local_only_source.contains(
         "target-search is available only from local keyboard or UI input"

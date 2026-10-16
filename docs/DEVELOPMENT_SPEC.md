@@ -2672,6 +2672,21 @@ automatic network submission or silent core-dump upload.
 what failed, what was preserved, and a concrete next action. Logs retain a
 correlation ID instead of confidential raw input.
 
+CLI text separates the failure reason, preserved state, and next action. JSON
+errors retain the server's code, correlation ID and structured details; the CLI
+must not replace a remote rejection with a generic engine error or a new
+reference. Metadata remains available without embedding it in the short reason.
+Exit statuses are 1 for general failures, 2 for invalid arguments/configuration,
+3 for unavailable or stale targets/instances, 4 for denied access, 5 for
+unsupported operations, 6 for busy/timeout outcomes, and 7 for protocol failures.
+After a response timeout, completion is unconfirmed. If earlier requests in a
+chain were accepted, report that fact rather than implying rollback. Local
+encoding and selector conflicts must reject the full chain before sending it;
+CLI annotations must preserve command-authored profile/context selectors.
+Unexpected technical failures retain a reference in CLI text; JSON carries
+the reference for all failures. Local raw diagnostic context does not become
+public JSON merely because an output format was selected.
+
 **DIAG-004 — Site ledger.** `site-status` and the native Site Ledger report the
 captured tab/document, normalized origin, profile and context, effective
 setting values with provenance, permission state and pending requests, active

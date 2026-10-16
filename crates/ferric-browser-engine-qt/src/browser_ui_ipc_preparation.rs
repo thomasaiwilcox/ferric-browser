@@ -24,14 +24,16 @@ impl qobject::BrowserUi {
         let result =
             clean_link(navigation.url.as_str(), &rules).map_err(|error| error.to_string())?;
         if !result.changed {
-            return self.execute_ipc_command_with_operation(
-                ParsedCommand {
-                    name: "open".into(),
-                    arguments: vec![navigation.url.to_string()],
-                },
-                route,
-                operation_id,
-            );
+            return self
+                .execute_ipc_command_with_operation(
+                    ParsedCommand {
+                        name: "open".into(),
+                        arguments: vec![navigation.url.to_string()],
+                    },
+                    route,
+                    operation_id,
+                )
+                .map_err(|error| error.to_string());
         }
         let cleaned = ValidatedUrl::parse(result.cleaned.clone())
             .map_err(|error| format!("cleaned URL is invalid: {error}"))?;
