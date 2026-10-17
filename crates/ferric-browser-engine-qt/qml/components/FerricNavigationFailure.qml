@@ -40,6 +40,7 @@ FerricCommandDialog {
             wrapMode: Text.WrapAnywhere
         }
         Label {
+            textFormat: Text.PlainText
             Layout.fillWidth: true
             text: "Ferric won't retry automatically or resubmit a form."
             color: surface.browserWindow.secondaryTextColor

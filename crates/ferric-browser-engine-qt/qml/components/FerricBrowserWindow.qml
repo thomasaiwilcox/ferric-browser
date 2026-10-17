@@ -62,9 +62,19 @@ ApplicationWindow {
     property string windowTransferPayload: ""
     property var windowPreparedTransferFallback: null
     property var windowDetachedView: null
-    property var devToolsWindow: null
-    property bool devToolsVisible: false
-    property var devToolsAttachedView: secondaryDevToolsLoader.item
+    readonly property alias devToolsWorkspace: secondaryDevTools
+    readonly property var devToolsWindow: secondaryDevTools.detachedWindow
+    readonly property bool devToolsVisible: secondaryDevTools.visible
+    readonly property var devToolsAttachedView: secondaryDevTools.attachedInspector
+    FerricDevToolsWorkspace {
+        id: secondaryDevTools
+        browserWindow: rootWindow
+        hostWindow: secondaryWindow
+        browserUi: secondaryUi
+        activeView: secondaryWindow.activeView
+        windowFactory: rootWindow.devToolsWindowFactory
+        attachedInspector: secondaryDevToolsLoader.item
+    }
     readonly property bool windowTransferMode: windowTransferView !== null
     readonly property bool inputBarActive: secondaryUi.mode === "command"
                                            || secondaryUi.mode === "search"
@@ -92,7 +102,7 @@ ApplicationWindow {
         && !secondaryWindow.inputBarActive
         && !secondaryProfileNotice.inputActive
         && !(rootWindow.copyNoticeInputActive && rootWindow.copyNoticeHost === secondaryWindow)
-        && !secondaryWindow.devToolsVisible
+        && !secondaryDevTools.inputActive
         && !secondaryHintWorkspace.rapidHintConfirmationVisible
         && !secondaryUi.target_search_active
         && !secondaryUi.link_preview_visible
@@ -1283,35 +1293,7 @@ function onContext_workspaceChanged() {
             return
         }
         if (action.indexOf("devtools\t") === 0) {
-            var secondaryDevtoolsParts = action.split("\t")
-            var secondaryDetach = secondaryDevtoolsParts.length >= 2
-                    && secondaryDevtoolsParts[1] === "true"
-            if (!secondaryDetach) {
-                {
-                    secondaryWindow.devToolsVisible =
-                            !secondaryWindow.devToolsVisible
-                    secondaryUi.status_text = secondaryWindow.devToolsVisible
-                            ? "DevTools attached" : "DevTools closed"
-                }
-            } else if (secondaryWindow.activeView) {
-                if (secondaryWindow.devToolsWindow) {
-                    secondaryWindow.devToolsWindow.close()
-                    secondaryWindow.devToolsWindow = null
-                }
-                var secondaryDevtools = rootWindow.devToolsWindowFactory.createObject(null, {
-                    inspectView: secondaryWindow.activeView
-                })
-                if (secondaryDevtools) {
-                    secondaryWindow.devToolsWindow = secondaryDevtools
-                    secondaryWindow.activeView.devToolsView =
-                            secondaryDevtools.inspectorView
-                    secondaryDevtools.show()
-                    secondaryUi.status_text = "DevTools detached"
-                } else {
-                    secondaryUi.status_text = "DevTools window could not be created"
-                }
-            }
-            secondaryWindow.activeView.forceActiveFocus()
+            secondaryDevTools.toggle(action.split("\t")[1] === "true")
             return
         }
         if (action.indexOf("print\t") === 0) {
@@ -1567,6 +1549,7 @@ function onContext_workspaceChanged() {
                 }
             }
             Label {
+                textFormat: Text.PlainText
                 text: secondaryWindow.windowEphemeralProfile
                       ? secondaryWindow.windowProfileLabel
                       : (secondaryWindow.windowPrivateProfile
@@ -1687,8 +1670,8 @@ function onContext_workspaceChanged() {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         height: Math.min(280, parent.height * 0.55)
-        active: secondaryWindow.devToolsVisible
-        visible: active
+        active: secondaryDevTools.visible && !secondaryDevTools.detached && secondaryDevTools.sourceCurrent
+        visible: active && secondaryDevTools.attachedVisible
         z: 20
         sourceComponent: Component {
             WebEngineView {
@@ -1696,10 +1679,8 @@ function onContext_workspaceChanged() {
                 property var viewHost: secondaryWindow
                 property var viewUi: secondaryUi
                 anchors.fill: parent
-                profile: secondaryWindow.activeView
-                        ? secondaryWindow.activeView.profile
-                        : secondaryWindow.windowWebEngineProfile
-                inspectedView: secondaryWindow.activeView
+                profile: secondaryDevTools.sourceProfile
+                inspectedView: secondaryDevTools.sourceView
                 Accessible.name: "Attached developer tools"
                 Component.onCompleted: rootWindow.profileResourceRegistry.trackView(secondaryInspector,viewHost,viewUi)
             }
@@ -1711,7 +1692,7 @@ function onContext_workspaceChanged() {
         var index = secondaryUi.active_tab_index
         var view = tabViewAt(index)
         if (!view) return null
-        secondaryWindow.devToolsVisible = false
+        secondaryDevTools.close()
         secondaryWindow.detachedTabIndex = index
         secondaryWindow.windowDetachedView = view
         tabViews = tabViews.slice(0, index).concat(tabViews.slice(index + 1))
@@ -1906,6 +1887,7 @@ function onContext_workspaceChanged() {
         color: secondaryAppearance.surfaceColor
 
         Label {
+            textFormat: Text.PlainText
             id: secondarySearchPrefix
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
@@ -2301,7 +2283,7 @@ function onContext_workspaceChanged() {
     function releaseWindowResources() {
         if (secondaryWindow.runtimeReleased) return
         secondaryWindow.runtimeReleased = true
-        secondaryWindow.devToolsVisible = false
+        secondaryDevTools.close()
         rootWindow.discardOverlayFocus(secondaryWindow)
         if (rootWindow.contextRouteUi === secondaryUi) rootWindow.closeContextRoutePrompt()
         secondaryProfileBootstrapTimer.stop()
@@ -2329,10 +2311,6 @@ function onContext_workspaceChanged() {
             secondaryWindow.clearFileDialogForView(view)
         }
         rootWindow.removePermissionGroups(function(group) { return group.host === secondaryWindow }, true)
-        if (secondaryWindow.devToolsWindow) {
-            secondaryWindow.devToolsWindow.close()
-            secondaryWindow.devToolsWindow = null
-        }
         if (windowPopup) rootWindow.unregisterPopupWindow(secondaryWindow)
         else rootWindow.unregisterBrowserWindow(secondaryUi)
         rootWindow.clearCaptureSessionsForHost(secondaryWindow)

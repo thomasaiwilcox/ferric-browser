@@ -136,10 +136,21 @@ ApplicationWindow {
     property var popupWindowRegistry: []
     property bool applicationShutdownInProgress: false
     property bool applicationShutdownForcePromptVisible: false
-    property bool devToolsVisible: false
-    property bool devToolsDetached: false
-    property var devToolsExternalView: null
-    property var devToolsDetachedWindow: null
+    property var attachedDevToolsView: null
+    readonly property alias devToolsWorkspace: primaryDevTools
+    readonly property bool devToolsVisible: primaryDevTools.visible
+    readonly property bool devToolsDetached: primaryDevTools.detached
+    readonly property var devToolsExternalView: primaryDevTools.detached ? primaryDevTools.inspector : null
+    readonly property var devToolsDetachedWindow: primaryDevTools.detachedWindow
+    FerricDevToolsWorkspace {
+        id: primaryDevTools
+        browserWindow: window
+        hostWindow: window
+        browserUi: primaryBrowserUi
+        activeView: window.activeWebView()
+        windowFactory: window.devToolsWindowFactory
+        attachedInspector: window.attachedDevToolsView
+    }
     property real devToolsPanelHeight: 280
     property string applicationShutdownStage: ""
     property double applicationShutdownStartedAt: 0
@@ -1949,7 +1960,7 @@ ApplicationWindow {
         || window.inputBarActive
         || (window.activeWebView() && window.activeWebView().nativeUrl === "rb://start" && window.activeWebView().startPage && window.activeWebView().startPage.inputActive)
         || window.applicationShutdownForcePromptVisible
-        || window.devToolsVisible
+        || primaryDevTools.inputActive
         || window.journeyExportPreviewVisible
         || (window.rendererFailureVisible && (window.rendererFailureHost || window) === window)
         || window.recoveryAvailable
@@ -2265,24 +2276,7 @@ ApplicationWindow {
     Component {
         id: devToolsWindowComponent
 
-        FerricDevToolsWindow {
-            id: devToolsWindow
-            browserWindow: window
-            onOwnerWindowClosed: {
-                if (ownerWindow.devToolsDetachedWindow === devToolsWindow) {
-                    ownerWindow.devToolsDetachedWindow = null
-                    ownerWindow.devToolsExternalView = null
-                    ownerWindow.devToolsDetached = false
-                    ownerWindow.devToolsVisible = false
-                    ownerWindow.browserUi.status_text = "DevTools closed"
-                }
-            }
-            onInspectedViewClosed: {
-                if (inspectView) {
-                    inspectView.devToolsView = null
-                }
-            }
-        }
+        FerricDevToolsWindow { browserWindow: window }
     }
 
     BrowserUi {

@@ -708,7 +708,6 @@ impl qobject::BrowserUi {
             this.journey_durable_ids.borrow_mut().clear();
             this.journey_export_payload = None;
             this.journey_export_preview_text = QString::default();
-            this.session_permissions.clear();
             this.operation_states.clear();
             this.operation_stderr.clear();
             this.action_audit.clear();

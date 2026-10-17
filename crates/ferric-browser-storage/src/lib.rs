@@ -42,7 +42,7 @@ pub use downloads::{
     sanitize_download_filename,
 };
 pub use lifecycle::{CrashMarker, CrashMarkerError, crash_diagnostics, transient_marker_scan};
-pub use permissions::{PermissionRule, normalize_permission_origin};
+pub use permissions::{PermissionRule, is_rememberable_permission, normalize_permission_origin};
 pub use profiles::{
     ProfileDataError, ProfileDeletionError, ProfileDeletionOutcome, ProfileLock, ProfileLockError,
     ProfilePrivacy, ProfileRecord, ProfileRegistry, RegistryError, delete_profile_data,

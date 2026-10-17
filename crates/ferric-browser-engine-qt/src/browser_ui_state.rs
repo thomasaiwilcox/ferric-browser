@@ -2,7 +2,7 @@
 
 use super::{
     BrowserApplication, BrowserUiRust, ConfigurationLayers, ProfileOpenEffect, RuntimeOverrides,
-    TabId, Uuid, Value,
+    TabId, Value,
 };
 use std::{path::PathBuf, time::Instant};
 
@@ -14,32 +14,6 @@ pub(super) struct PendingContextRoute {
     pub(super) profile_name: String,
     pub(super) url: String,
     pub(super) new_window: bool,
-}
-
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub(super) enum PermissionLifetimeKey {
-    ProfileSession,
-}
-
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub(super) struct PermissionDecisionKey {
-    pub(super) scope_id: Uuid,
-    pub(super) origin: String,
-    pub(super) permission: String,
-    pub(super) lifetime: PermissionLifetimeKey,
-}
-
-pub(super) fn permission_session_key(
-    scope_id: Uuid,
-    origin: &str,
-    permission: &str,
-) -> PermissionDecisionKey {
-    PermissionDecisionKey {
-        scope_id,
-        origin: origin.to_owned(),
-        permission: permission.to_owned(),
-        lifetime: PermissionLifetimeKey::ProfileSession,
-    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

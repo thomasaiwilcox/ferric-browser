@@ -47,6 +47,7 @@ Rectangle {
             ToolTip.text: ChromePresentation.inputModeDescription(statusBar.mode)
 
             Label {
+                textFormat: Text.PlainText
                 id: modeLabel
                 objectName: "inputModeLabel"
                 anchors.centerIn: parent
@@ -60,6 +61,7 @@ Rectangle {
         }
 
         Label {
+            textFormat: Text.PlainText
             visible: ChromePresentation.passThroughMode(statusBar.mode)
             objectName: "inputModeHint"
             Layout.leftMargin: 8
@@ -85,6 +87,7 @@ Rectangle {
         }
 
         Label {
+            textFormat: Text.PlainText
             Layout.maximumWidth: Math.max(120, parent.width * 0.32)
             Layout.rightMargin: 8
             text: statusBar.statusText
@@ -95,6 +98,7 @@ Rectangle {
         }
 
         Label {
+            textFormat: Text.PlainText
             Layout.rightMargin: 8
             text: statusBar.profileLabel
             color: statusBar.profileColor

@@ -165,6 +165,7 @@ FerricModalSurface {
                 onClicked: libraryManager.pageChangeRequested(-1)
             }
             Label {
+                textFormat: Text.PlainText
                 visible: libraryManager.libraryKind !== "journey" && libraryManager.totalEntries > libraryManager.pageSize
                 text: "Page " + (libraryManager.page + 1) + " / " + libraryManager.pageCount
                 color: libraryManager.browserWindow.mutedTextColor

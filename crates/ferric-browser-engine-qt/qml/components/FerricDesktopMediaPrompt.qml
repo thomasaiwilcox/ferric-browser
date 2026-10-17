@@ -119,6 +119,7 @@ FerricModalSurface {
             spacing: 8 * prompt.scale
 
             Label {
+                textFormat: Text.PlainText
                 Layout.fillWidth: true
                 text: "Select one source for this request. Ferric Browser will not reuse a previous source."
                 color: prompt.browserWindow.secondaryTextColor
@@ -177,6 +178,7 @@ FerricModalSurface {
                 }
             }
             Label {
+                textFormat: Text.PlainText
                 Layout.fillWidth: true
                 visible: sourceList.count === 0
                 text: prompt.showingWindows ? "No windows are available." :

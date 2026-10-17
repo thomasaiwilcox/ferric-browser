@@ -72,7 +72,6 @@ fn secondary_command_supported(command: &ParsedCommand) -> bool {
             | "switcher"
             | "window-focus"
             | "window-move"
-            | "window-new"
     )
 }
 
@@ -81,12 +80,18 @@ mod settings_surface_tests {
     use super::*;
 
     #[test]
-    fn secondary_settings_availability_requires_a_supported_surface() {
+    fn secondary_commands_require_a_supported_surface() {
         let command = |name: &str, arguments: &[&str]| ParsedCommand {
             name: name.into(),
             arguments: arguments.iter().map(|value| (*value).to_owned()).collect(),
         };
         assert!(secondary_command_supported(&command("settings", &[])));
+        for arguments in [vec![], vec!["--private"], vec!["--profile", "work"]] {
+            assert!(secondary_command_supported(&command(
+                "window-new",
+                &arguments
+            )));
+        }
         assert!(secondary_command_supported(&command(
             "url-clean",
             &["https://example.test/?utm_source=demo"]

@@ -167,19 +167,6 @@ fn site_ledger_uses_on_demand_redacted_interaction_status() {
 }
 
 #[test]
-fn permission_session_key_is_scoped_to_profile_uuid_and_lifetime() {
-    let first_profile = Uuid::from_u128(1);
-    let second_profile = Uuid::from_u128(2);
-    let first = permission_session_key(first_profile, "https://example.test", "camera");
-    let same = permission_session_key(first_profile, "https://example.test", "camera");
-    let other_profile = permission_session_key(second_profile, "https://example.test", "camera");
-
-    assert_eq!(first, same);
-    assert_ne!(first, other_profile);
-    assert_eq!(first.lifetime, PermissionLifetimeKey::ProfileSession);
-}
-
-#[test]
 fn ipc_site_doctor_commands_use_typed_experiment_fields() {
     let (command, _) = typed_ipc_command(&serde_json::json!({
         "command": "site-doctor",

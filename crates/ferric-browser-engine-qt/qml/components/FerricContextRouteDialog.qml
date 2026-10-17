@@ -76,6 +76,7 @@ FerricCommandDialog {
             Accessible.name: "Context route address"
         }
         Label {
+            textFormat: Text.PlainText
             Layout.fillWidth: true
             text: "Other open tabs and sign-in flows keep their current profile."
             color: dialog.browserWindow.warningColor

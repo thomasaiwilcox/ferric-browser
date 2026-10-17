@@ -181,6 +181,20 @@ TestCase {
         compare(state.owner.confirmCalls,1);compare(state.owner.clearCalls,1)
         compare(state.host.notice,state.owner.status_text)
     }
+    function test_short_previews_keep_related_rows_together() {
+        var state=setup({link_preview_command:"open",link_preview_requires_confirmation:true})
+        show(state)
+        var rows=findChild(state.preview,"linkPreviewBody").contentLayout.children
+        var labels=[]
+        for(var row of rows) if(typeof row.text === "string") labels.push(row)
+        compare(labels.length,6)
+        for(var index=0;index<labels.length;index++) {
+            verify(labels[index].height<=labels[index].implicitHeight+1,"Short content should retain its natural height")
+            if(index>0) verify(labels[index].y-labels[index-1].y-labels[index-1].height<=12,"Related details should stay together")
+        }
+        verify(state.preview.panelItem.height<state.host.height*0.8,"Short previews should fit their content")
+        if(testArtifactDirectory.length>0) grabImage(state.host.contentItem).save(testArtifactDirectory+"/link-preview-short.png")
+    }
     function test_literal_readable_compact_preview_data() {
         return [{tag:"normal",width:900,height:700,font:10},
                 {tag:"compact",width:640,height:480,font:14},

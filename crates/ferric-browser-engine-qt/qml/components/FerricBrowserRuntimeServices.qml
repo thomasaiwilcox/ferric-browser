@@ -71,54 +71,9 @@ FerricBrowserRuntimeBase {
         window.scriptRunnerObject.cancelFor(view)
     }
 
-    function closeDevTools() {
-        var detached = window.devToolsDetachedWindow
-        window.devToolsDetachedWindow = null
-        window.devToolsExternalView = null
-        window.devToolsDetached = false
-        window.devToolsVisible = false
-        if (detached) {
-            detached.close()
-        }
-    }
+    function closeDevTools() { window.devToolsWorkspace.close() }
 
-    function toggleDevTools(detach) {
-        var inspected = window.activeWebView()
-        if (!inspected) {
-            browserUi.status_text = "DevTools target is unavailable"
-            return false
-        }
-        if (window.devToolsVisible) {
-            if (detach === window.devToolsDetached) {
-                window.closeDevTools()
-                browserUi.status_text = "DevTools closed"
-                return true
-            }
-            window.closeDevTools()
-        }
-        if (detach) {
-            var detached = window.devToolsWindowFactory.createObject(null, {
-                inspectView: inspected,
-                ownerWindow: window
-            })
-            if (!detached) {
-                browserUi.status_text = "DevTools window could not be created"
-                return false
-            }
-            window.devToolsDetachedWindow = detached
-            window.devToolsExternalView = detached.inspectorView
-            window.devToolsDetached = true
-            window.devToolsVisible = true
-            detached.show()
-            browserUi.status_text = "DevTools detached"
-        } else {
-            window.devToolsDetached = false
-            window.devToolsVisible = true
-            browserUi.status_text = "DevTools attached"
-        }
-        inspected.forceActiveFocus()
-        return true
-    }
+    function toggleDevTools(detach) { return window.devToolsWorkspace.toggle(detach) }
 
     function scrollScript(kind, direction, half, count) {
         return BrowserScripts.scroll(kind, direction, half, count)

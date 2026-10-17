@@ -148,6 +148,7 @@ FerricModalSurface {
                     }
                 }
                 Label {
+                    textFormat: Text.PlainText
                     Layout.fillWidth: true
                     visible: (ledger.snapshot.facts || []).length === 0
                     text: "No site information is available. Refresh to try again."
@@ -155,6 +156,7 @@ FerricModalSurface {
                     wrapMode: Text.Wrap
                 }
                 Label {
+                    textFormat: Text.PlainText
                     Layout.fillWidth: true
                     text: "Troubleshoot this site"
                     color: ledger.browserWindow.primaryTextColor
@@ -162,6 +164,7 @@ FerricModalSurface {
                     wrapMode: Text.Wrap
                 }
                 Label {
+                    textFormat: Text.PlainText
                     Layout.fillWidth: true
                     text: ledger.privateSession ? "Site tests are unavailable in private browsing."
                         : !ledger.snapshot.origin ? "Open a web page to use site tests."
@@ -223,6 +226,7 @@ FerricModalSurface {
                     visible: ledger.hasSiteProposal && ledger.proposal.state === "pending-confirmation"
                     text: "I reviewed this site's blocking exception"
                     contentItem: Label {
+                        textFormat: Text.PlainText
                         text: siteDoctorProposalConfirmation.text
                         font: siteDoctorProposalConfirmation.font
                         color: ledger.browserWindow.primaryTextColor
@@ -241,6 +245,7 @@ FerricModalSurface {
                     }
                 }
                 Label {
+                    textFormat: Text.PlainText
                     Layout.fillWidth: true
                     visible: !ledger.privateSession && !!ledger.snapshot.origin
                     text: "Clear site data"
@@ -248,6 +253,7 @@ FerricModalSurface {
                     font.bold: true
                 }
                 Label {
+                    textFormat: Text.PlainText
                     Layout.fillWidth: true
                     visible: siteDataClearConfirmation.visible
                     text: "Clears local storage, Cache Storage, service workers and page-visible cookies for this origin. HttpOnly cookies, other cookie-store entries and the HTTP cache remain. History, permissions and other sites are kept."
@@ -261,6 +267,7 @@ FerricModalSurface {
                     visible: !ledger.privateSession && !!ledger.snapshot.origin
                     text: "I understand the limits of clearing this site's data"
                     contentItem: Label {
+                        textFormat: Text.PlainText
                         text: siteDataClearConfirmation.text
                         font: siteDataClearConfirmation.font
                         color: ledger.browserWindow.primaryTextColor
@@ -279,12 +286,14 @@ FerricModalSurface {
                     }
                 }
                 Label {
+                    textFormat: Text.PlainText
                     Layout.fillWidth: true
                     text: "Share a diagnostic report"
                     color: ledger.browserWindow.primaryTextColor
                     font.bold: true
                 }
                 Label {
+                    textFormat: Text.PlainText
                     Layout.fillWidth: true
                     text: "The report excludes full URLs, page content, cookies, tokens and account identifiers. The current site host is included only if you choose it below."
                     color: ledger.browserWindow.secondaryTextColor
@@ -298,6 +307,7 @@ FerricModalSurface {
                     text: "Include current site host"
                     checked: false
                     contentItem: Label {
+                        textFormat: Text.PlainText
                         text: siteReportHost.text
                         font: siteReportHost.font
                         color: ledger.browserWindow.primaryTextColor

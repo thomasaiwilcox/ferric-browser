@@ -118,6 +118,7 @@ FerricModalSurface {
                     }
                 }
                 Label {
+                    textFormat: Text.PlainText
                     visible: !settings.filtering
                     Layout.fillWidth: true
                     text: settings.transientProfile ? "Changes stay in memory and are forgotten when this private or temporary profile closes." : "Session changes are forgotten when Ferric closes. Turn this off to save changes; your config.toml file stays intact."
@@ -149,6 +150,7 @@ FerricModalSurface {
                 wrapMode: Text.Wrap
             }
             Label {
+                textFormat: Text.PlainText
                 visible: !settings.filtering
                 Layout.fillWidth: true
                 text: "For settings that apply to one site, use the site-rule commands."
@@ -157,6 +159,7 @@ FerricModalSurface {
             }
 
             Label {
+                textFormat: Text.PlainText
                 visible: !settings.filtering
                 Layout.fillWidth: true
                 text: settings.spellcheckStatus
@@ -222,6 +225,7 @@ FerricModalSurface {
             }
 
             Label {
+                textFormat: Text.PlainText
                 Layout.fillWidth: true
                 visible: settings.transientProfile
                 text: "Userscript changes are unavailable in private and temporary profiles."

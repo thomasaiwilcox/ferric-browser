@@ -85,12 +85,14 @@ FerricModalSurface {
                     }
                 }
                 Label {
+                    textFormat: Text.PlainText
                     Layout.fillWidth: true
                     text: "Choose a destination profile"
                     color: transfer.browserWindow.primaryTextColor
                     wrapMode: Text.Wrap
                 }
                 Label {
+                    textFormat: Text.PlainText
                     Layout.fillWidth: true
                     visible: profileList.count === 0
                     text: transfer.profilesLoading ? "Loading named profiles…" :

@@ -75,6 +75,7 @@ Rectangle {
             ToolTip.text: ChromePresentation.inputModeDescription(statusBar.mode)
 
             Label {
+                textFormat: Text.PlainText
                 id: statusModeLabel
                 objectName: "inputModeLabel"
                 anchors.centerIn: parent
@@ -88,6 +89,7 @@ Rectangle {
         }
 
         Label {
+            textFormat: Text.PlainText
             visible: ChromePresentation.passThroughMode(statusBar.mode)
             objectName: "inputModeHint"
             Layout.leftMargin: 8
@@ -97,6 +99,7 @@ Rectangle {
         }
 
         Label {
+            textFormat: Text.PlainText
             Layout.leftMargin: 8
             Layout.rightMargin: 8
             Layout.maximumWidth: Math.max(90, statusBar.width * 0.18)
@@ -131,6 +134,7 @@ Rectangle {
         }
 
         Label {
+            textFormat: Text.PlainText
             Layout.maximumWidth: Math.max(120, statusBar.width * 0.32)
             Layout.rightMargin: 10
             visible: text.length > 0
@@ -148,6 +152,7 @@ Rectangle {
         }
 
         Label {
+            textFormat: Text.PlainText
             Layout.rightMargin: 8
             text: statusBar.activityLabel()
             color: statusBar.browserWindow.secondaryTextColor

@@ -24,6 +24,7 @@ Button {
         spacing: 10
 
         Label {
+            textFormat: Text.PlainText
             text: action.selected ? "›" : " "
             color: action.destructive
                    ? action.browserWindow.errorColor
@@ -31,6 +32,7 @@ Button {
             font.bold: true
         }
         Label {
+            textFormat: Text.PlainText
             text: action.keyHint
             color: action.browserWindow.mutedTextColor
             font.family: action.browserWindow.font.family

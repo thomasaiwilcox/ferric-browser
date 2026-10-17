@@ -1313,7 +1313,6 @@ fn ephemeral_profile_uses_off_the_record_memory_only_setup() {
     assert!(source.contains("set_blocking_exception_rule_hosts(QStringList::default())"));
     assert!(source.contains("set_blocking_exception_rule_list_ids(QStringList::default())"));
     assert!(source.contains("Durable profile resources remain owned"));
-    assert!(source.contains("this.session_permissions.clear()"));
     assert!(!source.contains("this.profile_lock ="));
     assert!(source.contains("cannot save durable sessions"));
     assert!(source.contains("cannot use durable contexts"));

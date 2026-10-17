@@ -105,6 +105,13 @@ class ApplicationTests final : public QObject {
     void productPolishStartupCleanLink();
     void productPolishCleanLinkOwner_data();
     void productPolishCleanLinkOwner();
+    void productPolishDevToolsOwner_data();
+    void productPolishDevToolsOwner();
+    void productPolishInteractiveNewWindow_data();
+    void productPolishInteractiveNewWindow();
+    void productPolishSessionPermissionSharing_data();
+    void productPolishSessionPermissionSharing();
+    void productPolishCombinedSessionPermissionReset();
     void productPolishContextCatalogBootstrap();
     void productPolishContextCatalogRetainedAfterFailedProfile();
     void productPolishProvisionalTransferFallback_data();

@@ -13,7 +13,10 @@ pub struct PermissionRule {
     pub updated_at: i64,
 }
 
-fn supported_permission(permission: &str) -> bool {
+/// Whether a capability may have a remembered session or durable decision.
+/// Screen/window capture always requires fresh per-request consent.
+#[must_use]
+pub fn is_rememberable_permission(permission: &str) -> bool {
     matches!(
         permission,
         "camera" | "microphone" | "notifications" | "geolocation" | "clipboard" | "local-fonts"
@@ -159,7 +162,7 @@ impl ProfileStore {
         updated_at: i64,
     ) -> Result<(), StoreError> {
         let origin = normalize_permission_origin(origin)?;
-        if !supported_permission(permission) {
+        if !is_rememberable_permission(permission) {
             return Err(StoreError::InvalidInput("permission type is unsupported"));
         }
         if !matches!(decision, "allow" | "deny") {
@@ -196,7 +199,7 @@ impl ProfileStore {
             .iter()
             .map(|rule| {
                 let origin = normalize_permission_origin(&rule.origin)?;
-                if !supported_permission(&rule.permission) {
+                if !is_rememberable_permission(&rule.permission) {
                     return Err(StoreError::InvalidInput("permission type is unsupported"));
                 }
                 if !matches!(rule.decision.as_str(), "allow" | "deny") {
@@ -239,7 +242,7 @@ impl ProfileStore {
         permission: &str,
     ) -> Result<bool, StoreError> {
         let origin = normalize_permission_origin(origin)?;
-        if !supported_permission(permission) {
+        if !is_rememberable_permission(permission) {
             return Err(StoreError::InvalidInput("permission type is unsupported"));
         }
         Ok(self.connection.execute(
@@ -270,7 +273,7 @@ impl ProfileStore {
         let origin = normalize_permission_origin(origin)?;
         if permissions
             .iter()
-            .any(|permission| !supported_permission(permission))
+            .any(|permission| !is_rememberable_permission(permission))
         {
             return Err(StoreError::InvalidInput("permission type is unsupported"));
         }

@@ -323,6 +323,7 @@ FocusScope {
                         font.bold: true
                     }
                     Label {
+                        textFormat: Text.PlainText
                         text: "esc / n"
                         color: dialog.themeWindow.mutedTextColor
                         font.family: dialog.themeWindow.font.family
@@ -378,6 +379,7 @@ FocusScope {
                         font.bold: true
                     }
                     Label {
+                        textFormat: Text.PlainText
                         text: "y"
                         color: dialog.themeWindow.mutedTextColor
                         font.family: dialog.themeWindow.font.family
@@ -408,6 +410,7 @@ FocusScope {
             }
 
             Label {
+                textFormat: Text.PlainText
                 Layout.fillWidth: true
                 text: "j/k or ↑/↓ select  ·  enter activate"
                 color: dialog.themeWindow.mutedTextColor

@@ -90,6 +90,7 @@ FerricModalSurface {
                     color: diagnostics.browserWindow.secondaryTextColor
                 }
                 Label {
+                    textFormat: Text.PlainText
                     Layout.fillWidth: true
                     text: diagnostics.browserWindow.reducedMotionActive ? "Interface animations: reduced" : "Interface animations: enabled"
                     color: diagnostics.browserWindow.secondaryTextColor
@@ -104,6 +105,7 @@ FerricModalSurface {
                     color: diagnostics.browserWindow.warningColor
                 }
                 Label {
+                    textFormat: Text.PlainText
                     objectName: "diagnosticsUnavailable"
                     Layout.fillWidth: true
                     visible: !diagnostics.reportAvailable && !diagnostics.reportPending

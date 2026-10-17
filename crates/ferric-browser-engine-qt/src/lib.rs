@@ -210,12 +210,9 @@ use binding_policy::{
     modal_command_prefill, normalize_active_tab_command, parse_ipc_mode, switcher_max_results,
 };
 use browser_ui_management_feedback::{FeedbackLane, FeedbackState};
-#[cfg(test)]
-use browser_ui_state::PermissionLifetimeKey;
 use browser_ui_state::{
     ContextSnapshot, PendingContextRoute, PendingProfileConfiguration, PendingSelectorValidation,
-    PermissionDecisionKey, ProfilePersistence, SessionCheckpoint, SessionSaveIntent,
-    SwitcherQueryCache, permission_session_key,
+    ProfilePersistence, SessionCheckpoint, SessionSaveIntent, SwitcherQueryCache,
 };
 use chrome_preferences::ChromePreferences;
 use command_options::{
@@ -2470,7 +2467,6 @@ pub struct BrowserUiRust {
     profile_id: Option<Uuid>,
     journey_durable_ids: RefCell<BTreeMap<JourneyNodeId, String>>,
     profile_persistence: ProfilePersistence,
-    session_permissions: BTreeMap<PermissionDecisionKey, String>,
     private_history: Vec<HistoryRecord>,
     private_history_next_id: i64,
     storage_roots: Option<StorageRoots>,
@@ -3276,7 +3272,6 @@ impl Default for BrowserUiRust {
             profile_id: None,
             journey_durable_ids: RefCell::new(BTreeMap::new()),
             profile_persistence: ProfilePersistence::Unavailable,
-            session_permissions: BTreeMap::new(),
             private_history: Vec::new(),
             private_history_next_id: -1,
             storage_roots: None,

@@ -116,6 +116,7 @@ FerricModalSurface {
                 onClicked: dialog.browserWindow.chooseContextMove(modelData.name)
             }
             Label {
+                textFormat: Text.PlainText
                 anchors.centerIn: parent
                 width: parent.width
                 visible: choices.count === 0

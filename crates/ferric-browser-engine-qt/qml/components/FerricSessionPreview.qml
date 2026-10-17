@@ -83,6 +83,7 @@ FerricCommandDialog {
                         wrapMode: Text.Wrap
                     }
                     Label {
+                        textFormat: Text.PlainText
                         Layout.fillWidth: true
                         visible: !!modelData.pinned || !!modelData.muted
                         text: [modelData.pinned ? "Pinned" : "", modelData.muted ? "Muted" : ""].filter(function(label) { return label.length > 0 }).join(" · ")

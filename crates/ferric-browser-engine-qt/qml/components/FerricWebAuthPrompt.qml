@@ -173,6 +173,7 @@ Item {
                     }
                 }
                 Label {
+                    textFormat: Text.PlainText
                     Layout.fillWidth: true
                     visible: root.browserWindow.pendingWebAuthState
                              === WebEngineWebAuthUxRequest.WebAuthUxState.CollectPin
@@ -207,6 +208,7 @@ Item {
                     Accessible.editable: true
                 }
                 Label {
+                    textFormat: Text.PlainText
                     Layout.fillWidth: true
                     visible: root.browserWindow.pendingWebAuthState
                              === WebEngineWebAuthUxRequest.WebAuthUxState.FinishTokenCollection
@@ -216,6 +218,7 @@ Item {
                     Accessible.name: "WebAuthn security-key instruction"
                 }
                 Label {
+                    textFormat: Text.PlainText
                     Layout.fillWidth: true
                     visible: root.browserWindow.pendingWebAuthState
                              === WebEngineWebAuthUxRequest.WebAuthUxState.RequestFailed

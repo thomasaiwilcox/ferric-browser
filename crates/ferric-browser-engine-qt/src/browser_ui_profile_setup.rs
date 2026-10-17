@@ -488,7 +488,6 @@ impl qobject::BrowserUi {
             } else {
                 ProfilePersistence::Transient
             };
-            this.session_permissions.clear();
             this.pending_permission_reset_session = None;
             let logging_config = serde_json::from_value::<LoggingConfig>(
                 this.config.get("logging").cloned().unwrap_or(Value::Null),

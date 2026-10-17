@@ -69,11 +69,14 @@ pub(crate) struct ActiveProfile {
     _lock: Option<ProfileLock>,
     pub(crate) contexts: Option<ContextRegistry>,
     storage_path: Option<PathBuf>,
+    pub(crate) session_permissions: crate::session_permissions::SessionPermissions,
 }
 
 impl ActiveProfile {
     pub(crate) fn activate(generation: u64, activation: ProfileActivation) -> Self {
+        let session_permissions = crate::session_permissions::SessionPermissions::new(&activation);
         Self {
+            session_permissions,
             generation,
             name: activation.name,
             id: activation.id,

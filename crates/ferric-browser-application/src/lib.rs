@@ -24,6 +24,7 @@ mod configuration;
 mod contexts;
 mod profile;
 mod profile_open;
+mod session_permissions;
 mod storage;
 
 use configuration::ConfigurationState;
@@ -35,6 +36,7 @@ use profile::ProfileActivation;
 pub use profile::{ContextChange, ContextCommand, ContextEffect, ProfileSnapshot};
 use profile_open::{PreparedProfile, ProfileOpenCoordinator};
 pub use profile_open::{ProfileOpenEffect, ProfileOpenError, ProfileOpenRequest, ProfileStorage};
+pub use session_permissions::SessionPermissionError;
 use storage::StorageCoordinator;
 pub use storage::{StorageEffect, StorageTicket};
 

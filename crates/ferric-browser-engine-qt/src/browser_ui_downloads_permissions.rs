@@ -2,8 +2,8 @@ use super::{
     CollisionPolicy, CxxQtType, DownloadState, DownloadUpdate, ParsedCommand, PathBuf,
     PermissionRule, Pin, QString, StorageRequest, ValidatedUrl, Value, choose_download_path,
     cleanup_staged_download, configured_download_directory_path, finalize_staged_download, fs,
-    is_safe_history_url, path_to_file_url, permission_session_key, qobject,
-    sanitize_download_filename, stage_download_path, unix_timestamp,
+    is_safe_history_url, path_to_file_url, qobject, sanitize_download_filename,
+    stage_download_path, unix_timestamp,
 };
 
 impl qobject::BrowserUi {
@@ -564,11 +564,6 @@ impl qobject::BrowserUi {
         }
         let normalized_origin = ferric_browser_storage::normalize_permission_origin(&origin).ok();
         let normal_profile = self.as_ref().rust().profile_persistence.is_durable();
-        let permission_scope_id = self
-            .as_ref()
-            .rust()
-            .profile_id
-            .unwrap_or(self.as_ref().rust().session_id);
         if normal_profile
             && let Some(normalized_origin) = normalized_origin.as_deref()
             && let Some(rule) = self
@@ -628,17 +623,18 @@ impl qobject::BrowserUi {
             }
         }
         if let Some(normalized_origin) = normalized_origin.as_deref()
-            && let Some(decision) =
-                self.as_ref()
-                    .rust()
-                    .session_permissions
-                    .get(&permission_session_key(
-                        permission_scope_id,
-                        normalized_origin,
-                        &permission,
-                    ))
+            && let Some(decision) = self
+                .as_ref()
+                .rust()
+                .state
+                .as_ref()
+                .and_then(|state| state.session_permission(normalized_origin, &permission))
         {
-            return QString::from(decision.as_str());
+            return QString::from(match decision {
+                ferric_browser_config::PermissionDecision::Allow => "allow",
+                ferric_browser_config::PermissionDecision::Deny => "deny",
+                ferric_browser_config::PermissionDecision::Ask => "ask",
+            });
         }
         let decision = match permission.as_str() {
             "camera" | "microphone" | "screen-capture" | "notifications" | "geolocation"
@@ -674,50 +670,37 @@ impl qobject::BrowserUi {
             self.set_status_text(QString::from("Permission decision must be allow or deny"));
             return false;
         }
-        let result = if lifetime == "session" {
-            let normalized_origin =
-                match ferric_browser_storage::normalize_permission_origin(&origin) {
-                    Ok(origin) => origin,
-                    Err(error) => {
-                        self.set_status_text(QString::from(format!(
-                            "Permission session decision rejected: {error}"
-                        )));
-                        return false;
-                    }
-                };
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            let permission_scope_id = this.profile_id.unwrap_or(this.session_id);
-            if permission == "camera-and-microphone" {
-                this.session_permissions.insert(
-                    permission_session_key(permission_scope_id, &normalized_origin, "camera"),
-                    decision.clone(),
-                );
-                this.session_permissions.insert(
-                    permission_session_key(permission_scope_id, &normalized_origin, "microphone"),
-                    decision,
-                );
-            } else if matches!(
-                permission.as_str(),
-                "camera"
-                    | "microphone"
-                    | "notifications"
-                    | "geolocation"
-                    | "clipboard"
-                    | "local-fonts"
-            ) {
-                this.session_permissions.insert(
-                    permission_session_key(permission_scope_id, &normalized_origin, &permission),
-                    decision,
-                );
-            } else {
-                self.set_status_text(QString::from(
-                    "Permission session decision is unsupported for this capability",
-                ));
-                return false;
-            }
-            Ok(())
-        } else if lifetime == "site" {
+        if lifetime == "session" {
+            let result = {
+                let mut rust = self.as_mut().rust_mut();
+                let this = rust.as_mut().get_mut();
+                this.state
+                    .as_mut()
+                    .ok_or(ferric_browser_application::SessionPermissionError::ProfileUnavailable)
+                    .and_then(|state| {
+                        state.remember_session_permission(
+                            &origin,
+                            &permission,
+                            &if decision == "allow" {
+                                ferric_browser_config::PermissionDecision::Allow
+                            } else {
+                                ferric_browser_config::PermissionDecision::Deny
+                            },
+                        )
+                    })
+            };
+            return match result {
+                Ok(()) => {
+                    self.set_status_text(QString::from("Permission session decision saved"));
+                    true
+                }
+                Err(error) => {
+                    self.set_status_text(QString::from(error.to_string()));
+                    false
+                }
+            };
+        }
+        let result = if lifetime == "site" {
             if self
                 .as_ref()
                 .rust()
@@ -735,15 +718,7 @@ impl qobject::BrowserUi {
                             vec![permission.as_str()]
                         };
                         if permissions.iter().any(|permission| {
-                            !matches!(
-                                *permission,
-                                "camera"
-                                    | "microphone"
-                                    | "notifications"
-                                    | "geolocation"
-                                    | "clipboard"
-                                    | "local-fonts"
-                            )
+                            !ferric_browser_storage::is_rememberable_permission(permission)
                         }) {
                             Err(ferric_browser_storage::StoreError::InvalidInput(
                                 "permission type is unsupported",
@@ -779,14 +754,8 @@ impl qobject::BrowserUi {
         };
         match result {
             Ok(()) => {
-                if lifetime != "session" {
-                    self.as_ref().rust().storage_library_dirty.set(true);
-                }
-                self.set_status_text(QString::from(if lifetime == "session" {
-                    "Permission session decision saved"
-                } else {
-                    "Permission rule queued"
-                }));
+                self.as_ref().rust().storage_library_dirty.set(true);
+                self.set_status_text(QString::from("Permission rule queued"));
                 true
             }
             Err(error) => {
@@ -871,37 +840,25 @@ impl qobject::BrowserUi {
     ) -> bool {
         let origin = origin.to_string();
         let permission = permission.to_string();
-        let session_removed = ferric_browser_storage::normalize_permission_origin(&origin)
-            .is_ok_and(|origin| {
+        let session_removed = if permission == "screen-capture" {
+            false
+        } else {
+            let result = {
                 let mut rust = self.as_mut().rust_mut();
                 let this = rust.as_mut().get_mut();
-                let permission_scope_id = this.profile_id.unwrap_or(this.session_id);
-                if permission == "camera-and-microphone" {
-                    this.session_permissions
-                        .remove(&permission_session_key(
-                            permission_scope_id,
-                            &origin,
-                            "camera",
-                        ))
-                        .is_some()
-                        || this
-                            .session_permissions
-                            .remove(&permission_session_key(
-                                permission_scope_id,
-                                &origin,
-                                "microphone",
-                            ))
-                            .is_some()
-                } else {
-                    this.session_permissions
-                        .remove(&permission_session_key(
-                            permission_scope_id,
-                            &origin,
-                            &permission,
-                        ))
-                        .is_some()
+                this.state
+                    .as_mut()
+                    .ok_or(ferric_browser_application::SessionPermissionError::ProfileUnavailable)
+                    .and_then(|state| state.reset_session_permission(&origin, &permission))
+            };
+            match result {
+                Ok(removed) => removed,
+                Err(error) => {
+                    self.set_status_text(QString::from(error.to_string()));
+                    return false;
                 }
-            });
+            }
+        };
         let normalized = match ferric_browser_storage::normalize_permission_origin(&origin) {
             Ok(origin) => origin,
             Err(error) => {
@@ -923,10 +880,7 @@ impl qobject::BrowserUi {
         }
         let permissions = if permission == "camera-and-microphone" {
             vec!["camera".to_owned(), "microphone".to_owned()]
-        } else if matches!(
-            permission.as_str(),
-            "camera" | "microphone" | "notifications" | "geolocation" | "clipboard" | "local-fonts"
-        ) {
+        } else if ferric_browser_storage::is_rememberable_permission(&permission) {
             vec![permission.clone()]
         } else {
             self.as_mut().set_status_text(QString::from(

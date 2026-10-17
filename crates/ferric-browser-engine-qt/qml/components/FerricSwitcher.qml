@@ -37,10 +37,12 @@ FerricModalSurface {
             Layout.fillWidth: true
             Item { Layout.fillWidth: true }
             Label {
+                textFormat: Text.PlainText
                 text: "Ctrl-P · Esc"
                 color: switcher.browserWindow.mutedTextColor
             }
             Label {
+                textFormat: Text.PlainText
                 text: switcher.results.length + " results"
                 color: switcher.browserWindow.mutedTextColor
                 Accessible.name: text

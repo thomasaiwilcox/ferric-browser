@@ -198,6 +198,7 @@ GridLayout {
             }
         }
         Label {
+            textFormat: Text.PlainText
     text: browserUi.mode + " · " + browserUi.status_text
           + window.contextStatus(
               browserUi, window.temporaryProfile, window.profileName,
@@ -985,11 +986,8 @@ GridLayout {
                 property string rendererFailureReason: ""
                 property int rendererFailureExitCode: 0
                 property bool scrollPositionRestored: false
-                devToolsView: viewHost && viewHost !== window
-                        ? (viewHost.devToolsVisible ? viewHost.devToolsAttachedView : null)
-                        : window.devToolsVisible
-                          ? (window.devToolsDetached ? window.devToolsExternalView : attachedDevToolsLoader.item)
-                          : null
+                devToolsView: viewHost && viewHost.devToolsWorkspace
+                    ? viewHost.devToolsWorkspace.inspectorFor(webView) : null
                 // Navigation-scoped content settings are snapshotted per
                 // document; live config changes apply to the next navigation.
                 property var effectiveSiteSettings: ({ values: {}, matched_rules: [] })
@@ -1326,17 +1324,19 @@ GridLayout {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         height: Math.min(window.devToolsPanelHeight, parent.height * 0.55)
-        active: window.devToolsVisible && !window.devToolsDetached
-        visible: active
+        active: window.devToolsWorkspace.visible && !window.devToolsWorkspace.detached
+                && window.devToolsWorkspace.sourceCurrent
+        visible: active && window.devToolsWorkspace.attachedVisible
         z: 20
+        onItemChanged: window.attachedDevToolsView = item
         sourceComponent: Component {
             WebEngineView {
                 id: primaryInspector
                 property var viewHost: window
                 property var viewUi: browserUi
                 anchors.fill: parent
-                profile: browserProfile
-                inspectedView: window.activeWebView()
+                profile: window.devToolsWorkspace.sourceProfile
+                inspectedView: window.devToolsWorkspace.sourceView
                 Accessible.name: "Attached developer tools"
                 Component.onCompleted: window.profileResourceRegistry.trackView(primaryInspector,viewHost,viewUi)
             }

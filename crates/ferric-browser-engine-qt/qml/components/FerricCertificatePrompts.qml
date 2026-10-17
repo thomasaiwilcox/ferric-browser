@@ -155,6 +155,7 @@ Item {
                 }
             }
             Label {
+                textFormat: Text.PlainText
                 Layout.fillWidth: true
                 visible: clientCertificateList.count === 0
                 text: "No client certificates are available."

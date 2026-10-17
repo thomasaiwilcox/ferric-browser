@@ -75,6 +75,7 @@ TestCase {
         property bool temporaryProfile: false
         property var primaryBrowserUi: helpUi
         property bool bindingHelpVisible: true
+        property bool bindingOverlayVisible: true
         property bool recoveryAvailable: true
         property bool journeyExportPreviewVisible: false
         property string journeyExportPreviewText: ""
@@ -515,6 +516,44 @@ TestCase {
                 browserUi: spatialGridModel
             }
         }
+    }
+
+    QtObject { id: literalBindingUi; property string binding_overlay: "<b>Next command</b>" }
+    Component { id: literalBindingFixture; FerricBindingOverlay { browserWindow: theme; browserUi: literalBindingUi } }
+    function labelWithText(item,value) {
+        if(item && typeof item.text === "string" && item.text === value) return item
+        var children=item ? (item.children || []) : []
+        for(var child of children) { var found=labelWithText(child,value);if(found) return found }
+        return null
+    }
+    function test_status_text_and_names_are_literal_data() {
+        return [{tag:"primary-profile",primary:true,profile:true},{tag:"secondary-profile",primary:false,profile:true},
+                {tag:"secondary-message",primary:false,profile:false}]
+    }
+    function test_status_text_and_names_are_literal(data) {
+        var value="<b>Literal name</b>"
+        var properties={mode:"normal"}
+        properties[data.profile ? (data.primary ? "profileName" : "profileLabel") : "statusText"]=value
+        var bar=createTemporaryObject(data.primary ? primaryStatusFixture : secondaryStatusFixture,testWindow.contentItem,properties)
+        verify(bar);verify(waitForPolish(testWindow))
+        var label=labelWithText(bar,value);verify(label)
+        compare(label.textFormat,Text.PlainText)
+    }
+    function test_binding_continuation_is_literal() {
+        var overlay=createTemporaryObject(literalBindingFixture,testWindow.contentItem);verify(overlay)
+        var label=labelWithText(overlay,literalBindingUi.binding_overlay);verify(label)
+        compare(label.textFormat,Text.PlainText)
+    }
+    function test_context_menu_labels_are_literal() {
+        theme.contextMenuItems=[{label:"<b>Literal action</b>",actionId:"copy",enabled:true}]
+        var menu=createTemporaryObject(contextMenuFixture,testWindow.contentItem);verify(menu)
+        menu.openAt(testWindow,20,20)
+        var popup=findChild(menu,"contextMenuPopup");verify(popup)
+        tryCompare(popup,"visible",true)
+        var label=null
+        tryVerify(function(){label=labelWithText(popup.contentItem,"<b>Literal action</b>");return !!label})
+        compare(label.textFormat,Text.PlainText)
+        menu.close()
     }
 
     function init() {

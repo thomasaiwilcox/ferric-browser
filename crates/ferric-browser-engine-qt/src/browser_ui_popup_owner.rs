@@ -229,7 +229,6 @@ impl qobject::BrowserUi {
             let mut rust = destination.as_mut().rust_mut();
             let child = rust.as_mut().get_mut();
             child.temporary_overrides = source.temporary_overrides.clone();
-            child.session_permissions = source.session_permissions.clone();
             child.private_start_state = source.private_start_state.clone();
         }
         destination.as_mut().sync_context_metadata();

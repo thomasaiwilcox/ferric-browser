@@ -2,61 +2,56 @@
 
 Status: active. Branch: `polish/refined-browser-experience`.
 
-Latest verified functional checkpoint: `clean-link-v5`. The complete original
-polish goal remains open; the audit below still applies. This checkpoint is
-local and has not been installed or published.
+Latest verified functional checkpoint: `refined-owners-v2`. The complete
+original polish goal remains open; the audit and completion requirements below
+still apply. This checkpoint is local and has not been installed or published.
 
-Clean-link previews now belong to the requesting primary, secondary, private
-or popup window. Actual command-bar submission, Escape cancellation and Y
-confirmation pass in all four owners. Independent previews do not cancel one
-another. Changing the page, tab, profile or owner invalidates the held preview;
-real webpage reloads also cancel it. URL fields remain literal and long content
-scrolls without hiding the safe Cancel action.
+Developer tools now belong to the requesting window and page. Attached and
+detached inspectors retain their source profile and tab rather than silently
+retargeting when another tab becomes active. Inspector input blocks browser
+shortcuts only while the inspector has focus. Closing the inspector clears its
+owner's handle; retiring or closing an owner releases its inspector. Actual
+command-bar submission, focus handoff and teardown pass in primary, secondary,
+private and popup windows. Invalid profile replacement retains the working page
+and inspector. Interactive `window-new` now reaches its existing shared handler
+in all four window types.
 
-Startup clean-link requests remain over native blank content until confirmed.
-The engine's initial blank-document load no longer cancels the preview. A native
-regression also found that Qt can report its noninteractive window container as
-the previous focus item. Returning there reselected a hidden Close control.
-Shared focus capture now falls back to page content for window containers, and
-the modal uses its pre-focus capture. Both component and real-window before/
-after checks establish the correction.
+Session permission choices now live in the application's validated profile
+session. Inherited windows share live decisions in both directions, including
+private and temporary sessions. Independently opened durable owners share only
+when the profile identity and storage roots match. Unrelated private sessions
+remain separate; weak registry entries cannot retain grants after the last
+owner closes. Combined camera/microphone reset removes both capabilities
+atomically, fixing a short-circuit removal that left one permission allowed.
+This establishes remembered decision sharing, not physical capture revocation.
 
-The preceding `context-catalog-v3` checkpoint remains the evidence for live
-context catalog propagation, bootstrap catch-up, retained delivery after failed
-profile replacements and literal bounded tab tooltips. Its window-owned hint,
-copy-feedback, diagnostics and profile-health flows remain in place. Background
-configuration failures retain working settings and keep bounded local causes
-behind diagnostics disclosure; initial failed profiles remain unavailable to
-page and IPC selection. Context catalogs never cross private or unrelated roots.
+Unformatted labels now explicitly render plain text, including profile/status,
+context-menu and binding labels that interpreted markup. Clean-link previews
+retain their requesting window, safe confirmation and startup focus behavior
+from `clean-link-v5`; their short layout now uses natural row heights and a
+fitted dialog. Long content still scrolls independently of safe actions.
 
-Fresh checks pass strict workspace Clippy and the repository gate: 971 Rust
-tests passed, two ignored, and 474 QML checks passed. Focused source preview
-checks pass 16; focused production checks pass 22. Broad browser checks pass
-134, and the unchanged clipboard group passes 81. The first broad native run
-hit its 480-second test limit while a separate cold Qt build was active, with
-no assertion failures. Only that suite was retried, on identical frozen inputs
-and binaries without the parallel compilation; it passed in 376 seconds.
-Adapter integration and nested Wayland startup pass. Editable-page Wayland
-input remains unqualified because the compositor lacks the required virtual-
-keyboard protocol. Existing hint/frame/pointer, title-zoom and 1,000-cycle
-lifetime evidence remains recorded in the preceding checkpoint.
+Fresh strict workspace Clippy and the repository gate pass: 973 Rust tests
+passed, two ignored, and 492 QML checks passed. Focused preview checks pass 17;
+focused production checks pass 34. The broad browser group passes 146 and
+clipboard passes 81. Adapter integration and nested Wayland startup pass.
+Editable-page Wayland input remains unqualified because the compositor lacks
+the required virtual-keyboard protocol. All 20 fresh captures were reviewed.
+The first combined run found two application Clippy errors; those were fixed
+before this complete fresh qualification. Records, frozen source/artifact hashes
+and the rejected first attempt are retained under ignored
+`target/product-polish/refined-owners-v2-checkpoint.json`.
 
-All 19 current captures were reviewed. Short previews still spread their rows
-across too much vertical space; the fitted-height, natural-spacing prototype
-passes 17 source checks and remains to be integrated. The qualification record,
-source/artifact hashes, inherited checks and earlier timeout are retained under
-ignored `target/product-polish/clean-link-v5-checkpoint.json`.
-
-Further investigation reproduced missing detached-inspector ownership in three
-child-window types, rejected interactive `window-new` requests, four session-
-permission sharing/reset failures, and five automatic rich-text cases in status,
-menu and binding labels. The isolated inspector prototype passes native source-
-graph checks; application-layer permission tests pass 26 and its Qt adapter is
-still being built. Explicit plain-text defaults pass 45 source chrome checks.
-These results do not establish production completion of those next changes.
-Permission revocation scope, context/configuration coherence, remaining command
-admission, reference/error wording and the final whole-window walkthrough remain
-part of the original goal.
+The next investigation has confirmed three native permission-reset scope bugs:
+origin-only matching reloads an unrelated profile and omits same-profile popups
+and loaded background tabs. The final before fixture uses normal command-bar
+submission and exact webpage readiness; earlier fixture-only failures remain
+separately recorded. A scoped repair and native regressions are prepared, but
+are not covered by this checkpoint. Durable decision readiness, remaining
+notification/request scope, configuration/context coherence, command admission,
+status/help copy and the final whole-window walkthrough remain part of the
+original goal. Earlier context catalog, window-owned hints/copy/diagnostics,
+profile-health and clean-link qualification remains recorded below.
 
 ## Product intent
 

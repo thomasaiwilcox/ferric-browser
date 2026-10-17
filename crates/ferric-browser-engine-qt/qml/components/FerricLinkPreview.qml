@@ -30,7 +30,8 @@ FerricModalSurface {
     message: "Sensitive URL details are hidden."
     keyHelp: previewUi.link_preview_requires_confirmation ? "y open cleaned address  ·  esc cancel" : "esc close"
     dialogWidth: 900 * scale
-    dialogHeight: Math.min(650 * scale, hostWindow ? hostWindow.height - 32 * scale : 650 * scale)
+    dialogHeight: fittedDialogHeight(previewActions.implicitHeight + previewBody.contentLayout.implicitHeight + 8)
+    compactKeyHelp: previewUi.link_preview_requires_confirmation ? "esc cancel" : "esc close"
     dialogBorderColor: browserWindow.warningColor
     stackingOrder: 70
     FerricFocusOverlayController { id: focusReturn; browserWindow: preview.hostWindow }
@@ -115,6 +116,7 @@ FerricModalSurface {
         spacing: 8
 
         Flow {
+            id: previewActions
             Layout.fillWidth: true
             Layout.preferredHeight: childrenRect.height
             spacing: 8
@@ -134,6 +136,7 @@ FerricModalSurface {
             }
         }
         FerricScrollColumn {
+            id: previewBody
             objectName: "linkPreviewBody"
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -141,6 +144,7 @@ FerricModalSurface {
             hostWindow: preview.hostWindow
             Label {
                 Layout.fillWidth: true
+                Layout.maximumHeight: implicitHeight
                 text: "Original: " + (preview.previewUi.link_preview_original || "")
                 objectName: "linkPreviewOriginal"
                 textFormat: Text.PlainText
@@ -149,6 +153,7 @@ FerricModalSurface {
             }
             Label {
                 Layout.fillWidth: true
+                Layout.maximumHeight: implicitHeight
                 text: "Result: " + (preview.previewUi.link_preview_cleaned || "")
                 objectName: "linkPreviewResult"
                 textFormat: Text.PlainText
@@ -157,6 +162,7 @@ FerricModalSurface {
             }
             Label {
                 Layout.fillWidth: true
+                Layout.maximumHeight: implicitHeight
                 text: "Rules: " + (preview.previewUi.link_preview_applied_rules.join(", ") || "none")
                 textFormat: Text.PlainText
                 color: preview.browserWindow.mutedTextColor
@@ -164,6 +170,7 @@ FerricModalSurface {
             }
             Label {
                 Layout.fillWidth: true
+                Layout.maximumHeight: implicitHeight
                 text: "Removed: " + (preview.previewUi.link_preview_removed_parameters.join(", ") || "none")
                 textFormat: Text.PlainText
                 color: preview.browserWindow.mutedTextColor
@@ -171,6 +178,7 @@ FerricModalSurface {
             }
             Label {
                 Layout.fillWidth: true
+                Layout.maximumHeight: implicitHeight
                 text: "Retained: " + (preview.previewUi.link_preview_retained_parameters.join(", ") || "none")
                 textFormat: Text.PlainText
                 color: preview.browserWindow.mutedTextColor
@@ -178,6 +186,7 @@ FerricModalSurface {
             }
             Label {
                 Layout.fillWidth: true
+                Layout.maximumHeight: implicitHeight
                 text: preview.previewUi.link_preview_explanation || ""
                 objectName: "linkPreviewExplanation"
                 textFormat: Text.PlainText
@@ -185,6 +194,7 @@ FerricModalSurface {
                 wrapMode: Text.WordWrap
                 verticalAlignment: Text.AlignTop
             }
+            Item { Layout.fillHeight: true; Layout.minimumHeight: 0 }
         }
     }
 }

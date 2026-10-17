@@ -35,6 +35,7 @@ FerricCommandDialog {
     ColumnLayout {
         anchors.fill: parent
         Label {
+            textFormat: Text.PlainText
             Layout.fillWidth: true
             text: preview.previewPending ? "Checking the profile folders…"
                 : "This action cannot be undone. You can inspect the affected folders below."

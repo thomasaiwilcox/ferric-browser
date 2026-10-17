@@ -64,6 +64,7 @@ FerricCommandDialog {
         spacing: 8 * prompt.scale
 
         Label {
+            textFormat: Text.PlainText
             objectName: "permissionScopeLabel"
             Layout.fillWidth: true
             text: (prompt.browserWindow.pendingPermissionPrivate
@@ -78,6 +79,7 @@ FerricCommandDialog {
             Accessible.name: "Permission scope and grouped request count"
         }
         Label {
+            textFormat: Text.PlainText
             objectName: "permissionPersistenceLabel"
             Layout.fillWidth: true
             text: prompt.browserWindow.pendingPermissionPrivate
