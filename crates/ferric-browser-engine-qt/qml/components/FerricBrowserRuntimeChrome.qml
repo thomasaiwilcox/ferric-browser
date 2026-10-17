@@ -845,14 +845,11 @@ GridLayout {
 
     FerricLinkPreview {
         browserWindow: window
+        hostWindow: window
         previewUi: browserUi
-        onCloseRequested: window.closeLinkPreview()
         onNavigationConfirmed: {
-            if (browserUi.confirm_link_navigation()) {
-                window.executePendingEngineAction()
-                window.closeLinkPreview()
-                window.syncTabModel()
-            }
+            window.syncTabModel()
+            window.executePendingEngineAction()
         }
     }
 
@@ -1405,9 +1402,6 @@ GridLayout {
             window.openInternalSurface()
             window.libraryManagerVisible = true
             window.refreshLibraryManager()
-        }
-        if (browserUi.link_preview_visible) {
-            window.showLinkPreview()
         }
         if (text.trim().indexOf("context-enter ") === 0) {
             window.routeContextWorkspace(browserUi)

@@ -101,6 +101,10 @@ class ApplicationTests final : public QObject {
     void productPolishNewWindowRouting();
     void productPolishNewWindows_data();
     void productPolishNewWindows();
+    void productPolishStartupCleanLink_data();
+    void productPolishStartupCleanLink();
+    void productPolishCleanLinkOwner_data();
+    void productPolishCleanLinkOwner();
     void productPolishContextCatalogBootstrap();
     void productPolishContextCatalogRetainedAfterFailedProfile();
     void productPolishProvisionalTransferFallback_data();

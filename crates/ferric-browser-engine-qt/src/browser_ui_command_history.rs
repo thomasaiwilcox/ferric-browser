@@ -20,10 +20,7 @@ fn secondary_command_supported(command: &ParsedCommand) -> bool {
     }
     if command.name == "open" {
         return !command.arguments.iter().any(|argument| {
-            matches!(
-                argument.as_str(),
-                "--clean-link" | "--ephemeral" | "--profile" | "--context"
-            )
+            matches!(argument.as_str(), "--ephemeral" | "--profile" | "--context")
         }) && !command
             .arguments
             .windows(2)
@@ -73,8 +70,6 @@ fn secondary_command_supported(command: &ParsedCommand) -> bool {
             | "site-doctor-undo"
             | "site-status"
             | "switcher"
-            | "url-clean"
-            | "url-explain"
             | "window-focus"
             | "window-move"
             | "window-new"
@@ -92,6 +87,24 @@ mod settings_surface_tests {
             arguments: arguments.iter().map(|value| (*value).to_owned()).collect(),
         };
         assert!(secondary_command_supported(&command("settings", &[])));
+        assert!(secondary_command_supported(&command(
+            "url-clean",
+            &["https://example.test/?utm_source=demo"]
+        )));
+        assert!(secondary_command_supported(&command("url-explain", &[])));
+        assert!(secondary_command_supported(&command(
+            "open",
+            &["--clean-link", "https://example.test/?utm_source=demo"]
+        )));
+        assert!(!secondary_command_supported(&command(
+            "open",
+            &[
+                "--clean-link",
+                "--target",
+                "new-window",
+                "https://example.test/"
+            ]
+        )));
         for arguments in [
             vec!["links"],
             vec!["--target", "pointer", "links"],

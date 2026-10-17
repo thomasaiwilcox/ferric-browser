@@ -1344,10 +1344,12 @@ FerricBrowserRuntimeChrome {
         if (window.startupBackground) {
             browserUi.status_text = "Opening startup URL in a background tab"
         } else if (window.startupCleanLink) {
+            // Hold startup previews over native blank content. The engine's
+            // initial about:blank load is not the requested navigation.
+            var previewView = window.activeWebView()
+            if (previewView) previewView.setContentUrl("rb://blank", false)
             if (browserUi.execute_command("open --clean-link " + window.startupUrl)) {
-                if (browserUi.link_preview_visible) {
-                    window.showLinkPreview()
-                } else {
+                if (!browserUi.link_preview_visible) {
                     window.executePendingEngineAction()
                 }
             }

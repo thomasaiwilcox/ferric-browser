@@ -416,7 +416,7 @@ fn session_manager_component_renders_model_and_emits_root_owned_intents() {
 }
 
 #[test]
-fn link_preview_component_renders_preview_data_and_emits_root_owned_intents() {
+fn link_preview_component_confirms_with_its_owner_and_emits_navigation_effects() {
     let qml = include_str!("../../qml/components/FerricLinkPreview.qml");
     let composition_root = QML_SOURCE;
     assert!(qml.contains("required property var previewUi"));
@@ -427,7 +427,8 @@ fn link_preview_component_renders_preview_data_and_emits_root_owned_intents() {
     assert!(!qml.contains("browserUi."));
     assert!(composition_root.contains("FerricLinkPreview {"));
     assert!(!composition_root.contains("id: linkPreview\n"));
-    assert!(composition_root.contains("browserUi.confirm_link_navigation()"));
+    assert!(qml.contains("previewUi.confirm_link_navigation()"));
+    assert!(include_str!("../../qml/components/FerricBrowserWindow.qml").contains("FerricLinkPreview {"));
 }
 
 #[test]

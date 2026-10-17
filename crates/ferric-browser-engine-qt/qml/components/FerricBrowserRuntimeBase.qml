@@ -717,7 +717,7 @@ ApplicationWindow {
     // lease query remains in nativePromptActiveFor for each dispatched key.
     function presentedPromptActiveFor(ui) {
         if (!ui) return false
-        return (window.pendingFileDialogUi === ui
+        return ui.link_preview_visible || (window.pendingFileDialogUi === ui
                     && (!!window.pendingFileDialogRequest
                         || window.pendingFileDialogLeaseToken.length > 0))
                 || (window.pendingPermissionUi === ui
@@ -1874,7 +1874,7 @@ ApplicationWindow {
     property int libraryPage: 0
     property int libraryPageSize: 100
     property int libraryTotalEntries: 0
-    property bool linkPreviewVisible: false
+    readonly property bool linkPreviewVisible: primaryBrowserUi.link_preview_visible
     property alias hintResults: primaryHintWorkspace.hintResults
     property alias hintViewport: primaryHintWorkspace.hintViewport
     property alias hintInput: primaryHintWorkspace.hintInput

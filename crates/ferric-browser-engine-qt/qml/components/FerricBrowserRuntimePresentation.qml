@@ -1075,22 +1075,6 @@ FerricBrowserRuntimeServices {
         switcherSurface.focusInput()
     }
 
-    function showLinkPreview() {
-        if (!linkPreviewVisible && browserUi.link_preview_visible) {
-            window.openInternalSurface()
-        }
-        linkPreviewVisible = browserUi.link_preview_visible
-    }
-
-    function closeLinkPreview() {
-        var wasVisible = linkPreviewVisible
-        linkPreviewVisible = false
-        browserUi.clear_link_preview()
-        if (wasVisible) {
-            window.closeInternalSurface()
-        }
-    }
-
     function hintSelectorPolicySnapshot(family) {
         return window.hintWorkspace.hintSelectorPolicySnapshot(family)
     }

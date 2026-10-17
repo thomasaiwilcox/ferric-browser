@@ -237,8 +237,10 @@ void ApplicationTests::init() {
          {"userscriptsOff", true},
          {"width", 1000},
          {"height", 800},
-         {"startupUrl", QString("http://127.0.0.1:%1/fixture.html")
-                            .arg(server.serverPort())}});
+         {"startupCleanLink", testName == "productPolishStartupCleanLink"},
+         {"startupUrl", QString("http://127.0.0.1:%1/fixture.html%2")
+                            .arg(server.serverPort()).arg(testName == "productPolishStartupCleanLink"
+                                ? "?keep=yes&utm_source=polish" : "")}});
     qInfo() << "loading production QML";
     engine->load(QUrl("qrc:/qt/qml/io/github/ferricbrowser/qml/Main.qml"));
     qInfo() << "production QML created";
@@ -251,6 +253,13 @@ void ApplicationTests::init() {
         evaluate("testWindow.activeWebView() !== null").toBool(), 10000);
     QTRY_VERIFY_WITH_TIMEOUT(
         !evaluate("testWindow.activeWebView().loading").toBool(), 15000);
+    if (testName == "productPolishStartupCleanLink") {
+        window->show();window->requestActivate();
+        QTRY_VERIFY_WITH_TIMEOUT(evaluate("testWindow.profileBootstrapComplete").toBool(),10000);
+        QTRY_VERIFY_WITH_TIMEOUT(evaluate("testWindow.browserUi.link_preview_visible").toBool(),10000);
+        QTRY_VERIFY(window->isActive());
+        return;
+    }
     qInfo() << "waiting for URL" << text("current_url");
     QTRY_VERIFY_WITH_TIMEOUT(
         text("current_url").startsWith("http://127.0.0.1:"), 15000);
@@ -2883,6 +2892,123 @@ void ApplicationTests::productPolishContextCatalogRetainedAfterFailedProfile() {
     QTRY_VERIFY(!evaluate("testWindow.browserUi.profile_bootstrap_pending").toBool());
     QCOMPARE(text("core_window_id"),initialWindow);
     QTRY_VERIFY2(evaluate("testWindow.browserUi.context_choice_names.indexOf('polish-retained')<0").toBool(),"A failed replacement must preserve delivery to the retained active profile");
+}
+
+void ApplicationTests::productPolishStartupCleanLink_data() {
+    QTest::addColumn<bool>("confirm");
+    QTest::newRow("cancel") << false;
+    QTest::newRow("confirm") << true;
+}
+void ApplicationTests::productPolishStartupCleanLink() {
+    QFETCH(bool,confirm);
+    QVERIFY(evaluate("testWindow.browserUi.link_preview_requires_confirmation").toBool());
+    QTRY_VERIFY(evaluate("testWindow.modalInputScope.activeSurface && testWindow.modalInputScope.activeSurface.commandText===':open --clean-link'").toBool());
+    const auto initial=evaluate("testWindow.activeWebView().url.toString()").toString();
+    QVERIFY2(!initial.startsWith("http://127.0.0.1:"),"A startup preview must not navigate before confirmation");
+    QTest::qWait(200); // Initial native-content focus/layout must not dismiss the held preview.
+    QVERIFY(evaluate("testWindow.browserUi.link_preview_visible").toBool());
+    QTest::keyClick(window,confirm ? Qt::Key_Y : Qt::Key_Escape);
+    QTRY_VERIFY(!evaluate("testWindow.browserUi.link_preview_visible").toBool());
+    if(confirm) {
+        const auto expected=QString("http://127.0.0.1:%1/fixture.html?keep=yes").arg(server.serverPort());
+        QTRY_COMPARE(text("current_url"),expected);
+        QTRY_COMPARE(evaluate("testWindow.activeWebView().url.toString()").toString(),expected);
+        QTRY_VERIFY_WITH_TIMEOUT(evaluate("testWindow.browserUi.load_state==='complete' && !testWindow.activeWebView().loading").toBool(),15000);
+        QVERIFY(page("!!document.getElementById('button')").toBool());
+    } else {
+        QCOMPARE(evaluate("testWindow.activeWebView().url.toString()").toString(),initial);
+        QTRY_VERIFY2(evaluate("(function(){var target=testWindow.activeWebView();var focus=testWindow.activeFocusItem;while(focus && focus!==target)focus=focus.parent;return focus===target})()").toBool(),qPrintable(evaluate("JSON.stringify({nativeUrl:testWindow.activeWebView().nativeUrl,focus:testWindow.activeFocusItem?String(testWindow.activeFocusItem):'none'})").toString()));
+    }
+}
+
+void ApplicationTests::productPolishCleanLinkOwner_data() {
+    QTest::addColumn<QString>("kind");
+    for (const auto &kind : {QString("primary"),QString("secondary"),QString("private"),QString("popup")}) QTest::newRow(qPrintable(kind)) << kind;
+}
+void ApplicationTests::productPolishCleanLinkOwner() {
+    QFETCH(QString,kind);
+    QString owner="testWindow.browserWindowRegistry[0]";
+    if (kind!="primary") {
+        evaluate("testWindow.browserWindowFactory.createObject(null,{windowStartupUrl:"+quoted(text("current_url"))+",windowProfileName:'link-owner',windowProfileLabel:'Link owner',windowPrivateProfile:"+(kind=="private"?"true":"false")+"})");
+        QTRY_COMPARE(evaluate("testWindow.browserWindowRegistry.length").toInt(),2);
+        owner="testWindow.browserWindowRegistry[1]";
+        QTRY_VERIFY(evaluate(owner+".host.profileBootstrapComplete").toBool());
+    }
+    if(kind=="popup") {
+        pageReceiver=owner+".view";
+        QTRY_VERIFY_WITH_TIMEOUT(evaluate(owner+".ui.load_state==='complete' && !"+owner+".view.loading && "+owner+".view.url.toString().indexOf('http://127.0.0.1:')===0").toBool(),15000);
+        QVERIFY(page("document.readyState==='complete' && !!document.getElementById('blank')").toBool());
+        auto host=qobject_cast<QQuickWindow *>(evaluate(owner+".host").value<QObject *>());
+        auto view=qobject_cast<QQuickItem *>(evaluate(pageReceiver).value<QObject *>());
+        QVERIFY(host && view);host->requestActivate();QTRY_VERIFY(host->isActive());
+        const auto point=page("(()=>{const r=document.getElementById('blank').getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2]})()").toList();
+        QTest::mouseClick(host,Qt::LeftButton,Qt::NoModifier,view->mapToScene(QPointF(point[0].toDouble(),point[1].toDouble())).toPoint());
+        QTRY_COMPARE(evaluate("testWindow.popupWindowRegistry.length").toInt(),1);
+        owner="testWindow.popupWindowRegistry[0]";
+    }
+    auto host=qobject_cast<QQuickWindow *>(evaluate(owner+".host").value<QObject *>());
+    auto view=qobject_cast<QQuickItem *>(evaluate(owner+".view").value<QObject *>());
+    QVERIFY(host && view);
+    pageReceiver=owner+".view";
+    QTRY_VERIFY_WITH_TIMEOUT(evaluate(owner+".ui.load_state==='complete' && !"+owner+".view.loading && "+owner+".view.url.toString().indexOf('http://127.0.0.1:')===0").toBool(),15000);
+    QVERIFY(page("document.readyState==='complete'").toBool());
+    const auto initial=evaluate(owner+".ui.current_url").toString();
+    const auto primaryInitial=text("current_url");
+    const auto clean=QString("http://127.0.0.1:%1/cleaned?keep=yes").arg(server.serverPort());
+    const auto dirty=clean+"&utm_source=polish";
+    const auto submit=[&](const QString &value) {
+        host->requestActivate();
+        QTRY_VERIFY(host->isActive());
+        evaluate(owner+".ui.enter_command()");
+        auto input=host->findChild<QQuickItem *>("commandLineInput");
+        QVERIFY(input);
+        QVERIFY(input->setProperty("text",value));
+        input->forceActiveFocus();
+        QTRY_VERIFY(input->hasActiveFocus());
+        QTest::keyClick(host,Qt::Key_Return);
+    };
+    submit("url-clean "+dirty);
+    QTRY_VERIFY2(evaluate(owner+".ui.link_preview_visible").toBool(),qPrintable(evaluate(owner+".ui.status_text").toString()));
+    QTRY_VERIFY(evaluate(owner+".host.modalInputScope.activeSurface && "+owner+".host.modalInputScope.activeSurface.commandText===':url-clean'").toBool());
+    QCOMPARE(evaluate(owner+".ui.current_url").toString(),initial);
+    QVERIFY(!evaluate(owner+".ui.link_preview_requires_confirmation").toBool());
+    if(kind!="primary") {
+        QVERIFY(!evaluate("testWindow.browserChromeInputActive").toBool());
+        QVERIFY(command("url-explain "+dirty));
+        QTRY_VERIFY(evaluate("testWindow.linkPreviewVisible").toBool());
+    }
+    host->requestActivate();QTRY_VERIFY(host->isActive());
+    QTest::keyClick(host,Qt::Key_Escape);
+    QTRY_VERIFY(!evaluate(owner+".ui.link_preview_visible").toBool());
+    if(kind!="primary") {
+        QVERIFY(evaluate("testWindow.linkPreviewVisible").toBool());
+        evaluate("testWindow.browserUi.clear_link_preview()");
+    }
+    QTRY_VERIFY(view->hasActiveFocus());
+    submit("open --clean-link "+dirty);
+    QTRY_VERIFY2(evaluate(owner+".ui.link_preview_visible && "+owner+".ui.link_preview_requires_confirmation").toBool(),qPrintable(evaluate(owner+".ui.status_text").toString()));
+    QCOMPARE(evaluate(owner+".ui.current_url").toString(),initial);
+    QTRY_VERIFY(evaluate(owner+".host.modalInputScope.activeSurface.commandText===':open --clean-link'").toBool());
+    const auto artifacts=qEnvironmentVariable("FERRIC_TEST_ARTIFACT_DIR");
+    if(!artifacts.isEmpty()) {
+        QDir().mkpath(artifacts);
+        QVERIFY(host->grabWindow().save(artifacts+"/production-clean-link-"+kind+".png"));
+    }
+    QTest::keyClick(host,Qt::Key_Y);
+    QTRY_VERIFY(!evaluate(owner+".ui.link_preview_visible").toBool());
+    QTRY_COMPARE(evaluate(owner+".ui.current_url").toString(),clean);
+    QTRY_COMPARE(evaluate(owner+".view.url.toString()").toString(),clean);
+    QTRY_VERIFY_WITH_TIMEOUT(evaluate(owner+".ui.load_state==='complete' && !"+owner+".view.loading && "+owner+".view.url.toString().indexOf('http://127.0.0.1:')===0").toBool(),15000);
+    QVERIFY(page("document.readyState==='complete'").toBool());
+    if(kind!="primary") QCOMPARE(text("current_url"),primaryInitial);
+    // A navigation of the same view must invalidate a held preview, including reloads.
+    submit("open --clean-link "+dirty);
+    QTRY_VERIFY(evaluate(owner+".ui.link_preview_visible").toBool());
+    evaluate(owner+".view.reload()");
+    QTRY_VERIFY(!evaluate(owner+".ui.link_preview_visible").toBool());
+    QTRY_VERIFY_WITH_TIMEOUT(evaluate(owner+".ui.load_state==='complete' && !"+owner+".view.loading && "+owner+".view.url.toString().indexOf('http://127.0.0.1:')===0").toBool(),15000);
+    QVERIFY(page("document.readyState==='complete'").toBool());
+    QCOMPARE(evaluate(owner+".ui.current_url").toString(),clean);
 }
 
 void ApplicationTests::productPolishContextCatalogBootstrap() {

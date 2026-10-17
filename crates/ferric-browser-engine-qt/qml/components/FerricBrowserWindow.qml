@@ -95,6 +95,7 @@ ApplicationWindow {
         && !secondaryWindow.devToolsVisible
         && !secondaryHintWorkspace.rapidHintConfirmationVisible
         && !secondaryUi.target_search_active
+        && !secondaryUi.link_preview_visible
         && !rootWindow.presentedPromptActiveFor(secondaryUi)
         && !(rootWindow.rendererFailureVisible && rootWindow.rendererFailureHost === secondaryWindow)
         && !secondarySettings.active
@@ -702,6 +703,16 @@ function onContext_workspaceChanged() {
         browserUi: secondaryUi
         hostWindow: secondaryWindow
         confirmedActionHandler: function() {
+            secondaryWindow.applySwitcherEngineAction()
+        }
+    }
+
+    FerricLinkPreview {
+        browserWindow: secondaryAppearance
+        hostWindow: secondaryWindow
+        previewUi: secondaryUi
+        onNavigationConfirmed: {
+            secondaryWindow.syncTabModel()
             secondaryWindow.applySwitcherEngineAction()
         }
     }

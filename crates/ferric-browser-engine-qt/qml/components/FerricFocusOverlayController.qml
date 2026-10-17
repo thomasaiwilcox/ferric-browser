@@ -26,13 +26,20 @@ QtObject {
         var scope = hostWindow ? hostWindow.modalInputScope : null
         return !scope || scope.allowsFocus(target)
     }
-    function captureOverlayFocus(hostWindow, fallbackTarget) {
+    function captureOverlayFocus(hostWindow, fallbackTarget, previousTarget) {
         if (browserWindow.runtimeDisposing === true) return
         var host = hostWindow || browserWindow
         // A newer overlay owns this host. Discard a queued return from the
         // surface it replaced, while retaining returns for other windows.
         pendingFocusReturns = pendingFocusReturns.filter(function(entry) { return entry.host !== host })
-        var target = host ? host.activeFocusItem : null
+        var target = arguments.length > 2 ? previousTarget : (host ? host.activeFocusItem : null)
+        // A newly shown window can report its root container as focused.
+        // Returning there reselects a hidden control rather than page content.
+        var container = host ? host.contentItem : null
+        while (target && container) {
+            if (target === container) { target = null; break }
+            container = container.parent
+        }
         if (!focusTargetAvailable(target)) target = fallbackTarget || null
         var stack = focusReturnStack.slice(0)
         stack.push({ host: host, target: target, fallback: fallbackTarget || null })

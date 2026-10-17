@@ -2,66 +2,61 @@
 
 Status: active. Branch: `polish/refined-browser-experience`.
 
-Latest verified checkpoint: `context-catalog-v3`. It builds on window-owned
-hints, copy feedback, profile-health notices and diagnostics. The complete
-original polish goal remains open; the audit below still applies.
+Latest verified functional checkpoint: `clean-link-v5`. The complete original
+polish goal remains open; the audit below still applies. This checkpoint is
+local and has not been installed or published.
 
-Profile-health notices remain reachable with the status bar hidden. Background
-settings failures preserve working settings and place bounded causes behind a
-local diagnostics disclosure; report exports contain typed categories. Failed
-initial profiles remain unavailable to page/window/IPC selection while their own
-local diagnostics remain reachable. Recovery clears the matching issue, and
-new windows retain inherited include-file watches.
+Clean-link previews now belong to the requesting primary, secondary, private
+or popup window. Actual command-bar submission, Escape cancellation and Y
+confirmation pass in all four owners. Independent previews do not cancel one
+another. Changing the page, tab, profile or owner invalidates the held preview;
+real webpage reloads also cancel it. URL fields remain literal and long content
+scrolls without hiding the safe Cancel action.
 
-Hints, target search, region actions and native pointer integration share one
-workspace per native window. Rust retains selection and action authority;
-view/frame leases, viewport, input and focus belong to the requesting window.
-Ordinary and pointer journeys pass in secondary, private and popup owners while
-primary hints remain independent. Article-title navigation passes at 80%, 100%
-and 125% zoom.
+Startup clean-link requests remain over native blank content until confirmed.
+The engine's initial blank-document load no longer cancels the preview. A native
+regression also found that Qt can report its noninteractive window container as
+the previous focus item. Returning there reselected a hidden Close control.
+Shared focus capture now falls back to page content for window containers, and
+the modal uses its pre-focus capture. Both component and real-window before/
+after checks establish the correction.
 
-Copy notices use the requesting window's viewport and configured font, retain
-hidden sensitive content, and clear retained values when their owner changes
-or closes. Copy again preserves its native owner and clipboard destination.
-Unavailable primary selection reports failure without replacing the regular
-clipboard. Successful native primary-selection transport remains separately
-unqualified in the offscreen environment.
+The preceding `context-catalog-v3` checkpoint remains the evidence for live
+context catalog propagation, bootstrap catch-up, retained delivery after failed
+profile replacements and literal bounded tab tooltips. Its window-owned hint,
+copy-feedback, diagnostics and profile-health flows remain in place. Background
+configuration failures retain working settings and keep bounded local causes
+behind diagnostics disclosure; initial failed profiles remain unavailable to
+page and IPC selection. Context catalogs never cross private or unrelated roots.
 
-Context movement choices now project the committed registry in existing windows
-that share durable storage. Creation and deletion propagate in both directions;
-private and unrelated roots remain independent. Windows catch updates delivered
-during startup. Rejected profile replacements preserve delivery to the retained
-active profile. Regression tests reproduce the prior startup and replacement
-failures against earlier immutable engines; fresh application and real CLI
-checks verify the repaired paths without changing profile identity.
+Fresh checks pass strict workspace Clippy and the repository gate: 971 Rust
+tests passed, two ignored, and 474 QML checks passed. Focused source preview
+checks pass 16; focused production checks pass 22. Broad browser checks pass
+134, and the unchanged clipboard group passes 81. The first broad native run
+hit its 480-second test limit while a separate cold Qt build was active, with
+no assertion failures. Only that suite was retried, on identical frozen inputs
+and binaries without the parallel compilation; it passed in 376 seconds.
+Adapter integration and nested Wayland startup pass. Editable-page Wayland
+input remains unqualified because the compositor lacks the required virtual-
+keyboard protocol. Existing hint/frame/pointer, title-zoom and 1,000-cycle
+lifetime evidence remains recorded in the preceding checkpoint.
 
-Tab tooltips render titles literally, follow their owning window's font and
-available space, and close when an interactive browser surface takes over.
-Compact Settings was verified with actual keyboard editing and validation in
-the rendered window; the earlier cramped image had retained search focus.
-The focused editor stays visible at 640 × 480, including private profiles.
+All 19 current captures were reviewed. Short previews still spread their rows
+across too much vertical space; the fitted-height, natural-spacing prototype
+passes 17 source checks and remains to be integrated. The qualification record,
+source/artifact hashes, inherited checks and earlier timeout are retained under
+ignored `target/product-polish/clean-link-v5-checkpoint.json`.
 
-Fresh qualification passes strict workspace Clippy, the repository gate (971
-Rust passed, two ignored; 458 QML passed), focused source suites of 103 prompt,
-40 chrome and 20 Settings checks, 55 focused native checks, 128 broad browser
-checks, 81 clipboard checks and 13 live IPC checks. All 53 legacy hint/frame/
-pointer checks, three article-title zoom cases and 1,000 hint start/cancel
-cycles pass. Adapter startup and 19 final capture checks pass. All final
-captures were inspected. Frozen source/artifact hashes, commands and logs are
-recorded under ignored `target/product-polish/context-catalog-v3-checkpoint.json`.
-
-Nested Wayland startup passes with a private compositor/profile. Editable-page
-input qualification could not run because the compositor lacks the required
-virtual-keyboard protocol. This is startup evidence, not input, GPU, portal,
-account or hardware qualification.
-
-The next confirmed issue is clean-link preview ownership: interactive commands
-in secondary, private and popup windows currently reject requests instead of
-presenting the preview locally. An isolated presentation prototype and native
-regressions are in progress; no production fix is claimed yet. Remaining
-interactive command admission, context/configuration coherence, permission
-sharing and developer-tools lifetimes also remain in the original audit.
-No installation or publication has been performed.
+Further investigation reproduced missing detached-inspector ownership in three
+child-window types, rejected interactive `window-new` requests, four session-
+permission sharing/reset failures, and five automatic rich-text cases in status,
+menu and binding labels. The isolated inspector prototype passes native source-
+graph checks; application-layer permission tests pass 26 and its Qt adapter is
+still being built. Explicit plain-text defaults pass 45 source chrome checks.
+These results do not establish production completion of those next changes.
+Permission revocation scope, context/configuration coherence, remaining command
+admission, reference/error wording and the final whole-window walkthrough remain
+part of the original goal.
 
 ## Product intent
 
