@@ -5,6 +5,10 @@ use ferric_browser_storage::{ContextRegistry, StorageRoots};
 
 use crate::BrowserApplication;
 
+#[path = "context_reload.rs"]
+mod reload;
+pub use reload::{ContextReloadEffect, ContextReloadError, ContextReloadJob};
+
 /// An opaque copy of a committed catalog and its durable storage boundary.
 /// It contains no authority to change a window's profile or routing config.
 #[derive(Clone, Debug)]

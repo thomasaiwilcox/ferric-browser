@@ -546,14 +546,9 @@ impl qobject::BrowserUi {
             if this.config_watch.changed() && this.config_watch.pending_since().is_none() {
                 this.config_watch.mark_pending(now);
             }
-            let ready = this
-                .config_watch
+            this.config_watch
                 .pending_since()
-                .is_some_and(|since| now.duration_since(since) >= Duration::from_millis(150));
-            if ready {
-                this.config_watch.clear_pending();
-            }
-            ready
+                .is_some_and(|since| now.duration_since(since) >= Duration::from_millis(150))
         };
         let reload_result = {
             let mut rust = self.as_mut().rust_mut();
@@ -658,7 +653,7 @@ impl qobject::BrowserUi {
                         if let Some(effect) = this.profile_open_effect.as_mut() {
                             effect.config_sources.clone_from(&watched_sources);
                         }
-                        this.config_watch.set_sources(&path, &watched_sources);
+                        this.config_watch.refresh_sources(&path, &watched_sources);
                     }
                     self.as_mut().set_config_base_json(QString::from(base_json));
                     self.as_mut().set_profile_overrides_json(QString::from(
@@ -685,7 +680,17 @@ impl qobject::BrowserUi {
                 .get_mut()
                 .config_reload_worker
                 .as_mut()
-                .map(|worker| worker.request(path, profile_name));
+                .and_then(|worker| {
+                    (!worker.is_pending()).then(|| worker.request(path, profile_name))
+                });
+            if request.is_some() {
+                self.as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .config_watch
+                    .clear_pending();
+            }
             if matches!(request.as_ref(), Some(Ok(()))) {
                 self.as_mut()
                     .set_status_text(QString::from("Configuration reload queued"));

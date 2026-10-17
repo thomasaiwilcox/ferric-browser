@@ -40,17 +40,31 @@ reviewed, retaining the preceding 20-capture whole-window/prompt evidence.
 Frozen source/artifact hashes and complete results are retained under ignored
 `target/product-polish/permission-scope-v1-checkpoint.json`.
 
-The remaining context/configuration investigation now has native evidence.
-After a successful main configuration reload, changed labels remain old, new
-contexts stay missing, removed definitions remain offered, and new routes stay
-inactive. A controlled busy-loader probe also leaves the older setting active
-after a newer edit. A three-file watcher repair passes three isolated source
-tests; an atomic storage reconciliation with six behavioral tests is drafted.
-Neither repair is included in this verified checkpoint. Their production
-integration, context/profile affinity and saved-membership behavior remain to
-be qualified. Durable permission readiness, remaining lifecycle/command/help
-wording and the final whole-window walkthrough also remain part of the original
-goal. Earlier checkpoint evidence and the full completion requirements follow.
+The remaining context/configuration investigation has four confirmed native
+failures: after a successful main configuration reload, changed labels remain
+old, new contexts stay missing, removed definitions remain offered, and new
+routes stay inactive. These remain open until Qt consumes the new domain job.
+
+Work after the verified checkpoint now fixes overlapping-edit loss. The watcher
+retains pending work while the loader is busy and preserves unacknowledged
+changes while rebinding sources. The same controlled native case fails before
+and passes after the repair, with no third file edit. Three focused watcher
+checks also pass. The context storage foundation now reconciles a complete
+metadata batch atomically, preserves IDs/membership, rejects unsafe affinity
+changes, merges fresh owner state and avoids unnecessary writes. All 92 storage
+tests pass. The application owns an off-thread context job and rejects stale,
+private, unrelated-root, missing-profile and invalid-route work; 33 application
+and 61 configuration tests pass, with strict core Clippy. These incremental
+results are recorded in `target/product-polish/context-domain-progress-v1.json`.
+
+The application job is not yet connected to loader/selector continuation and
+coherent Qt publication. Reservation during asynchronous commit, failure and
+owner cancellation, shared-window propagation, removed/offline definition
+provenance and logical membership cleanup remain to be completed. Full browser
+qualification of that combined repair is still required. Durable permission
+readiness, remaining lifecycle/command/help wording and the final whole-window
+walkthrough remain part of the original goal. Earlier checkpoint evidence and
+the complete original requirements follow.
 
 ## Product intent
 

@@ -35,7 +35,8 @@ use rusqlite::{Connection, OpenFlags, OptionalExtension, params, params_from_ite
 use serde::Serialize;
 
 pub use contexts::{
-    ContextMember, ContextRecord, ContextRegistry, ContextRegistryError, ContextTabDescriptor,
+    ContextDefinitionUpdate, ContextMember, ContextRecord, ContextRegistry, ContextRegistryError,
+    ContextTabDescriptor,
 };
 pub use downloads::{
     CollisionPolicy, DownloadPathError, choose_download_path, create_download_file,

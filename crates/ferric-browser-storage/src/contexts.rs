@@ -10,6 +10,10 @@ use uuid::Uuid;
 
 use crate::{StorageRoots, durable::RegistryLock};
 
+#[path = "context_definitions.rs"]
+mod definitions;
+pub use definitions::ContextDefinitionUpdate;
+
 const MAX_NAME_LENGTH: usize = 32;
 const MAX_LABEL_LENGTH: usize = 128;
 const MAX_SESSION_REFERENCES: usize = 128;
@@ -245,58 +249,20 @@ impl ContextRegistry {
         accent: Option<String>,
         default_target: &str,
     ) -> Result<&ContextRecord, ContextRegistryError> {
-        validate_name(name)?;
-        validate_label(label)?;
-        validate_profile(profile)?;
-        validate_target(default_target)?;
-        validate_workspace(workspace.as_deref())?;
-        validate_accent(accent.as_deref())?;
-        if sessions.len() > MAX_SESSION_REFERENCES
-            || sessions
-                .iter()
-                .any(|session| validate_profile(session).is_err())
-        {
-            return Err(ContextRegistryError::InvalidProfile);
-        }
-        let now = unix_timestamp();
-        let mut selected_id = None;
-        self.mutate(|contexts| {
-            if let Some(context) = contexts.iter_mut().find(|context| context.name == name) {
-                if context.profile != profile && !context.members.is_empty() {
-                    return Err(ContextRegistryError::ProfileChangeRequiresMigration);
-                }
-                context.label = label.into();
-                context.profile = profile.into();
-                context.sessions = sessions;
-                context.workspace = workspace;
-                context.accent = accent;
-                context.default_target = default_target.into();
-                context.updated_at = now;
-                selected_id = Some(context.id);
-                return Ok(());
-            }
-            let id = Uuid::new_v4();
-            contexts.push(ContextRecord {
-                id,
-                name: name.into(),
-                label: label.into(),
-                profile: profile.into(),
-                sessions,
-                workspace,
-                accent,
-                default_target: default_target.into(),
-                created_at: now,
-                updated_at: now,
-                members: Vec::new(),
-            });
-            selected_id = Some(id);
-            Ok(())
-        })?;
-        let id = selected_id.expect("definition mutation selects a context");
+        let definition = ContextDefinitionUpdate {
+            name: name.to_owned(),
+            label: label.to_owned(),
+            profile: profile.to_owned(),
+            sessions,
+            workspace,
+            accent,
+            default_target: default_target.to_owned(),
+        };
+        self.reconcile_configured(&[], &[definition])?;
         Ok(self
             .contexts
             .iter()
-            .find(|context| context.id == id)
+            .find(|record| record.name == name)
             .expect("defined context remains present"))
     }
 
@@ -362,13 +328,31 @@ impl ContextRegistry {
     fn mutate_with_hook(
         &mut self,
         mutation: impl FnOnce(&mut Vec<ContextRecord>) -> Result<(), ContextRegistryError>,
+        hook: impl FnMut(ContextSaveStep) -> Result<(), ContextRegistryError>,
+    ) -> Result<(), ContextRegistryError> {
+        self.mutate_conditional(
+            |records| {
+                mutation(records)?;
+                Ok(true)
+            },
+            hook,
+        )
+    }
+
+    fn mutate_conditional(
+        &mut self,
+        mutation: impl FnOnce(&mut Vec<ContextRecord>) -> Result<bool, ContextRegistryError>,
         mut hook: impl FnMut(ContextSaveStep) -> Result<(), ContextRegistryError>,
     ) -> Result<(), ContextRegistryError> {
         let _lock =
             RegistryLock::acquire(&self.path).map_err(|error| context_io(&self.path, &error))?;
         let mut contexts = load_records(&self.path)?;
-        mutation(&mut contexts)?;
+        let changed = mutation(&mut contexts)?;
         validate_records(&contexts)?;
+        if !changed {
+            self.contexts = contexts;
+            return Ok(());
+        }
         let bytes =
             serde_json::to_vec_pretty(&contexts).map_err(|error| ContextRegistryError::Json {
                 path: self.path.clone(),

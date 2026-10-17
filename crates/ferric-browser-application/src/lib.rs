@@ -29,7 +29,7 @@ mod storage;
 
 use configuration::ConfigurationState;
 pub use configuration::{ConfigurationLayers, ConfigurationSnapshot, PreparedConfigurationUpdate};
-pub use contexts::ContextCatalog;
+pub use contexts::{ContextCatalog, ContextReloadEffect, ContextReloadError, ContextReloadJob};
 pub use ferric_browser_storage::StorageCommand as StorageRequest;
 use profile::ActiveProfile;
 use profile::ProfileActivation;

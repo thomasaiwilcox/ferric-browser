@@ -278,7 +278,7 @@ impl qobject::BrowserUi {
                         if let Some(effect) = this.profile_open_effect.as_mut() {
                             effect.config_sources.clone_from(&watched_sources);
                         }
-                        this.config_watch.set_sources(&path, &watched_sources);
+                        this.config_watch.refresh_sources(&path, &watched_sources);
                         drop(rust);
                         self.as_mut().set_config_base_json(QString::from(base_json));
                         self.as_mut().set_profile_overrides_json(QString::from(

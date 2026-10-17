@@ -705,6 +705,14 @@ pub fn load(path: impl AsRef<Path>) -> Result<LoadedConfig, ConfigError> {
     })
 }
 
+/// Validates an in-memory context document using the same rules as TOML loading.
+///
+/// # Errors
+/// Rejects schema, definition and routing errors without reading or writing files.
+pub fn validate_contexts_configuration(config: &ContextsConfig) -> Result<(), ConfigError> {
+    validate_contexts(config)
+}
+
 /// Loads and validates a separate user-maintained `contexts.toml` document.
 ///
 /// Generated IDs and saved membership are deliberately not read or written by
