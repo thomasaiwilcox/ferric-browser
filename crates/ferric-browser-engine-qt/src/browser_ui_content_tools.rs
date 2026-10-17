@@ -409,7 +409,9 @@ impl qobject::BrowserUi {
         };
         if request_is_stale {
             this.pending_download = None;
-            self.set_status_text(QString::from("Download request is stale"));
+            self.set_status_text(QString::from(
+                "This download request has changed. Check Downloads for its status.",
+            ));
             return false;
         }
         if request.issued {
@@ -439,7 +441,9 @@ impl qobject::BrowserUi {
                 return false;
             };
             if request.token != token {
-                self.set_status_text(QString::from("Download request is stale"));
+                self.set_status_text(QString::from(
+                    "This download request has changed. Check Downloads for its status.",
+                ));
                 return false;
             }
             this.pending_download.take()
@@ -448,7 +452,9 @@ impl qobject::BrowserUi {
             return false;
         };
         if !captured_target_is_current(self.as_ref().rust().state.as_ref(), request.target) {
-            self.set_status_text(QString::from("Download request target is stale"));
+            self.set_status_text(QString::from(
+                "The page changed; the download result could not be confirmed. Check Downloads.",
+            ));
             return false;
         }
         if succeeded {

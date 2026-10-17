@@ -830,7 +830,9 @@ impl qobject::BrowserUi {
             self.as_ref().rust().tab,
         ) != Some(pending.target)
         {
-            self.set_status_text(QString::from("Editor target is stale"));
+            self.set_status_text(QString::from(
+                "The page changed; edited text was not applied. Check the current field.",
+            ));
             return false;
         }
         let value: Value = if let Ok(value) = serde_json::from_str(&result.to_string()) {

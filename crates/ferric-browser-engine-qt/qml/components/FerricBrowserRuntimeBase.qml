@@ -418,14 +418,14 @@ ApplicationWindow {
         })
     }
 
-    function notificationOwnerFor(notification) {
+    function notificationOwnerFor(notification, requireKnown) {
         var owners = window.notificationOwners || []
         for (var index = 0; index < owners.length; ++index) {
             if (owners[index] && owners[index].notification === notification) {
                 return owners[index].ui || browserUi
             }
         }
-        return browserUi
+        return requireKnown ? null : browserUi
     }
 
     function rememberNotificationOwner(notification, ui) {
@@ -433,7 +433,7 @@ ApplicationWindow {
             return entry && entry.notification !== notification
         })
         owners.push({ notification: notification, ui: ui || browserUi })
-        window.notificationOwners = owners.slice(-64)
+        window.notificationOwners = owners
     }
 
     function forgetNotificationOwner(notification) {
@@ -543,7 +543,13 @@ ApplicationWindow {
         }
     }
 
-    function closeWebNotificationsForOrigin(origin) {
+    FerricPopupOwnerBridge { id: permissionScopeBridge }
+
+    function sharesPermissionSession(left, right) {
+        return !!left && !!right && permissionScopeBridge.sharesPermissionSession(left, right)
+    }
+
+    function closeWebNotificationsForOrigin(origin, sourceUi) {
         var expected = String(origin || "").toLowerCase()
         if (expected.length === 0) {
             return
@@ -551,7 +557,9 @@ ApplicationWindow {
         var active = window.activeWebNotifications || ({})
         for (var key in active) {
             var parts = String(key).split("\n")
-            if (parts.length >= 3 && parts[1].toLowerCase() === expected) {
+            if (parts.length >= 3 && parts[1].toLowerCase() === expected
+                    && window.sharesPermissionSession(sourceUi || browserUi,
+                        window.notificationOwnerFor(active[key], true))) {
                 if (active[key]) {
                     active[key].close()
                 }
@@ -565,7 +573,8 @@ ApplicationWindow {
             var entry = pending[pendingIndex]
             var pendingOrigin = window.safeNotificationOrigin(
                         entry && entry.notification ? entry.notification : null)
-            if (pendingOrigin.toLowerCase() === expected) {
+            if (pendingOrigin.toLowerCase() === expected
+                    && entry && window.sharesPermissionSession(sourceUi || browserUi, entry.ui)) {
                 if (entry.notification) {
                     entry.notification.close()
                 }

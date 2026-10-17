@@ -204,7 +204,7 @@ FerricBrowserRuntimeChrome {
             var moveWorkspace = moveParts.length >= 3 ? moveParts[2] : ""
             var moveEntry = window.browserWindowEntryForTarget(moveTarget)
             if (!moveEntry || !moveEntry.host || !moveEntry.ui || !moveWorkspace) {
-                browserUi.status_text = "Window move target is stale"
+                browserUi.status_text = "This window is no longer available. Choose an open window and try again."
                 return
             }
             if (!window.activateBrowserWindow(moveEntry.host, moveEntry.ui)) {
@@ -265,7 +265,7 @@ FerricBrowserRuntimeChrome {
             var resumeIndex = browserUi.tab_index_for_id(resumeId)
             var resumeView = tabViewAt(resumeIndex)
             if (!resumeView) {
-                browserUi.status_text = "Tab resume target is stale"
+                browserUi.status_text = "This tab is no longer available. Select an open tab and try again."
                 return
             }
             var wasDiscarded = resumeIndex >= 0 && resumeIndex < tabs.count
@@ -289,7 +289,7 @@ FerricBrowserRuntimeChrome {
             var muteIndex = browserUi.tab_index_for_id(muteId)
             var muted = muteParts.length >= 3 && muteParts[2] === "true"
             if (muteIndex < 0 || muteIndex >= tabs.count) {
-                browserUi.status_text = "Tab mute target is stale"
+                browserUi.status_text = "This tab is no longer available. Select an open tab and try again."
                 return
             }
             tabs.setProperty(muteIndex, "muted", muted)
@@ -298,16 +298,8 @@ FerricBrowserRuntimeChrome {
         }
         if (action.indexOf("permission-reset\t") === 0) {
             var permissionParts = action.split("\t")
-            if (permissionParts.length >= 3) {
-                var permissionOrigin = permissionParts[1]
-                if (permissionParts[2] === "notifications") {
-                    window.closeWebNotificationsForOrigin(permissionOrigin)
-                }
-                var reloaded = window.reloadViewsForPermission(permissionOrigin)
-                browserUi.status_text = reloaded > 0
-                        ? "Permission revoked; reloaded " + reloaded + " matching view(s)"
-                        : "Permission revoked; no matching active view"
-            }
+            if (permissionParts.length === 3)
+                window.applyPermissionReset(browserUi, permissionParts[1], permissionParts[2])
             return
         }
         if (action.indexOf("print-pdf\t") === 0) {
@@ -335,7 +327,7 @@ FerricBrowserRuntimeChrome {
                     browserUi.status_text = "Page save requested; completion is tracked in Downloads"
                 } else {
                     browserUi.take_save_page_path()
-                    browserUi.status_text = "Page save target is stale"
+                    browserUi.status_text = "Couldn't save this page. Check the page and destination, then try again."
                 }
             }
             return
@@ -349,7 +341,7 @@ FerricBrowserRuntimeChrome {
                     sourceView.url = "view-source:" + sourceParts.slice(2).join("\t")
                     browserUi.status_text = "Viewing page source"
                 } else {
-                    browserUi.status_text = "Source view target is stale"
+                    browserUi.status_text = "The page is no longer available. Select an open tab to view its source."
                 }
             }
             return
@@ -361,7 +353,7 @@ FerricBrowserRuntimeChrome {
             var evalWorld = browserUi.jseval_world === "page"
                     ? WebEngineScript.MainWorld : window.browserScriptWorld
             if (!evalView || evalScript.length === 0 || evalScript.length > 65536) {
-                browserUi.status_text = "JavaScript evaluation target is stale or invalid"
+                browserUi.status_text = "Cannot run JavaScript here. Check the page and script, then try :jseval again."
                 return
             }
             window.runBrowserScript(evalView, evalScript, function() {
@@ -405,7 +397,7 @@ FerricBrowserRuntimeChrome {
             var tabCloseId = tabCloseParts.length >= 2 ? tabCloseParts[1] : ""
             var tabCloseIndex = browserUi.tab_index_for_id(tabCloseId)
             if (tabCloseIndex < 0) {
-                browserUi.status_text = "Tab close target is stale"
+                browserUi.status_text = "This tab is no longer available. Select an open tab and try again."
                 return
             }
             if (!window.closeTabAtIndex(tabCloseIndex)) {

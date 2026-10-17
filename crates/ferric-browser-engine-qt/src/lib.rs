@@ -1434,6 +1434,9 @@ mod qobject {
             profile_name: &QString,
         ) -> bool;
 
+        // Read-only comparison invoked through the checked native owner bridge.
+        fn shares_permission_session(self: &BrowserUi, other: &BrowserUi) -> bool;
+
         #[qinvokable]
         fn assign_window_context(self: Pin<&mut BrowserUi>, name: &QString) -> bool;
 

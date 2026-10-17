@@ -548,6 +548,18 @@ impl qobject::BrowserUi {
         }
     }
 
+    pub(super) fn shares_permission_session(&self, other: &Self) -> bool {
+        let left = self.rust();
+        let right = other.rust();
+        !left.profile_bootstrap_pending
+            && !right.profile_bootstrap_pending
+            && left
+                .state
+                .as_ref()
+                .zip(right.state.as_ref())
+                .is_some_and(|(left, right)| left.shares_permission_session(right))
+    }
+
     pub(super) fn permission_decision(
         mut self: Pin<&mut Self>,
         origin: &QString,
@@ -872,7 +884,8 @@ impl qobject::BrowserUi {
                 .rust_mut()
                 .as_mut()
                 .get_mut()
-                .pending_engine_action = Some(format!("permission-reset\t{origin}\t{permission}"));
+                .pending_engine_action =
+                Some(format!("permission-reset\t{normalized}\t{permission}"));
             self.as_mut().set_status_text(QString::from(
                 "Screen-capture consent reset; active captures will be stopped",
             ));
@@ -895,25 +908,20 @@ impl qobject::BrowserUi {
             .lacks_durable_storage()
         {
             self.as_mut()
-                .set_status_text(QString::from(if session_removed {
-                    "Permission decision reset"
-                } else {
-                    "Permission rule was not found"
-                }));
-            if session_removed {
-                self.as_mut()
-                    .rust_mut()
-                    .as_mut()
-                    .get_mut()
-                    .pending_engine_action =
-                    Some(format!("permission-reset\t{origin}\t{permission}"));
-            }
-            return session_removed;
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .pending_engine_action =
+                Some(format!("permission-reset\t{normalized}\t{permission}"));
+            self.as_mut().set_status_text(QString::from(
+                "Permission reset; existing page access will be stopped",
+            ));
+            return true;
         }
         let request_result = Some(
             self.as_mut()
                 .submit_storage(StorageRequest::PermissionReset {
-                    origin: normalized,
+                    origin: normalized.clone(),
                     permissions,
                 }),
         );
@@ -924,7 +932,7 @@ impl qobject::BrowserUi {
                 this.pending_permission_reset_session = Some(session_removed);
                 this.storage_library_dirty.set(true);
                 this.pending_engine_action =
-                    Some(format!("permission-reset\t{origin}\t{permission}"));
+                    Some(format!("permission-reset\t{normalized}\t{permission}"));
                 drop(rust);
                 self.as_mut()
                     .set_status_text(QString::from("Permission reset queued"));

@@ -61,7 +61,6 @@ fn secondary_command_supported(command: &ParsedCommand) -> bool {
             | "journey"
             | "link-cleaning-update"
             | "macro-play"
-            | "permission-reset"
             | "permissions"
             | "quickmark-list"
             | "repeat"

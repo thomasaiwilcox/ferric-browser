@@ -23,3 +23,13 @@ bool FerricPopupOwnerBridge::inheritProfile(QObject *source, QObject *destinatio
     auto *child = qobject_cast<BrowserUi *>(destination);
     return owner && child && owner->initialize_window_owner(*child, profileName);
 }
+
+bool FerricPopupOwnerBridge::sharesPermissionSession(QObject *left,
+                                                    QObject *right) const {
+    if (!left || !right || left->thread() != QThread::currentThread() ||
+        right->thread() != QThread::currentThread())
+        return false;
+    const auto *source = qobject_cast<BrowserUi *>(left);
+    const auto *target = qobject_cast<BrowserUi *>(right);
+    return source && target && source->shares_permission_session(*target);
+}

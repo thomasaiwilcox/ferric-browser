@@ -358,7 +358,9 @@ impl qobject::BrowserUi {
                 _ => None,
             };
             let Some((window, tab)) = target else {
-                self.set_status_text(QString::from("Switcher target is stale or unsupported"));
+                self.set_status_text(QString::from(
+                    "This choice is no longer available. Reopen the switcher and choose again.",
+                ));
                 return false;
             };
             if let Some(expected_generation) = generation {
@@ -602,7 +604,9 @@ impl qobject::BrowserUi {
                 }])
             }
         } else {
-            self.set_status_text(QString::from("Switcher target is stale or unsupported"));
+            self.set_status_text(QString::from(
+                "This choice is no longer available. Reopen the switcher and choose again.",
+            ));
             false
         }
     }

@@ -207,8 +207,7 @@ fn scalar_feature_preferences_cross_the_qml_boundary_without_config_parsing() {
 
 #[test]
 fn normal_input_uses_logical_unmodified_text_and_preserves_unicode_fields() {
-    let keyboard_presentation =
-        include_str!("../../qml/scripts/KeyboardPresentation.js");
+    let keyboard_presentation = include_str!("../../qml/scripts/KeyboardPresentation.js");
     let qml = [QML_SOURCE, keyboard_presentation].concat();
     assert!(qml.contains("function logicalNormalKeyText(event)"));
     assert!(qml.contains("event.key === Qt.Key_D"));
@@ -358,12 +357,8 @@ fn spatial_grid_owns_complete_input_gestures_and_stale_surface_callbacks() {
     assert!(adapter_source.contains("QObject::disconnect(targetItem_.data()"));
     assert!(adapter_source.contains("const QPointer<QQuickItem> dispatchTarget = targetItem_"));
     assert!(adapter_source.contains("const QPointer<QWindow> dispatchWindow = targetWindow_"));
-    assert!(adapter_source.contains(
-        "QCoreApplication::sendEvent(dispatchWindow.data(), &press)"
-    ));
-    assert!(!adapter_source.contains(
-        "QCoreApplication::sendEvent(dispatchTarget.data(), &press)"
-    ));
+    assert!(adapter_source.contains("QCoreApplication::sendEvent(dispatchWindow.data(), &press)"));
+    assert!(!adapter_source.contains("QCoreApplication::sendEvent(dispatchTarget.data(), &press)"));
     assert!(adapter_source.contains("event->type() == QEvent::MouseButtonRelease"));
     assert!(adapter_source.contains("consumedButtons_.remove"));
     assert!(adapter_source.contains("QEvent::TabletRelease"));
@@ -374,7 +369,9 @@ fn spatial_grid_owns_complete_input_gestures_and_stale_surface_callbacks() {
 
     assert!(qml.contains("inputBlocked: window.inputBlocked"));
     assert!(qml.contains("hostWindow === rootWindow"));
-    assert!(qml.contains("? rootWindow.browserChromeInputActive : !hostWindow.browserKeyFocusActive"));
+    assert!(
+        qml.contains("? rootWindow.browserChromeInputActive : !hostWindow.browserKeyFocusActive")
+    );
     assert!(qml.contains("enabled: browserUi.spatial_visible"));
     assert!(!qml.contains("spatialPointerAdapter.enabled = true"));
     assert!(qml.contains("var sessionId = browserUi.spatial_session_id"));
@@ -560,9 +557,7 @@ fn context_routes_are_pre_navigation_and_browser_confirmed() {
     assert!(qml.contains("Workspace routing pending until the browser window is active"));
     assert!(qml.contains("pendingWorkspaceRouteHost"));
     assert!(qml.contains("onContext_workspaceChanged"));
-    assert!(qml.contains(
-            "Other open tabs and sign-in flows keep their current profile."
-        ));
+    assert!(qml.contains("Other open tabs and sign-in flows keep their current profile."));
     assert!(qml.contains("Routing is chosen before navigation; existing page state is not transferred between profiles."));
     assert!(qml.contains("windowStartupContext"));
 }
@@ -1080,10 +1075,10 @@ fn context_entry_restores_safe_descriptors_lazily_and_focuses_live_members() {
 
 #[test]
 fn popup_windows_capture_opener_context_identity() {
-    let qml=QML_SOURCE;
-    let popup=include_str!("../../qml/components/FerricPopupWindow.qml");
-    let host=include_str!("../../qml/components/FerricBrowserWindow.qml");
-    let controller=include_str!("../../qml/components/FerricTabViewController.qml");
+    let qml = QML_SOURCE;
+    let popup = include_str!("../../qml/components/FerricPopupWindow.qml");
+    let host = include_str!("../../qml/components/FerricBrowserWindow.qml");
+    let controller = include_str!("../../qml/components/FerricTabViewController.qml");
     assert!(popup.contains("FerricBrowserWindow {"));
     assert!(popup.contains("windowPopup: true"));
     assert!(popup.contains("windowSharedProfile: popupProfile"));
@@ -1097,7 +1092,9 @@ fn popup_windows_capture_opener_context_identity() {
     assert!(host.contains("popupOwnerBridge.initialize(secondaryWindow.windowPopupOpenerUi,"));
     assert!(host.contains("request.openIn(view)"));
     assert!(host.contains("view.profile!==windowSharedProfile"));
-    assert!(host.contains("rootWindow.registerPopupWindow(secondaryWindow,secondaryUi,activeView)"));
+    assert!(
+        host.contains("rootWindow.registerPopupWindow(secondaryWindow,secondaryUi,activeView)")
+    );
     assert!(host.contains("rootWindow.unregisterPopupWindow(secondaryWindow)"));
     assert!(controller.contains("viewUi: browserUi"));
     assert!(controller.contains("viewHost: browserHost"));
@@ -1293,9 +1290,9 @@ fn ephemeral_profile_uses_off_the_record_memory_only_setup() {
     assert!(qml.contains("storageName: window.temporaryProfile ? \"\""));
     assert!(qml.contains("persistentStoragePath: window.temporaryProfile"));
     assert!(qml.contains("cachePath: window.temporaryProfile"));
-    assert!(qml.contains(
-        "window.browserProfile = window.browserProfilePrototypeObject.instance()"
-    ));
+    assert!(
+        qml.contains("window.browserProfile = window.browserProfilePrototypeObject.instance()")
+    );
     assert!(qml.contains("title: window.ephemeralProfile"));
     assert!(qml.contains("? \"Ferric Browser · \" + window.profileLabel"));
     assert!(qml.contains("window.temporaryProfile && !window.ephemeralProfile"));
@@ -1367,7 +1364,10 @@ fn foreground_hint_tab_materializes_the_view_before_navigation() {
     let navigate = foreground
         .find("window.executePendingEngineAction()")
         .expect("foreground hint tab must apply its queued navigation");
-    assert!(sync < navigate, "the new tab view must exist before navigation");
+    assert!(
+        sync < navigate,
+        "the new tab view must exist before navigation"
+    );
 }
 
 #[test]
@@ -1505,7 +1505,10 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(qml.contains("BrowserScripts.pageUserscriptInstall(script.source)"));
     assert!(!qml.contains("function hintSelector(linksOnly)"));
     assert!(BROWSER_SCRIPT_FACADE.contains("var VERSION = \"22\""));
-    assert!(BROWSER_SCRIPT_FACADE.contains(".import \"PageInteractionScripts.js\" as PageInteractionScripts"));
+    assert!(
+        BROWSER_SCRIPT_FACADE
+            .contains(".import \"PageInteractionScripts.js\" as PageInteractionScripts")
+    );
     assert!(BROWSER_SCRIPT_FACADE.contains("asset.VERSION !== PAGE_INTERACTION_VERSION"));
     assert!(BROWSER_SCRIPT_FACADE.contains("script-version-mismatch"));
     assert!(PAGE_INTERACTION_SCRIPT.contains("var VERSION = \"4\""));
@@ -1562,7 +1565,9 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(script.contains("frame.contentWindow!==childView"));
     assert!(script.contains("function ftHintDescription(el,family,linkSelector)"));
     assert!(script.contains("description.kind!==record.kind"));
-    assert!(script.contains("if(s.elements&&typeof s.elements.clear==='function')s.elements.clear()"));
+    assert!(
+        script.contains("if(s.elements&&typeof s.elements.clear==='function')s.elements.clear()")
+    );
     let target_start = PAGE_INTERACTION_SCRIPT
         .find("function hintSetScrollTarget(elementId, framePath)")
         .expect("target assignment builder");
@@ -1571,8 +1576,10 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
         .map(|offset| target_start + offset)
         .expect("target assignment builder end");
     assert!(!PAGE_INTERACTION_SCRIPT[target_start..target_end].contains(".focus("));
-    assert!(PAGE_INTERACTION_SCRIPT[target_start..target_end]
-        .contains("ftSetPolicy('element',element)"));
+    assert!(
+        PAGE_INTERACTION_SCRIPT[target_start..target_end]
+            .contains("ftSetPolicy('element',element)")
+    );
     assert!(script.contains("function pageUserscriptRun(source)"));
     assert!(script.contains("function pageUserscriptInstall(source)"));
     assert!(!qml.contains("var source = \"(function(){try{\" + scriptSource"));
@@ -1605,7 +1612,9 @@ fn browser_owned_script_resource_has_a_versioned_bounded_contract() {
     assert!(script.contains("Math.min(8, Number(budget && budget.depth"));
     assert!(script.contains("r.bottom<=0||r.right<=0||r.top>=vh||r.left>=vw"));
     assert!(script.contains("x>=window.innerWidth||y>=window.innerHeight"));
-    assert!(script.contains("rect=ftIntersect(rect,{left:0,top:0,right:window.innerWidth,bottom:window.innerHeight})"));
+    assert!(script.contains(
+        "rect=ftIntersect(rect,{left:0,top:0,right:window.innerWidth,bottom:window.innerHeight})"
+    ));
     assert!(script.contains("state.resize.unobserve"));
     assert!(script.contains("function intersect(a,b)"));
     assert!(script.contains("Array.from("));
@@ -1640,14 +1649,17 @@ fn target_search_is_local_native_ranked_and_identity_bound() {
     assert!(hint_guard < command_dispatch);
     assert!(ipc_dispatch[hint_guard..command_dispatch].contains("ErrorCode::Denied"));
     let local_only_source = include_str!("../browser_ui_hint_pointer.rs");
-    assert!(local_only_source.contains(
-        "target-search is available only from local keyboard or UI input"
-    ));
+    assert!(
+        local_only_source
+            .contains("target-search is available only from local keyboard or UI input")
+    );
     assert!(target_search.contains("at most one scope and no query text"));
     assert!(target_search.contains("rust.macro_depth == 0"));
     assert!(target_search.contains("current_target(rust.state.as_ref(), rust.tab).is_some()"));
     assert!(popup.contains("searchVisible: browserUi.target_search_active"));
-    assert!(include_str!("../../qml/components/FerricTargetSearch.qml").contains("maximumLength: 256"));
+    assert!(
+        include_str!("../../qml/components/FerricTargetSearch.qml").contains("maximumLength: 256")
+    );
     assert!(popup.contains("window.confirmTargetSearchSelection()"));
     assert!(popup.contains("browserUi.cancel_target_search()"));
     assert!(!popup.contains("modelData.href"));
@@ -1840,13 +1852,13 @@ fn notifications_require_consent_and_push_is_explicitly_opt_in() {
     assert!(qml.contains("previous.close()"));
     assert!(qml.contains("function notificationProfileScope(ui, privateProfile)"));
     assert!(qml.contains("window.notificationProfileScope(ui, privateProfile)"));
-    assert!(qml.contains("function closeWebNotificationsForOrigin(origin)"));
-    assert!(qml.contains("permissionParts[2] === \"notifications\""));
+    assert!(qml.contains("function closeWebNotificationsForOrigin(origin, sourceUi)"));
+    assert!(qml.contains("permission === \"notifications\""));
     assert!(qml.contains("NotificationPresenter"));
     assert!(qml.contains("notificationPresenter.present(notification, profileScope, origin)"));
     assert!(qml.contains("onNotificationUnavailable"));
     assert!(qml.contains("property var notificationOwners"));
-    assert!(qml.contains("function notificationOwnerFor(notification)"));
+    assert!(qml.contains("function notificationOwnerFor(notification, requireKnown)"));
     assert!(qml.contains("window.notificationOwnerFor(notification)"));
     assert!(qml.contains("rememberNotificationOwner(notification, ui)"));
     assert!(qml.contains("function activeWebNotification(notification)"));
@@ -1863,12 +1875,14 @@ fn notifications_require_consent_and_push_is_explicitly_opt_in() {
 fn permission_revocation_reloads_all_registered_matching_views() {
     let qml = QML_SOURCE;
     assert!(qml.contains("function permissionOriginForView(view)"));
-    assert!(qml.contains("function reloadViewsForPermission(origin)"));
+    assert!(qml.contains("function reloadViewsForPermission(origin, sourceUi)"));
     assert!(qml.contains("entry.view"));
     assert!(qml.contains("window.removePermissionGroups"));
-    assert!(qml.contains("candidates[k].view.reload()"));
+    assert!(qml.contains("window.sharesPermissionSession(issuer, ui)"));
     assert!(qml.contains("secondaryWindow, secondaryUi, secondaryWindow.activeView,"));
-    assert!(qml.contains("Permission revoked; reloaded "));
+    assert!(qml.contains(
+        "window.applyPermissionReset(browserUi, permissionParts[1], permissionParts[2])"
+    ));
 }
 
 #[test]
@@ -1979,8 +1993,7 @@ fn focus_overlay_controller_owns_capture_state_and_only_restores_live_targets() 
 #[test]
 fn native_window_close_requires_a_user_decision_before_shutdown_checks() {
     let root = include_str!("../../qml/components/FerricBrowserRuntimeBase.qml");
-    let presentation =
-        include_str!("../../qml/components/FerricBrowserRuntimePresentation.qml");
+    let presentation = include_str!("../../qml/components/FerricBrowserRuntimePresentation.qml");
     let surface = include_str!("../../qml/components/FerricBrowserRuntimeSurface.qml");
     let secondary = include_str!("../../qml/components/FerricBrowserWindow.qml");
     let popup = include_str!("../../qml/components/FerricPopupWindow.qml");
@@ -2018,8 +2031,10 @@ fn native_window_close_requires_a_user_decision_before_shutdown_checks() {
 
     assert!(popup.contains("FerricBrowserWindow {"));
     assert!(!popup.contains("onClosing:"));
-    assert!(secondary.contains("close.accepted = false"),
-        "Shared child windows must reject the native close event until confirmed");
+    assert!(
+        secondary.contains("close.accepted = false"),
+        "Shared child windows must reject the native close event until confirmed"
+    );
     assert!(secondary.contains("windowCloseConfirmationVisible = true"));
     assert!(secondary.contains("promptVisible: secondaryWindow.windowCloseConfirmationVisible"));
 
@@ -2029,8 +2044,7 @@ fn native_window_close_requires_a_user_decision_before_shutdown_checks() {
 
 #[test]
 fn webengine_surface_recovery_is_frame_synchronized_and_wired_to_every_window() {
-    let controller =
-        include_str!("../../qml/components/FerricWebEngineSurfaceRecovery.qml");
+    let controller = include_str!("../../qml/components/FerricWebEngineSurfaceRecovery.qml");
     let primary = include_str!("../../qml/components/FerricBrowserRuntimeChrome.qml");
     let secondary = include_str!("../../qml/components/FerricBrowserWindow.qml");
     let popup = include_str!("../../qml/components/FerricPopupWindow.qml");
@@ -2101,9 +2115,10 @@ fn inherited_runtime_layers_cross_component_scopes_through_explicit_properties()
     assert!(runtime.contains(
         "readonly property var requestPresentationController: window.requestPresentationControllerObject"
     ));
-    assert!(runtime.contains(
-        "readonly property var requestInterceptor: window.primaryRequestInterceptor"
-    ));
+    assert!(
+        runtime
+            .contains("readonly property var requestInterceptor: window.primaryRequestInterceptor")
+    );
     for boundary in [
         "bindingOverlayTimer: window.bindingOverlayTimerObject",
         "engineUpdateNoticeTimer: window.engineUpdateNoticeTimerObject",
@@ -2111,7 +2126,10 @@ fn inherited_runtime_layers_cross_component_scopes_through_explicit_properties()
         "notificationPresenter: window.notificationPresenterObject",
         "siteDataClearPollTimer: window.siteDataClearPollTimerObject",
     ] {
-        assert!(runtime.contains(boundary), "missing QML boundary {boundary}");
+        assert!(
+            runtime.contains(boundary),
+            "missing QML boundary {boundary}"
+        );
     }
     assert!(runtime.contains("browserUi: window.browserUi"));
     assert!(!runtime.contains("browserUi: browserUi"));

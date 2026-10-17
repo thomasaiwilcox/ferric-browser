@@ -973,7 +973,7 @@ function onContext_workspaceChanged() {
             var tabCloseId = tabCloseParts.length >= 2 ? tabCloseParts[1] : ""
             var tabCloseIndex = secondaryUi.tab_index_for_id(tabCloseId)
             if (tabCloseIndex < 0) {
-                secondaryUi.status_text = "Tab close target is stale"
+                secondaryUi.status_text = "This tab is no longer available. Select an open tab and try again."
                 return
             }
             if (!secondaryWindow.closeTabAtIndex(tabCloseIndex)) {
@@ -1095,7 +1095,7 @@ function onContext_workspaceChanged() {
                     && secondaryMuteParts[2] === "true"
             if (secondaryMuteIndex < 0 || secondaryMuteParts.length < 2
                     || secondaryMuteParts[1] !== secondaryTabId) {
-                secondaryUi.status_text = "Tab mute target is stale"
+                secondaryUi.status_text = "This tab is no longer available. Select an open tab and try again."
                 return
             }
             secondaryTabs.setProperty(secondaryMuteIndex, "muted", secondaryMuted)
@@ -1282,7 +1282,7 @@ function onContext_workspaceChanged() {
             if (!secondaryEvalView || secondaryEvalScript.length === 0
                     || secondaryEvalScript.length > 65536) {
                 secondaryUi.status_text =
-                        "JavaScript evaluation target is stale or invalid"
+                        "Cannot run JavaScript here. Check the page and script, then try :jseval again."
                 return
             }
             rootWindow.runBrowserScript(secondaryEvalView, secondaryEvalScript,
@@ -1290,6 +1290,12 @@ function onContext_workspaceChanged() {
                     secondaryUi.status_text = "JavaScript evaluation completed"
                 }, secondaryEvalWorld)
             secondaryEvalView.forceActiveFocus()
+            return
+        }
+        if (action.indexOf("permission-reset\t") === 0) {
+            var permissionParts = action.split("\t")
+            if (permissionParts.length === 3)
+                rootWindow.applyPermissionReset(secondaryUi, permissionParts[1], permissionParts[2])
             return
         }
         if (action.indexOf("devtools\t") === 0) {

@@ -312,13 +312,13 @@ FerricBrowserRuntimeServices {
 
     function tabSuspensionBlockReason(index, id, view) {
         if (index < 0 || !id || id.length === 0) {
-            return "tab target is stale"
+            return "this tab is no longer available"
         }
         if (index === browserUi.active_tab_index) {
             return "only hidden tabs may be suspended"
         }
         if (!view) {
-            return "tab view is not ready"
+            return "the page is still getting ready. Try again in a moment"
         }
         if (view.devToolsView) {
             return "DevTools is attached"
@@ -367,13 +367,13 @@ FerricBrowserRuntimeServices {
 
     function tabDiscardBlockReason(index, id, view) {
         if (index < 0 || !id || id.length === 0) {
-            return "tab target is stale"
+            return "this tab is no longer available"
         }
         if (index === browserUi.active_tab_index) {
             return "only hidden tabs may be discarded"
         }
         if (!view) {
-            return "tab view is not ready"
+            return "the page is still getting ready. Try again in a moment"
         }
         if (view.devToolsView) {
             return "DevTools is attached"

@@ -259,11 +259,15 @@ impl qobject::BrowserUi {
         }
         let index = self.as_mut().tab_index_for_id(&QString::from(id.as_str()));
         if index < 0 {
-            self.set_status_text(QString::from("Tab suspension target is stale"));
+            self.set_status_text(QString::from(
+                "This tab is no longer available here. Select an open tab.",
+            ));
             return false;
         }
         let Some(tab) = self.as_ref().tab_for_index(index) else {
-            self.set_status_text(QString::from("Tab suspension target is stale"));
+            self.set_status_text(QString::from(
+                "This tab is no longer available here. Select an open tab.",
+            ));
             return false;
         };
         if self
@@ -281,9 +285,7 @@ impl qobject::BrowserUi {
             .as_mut()
             .get_mut()
             .pending_engine_action = Some(format!("tab-suspend\t{id}"));
-        self.set_status_text(QString::from(
-            "Tab suspension approved by the browser engine",
-        ));
+        self.set_status_text(QString::from("Tab suspension requested"));
         true
     }
 
@@ -295,11 +297,15 @@ impl qobject::BrowserUi {
         }
         let index = self.as_mut().tab_index_for_id(&QString::from(id.as_str()));
         if index < 0 {
-            self.set_status_text(QString::from("Tab discard target is stale"));
+            self.set_status_text(QString::from(
+                "This tab is no longer available here. Select an open tab.",
+            ));
             return false;
         }
         let Some(tab) = self.as_ref().tab_for_index(index) else {
-            self.set_status_text(QString::from("Tab discard target is stale"));
+            self.set_status_text(QString::from(
+                "This tab is no longer available here. Select an open tab.",
+            ));
             return false;
         };
         if self

@@ -160,7 +160,10 @@ impl qobject::BrowserUi {
             self.as_ref().rust().tab,
         ) != Some(pending.target)
         {
-            return fail(self, "Selection search target is stale".into());
+            return fail(
+                self,
+                "The page changed. Select the text again to search.".into(),
+            );
         }
         let value: Value = match serde_json::from_str(&result.to_string()) {
             Ok(value) => value,

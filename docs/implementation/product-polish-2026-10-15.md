@@ -2,56 +2,55 @@
 
 Status: active. Branch: `polish/refined-browser-experience`.
 
-Latest verified functional checkpoint: `refined-owners-v2`. The complete
+Latest verified functional checkpoint: `permission-scope-v1`. The complete
 original polish goal remains open; the audit and completion requirements below
 still apply. This checkpoint is local and has not been installed or published.
 
-Developer tools now belong to the requesting window and page. Attached and
-detached inspectors retain their source profile and tab rather than silently
-retargeting when another tab becomes active. Inspector input blocks browser
-shortcuts only while the inspector has focus. Closing the inspector clears its
-owner's handle; retiring or closing an owner releases its inspector. Actual
-command-bar submission, focus handoff and teardown pass in primary, secondary,
-private and popup windows. Invalid profile replacement retains the working page
-and inspector. Interactive `window-new` now reaches its existing shared handler
-in all four window types.
+Permission reset now identifies owners through the application's live profile
+session, with a checked read-only native bridge. Matching only the origin
+previously reloaded unrelated profiles while omitting popups and background
+tabs. All loaded matching pages are now enumerated across ordinary and popup
+owners. Different roots and independent private sessions remain separate, and
+outdated view-owner references are rejected. Queued prompts and notification
+closure use the same scope. Active notification owners are retained until close
+instead of being silently discarded after a fixed count.
 
-Session permission choices now live in the application's validated profile
-session. Inherited windows share live decisions in both directions, including
-private and temporary sessions. Independently opened durable owners share only
-when the profile identity and storage roots match. Unrelated private sessions
-remain separate; weak registry entries cannot retain grants after the last
-owner closes. Combined camera/microphone reset removes both capabilities
-atomically, fixing a short-circuit removal that left one permission allowed.
-This establishes remembered decision sharing, not physical capture revocation.
+Actual command-bar reset works in primary, secondary, private and popup owners.
+A private reset also reloads the page when no remembered decision exists, so
+once-only access is not excluded merely because no saved rule was found.
+Combined camera/microphone removal retains the preceding atomic session-store
+fix. Native checks cover actual queued geolocation isolation; notification
+closure uses simulated notifications with real typed owners. Physical camera,
+microphone and portal revocation are not established by these fixtures.
 
-Unformatted labels now explicitly render plain text, including profile/status,
-context-menu and binding labels that interpreted markup. Clean-link previews
-retain their requesting window, safe confirmation and startup focus behavior
-from `clean-link-v5`; their short layout now uses natural row heights and a
-fitted dialog. Long content still scrolls independently of safe actions.
+Twenty-seven ordinary status notices now explain changed pages/tabs/windows
+and useful next actions. Download activation preserves uncertainty when its
+result cannot be confirmed, and editor write-back accurately says edited text
+was not applied after a page change. The earlier developer-tools ownership,
+interactive window creation, literal labels and fitted preview work remains
+qualified by `refined-owners-v2` (commit `4a39de6`).
 
 Fresh strict workspace Clippy and the repository gate pass: 973 Rust tests
 passed, two ignored, and 492 QML checks passed. Focused preview checks pass 17;
-focused production checks pass 34. The broad browser group passes 146 and
+focused production checks pass 25. The broad browser group passes 158 and
 clipboard passes 81. Adapter integration and nested Wayland startup pass.
 Editable-page Wayland input remains unqualified because the compositor lacks
-the required virtual-keyboard protocol. All 20 fresh captures were reviewed.
-The first combined run found two application Clippy errors; those were fixed
-before this complete fresh qualification. Records, frozen source/artifact hashes
-and the rejected first attempt are retained under ignored
-`target/product-polish/refined-owners-v2-checkpoint.json`.
+the required virtual-keyboard protocol. Four current preview captures were
+reviewed, retaining the preceding 20-capture whole-window/prompt evidence.
+Frozen source/artifact hashes and complete results are retained under ignored
+`target/product-polish/permission-scope-v1-checkpoint.json`.
 
-The next investigation has confirmed three native permission-reset scope bugs:
-origin-only matching reloads an unrelated profile and omits same-profile popups
-and loaded background tabs. The final before fixture uses normal command-bar
-submission and exact webpage readiness; earlier fixture-only failures remain
-separately recorded. A scoped repair and native regressions are prepared, but
-are not covered by this checkpoint. Durable decision readiness, remaining
-notification/request scope, configuration/context coherence, command admission,
-status/help copy and the final whole-window walkthrough remain part of the
-original goal. Earlier context catalog, window-owned hints/copy/diagnostics,
-profile-health and clean-link qualification remains recorded below.
+The remaining context/configuration investigation now has native evidence.
+After a successful main configuration reload, changed labels remain old, new
+contexts stay missing, removed definitions remain offered, and new routes stay
+inactive. A controlled busy-loader probe also leaves the older setting active
+after a newer edit. A three-file watcher repair passes three isolated source
+tests; an atomic storage reconciliation with six behavioral tests is drafted.
+Neither repair is included in this verified checkpoint. Their production
+integration, context/profile affinity and saved-membership behavior remain to
+be qualified. Durable permission readiness, remaining lifecycle/command/help
+wording and the final whole-window walkthrough also remain part of the original
+goal. Earlier checkpoint evidence and the full completion requirements follow.
 
 ## Product intent
 

@@ -1662,43 +1662,51 @@ FerricBrowserRuntimePresentation {
                 + authority.toLowerCase()
     }
 
-    function reloadViewsForPermission(origin) {
+    function applyPermissionReset(ui, origin, permission) {
+        if (!ui) return
+        if (permission === "notifications") window.closeWebNotificationsForOrigin(origin, ui)
+        var reloaded = window.reloadViewsForPermission(origin, ui)
+        ui.status_text = reloaded > 0
+            ? "Permission reset; reloaded " + reloaded + (reloaded === 1 ? " page" : " pages") + " in this profile"
+            : "Permission reset; no matching page was reloaded"
+    }
+
+    function reloadViewsForPermission(origin, sourceUi) {
+        var issuer = sourceUi || browserUi
         var expected = String(origin || "").toLowerCase()
+        if (!expected || !window.sharesPermissionSession(issuer, issuer)) return 0
         var candidates = []
-        function addCandidate(view, ui) {
-            if (!view || window.permissionOriginForView(view) !== expected) {
-                return
-            }
-            for (var i = 0; i < candidates.length; ++i) {
-                if (candidates[i].view === view) {
-                    return
-                }
-            }
-            candidates.push({ view: view, ui: ui || browserUi })
+        function addCandidate(view, ui, grantedOrigin) {
+            if (!view || view.viewRetired === true || !ui || view.viewUi !== ui
+                    || !window.sharesPermissionSession(issuer, ui)
+                    || !view.ownsTab()
+                    || (window.permissionOriginForView(view) !== expected
+                        && String(grantedOrigin || "").toLowerCase() !== expected)) return
+            if (!candidates.some(function(entry) { return entry.view === view }))
+                candidates.push({ view: view, ui: ui })
         }
 
-        addCandidate(window.activeWebView(), browserUi)
-        var entries = window.browserWindowRegistry || []
+        var entries = window.liveWindowEntries()
         for (var i = 0; i < entries.length; ++i) {
             var entry = entries[i]
-            if (entry && entry.host !== window) {
-                addCandidate(entry.view, entry.ui)
-            }
+            if (!window.sharesPermissionSession(issuer, entry.ui)) continue
+            var views = (entry.host.tabViews || []).slice(0)
+            views.push(entry.host.activeWebView ? entry.host.activeWebView() : entry.view)
+            for (var j = 0; j < views.length; ++j) addCandidate(views[j], entry.ui, "")
         }
         var sessions = window.captureSessions || []
-        for (var j = 0; j < sessions.length; ++j) {
-            var session = sessions[j]
-            if (session && session.status === "active") {
-                addCandidate(session.view, session.ui)
-            }
+        for (var k = 0; k < sessions.length; ++k) {
+            var session = sessions[k]
+            if (session && session.status === "active")
+                addCandidate(session.view, session.ui, session.origin)
         }
-
         window.removePermissionGroups(function(group) {
             return group && String(group.origin || "").toLowerCase() === expected
+                && window.sharesPermissionSession(issuer, group.ui)
         }, true)
-        for (var k = 0; k < candidates.length; ++k) {
-            window.noteCaptureNavigation(candidates[k].view)
-            candidates[k].view.reload()
+        for (var n = 0; n < candidates.length; ++n) {
+            window.noteCaptureNavigation(candidates[n].view)
+            candidates[n].view.reload()
         }
         return candidates.length
     }
@@ -1798,7 +1806,7 @@ FerricBrowserRuntimePresentation {
         }
         if (ui && ui.prepare_renderer_recovery
                 && !ui.prepare_renderer_recovery(window.rendererFailureTabIndex)) {
-            ui.status_text = "Renderer recovery target is stale"
+            ui.status_text = "The page changed. Select the affected tab and reload it."
             return
         }
         window.rendererFailureVisible = false

@@ -38,6 +38,12 @@ class ApplicationTests final : public QObject {
     Q_INVOKABLE void accept(const QVariant &value);
     Q_INVOKABLE void frameOperationComplete(const QVariant &value);
   private slots:
+    void productPolishPermissionRevocationScope_data();
+    void productPolishPermissionRevocationScope();
+    void productPolishPermissionResetOwner_data();
+    void productPolishPermissionResetOwner();
+    void productPolishPermissionResetQueue();
+    void productPolishNotificationResetScope();
     void productPolishCopyFeedback_data();
     void productPolishCopyFeedback();
     void crossOriginConsentHints_data();
