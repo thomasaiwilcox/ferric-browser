@@ -74,6 +74,72 @@ fn durable_job_publishes_only_when_its_owner_accepts_it() {
 }
 
 #[test]
+fn configuration_and_contexts_publish_together_after_the_reserved_job() {
+    let roots = StorageRoots::resolve(RootSpec::Temporary).unwrap();
+    let mut app = application(&roots, PrivacyKind::Normal);
+    let before = app.configuration_snapshot();
+    let mut config = Config::default();
+    config.ui.font_size_pt = 18.0;
+    let layers = crate::ConfigurationLayers::new(config);
+    let prepared = app.prepare_configuration_reload(layers).unwrap();
+    let job = app
+        .prepare_context_reload(&ContextsConfig::default(), configuration("default"))
+        .unwrap()
+        .unwrap();
+    let reservation = app.reserve_configuration_reload().unwrap();
+    let effect = std::thread::spawn(move || job.run())
+        .join()
+        .unwrap()
+        .unwrap();
+    assert_eq!(app.configuration_snapshot(), before);
+    assert!(app.contexts().unwrap().is_empty());
+    app.release_configuration_reload(reservation).unwrap();
+    let published = app.publish_context_configuration(prepared, effect).unwrap();
+    assert!((published.effective.ui.font_size_pt - 18.0).abs() < f64::EPSILON);
+    assert_eq!(app.contexts().unwrap()[0].name, "work");
+}
+
+#[test]
+fn stale_configuration_rejects_the_catalog_without_partial_publication() {
+    let roots = StorageRoots::resolve(RootSpec::Temporary).unwrap();
+    let mut app = application(&roots, PrivacyKind::Normal);
+    let layers = crate::ConfigurationLayers::new(Config::default());
+    let prepared = app.prepare_configuration_reload(layers.clone()).unwrap();
+    let effect = app
+        .prepare_context_reload(&ContextsConfig::default(), configuration("default"))
+        .unwrap()
+        .unwrap()
+        .run()
+        .unwrap();
+    app.update_configuration(layers).unwrap();
+    let before = app.configuration_snapshot();
+    assert!(app.publish_context_configuration(prepared, effect).is_err());
+    assert_eq!(app.configuration_snapshot(), before);
+    assert!(app.contexts().unwrap().is_empty());
+}
+
+#[test]
+fn combined_publication_cannot_bypass_an_active_configuration_reservation() {
+    let roots = StorageRoots::resolve(RootSpec::Temporary).unwrap();
+    let mut app = application(&roots, PrivacyKind::Normal);
+    let prepared = app
+        .prepare_configuration_reload(crate::ConfigurationLayers::new(Config::default()))
+        .unwrap();
+    let effect = app
+        .prepare_context_reload(&ContextsConfig::default(), configuration("default"))
+        .unwrap()
+        .unwrap()
+        .run()
+        .unwrap();
+    let before = app.configuration_snapshot();
+    let reservation = app.reserve_configuration_reload().unwrap();
+    assert!(app.publish_context_configuration(prepared, effect).is_err());
+    assert_eq!(app.configuration_snapshot(), before);
+    assert!(app.contexts().unwrap().is_empty());
+    drop(reservation);
+}
+
+#[test]
 fn unknown_profiles_are_rejected_without_creating_metadata_or_profiles() {
     let roots = StorageRoots::resolve(RootSpec::Temporary).unwrap();
     let app = application(&roots, PrivacyKind::Normal);

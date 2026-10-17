@@ -72,20 +72,13 @@ pub(super) struct PendingSelectorValidation {
 pub(super) enum PendingSelectorAction {
     RuntimeConfig {
         candidate: Value,
-        layers: ConfigurationLayers,
+        layers: Box<ConfigurationLayers>,
         status: String,
         persistent_overrides: RuntimeOverrides,
         persist_path: Option<PathBuf>,
     },
     Reload {
-        candidate: Value,
-        layers: ConfigurationLayers,
-        status: String,
-        path: PathBuf,
-        base_json: String,
-        profile_overrides: RuntimeOverrides,
-        sources: Vec<PathBuf>,
-        profiles_path: Option<PathBuf>,
+        publication: Box<super::ConfigReloadPublication>,
     },
     Profile {
         pending: Box<PendingProfileConfiguration>,

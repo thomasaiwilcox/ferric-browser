@@ -144,10 +144,15 @@ impl qobject::BrowserUi {
     pub(super) fn maintenance_delay_ms(self: Pin<&mut Self>) -> i32 {
         let binding = self.as_ref();
         let rust = binding.rust();
-        let worker_pending = rust
-            .config_reload_worker
-            .as_ref()
-            .is_some_and(ConfigReloadWorker::is_pending)
+        let worker_pending = rust.pending_context_reload.is_some()
+            || rust
+                .context_reload_worker
+                .as_ref()
+                .is_some_and(super::ContextReloadWorker::is_pending)
+            || rust
+                .config_reload_worker
+                .as_ref()
+                .is_some_and(ConfigReloadWorker::is_pending)
             || rust
                 .config_write_worker
                 .as_ref()

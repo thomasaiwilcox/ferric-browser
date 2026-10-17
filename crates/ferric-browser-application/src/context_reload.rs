@@ -73,6 +73,13 @@ pub struct ContextReloadEffect {
     configuration: ContextsConfig,
 }
 
+impl ContextReloadEffect {
+    #[must_use]
+    pub fn configuration(&self) -> &ContextsConfig {
+        &self.configuration
+    }
+}
+
 impl BrowserApplication {
     /// Prepares context metadata work without filesystem I/O or state changes.
     /// Private and temporary sessions never produce a durable context job.
@@ -109,6 +116,32 @@ impl BrowserApplication {
                 .collect(),
             configuration,
         }))
+    }
+
+    /// Publishes validated configuration and committed context metadata together.
+    /// All freshness checks precede the in-memory update; this performs no I/O.
+    /// # Errors
+    /// Rejects stale or reserved configuration and results from other owners.
+    pub fn publish_context_configuration(
+        &mut self,
+        prepared: crate::PreparedConfigurationUpdate,
+        effect: ContextReloadEffect,
+    ) -> Result<crate::ConfigurationSnapshot, ferric_browser_config::ConfigError> {
+        self.ensure_configuration_writable()?;
+        let ContextReloadEffect {
+            profile, catalog, ..
+        } = effect;
+        if self.configuration.revision() != prepared.expected_revision
+            || self.profile_snapshot().as_ref() != Some(&profile)
+            || self.runtime.view().shutdown() != ShutdownState::Running
+            || !self.refresh_context_catalog(&catalog)
+        {
+            return Err(ferric_browser_config::ConfigError::Validation(
+                "The window changed during settings reload. Try again.".into(),
+            ));
+        }
+        self.configuration = prepared.state;
+        Ok(self.configuration.snapshot())
     }
 
     /// Publishes committed metadata only into the same live profile generation.

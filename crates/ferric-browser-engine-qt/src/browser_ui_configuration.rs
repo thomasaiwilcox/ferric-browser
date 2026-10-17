@@ -10,6 +10,11 @@ use super::{
 
 use ferric_browser_config::ConfigurationApplyBoundary;
 
+enum ConfigurationCommit<'a> {
+    Reload(Option<Box<ferric_browser_application::ContextReloadEffect>>),
+    Runtime(Option<(&'a Path, &'a RuntimeOverrides)>),
+}
+
 impl qobject::BrowserUi {
     pub(super) fn select_site_rule_settings(mut self: Pin<&mut Self>, url: &QString) -> bool {
         let config = match serde_json::from_value::<Config>(self.as_ref().rust().config.clone()) {
@@ -164,14 +169,14 @@ impl qobject::BrowserUi {
         layers: ConfigurationLayers,
         status: &str,
         fingerprint: String,
+        contexts: Option<ferric_browser_application::ContextReloadEffect>,
     ) -> Result<Value, String> {
         let committed = self.as_mut().commit_validated_configuration(
             candidate,
             layers,
             status,
-            None,
-            ConfigurationApplyBoundary::Reload,
             fingerprint,
+            ConfigurationCommit::Reload(contexts.map(Box::new)),
         )?;
         {
             let mut rust = self.as_mut().rust_mut();
@@ -197,9 +202,8 @@ impl qobject::BrowserUi {
             candidate,
             layers,
             status,
-            persistence,
-            ConfigurationApplyBoundary::RuntimeUpdate,
             fingerprint,
+            ConfigurationCommit::Runtime(persistence),
         )
     }
 
@@ -208,10 +212,19 @@ impl qobject::BrowserUi {
         candidate: Value,
         layers: ConfigurationLayers,
         status: &str,
-        persistence: Option<(&Path, &RuntimeOverrides)>,
-        boundary: ConfigurationApplyBoundary,
         fingerprint: String,
+        commit: ConfigurationCommit<'_>,
     ) -> Result<Value, String> {
+        let (boundary, persistence, contexts) = match commit {
+            ConfigurationCommit::Reload(contexts) => (
+                ConfigurationApplyBoundary::Reload,
+                None,
+                contexts.map(|effect| *effect),
+            ),
+            ConfigurationCommit::Runtime(persistence) => {
+                (ConfigurationApplyBoundary::RuntimeUpdate, persistence, None)
+            }
+        };
         let policy_layers = layers.clone();
         let previous_hints = serde_json::from_value::<Config>(self.as_ref().rust().config.clone())
             .ok()
@@ -251,23 +264,37 @@ impl qobject::BrowserUi {
         let base_config = serde_json::to_value(&policy_layers.base)
             .map_err(|error| format!("could not serialize base configuration: {error}"))?;
         let bindings = configured_bindings(&self.as_ref().rust().registry, &active_config);
+        let contexts_json = contexts
+            .as_ref()
+            .map(|effect| serde_json::to_string(effect.configuration()))
+            .transpose()
+            .map_err(|error| format!("could not serialize context configuration: {error}"))?;
         let mut write_outcome = None;
         {
             let mut rust = self.as_mut().rust_mut();
-            rust.as_mut()
+            let state = rust
+                .as_mut()
                 .get_mut()
                 .state
                 .as_mut()
-                .ok_or_else(|| "application state is unavailable".to_owned())?
-                .publish_configuration_update(prepared, || {
-                    if let Some((path, overrides)) = persistence {
-                        write_outcome = Some(ferric_browser_config::save_runtime_overrides_atomic(
-                            path, overrides,
-                        )?);
-                    }
-                    Ok(())
-                })
-                .map_err(|error| format!("configuration publication rejected: {error}"))?;
+                .ok_or_else(|| "application state is unavailable".to_owned())?;
+            if let Some(contexts) = contexts {
+                state
+                    .publish_context_configuration(prepared, contexts)
+                    .map_err(|error| format!("configuration publication rejected: {error}"))?;
+            } else {
+                state
+                    .publish_configuration_update(prepared, || {
+                        if let Some((path, overrides)) = persistence {
+                            write_outcome =
+                                Some(ferric_browser_config::save_runtime_overrides_atomic(
+                                    path, overrides,
+                                )?);
+                        }
+                        Ok(())
+                    })
+                    .map_err(|error| format!("configuration publication rejected: {error}"))?;
+            }
         }
         {
             let mut rust = self.as_mut().rust_mut();
@@ -329,6 +356,21 @@ impl qobject::BrowserUi {
         });
         if label_settings_changed && self.as_ref().rust().hint_session.is_some() {
             self.as_mut().cancel_hints();
+        }
+        if let Some(contexts_json) = contexts_json {
+            self.as_mut()
+                .set_contexts_json(QString::from(contexts_json));
+            let records = self
+                .as_ref()
+                .rust()
+                .state
+                .as_ref()
+                .and_then(super::BrowserApplication::contexts)
+                .map(super::ContextSnapshot::from_records);
+            self.as_mut().rust_mut().as_mut().get_mut().contexts = records;
+            self.as_mut().sync_context_choices();
+            self.as_mut().sync_context_metadata();
+            self.as_mut().publish_context_catalog();
         }
         let status = if pending.is_empty() {
             status.to_owned()

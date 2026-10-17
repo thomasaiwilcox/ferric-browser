@@ -58,7 +58,7 @@ jobs:
         run: cargo xtask test application-clipboard
       - name: Production browser surface regressions
         run: |
-          ctest --test-dir target/application-tests --output-on-failure -R '^application_product_polish$'
+          ctest --test-dir target/application-tests --output-on-failure -R '^application_(product_polish|context_reload)$'
           python3 crates/ferric-browser-engine-qt/tests/application/run_ipc_probe.py
           python3 crates/ferric-browser-engine-qt/tests/application/run_window_ipc_probe.py
       - run: desktop-file-validate packaging/io.github.ferricbrowser.FerricBrowser.desktop

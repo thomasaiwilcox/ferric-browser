@@ -6,7 +6,10 @@
 //! returned effects; they do not own application state or persistence
 //! scheduling.
 
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    sync::{Arc, atomic::AtomicBool},
+};
 
 use ferric_browser_config::{Config, ConfigError, ConfigurationApplyBoundary, RuntimeOverrides};
 use ferric_browser_core::{
@@ -21,6 +24,8 @@ use ferric_browser_storage::{
 };
 
 mod configuration;
+mod configuration_reservation;
+pub use configuration_reservation::ConfigurationReservation;
 mod contexts;
 mod profile;
 mod profile_open;
@@ -45,6 +50,7 @@ pub use storage::{StorageEffect, StorageTicket};
 pub struct BrowserApplication {
     runtime: BrowserRuntime,
     configuration: ConfigurationState,
+    configuration_reservation: Arc<AtomicBool>,
     active_profile: Option<ActiveProfile>,
     next_profile_generation: u64,
     storage: StorageCoordinator,
@@ -57,6 +63,7 @@ impl BrowserApplication {
         Self {
             runtime: BrowserRuntime::new(),
             configuration: ConfigurationState::new(configuration),
+            configuration_reservation: Arc::default(),
             active_profile: None,
             next_profile_generation: 1,
             storage: StorageCoordinator::default(),
@@ -73,6 +80,7 @@ impl BrowserApplication {
         Self {
             runtime,
             configuration: ConfigurationState::new(configuration),
+            configuration_reservation: Arc::default(),
             active_profile: None,
             next_profile_generation: 1,
             storage: StorageCoordinator::default(),
@@ -116,6 +124,7 @@ impl BrowserApplication {
         Ok(Self {
             runtime,
             configuration: self.configuration.clone(),
+            configuration_reservation: Arc::default(),
             active_profile: Some(profile.clone()),
             next_profile_generation: self.next_profile_generation,
             storage,
@@ -140,6 +149,7 @@ impl BrowserApplication {
             Self {
                 runtime,
                 configuration: ConfigurationState::new(configuration),
+                configuration_reservation: Arc::default(),
                 active_profile: None,
                 next_profile_generation: 1,
                 storage: StorageCoordinator::default(),
@@ -261,6 +271,7 @@ impl BrowserApplication {
         &mut self,
         overrides: &RuntimeOverrides,
     ) -> Result<ConfigurationSnapshot, ConfigError> {
+        self.ensure_configuration_writable()?;
         self.configuration.replace_temporary(overrides.clone())
     }
 
@@ -286,6 +297,7 @@ impl BrowserApplication {
         &mut self,
         layers: ConfigurationLayers,
     ) -> Result<ConfigurationSnapshot, ConfigError> {
+        self.ensure_configuration_writable()?;
         self.configuration.activate_layers(layers)
     }
 
@@ -300,6 +312,7 @@ impl BrowserApplication {
         &mut self,
         layers: ConfigurationLayers,
     ) -> Result<ConfigurationSnapshot, ConfigError> {
+        self.ensure_configuration_writable()?;
         self.configuration.update_layers(layers)
     }
 
@@ -330,6 +343,7 @@ impl BrowserApplication {
         layers: ConfigurationLayers,
         boundary: ConfigurationApplyBoundary,
     ) -> Result<PreparedConfigurationUpdate, ConfigError> {
+        self.ensure_configuration_writable()?;
         let mut state = self.configuration.clone();
         state.update_layers_at(layers, boundary)?;
         Ok(PreparedConfigurationUpdate {
@@ -349,6 +363,7 @@ impl BrowserApplication {
         prepared: PreparedConfigurationUpdate,
         persist: impl FnOnce() -> Result<(), ConfigError>,
     ) -> Result<ConfigurationSnapshot, ConfigError> {
+        self.ensure_configuration_writable()?;
         if self.configuration.revision() != prepared.expected_revision {
             return Err(ConfigError::Validation(
                 "prepared configuration became stale".into(),
@@ -368,6 +383,7 @@ impl BrowserApplication {
         &mut self,
         configuration: Config,
     ) -> Result<ConfigurationSnapshot, ConfigError> {
+        self.ensure_configuration_writable()?;
         self.configuration.replace_effective(configuration)
     }
 

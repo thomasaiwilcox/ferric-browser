@@ -5,7 +5,7 @@
 
 use crate::single_flight::{Poll as WorkerPoll, SingleFlightWorker, SubmitError};
 use ferric_browser_config::{
-    LoadedConfig, ProfilesConfig, RuntimeOverrides, load, load_contexts,
+    ContextsConfig, LoadedConfig, ProfilesConfig, RuntimeOverrides, load, load_contexts,
     load_profile_runtime_overrides, load_profiles, profile_config_path,
 };
 #[cfg(unix)]
@@ -18,6 +18,7 @@ use std::{
 
 pub(super) struct ConfigReloadResult {
     pub(super) loaded: LoadedConfig,
+    pub(super) contexts: ContextsConfig,
     pub(super) profile_overrides: RuntimeOverrides,
     pub(super) profiles_path: Option<PathBuf>,
     pub(super) profiles_config: Option<ProfilesConfig>,
@@ -114,20 +115,24 @@ impl ConfigReloadWorker {
             |request: ConfigReloadRequest| match request {
                 ConfigReloadRequest::Load { path, profile_name } => load(&path)
                     .map_err(|error| error.to_string())
-                    .and_then(|loaded| {
+                    .and_then(|mut loaded| {
                         let directory = path.parent().unwrap_or_else(|| Path::new("."));
                         let contexts_path = directory.join("contexts.toml");
-                        if contexts_path.exists() {
+                        let contexts = if contexts_path.exists() {
                             load_contexts(&contexts_path).map_err(|error| {
                                 format!("contexts configuration is invalid: {error}")
-                            })?;
-                        }
+                            })?
+                        } else {
+                            ContextsConfig::default()
+                        };
+                        loaded.sources.push(contexts_path);
                         let profile_overrides =
                             load_profile_runtime_overrides(&path, &profile_name)
                                 .map_err(|error| error.to_string())?;
                         let profiles_path = profile_config_path(&path);
                         Ok(ConfigReloadResult {
                             loaded,
+                            contexts,
                             profile_overrides,
                             profiles_path: profiles_path.exists().then_some(profiles_path),
                             profiles_config: None,
@@ -139,11 +144,13 @@ impl ConfigReloadWorker {
                     .and_then(|loaded| {
                         let directory = path.parent().unwrap_or_else(|| Path::new("."));
                         let contexts_path = directory.join("contexts.toml");
-                        if contexts_path.exists() {
+                        let contexts = if contexts_path.exists() {
                             load_contexts(&contexts_path).map_err(|error| {
                                 format!("contexts configuration is invalid: {error}")
-                            })?;
-                        }
+                            })?
+                        } else {
+                            ContextsConfig::default()
+                        };
                         let profiles_path = directory.join("profiles.toml");
                         let profiles_config = profiles_path
                             .exists()
@@ -154,6 +161,7 @@ impl ConfigReloadWorker {
                             })?;
                         Ok(ConfigReloadResult {
                             loaded,
+                            contexts,
                             profile_overrides: RuntimeOverrides::default(),
                             profiles_path: profiles_path.exists().then_some(profiles_path),
                             profiles_config,

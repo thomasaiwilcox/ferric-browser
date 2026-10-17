@@ -47,6 +47,10 @@ mod browser_ui_browsing_commands;
 mod browser_ui_command_dispatch;
 mod browser_ui_command_history;
 mod browser_ui_command_workflows;
+mod browser_ui_context_reload;
+use browser_ui_context_reload::{
+    ConfigReloadPublication, ContextReloadWorker, PendingContextReload,
+};
 mod browser_ui_configuration;
 mod browser_ui_content_tools;
 mod browser_ui_context_commands;
@@ -2439,6 +2443,8 @@ pub struct BrowserUiRust {
     cli_overrides: RuntimeOverrides,
     config_watch: ConfigWatch,
     config_reload_worker: Option<ConfigReloadWorker>,
+    context_reload_worker: Option<ContextReloadWorker>,
+    pending_context_reload: Option<PendingContextReload>,
     config_write_worker: Option<ConfigWriteWorker>,
     print_worker: Option<PrintWorker>,
     editor_write_worker: Option<EditorWriteWorker>,
@@ -3244,6 +3250,8 @@ impl Default for BrowserUiRust {
             cli_overrides: RuntimeOverrides::default(),
             config_watch: ConfigWatch::default(),
             config_reload_worker: None,
+            context_reload_worker: None,
+            pending_context_reload: None,
             config_write_worker: None,
             print_worker: None,
             editor_write_worker: None,

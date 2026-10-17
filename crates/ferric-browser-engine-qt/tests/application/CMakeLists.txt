@@ -11,7 +11,11 @@ get_filename_component(REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../.." ABSOL
 set(FERRIC_ENGINE_LIBRARY "${REPO_ROOT}/target/release/libferric_browser_engine_qt.a" CACHE FILEPATH "Cargo-built production engine")
 add_executable(application_tests tst_application.cpp tst_permission_scope.cpp tst_application.h)
 target_link_libraries(application_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" Qt6::Quick Qt6::QuickControls2 Qt6::WebEngineQuick Qt6::Network Qt6::DBus Qt6::Test SQLite3::SQLite3 ${CMAKE_DL_LIBS} pthread)
+add_executable(context_reload_tests tst_context_reload.cpp)
+target_link_libraries(context_reload_tests PRIVATE "${FERRIC_ENGINE_LIBRARY}" Qt6::Quick Qt6::QuickControls2 Qt6::WebEngineQuick Qt6::Network Qt6::DBus Qt6::Test SQLite3::SQLite3 ${CMAKE_DL_LIBS} pthread)
 enable_testing()
+add_test(NAME application_context_reload COMMAND context_reload_tests)
+set_tests_properties(application_context_reload PROPERTIES TIMEOUT 90 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
 add_test(NAME application_offscreen COMMAND application_tests)
 set_tests_properties(application_offscreen PROPERTIES TIMEOUT 480 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_QPA_PLATFORMTHEME=;QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
 

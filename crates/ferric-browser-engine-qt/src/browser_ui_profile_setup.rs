@@ -449,6 +449,8 @@ impl qobject::BrowserUi {
                 .unwrap_or_default();
             this.binding_overlay = QString::default();
             this.config_watch = config_watch;
+            this.pending_context_reload = None;
+            this.context_reload_worker = None;
             this.config_reload_worker = ConfigReloadWorker::spawn().ok();
             this.config_write_worker = ConfigWriteWorker::spawn().ok();
             this.print_worker = PrintWorker::spawn().ok();

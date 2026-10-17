@@ -2,7 +2,7 @@
 
 Status: active. Branch: `polish/refined-browser-experience`.
 
-Latest verified functional checkpoint: `permission-scope-v1`. The complete
+Latest verified functional checkpoint: `context-qt-v5`. The complete
 original polish goal remains open; the audit and completion requirements below
 still apply. This checkpoint is local and has not been installed or published.
 
@@ -30,7 +30,8 @@ was not applied after a page change. The earlier developer-tools ownership,
 interactive window creation, literal labels and fitted preview work remains
 qualified by `refined-owners-v2` (commit `4a39de6`).
 
-Fresh strict workspace Clippy and the repository gate pass: 973 Rust tests
+The preceding `permission-scope-v1` checkpoint passed strict workspace Clippy
+and the repository gate: 973 Rust tests
 passed, two ignored, and 492 QML checks passed. Focused preview checks pass 17;
 focused production checks pass 25. The broad browser group passes 158 and
 clipboard passes 81. Adapter integration and nested Wayland startup pass.
@@ -40,31 +41,43 @@ reviewed, retaining the preceding 20-capture whole-window/prompt evidence.
 Frozen source/artifact hashes and complete results are retained under ignored
 `target/product-polish/permission-scope-v1-checkpoint.json`.
 
-The remaining context/configuration investigation has four confirmed native
-failures: after a successful main configuration reload, changed labels remain
-old, new contexts stay missing, removed definitions remain offered, and new
-routes stay inactive. These remain open until Qt consumes the new domain job.
+The context reload integration now passes the four reproduced native failures:
+changed labels, new context choices, removed definitions and new routing rules
+publish with the reloaded settings. The application reserves configuration
+publication while the validated context job updates disk off the Qt thread.
+Rejected context documents, unknown profiles and invalid engine selectors keep
+the preceding configuration and generated metadata intact. Corrected documents
+recover in the same window, and existing windows receive the committed catalog.
 
-Work after the verified checkpoint now fixes overlapping-edit loss. The watcher
-retains pending work while the loader is busy and preserves unacknowledged
-changes while rebinding sources. The same controlled native case fails before
-and passes after the repair, with no third file edit. Three focused watcher
-checks also pass. The context storage foundation now reconciles a complete
-metadata batch atomically, preserves IDs/membership, rejects unsafe affinity
-changes, merges fresh owner state and avoids unnecessary writes. All 92 storage
-tests pass. The application owns an off-thread context job and rejects stale,
-private, unrelated-root, missing-profile and invalid-route work; 33 application
-and 61 configuration tests pass, with strict core Clippy. These incremental
-results are recorded in `target/product-polish/context-domain-progress-v1.json`.
+The preceding overlapping-edit repair remains covered by the controlled native
+FIFO case: a later edit made while the loader is busy is applied without a third
+edit. The watcher preserves pending work and unacknowledged source changes.
+Atomic context storage retains identity/membership, rejects unsafe affinity
+changes and avoids unnecessary writes.
 
-The application job is not yet connected to loader/selector continuation and
-coherent Qt publication. Reservation during asynchronous commit, failure and
-owner cancellation, shared-window propagation, removed/offline definition
-provenance and logical membership cleanup remain to be completed. Full browser
-qualification of that combined repair is still required. Durable permission
-readiness, remaining lifecycle/command/help wording and the final whole-window
-walkthrough remain part of the original goal. Earlier checkpoint evidence and
-the complete original requirements follow.
+The current checkpoint passes strict workspace Clippy on identical frozen
+source, the complete repository gate (995 Rust tests, two ignored; 492 QML
+checks), production build/resource parity, 11 native context-reload checks and
+34 focused window/configuration/permission-owner integration checks. The native
+context suite is now part of CI. Source and artifact hashes and the complete
+results are retained under ignored `target/product-polish/context-qt-v5-*`.
+The initial shared Cargo output directory caused a doctest artifact collision;
+the complete gate passed after separating the worktree build directories.
+No installation or publication was performed.
+
+A follow-up consistency repair is isolated at
+`/home/tom/.codex/worktrees/context-consistency/RustBrowser`. Three additional
+reproductions exposed offline deletions returning after restart, delayed worker
+results replacing newer catalog changes, and invalid logical window bindings.
+The repair adds durable commit ordering, configured-identity provenance,
+atomic binding cleanup and normal checkpoint/IPC observation. Its 294 selected
+core/storage/application tests and strict linting pass. Native Qt integration,
+restart/deletion journeys and the combined-source qualification remain open;
+these unit results do not establish full browser completion.
+
+Durable permission readiness, remaining lifecycle/command/help wording and the
+final whole-window walkthrough remain part of the original goal. Earlier
+checkpoint evidence and the complete original requirements follow.
 
 ## Product intent
 

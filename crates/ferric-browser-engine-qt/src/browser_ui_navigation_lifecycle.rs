@@ -680,6 +680,8 @@ impl qobject::BrowserUi {
             // cannot recreate state after the final owner has gone away.
             this.pending_profile_configuration = None;
             this.session_saves.clear();
+            this.pending_context_reload = None;
+            this.context_reload_worker = None;
             this.config_reload_worker = None;
             this.config_write_worker = None;
             this.profile_delete_worker = None;

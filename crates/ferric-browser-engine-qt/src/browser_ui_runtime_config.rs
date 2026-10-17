@@ -15,6 +15,7 @@ impl qobject::BrowserUi {
     pub(super) fn poll_config(mut self: Pin<&mut Self>) {
         self.as_mut().expire_selector_validation();
         self.as_mut().poll_diagnostics();
+        self.as_mut().poll_context_configuration_reload();
         let reduced_motion_result = {
             let mut rust = self.as_mut().rust_mut();
             let this = rust.as_mut().get_mut();
@@ -612,6 +613,17 @@ impl qobject::BrowserUi {
                         serde_json::to_string(&validation_items).unwrap_or_default();
                     let sources = result.loaded.sources;
                     let profiles_path = result.profiles_path;
+                    let publication = super::ConfigReloadPublication {
+                        candidate,
+                        layers,
+                        fingerprint: validation_fingerprint.clone(),
+                        path: path.clone(),
+                        base_json,
+                        profile_overrides,
+                        sources,
+                        profiles_path,
+                        contexts: result.contexts,
+                    };
                     if !validation_items.is_empty()
                         && validation_fingerprint
                             != self.as_ref().rust().active_selector_fingerprint
@@ -620,45 +632,18 @@ impl qobject::BrowserUi {
                             validation_fingerprint,
                             validation_items,
                             PendingSelectorAction::Reload {
-                                candidate,
-                                layers,
-                                status: "Configuration reloaded".into(),
-                                path: path.clone(),
-                                base_json,
-                                profile_overrides,
-                                sources,
-                                profiles_path,
+                                publication: Box::new(publication),
                             },
                         );
                         return;
                     }
-                    if let Err(error) = self.as_mut().commit_reloaded_config(
-                        candidate,
-                        layers.clone(),
-                        "Configuration reloaded",
-                        validation_fingerprint,
-                    ) {
+                    if let Err(error) = self
+                        .as_mut()
+                        .queue_context_configuration_reload(publication)
+                    {
                         self.report_config_reload_failure(&error);
                         return;
                     }
-                    {
-                        let mut rust = self.as_mut().rust_mut();
-                        let this = rust.as_mut().get_mut();
-                        this.base_config = new_base;
-                        this.profile_overrides = profile_overrides.clone();
-                        let mut watched_sources = sources;
-                        if let Some(profiles_path) = profiles_path {
-                            watched_sources.push(profiles_path);
-                        }
-                        if let Some(effect) = this.profile_open_effect.as_mut() {
-                            effect.config_sources.clone_from(&watched_sources);
-                        }
-                        this.config_watch.refresh_sources(&path, &watched_sources);
-                    }
-                    self.as_mut().set_config_base_json(QString::from(base_json));
-                    self.as_mut().set_profile_overrides_json(QString::from(
-                        serde_json::to_string(&profile_overrides).unwrap_or_else(|_| "{}".into()),
-                    ));
                 }
                 Err(error) if error.operation == Some(ConfigReadOperation::Check) => {
                     // An explicit check deliberately returns its diagnostic.
@@ -671,7 +656,10 @@ impl qobject::BrowserUi {
                 Err(error) => self.as_mut().report_config_reload_failure(&error.detail),
             }
         }
-        if should_reload {
+        if should_reload
+            && self.as_ref().rust().pending_context_reload.is_none()
+            && self.as_ref().rust().pending_selector_validation.is_none()
+        {
             let profile_name = self.as_ref().rust().profile_name.clone();
             let request = self
                 .as_mut()
