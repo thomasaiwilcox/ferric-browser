@@ -600,7 +600,10 @@ mod tests {
         }
         let first = catalog.begin_write();
         assert_eq!(first.len(), 32);
-        assert!(catalog.begin_write().is_empty());
+        assert_eq!(
+            catalog.begin_write(),
+            [] as [(u64, ferric_browser_storage::DownloadRecord); 0]
+        );
         catalog.finish_write(&first, true);
         for (_, record) in &first {
             catalog
@@ -840,9 +843,15 @@ mod tests {
         assert!(current > before);
         assert_eq!(record.bytes_received, 12);
         catalog.acknowledge("owned", current);
-        assert!(catalog.unsaved().is_empty());
+        assert_eq!(
+            catalog.unsaved(),
+            [] as [(u64, ferric_browser_storage::DownloadRecord); 0]
+        );
         catalog.acknowledge("owned", before);
-        assert!(catalog.unsaved().is_empty());
+        assert_eq!(
+            catalog.unsaved(),
+            [] as [(u64, ferric_browser_storage::DownloadRecord); 0]
+        );
     }
     #[test]
     fn memory_only_downloads_never_produce_history_writes() {
@@ -864,7 +873,10 @@ mod tests {
                 None,
             )
             .unwrap();
-        assert!(catalog.unsaved().is_empty());
+        assert_eq!(
+            catalog.unsaved(),
+            [] as [(u64, ferric_browser_storage::DownloadRecord); 0]
+        );
         assert_eq!(catalog.rows(&[])[0].display_name, "private.pdf");
         let rows = catalog.rows(&[offered("ordinary-history", 0)]);
         assert_eq!(rows.len(), 1);

@@ -844,7 +844,10 @@ fn transient_profiles_have_no_durable_permission_preferences_to_load() {
         let preferences = owner.saved_permission_preferences(ORIGIN);
         assert!(preferences.complete);
         assert_eq!(preferences.status, PermissionPreferencesStatus::NotStored);
-        assert!(preferences.rules.is_empty());
+        assert_eq!(
+            preferences.rules,
+            [] as [ferric_browser_storage::PermissionRule; 0]
+        );
     }
 }
 

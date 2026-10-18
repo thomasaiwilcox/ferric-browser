@@ -63,7 +63,7 @@ fn durable_job_publishes_only_when_its_owner_accepts_it() {
         .join()
         .unwrap()
         .unwrap();
-    assert!(app.contexts().unwrap().is_empty());
+    assert_eq!(app.contexts().unwrap(), []);
     assert_eq!(
         ContextRegistry::open(&roots).unwrap().contexts()[0].label,
         "Work"
@@ -92,7 +92,7 @@ fn configuration_and_contexts_publish_together_after_the_reserved_job() {
         .unwrap()
         .unwrap();
     assert_eq!(app.configuration_snapshot(), before);
-    assert!(app.contexts().unwrap().is_empty());
+    assert_eq!(app.contexts().unwrap(), []);
     app.release_configuration_reload(reservation).unwrap();
     let (published, _) = app.publish_context_configuration(prepared, effect).unwrap();
     assert!((published.effective.ui.font_size_pt - 18.0).abs() < f64::EPSILON);
@@ -115,7 +115,7 @@ fn stale_configuration_rejects_the_catalog_without_partial_publication() {
     let before = app.configuration_snapshot();
     assert!(app.publish_context_configuration(prepared, effect).is_err());
     assert_eq!(app.configuration_snapshot(), before);
-    assert!(app.contexts().unwrap().is_empty());
+    assert_eq!(app.contexts().unwrap(), []);
 }
 
 #[test]
@@ -135,7 +135,7 @@ fn combined_publication_cannot_bypass_an_active_configuration_reservation() {
     let reservation = app.reserve_configuration_reload().unwrap();
     assert!(app.publish_context_configuration(prepared, effect).is_err());
     assert_eq!(app.configuration_snapshot(), before);
-    assert!(app.contexts().unwrap().is_empty());
+    assert_eq!(app.contexts().unwrap(), []);
     drop(reservation);
 }
 
@@ -202,7 +202,7 @@ fn unrelated_storage_owner_cannot_adopt_the_result() {
         Err(ContextReloadError::Stale)
     ));
     assert_eq!(destination.profile_snapshot(), identity);
-    assert!(destination.contexts().unwrap().is_empty());
+    assert_eq!(destination.contexts().unwrap(), []);
 }
 
 #[test]

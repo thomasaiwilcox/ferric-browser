@@ -185,7 +185,7 @@ mod tests {
         assert!(state.local_details().contains("/private/profile"));
         assert!(!state.local_details().contains("replacement"));
         state.activate(None, None, None);
-        assert!(state.local_details().is_empty());
+        assert_eq!(state.local_details(), "");
         assert_eq!(state.snapshot(false)["active_profile"]["status"], "ready");
     }
 
@@ -238,7 +238,7 @@ mod tests {
     #[test]
     fn persistent_notice_tracks_current_issues_and_never_exposes_causes() {
         let mut state = ProfileStartup::default();
-        assert!(state.notice().is_empty());
+        assert_eq!(state.notice(), "");
         state.fail(FailureStage::Runtime, "/secret/runtime");
         assert_eq!(state.notice(), "The profile couldn't be opened.");
         state.activate(None, Some("/secret/config"), None);
@@ -249,11 +249,11 @@ mod tests {
         state.begin();
         assert_eq!(state.notice(), "Some settings couldn't be loaded.");
         state.settings_recovered();
-        assert!(state.notice().is_empty());
+        assert_eq!(state.notice(), "");
         state.network_result(Some("worker stopped"));
         assert_eq!(state.notice(), "Network filtering couldn't be prepared.");
         state.network_result(None);
-        assert!(state.notice().is_empty());
+        assert_eq!(state.notice(), "");
     }
 
     #[test]
@@ -285,8 +285,8 @@ mod tests {
         assert!(!state.snapshot(false).to_string().contains("private"));
         assert!(!state.notice().contains("private"));
         state.settings_recovered();
-        assert!(state.local_details().is_empty());
-        assert!(state.notice().is_empty());
+        assert_eq!(state.local_details(), "");
+        assert_eq!(state.notice(), "");
         assert_eq!(state.snapshot(false)["active_profile"]["status"], "ready");
     }
 

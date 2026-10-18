@@ -376,7 +376,7 @@ mod tests {
             .permission_rules_snapshot(Some("https://absent.example.test"))
             .unwrap();
         assert!(absent.complete);
-        assert!(absent.rules.is_empty());
+        assert_eq!(absent.rules, [] as [PermissionRule; 0]);
         drop(store);
         roots.cleanup().unwrap();
     }

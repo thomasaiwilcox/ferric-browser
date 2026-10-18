@@ -198,7 +198,7 @@ mod tests {
                     status.pending && !status.failed && !status.retryable,
                     "{scope}: {state:?}"
                 );
-                assert!(!status.notice.is_empty());
+                assert_ne!(status.notice, "");
             }
             let status =
                 Status::for_sources(scope, Profile::Durable, &Read::Ready, &Read::Ready).unwrap();
@@ -250,9 +250,9 @@ mod tests {
                     !status.pending && !status.failed && !status.retryable,
                     "{scope}"
                 );
-                assert!(status.detail.is_empty());
+                assert_eq!(status.detail, "");
                 if matches!(scope, "marks" | "sessions" | "downloads") {
-                    assert!(!status.notice.is_empty());
+                    assert_ne!(status.notice, "");
                 }
             }
         }

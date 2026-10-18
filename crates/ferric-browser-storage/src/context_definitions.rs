@@ -215,7 +215,7 @@ mod tests {
         assert_eq!(std::fs::read(&path).unwrap(), bytes);
         // Removing the authored definition remains the supported deletion path.
         reopened.reconcile_configured(&[], &[]).unwrap();
-        assert!(ContextRegistry::open(&roots).unwrap().contexts().is_empty());
+        assert_eq!(ContextRegistry::open(&roots).unwrap().contexts(), []);
         roots.cleanup().unwrap();
     }
 

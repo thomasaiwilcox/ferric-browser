@@ -129,7 +129,7 @@ fn removing_a_definition_clears_the_logical_window_context() -> Result<(), Strin
         .run()
         .unwrap();
     app.apply_context_reload(effect).unwrap();
-    assert!(app.contexts().unwrap().is_empty());
+    assert_eq!(app.contexts().unwrap(), []);
     if app.windows()[&window].context.is_some() {
         return Err("The logical window still claims membership in a deleted context".into());
     }

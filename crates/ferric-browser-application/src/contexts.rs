@@ -131,10 +131,10 @@ mod tests {
         assert_eq!(existing.contexts(), source.contexts());
         assert_eq!(existing.profile_snapshot(), identity);
         assert!(unrelated.refresh_context_catalog(&catalog).is_none());
-        assert!(unrelated.contexts().expect("other catalog").is_empty());
+        assert_eq!(unrelated.contexts().expect("other catalog"), []);
         assert!(private.refresh_context_catalog(&catalog).is_none());
         assert!(private.context_catalog().is_none());
-        assert!(private.contexts().expect("private test catalog").is_empty());
+        assert_eq!(private.contexts().expect("private test catalog"), []);
         source
             .change_context(ContextCommand::Remove {
                 name: "research".into(),
@@ -145,7 +145,7 @@ mod tests {
                 .refresh_context_catalog(&source.context_catalog().expect("updated catalog"))
                 .is_some()
         );
-        assert!(existing.contexts().expect("refreshed catalog").is_empty());
+        assert_eq!(existing.contexts().expect("refreshed catalog"), []);
         source.close_profile();
         assert!(source.context_catalog().is_none());
         existing.close_profile();

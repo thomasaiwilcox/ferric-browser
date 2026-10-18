@@ -2284,15 +2284,15 @@ mod tests {
         }
         assert_eq!(state.tabs[&tab].window, window);
         let revision = state.revision;
-        assert!(
+        assert_eq!(
             reduce(
                 &mut state,
                 Event::ClearWindowContexts {
                     windows: vec![window, other]
                 }
             )
-            .unwrap()
-            .is_empty()
+            .unwrap(),
+            []
         );
         assert_eq!(state.revision, revision);
         assert!(state.validate().is_ok());

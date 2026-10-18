@@ -57,7 +57,10 @@ fn private_completed_downloads_follow_the_shared_session_and_never_saved_history
         let mut unrelated = app(&roots, privacy, profile);
         assert!(source.shares_permission_session(&peer));
         assert!(!source.shares_permission_session(&unrelated));
-        assert!(unrelated.session_download_rows(&[]).unwrap().is_empty());
+        assert_eq!(
+            unrelated.session_download_rows(&[]).unwrap(),
+            [] as [DownloadRow; 0]
+        );
         source
             .set_session_download_destination(&id, &roots.0.data.join("Report.pdf"))
             .unwrap();
@@ -100,7 +103,10 @@ fn private_completed_downloads_follow_the_shared_session_and_never_saved_history
         peer.close_profile();
         unrelated.close_profile();
         let mut reopened = app(&roots, privacy, profile);
-        assert!(reopened.session_download_rows(&[]).unwrap().is_empty());
+        assert_eq!(
+            reopened.session_download_rows(&[]).unwrap(),
+            [] as [DownloadRow; 0]
+        );
         assert!(!roots.0.data.join("downloads.sqlite").exists());
         reopened.close_profile();
     }
