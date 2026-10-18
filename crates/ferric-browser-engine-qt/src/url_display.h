@@ -3,10 +3,10 @@
 
 #include <QtCore/QString>
 #include <QtCore/QUrl>
+#include "local_file_url.h"
 
 QString ferric_browser_to_ascii_host(const QString &host);
 QString ferric_browser_canonicalize_url(const QString &value);
-QString ferric_browser_local_file_path(const QUrl &value);
 QString ferric_browser_read_clipboard();
 QString ferric_browser_read_primary_selection();
 bool ferric_browser_primary_selection_available();

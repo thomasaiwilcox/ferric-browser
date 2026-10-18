@@ -12,16 +12,16 @@ use super::{
 pub(super) fn acquire_instance(
     storage_base: Option<&Path>,
     instance_selector: Option<&str>,
-) -> Result<InstanceStart, String> {
+) -> Result<InstanceStart, CliError> {
     let roots = if let Some(base) = storage_base {
         StorageRoots::resolve(RootSpec::Base(base.to_owned()))
     } else {
         StorageRoots::resolve(RootSpec::Xdg)
     }
-    .map_err(|error| format!("could not resolve instance roots: {error}"))?;
+    .map_err(|error| CliError::storage(format!("could not resolve instance roots: {error}")))?;
     roots
         .ensure()
-        .map_err(|error| format!("could not prepare instance roots: {error}"))?;
+        .map_err(|error| CliError::storage(format!("could not prepare instance roots: {error}")))?;
     let base = storage_base.map_or_else(|| roots.data.clone(), Path::to_owned);
     let canonical_base = fs::canonicalize(&base).unwrap_or(base);
     let paths = instance_paths(
@@ -32,9 +32,14 @@ pub(super) fn acquire_instance(
     let lock = match InstanceLock::acquire(&paths) {
         Ok(lock) => lock,
         Err(InstanceError::Busy { .. }) => return Ok(InstanceStart::Existing(paths)),
-        Err(error) => return Err(error.to_string()),
+        Err(error) => return Err(CliError::storage(error.to_string())),
     };
-    let listener = ferric_browser_ipc::bind_listener(&paths).map_err(|error| error.to_string())?;
+    let listener = ferric_browser_ipc::bind_listener(&paths).map_err(|error| match error {
+        InstanceError::InvalidSocketAddress { .. } => {
+            CliError::invalid_socket_address(error.to_string())
+        }
+        error => CliError::storage(error.to_string()),
+    })?;
     ferric_browser_engine_qt::spawn_ipc_server(listener, Uuid::new_v4().to_string());
     Ok(InstanceStart::Owner(InstanceRuntime { _lock: lock, paths }))
 }
@@ -486,6 +491,7 @@ pub(super) fn instance_request(
         std::io::ErrorKind::NotFound | std::io::ErrorKind::ConnectionRefused => {
             CliError::no_instance(error.to_string())
         }
+        std::io::ErrorKind::InvalidInput => CliError::invalid_socket_address(error.to_string()),
         _ => transport_io(error.kind(), error.to_string()),
     })?;
     let timeout = Some(Duration::from_secs(5));

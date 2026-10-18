@@ -9,8 +9,7 @@ mod ipc_client_tests;
 use cli_error::CliError;
 use cli_parse::{cli_action_name, emit_structured_log, parse_cli, validate_format};
 use cxx_qt_lib::{
-    QGuiApplication, QMap, QMapPair_QString_QVariant, QQmlApplicationEngine, QString, QStringList,
-    QUrl, QVariant,
+    QMap, QMapPair_QString_QVariant, QQmlApplicationEngine, QString, QStringList, QUrl, QVariant,
 };
 use ferric_browser_config::{
     Config, ContextsConfig, ProfilesConfig, RuntimeOverrides, apply_runtime_overrides, load,
@@ -394,12 +393,9 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), CliError
             CliError::storage(format!("could not resolve Ferric storage roots: {error}"))
         })?;
         if roots.requires_schema_reset().map_err(|error| {
-            format!("could not inspect Ferric data for the clean-break schema: {error}")
+            CliError::storage(format!("could not inspect Ferric data schema: {error}"))
         })? {
-            return Err(
-                "existing Ferric Browser data is incompatible with this pre-alpha release; run `ferric-browser reset-data --confirm` to erase Ferric-owned data before starting. Legacy browser data will not be touched"
-                    .into(),
-            );
+            return Err(CliError::incompatible_data(options.basedir.is_some()));
         }
         roots.initialize_current_schema().map_err(|error| {
             CliError::storage(format!("could not initialize Ferric data schema: {error}"))
@@ -589,8 +585,7 @@ fn run_parsed((options, action): (CliOptions, CliAction)) -> Result<(), CliError
             input = pages.next().cloned().unwrap_or_else(|| "rb://start".into());
             additional_inputs = pages.cloned().collect();
         }
-        let instance = match acquire_instance(storage_base.as_deref(), options.instance.as_deref())
-            .map_err(CliError::storage)?
+        let instance = match acquire_instance(storage_base.as_deref(), options.instance.as_deref())?
         {
             InstanceStart::Owner(instance) => instance,
             InstanceStart::Existing(paths) => {
@@ -1001,7 +996,10 @@ fn run_gui(plan: &GuiLaunchPlan<'_>) -> Result<(), String> {
     ferric_browser_engine_qt::register_internal_scheme();
     cxx_qt::init_crate!(ferric_browser_engine_qt);
     cxx_qt::init_qml_module!("io.github.ferricbrowser");
-    let mut app = QGuiApplication::new();
+    let mut app = ferric_browser_engine_qt::new_gui_application();
+    if app.is_null() {
+        return Err("The browser couldn't prepare its desktop interface. Check that temporary storage is available, then try again.".into());
+    }
     let mut native_wayland = false;
     if let Some(_app) = app.as_mut() {
         ferric_browser_engine_qt::set_desktop_identity();

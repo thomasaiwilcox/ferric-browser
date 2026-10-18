@@ -710,7 +710,7 @@ impl CommandRegistry {
                 vec![Mode::Normal, Mode::Command],
                 CountPolicy::Supported { maximum: 5_000 },
                 false,
-                "Label visible page targets for validated activation or explicit Region and Surface actions.",
+                "Label visible links and controls so you can choose one with the keyboard.",
             ),
             definition(
                 "target-search",
@@ -718,7 +718,7 @@ impl CommandRegistry {
                 vec![Mode::Normal, Mode::Command],
                 CountPolicy::NotSupported,
                 false,
-                "Search visible page targets from local keyboard or UI input, optionally scoped to links, controls, regions, surfaces, or all; enter the query in the native palette and confirm a result explicitly.",
+                "Search visible links, controls, and page sections, then confirm a result.",
             ),
             definition(
                 "grid",
@@ -726,7 +726,7 @@ impl CommandRegistry {
                 vec![Mode::Normal, Mode::Command],
                 CountPolicy::NotSupported,
                 false,
-                "Enter keyboard-controlled spatial Grid mode for the active page view.",
+                "Choose a position on the page with a keyboard-controlled grid.",
             ),
             definition(
                 "grid-refine",
@@ -1554,7 +1554,7 @@ impl CommandRegistry {
                 vec![Mode::Normal, Mode::Command],
                 CountPolicy::NotSupported,
                 false,
-                "Delete a durable browsing context after confirmation.",
+                "Delete a command-created browsing context after confirmation.",
             ),
             definition(
                 "context-enter",

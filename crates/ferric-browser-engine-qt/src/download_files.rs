@@ -27,10 +27,13 @@ impl StagedDownload {
         &self.staging_directory
     }
 
-    #[cfg(test)]
     #[must_use]
     pub(super) fn staging_path(&self) -> &Path {
         &self.staging_path
+    }
+
+    pub(super) fn final_path(&self) -> &Path {
+        &self.final_path
     }
 }
 
@@ -230,43 +233,11 @@ pub(super) fn cleanup_staged_downloads(staged_downloads: &mut BTreeMap<String, S
     staged_downloads.clear();
 }
 
+#[cfg(test)]
 pub(super) fn finalize_staged_download(staged: &StagedDownload) -> Result<(), String> {
-    let source_metadata = fs::symlink_metadata(&staged.staging_path)
-        .map_err(|error| format!("staged download is unavailable: {error}"))?;
-    if source_metadata.file_type().is_symlink() || !source_metadata.is_file() {
-        return Err("staged download is not a regular file".into());
-    }
-    let directory = staged
-        .final_path
-        .parent()
-        .ok_or_else(|| "download destination has no containing directory".to_owned())?;
-    let directory_metadata = fs::symlink_metadata(directory)
-        .map_err(|error| format!("download destination directory is unavailable: {error}"))?;
-    if directory_metadata.file_type().is_symlink() || !directory_metadata.is_dir() {
-        return Err("download destination directory is not a real directory".into());
-    }
-    let mut destination = fs::OpenOptions::new();
-    destination.write(true).create_new(true);
-    #[cfg(unix)]
-    std::os::unix::fs::OpenOptionsExt::mode(&mut destination, 0o600);
-    let mut destination = destination
-        .open(&staged.final_path)
-        .map_err(|error| format!("download destination cannot be created safely: {error}"))?;
-    let copy_result = (|| {
-        let mut source = fs::File::open(&staged.staging_path)
-            .map_err(|error| format!("staged download cannot be opened: {error}"))?;
-        std::io::copy(&mut source, &mut destination)
-            .map_err(|error| format!("download finalization failed: {error}"))?;
-        destination
-            .sync_all()
-            .map_err(|error| format!("download destination could not be synced: {error}"))
-    })();
-    if let Err(error) = copy_result {
-        drop(destination);
-        let _ = fs::remove_file(&staged.final_path);
-        return Err(error);
-    }
-    drop(destination);
+    super::download_finalization::prepare(staged, &std::sync::atomic::AtomicBool::new(false))
+        .and_then(super::download_finalization::PreparedDownload::publish)
+        .map_err(|error| error.to_string())?;
     cleanup_staged_download(staged);
     Ok(())
 }

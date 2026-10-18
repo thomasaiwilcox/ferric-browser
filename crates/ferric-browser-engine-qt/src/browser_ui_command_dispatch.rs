@@ -342,13 +342,8 @@ impl qobject::BrowserUi {
                 continue;
             }
             if command.name == "get" {
-                let mode = self.as_ref().rust().core_mode;
-                if let Err(error) = registry.validate(&command, mode) {
-                    self.set_status_text(QString::from(error.to_string()));
-                    return false;
-                }
                 if let Err(error) = self.as_mut().execute_config_get_command(&command) {
-                    self.set_status_text(QString::from(error));
+                    self.set_status_text(QString::from(error.user_message()));
                     return false;
                 }
                 continue;
@@ -815,7 +810,7 @@ impl qobject::BrowserUi {
                     return false;
                 }
                 if let Err(error) = self.as_mut().execute_download_command(&command) {
-                    self.set_status_text(QString::from(error));
+                    self.set_status_text(QString::from(error.user_message()));
                     return false;
                 }
                 continue;
@@ -898,8 +893,7 @@ impl qobject::BrowserUi {
                     .as_mut()
                     .get_mut()
                     .pending_engine_action = Some("show-downloads".into());
-                self.as_mut()
-                    .set_status_text(QString::from("Downloads manager requested"));
+                self.as_mut().set_status_text(QString::from("Downloads"));
                 continue;
             }
             if matches!(command.name.as_str(), "download-open" | "download-show") {
@@ -924,7 +918,7 @@ impl qobject::BrowserUi {
                     return false;
                 }
                 if let Err(error) = self.as_mut().execute_download_control_command(&command) {
-                    self.set_status_text(QString::from(error));
+                    self.set_status_text(QString::from(error.user_message()));
                     return false;
                 }
                 continue;

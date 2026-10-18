@@ -180,9 +180,9 @@ impl qobject::BrowserUi {
             result.ok,
         );
         match decision {
-            SelectorCallbackDecision::Stale => self
-                .as_mut()
-                .set_status_text(QString::from("Selector validation result became stale")),
+            SelectorCallbackDecision::Stale => self.as_mut().set_status_text(QString::from(
+                "Selector settings changed. Validate the rule again.",
+            )),
             SelectorCallbackDecision::Reject => self
                 .as_mut()
                 .reject_selector_action(pending.action, &result),
@@ -250,11 +250,12 @@ impl qobject::BrowserUi {
                 }
             }
             PendingSelectorAction::Reload { publication } => {
+                let announce = publication.announce;
                 if let Err(error) = self
                     .as_mut()
                     .queue_context_configuration_reload(*publication)
                 {
-                    self.report_config_reload_failure(&error);
+                    self.report_config_reload_failure(&error, announce);
                 }
             }
             PendingSelectorAction::Profile {
@@ -303,8 +304,9 @@ impl qobject::BrowserUi {
                     }
                 }
             }
-            PendingSelectorAction::Reload { .. } => {
-                self.as_mut().report_config_reload_failure(&diagnostic);
+            PendingSelectorAction::Reload { publication } => {
+                self.as_mut()
+                    .report_config_reload_failure(&diagnostic, publication.announce);
             }
             PendingSelectorAction::RuntimeConfig { .. } | PendingSelectorAction::Check { .. } => {
                 self.as_mut().set_status_text(QString::from(diagnostic));

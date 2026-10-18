@@ -76,16 +76,6 @@ impl qobject::BrowserUi {
             let this = rust.as_mut().get_mut();
             finish_pending_selection_operation(this, "cancelled");
             this.pending_caret = None;
-            this.pending_spawn = None;
-            if let Some(pending) = this.pending_action_target.take() {
-                this.operation_states
-                    .insert(pending.operation_id, "cancelled".into());
-            }
-            this.pending_download = None;
-            if let Some(pending) = this.pending_userscript.take() {
-                this.operation_states
-                    .insert(pending.operation_id, "cancelled".into());
-            }
         }
         self.as_mut().set_caret_selecting(false);
         if is_hint {

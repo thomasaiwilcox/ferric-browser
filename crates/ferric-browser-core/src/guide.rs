@@ -58,7 +58,7 @@ pub fn guide_article(command: &str) -> Option<GuideArticle> {
         ),
         "tab-suspend" | "tab-discard" | "tab-resume" => (
             "Tabs and Windows",
-            "Suspend freezes a hidden live tab to reduce activity. Discard releases its page resources while keeping a descriptor; resume restores resources and may reload a safe URL. The browser rejects unsafe targets and tabs with active operations. Activating an inactive tab requests resumption automatically. Native start-page descriptors remain native when resumed.",
+            "Suspend freezes a hidden tab to reduce activity. Discard releases its page resources while keeping its title, address and tab settings; Resume may reload a safe address. The browser protects tabs with active operations. Selecting a suspended or discarded tab requests resumption automatically. The start page stays a browser page when restored.",
             "Select or resume the tab to use it again. A discarded document may require a reload and cannot preserve arbitrary in-page JavaScript state.",
         ),
         "window-new" | "window-close" | "window-focus" | "window-move" | "fullscreen" | "quit" => (
@@ -73,18 +73,18 @@ pub fn guide_article(command: &str) -> Option<GuideArticle> {
         ),
         "hint" => (
             "Hints and Grid",
-            "Hints label eligible page elements. Type a label to select the target. f follows in the current tab; F opens a tab. --target tab-bg opens in the background, yank copies a link, and download requests a download. --first chooses the first matching target and supports an index. Rapid hints keep the interaction active for multiple targets. Use Tab/Shift+Tab to move among candidates, Backspace to correct a label, and the available text filter for crowded pages. Hint labels and typed input remain stable during page updates. Tab previews the selected target in the status bar; mouse hover shows a description without changing keyboard selection. Space cycles overlapping hint badges in label mode; Ctrl+Space also cycles in text mode. When new targets exhaust reserved label capacity, restart hints to include them. Scroll hints are named separately, including Page scroll. `hints.proxy_targets = \"validated\"` opts into the narrowly checked editor and label/control pairings; it defaults to off and does not authorize selectors. For an unfocused embedded frame, select its hint and choose Hint inside frame; this deliberately moves focus and opens a frame-scoped session. Normal hints can include controls in a verified, already-focused frame. The browser validates frame identity, document freshness and geometry; unsupported frames offer Focus with pass-through or Grid. Native pointer and region scope actions remain unavailable for independently collected child controls. For an explicit native pointer attempt, start `hint --target pointer FAMILY` from the local command bar or a direct local keyboard binding. Selecting a label only highlights it; press and release Enter to request one click through the active view. The target is rechecked first, and page response or permission-dependent behavior is not verified. `hint regions` and `hint surfaces` explicitly collect capped, visible structural regions and visual surfaces from the same retained target map; f remains the unchanged all-target family. Regions require named or semantic structure, except genuinely scrollable panes and validated editor representatives. Unnamed visual surfaces must be at least 16 by 16 CSS pixels. Region/surface selection opens a Rust-derived action palette: Hint within and Search within are available for a region or actual scroll pane, and only actually scrollable panes offer Set scroll target; only actually focusable surfaces offer Focus. Hint within and Search within collect visible eligible descendants, exclude the selected region, preserve page focus and scroll, and fail closed for stale or empty scopes without widening to the page. Generic-div size, hidden/offscreen buffers and closed roots do not grant targets or authority. Cross-origin controls require a browser-verified frame/document lease; page URLs or duplicate frame names cannot select the receiver. Frames without script permission or supported geometry retain their exterior and fallback actions.",
-            "Escape cancels hints without selecting anything. A rejected or uncertain pointer dispatch is terminal and is never retried; use ordinary hints for semantic activation.",
+            "Hints label visible links and controls. Type a label to select its target. f follows in the current tab; F opens a new tab. --target tab-bg opens in the background, yank copies a link, and download requests a download. --first chooses the first matching target and supports an index. Rapid hints let you select several targets.\n\nUse Tab/Shift+Tab to preview candidates, Backspace to correct a label, and the text filter on crowded pages. Hover over a label for a description. Space cycles overlapping badges in label mode; Ctrl+Space does the same in text mode. Labels stay stable while the page changes. Restart hints to include new controls that could not receive a label.\n\nUse hint regions to choose a named section or scrolling panel, or hint surfaces to choose a visible surface. Hint within and Search within restrict the next step to that section. Scrollable panels also offer Set scroll target; focusable surfaces offer Focus. These choices do not search offscreen content.\n\nFor embedded content, choose Hint inside frame when offered. If its controls cannot be labelled, use Focus with pass-through or Grid. The optional hints.proxy_targets = \"validated\" setting supports checked editor and label/control pairings; it defaults to off.\n\nFor a pointer click, run hint --target pointer FAMILY in the local command bar or through a keyboard binding. Selecting a label highlights the target; press and release Enter to request one click. Pointer hints may be unavailable in embedded content. A click request does not confirm that the page accepted it.",
+            "Escape cancels without selecting a target. If a pointer click is rejected or its outcome is uncertain, Ferric stops without retrying it. Start ordinary hints to follow the link or activate the control.",
         ),
         "target-search" => (
             "Hints and Grid",
-            "`target-search` opens a native palette over the current page's visible, bounded targets. Enter the query in the palette; optional scopes are links, controls, regions, surfaces, or all. Text ranking uses the same Hint matcher, and a result must be explicitly confirmed with Enter or Confirm before its existing Hint action path runs. Query and selection stay transient. Refresh keeps selection only while the same frame and element identity still has the same action meaning; a removed or virtualised replacement row cannot inherit it. The collector does not scroll the page or claim offscreen content. Search within reuses the same local, weakly retained Region lease and only searches descendants of the selected region.",
-            "Escape cancels the palette without changing page selection, focus, or scroll. Run the command from local keyboard or UI input; remote IPC and CLI command execution are rejected.",
+            "target-search opens a palette of visible page targets. Enter your query there; optional scopes are links, controls, regions, surfaces, or all. Select a result and confirm it with Enter or Confirm. Search text and selection are forgotten when the palette closes. Refresh retains your choice only while the same target and action are still available; otherwise choose again. The search does not scroll the page or include offscreen content. Search within restricts results to the section you chose.",
+            "Escape cancels without changing page selection, focus or scroll. Open target-search from the browser's command bar or keyboard; CLI/IPC cannot interact with page targets.",
         ),
         "grid" | "grid-refine" | "grid-click" | "grid-double-click" | "grid-hover"
         | "grid-back" | "grid-reset" | "grid-help" | "grid-cancel" => (
             "Hints and Grid",
-            "Grid navigation targets a visual position when element hints are unsuitable. Enter with ;g, press the number of the region containing your target, and repeat to refine the crosshair. Enter left-clicks, Shift+Enter right-clicks, Ctrl+Enter middle-clicks, and Space hovers. Alt+Enter requests a qualification-gated native double-click; it remains unavailable until native Wayland qualification passes. Backspace undoes one refinement; 0 resets the grid. ? shows the grid advisory. A changed document, geometry, or physical-pointer interaction can invalidate the session to prevent clicking a stale position.",
+            "Grid navigation chooses a position when element hints are unsuitable. Enter with ;g, press the number of the region containing your target, and repeat to refine the crosshair. Enter left-clicks, Shift+Enter right-clicks, Ctrl+Enter middle-clicks, and Space hovers. Backspace undoes one refinement; 0 resets the grid. ? shows the controls. Navigation, resizing or using the mouse can cancel the grid to prevent a click at the wrong position. Double-click is currently unavailable; use a mouse or the page's keyboard controls.",
             "Escape cancels Grid. A held key does not repeatedly refine or click; release it before another action.",
         ),
         "caret-move" | "caret-select" | "caret-yank" | "yank" | "edit-text" => (
@@ -104,12 +104,25 @@ pub fn guide_article(command: &str) -> Option<GuideArticle> {
             "History lists eligible recorded visits for this profile. The journey graph connects page visits by navigation relationships and can be searched or expanded. Reopening a history or journey entry performs a new safe navigation. Clearing history requires the existing confirmation and can be scoped by time or origin; it also invalidates affected Top Sites tiles. Private history stays in its own session and is never used by ordinary-profile Top Sites.",
             "Escape closes the library or graph. History clearing cannot be undone by tab-undo; dismissed Top Sites can be restored without altering history.",
         ),
-        "profiles" | "profile-list" | "profile-open" | "profile-create" | "profile-delete"
-        | "context-list" | "context-create" | "context-delete" | "context-enter"
-        | "context-save" | "context-route" => (
+        "profiles" | "profile-list" | "profile-open" | "profile-create" | "profile-delete" => (
             "Profiles and Sessions",
             "Use profiles to open the profile manager; profile-list lists profile names for scripts. Profiles keep cookies, browsing history, bookmarks and settings separate. Contexts combine a profile with supported window and workspace workflows. Review the deletion preview before removing a profile. Private browsing keeps its start-page choices separate and forgets them when the private session closes.",
-            "Escape cancels a preview or routing decision. Review the selected profile before destructive operations; deletion does not have a tab-undo recovery.",
+            "Escape cancels a profile preview. Review the profile before deleting it; deletion cannot be undone with tab-undo.",
+        ),
+        "context-list" | "context-create" | "context-enter" | "context-save" => (
+            "Profiles and Sessions",
+            "Contexts group a task's tabs with an existing profile and optional workspace. Use :context-list to choose one, or :context-create NAME --profile PROFILE to create one. :context-enter NAME enters it; :context-save saves the current window's tab membership. A context never combines cookies or storage from separate profiles. You can also define contexts in contexts.toml and apply changes with :config-reload.",
+            "Escape cancels a context choice. Saved membership cannot restore unsaved form entries or a running web app. Use :context-delete NAME --confirm to remove a command-created context; remove file-defined contexts in contexts.toml.",
+        ),
+        "context-delete" => (
+            "Profiles and Sessions",
+            "Use :context-delete NAME --confirm to remove a context created with :context-create. Open pages, the profile and named sessions are kept. For a context defined in contexts.toml, remove its definition and any routes that use it from that file, then run :config-reload. Direct deletion keeps a context defined in that file and its saved tabs, and explains how to remove it.",
+            "Context deletion removes saved tab membership and cannot be undone with tab-undo. Review the context name before confirming.",
+        ),
+        "context-route" => (
+            "Profiles and Sessions",
+            "Context routes suggest or prompt for a context when opening a matching address through a supported browser command. Use :context-route list to review rules, :context-route add PATTERN CONTEXT to add one, and :context-route remove ROUTE_ID to remove one. Route changes are saved in contexts.toml and apply to pages opened next. Redirects, submitted forms and authentication already in progress are not moved to another context.",
+            "Escape dismisses a routing choice. Removing a route keeps its context and pages already open. When removing a context from contexts.toml, also remove routes that refer to it before reloading settings.",
         ),
         "sessions" | "session-save" | "session-load" | "session-list" | "session-delete" => (
             "Profiles and Sessions",
@@ -121,12 +134,31 @@ pub fn guide_article(command: &str) -> Option<GuideArticle> {
             "Open the settings panel to search by setting name or configuration key. Choose a readable value or edit a field, then apply it. Session-only changes are forgotten when Ferric closes; saved changes keep your config.toml intact. Settings show when a change takes effect. Use site-rule commands for settings that apply to one site.",
             "Escape closes settings. Reset returns a setting to its inherited value.",
         ),
-        "download" | "downloads" | "download-open" | "download-show" | "download-cancel"
-        | "download-pause" | "download-resume" | "download-retry" | "print-pdf" | "print"
-        | "save-page" => (
+        "download" | "download-retry" => (
             "Downloads and Permissions",
-            "Downloads use the browser's destination chooser, collision policy, and manager. Pause/resume apply only when the engine supports the requested state; retry starts another eligible request. Open launches a completed file through the desktop, while show reveals its location. Cancel stops the transfer. Printing and saving use explicit user-selected destinations and retain their native progress and failure reporting.",
-            "Escape dismisses a destination or print dialog. Cancel a pending download through the manager; opening a file is an explicit desktop action.",
+            "Download an HTTP or HTTPS link without leaving the current page. Retry starts a new request for an interrupted or cancelled item using this window's profile. Downloads shows preparation and transfer progress. A retry stays unavailable while that item's replacement is preparing or running.",
+            "Use Cancel request in Downloads while waiting for a site to start, or Cancel once a transfer is active. Private browsing keeps downloaded files but does not save download history.",
+        ),
+        "downloads" => (
+            "Downloads and Permissions",
+            "View saved and active downloads for this window's profile. Known transfers stay usable while saved history is updating. Open or Show in folder requires a completed file. Details reveals the download ID for commands.",
+            "Close or Escape dismisses the panel. Cancel request stops preparation; Cancel stops an active transfer. Retry is available after interruption or cancellation.",
+        ),
+        "download-open" | "download-show" | "download-cancel" | "download-pause"
+        | "download-resume" => (
+            "Downloads and Permissions",
+            "Open a completed file or reveal its containing folder with the desktop. Pause, resume and cancel apply to active transfers when their current state permits the action. Use Downloads to see progress and available controls.",
+            "Closing Downloads keeps transfers running. Opening a file is an explicit desktop action.",
+        ),
+        "print-pdf" | "print" => (
+            "Downloads and Permissions",
+            "Print the current page, or use print-pdf to write it to an explicit PDF destination. The browser reports completion or a failure so you can check the result.",
+            "Escape dismisses a print dialog without printing.",
+        ),
+        "save-page" => (
+            "Downloads and Permissions",
+            "Save the current page to the chosen destination. The browser reports progress and any failure through Downloads.",
+            "Escape dismisses a destination dialog. Cancel an active save in Downloads.",
         ),
         "permissions" | "permission-reset" | "blocking-status" | "blocking-toggle"
         | "blocklist-update" | "site-status" | "site-doctor" | "site-doctor-undo"

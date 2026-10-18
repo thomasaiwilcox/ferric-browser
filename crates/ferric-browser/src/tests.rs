@@ -2326,6 +2326,82 @@ fn software_rendering_is_a_gui_only_startup_option() {
 }
 
 #[test]
+fn incompatible_selected_roots_preserve_files_and_offer_nondestructive_recovery() {
+    let roots = StorageRoots::resolve(RootSpec::Temporary).expect("owned roots");
+    roots.ensure().expect("owned directories");
+    let base = roots.data.parent().expect("temporary base");
+    let data_file = roots.data.join("keep-existing-data");
+    let config_file = roots.config.join("keep-existing-config");
+    fs::write(&data_file, "selected data sentinel").expect("data sentinel");
+    fs::write(&config_file, "selected config sentinel").expect("config sentinel");
+    let error = run(&[
+        "--basedir".into(),
+        base.to_string_lossy().into_owned(),
+        "query".into(),
+        "tabs".into(),
+    ])
+    .expect_err("unmarked populated roots must be refused");
+    let data = fs::read(&data_file).expect("data retained");
+    let config = fs::read(&config_file).expect("config retained");
+    roots.cleanup().expect("remove owned fixture");
+    let error = error.into_protocol();
+    assert_eq!(error.code, ErrorCode::Storage.as_str());
+    assert!(error.message.contains("unknown or incompatible"));
+    let details = error.details.expect("public recovery metadata");
+    assert!(
+        details["next_action"]
+            .as_str()
+            .unwrap()
+            .contains("--basedir")
+    );
+    assert!(!details.to_string().contains("reset-data"));
+    assert!(!details.to_string().contains("diagnostics"));
+    assert_eq!(data, b"selected data sentinel");
+    assert_eq!(config, b"selected config sentinel");
+}
+
+#[test]
+fn startup_and_client_socket_failures_offer_path_recovery() {
+    let roots = StorageRoots::resolve(RootSpec::Temporary).expect("owned roots");
+    roots.ensure().expect("owned directories");
+    let base = roots
+        .data
+        .parent()
+        .expect("temporary base")
+        .join("a".repeat(64))
+        .join("b".repeat(64));
+    let paths = existing_instance_paths(Some(&base), Some("long-address-test"))
+        .expect("valid filesystem roots");
+    let startup = match acquire_instance(Some(&base), Some("long-address-test")) {
+        Err(error) => error.into_protocol(),
+        Ok(_) => panic!("overlong Unix socket must not open an instance"),
+    };
+    let client = crate::ipc_client::instance_request(
+        &paths,
+        &Request {
+            id: "long-address-test".into(),
+            method: "query.tabs".into(),
+            params: serde_json::json!({}),
+        },
+    )
+    .expect_err("overlong client address must fail")
+    .into_protocol();
+    roots.cleanup().expect("remove owned fixture");
+    for error in [startup, client] {
+        assert_eq!(error.code, ErrorCode::Config.as_str());
+        let details = error.details.expect("public recovery metadata");
+        assert!(
+            details["next_action"]
+                .as_str()
+                .unwrap()
+                .contains("shorter --basedir")
+        );
+        assert!(!details.to_string().contains("storage health"));
+        assert!(!error.message.contains("a".repeat(64).as_str()));
+    }
+}
+
+#[test]
 fn cli_errors_use_stable_codes() {
     let error = run(&["--unknown".into()]).expect_err("unknown option is rejected");
     assert_eq!(error.code(), ErrorCode::InvalidArgument);

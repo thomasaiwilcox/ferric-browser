@@ -1,5 +1,5 @@
 use super::{
-    CxxQtType, DownloadState, FeedbackLane, FeedbackState, JourneyWrite, MarkWrite, Pin,
+    CatalogReadState, CxxQtType, FeedbackLane, FeedbackState, JourneyWrite, MarkWrite, Pin,
     ProfileLibrarySnapshot, QString, StorageRequest, StorageTicket, Uuid, is_safe_history_url,
     qobject, safe_ipc_url, sanitize_untrusted_title, unix_timestamp,
 };
@@ -82,7 +82,7 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn publish_library_pending(self: Pin<&mut Self>) {
-        let pending = self.as_ref().rust().storage_library_read_pending
+        let pending = self.as_ref().rust().storage_library_read_state.is_pending()
             || self.as_ref().rust().journey_read_pending;
         self.set_library_pending(pending);
     }
@@ -126,7 +126,7 @@ impl qobject::BrowserUi {
         };
         if result.is_ok() {
             self.as_ref().rust().storage_library_dirty.set(true);
-            let pending = self.as_ref().rust().storage_library_read_pending;
+            let pending = self.as_ref().rust().storage_library_read_state.is_pending();
             self.as_mut()
                 .rust_mut()
                 .as_mut()
@@ -170,7 +170,10 @@ impl qobject::BrowserUi {
             .rust_mut()
             .as_mut()
             .get_mut()
-            .storage_library_read_pending = false;
+            .storage_library_read_state = match &result {
+            Ok(_) => CatalogReadState::Ready,
+            Err(error) => CatalogReadState::Failed(error.clone()),
+        };
         self.as_mut().publish_library_pending();
         if self.as_ref().rust().storage_library_refresh_again {
             self.as_mut()
@@ -213,9 +216,9 @@ impl qobject::BrowserUi {
                 // Keep the last readable rows and allow an explicit retry.
                 self.as_mut().set_library_error(QString::from(&error));
                 self.as_ref().rust().storage_library_dirty.set(true);
-                self.set_status_text(QString::from(format!(
-                    "Library couldn't be loaded: {error}"
-                )));
+                self.set_status_text(QString::from(
+                    "Saved items couldn't be loaded. Refresh the library to try again.",
+                ));
             }
         }
     }
@@ -350,78 +353,6 @@ impl qobject::BrowserUi {
                 ferric_browser_storage::StorageWorkerError::Busy
                 | ferric_browser_storage::StorageWorkerError::QueueFull,
             )) => Err("profile metadata worker is busy; retry history clear".into()),
-            Some(Err(error)) => Err(error.to_string()),
-            None => Err("profile metadata worker is unavailable".to_owned()),
-        }
-    }
-
-    pub(super) fn set_download_destination_via_worker(
-        mut self: Pin<&mut Self>,
-        id: String,
-        destination: String,
-    ) -> Result<(), String> {
-        let result = Some(
-            self.as_mut()
-                .submit_storage(StorageRequest::DownloadDestination {
-                    id: id.clone(),
-                    destination: destination.clone(),
-                }),
-        );
-        match result {
-            Some(Ok(())) => {
-                self.as_ref().rust().storage_library_dirty.set(true);
-                self.as_mut()
-                    .rust_mut()
-                    .as_mut()
-                    .get_mut()
-                    .download_destination_pending = true;
-                self.as_mut()
-                    .set_status_text(QString::from("Download destination update queued"));
-                Ok(())
-            }
-            Some(Err(
-                ferric_browser_storage::StorageWorkerError::Busy
-                | ferric_browser_storage::StorageWorkerError::QueueFull,
-            )) => Err("profile metadata worker is busy; retry download destination".into()),
-            Some(Err(error)) => Err(error.to_string()),
-            None => Err("profile metadata worker is unavailable".to_owned()),
-        }
-    }
-
-    pub(super) fn create_download_via_worker(
-        mut self: Pin<&mut Self>,
-        id: String,
-        source_url: String,
-        destination: String,
-        state: DownloadState,
-        created_at: i64,
-    ) -> Result<(), String> {
-        let result = Some(
-            self.as_mut()
-                .submit_storage(StorageRequest::DownloadCreate {
-                    id: id.clone(),
-                    source_url: source_url.clone(),
-                    destination: destination.clone(),
-                    state,
-                    created_at,
-                }),
-        );
-        match result {
-            Some(Ok(())) => {
-                self.as_ref().rust().storage_library_dirty.set(true);
-                self.as_mut()
-                    .rust_mut()
-                    .as_mut()
-                    .get_mut()
-                    .download_create_pending = true;
-                self.as_mut()
-                    .set_status_text(QString::from("Download index creation queued"));
-                Ok(())
-            }
-            Some(Err(
-                ferric_browser_storage::StorageWorkerError::Busy
-                | ferric_browser_storage::StorageWorkerError::QueueFull,
-            )) => Err("profile metadata worker is busy; retry download index creation".into()),
             Some(Err(error)) => Err(error.to_string()),
             None => Err("profile metadata worker is unavailable".to_owned()),
         }

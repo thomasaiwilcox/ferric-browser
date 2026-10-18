@@ -1,43 +1,11 @@
 use super::{
-    BTreeMap, CxxQtType, DownloadUpdate, Duration, Event, HistoryRecord, Instant, JourneyNodeId,
-    JourneyWrite, MAX_PRIVATE_HISTORY, PermissionRule, Pin, QString, StorageRequest, TabId, Uuid,
-    Value, VisitInput, canonical_origin, is_safe_history_url, publish_ipc_event, qobject, thread,
+    BTreeMap, BrowserApplication, CxxQtType, Duration, Event, HistoryRecord, Instant,
+    JourneyNodeId, JourneyWrite, MAX_PRIVATE_HISTORY, PermissionRule, Pin, QString, StorageRequest,
+    TabId, Uuid, Value, VisitInput, canonical_origin, is_safe_history_url, qobject, thread,
     unix_timestamp,
 };
 
 impl qobject::BrowserUi {
-    pub(super) fn queue_download_update(mut self: Pin<&mut Self>, update: DownloadUpdate) -> bool {
-        let event_payload = serde_json::json!({
-            "download_id": update.id.clone(),
-            "state": update.state.as_str(),
-            "bytes_received": update.bytes_received
-        });
-        let accepted = match self.as_mut().submit_storage(StorageRequest::DownloadBatch {
-            updates: vec![update],
-        }) {
-            Ok(()) => {
-                self.as_ref().rust().storage_library_dirty.set(true);
-                true
-            }
-            Err(error) => {
-                self.as_mut().set_status_text(QString::from(format!(
-                    "Download update could not be scheduled: {error}"
-                )));
-                false
-            }
-        };
-        if accepted {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            publish_ipc_event(&mut this.ipc_sequence, "download.changed", event_payload);
-        }
-        accepted
-    }
-
-    pub(super) fn flush_download_writes(self: Pin<&mut Self>) {
-        let _ = self;
-    }
-
     pub(super) fn flush_mark_writes(self: Pin<&mut Self>) {
         let _ = self;
     }
@@ -97,8 +65,31 @@ impl qobject::BrowserUi {
     }
 
     pub(super) fn wait_for_download_writes(mut self: Pin<&mut Self>) -> bool {
-        self.as_mut().poll_storage_library();
-        self.as_ref().storage_is_open()
+        use ferric_browser_application::DownloadHistoryStatus;
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            self.as_mut().poll_storage_library();
+            let status = self
+                .as_ref()
+                .rust()
+                .state
+                .as_ref()
+                .map(BrowserApplication::download_history_status);
+            match status {
+                Some(DownloadHistoryStatus::Ready | DownloadHistoryStatus::NotStored) => {
+                    return true;
+                }
+                Some(DownloadHistoryStatus::Saving) if Instant::now() < deadline => {
+                    thread::sleep(Duration::from_millis(5))
+                }
+                _ => {
+                    self.set_status_text(QString::from(
+                        "Download history couldn't be saved. Refresh Downloads to retry.",
+                    ));
+                    return false;
+                }
+            }
+        }
     }
 
     pub(super) fn wait_for_mark_writes(mut self: Pin<&mut Self>) -> bool {
@@ -119,44 +110,6 @@ impl qobject::BrowserUi {
             if now >= deadline {
                 self.set_status_text(QString::from(
                     "History clear did not finish before shutdown",
-                ));
-                return false;
-            }
-            thread::sleep(Duration::from_millis(5));
-        }
-    }
-
-    pub(super) fn wait_for_download_destination(mut self: Pin<&mut Self>) -> bool {
-        let deadline = Instant::now() + Duration::from_secs(2);
-        loop {
-            self.as_mut().poll_storage_library();
-            let pending = self.as_ref().rust().download_destination_pending;
-            if !pending {
-                return true;
-            }
-            let now = Instant::now();
-            if now >= deadline {
-                self.set_status_text(QString::from(
-                    "Download destination update did not finish before shutdown",
-                ));
-                return false;
-            }
-            thread::sleep(Duration::from_millis(5));
-        }
-    }
-
-    pub(super) fn wait_for_download_create(mut self: Pin<&mut Self>) -> bool {
-        let deadline = Instant::now() + Duration::from_secs(2);
-        loop {
-            self.as_mut().poll_storage_library();
-            let pending = self.as_ref().rust().download_create_pending;
-            if !pending {
-                return true;
-            }
-            let now = Instant::now();
-            if now >= deadline {
-                self.set_status_text(QString::from(
-                    "Download index creation did not finish before shutdown",
                 ));
                 return false;
             }

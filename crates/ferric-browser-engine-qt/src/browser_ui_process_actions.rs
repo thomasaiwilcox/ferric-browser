@@ -61,6 +61,7 @@ impl qobject::BrowserUi {
     pub(super) fn start_spawn_process(
         mut self: Pin<&mut Self>,
         argv: &[String],
+        operation_id: Option<String>,
     ) -> Result<String, String> {
         let Some((executable, arguments)) = argv.split_first() else {
             return Err("spawn requires an executable".into());
@@ -77,7 +78,7 @@ impl qobject::BrowserUi {
             let mut rust = self.as_mut().rust_mut();
             ensure_spawn_working_directory(rust.as_mut().get_mut())?
         };
-        let operation_id = format!("op-{}", Uuid::new_v4());
+        let operation_id = operation_id.unwrap_or_else(|| format!("op-{}", Uuid::new_v4()));
         let mut child = Command::new(executable);
         child
             .args(arguments)
@@ -133,6 +134,7 @@ impl qobject::BrowserUi {
         mut self: Pin<&mut Self>,
         argv: &[String],
         detach: bool,
+        operation_id: Option<String>,
     ) -> Result<String, String> {
         if detach {
             let Some((executable, arguments)) = argv.split_first() else {
@@ -162,10 +164,15 @@ impl qobject::BrowserUi {
                 .stderr(Stdio::null());
             #[cfg(unix)]
             command.process_group(0);
-            command
+            let mut child = command
                 .spawn()
                 .map_err(|error| format!("could not start action target: {error}"))?;
-            let operation_id = format!("op-{}", Uuid::new_v4());
+            // Detached commands may outlive the browser, but commands that
+            // finish while it runs still need their exit status reaped.
+            thread::spawn(move || {
+                let _ = child.wait();
+            });
+            let operation_id = operation_id.unwrap_or_else(|| format!("op-{}", Uuid::new_v4()));
             self.as_mut()
                 .rust_mut()
                 .as_mut()
@@ -174,6 +181,6 @@ impl qobject::BrowserUi {
                 .insert(operation_id.clone(), "detached".into());
             return Ok(operation_id);
         }
-        self.start_spawn_process(argv)
+        self.start_spawn_process(argv, operation_id)
     }
 }

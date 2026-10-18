@@ -511,7 +511,7 @@ impl qobject::BrowserUi {
             || zoom_factor <= 0.0
         {
             self.set_status_text(QString::from(
-                "Scoped Grid rejected: scope geometry is stale",
+                "The selected region changed. Select the region again.",
             ));
             return false;
         }
@@ -529,11 +529,11 @@ impl qobject::BrowserUi {
             serial.to_string().parse::<u64>().ok(),
             revision.to_string().parse::<u64>().ok(),
         ) else {
-            self.set_status_text(QString::from("Scoped Grid rejected: page surface is stale"));
+            self.set_status_text(QString::from("The page changed. Select the region again."));
             return false;
         };
         let Some(surface) = SurfaceStamp::new(serial, revision) else {
-            self.set_status_text(QString::from("Scoped Grid rejected: page surface is stale"));
+            self.set_status_text(QString::from("The page changed. Select the region again."));
             return false;
         };
         let scope = SpatialScope {

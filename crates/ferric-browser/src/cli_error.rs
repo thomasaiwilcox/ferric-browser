@@ -61,6 +61,42 @@ impl CliError {
         )
     }
 
+    pub(super) fn incompatible_data(custom_directory: bool) -> Self {
+        let next_action = if custom_directory {
+            "back up this folder, then choose a new, empty folder with --basedir, or use a compatible version of Ferric Browser"
+        } else {
+            "start with --temp-basedir to use a temporary profile, or back up the existing data and use a compatible version of Ferric Browser"
+        };
+        Self::local(
+            ErrorCode::Storage,
+            "Ferric Browser can't use this data folder because its format is unknown or incompatible.",
+            "selected roots have a missing or incompatible schema marker",
+        ).with_recovery("existing files were left unchanged; the browser did not start", next_action)
+    }
+
+    pub(super) fn invalid_socket_address(context: impl Into<String>) -> Self {
+        Self::local(
+            ErrorCode::Config,
+            "Ferric Browser's local connection address is invalid.",
+            context,
+        ).with_recovery(
+            "existing data was left in place; no connection was opened",
+            "choose a shorter --basedir path, or shorten XDG_RUNTIME_DIR when using the default data folders",
+        )
+    }
+
+    fn with_recovery(self, preserved: &str, next_action: &str) -> Self {
+        let mut error = self.into_protocol();
+        let details = error
+            .details
+            .as_mut()
+            .and_then(Value::as_object_mut)
+            .expect("CLI presentation supplies an object for details");
+        details.insert("preserved".into(), json!(preserved));
+        details.insert("next_action".into(), json!(next_action));
+        Self::Protocol(error)
+    }
+
     pub(super) fn no_instance(context: impl Into<String>) -> Self {
         Self::local(
             ErrorCode::NoInstance,

@@ -35,12 +35,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y desktop-file-utils libnss3 libasound2t64 libpulse0 \
             libxkbfile1 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libxtst6 libxss1 \
-            fonts-dejavu-core cmake libsqlite3-dev
+            fonts-dejavu-core cmake libsqlite3-dev libwayland-dev libxkbcommon-dev python3-venv
       - name: Install qualified Qt SDK
         uses: jurplel/install-qt-action@a9c63c7c123f3069cff414e7e482d95dfa9d8125 # v4.4.1
         with:
           version: ${{ steps.qt-version.outputs.version }}
-          modules: qtwebengine qtwebchannel qtpositioning
+          modules: qtwebengine qtwebchannel qtpositioning qtwaylandcompositor
           cache: true
       - name: Verify selected Qt SDK
         env:
@@ -49,6 +49,25 @@ jobs:
           test "$("$QT_ROOT_DIR/bin/qmake" -query QT_VERSION)" = "$EXPECTED_QT_VERSION"
           echo "QMAKE=$QT_ROOT_DIR/bin/qmake" >> "$GITHUB_ENV"
           echo "CMAKE_PREFIX_PATH=$QT_ROOT_DIR" >> "$GITHUB_ENV"
+      - name: Build qualified public Wayland window export library
+        run: |
+          python3 -m venv "$RUNNER_TEMP/ferric-build-tools"
+          "$RUNNER_TEMP/ferric-build-tools/bin/pip" install cmake==3.31.6 meson==1.7.2 ninja==1.11.1.4
+          export PATH="$RUNNER_TEMP/ferric-build-tools/bin:$PATH"
+          python3 .github/ci/build-window-system.py \
+            --work "$RUNNER_TEMP/ferric-window-system-build" \
+            --prefix "$RUNNER_TEMP/ferric-window-system"
+          echo "$RUNNER_TEMP/ferric-build-tools/bin" >> "$GITHUB_PATH"
+          echo "CMAKE_PREFIX_PATH=$RUNNER_TEMP/ferric-window-system:$QT_ROOT_DIR" >> "$GITHUB_ENV"
+          echo "PKG_CONFIG_PATH=$RUNNER_TEMP/ferric-window-system/lib/pkgconfig:$QT_ROOT_DIR/lib/pkgconfig" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$RUNNER_TEMP/ferric-window-system/lib:$QT_ROOT_DIR/lib" >> "$GITHUB_ENV"
+          echo "QT_PLUGIN_PATH=$RUNNER_TEMP/ferric-window-system/lib/qt6/plugins:$QT_ROOT_DIR/plugins" >> "$GITHUB_ENV"
+          echo "FERRIC_TEST_WINDOW_SYSTEM_PREFIX=$RUNNER_TEMP/ferric-window-system" >> "$GITHUB_ENV"
+      - name: Owned portal transport and native Wayland chooser regressions
+        run: |
+          cmake -S crates/ferric-browser-engine-qt/tests/portal -B target/portal-tests
+          cmake --build target/portal-tests --parallel 2
+          ctest --test-dir target/portal-tests --output-on-failure
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets --keep-going --locked -- -D warnings
       - run: cargo test --workspace --locked
@@ -58,9 +77,15 @@ jobs:
         run: cargo xtask test application-clipboard
       - name: Production browser surface regressions
         run: |
-          ctest --test-dir target/application-tests --output-on-failure -R '^application_(product_polish|context_reload)$'
+          ctest --test-dir target/application-tests --output-on-failure -R '^(application_(product_polish|context_reload|switcher|close_requests|downloads|download_finalization|download_runtime_guard|notification_transport|native_notifications|notification_consent|file_chooser_backend|file_chooser_privacy|action_feedback)|portal_(browser|download_history))$'
           python3 crates/ferric-browser-engine-qt/tests/application/run_ipc_probe.py
+          python3 crates/ferric-browser-engine-qt/tests/application/run_startup_recovery_probe.py --executable target/release/ferric-browser --artifacts "$RUNNER_TEMP/startup-recovery-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          python3 crates/ferric-browser-engine-qt/tests/application/run_context_delete_probe.py
+          dbus-run-session --config-file=crates/ferric-browser-engine-qt/tests/application/notification-test-bus.conf -- python3 crates/ferric-browser-engine-qt/tests/application/run_switcher_privacy_probe.py
+          python3 crates/ferric-browser-engine-qt/tests/application/run_action_feedback_probe.py
+          python3 crates/ferric-browser-engine-qt/tests/application/run_selection_lifecycle_probe.py --executable target/release/ferric-browser
           python3 crates/ferric-browser-engine-qt/tests/application/run_window_ipc_probe.py
+          python3 crates/ferric-browser-engine-qt/tests/application/run_download_ipc_probe.py --executable target/release/ferric-browser --artifacts "$RUNNER_TEMP/download-ipc-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
       - run: desktop-file-validate packaging/io.github.ferricbrowser.FerricBrowser.desktop
 
   dependency-policy:

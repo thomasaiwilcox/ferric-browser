@@ -1,6 +1,7 @@
 #include "request_interceptor.h"
 
 #include <QtCore/QReadLocker>
+#include <QtCore/QMutexLocker>
 #include <QtCore/QtGlobal>
 #include <QtCore/QWriteLocker>
 #include <QtCore/QUrl>
@@ -497,8 +498,78 @@ bool FerricBrowserRequestInterceptor::detach(QObject *profile)
     return true;
 }
 
+namespace {
+constexpr auto downloadControllerPrefix = "/.ferric-download-controller/";
+bool networkDownloadUrl(const QUrl &url) {
+    return url.isValid() && (url.scheme()=="http" || url.scheme()=="https")
+        && !url.host().isEmpty() && url.userInfo().isEmpty()
+        && url.toEncoded().size() <= 16384;
+}
+}
+
+bool FerricBrowserRequestInterceptor::registerDownloadController(const QString &controller, const QString &expected) {
+    const QUrl source(controller), target(expected);
+    if (!networkDownloadUrl(source) || !networkDownloadUrl(target)
+            || !source.path().startsWith(QLatin1StringView(downloadControllerPrefix))
+            || source.path().size()>256 || source.hasQuery() || source.hasFragment()
+            || source.scheme()!=target.scheme() || source.host()!=target.host() || source.port()!=target.port()) return false;
+    QMutexLocker lock(&downloadControllersLock_);
+    if (!downloadControllers_.contains(source) && downloadControllers_.size()>=1024) return false;
+    DownloadController lease;
+    lease.expected = target.adjusted(QUrl::RemoveFragment);
+    downloadControllers_.insert(source, lease);
+    return true;
+}
+void FerricBrowserRequestInterceptor::revokeDownloadController(const QString &controller) {
+    QMutexLocker lock(&downloadControllersLock_);
+    downloadControllers_.remove(QUrl(controller));
+}
+QString FerricBrowserRequestInterceptor::takeDownloadControllerTarget(const QString &controller) {
+    QMutexLocker lock(&downloadControllersLock_);
+    auto it=downloadControllers_.find(QUrl(controller));
+    if (it==downloadControllers_.end()) return {};
+    return std::exchange(it->proposed, {});
+}
+bool FerricBrowserRequestInterceptor::downloadControllerBlocked(const QString &controller) const {
+    QMutexLocker lock(&downloadControllersLock_);
+    const auto it=downloadControllers_.constFind(QUrl(controller));
+    return it!=downloadControllers_.cend() && it->blocked;
+}
+void FerricBrowserRequestInterceptor::markDownloadControllerBlocked(const QUrl &controller) {
+    QMutexLocker lock(&downloadControllersLock_);
+    auto it=downloadControllers_.find(controller);
+    if (it!=downloadControllers_.end()) it->blocked=true;
+}
+bool FerricBrowserRequestInterceptor::admitDownloadController(QWebEngineUrlRequestInfo &info, bool &download) {
+    const auto source=info.firstPartyUrl();
+    if (!source.path().startsWith(QLatin1StringView(downloadControllerPrefix))) return true;
+    QMutexLocker lock(&downloadControllersLock_);
+    auto it=downloadControllers_.find(source);
+    // This namespace is reserved for controlled, non-network documents. An
+    // unknown/revoked nonce is denied, never assigned to an active window.
+    if (it==downloadControllers_.end()) { info.block(true); return false; }
+    if (info.resourceType()==QWebEngineUrlRequestInfo::ResourceTypeMainFrame
+            && info.requestUrl().scheme()=="data") return true;
+    if (!it->active || info.resourceType()!=QWebEngineUrlRequestInfo::ResourceTypeXhr
+            || info.requestMethod()!="GET") { info.block(true); return false; }
+    if (info.requestUrl()==it->expected && ++it->attempts<=8) {
+        it->started=true;
+        download=true;
+        return true;
+    }
+    info.block(true);
+    // A controlled document runs one fixed fetch only. Qt reports even HTTP
+    // redirects as NavigationTypeLink; the admitted URL/nonce is the correlation.
+    if (it->started && networkDownloadUrl(info.requestUrl()))
+        it->proposed=info.requestUrl().toString(QUrl::FullyEncoded);
+    it->active=false;
+    return false;
+}
+
 void FerricBrowserRequestInterceptor::interceptRequest(QWebEngineUrlRequestInfo &info)
 {
+    bool ownedDownload = false;
+    if (!admitDownloadController(info, ownedDownload)) return;
     std::shared_ptr<const PolicySnapshot> policy;
     bool enabled = false;
     {
@@ -515,7 +586,10 @@ void FerricBrowserRequestInterceptor::interceptRequest(QWebEngineUrlRequestInfo 
     if (host.isEmpty()) {
         return;
     }
-    const auto resourceType = info.resourceType();
+    // The measured native anchor-download path is a main-frame download.
+    // Preserve its filter classification for this explicitly registered fetch;
+    // ordinary page XHRs keep their actual resource type.
+    const auto resourceType = ownedDownload ? QWebEngineUrlRequestInfo::ResourceTypeMainFrame : info.resourceType();
     const auto navigationType = info.navigationType();
     const bool isTopLevel = resourceType == QWebEngineUrlRequestInfo::ResourceTypeMainFrame;
     const bool isSubFrame = resourceType == QWebEngineUrlRequestInfo::ResourceTypeSubFrame;
@@ -549,6 +623,7 @@ void FerricBrowserRequestInterceptor::interceptRequest(QWebEngineUrlRequestInfo 
         });
     if (securityDenyRule != policy->securityDenyHosts.cend()) {
         info.block(true);
+        if (ownedDownload) markDownloadControllerBlocked(info.firstPartyUrl());
         blockedCount_.fetch_add(1, std::memory_order_relaxed);
         QVariantMap decision;
         decision.insert(QStringLiteral("resource_host"), host);
@@ -590,6 +665,7 @@ void FerricBrowserRequestInterceptor::interceptRequest(QWebEngineUrlRequestInfo 
             &matchedRuleLength);
         if (blocked) {
             info.block(true);
+            if (ownedDownload) markDownloadControllerBlocked(info.firstPartyUrl());
             blockedCount_.fetch_add(1, std::memory_order_relaxed);
             QVariantMap decision;
             decision.insert(QStringLiteral("resource_host"), host);
@@ -640,6 +716,7 @@ void FerricBrowserRequestInterceptor::interceptRequest(QWebEngineUrlRequestInfo 
     }
     if (!excepted && matchingRule != policy->blockedHosts.cend()) {
         info.block(true);
+        if (ownedDownload) markDownloadControllerBlocked(info.firstPartyUrl());
         blockedCount_.fetch_add(1, std::memory_order_relaxed);
         {
             QWriteLocker locker(&countsLock_);

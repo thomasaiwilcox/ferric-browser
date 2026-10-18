@@ -74,6 +74,7 @@ FerricModalSurface {
     }
     function requestGraphPaint() { journeyGraph.requestPaint() }
     function focusPrimaryControl() {
+        if (!interactive) return
         if (libraryEntryList.visible) libraryEntryList.focusList()
         else { journeyGraph.showBeginning(); journeyGraph.forceActiveFocus() }
     }
@@ -87,7 +88,7 @@ FerricModalSurface {
         if (visible) focusTimer.restart()
     }
     Component.onCompleted: if (visible) focusTimer.restart()
-    Timer { id: focusTimer; interval: 0; onTriggered: if (libraryManager.visible) libraryManager.focusPrimaryControl() }
+    Timer { id: focusTimer; interval: 0; onTriggered: if (libraryManager.interactive) libraryManager.focusPrimaryControl() }
 
     visible: managerVisible
     commandText: libraryKind === "actions" ? ":action-list" : libraryKind === "bookmarks" ? ":bookmark-list" : libraryKind === "quickmarks" ? ":quickmark-list" : libraryKind === "context-routes" ? ":context-route list" : ":" + libraryKind

@@ -131,8 +131,9 @@ impl qobject::BrowserUi {
                 .map(|worker| worker.request(roots, config))
         };
         if !matches!(request, Some(Ok(()))) {
-            self.as_mut()
-                .set_status_text(QString::from("Blocklist policy worker unavailable"));
+            self.as_mut().set_status_text(QString::from(
+                "Couldn't reload blocking rules. Existing rules were kept; try again.",
+            ));
             return false;
         }
         self.as_mut()

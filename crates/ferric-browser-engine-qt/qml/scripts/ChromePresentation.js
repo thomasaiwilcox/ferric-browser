@@ -36,10 +36,24 @@ function fileName(path) {
 }
 
 function downloadStateLabel(state) {
-    var labels = { "offered": "Waiting to start", "in-progress": "Downloading",
+    var labels = { "offered": "Waiting to start", "selecting-destination": "Choose a save location", "in-progress": "Downloading",
         "paused": "Paused", "completed": "Complete", "cancelled": "Cancelled",
         "interrupted": "Interrupted" }
     return typeof labels[state] === "string" ? labels[state] : "Status unavailable"
+}
+
+// Repeated UI refreshes retain one useful rate instead of resetting the
+// sample before enough time has elapsed to measure transferred bytes.
+function downloadRateSample(previous, bytes, now) {
+    bytes = Number(bytes)
+    now = Number(now)
+    if (!isFinite(bytes) || bytes < 0 || !isFinite(now))
+        return {at: isFinite(now) ? now : 0, bytes: 0, rate: 0}
+    if (!previous || now < previous.at || bytes < previous.bytes || now - previous.at > 5000)
+        return {at: now, bytes: bytes, rate: 0}
+    var elapsed = now - previous.at
+    if (elapsed < 200) return previous
+    return {at: now, bytes: bytes, rate: Math.round((bytes - previous.bytes) * 1000 / elapsed)}
 }
 
 function downloadProgress(bytes, total, speed, state) {
@@ -161,7 +175,11 @@ function siteFactSummary(fact, privateSession, hasOrigin) {
     }
     if (!hasOrigin && fact.id !== "capture") return "Available for HTTP and HTTPS pages"
     if (fact.id === "permissions") {
-        if (value.ready !== true) return "Saved permission rules are loading"
+        if (value.ready !== true) {
+            if (value.status === "pending") return "Checking saved permission rules…"
+            if (value.status === "unavailable") return "Saved permission rules unavailable"
+            return "Saved permission rules haven't been fully checked"
+        }
         var rules = listCount(value.durable_rules)
         if (rules < 0) return "Saved permission rules unavailable"
         return rules === 0 ? "No saved rules for this site · requests are handled when they occur"

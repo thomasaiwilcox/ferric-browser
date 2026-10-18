@@ -136,7 +136,7 @@ fn navigation_failure_surface_keeps_safe_context_without_retry_action() {
 }
 
 #[test]
-fn switcher_surface_exposes_selection_state_and_scaled_keyboard_navigation() {
+fn switcher_surface_exposes_selection_state_and_keyboard_navigation() {
     let qml = [
         QML_SOURCE,
         include_str!("../../qml/components/FerricSwitcher.qml"),
@@ -148,7 +148,6 @@ fn switcher_surface_exposes_selection_state_and_scaled_keyboard_navigation() {
     assert!(qml.contains("Accessible.selected: index === resultList.currentIndex"));
     assert!(qml.contains("Qt.Key_PageDown"));
     assert!(qml.contains("Qt.Key_PageUp"));
-    assert!(qml.contains("browserWindow.chromeRowHeight"));
 }
 
 #[test]
@@ -191,7 +190,8 @@ fn scalar_feature_preferences_cross_the_qml_boundary_without_config_parsing() {
     assert!(source.contains("feature_switcher_max_results"));
     assert!(source.contains("update_feature_preferences"));
     assert!(preferences.contains("struct FeaturePreferences"));
-    assert!(qml.contains("return browserUi.feature_switcher_max_results"));
+    assert!(source.contains("#[qproperty(i32, feature_switcher_max_results)]"));
+    assert!(qml.contains("feature_switcher_max_results"));
     assert!(qml.contains("return (ui || browserUi).feature_downloads_ask_destination"));
     assert!(qml.contains("rootWindow.downloadsAskDestination(secondaryUi)"));
     let popup = include_str!("../../qml/components/FerricPopupWindow.qml");
@@ -639,9 +639,10 @@ fn qml_json_contract_allowlist_is_explicit() {
 
     assert!(allowlist.contains("Opaque page-script request/result contracts"));
     assert!(allowlist.contains("Prohibited presentation payloads"));
-    assert!(allowlist.contains("20 parses and 39"));
+    assert!(allowlist.contains("In-memory permission request keys"));
+    assert!(allowlist.contains("20 parses and 40"));
     assert_eq!(qml.matches("JSON.parse(").count(), 20);
-    assert_eq!(qml.matches("JSON.stringify(").count(), 39);
+    assert_eq!(qml.matches("JSON.stringify(").count(), 40);
 }
 
 #[test]
@@ -673,26 +674,26 @@ fn qml_submits_runtime_intents_instead_of_writing_runtime_state() {
 #[test]
 fn download_desktop_actions_cross_the_qml_boundary_as_a_typed_uri() {
     let source = ADAPTER_SOURCE;
-    let qml = QML_SOURCE;
+    let qml = include_str!("../../qml/components/FerricDownloadWorkspace.qml");
 
     assert!(source.contains("#[qproperty(QString, download_desktop_uri)]"));
     assert!(source.contains("fn resolve_download_desktop_uri("));
     assert!(source.contains(
         "fn download_desktop_action(self: Pin<&mut BrowserUi>, id: &QString, reveal: bool) -> bool;"
     ));
-    assert!(qml.contains("if (!browserUi.download_desktop_action(id, reveal))"));
-    assert!(qml.contains("window.openExternalUri(browserUi, browserUi.download_desktop_uri)"));
+    assert!(qml.contains("browserUi.download_desktop_action(id, reveal)"));
+    assert!(qml.contains("rootWindow.openExternalUri(browserUi, browserUi.download_desktop_uri)"));
 }
 
 #[test]
 fn download_activation_requests_cross_the_qml_boundary_as_typed_fields() {
     let source = ADAPTER_SOURCE;
-    let qml = QML_SOURCE;
+    let qml = include_str!("../../qml/components/FerricDownloadWorkspace.qml");
 
     assert!(source.contains("#[qproperty(QString, download_request_token)]"));
     assert!(source.contains("#[qproperty(QString, download_request_url)]"));
     assert!(source.contains("fn take_download_request(self: Pin<&mut BrowserUi>) -> bool;"));
-    assert!(qml.contains("ui.download_request_url"));
+    assert!(qml.contains("browserUi.download_request_url"));
     assert!(qml.contains("browserUi.download_request_token"));
     assert!(!qml.contains("JSON.parse(downloadRequest)"));
 }
@@ -1149,10 +1150,13 @@ fn diagnostics_export_requires_explicit_local_save_and_never_overwrites() {
 }
 
 #[test]
-fn required_desktop_portals_gate_file_selection_asynchronously() {
+fn required_portal_mode_reaches_file_choosers_without_cached_file_preflight() {
     let source = ADAPTER_SOURCE;
     let portals = include_str!("../desktop_portals.rs");
     let qml = QML_SOURCE;
+    let dialogs = include_str!("../../qml/components/FerricFileDialogSurfaces.qml");
+    let services = include_str!("../../qml/components/FerricBrowserRuntimeServices.qml");
+    let secondary = include_str!("../../qml/components/FerricBrowserWindow.qml");
     assert!(source.contains("fn portal_capability_status"));
     assert!(source.contains("portal_capabilities"));
     assert!(portals.contains("struct PortalCapabilities"));
@@ -1162,21 +1166,15 @@ fn required_desktop_portals_gate_file_selection_asynchronously() {
     assert!(qml.contains("probe_desktop_portals()"));
     assert!(qml.contains("browserUi.portal_capability_status(capability)"));
     assert!(!qml.contains("desktop_portal_status"));
-    assert!(qml.contains("desktopPortalCapabilityStatus(requestUi, \"file_chooser\")"));
-    assert!(qml.contains("pendingFileDialogWaitingForPortal"));
-    assert!(qml.contains("pendingFileDialogWaitingForPortal = true"));
-    assert!(qml.contains("pendingFileDialogPortalDeadlineMs"));
-    assert!(qml.contains("Desktop portal check timed out; file selection cancelled"));
+    assert!(services.contains("enginePortalRequired: window.desktopPortalMode(window.pendingFileDialogUi || browserUi) === \"required\""));
+    assert!(secondary.contains("portalRequired: rootWindow.desktopPortalMode(secondaryUi) === \"required\""));
+    assert!(dialogs.contains("portalRequired: enginePortalRequired"));
+    assert!(!services.contains("pendingFileDialogWaitingForPortal"));
+    assert!(!secondary.contains("secondaryFilePortalTimer"));
     assert!(qml.contains("pendingDesktopMediaPortalDeadlineMs"));
-    assert!(qml.contains("secondaryFilePortalTimer"));
-    assert!(qml.contains("function maybeOpenPendingFileDialog()"));
     let popup = include_str!("../../qml/components/FerricPopupWindow.qml");
     assert!(popup.contains("FerricBrowserWindow {"));
     assert!(!popup.contains("pendingFileDialogWaitingForPortal"));
-    assert!(qml.contains("secondaryWindow.maybeOpenPendingFileDialog()"));
-    assert!(qml.contains("secondaryWindow.pendingFileDialogWaitingForPortal = true"));
-    assert!(qml.contains("secondaryWindow.pendingFileDialogPortalDeadlineMs"));
-    assert!(qml.contains("Required desktop portal unavailable; file selection cancelled"));
     assert!(qml.contains("window.openPendingEngineFileDialog()"));
     assert!(qml.contains("desktopPortalCapabilityStatus(ui, \"screen_cast\")"));
     assert!(qml.contains("Required ScreenCast portal unavailable; screen sharing cancelled"));
@@ -1193,8 +1191,8 @@ fn required_desktop_portals_gate_file_selection_asynchronously() {
     assert!(qml.contains("processPendingPortalNotifications"));
     assert!(qml.contains("closeWebNotificationsForOrigin"));
     assert!(qml.contains("pendingOrigin"));
-    assert!(qml.contains("Desktop portal check timed out; notification cancelled"));
-    assert!(qml.contains("Required Notification portal unavailable; notification cancelled"));
+    assert!(qml.contains("Desktop notification check timed out; notification cancelled"));
+    assert!(qml.contains("Required desktop notification service unavailable; notification cancelled"));
 }
 
 #[test]
@@ -1328,7 +1326,7 @@ fn ephemeral_hint_target_creates_a_typed_new_window_action() {
     assert!(qml.contains("property var ephemeralProfileOwners"));
     assert!(qml.contains("function retainEphemeralProfileOwner(profile, token)"));
     assert!(qml.contains("function releaseEphemeralProfileOwner(profile, token)"));
-    assert!(qml.contains("Ephemeral profile owner token is already bound"));
+    assert!(qml.contains("if (isEphemeral && !window.retainEphemeralProfileOwner(profile, token))"));
     assert!(qml.contains("ephemeralInvocationToken"));
     assert!(qml.contains("windowSharedProfile: sharedProfile"));
     let controller = include_str!("../../qml/components/FerricTabViewController.qml");
@@ -1849,21 +1847,24 @@ fn notifications_require_consent_and_push_is_explicitly_opt_in() {
     assert!(qml.contains("permission_decision(origin, \"notifications\")"));
     assert!(qml.contains("activeWebNotifications"));
     assert!(qml.contains("notification.closed.connect"));
-    assert!(qml.contains("previous.close()"));
+    // Replacement and denial close events are checked by the executable
+    // notification suites; the local record's variable name is not a contract.
     assert!(qml.contains("function notificationProfileScope(ui, privateProfile)"));
-    assert!(qml.contains("window.notificationProfileScope(ui, privateProfile)"));
+    assert!(qml.contains("rootWindow.notificationProfileScope(ui, privateProfile)"));
     assert!(qml.contains("function closeWebNotificationsForOrigin(origin, sourceUi)"));
     assert!(qml.contains("permission === \"notifications\""));
     assert!(qml.contains("NotificationPresenter"));
-    assert!(qml.contains("notificationPresenter.present(notification, profileScope, origin)"));
+    assert!(qml.contains("notificationPresenter.present(notification, profileScope, origin, requiredPortal)"));
     assert!(qml.contains("onNotificationUnavailable"));
     assert!(qml.contains("property var notificationOwners"));
     assert!(qml.contains("function notificationOwnerFor(notification, requireKnown)"));
-    assert!(qml.contains("window.notificationOwnerFor(notification)"));
+    assert!(qml.contains("controller.notificationRecordFor(notification)"));
     assert!(qml.contains("rememberNotificationOwner(notification, ui)"));
     assert!(qml.contains("function activeWebNotification(notification)"));
-    assert!(qml.contains("window.activeWebNotification(notification)"));
-    assert!(qml.contains("Desktop notification service unavailable; using Qt fallback"));
+    assert!(qml.contains("controller.activeWebNotification(notification)"));
+    assert!(!qml.contains("using Qt fallback"));
+    assert!(qml.contains("onNotificationPresented"));
+    assert!(qml.contains("controller.deferredNotificationOwnerValid(owner)"));
     assert!(qml.contains("focusNotificationOrigin(profileScope, origin)"));
     assert!(qml.contains("closeWebNotifications()"));
     assert!(qml.contains("ui.feature_push_service_enabled"));

@@ -20,6 +20,8 @@ use serde::{Deserialize, Serialize};
 mod appearance;
 mod browser_config;
 mod config_model;
+mod download_directory;
+pub use download_directory::DownloadDirectory;
 mod routing;
 mod runtime_config;
 mod selector_config;

@@ -389,11 +389,8 @@ fn switcher_input_coalesces_refreshes_and_cancels_on_close() {
     assert!(qml.contains("switcherBatchTimer.start()"));
     assert!(qml.contains("switcherBatchGeneration += 1"));
     assert!(qml.contains("switcherBatchQuery !== switcherSurface.query"));
-    assert!(qml.contains("function switcherMaxResults()"));
-    assert!(qml.contains("return browserUi.feature_switcher_max_results"));
-    assert!(qml.contains("Search up to \" + browserWindow.switcherMaxResults()"));
-    assert!(qml.contains("Number(right.rank || 0)"));
-    assert!(qml.contains("String(left.id || \"\").localeCompare"));
+    // Ranking, combined limits and retained selection have executable QML
+    // coverage. Their implementation need not live beside the input timers.
     assert!(qml.contains("if (window.switcherVisible)"));
 }
 

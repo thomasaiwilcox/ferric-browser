@@ -66,7 +66,7 @@ impl qobject::BrowserUi {
     ) -> Option<Result<Value, PublicError>> {
         if !matches!(
             command.name.as_str(),
-            "help" | "version" | "diagnostics" | "settings" | "profiles" | "sessions"
+            "help" | "version" | "diagnostics" | "settings" | "profiles" | "sessions" | "get"
         ) {
             return None;
         }
@@ -103,6 +103,7 @@ impl qobject::BrowserUi {
             }
         }
         Some(match command.name.as_str() {
+            "get" => self.as_mut().execute_config_get_command(command),
             "help" => self
                 .as_mut()
                 .execute_help_command(command)
@@ -341,16 +342,11 @@ impl qobject::BrowserUi {
                 return CommandDispatchControl::Failed;
             }
             match parse_action_invocation(command) {
-                Ok((mapped, action_id)) => {
+                Ok((mapped, _)) => {
                     *command = mapped;
-                    self.as_mut()
-                        .set_status_text(QString::from(format!("Executing {action_id}")));
                 }
                 Err(error) => match self.as_mut().execute_userscript_action_command(command) {
-                    Ok(Some((_, action_id))) => {
-                        self.as_mut().set_status_text(QString::from(format!(
-                            "Executing userscript action {action_id}"
-                        )));
+                    Ok(Some(_)) => {
                         return CommandDispatchControl::Continue;
                     }
                     Ok(None) => {
@@ -358,11 +354,22 @@ impl qobject::BrowserUi {
                         return CommandDispatchControl::Failed;
                     }
                     Err(userscript_error) => {
-                        self.set_status_text(QString::from(userscript_error));
+                        self.set_status_text(QString::from(userscript_error.user_message()));
                         return CommandDispatchControl::Failed;
                     }
                 },
             }
+        }
+        if command.name == "send" {
+            if let Err(error) = registry.validate(command, self.as_ref().rust().core_mode) {
+                self.set_status_text(QString::from(error.to_string()));
+                return CommandDispatchControl::Failed;
+            }
+            if let Err(error) = self.as_mut().execute_send_command(command) {
+                self.set_status_text(QString::from(error));
+                return CommandDispatchControl::Failed;
+            }
+            return CommandDispatchControl::Continue;
         }
         if is_session_command(&command.name) {
             let mode = self.as_ref().rust().core_mode;
@@ -396,8 +403,6 @@ impl qobject::BrowserUi {
                 self.set_status_text(QString::from(error));
                 return CommandDispatchControl::Failed;
             }
-            self.as_mut()
-                .set_status_text(QString::from("Context command executed"));
             return CommandDispatchControl::Continue;
         }
         CommandDispatchControl::Unhandled

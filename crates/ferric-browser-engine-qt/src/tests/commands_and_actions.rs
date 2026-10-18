@@ -45,11 +45,17 @@ fn ipc_copy_commands_use_safe_typed_url_arguments() {
 
 #[test]
 fn ipc_passthrough_modes_keep_canonical_names_and_aliases() {
-    for mode in ["passthrough", "pass-through", "passthrough-once", "pass-through-once"] {
+    for mode in [
+        "passthrough",
+        "pass-through",
+        "passthrough-once",
+        "pass-through-once",
+    ] {
         let (command, _) = typed_ipc_command(&serde_json::json!({
             "command": "mode-enter",
             "arguments": {"mode": mode}
-        })).expect("typed pass-through mode command");
+        }))
+        .expect("typed pass-through mode command");
         assert_eq!(command.arguments, vec![mode]);
     }
     for mode in [Mode::PassThrough, Mode::PassThroughOnce] {
@@ -110,7 +116,9 @@ fn profile_delete_command_uses_the_existing_preview_boundary() {
     let qml = QML_SOURCE;
     assert!(qml.contains("action.indexOf(\"profile-delete\\t\") === 0"));
     assert!(qml.contains("window.showProfileDeletePreview(profileDeleteAction"));
-    assert!(qml.contains("workspace.browserUi.delete_profile(workspace.state.profileDeleteName, true)"));
+    assert!(
+        qml.contains("workspace.browserUi.delete_profile(workspace.state.profileDeleteName, true)")
+    );
     assert!(!qml.contains("delete_profile(window.profileDeleteName, false)"));
     assert!(!qml.contains("delete_profile(workspace.state.profileDeleteName, false)"));
 }
@@ -374,9 +382,7 @@ fn tab_close_command_uses_optional_typed_id_and_count() {
     let qml = QML_SOURCE;
     assert!(qml.contains("action.indexOf(\"tab-close-active\\t\") === 0"));
     assert!(qml.contains("function closeTabAtIndex(index)"));
-    assert!(
-        ADAPTER_SOURCE.contains(".finish_tab_close(index, target.tab, target.generation)")
-    );
+    assert!(ADAPTER_SOURCE.contains(".finish_tab_close(index, target.tab, target.generation)"));
     assert!(!qml.contains("browserUi.view_closed_for(index)"));
     assert!(qml.contains("view.visible = false"));
     assert!(qml.contains("view.parent = null"));
@@ -442,7 +448,7 @@ fn history_commands_use_typed_bounded_counts() {
     );
     let qml = QML_SOURCE;
     assert!(qml.contains("function executeHistoryTraversal(view, backwards, requestedCount)"));
-    assert!(qml.contains("History boundary reached"));
+    assert!(qml.contains("No earlier history") && qml.contains("No later history"));
 }
 
 #[test]

@@ -156,6 +156,7 @@ ApplicationWindow {
     property double applicationShutdownStartedAt: 0
     property int applicationShutdownGeneration: 0
     property alias ephemeralProfileOwners: windowRegistryController.ephemeralProfileOwners
+    readonly property alias switcherRegistry: windowRegistryController
     property bool libraryJourneyGraphMode: false
     property bool libraryJourneyCurrentOnly: false
     property string libraryJourneySearchText: ""
@@ -394,105 +395,35 @@ ApplicationWindow {
     }
 
     function closeWebNotifications() {
-        var active = window.activeWebNotifications || ({})
-        for (var key in active) {
-            if (active[key]) {
-                active[key].close()
-            }
-        }
-        window.activeWebNotifications = ({})
-        window.notificationOwners = []
-        var pending = window.pendingPortalNotifications || []
-        for (var pendingIndex = 0; pendingIndex < pending.length; ++pendingIndex) {
-            if (pending[pendingIndex].notification) {
-                pending[pendingIndex].notification.close()
-            }
-        }
-        window.pendingPortalNotifications = []
+        return webNotificationController.closeWebNotifications()
     }
 
     function removePendingPortalNotification(notification) {
-        var pending = window.pendingPortalNotifications || []
-        window.pendingPortalNotifications = pending.filter(function(entry) {
-            return entry && entry.notification !== notification
-        })
+        return webNotificationController.removePendingPortalNotification(notification)
     }
 
     function notificationOwnerFor(notification, requireKnown) {
-        var owners = window.notificationOwners || []
-        for (var index = 0; index < owners.length; ++index) {
-            if (owners[index] && owners[index].notification === notification) {
-                return owners[index].ui || browserUi
-            }
-        }
-        return requireKnown ? null : browserUi
+        return webNotificationController.notificationOwnerFor(notification, requireKnown)
     }
 
     function rememberNotificationOwner(notification, ui) {
-        var owners = (window.notificationOwners || []).filter(function(entry) {
-            return entry && entry.notification !== notification
-        })
-        owners.push({ notification: notification, ui: ui || browserUi })
-        window.notificationOwners = owners
+        return webNotificationController.rememberNotificationOwner(notification, ui)
     }
 
     function forgetNotificationOwner(notification) {
-        window.notificationOwners = (window.notificationOwners || []).filter(function(entry) {
-            return entry && entry.notification !== notification
-        })
+        return webNotificationController.forgetNotificationOwner(notification)
     }
 
-    function deferNotificationUntilPortal(ui, notification, privateProfile) {
-        var pending = window.pendingPortalNotifications || []
-        window.removePendingPortalNotification(notification)
-        pending = window.pendingPortalNotifications || []
-        pending.push({
-            ui: ui || browserUi,
-            notification: notification,
-            privateProfile: privateProfile,
-            deadlineMs: Date.now() + 5000
-        })
-        window.pendingPortalNotifications = pending.slice(-32)
-        notification.closed.connect(function() {
-            window.removePendingPortalNotification(notification)
-        })
-        notificationPortalTimer.start()
+    function deferredNotificationOwnerValid(entry) {
+        return webNotificationController.deferredNotificationOwnerValid(entry)
+    }
+
+    function deferNotificationUntilPortal(ui, notification, privateProfile, previous) {
+        return webNotificationController.deferNotificationUntilPortal(ui, notification, privateProfile, previous)
     }
 
     function processPendingPortalNotifications() {
-        var pending = (window.pendingPortalNotifications || []).slice(0)
-        if (pending.length === 0) {
-            notificationPortalTimer.stop()
-            return
-        }
-        var remaining = []
-        for (var index = 0; index < pending.length; ++index) {
-            var entry = pending[index]
-            if (!entry || !entry.notification) {
-                continue
-            }
-            var status = window.desktopPortalCapabilityStatus(entry.ui, "notifications")
-            if (Date.now() >= Number(entry.deadlineMs)
-                    || (status !== "pending" && status !== "not-probed"
-                        && status !== "available")) {
-                entry.notification.close()
-                if (entry.ui) {
-                    entry.ui.status_text = Date.now() >= Number(entry.deadlineMs)
-                            ? "Desktop portal check timed out; notification cancelled"
-                            : "Required Notification portal unavailable; notification cancelled"
-                }
-                continue
-            }
-            if (status === "pending" || status === "not-probed") {
-                remaining.push(entry)
-                continue
-            }
-            window.presentWebNotification(entry.ui, entry.notification, entry.privateProfile)
-        }
-        window.pendingPortalNotifications = remaining
-        if (remaining.length === 0) {
-            notificationPortalTimer.stop()
-        }
+        return webNotificationController.processPendingPortalNotifications()
     }
 
     function cancelPendingExternalUris(message) {
@@ -550,129 +481,19 @@ ApplicationWindow {
     }
 
     function closeWebNotificationsForOrigin(origin, sourceUi) {
-        var expected = String(origin || "").toLowerCase()
-        if (expected.length === 0) {
-            return
-        }
-        var active = window.activeWebNotifications || ({})
-        for (var key in active) {
-            var parts = String(key).split("\n")
-            if (parts.length >= 3 && parts[1].toLowerCase() === expected
-                    && window.sharesPermissionSession(sourceUi || browserUi,
-                        window.notificationOwnerFor(active[key], true))) {
-                if (active[key]) {
-                    active[key].close()
-                }
-                delete active[key]
-            }
-        }
-        window.activeWebNotifications = active
-        var pending = window.pendingPortalNotifications || []
-        var retained = []
-        for (var pendingIndex = 0; pendingIndex < pending.length; ++pendingIndex) {
-            var entry = pending[pendingIndex]
-            var pendingOrigin = window.safeNotificationOrigin(
-                        entry && entry.notification ? entry.notification : null)
-            if (pendingOrigin.toLowerCase() === expected
-                    && entry && window.sharesPermissionSession(sourceUi || browserUi, entry.ui)) {
-                if (entry.notification) {
-                    entry.notification.close()
-                }
-                if (entry.ui) {
-                    entry.ui.status_text = "Desktop notification revoked for " + pendingOrigin
-                }
-            } else {
-                retained.push(entry)
-            }
-        }
-        window.pendingPortalNotifications = retained
-        if (retained.length === 0) {
-            notificationPortalTimer.stop()
-        }
+        return webNotificationController.closeWebNotificationsForOrigin(origin, sourceUi)
     }
 
     function activeWebNotification(notification) {
-        var active = window.activeWebNotifications || ({})
-        var keys = Object.keys(active)
-        for (var index = 0; index < keys.length; ++index) {
-            if (active[keys[index]] === notification) {
-                return true
-            }
-        }
-        return false
+        return webNotificationController.activeWebNotification(notification)
     }
 
     function notificationProfileScope(ui, privateProfile) {
-        var kind = privateProfile ? "private" : "normal"
-        var name = ui && ui.profile_name ? String(ui.profile_name) : "default"
-        name = window.boundedPageDialogText(name).replace(/[\u0000-\u001f\u007f\n\r]/g, "�")
-        return kind + ":" + (name.length > 0 ? name : "default")
+        return webNotificationController.notificationProfileScope(ui, privateProfile)
     }
 
-    function presentWebNotification(ui, notification, privateProfile) {
-        if (!notification) {
-            return
-        }
-        var origin = window.safeNotificationOrigin(notification)
-        var decision = ui && ui.permission_decision
-                ? String(ui.permission_decision(origin, "notifications")) : "deny"
-        if (origin === "opaque or unavailable origin"
-                || decision !== "allow"
-                || !window.desktopNotificationsEnabled(ui)) {
-            notification.close()
-            if (ui) {
-                ui.status_text = "Desktop notification blocked for " + origin
-            }
-            return
-        }
-        if (window.desktopPortalMode(ui) === "required") {
-            var portalStatus = window.desktopPortalCapabilityStatus(ui, "notifications")
-            if (portalStatus === "not-probed") {
-                browserUi.probe_desktop_portals()
-                portalStatus = window.desktopPortalCapabilityStatus(ui, "notifications")
-            }
-            if (portalStatus === "pending" || portalStatus === "not-probed") {
-                window.deferNotificationUntilPortal(ui, notification, privateProfile)
-                ui.status_text = "Checking required Notification portal…"
-                return
-            }
-            if (portalStatus !== "available") {
-                notification.close()
-                ui.status_text = "Required Notification portal unavailable; notification cancelled"
-                return
-            }
-        }
-        var tag = notification.tag ? String(notification.tag) : ""
-        var profileScope = window.notificationProfileScope(ui, privateProfile)
-        var notificationKey = tag.length > 0
-                ? profileScope + "\n" + origin + "\n" + window.boundedPageDialogText(tag)
-                : profileScope + "\n" + origin + "\n#" + (++window.webNotificationSequence)
-        var active = window.activeWebNotifications || ({})
-        var previous = active[notificationKey]
-        if (previous && previous !== notification) {
-            previous.close()
-        }
-        active[notificationKey] = notification
-        window.activeWebNotifications = active
-        window.rememberNotificationOwner(notification, ui)
-        notification.closed.connect(function() {
-            var current = window.activeWebNotifications || ({})
-            if (current[notificationKey] === notification) {
-                delete current[notificationKey]
-                window.activeWebNotifications = current
-            }
-            window.forgetNotificationOwner(notification)
-        })
-        if (notificationPresenter.present(notification, profileScope, origin)) {
-            ui.status_text = privateProfile
-                    ? "Private desktop notification shown for " + origin
-                    : "Desktop notification shown for " + origin
-            return
-        }
-        notification.show()
-        ui.status_text = privateProfile
-                ? "Private desktop notification shown for " + origin
-                : "Desktop notification shown for " + origin
+    function presentWebNotification(ui, notification, privateProfile, previous) {
+        return webNotificationController.presentWebNotification(ui, notification, privateProfile, previous)
     }
 
     function focusTargetAvailable(target) {
@@ -737,7 +558,8 @@ ApplicationWindow {
     // lease query remains in nativePromptActiveFor for each dispatched key.
     function presentedPromptActiveFor(ui) {
         if (!ui) return false
-        return ui.link_preview_visible || (window.pendingFileDialogUi === ui
+        return (window.switcherVisible && window.switcherUi === ui)
+                || ui.link_preview_visible || (window.pendingFileDialogUi === ui
                     && (!!window.pendingFileDialogRequest
                         || window.pendingFileDialogLeaseToken.length > 0))
                 || (window.pendingPermissionUi === ui
@@ -959,7 +781,7 @@ ApplicationWindow {
         }
         var token = String(invocationToken || "")
         if (isEphemeral && !window.retainEphemeralProfileOwner(profile, token)) {
-            ui.status_text = "Ephemeral profile owner token is already bound to another live profile"
+            ui.status_text = "This temporary window couldn't be opened. Close it and try opening a new temporary window."
             return false
         }
         if (profile && profile.offTheRecord && ui && ui.set_private_start_owner) {
@@ -1208,14 +1030,14 @@ ApplicationWindow {
                 || window.shutdownParticipantCount() > 0) {
             return
         }
-        window.applicationShutdownStage = "Flushing Rust metadata"
+        window.applicationShutdownStage = "Saving browser data"
         if (!browserUi.flush_durable_state()) {
-            window.applicationShutdownStage = "Durable metadata flush failed"
+            window.applicationShutdownStage = "Browser data couldn't be saved"
             window.applicationShutdownForcePromptVisible = true
             return
         }
         if (!browserUi.request_shutdown()) {
-            window.applicationShutdownStage = "Rust shutdown request failed"
+            window.applicationShutdownStage = "Shutdown couldn't finish"
             window.applicationShutdownForcePromptVisible = true
             return
         }
@@ -1236,7 +1058,7 @@ ApplicationWindow {
         var elapsed = Date.now() - window.applicationShutdownStartedAt
         window.applicationShutdownStage = remaining > 0
                 ? "Closing " + remaining + " browser window(s)"
-                : "Flushing Rust metadata"
+                : "Saving browser data"
         if (remaining === 0) {
             window.finishApplicationShutdown()
             return
@@ -1284,7 +1106,7 @@ ApplicationWindow {
         if (!window.applicationShutdownInProgress) {
             return
         }
-        window.applicationShutdownStage = "Forced quit; crash marker preserved"
+        window.applicationShutdownStage = "Force quitting. Recent changes may not be saved."
         browserUi.force_quit()
         window.applicationShutdownInProgress = false
         window.applicationShutdownForcePromptVisible = false
@@ -1339,7 +1161,6 @@ ApplicationWindow {
             hostWindow.requestActivate()
             if (hostWindow.active) {
                 window.activationStatus = "activated"
-                hostWindow.forceActiveFocus()
                 if (focusOperationId.length > 0) {
                     ui.complete_window_focus(focusOperationId, "activated")
                 }
@@ -1533,6 +1354,9 @@ ApplicationWindow {
         var inProgress = 0
         var paused = 0
         var selecting = 0
+        var finishing = window.profileResourceRegistry.finishingForHost(hostWindow)
+        count += finishing.count
+        bytes += finishing.bytes
         for (var key in active) {
             var download = active[key]
             if (!download || download.isFinished === true) {
@@ -1556,6 +1380,7 @@ ApplicationWindow {
             return ""
         }
         var lifecycle = []
+        if (finishing.count > 0) lifecycle.push(finishing.count + " finishing")
         if (inProgress > 0) {
             lifecycle.push(inProgress + " active")
         }
@@ -1680,14 +1505,13 @@ ApplicationWindow {
     property bool profileDeletePreviewVisible: false
     property string profileDeleteName: ""
     property bool downloadManagerVisible: false
-    property var downloadSamples: ({})
     property var spellcheckInventory: []
-    property var activeWebNotifications: ({})
-    property int webNotificationSequence: 0
+    property alias activeWebNotifications: webNotificationController.activeWebNotifications
+    property alias webNotificationSequence: webNotificationController.webNotificationSequence
     property var activeDownloads: ({})
     property var pendingDownloadRequests: ({})
-    property var notificationOwners: []
-    property var pendingPortalNotifications: []
+    property alias notificationOwners: webNotificationController.notificationOwners
+    property alias pendingPortalNotifications: webNotificationController.pendingPortalNotifications
     property var pendingExternalUris: []
     property string pendingDownloadId: ""
     property string pendingDownloadSuggestedName: ""
@@ -1695,8 +1519,6 @@ ApplicationWindow {
     property var pendingFileDialogView: null
     property var pendingFileDialogUi: null
     property string pendingFileDialogLeaseToken: ""
-    property bool pendingFileDialogWaitingForPortal: false
-    property double pendingFileDialogPortalDeadlineMs: 0
     property var pendingPermissionRequest: null
     property var pendingPermissionUi: null
     property string pendingPermissionLeaseToken: ""
@@ -1706,6 +1528,7 @@ ApplicationWindow {
     property int pendingPermissionTabIndex: -1
     property string pendingPermissionOrigin: ""
     property string pendingPermissionName: ""
+    property string pendingPermissionPolicyNotice: ""
     property bool pendingPermissionPrivate: false
     property bool permissionPromptVisible: false
     property var permissionPromptQueue: []
@@ -1774,10 +1597,18 @@ ApplicationWindow {
     property int shutdownPageProbeGeneration: 0
     property bool shutdownApproved: false
     property bool switcherVisible: false
+    property var switcherUi: null
+    property var switcherHost: null
+    property var switcherProfile: null
+    property string switcherOwnerToken: ""
     property var switcherResults: []
+    property var switcherResultContext: null
     property string switcherScope: "all"
     property var switcherBatchEntries: []
     property var switcherBatchMerged: []
+    property var switcherBatchSources: []
+    property var switcherBatchPrevious: []
+    property var switcherSourceState: ({pending: false, failed: false, retryable: false, notice: "", detail: ""})
     property int switcherBatchIndex: 0
     property int switcherBatchGeneration: 0
     property int switcherBatchScheduledGeneration: 0
@@ -1840,7 +1671,7 @@ ApplicationWindow {
             window.noteQtResolution(ui, kind, "error")
             return false
         }
-        resolved.push({ request: request, kind: String(kind) })
+        resolved.push({ request: request, kind: String(kind), method: String(method) })
         if (resolved.length > 256) {
             resolved.shift()
         }
@@ -1965,6 +1796,7 @@ ApplicationWindow {
     }
     readonly property bool browserChromeInputActive:
         window.profileNoticeInputActive
+        || !!window.modalInputScope.activeSurface
         || (window.copyNoticeInputActive && window.copyNoticeHost === window)
         || window.inputBarActive
         || (window.activeWebView() && window.activeWebView().nativeUrl === "rb://start" && window.activeWebView().startPage && window.activeWebView().startPage.inputActive)
@@ -1987,7 +1819,7 @@ ApplicationWindow {
         || window.shutdownConfirmationVisible
         || window.shutdownPromptVisible
         || window.shutdownPagePromptVisible
-        || window.switcherVisible
+        || (window.switcherVisible && window.switcherHost === window)
         || window.siteLedgerVisible
         || (window.diagnosticsVisible && (window.diagnosticsHost || window) === window)
         || window.bindingHelpVisible
@@ -2067,19 +1899,6 @@ ApplicationWindow {
 
     NotificationPresenter {
         id: notificationPresenter
-        onNotificationClicked: function(profileScope, origin) {
-            window.focusNotificationOrigin(profileScope, origin)
-        }
-        onNotificationUnavailable: function(notification, profileScope, origin) {
-            if (!notification || !window.activeWebNotification(notification)) {
-                return
-            }
-            notification.show()
-            var ui = window.notificationOwnerFor(notification)
-            if (ui) {
-                ui.status_text = "Desktop notification service unavailable; using Qt fallback"
-            }
-        }
     }
 
     BlocklistUpdater {
@@ -2101,11 +1920,10 @@ ApplicationWindow {
         onRaiseRequested: window.raise()
     }
 
-    Timer {
-        id: notificationPortalTimer
-        interval: 50
-        repeat: true
-        onTriggered: window.processPendingPortalNotifications()
+    FerricWebNotificationController {
+        id: webNotificationController
+        rootWindow: window
+        notificationPresenter: window.notificationPresenterObject
     }
 
     Timer {
@@ -2145,11 +1963,11 @@ ApplicationWindow {
         repeat: true
         // Completion belongs to every durable window, including destinations
         // opened from a private primary window.
-        running: !window.temporaryProfile || (window.browserWindowRegistry || []).some(function(entry) {
+        running: !window.temporaryProfile || window.liveWindowEntries().some(function(entry) {
             return entry && entry.ui && !entry.privateProfile && !entry.ephemeralProfile
         })
         onTriggered: {
-            var entries = window.browserWindowRegistry || []
+            var entries = window.liveWindowEntries() || []
             if (entries.length === 0) {
                 entries = [{ ui: browserUi }]
             }

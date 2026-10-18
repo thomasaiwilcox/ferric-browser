@@ -12,7 +12,10 @@ use crate::{StorageRoots, durable::RegistryLock};
 
 #[path = "context_definitions.rs"]
 mod definitions;
+#[path = "context_document.rs"]
+mod document;
 pub use definitions::ContextDefinitionUpdate;
+use document::ContextDocument;
 
 const MAX_NAME_LENGTH: usize = 32;
 const MAX_LABEL_LENGTH: usize = 128;
@@ -84,6 +87,7 @@ pub enum ContextRegistryError {
     InvalidWorkspace,
     InvalidAccent,
     ProfileChangeRequiresMigration,
+    DefinedInConfiguration,
     DuplicateName,
     DuplicateId,
     NotFound,
@@ -115,6 +119,9 @@ impl std::fmt::Display for ContextRegistryError {
             Self::ProfileChangeRequiresMigration => formatter.write_str(
                 "context profile cannot change while saved membership exists; migrate it explicitly",
             ),
+            Self::DefinedInConfiguration => formatter.write_str(
+                "This context is defined in contexts.toml. Remove its definition and any routes that use it, then reload settings with :config-reload.",
+            ),
             Self::DuplicateName => formatter.write_str("context name already exists"),
             Self::DuplicateId => formatter.write_str("context id already exists"),
             Self::NotFound => formatter.write_str("context was not found"),
@@ -128,6 +135,7 @@ impl std::error::Error for ContextRegistryError {}
 pub struct ContextRegistry {
     path: PathBuf,
     contexts: Vec<ContextRecord>,
+    revision: u64,
 }
 
 impl ContextRegistry {
@@ -145,8 +153,18 @@ impl ContextRegistry {
         })?;
         let path = roots.state.join("contexts.json");
         let _lock = RegistryLock::acquire(&path).map_err(|error| context_io(&path, &error))?;
-        let contexts = load_records(&path)?;
-        Ok(Self { path, contexts })
+        let document = document::load(&path)?;
+        Ok(Self {
+            path,
+            contexts: document.contexts,
+            revision: document.revision,
+        })
+    }
+
+    /// Monotonic durable commit order within this storage root.
+    #[must_use]
+    pub const fn revision(&self) -> u64 {
+        self.revision
     }
 
     #[must_use]
@@ -258,7 +276,7 @@ impl ContextRegistry {
             accent,
             default_target: default_target.to_owned(),
         };
-        self.reconcile_configured(&[], &[definition])?;
+        self.upsert_configured_definition(&definition)?;
         Ok(self
             .contexts
             .iter()
@@ -266,20 +284,33 @@ impl ContextRegistry {
             .expect("defined context remains present"))
     }
 
-    /// Removes one context record without touching profiles or sessions.
+    /// Removes one command-created context without touching profiles or sessions.
+    /// File-defined contexts must be removed through their configuration source.
     ///
     /// # Errors
     ///
-    /// Returns an error when the context is absent or the atomic write fails.
+    /// Returns an error when the context is file-defined, absent, or the atomic
+    /// write fails. Provenance is checked against the locked durable document,
+    /// including changes committed by another registry owner.
     pub fn remove(&mut self, name: &str) -> Result<ContextRecord, ContextRegistryError> {
         let mut removed = None;
-        self.mutate(|contexts| {
-            let Some(index) = contexts.iter().position(|context| context.name == name) else {
-                return Err(ContextRegistryError::NotFound);
-            };
-            removed = Some(contexts.remove(index));
-            Ok(())
-        })?;
+        self.mutate_document(
+            |document| {
+                if document.configured_names.contains(name) {
+                    return Err(ContextRegistryError::DefinedInConfiguration);
+                }
+                let Some(index) = document
+                    .contexts
+                    .iter()
+                    .position(|context| context.name == name)
+                else {
+                    return Err(ContextRegistryError::NotFound);
+                };
+                removed = Some(document.contexts.remove(index));
+                Ok(true)
+            },
+            |_| Ok(()),
+        )?;
         removed.ok_or(ContextRegistryError::NotFound)
     }
 
@@ -342,19 +373,43 @@ impl ContextRegistry {
     fn mutate_conditional(
         &mut self,
         mutation: impl FnOnce(&mut Vec<ContextRecord>) -> Result<bool, ContextRegistryError>,
+        hook: impl FnMut(ContextSaveStep) -> Result<(), ContextRegistryError>,
+    ) -> Result<(), ContextRegistryError> {
+        self.mutate_document(|document| mutation(&mut document.contexts), hook)
+    }
+
+    fn adopt_document(&mut self, document: ContextDocument) {
+        self.contexts = document.contexts;
+        self.revision = document.revision;
+    }
+
+    fn mutate_document(
+        &mut self,
+        mutation: impl FnOnce(&mut ContextDocument) -> Result<bool, ContextRegistryError>,
         mut hook: impl FnMut(ContextSaveStep) -> Result<(), ContextRegistryError>,
     ) -> Result<(), ContextRegistryError> {
         let _lock =
             RegistryLock::acquire(&self.path).map_err(|error| context_io(&self.path, &error))?;
-        let mut contexts = load_records(&self.path)?;
-        let changed = mutation(&mut contexts)?;
-        validate_records(&contexts)?;
+        let mut document = document::load(&self.path)?;
+        let changed = mutation(&mut document)?;
+        document
+            .configured_names
+            .retain(|name| document.contexts.iter().any(|record| &record.name == name));
+        document.validate(&self.path)?;
         if !changed {
-            self.contexts = contexts;
+            self.adopt_document(document);
             return Ok(());
         }
+        document.revision =
+            document
+                .revision
+                .checked_add(1)
+                .ok_or_else(|| ContextRegistryError::Json {
+                    path: self.path.clone(),
+                    message: "context catalog revision is exhausted".into(),
+                })?;
         let bytes =
-            serde_json::to_vec_pretty(&contexts).map_err(|error| ContextRegistryError::Json {
+            serde_json::to_vec_pretty(&document).map_err(|error| ContextRegistryError::Json {
                 path: self.path.clone(),
                 message: error.to_string(),
             })?;
@@ -387,24 +442,9 @@ impl ContextRegistry {
             .and_then(|directory| directory.sync_all())
             .map_err(|error| context_io(parent, &error))?;
         hook(ContextSaveStep::DirectorySynced)?;
-        self.contexts = contexts;
+        self.adopt_document(document);
         Ok(())
     }
-}
-
-fn load_records(path: &Path) -> Result<Vec<ContextRecord>, ContextRegistryError> {
-    let contexts = match fs::read(path) {
-        Ok(bytes) => {
-            serde_json::from_slice(&bytes).map_err(|error| ContextRegistryError::Json {
-                path: path.to_owned(),
-                message: error.to_string(),
-            })?
-        }
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Vec::new(),
-        Err(error) => return Err(context_io(path, &error)),
-    };
-    validate_records(&contexts)?;
-    Ok(contexts)
 }
 
 fn validate_records(contexts: &[ContextRecord]) -> Result<(), ContextRegistryError> {
@@ -486,7 +526,7 @@ fn validate_members(members: &[ContextMember]) -> Result<(), ContextRegistryErro
                 || descriptor
                     .safe_restore_url
                     .as_deref()
-                    .is_some_and(|url| !crate::is_safe_history_url(url))
+                    .is_some_and(|url| !crate::is_safe_tab_descriptor_url(url))
             {
                 return Err(ContextRegistryError::Json {
                     path: PathBuf::from("contexts.json"),

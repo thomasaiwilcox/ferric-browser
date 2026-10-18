@@ -34,12 +34,18 @@ FerricModalSurface {
 
     FontMetrics { id: choiceMetrics; font: dialog.browserWindow.font }
 
+    readonly property real actionHeightFraction: detailScroll.visible ? 0.65 : 1
+
     function fittedCommandDialogHeight() {
         // Layouts round each track separately. Round the measured content and
         // gap up too, so fractional font scaling doesn't create a tiny scrollbar.
         var detailHeight = detailScroll.visible
                 ? Math.ceil(details.implicitHeight) + Math.ceil(bodyColumn.spacing) : 0
-        return fittedDialogHeight(detailHeight + Math.ceil(actionScroll.contentLayout.implicitHeight))
+        var actionHeight = Math.ceil(actionScroll.contentLayout.implicitHeight)
+        // The action area reserves a share of the body for context. Include
+        // that constraint so a short detail section cannot clip the last row.
+        return fittedDialogHeight(Math.max(detailHeight + actionHeight,
+            Math.ceil(actionHeight / actionHeightFraction)))
     }
 
     function actionEnabled(index) {
@@ -233,8 +239,8 @@ FerricModalSurface {
             Layout.fillWidth: true
             Layout.fillHeight: !detailScroll.visible
             Layout.minimumHeight: 0
-            Layout.preferredHeight: Math.min(contentLayout.implicitHeight, dialog.bodyItem.height * (
-                                                 detailScroll.visible ? 0.65 : 1))
+            Layout.preferredHeight: Math.min(contentLayout.implicitHeight,
+                                             dialog.bodyItem.height * dialog.actionHeightFraction)
             hostWindow: dialog.hostWindow
             spacing: 8 * dialog.scale
             Repeater {

@@ -266,6 +266,7 @@ TestCase {
     Component {
         id: fileDialogSurfacesFixture
         FerricFileDialogSurfaces {
+            engineHostWindow: testWindow
             onEngineFileAccepted: chromeTest.acceptedEngineFileDialogs++
             onEngineFileRejected: chromeTest.rejectedEngineFileDialogs++
         }
@@ -560,6 +561,8 @@ TestCase {
         failOnWarning(/TypeError|ReferenceError|Cannot assign|Unable to assign|Binding loop/)
         testWindow.width = 900
         testWindow.height = 700
+        testWindow.requestActivate()
+        tryCompare(testWindow, "active", true)
         theme.font = Qt.font({family:"monospace",pointSize:10})
         settingsModel.clear()
         settingsModel.append({ key: "ui.reduced_motion", label: "Reduced motion",
@@ -926,32 +929,25 @@ TestCase {
         tryCompare(popup, "visible", false)
     }
 
-    function test_native_prompt_file_chooser_accept_and_cancel_by_keyboard() {
+    function test_file_chooser_decisions_reach_the_request_owner() {
         var accepted = createTemporaryObject(fileDialogSurfacesFixture,
                                              testWindow.contentItem, {
                                                  engineFileOptions: FileDialog.DontUseNativeDialog,
                                                  engineFileMode: FileDialog.SaveFile,
-                                                 engineFileCurrentFolder: "file:///tmp/"
+                                                 engineFileCurrentFolder: "file:///tmp/",
+                                                 engineFileDefaultFile: "file:///tmp/ferric-chooser-accept.txt"
                                              })
         verify(accepted)
         accepted.openEngineFile()
         tryCompare(accepted, "engineFileVisible", true)
-        var acceptName = findChild(testWindow, "fileNameTextField")
-        verify(acceptName)
-        tryCompare(acceptName, "visible", true)
-        acceptName.forceActiveFocus()
-        tryCompare(acceptName, "activeFocus", true)
-        acceptName.text = "ferric-keyboard-accept.txt"
-        keyClick(Qt.Key_Tab)
-        keyClick(Qt.Key_Tab)
-        keyClick(Qt.Key_Space)
+        // Physical keyboard behavior belongs to the native widget backend's
+        // fixture. This layer verifies the actual owner's terminal signals.
+        accepted.engineFileDialog.accept()
         tryCompare(chromeTest, "acceptedEngineFileDialogs", 1, 3000)
         tryCompare(accepted, "engineFileVisible", false)
         accepted.openEngineFile()
         tryCompare(accepted, "engineFileVisible", true)
-        acceptName.forceActiveFocus()
-        tryCompare(acceptName, "activeFocus", true)
-        keyClick(Qt.Key_Escape)
+        accepted.engineFileDialog.reject()
         tryCompare(chromeTest, "rejectedEngineFileDialogs", 1, 3000)
     }
 

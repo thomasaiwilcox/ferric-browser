@@ -333,7 +333,8 @@ impl qobject::BrowserUi {
             this.session_names_dirty.set(true);
             this.session_names_refresh_again = false;
             this.storage_library_refresh_again = false;
-            this.storage_library_read_pending = false;
+            this.storage_library_read_state = super::CatalogReadState::Unrequested;
+            this.session_catalog_read_state = super::CatalogReadState::Unrequested;
             this.journey_read_pending = false;
             this.profile_list_refresh_again = false;
             this.session_restore_preview_pending = false;
@@ -360,21 +361,15 @@ impl qobject::BrowserUi {
             this.clipboard_request_primary = false;
             finish_pending_selection_operation(this, "cancelled");
             this.pending_caret = None;
-            this.pending_spawn = None;
-            if let Some(pending) = this.pending_action_target.take() {
-                this.operation_states
-                    .insert(pending.operation_id, "cancelled".into());
-            }
-            this.pending_download = None;
+            super::browser_ui_download_requests::finish_pending_download_operation(
+                this,
+                "cancelled",
+            );
+            drop(this.download_finalizer.take());
+            drop(this.download_stream_writer.take());
             cleanup_staged_downloads(&mut this.staged_downloads);
             this.macro_key_prefix = None;
             this.macro_key_started_ms = None;
-            if let Some(pending) = this.pending_userscript.take() {
-                this.operation_states.insert(
-                    pending.operation_id,
-                    "failed (document target invalidated)".into(),
-                );
-            }
             if let Some(editor) = this.pending_editor.take() {
                 discard_editor_request(editor);
             }
@@ -450,6 +445,7 @@ impl qobject::BrowserUi {
             this.binding_overlay = QString::default();
             this.config_watch = config_watch;
             this.pending_context_reload = None;
+            this.config_reload_requested_by_user = false;
             this.context_reload_worker = None;
             this.config_reload_worker = ConfigReloadWorker::spawn().ok();
             this.config_write_worker = ConfigWriteWorker::spawn().ok();

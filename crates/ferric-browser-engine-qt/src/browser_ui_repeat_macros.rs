@@ -50,9 +50,7 @@ impl qobject::BrowserUi {
                     .as_ref()
                     .map(|roots| roots.config.as_path()),
                 subject,
-                self.as_ref().rust().state.is_some(),
-                self.as_ref().rust().profile_persistence.is_durable(),
-                self.as_ref().active_profile_is_transient(),
+                self.as_ref().userscript_availability(),
             )?);
         }
         if let Some(values) = actions.as_array_mut() {
@@ -278,16 +276,7 @@ impl qobject::BrowserUi {
         if let Some(pending) = this.pending_config_edit.take() {
             discard_config_edit(pending);
         }
-        this.pending_spawn = None;
-        if let Some(pending) = this.pending_action_target.take() {
-            this.operation_states
-                .insert(pending.operation_id, "cancelled".into());
-        }
-        this.pending_download = None;
-        if let Some(pending) = this.pending_userscript.take() {
-            this.operation_states
-                .insert(pending.operation_id, "cancelled".into());
-        }
+        super::browser_ui_download_requests::finish_pending_download_operation(this, "cancelled");
         self.set_status_text(QString::from("Pending browser work cancelled"));
         true
     }

@@ -120,13 +120,21 @@ impl BrowserApplication {
 
     /// Publishes validated configuration and committed context metadata together.
     /// All freshness checks precede the in-memory update; this performs no I/O.
+    /// Returns the configuration snapshot and runtime effects for invalidated
+    /// context bindings; adapters must observe those checkpoint/IPC effects.
     /// # Errors
     /// Rejects stale or reserved configuration and results from other owners.
     pub fn publish_context_configuration(
         &mut self,
         prepared: crate::PreparedConfigurationUpdate,
         effect: ContextReloadEffect,
-    ) -> Result<crate::ConfigurationSnapshot, ferric_browser_config::ConfigError> {
+    ) -> Result<
+        (
+            crate::ConfigurationSnapshot,
+            Vec<ferric_browser_runtime::RuntimeEffect>,
+        ),
+        ferric_browser_config::ConfigError,
+    > {
         self.ensure_configuration_writable()?;
         let ContextReloadEffect {
             profile, catalog, ..
@@ -134,33 +142,41 @@ impl BrowserApplication {
         if self.configuration.revision() != prepared.expected_revision
             || self.profile_snapshot().as_ref() != Some(&profile)
             || self.runtime.view().shutdown() != ShutdownState::Running
-            || !self.refresh_context_catalog(&catalog)
         {
             return Err(ferric_browser_config::ConfigError::Validation(
                 "The window changed during settings reload. Try again.".into(),
             ));
         }
+        let effects = self.refresh_context_catalog(&catalog).ok_or_else(|| {
+            ferric_browser_config::ConfigError::Validation(
+                "The context catalog changed during settings reload. Try again.".into(),
+            )
+        })?;
         self.configuration = prepared.state;
-        Ok(self.configuration.snapshot())
+        Ok((self.configuration.snapshot(), effects))
     }
 
     /// Publishes committed metadata only into the same live profile generation.
     /// This method performs no disk I/O and never changes a window's profile.
-    /// The caller publishes the returned routing document with its config result.
+    /// The caller publishes the returned routing document with its config result
+    /// and observes the accompanying runtime effects.
     ///
     /// # Errors
     /// Rejects results from an owner that closed, changed profile or is starting.
     pub fn apply_context_reload(
         &mut self,
         effect: ContextReloadEffect,
-    ) -> Result<ContextsConfig, ContextReloadError> {
+    ) -> Result<(ContextsConfig, Vec<ferric_browser_runtime::RuntimeEffect>), ContextReloadError>
+    {
         if self.profile_snapshot().as_ref() != Some(&effect.profile)
             || self.runtime.view().shutdown() != ShutdownState::Running
-            || !self.refresh_context_catalog(&effect.catalog)
         {
             return Err(ContextReloadError::Stale);
         }
-        Ok(effect.configuration)
+        let effects = self
+            .refresh_context_catalog(&effect.catalog)
+            .ok_or(ContextReloadError::Stale)?;
+        Ok((effect.configuration, effects))
     }
 }
 

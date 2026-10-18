@@ -57,10 +57,14 @@ mod browser_ui_context_commands;
 mod browser_ui_context_navigation;
 mod browser_ui_contexts;
 mod browser_ui_controls;
+mod browser_ui_defaults;
+mod browser_ui_download_requests;
 mod browser_ui_downloads_permissions;
 mod browser_ui_edit_commands;
 mod browser_ui_external_actions;
 mod browser_ui_guide;
+mod gui_application;
+pub use gui_application::new_gui_application;
 mod browser_ui_hint_pointer;
 pub use browser_ui_hint_pointer::reject_external_hint_interaction_chain;
 mod browser_ui_diagnostics;
@@ -78,6 +82,12 @@ mod browser_ui_ipc_switcher_actions;
 mod browser_ui_ipc_userscripts;
 mod browser_ui_journey_commands;
 mod browser_ui_library;
+mod browser_ui_switcher_sources;
+mod switcher_sources;
+use switcher_sources::{CatalogReadState, SourceNeeds, SourceProfile, SwitcherAvailability};
+mod browser_ui_download_finalization;
+mod browser_ui_download_stream;
+mod browser_ui_local_files;
 mod browser_ui_maintenance;
 mod browser_ui_management_feedback;
 mod browser_ui_native_prompts;
@@ -128,6 +138,10 @@ mod diagnostics_overview;
 mod diagnostics_presentation;
 mod diagnostics_snapshot;
 mod download_files;
+mod download_finalization;
+mod download_presentation;
+mod download_stream_policy;
+mod download_stream_writer;
 mod editor_process;
 mod effect_projection;
 mod feature_preferences;
@@ -238,12 +252,13 @@ use configuration_workers::{ConfigReadOperation, ConfigReloadWorker, ConfigWrite
 use desktop_portals::{PortalCapabilities, PortalProbeWorker};
 use desktop_preferences::{ReducedMotionProbeWorker, SystemFontScaleProbeWorker};
 #[cfg(test)]
+use download_files::finalize_staged_download;
+#[cfg(test)]
 use download_files::parse_user_dirs_download;
 use download_files::{
     StagedDownload, cleanup_print_artifact, cleanup_staged_download, cleanup_staged_downloads,
-    configured_download_directory_path, finalize_staged_download, path_to_file_url,
-    stage_download_path, validate_pdf_output_path, validate_print_pdf_path,
-    validate_save_page_path,
+    configured_download_directory_path, path_to_file_url, stage_download_path,
+    validate_pdf_output_path, validate_print_pdf_path, validate_save_page_path,
 };
 use editor_process::{
     EditorCompletion, PendingConfigEdit, PendingEditor, cleanup_editor_artifact,
@@ -423,14 +438,25 @@ pub fn shutdown_was_forced() -> bool {
 mod qobject {
     unsafe extern "C++" {
         include!("cxx-qt-lib/qstring.h");
+        include!("cxx-qt-lib/core/qbytearray.h");
         include!("cxx-qt-lib/qstringlist.h");
         include!("cxx-qt-lib/qvariant.h");
         include!("cxx-qt-lib/qurl.h");
+        include!("cxx-qt-lib/qguiapplication.h");
+        include!("cxx-qt-lib/core/qvector/qvector_QByteArray.h");
+        include!("gui_application.h");
         include!("url_display.h");
         type QString = cxx_qt_lib::QString;
+        type QByteArray = cxx_qt_lib::QByteArray;
         type QStringList = cxx_qt_lib::QStringList;
         type QVariant = cxx_qt_lib::QVariant;
         type QUrl = cxx_qt_lib::QUrl;
+        type QGuiApplication = cxx_qt_lib::QGuiApplication;
+        type QVector_QByteArray = cxx_qt_lib::QVector<cxx_qt_lib::QByteArray>;
+
+        fn ferric_browser_gui_application(
+            arguments: &QVector_QByteArray,
+        ) -> UniquePtr<QGuiApplication>;
 
         fn ferric_browser_to_ascii_host(host: &QString) -> QString;
         fn ferric_browser_canonicalize_url(value: &QString) -> QString;
@@ -527,6 +553,11 @@ mod qobject {
         #[qproperty(QStringList, switcher_result_actions)]
         #[qproperty(QStringList, switcher_result_ranks)]
         #[qproperty(QStringList, switcher_result_recencies)]
+        #[qproperty(bool, switcher_sources_pending)]
+        #[qproperty(bool, switcher_sources_failed)]
+        #[qproperty(bool, switcher_sources_retryable)]
+        #[qproperty(QString, switcher_sources_notice)]
+        #[qproperty(QString, switcher_sources_detail)]
         #[qproperty(QString, switcher_request_scope)]
         #[qproperty(QString, switcher_request_query)]
         #[qproperty(QString, search_text)]
@@ -926,6 +957,9 @@ mod qobject {
         fn execute_interactive_command(self: Pin<&mut BrowserUi>, input: &QString) -> bool;
 
         #[qinvokable]
+        fn finish_command_entry(self: Pin<&mut BrowserUi>);
+
+        #[qinvokable]
         fn execute_secondary_interactive_command(
             self: Pin<&mut BrowserUi>,
             input: &QString,
@@ -1233,6 +1267,9 @@ mod qobject {
         fn default_download_directory(self: Pin<&mut BrowserUi>) -> QString;
 
         #[qinvokable]
+        fn allocate_download_id(self: &BrowserUi) -> QString;
+
+        #[qinvokable]
         fn offer_download(
             self: Pin<&mut BrowserUi>,
             id: &QString,
@@ -1257,6 +1294,64 @@ mod qobject {
 
         #[qinvokable]
         fn finalize_download(self: Pin<&mut BrowserUi>, id: &QString) -> bool;
+        #[qsignal]
+        fn stream_download_ready(self: Pin<&mut BrowserUi>, id: QString);
+        #[qinvokable]
+        fn canonical_download_origin(self: &BrowserUi, url: &QString) -> QString;
+        #[qinvokable]
+        fn set_download_controller_available(self: Pin<&mut BrowserUi>, available: bool);
+        #[qinvokable]
+        fn admit_download_stream_target(
+            self: Pin<&mut BrowserUi>,
+            token: &QString,
+            url: &QString,
+        ) -> bool;
+        #[qinvokable]
+        fn download_stream_name(
+            self: &BrowserUi,
+            url: &QString,
+            disposition: &QString,
+            mime: &QString,
+        ) -> QString;
+        #[qinvokable]
+        fn reserve_stream_download(self: Pin<&mut BrowserUi>, id: &QString) -> bool;
+        #[qinvokable]
+        fn begin_stream_download(self: Pin<&mut BrowserUi>, id: &QString) -> bool;
+        #[qinvokable]
+        fn write_stream_download(
+            self: Pin<&mut BrowserUi>,
+            id: &QString,
+            bytes: &QByteArray,
+        ) -> bool;
+        #[qinvokable]
+        fn finish_stream_download(self: Pin<&mut BrowserUi>, id: &QString) -> bool;
+        #[qinvokable]
+        fn cancel_stream_download(self: Pin<&mut BrowserUi>, id: &QString);
+        #[qinvokable]
+        fn release_stream_download(self: Pin<&mut BrowserUi>, id: &QString);
+        #[qinvokable]
+        fn stream_download_state(self: Pin<&mut BrowserUi>, id: &QString) -> i32;
+        #[qinvokable]
+        fn stream_download_bytes(self: &BrowserUi, id: &QString) -> i64;
+        #[qinvokable]
+        fn stream_download_error(self: &BrowserUi, id: &QString) -> QString;
+
+        #[qinvokable]
+        fn download_finalization_pending(self: &BrowserUi, id: &QString) -> bool;
+        #[qinvokable]
+        fn has_finalizing_downloads(self: &BrowserUi) -> bool;
+        #[qinvokable]
+        fn cancel_download_finalization(self: Pin<&mut BrowserUi>, id: &QString) -> bool;
+        #[qinvokable]
+        fn poll_download_finalizations(self: Pin<&mut BrowserUi>);
+        #[qinvokable]
+        fn record_download_metrics(
+            self: Pin<&mut BrowserUi>,
+            id: &QString,
+            total: i64,
+            code: i32,
+            reason: &QString,
+        );
 
         #[qinvokable]
         fn discard_download_staging(self: Pin<&mut BrowserUi>, id: &QString);
@@ -1272,6 +1367,13 @@ mod qobject {
 
         #[qinvokable]
         fn list_downloads(self: Pin<&mut BrowserUi>) -> QString;
+
+        #[qinvokable]
+        fn download_rows(self: Pin<&mut BrowserUi>) -> QVariant;
+        #[qinvokable]
+        fn download_history_status(self: &BrowserUi) -> QString;
+        #[qinvokable]
+        fn refresh_download_history(self: Pin<&mut BrowserUi>);
 
         #[qinvokable]
         fn download_desktop_action(self: Pin<&mut BrowserUi>, id: &QString, reveal: bool) -> bool;
@@ -1342,14 +1444,29 @@ mod qobject {
         fn take_download_request(self: Pin<&mut BrowserUi>) -> bool;
 
         #[qinvokable]
-        fn complete_download_request(
+        fn download_request_source_index(self: &BrowserUi, token: &QString) -> i32;
+
+        #[qinvokable]
+        fn accept_download_request(
             self: Pin<&mut BrowserUi>,
             token: &QString,
-            succeeded: bool,
+            id: &QString,
         ) -> bool;
 
         #[qinvokable]
+        fn discard_download_request(self: Pin<&mut BrowserUi>, token: &QString) -> bool;
+
+        #[qinvokable]
+        fn fail_download_request(self: Pin<&mut BrowserUi>, token: &QString) -> bool;
+
+        #[qinvokable]
+        fn cancel_download_request(self: Pin<&mut BrowserUi>, token: &QString) -> bool;
+
+        #[qinvokable]
         fn switcher_query(self: Pin<&mut BrowserUi>, query: &QString, scope: &QString) -> bool;
+
+        #[qinvokable]
+        fn refresh_switcher_sources(self: Pin<&mut BrowserUi>, scope: &QString) -> bool;
 
         #[qinvokable]
         fn poll_storage_library(self: Pin<&mut BrowserUi>) -> bool;
@@ -1526,6 +1643,9 @@ mod qobject {
 
         #[qinvokable]
         fn local_file_path(self: &BrowserUi, url: &QUrl) -> QString;
+
+        #[qinvokable]
+        fn file_dialog_default_url(self: &BrowserUi, name: &QString, folder: &QUrl) -> QUrl;
 
         #[qinvokable]
         fn prompt_host(self: &BrowserUi, url: &QString) -> QString;
@@ -1945,7 +2065,7 @@ use ferric_browser_storage::Quickmark;
 use ferric_browser_storage::RootSpec;
 use ferric_browser_storage::{
     ClosedTabSnapshot, CollisionPolicy, ContextMember, ContextTabDescriptor, DownloadState,
-    DownloadUpdate, HistoryRecord, JourneyQuerySnapshot, JourneyWrite, MarkWrite, PermissionRule,
+    HistoryRecord, JourneyQuerySnapshot, JourneyWrite, MarkWrite, PermissionRule,
     ProfileLibrarySnapshot, RestoreSafety, SessionSnapshot, SnapshotTabInput, SnapshotWindowInput,
     StorageCompletion, StorageRoots, StorageWorkerError, VisitInput, choose_download_path,
     crash_diagnostics, is_safe_history_url, named_session_path, sanitize_download_filename,
@@ -2104,6 +2224,11 @@ pub struct BrowserUiRust {
     switcher_result_actions: QStringList,
     switcher_result_ranks: QStringList,
     switcher_result_recencies: QStringList,
+    switcher_sources_pending: bool,
+    switcher_sources_failed: bool,
+    switcher_sources_retryable: bool,
+    switcher_sources_notice: QString,
+    switcher_sources_detail: QString,
     switcher_request_scope: QString,
     switcher_request_query: QString,
     search_text: QString,
@@ -2133,7 +2258,8 @@ pub struct BrowserUiRust {
     profile_startup_notice: QString,
     library_error: QString,
     storage_library_refresh_again: bool,
-    storage_library_read_pending: bool,
+    storage_library_read_state: CatalogReadState,
+    session_catalog_read_state: CatalogReadState,
     journey_read_pending: bool,
     profile_action_id: QString,
     profile_action_state: QString,
@@ -2220,8 +2346,6 @@ pub struct BrowserUiRust {
     session_checkpoint_clear_pending: bool,
     storage_flush_pending: bool,
     storage_flush_error: Option<String>,
-    download_destination_pending: bool,
-    download_create_pending: bool,
     pending_permission_reset_session: Option<bool>,
     link_preview_command: QString,
     link_preview_original: QString,
@@ -2309,6 +2433,9 @@ pub struct BrowserUiRust {
     pending_userscript: Option<PendingUserscript>,
     pending_download: Option<PendingDownload>,
     staged_downloads: BTreeMap<String, StagedDownload>,
+    download_finalizer: Option<download_finalization::DownloadFinalizer>,
+    download_stream_writer: Option<download_stream_writer::StreamDownloadWriter>,
+    download_controller_available: bool,
     pending_save_page: Option<PathBuf>,
     pending_print_private: bool,
     spawn_completions: Arc<Mutex<Vec<SpawnCompletion>>>,
@@ -2443,6 +2570,7 @@ pub struct BrowserUiRust {
     cli_overrides: RuntimeOverrides,
     config_watch: ConfigWatch,
     config_reload_worker: Option<ConfigReloadWorker>,
+    config_reload_requested_by_user: bool,
     context_reload_worker: Option<ContextReloadWorker>,
     pending_context_reload: Option<PendingContextReload>,
     config_write_worker: Option<ConfigWriteWorker>,
@@ -2576,10 +2704,57 @@ struct PendingSelection {
 }
 
 fn finish_pending_selection_operation(this: &mut BrowserUiRust, status: &str) {
-    if let Some(request) = this.pending_selection.take()
-        && let Some(operation_id) = request.operation_id
+    // Retire the request and every consumer together. Late page replies must
+    // never retain authority to launch work after cancellation or replacement.
+    let operation_ids = [
+        this.pending_selection
+            .take()
+            .and_then(|request| request.operation_id),
+        this.pending_spawn
+            .take()
+            .map(|request| request.operation_id),
+        this.pending_action_target
+            .take()
+            .map(|request| request.operation_id),
+        this.pending_userscript
+            .take()
+            .map(|request| request.operation_id),
+    ];
+    for operation_id in operation_ids.into_iter().flatten() {
+        let current = this.operation_states.entry(operation_id).or_default();
+        if !operation_is_terminal(current) {
+            *current = status.into();
+        }
+    }
+}
+
+fn cancel_pending_selection_operation(this: &mut BrowserUiRust, operation_id: &str) {
+    if this
+        .pending_selection
+        .as_ref()
+        .and_then(|request| request.operation_id.as_deref())
+        == Some(operation_id)
     {
-        this.operation_states.insert(operation_id, status.into());
+        finish_pending_selection_operation(this, "cancelled");
+    }
+}
+
+fn selection_failure_message(reason: &str) -> &'static str {
+    match reason {
+        "selection-source-changed" | "selection-source-stale" | "selection-changed" => {
+            "The selection changed. Select the text again and retry."
+        }
+        "selection-source-timeout" | "selection-extraction-timeout" => {
+            "Reading the selected text took too long. Try again."
+        }
+        "password fields are not copied" => "Copying password fields as plain text is disabled.",
+        "shadow focus depth is unsupported"
+        | "focused selection is unsupported"
+        | "closed-shadow selection is unsupported" => {
+            "Plain-text selection is unsupported in this control. Use Copy instead."
+        }
+        "selection is too large" => "Select a smaller passage of text and try again.",
+        _ => "Select text on the page and try again.",
     }
 }
 
@@ -2596,6 +2771,7 @@ struct PendingSpawn {
     token: String,
     target: Target,
     argv: Vec<String>,
+    operation_id: String,
 }
 
 #[derive(Clone, Debug)]
@@ -2613,15 +2789,21 @@ struct PendingUserscript {
     token: String,
     target: Target,
     name: String,
+    label: String,
     operation_id: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 struct PendingDownload {
+    operation_id: String,
+    created_at: Instant,
+    retry: Option<ferric_browser_application::DownloadRetryPermit>,
     token: String,
     target: Target,
     url: String,
     issued: bool,
+    visited: std::collections::BTreeSet<String>,
+    last_url: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -2687,6 +2869,17 @@ impl qobject::BrowserUi {
             .is_some_and(BrowserApplication::storage_is_open)
     }
 
+    fn request_permission_preferences(
+        mut self: Pin<&mut Self>,
+        origin: &str,
+    ) -> Result<Option<StorageTicket>, StorageWorkerError> {
+        let mut rust = self.as_mut().rust_mut();
+        let this = rust.as_mut().get_mut();
+        Option::as_mut(&mut this.state)
+            .ok_or(StorageWorkerError::Stopped)?
+            .refresh_permission_preferences(origin)
+    }
+
     fn submit_storage(
         mut self: Pin<&mut Self>,
         request: StorageRequest,
@@ -2746,575 +2939,6 @@ impl qobject::BrowserUi {
     fn active_profile_is_transient(&self) -> bool {
         self.active_profile_privacy()
             .is_some_and(PrivacyKind::is_transient)
-    }
-}
-
-impl Default for BrowserUiRust {
-    #[allow(clippy::too_many_lines)]
-    fn default() -> Self {
-        let registry = CommandRegistry::default_v1();
-        let bindings = BindingTrie::default_v1(registry.clone())
-            .ok()
-            .map(|trie| BindingResolver::new(trie, Mode::Normal));
-        let core = bootstrap_runtime(PrivacyKind::Normal, "default");
-        let (state, window, tab) = match core {
-            Some((runtime, window, tab)) => (
-                Some(BrowserApplication::from_runtime(runtime, Config::default())),
-                Some(window),
-                Some(tab),
-            ),
-            None => (None, None, None),
-        };
-        let theme_palette = ThemePalette::default();
-        let chrome_theme = theme_presentation::project(&theme_palette);
-        let chrome_preferences = chrome_preferences::project(&Config::default());
-        let feature_preferences = feature_preferences::project(&Config::default());
-        let settings_config = serde_json::to_value(Config::default()).unwrap_or(Value::Null);
-        let settings_rows = settings_presentation::project_variant(&settings_config);
-        Self {
-            initial_url: QString::from("about:blank"),
-            current_url: QString::from("about:blank"),
-            display_url: QString::from("about:blank"),
-            page_title: QString::default(),
-            status_text: QString::from("Ready"),
-            macro_status_text: QString::default(),
-            load_state: QString::from("idle"),
-            navigation_failure_kind: QString::default(),
-            navigation_failure_requested_url: QString::default(),
-            navigation_failure_url: QString::default(),
-            navigation_failure_detail: QString::default(),
-            navigation_failure_visible: false,
-            mode: QString::from("normal"),
-            input_epoch: 0,
-            learning_mode: false,
-            view_alive: true,
-            state,
-            window,
-            tab,
-            registry,
-            bindings,
-            mixed_policy: EffectiveMixedKeyPolicy::default(),
-            core_mode: Mode::Normal,
-            binding_clock: Instant::now(),
-            pending_engine_action: None,
-            pending_engine_actions: VecDeque::new(),
-            pending_print: None,
-            pending_print_private: false,
-            pending_journey_transitions: Vec::new(),
-            pending_journey_parent: None,
-            pending_journey_traversal: None,
-            pending_journey_traversals: VecDeque::new(),
-            pending_journey_mappings: BTreeMap::new(),
-            pending_history_clear: None,
-            pending_journey_reopen: None,
-            pending_navigation_urls: BTreeMap::new(),
-            page_document_identities: PageDocumentIdentities::default(),
-            pending_same_document_pass_through: None,
-            pending_redirect_tabs: BTreeSet::new(),
-            pending_redirect_hops: BTreeMap::new(),
-            popup_journey_targets: Vec::new(),
-            tab_ids: tab.into_iter().collect(),
-            popup_tab_ids: Vec::new(),
-            scroll_positions: BTreeMap::new(),
-            active_tab_index: 0,
-            tab_count: 1,
-            completion_text: QString::default(),
-            completion_values: QString::default(),
-            completion_start: 0,
-            completion_end: 0,
-            completion_selected: -1,
-            completion_visible: false,
-            command_retryable: false,
-            command_history: Vec::new(),
-            command_history_index: None,
-            command_history_draft: String::new(),
-            queued_command_history: Vec::new(),
-            command_history_write_pending: false,
-            command_history_write_error: None,
-            start_page_owner_token: QString::default(),
-            start_page_eligible_sites: QStringList::default(),
-            start_page_eligible_urls: QStringList::default(),
-            content_history_revision: 0,
-            private_start_state: Arc::new(Mutex::new(
-                browser_ui_start_page::PrivateStartState::default(),
-            )),
-            start_rank_requested: false,
-            start_page_view: QString::from("guide"),
-            start_page_error: QString::default(),
-            start_page_busy: false,
-            start_page_revision: 0,
-            start_page_rank_revision: 0,
-            start_page_profile_revision: 0,
-            start_page_ready: false,
-            start_page_kinds: QStringList::default(),
-            start_page_ids: QStringList::default(),
-            start_page_urls: QStringList::default(),
-            start_page_titles: QStringList::default(),
-            start_page_sites: QStringList::default(),
-            start_page_slots: QStringList::default(),
-            guide_categories: QStringList::default(),
-            guide_titles: QStringList::default(),
-            guide_keys: QStringList::default(),
-            guide_modes: QStringList::default(),
-            guide_commands: QStringList::default(),
-            guide_summaries: QStringList::default(),
-            guide_ids: QStringList::default(),
-            guide_explanations: QStringList::default(),
-            guide_arguments: QStringList::default(),
-            guide_examples: QStringList::default(),
-            guide_recoveries: QStringList::default(),
-            guide_counts: QStringList::default(),
-            guide_binding_notes: QStringList::default(),
-            guide_details: QStringList::default(),
-            start_snapshot: ferric_browser_storage::StartPageSnapshot::default(),
-            start_read_pending: false,
-            start_refresh_requested: false,
-            start_write_pending: false,
-            content_histories: BTreeMap::new(),
-            binding_overlay: QString::default(),
-            binding_help_row_kinds: QStringList::default(),
-            binding_help_row_titles: QStringList::default(),
-            binding_help_row_modes: QStringList::default(),
-            binding_help_row_commands: QStringList::default(),
-            binding_help_row_descriptions: QStringList::default(),
-            binding_help_row_keys: QStringList::default(),
-            binding_help_row_sources: QStringList::default(),
-            binding_help_row_counts: QStringList::default(),
-            switcher_result_kinds: QStringList::default(),
-            switcher_result_ids: QStringList::default(),
-            switcher_result_generations: QStringList::default(),
-            switcher_result_labels: QStringList::default(),
-            switcher_result_secondaries: QStringList::default(),
-            switcher_result_profiles: QStringList::default(),
-            switcher_result_workspaces: QStringList::default(),
-            switcher_result_actions: QStringList::default(),
-            switcher_result_ranks: QStringList::default(),
-            switcher_result_recencies: QStringList::default(),
-            switcher_request_scope: QString::default(),
-            switcher_request_query: QString::default(),
-            search_text: QString::default(),
-            search_backward: false,
-            session_restore_values: QString::default(),
-            session_preview_labels: QStringList::default(),
-            session_preview_urls: QStringList::default(),
-            session_preview_pinned: QStringList::default(),
-            session_preview_muted: QStringList::default(),
-            session_preview: QString::default(),
-            session_preview_request: None,
-            mark_feedback_tickets: BTreeMap::new(),
-            bookmark_transfer_id: QString::default(),
-            bookmark_transfer_state: QString::from("idle"),
-            bookmark_transfer_message: QString::default(),
-            bookmark_transfer_detail: QString::default(),
-            mark_action_id: QString::default(),
-            mark_action_state: QString::from("idle"),
-            mark_action_message: QString::default(),
-            mark_action_detail: QString::default(),
-            library_pending: false,
-            diagnostics_summary: QStringList::default(),
-            diagnostics_available: false,
-            diagnostics_pending: false,
-            diagnostics_preview: QString::default(),
-            diagnostics_error: QString::default(),
-            profile_startup_notice: QString::default(),
-            library_error: QString::default(),
-            storage_library_refresh_again: false,
-            storage_library_read_pending: false,
-            journey_read_pending: false,
-            profile_action_id: QString::default(),
-            profile_action_state: QString::from("idle"),
-            profile_action_message: QString::default(),
-            profile_action_detail: QString::default(),
-            session_save_id: QString::default(),
-            session_save_state: QString::from("idle"),
-            session_save_message: QString::default(),
-            session_save_detail: QString::default(),
-            session_delete_id: QString::default(),
-            session_delete_state: QString::from("idle"),
-            session_delete_message: QString::default(),
-            session_delete_detail: QString::default(),
-            profile_list_error: QString::default(),
-            profile_preview_error: QString::default(),
-            session_names_values: QStringList::default(),
-            session_names_pending: false,
-            session_names_error: QString::default(),
-            profile_values: QString::default(),
-            profile_values_pending: false,
-            userscript_inventory_pending: false,
-            userscript_inventory_ready: false,
-            userscript_inventory_error: QString::default(),
-            userscript_inventory_refresh_again: false,
-            userscript_names: QStringList::default(),
-            userscript_enabled_values: QStringList::default(),
-            userscript_page_world_values: QStringList::default(),
-            userscript_action_counts: QStringList::default(),
-            userscript_action_ids: QStringList::default(),
-            userscript_action_labels: QStringList::default(),
-            userscript_action_availability: QStringList::default(),
-            external_action_ids: QStringList::default(),
-            external_action_labels: QStringList::default(),
-            external_action_availability: QStringList::default(),
-            page_userscript_names: QStringList::default(),
-            page_userscript_sources: QStringList::default(),
-            page_userscript_run_at: QStringList::default(),
-            page_userscript_runs_on_sub_frames: QStringList::default(),
-            site_rule_javascript_set: false,
-            site_rule_javascript_enabled: false,
-            site_rule_images_set: false,
-            site_rule_images_enabled: false,
-            site_rule_force_dark_set: false,
-            site_rule_force_dark_enabled: false,
-            site_rule_autoplay_set: false,
-            site_rule_autoplay: QString::default(),
-            site_rule_zoom_set: false,
-            site_rule_zoom: 0.0,
-            userscript_install_state: QString::from("idle"),
-            download_desktop_uri: QString::default(),
-            download_request_token: QString::default(),
-            download_request_url: QString::default(),
-            profile_bootstrap_pending: false,
-            profile_list_command_pending: false,
-            pending_profile_open: None,
-            pending_window_new_profile: None,
-            pending_context_create: None,
-            profile_preview_text: QString::default(),
-            profile_preview_pending: false,
-            library_kind: QString::default(),
-            library_values: QString::default(),
-            library_graph_edge_sources: QStringList::default(),
-            library_graph_edge_targets: QStringList::default(),
-            library_graph_edge_transitions: QStringList::default(),
-            journey_export_preview_text: QString::default(),
-            journey_export_payload: None,
-            storage_library: None,
-            storage_library_revision: 0,
-            storage_library_dirty: Cell::new(false),
-            switcher_library_index: None,
-            switcher_library_index_revision: 0,
-            switcher_library_index_building: false,
-            switcher_library_index_cancel: None,
-            switcher_library_index_result: Arc::new(Mutex::new(None)),
-            switcher_cache: None,
-            session_names: Vec::new(),
-            session_names_dirty: Cell::new(true),
-            session_names_refresh_again: false,
-            profile_list_refresh_again: false,
-            session_restore_preview_pending: false,
-            session_restore_load_append: None,
-            session_restore_recovery_pending: false,
-            session_saves: BTreeMap::new(),
-            session_checkpoint_clear_pending: false,
-            storage_flush_pending: false,
-            storage_flush_error: None,
-            download_destination_pending: false,
-            download_create_pending: false,
-            pending_permission_reset_session: None,
-            link_preview_command: QString::default(),
-            link_preview_original: QString::default(),
-            link_preview_cleaned: QString::default(),
-            link_preview_applied_rules: QStringList::default(),
-            link_preview_removed_parameters: QStringList::default(),
-            link_preview_retained_parameters: QStringList::default(),
-            link_preview_explanation: QString::default(),
-            link_preview_requires_confirmation: false,
-            link_preview_visible: false,
-            pending_link_navigation: None,
-            external_navigation_uri: QString::default(),
-            external_navigation_scheme: QString::default(),
-            external_navigation_visible: false,
-            pending_external_navigation: None,
-            hint_values: QString::default(),
-            hint_visible: false,
-            target_search_active: false,
-            target_search_scope: QString::from("all"),
-            target_search_query: QString::default(),
-            hint_pointer_mode: false,
-            hint_pointer_pending: false,
-            hint_pointer_state: QString::from("terminal"),
-            hint_pointer_dispatch_request: QString::default(),
-            hint_links_only: false,
-            hint_rapid: false,
-            hint_target: QString::from("current"),
-            hint_family: QString::from("all"),
-            hint_proxy_targets_enabled: false,
-            hint_unmatched_policy: QString::from("hide"),
-            hint_chrome_available: true,
-            hint_marker_scale: 1.0,
-            hint_rapid_target: "current".into(),
-            hint_script: None,
-            hint_first: false,
-            hint_index: 1,
-            hint_rapid_tabs_created: 0,
-            pending_hint_action: None,
-            spatial_visible: false,
-            spatial_selecting: false,
-            spatial_session_id: QString::default(),
-            spatial_scope_lease_id: QString::default(),
-            spatial_dispatch_request: QString::default(),
-            spatial_labels: (1..=9)
-                .map(|cell| QString::from(cell.to_string()))
-                .collect(),
-            spatial_viewport_x: 0.0,
-            spatial_viewport_y: 0.0,
-            spatial_viewport_width: 0.0,
-            spatial_viewport_height: 0.0,
-            spatial_root_x: 0.0,
-            spatial_root_y: 0.0,
-            spatial_root_width: 0.0,
-            spatial_root_height: 0.0,
-            spatial_current_x: 0.0,
-            spatial_current_y: 0.0,
-            spatial_current_width: 0.0,
-            spatial_current_height: 0.0,
-            spatial_crosshair_x: 0.0,
-            spatial_crosshair_y: 0.0,
-            spatial_depth: 0,
-            spatial_help_visible: false,
-            spatial_session: None,
-            spatial_ids: IdSource::new(),
-            caret_selecting: false,
-            caret_request_token: QString::default(),
-            caret_request_operation: QString::default(),
-            editor_completion_token: QString::default(),
-            editor_completion_original: QString::default(),
-            editor_completion_updated: QString::default(),
-            editor_completion_error: QString::default(),
-            editor_completion_stderr: QString::default(),
-            jseval_tab_id: QString::default(),
-            jseval_world: QString::default(),
-            jseval_script: QString::default(),
-            clipboard_request: QString::default(),
-            clipboard_request_sensitive: false,
-            clipboard_request_primary: false,
-            pending_selection: None,
-            pending_caret: None,
-            pending_editor: None,
-            pending_editor_write: None,
-            editor_completions: Arc::new(Mutex::new(Vec::new())),
-            pending_config_edit: None,
-            pending_spawn: None,
-            pending_action_target: None,
-            pending_userscript: None,
-            pending_download: None,
-            staged_downloads: BTreeMap::new(),
-            pending_save_page: None,
-            spawn_completions: Arc::new(Mutex::new(Vec::new())),
-            spawn_cancellations: Arc::new(Mutex::new(BTreeMap::new())),
-            spawn_working_directory: None,
-            userscript_completions: Arc::new(Mutex::new(Vec::new())),
-            userscript_cancellations: Arc::new(Mutex::new(BTreeMap::new())),
-            hint_session: None,
-            hint_interaction: None,
-            pending_hint_scope_handoff: None,
-            active_hint_scope: None,
-            next_hint_scope_lease_id: 0,
-            hint_consumed: BTreeSet::new(),
-            hint_configuration_revision: 0,
-            runtime_config_persistence: "memory-only",
-            pending_hint_palette_permit: None,
-            pending_grid_scope_permit: None,
-            hint_pointer_source: None,
-            hint_pointer_action: None,
-            hint_local_interaction_authority: LocalInteractionAuthority::default(),
-            hint_ids: IdSource::new(),
-            config_json: QString::from(
-                serde_json::to_string(&Config::default()).unwrap_or_else(|_| "{}".into()),
-            ),
-            selector_validation_request: QString::default(),
-            settings_rows,
-            runtime_setting_error: QString::default(),
-            chrome_font_family: QString::from(chrome_preferences.font_family),
-            chrome_font_size_pt: chrome_preferences.font_size_pt,
-            chrome_statusbar_mode: QString::from(chrome_preferences.statusbar_mode),
-            chrome_tabs_mode: QString::from(chrome_preferences.tabs_mode),
-            chrome_tab_position: QString::from(chrome_preferences.tab_position),
-            chrome_reduced_motion: QString::from(chrome_preferences.reduced_motion),
-            feature_switcher_max_results: feature_preferences.switcher_max_results,
-            feature_downloads_ask_destination: feature_preferences.downloads_ask_destination,
-            feature_desktop_notifications_enabled: feature_preferences
-                .desktop_notifications_enabled,
-            feature_desktop_media_keys_enabled: feature_preferences.desktop_media_keys_enabled,
-            feature_push_service_enabled: feature_preferences.push_service_enabled,
-            feature_spellcheck_enabled: feature_preferences.spellcheck_enabled,
-            feature_spellcheck_languages: feature_preferences
-                .spellcheck_languages
-                .into_iter()
-                .map(QString::from)
-                .collect(),
-            feature_blocking_list_ids: feature_preferences
-                .blocking_list_ids
-                .into_iter()
-                .map(QString::from)
-                .collect(),
-            feature_blocking_update_interval_hours: feature_preferences
-                .blocking_update_interval_hours,
-            feature_link_cleaning_update_source: QString::from(
-                feature_preferences.link_cleaning_update_source,
-            ),
-            feature_link_cleaning_update_sha256: QString::from(
-                feature_preferences.link_cleaning_update_sha256,
-            ),
-            config_base_json: QString::from(
-                serde_json::to_string(&Config::default()).unwrap_or_else(|_| "{}".into()),
-            ),
-            cli_overrides_json: QString::from("{}"),
-            profile_overrides_json: QString::from("{}"),
-            config_path: QString::default(),
-            config_source: QString::from("built-in"),
-            contexts_json: QString::from(
-                serde_json::to_string(&ContextsConfig::default()).unwrap_or_else(|_| "{}".into()),
-            ),
-            context_choice_names: QStringList::default(),
-            context_choice_labels: QStringList::default(),
-            context_choice_profiles: QStringList::default(),
-            context_name: QString::default(),
-            context_label: QString::default(),
-            context_workspace: QString::default(),
-            context_accent: QString::default(),
-            context_entry_force_reuse: false,
-            context_route_id: QString::default(),
-            context_route_behavior: QString::default(),
-            context_route_context: QString::default(),
-            context_route_profile: QString::default(),
-            context_route_url: QString::default(),
-            window_token: QString::from(Uuid::new_v4().to_string()),
-            core_window_id: QString::default(),
-            hyprland_status: QString::from("disabled"),
-            hyprland_clients_json: QString::from("[]"),
-            desktop_portal_mode: QString::from("auto"),
-            system_reduced_motion_status: QString::from("pending"),
-            system_reduced_motion_enabled: false,
-            system_font_scale_status: QString::from("pending"),
-            system_font_scale: 1.0,
-            theme_background_color: QString::from(chrome_theme.background),
-            theme_surface_color: QString::from(chrome_theme.surface),
-            theme_panel_color: QString::from(chrome_theme.panel),
-            theme_primary_text_color: QString::from(chrome_theme.primary_text),
-            theme_secondary_text_color: QString::from(chrome_theme.secondary_text),
-            theme_muted_text_color: QString::from(chrome_theme.muted_text),
-            theme_border_color: QString::from(chrome_theme.border),
-            theme_accent_color: QString::from(chrome_theme.accent),
-            theme_warning_color: QString::from(chrome_theme.warning),
-            theme_error_color: QString::from(chrome_theme.error),
-            theme_success_color: QString::from(chrome_theme.success),
-            theme_private_color: QString::from(chrome_theme.private),
-            theme_mode_insert_color: QString::from(chrome_theme.mode_insert),
-            theme_selection_color: QString::from(chrome_theme.selection),
-            theme_selection_text_color: QString::from(chrome_theme.selection_text),
-            theme_contrast_status: QString::from(chrome_theme.contrast_status),
-            theme_contrast_reason: QString::from(chrome_theme.contrast_reason),
-            site_status: QString::from("{}"),
-            site_experiment_active: false,
-            site_experiment_id: QString::default(),
-            site_experiment_kind: QString::default(),
-            site_experiment_url: QString::default(),
-            site_experiment_remaining_seconds: 0,
-            blocking_hosts: QStringList::default(),
-            blocking_exceptions: QStringList::default(),
-            blocking_rule_hosts: QStringList::default(),
-            blocking_rule_list_ids: QStringList::default(),
-            blocking_exception_rule_hosts: QStringList::default(),
-            blocking_exception_rule_list_ids: QStringList::default(),
-            blocking_loaded_lists: QString::from("[]"),
-            blocking_list_metadata: QString::from("[]"),
-            blocking_skipped_lists: QString::from("[]"),
-            blocking_bypass_sites: QStringList::default(),
-            blocking_cosmetic_rule_hosts: QStringList::default(),
-            blocking_cosmetic_rule_selectors: QStringList::default(),
-            blocking_cosmetic_exception_hosts: QStringList::default(),
-            blocking_cosmetic_exception_selectors: QStringList::default(),
-            blocking_adblock_source_ids: QString::from("[]"),
-            blocking_adblock_handle: 0,
-            blocking_policy_ready: false,
-            blocking_security_deny_hosts: QStringList::default(),
-            blocking_enabled: false,
-            blocking_blocked_count: 0,
-            blocking_active_site_count: 0,
-            blocking_unknown_context_count: 0,
-            blocking_active_evidence: blocking_evidence::BlockingEvidence::default(),
-            focus_observations: BTreeMap::new(),
-            focus_suppressions: BTreeMap::new(),
-            prompt_view_identities: BTreeMap::new(),
-            native_prompt_leases: NativePromptLeases::default(),
-            native_prompt_transition: false,
-            config: serde_json::to_value(Config::default()).unwrap_or(Value::Null),
-            config_revision: 0,
-            policy_revision: 0,
-            portal_capabilities: PortalCapabilities::pending(),
-            theme_palette,
-            base_config: serde_json::to_value(Config::default()).unwrap_or(Value::Null),
-            pending_config: None,
-            profile_overrides: RuntimeOverrides::default(),
-            runtime_overrides: RuntimeOverrides::default(),
-            temporary_overrides: RuntimeOverrides::default(),
-            cli_overrides: RuntimeOverrides::default(),
-            config_watch: ConfigWatch::default(),
-            config_reload_worker: None,
-            context_reload_worker: None,
-            pending_context_reload: None,
-            config_write_worker: None,
-            print_worker: None,
-            editor_write_worker: None,
-            profile_delete_worker: None,
-            network_policy_worker: None,
-            hyprland_worker: None,
-            portal_probe_worker: None,
-            reduced_motion_probe_worker: None,
-            font_scale_probe_worker: None,
-            network_policy_reload_pending: false,
-            pending_profile_configuration: None,
-            profile_open_effect: None,
-            profile_startup: profile_startup::ProfileStartup::default(),
-            profile_storage_base: String::new(),
-            pending_selector_validation: None,
-            selector_generation: 0,
-            selector_config_revision: 0,
-            active_selector_fingerprint: String::new(),
-            profile_list_worker: None,
-            profile_preview_worker: None,
-            userscript_manager_worker: None,
-            theme_watch: ConfigWatch::default(),
-            ipc_sequence: 3,
-            ipc_shutdown_gate: false,
-            contexts: None,
-            context_catalog_revision: 0,
-            pending_context_route: None,
-            profile_name: "default".into(),
-            profile_id: None,
-            journey_durable_ids: RefCell::new(BTreeMap::new()),
-            profile_persistence: ProfilePersistence::Unavailable,
-            private_history: Vec::new(),
-            private_history_next_id: -1,
-            storage_roots: None,
-            profile_registry_roots: None,
-            userscript_roots: None,
-            session_id: Uuid::new_v4(),
-            session_path: None,
-            checkpoint: SessionCheckpoint::default(),
-            session_state_root: None,
-            closed_tabs: Vec::new(),
-            operation_states: BTreeMap::new(),
-            operation_stderr: BTreeMap::new(),
-            action_audit: Vec::new(),
-            structured_log: None,
-            diagnostics_preview_ready: false,
-            diagnostics_preview_payload: None,
-            diagnostics_collector: diagnostic_report::DiagnosticCollector::default(),
-            diagnostics_review: None,
-            pending_diagnostic_requests: Vec::new(),
-            request_resolution_counts: BTreeMap::new(),
-            active_site_experiment: None,
-            last_site_doctor_result: None,
-            last_repeatable: None,
-            macro_registers: BTreeMap::new(),
-            recording_macro: None,
-            macro_key_prefix: None,
-            macro_key_started_ms: None,
-            macro_depth: 0,
-            macro_expanded_commands: 0,
-            live_window_registry: Vec::new(),
-            ipc_owner: None,
-        }
     }
 }
 

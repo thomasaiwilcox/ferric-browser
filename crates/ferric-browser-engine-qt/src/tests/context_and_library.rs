@@ -1129,24 +1129,23 @@ fn action_command_maps_subject_and_verb_to_a_registered_executor() {
     assert!(qml.contains("WebEngineDownloadRequest.MimeHtmlSaveFormat"));
     assert!(qml.contains("prepare_save_page"));
     assert!(qml.contains("take_save_page_path"));
-    assert!(qml.contains("id: secondaryDownloadChooser"));
+    assert!(qml.contains("id: secondaryDialogSurfaces"));
     assert!(qml.contains("secondaryWindow.acceptPendingDownload()"));
     assert!(qml.contains("secondaryWindow.cancelPendingDownload()"));
     assert!(qml.contains("secondaryWindow.pendingDownloadRequests"));
-    assert!(qml.contains("secondaryDownloadChooser.open()"));
+    assert!(qml.contains("secondaryDialogSurfaces.openDownload()"));
     assert!(qml.contains("secondaryWindow.pendingDownloadRequests = ({})"));
-    assert!(qml.contains("download.view"));
-    assert!(qml.contains("ownerUi(download.view)"));
-    assert!(qml.contains("ownerHost(download.view)"));
-    assert!(qml.contains("onAccepted: secondaryWindow.acceptPendingDownload()"));
-    assert!(qml.contains("host.handleDownloadRequested(download)"));
-    assert!(qml.contains("owner.host.handleDownloadFinished(download)"));
-    assert!(qml.contains("onRejected: secondaryWindow.cancelPendingDownload()"));
+    // Source ownership and late offers are checked by download_source_tests,
+    // application_downloads and the causal public download IPC regression.
+    // Requiring a literal direct Qt view getter here would reintroduce the crash.
+    assert!(qml.contains("onDownloadAccepted: secondaryWindow.acceptPendingDownload()"));
+    // Request identity and completion ownership are exercised against the
+    // production registry by productPolishDownloadIdentity and portal_download_history.
+    assert!(qml.contains("onDownloadRejected: secondaryWindow.cancelPendingDownload()"));
     assert!(qml.contains("download.totalBytes"));
     assert!(qml.contains("download.interruptReasonString"));
-    assert!(qml.contains("function downloadMetrics(id, download)"));
-    assert!(qml.contains("function formatDownloadRate(bytesPerSecond)"));
-    assert!(qml.contains("id: downloadMetricsTimer"));
+    // Live metrics and scoped controls are exercised by application_downloads;
+    // source QML checks cover rate sampling and per-window sample retirement.
     assert!(qml.contains("function spellcheckDictionaryStatus(ui)"));
     assert!(qml.contains("spellcheck_dictionaries"));
     assert!(

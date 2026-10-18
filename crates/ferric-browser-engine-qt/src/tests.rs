@@ -7,6 +7,7 @@ use std::thread;
 
 const ADAPTER_SOURCE: &str = concat!(
     include_str!("lib.rs"),
+    include_str!("browser_ui_defaults.rs"),
     include_str!("browser_ui_browsing_commands.rs"),
     include_str!("browser_ui_command_dispatch.rs"),
     include_str!("browser_ui_command_workflows.rs"),
@@ -16,6 +17,7 @@ const ADAPTER_SOURCE: &str = concat!(
     include_str!("browser_ui_contexts.rs"),
     include_str!("browser_ui_controls.rs"),
     include_str!("browser_ui_downloads_permissions.rs"),
+    include_str!("browser_ui_download_requests.rs"),
     include_str!("browser_ui_edit_commands.rs"),
     include_str!("browser_ui_external_actions.rs"),
     include_str!("browser_ui_input.rs"),
@@ -75,6 +77,7 @@ const QML_SOURCE: &str = concat!(
     include_str!("../qml/Main.qml"),
     include_str!("../qml/components/FerricPrimaryBrowserWindow.qml"),
     include_str!("../qml/components/FerricBrowserRuntimeBase.qml"),
+    include_str!("../qml/components/FerricWebNotificationController.qml"),
     include_str!("../qml/components/FerricBrowserRuntimeServices.qml"),
     include_str!("../qml/components/FerricBrowserRuntimePresentation.qml"),
     include_str!("../qml/components/FerricBrowserRuntimeRequests.qml"),
@@ -89,6 +92,7 @@ const QML_SOURCE: &str = concat!(
     include_str!("../qml/components/FerricSpatialGridOverlay.qml"),
     include_str!("../qml/components/FerricProfileSessionSurfaces.qml"),
     include_str!("../qml/components/FerricProfileSessionWorkspace.qml"),
+    include_str!("../qml/components/FerricDownloadWorkspace.qml"),
     include_str!("../qml/components/FerricProfileResources.qml"),
     include_str!("../qml/components/FerricProfileResourceRegistry.qml"),
     include_str!("../qml/components/FerricSettingsWorkspace.qml"),
@@ -119,6 +123,7 @@ include!("tests/commands_and_actions.rs");
 include!("tests/presentation_boundaries.rs");
 include!("tests/context_and_library.rs");
 include!("tests/action_runtime.rs");
+include!("tests/selection_operations.rs");
 
 #[path = "tests/performance.rs"]
 mod performance;

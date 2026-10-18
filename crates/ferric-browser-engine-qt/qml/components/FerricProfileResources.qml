@@ -97,7 +97,7 @@ QtObject {
         if (view.viewRetired !== undefined) view.viewRetired=true
         if (view.viewModel !== undefined) view.viewModel=({loaded:false,url:"",muted:false,zoom:1.0})
         var host=view.viewHost
-        if (host && host.tabViews)
+        if (host && host.tabViews && host.tabViews.indexOf(view) >= 0)
             host.tabViews=host.tabViews.filter(function(candidate) { return candidate!==view })
     }
 

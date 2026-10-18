@@ -438,16 +438,12 @@ fn library_preview_components_render_models_and_emit_root_owned_intents() {
 }
 
 #[test]
-fn download_manager_component_renders_model_and_emits_root_owned_intents() {
+fn download_manager_component_emits_intents_without_backend_access() {
     let qml = include_str!("../../qml/components/FerricDownloadManager.qml");
-    let composition_root = QML_SOURCE;
     assert!(qml.contains("required property var downloadsModel"));
     assert!(qml.contains("signal openRequested(string downloadId, bool reveal)"));
     assert!(qml.contains("signal actionRequested(string downloadId, string action)"));
     assert!(!qml.contains("browserUi."));
-    assert!(composition_root.contains("FerricDownloadManager {"));
-    assert!(!composition_root.contains("id: downloadManager\n"));
-    assert!(composition_root.contains("window.requestDownloadAction(downloadId, action)"));
 }
 
 #[test]
@@ -832,32 +828,9 @@ fn one_shot_background_hints_use_the_background_route_and_exit_hint_mode() {
     assert!(background_result.contains("if (browserUi.mode === \"hint\")"));
 }
 
-#[test]
-fn rapid_download_hints_queue_the_validated_download_and_keep_hint_mode() {
-    let source = include_str!("../browser_ui_hint_selection.rs");
-    let policy = include_str!("../hint_policy.rs");
-    let rapid_dispatch = source
-        .split("if self.as_ref().rust().hint_rapid {")
-        .nth(1)
-        .expect("rapid hint dispatch")
-        .split("} else if self.as_ref().rust().hint_rapid_target == \"yank\"")
-        .next()
-        .expect("rapid hint dispatch boundary");
-
-    let download = rapid_dispatch
-        .split("\"download\" => {")
-        .nth(1)
-        .expect("rapid download branch")
-        .split("_ => {")
-        .next()
-        .expect("rapid download branch boundary");
-    assert!(download.contains("queue_download_request("));
-    assert!(download.contains("\"Rapid hint download queued\""));
-    assert!(download.contains("\"action\"] = Value::String(\"download\".into())"));
-    assert!(policy.contains(
-        "Some(\"yank\" | \"clean-yank\" | \"tab-bg\" | \"userscript\" | \"download\")"
-    ));
-}
+// Rapid download admission, failure retention and continued Hint mode are
+// exercised through real typing by productPolishRapidDownloadRejection. The
+// hint command/policy tests also cover the typed rapid-download mode contract.
 
 #[test]
 fn foreground_hints_complete_directly_without_redispatching_a_normal_mode_command() {

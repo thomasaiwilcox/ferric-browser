@@ -145,8 +145,7 @@ fn strip_url_userinfo(url: &str) -> String {
 
 /// Native start and blank documents are safe tab descriptors, but never visits.
 pub(super) fn is_safe_tab_descriptor(url: &str) -> bool {
-    ferric_browser_core::InternalPage::from_url(url).is_some()
-        || ferric_browser_storage::is_safe_history_url(url)
+    ferric_browser_storage::is_safe_tab_descriptor_url(url)
 }
 
 /// A new native tab has no committed URL until its view is constructed.

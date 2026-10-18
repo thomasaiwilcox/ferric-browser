@@ -49,6 +49,17 @@ impl qobject::BrowserUi {
             );
         }
         for completion in userscript_completions {
+            // Cancellation revokes returned actions as well as the operation
+            // record. Check before applying a queued script result to a page.
+            if self
+                .as_ref()
+                .rust()
+                .operation_states
+                .get(&completion.operation_id)
+                .is_some_and(|status| status == "cancelled")
+            {
+                continue;
+            }
             let mut status = completion.status;
             if let Some(action) = completion.action {
                 status = if captured_target_is_current(

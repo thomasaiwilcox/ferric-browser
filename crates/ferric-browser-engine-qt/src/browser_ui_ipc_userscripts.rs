@@ -1,9 +1,10 @@
 //! Userscript-specific action dispatch for Qt IPC.
 
+use crate::action_request_decoder::typed_registered_action_route;
+
 use super::{
-    CxxQtType, Pin, PublicError, Request, Response, Value, action_failure_category,
-    ipc_action_failure, qobject, userscript, userscript_action_argument_name,
-    userscript_action_is_hint_only,
+    CxxQtType, Pin, Request, Response, Value, action_failure_category, ipc_action_failure, qobject,
+    userscript, userscript_action_argument_name, userscript_action_is_hint_only,
 };
 
 impl qobject::BrowserUi {
@@ -20,16 +21,14 @@ impl qobject::BrowserUi {
                 "userscript action parameters must be an object",
             );
         };
-        if object
-            .keys()
-            .any(|key| !matches!(key.as_str(), "action" | "arguments"))
-        {
-            return ipc_action_failure(
-                &request.id,
-                action_id,
-                "unissued",
-                "userscript action parameters contain an unknown field",
-            );
+        let route = match typed_registered_action_route(&request.params) {
+            Ok(route) => route,
+            Err(error) => {
+                return ipc_action_failure(&request.id, action_id, "unissued", error.into_public());
+            }
+        };
+        if let Err(error) = self.as_ref().validate_action_ipc_route(&route) {
+            return ipc_action_failure(&request.id, action_id, "unissued", error);
         }
         let expected_argument = match self
             .as_ref()
@@ -149,7 +148,6 @@ impl qobject::BrowserUi {
                 Response::success(request.id.clone(), result)
             }
             Err(error) => {
-                let error = PublicError::engine(error);
                 let category = action_failure_category(error.code());
                 self.as_mut().record_action_audit(
                     action_id,

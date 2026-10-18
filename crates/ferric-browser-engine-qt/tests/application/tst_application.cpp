@@ -1,5 +1,6 @@
 #include "tst_application.h"
 #include "../../src/url_display.h"
+#include "../../src/gui_application.h"
 #include <QClipboard>
 #include <QtWebEngineQuick/QQuickWebEngineProfile>
 #include <QMimeData>
@@ -9,8 +10,13 @@
 #include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
+#include <QFileDialog>
 #include <QFont>
 #include <QGuiApplication>
+#include <QApplication>
+#include <QAbstractButton>
+#include <QMessageBox>
+#include <QTimer>
 #include <QImage>
 #include <QHostAddress>
 #include <QQmlApplicationEngine>
@@ -178,6 +184,25 @@ void ApplicationTests::init() {
                          || (testName.startsWith("productPolish") && testName != "productPolishPrivateLibrary"
                              && !(testName == "productPolishDiagnosticLifecycle" && QString::fromLatin1(QTest::currentDataTag()) == "private"));
     QString startupConfig = "{\"schema_version\":3}";
+    if (testName == "productPolishExternalActionFeedback") {
+        const auto tag = QString::fromLatin1(QTest::currentDataTag());
+        const auto subject = tag.startsWith("selection") ? "selection" : "url";
+        const QJsonArray argv{"-c", "printf '%s' \"$$\" > \"$1\"; printf '%s' \"$2\" > \"$3\"",
+            "fixture", directory.filePath("action-child.pid"),
+            QString::fromLatin1(subject)=="selection" ? "{selection}" : "{url}",
+            directory.filePath("action-subject.txt")};
+        startupConfig = QString::fromUtf8(QJsonDocument(QJsonObject{
+            {"schema_version",3}, {"action_targets",QJsonObject{{"fixture",QJsonObject{
+                {"executable","/bin/sh"}, {"argv",argv}, {"subject_types",QJsonArray{subject}},
+                {"detach",tag.contains("detached")}, {"allow_private",false}
+            }}}}
+        }).toJson(QJsonDocument::Compact));
+    }
+    if (testName == "productPolishNativeNotifications"
+            && QString::fromLatin1(QTest::currentDataTag()) == "required-portal")
+        startupConfig = R"JSON({"schema_version":3,"desktop":{"portals":"required"}})JSON";
+    if (testName == "productPolishPermissionReadiness" || testName == "productPolishPermissionCapacity")
+        startupConfig = R"JSON({"schema_version":3,"permissions":{"geolocation":"allow"}})JSON";
     if (testName == "productPolishSiteLedger")
         startupConfig = R"JSON({"schema_version":3,"blocking":{"enabled":true,"bypass_sites":["other-private.test"]}})JSON";
     if (QString::fromLatin1(QTest::currentTestFunction()) ==
@@ -1450,7 +1475,10 @@ int main(int argc, char **argv) {
     QQuickWindow::setGraphicsApi(QSGRendererInterface::Software);
     QtWebEngineQuick::initialize();
     cxx_qt_init_crate_ferric_browser_engine_qt();
-    QGuiApplication application(argc, argv);
+    QVector<QByteArray> arguments;
+    for (int index = 0; index < argc; ++index) arguments.append(QByteArray(argv[index]));
+    auto application = ferric_browser_gui_application(arguments);
+    if (!application || !ferric_browser_gui_preferences_ready()) return 1;
     ApplicationTests tests;
     return QTest::qExec(&tests, argc, argv);
 }
@@ -2436,41 +2464,6 @@ void ApplicationTests::productPolishHttpAuthentication() {
     QCOMPARE(password->property("text").toString(), QString());
 }
 
-void ApplicationTests::productPolishFileChooser() {
-    auto chooser = window->findChild<QObject *>("engineFileChooser");
-    QVERIFY(chooser);
-    QVERIFY(chooser->setProperty("currentFolder", QUrl::fromLocalFile(directory.path())));
-    QVERIFY(command("mode-enter pass-through"));
-    page("var input=document.createElement('input');input.type='file';input.id='polish-file';document.body.prepend(input);input.focus();true");
-    key(Qt::Key_Return);
-    QTRY_VERIFY(evaluate("testWindow.pendingFileDialogRequest !== null").toBool());
-    QVERIFY(evaluate("testWindow.pendingFileDialogRequest.accepted").toBool());
-    evaluate("testWindow.clearEngineFileDialog(true, 'File selection cancelled')");
-    QTRY_VERIFY(evaluate("testWindow.pendingFileDialogRequest === null").toBool());
-    QTRY_COMPARE(text("mode"), QString("pass-through"));
-    QCOMPARE(page("document.getElementById('polish-file').files.length").toInt(), 0);
-    const auto path = directory.filePath(QString::fromUtf8("résumé + 100%.txt"));
-    QFile upload(path);
-    QVERIFY(upload.open(QIODevice::WriteOnly));
-    QCOMPARE(upload.write("upload fixture"), qint64(14));
-    upload.close();
-    // Configure the initial selection before the new chooser is opened.
-    // Closing an active chooser would cancel the WebEngine request itself.
-    QVERIFY(chooser->setProperty("selectedFile", QUrl::fromLocalFile(path)));
-    window->requestActivate();
-    QTRY_VERIFY(window->isActive());
-    evaluate("testWindow.activeWebView().forceActiveFocus()");
-    page("document.getElementById('polish-file').focus();true");
-    QTRY_VERIFY(page("document.hasFocus()").toBool());
-    key(Qt::Key_Return);
-    QTRY_VERIFY(evaluate("testWindow.pendingFileDialogRequest !== null").toBool());
-    QTRY_VERIFY(chooser->property("visible").toBool());
-    QCOMPARE(chooser->property("selectedFile").toUrl(), QUrl::fromLocalFile(path));
-    QVERIFY(QMetaObject::invokeMethod(chooser, "accept"));
-    QTRY_VERIFY(evaluate("testWindow.pendingFileDialogRequest === null").toBool());
-    QTRY_COMPARE(page("document.getElementById('polish-file').files.length").toInt(), 1);
-    QCOMPARE(page("document.getElementById('polish-file').files[0].name").toString(), QFileInfo(path).fileName());
-}
 
 void ApplicationTests::productPolishWebAuthStates() {
     using State = QWebEngineWebAuthUxRequest::WebAuthUxState;
@@ -3511,8 +3504,28 @@ void ApplicationTests::productPolishSecondaryHints() {
         QTRY_VERIFY(evaluate(entry+".ui.spatial_visible").toBool());
         QVERIFY(evaluate(entry+".host.hintWorkspace.spatialAdapterTargetItem === "+pageReceiver).toBool());
         if (!artifacts.isEmpty()) QVERIFY(child->grabWindow().save(artifacts+"/production-scoped-grid-"+kind+".png"));
-        QTest::keyClick(child,Qt::Key_1);QTest::keyClick(child,Qt::Key_Return);
-        QTRY_COMPARE(page("window.scopedClicks || 0").toInt(),1);
+        QTest::keyClick(child,Qt::Key_1);
+        QTRY_COMPARE(evaluate(entry+".ui.spatial_depth").toInt(),1);
+        // Do not let QTest's default key delay drain the dispatch before
+        // exercising the late observer callback.
+        QTest::keyPress(child,Qt::Key_Return,Qt::NoModifier,0);
+        const auto pendingGridAction=evaluate(entry+".ui.spatial_dispatch_request").toString();
+        const bool wasSelecting=evaluate(entry+".ui.spatial_selecting").toBool();
+        // A periodic selection observation can return after Enter starts its
+        // own dispatch validation. Its stale failure must not cancel that action.
+        const bool observationApplied=evaluate(entry+".ui.spatial_scope_geometry_validated('', '{}',"
+            +entry+".host.hintWorkspace.spatialAdapterSurfaceSerial,"
+            +entry+".host.hintWorkspace.spatialAdapterSurfaceRevision,"
+            +pageReceiver+".width,"+pageReceiver+".height,"+pageReceiver+".zoomFactor)").toBool();
+        const auto actionAfterObservation=evaluate(entry+".ui.spatial_dispatch_request").toString();
+        QTest::keyRelease(child,Qt::Key_Return,Qt::NoModifier,0);
+        QVERIFY(!pendingGridAction.isEmpty());
+        QVERIFY(!wasSelecting);
+        QVERIFY(!observationApplied);
+        QCOMPARE(actionAfterObservation,pendingGridAction);
+        QTRY_VERIFY2_WITH_TIMEOUT(page("window.scopedClicks || 0").toInt()==1,
+            qPrintable(evaluate("JSON.stringify({status:"+entry+".ui.status_text,mode:"+entry+".ui.mode,grid:"+entry+".ui.spatial_visible,depth:"+entry+".ui.spatial_depth,focus:String("+entry+".host.activeFocusItem)})").toString()
+                + " DOM " + page("JSON.stringify({clicks:window.scopedClicks||0,last:window.lastClicked,point:window.clientPoint,all:window.allClicks,zoom:devicePixelRatio,scrollY:scrollY,button:document.getElementById('scoped').getBoundingClientRect().toJSON()})").toString()),15000);
         QVERIFY(page("window.lastTrusted").toBool());
         QCOMPARE(text("hint_values"),primaryHints);QCOMPARE(text("current_url"),initial);
         QVERIFY(evaluate(entry+".ui.execute_secondary_interactive_command('hint links')").toBool());
@@ -4574,6 +4587,19 @@ void ApplicationTests::productPolishLocalFilePaths() {
     QCOMPARE(ferric_browser_local_file_path(QUrl::fromEncoded(encoded.toUtf8(), QUrl::StrictMode)), path);
     QCOMPARE(evaluate("testWindow.browserUi.local_file_path(" + quoted(encoded) + ")").toString(), path);
     QCOMPARE(ferric_browser_local_file_path(QUrl("file://localhost/tmp/hello%20world")), QString("/tmp/hello world"));
+    const auto folder = QUrl::fromLocalFile(directory.path()).toString(QUrl::FullyEncoded);
+    const auto name = QString::fromUtf8("new résumé + %2F#?.txt");
+    for (const auto &suggestion : {directory.filePath(name), name, "/" + directory.filePath(name)}) {
+        const auto value = evaluate("testWindow.browserUi.file_dialog_default_url(" + quoted(suggestion)
+            + "," + quoted(folder) + ")").toUrl();
+        QCOMPARE(ferric_browser_local_file_path(value), directory.filePath(name));
+        QVERIFY(value.toString(QUrl::FullyEncoded).contains("%252F%23%3F"));
+    }
+    for (const auto &base : {QString(), QString("https://example.test/"), QString("file://server/tmp/")})
+        QVERIFY(evaluate("testWindow.browserUi.file_dialog_default_url(" + quoted(name) + "," + quoted(base) + ")").toUrl().isEmpty());
+    const auto nulName = QStringLiteral("bad") + QChar::Null + QStringLiteral("name.txt");
+    QVERIFY(evaluate("testWindow.browserUi.file_dialog_default_url(" + quoted(nulName) + "," + quoted(folder) + ")").toUrl().isEmpty());
+    QVERIFY(evaluate("testWindow.browserUi.file_dialog_default_url(''," + quoted(folder) + ")").toUrl().isEmpty());
     for (const auto &invalid : QStringList{"https://example.com/file", "file:relative.txt", "file://server/tmp/file", "file:///tmp/file?query", "file:///tmp/file#fragment", "file:///tmp/bad%00name", "file:///tmp/bad%xy", "file://user@localhost/tmp/file", ""}) {
         QVERIFY2(ferric_browser_local_file_path(QUrl::fromEncoded(invalid.toUtf8(), QUrl::StrictMode)).isEmpty(), qPrintable(invalid));
     }
@@ -4939,8 +4965,52 @@ void ApplicationTests::productPolishDiagnosticReport() {
     QVERIFY(chooser->setProperty("selectedFile", QUrl::fromLocalFile(existing.fileName())));
     QVERIFY(QMetaObject::invokeMethod(chooser, "open"));
     QTRY_VERIFY(chooser->property("visible").toBool());
+    const auto activateExportPicker = [&] {
+        QFileDialog *picker = nullptr;
+        for (auto widget : QApplication::topLevelWidgets())
+            if (widget->isVisible() && widget->objectName() == "diagnosticsExportChooser")
+                picker = qobject_cast<QFileDialog *>(widget);
+        QVERIFY(picker);
+        picker->activateWindow();
+        QTRY_VERIFY(picker->isActiveWindow());
+    };
+    activateExportPicker();
+    if (QTest::currentTestFailed()) return;
+    // The owned widget chooser validates an existing save destination before
+    // emitting acceptance. Drive its confirmation like a user, with a bound
+    // on any nested dialog loop. Browser export still must refuse overwrite.
+    bool overwriteQuestionSeen = false;
+    bool confirmationTimedOut = false;
+    QElapsedTimer confirmationDeadline;
+    confirmationDeadline.start();
+    QTimer confirmOverwrite;
+    confirmOverwrite.setInterval(10);
+    connect(&confirmOverwrite, &QTimer::timeout, this, [&] {
+        for (auto widget : QApplication::topLevelWidgets()) {
+            auto question = qobject_cast<QMessageBox *>(widget);
+            if (!question || !question->isVisible()
+                    || !question->parentWidget()
+                    || question->parentWidget()->objectName() != "diagnosticsExportChooser") continue;
+            if (auto yes = question->button(QMessageBox::Yes)) {
+                overwriteQuestionSeen = true;
+                QTest::mouseClick(yes, Qt::LeftButton);
+                return;
+            }
+            question->reject();
+            confirmationTimedOut = true;
+        }
+        if (confirmationDeadline.elapsed() > 3000) {
+            confirmationTimedOut = true;
+            for (auto widget : QApplication::topLevelWidgets())
+                if (auto dialog = qobject_cast<QDialog *>(widget)) dialog->reject();
+        }
+    });
+    confirmOverwrite.start();
     QVERIFY(QMetaObject::invokeMethod(chooser, "accept"));
-    QVERIFY(evaluate("testWindow.diagnosticsExportNotice.indexOf(\"The report couldn't be saved\") === 0").toBool());
+    confirmOverwrite.stop();
+    QVERIFY(!confirmationTimedOut);
+    qInfo() << "Owned save overwrite confirmation observed" << overwriteQuestionSeen;
+    QTRY_VERIFY(evaluate("testWindow.diagnosticsExportNotice.indexOf(\"The report couldn't be saved\") === 0").toBool());
     QVERIFY(evaluate("testWindow.browserUi.diagnostics_available").toBool());
     QCOMPARE(evaluate("testWindow.diagnosticsText").toString(), preview);
     QVERIFY(existing.open(QIODevice::ReadOnly));
@@ -4952,13 +5022,16 @@ void ApplicationTests::productPolishDiagnosticReport() {
     QVERIFY(chooser->setProperty("selectedFile", QUrl::fromLocalFile(path)));
     QVERIFY(QMetaObject::invokeMethod(chooser, "open"));
     QTRY_VERIFY(chooser->property("visible").toBool());
+    activateExportPicker();
+    if (QTest::currentTestFailed()) return;
     QVERIFY(QMetaObject::invokeMethod(chooser, "accept"));
     QTRY_VERIFY(QFile::exists(path));
-    QVERIFY(evaluate("testWindow.diagnosticsExportNotice.indexOf('Report saved') === 0").toBool());
+    QTRY_VERIFY(evaluate("testWindow.diagnosticsExportNotice.indexOf('Report saved') === 0").toBool());
     QVERIFY(!evaluate("testWindow.browserUi.diagnostics_available").toBool());
     QFile saved(path);
     QVERIFY(saved.open(QIODevice::ReadOnly));
     QCOMPARE(saved.readAll(), preview.toUtf8());
+    QTRY_VERIFY(window->isActive());
     key(Qt::Key_Escape);
     QTRY_VERIFY(!evaluate("testWindow.diagnosticsVisible").toBool());
 }

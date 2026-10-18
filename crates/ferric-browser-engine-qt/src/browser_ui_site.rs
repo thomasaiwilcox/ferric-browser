@@ -1,19 +1,13 @@
 use super::{
     Config, CxxQtType, FocusObservation, Instant, MAX_DIAGNOSTICS_EXPORT_BYTES, Mode,
-    ParsedCommand, Path, Pin, PrivacyKind, QString, QStringList, QUrl,
-    SITE_DOCTOR_EXPERIMENT_TIMEOUT, SiteExperiment, Uuid, Value, atomic_write_private, diagnostics,
-    display_url, focus_mode_transition, matching_site_rules, qobject, safe_ipc_url, safe_site_host,
+    ParsedCommand, Path, Pin, PrivacyKind, QString, QStringList, SITE_DOCTOR_EXPERIMENT_TIMEOUT,
+    SiteExperiment, Uuid, Value, atomic_write_private, diagnostics, display_url,
+    focus_mode_transition, matching_site_rules, qobject, safe_ipc_url, safe_site_host,
     safe_site_origin, setting_supports_site_scope, site_doctor_remaining_seconds,
     toml_string_array_literal, userscript,
 };
 
 impl qobject::BrowserUi {
-    // Qt invokables require a receiver even for pure URL conversion.
-    #[allow(clippy::unused_self)]
-    pub(super) fn local_file_path(&self, url: &QUrl) -> QString {
-        qobject::ferric_browser_local_file_path(url)
-    }
-
     // Qt invokables need a QObject receiver, including pure presentation helpers.
     #[allow(clippy::unused_self)]
     pub(super) fn prompt_origin(&self, url: &QString) -> QString {
@@ -193,6 +187,16 @@ impl qobject::BrowserUi {
         {
             self.as_mut().request_storage_library();
         }
+        let permission_origin = self.as_ref().rust().state.as_ref().and_then(|state| {
+            let origin = state
+                .active_tab()
+                .and_then(|tab| tab.url.as_deref())
+                .and_then(safe_site_origin)?;
+            (!state.saved_permission_preferences(&origin).complete).then_some(origin)
+        });
+        if let Some(origin) = permission_origin {
+            let _ = self.as_mut().request_permission_preferences(&origin);
+        }
         let result = self.as_ref().ipc_site_status(&Value::Null);
         match result {
             Ok(value) => {
@@ -259,7 +263,9 @@ impl qobject::BrowserUi {
         };
         let requested_id = proposal_id.to_string();
         if proposal.get("id").and_then(Value::as_str) != Some(requested_id.as_str()) {
-            self.set_status_text(QString::from("Site Doctor proposal ID is stale"));
+            self.set_status_text(QString::from(
+                "This Site Doctor suggestion has changed. Refresh Site Doctor and review it again.",
+            ));
             return false;
         }
         if proposal.get("kind").and_then(Value::as_str) != Some("blocker-exception") {
@@ -333,7 +339,7 @@ impl qobject::BrowserUi {
         };
         if config.blocking.bypass_sites != before {
             self.set_status_text(QString::from(
-                "Site Doctor proposal is stale; blocker settings changed since the experiment",
+                "Blocking settings changed during the experiment. Run it again before applying this suggestion.",
             ));
             return false;
         }
@@ -456,7 +462,6 @@ impl qobject::BrowserUi {
         let expected = format!("site-data-clear\t{origin}");
         let pending = self.as_ref().rust().pending_engine_action.clone();
         if pending.as_deref() != Some(expected.as_str()) {
-            self.set_status_text(QString::from("Site-data clear completion is stale"));
             return false;
         }
         let Ok(value) = serde_json::from_str::<Value>(&result.to_string()) else {
@@ -840,7 +845,6 @@ impl qobject::BrowserUi {
             return false;
         };
         if experiment.id != id {
-            self.set_status_text(QString::from("Site Doctor experiment ID is stale"));
             return false;
         }
         let expected_tab = experiment.temporary_tab.unwrap_or(experiment.tab);

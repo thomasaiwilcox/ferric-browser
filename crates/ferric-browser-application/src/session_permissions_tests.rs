@@ -1,7 +1,11 @@
 use super::*;
+use crate::profile::ProfileActivation;
 use ferric_browser_config::Config;
+use ferric_browser_core::PrivacyKind;
 use ferric_browser_runtime::BrowserRuntime;
 use ferric_browser_storage::RootSpec;
+use ferric_browser_storage::StorageRoots;
+use uuid::Uuid;
 
 fn application(roots: &StorageRoots, privacy: PrivacyKind, id: Uuid) -> BrowserApplication {
     std::fs::create_dir_all(&roots.data).expect("data root");

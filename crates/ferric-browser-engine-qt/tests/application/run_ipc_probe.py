@@ -97,9 +97,27 @@ def main():
                 rejected = invoke('command', 'open https://should-not-open.invalid/ ;; settings unexpected',
                                   accepted=False, error_code='E_INVALID_ARGUMENT')
                 assert 'earlier requests were accepted' not in rejected, rejected
-                rejected = invoke('command', 'reload ;; get no.such.setting ;; open https://should-not-open.invalid/',
-                                  accepted=False, error_code='E_ENGINE')
+                invoke('command', 'get downloads.ask_destination')
+                rejected = invoke('command', 'get no.such.setting',
+                                  accepted=False, error_code='E_NOT_FOUND')
+                assert 'Unknown setting: no.such.setting.' in rejected and ':settings' in rejected, rejected
+                assert 'earlier requests were accepted' not in rejected, rejected
+                rejected = invoke('command', 'get downloads.ask_destination --url file:///tmp/not-a-site',
+                                  accepted=False, error_code='E_INVALID_ARGUMENT')
+                assert 'Use an HTTP or HTTPS page address with --url.' in rejected, rejected
+                assert 'config.get' not in rejected, rejected
+                invoke('command', '--window', 'windowid-18446744073709551615',
+                       '--', 'get downloads.ask_destination', accepted=False, error_code='E_STALE_TARGET')
+                rejected = invoke('command',
+                                  'set --temp downloads.ask_destination=false ;; get no.such.setting ;; '
+                                  'set --temp downloads.ask_destination=true ;; open https://should-not-open.invalid/',
+                                  accepted=False, error_code='E_NOT_FOUND')
                 assert 'earlier requests were accepted' in rejected, rejected
+                assert 'Unknown setting: no.such.setting.' in rejected and ':settings' in rejected, rejected
+                retained_setting = invoke('query', 'config', 'downloads.ask_destination', '--format', 'json')
+                assert retained_setting['value'] is False, retained_setting
+                assert invoke('query', 'active-tab', '--format', 'json')['tabs'][0]['url'] == before['tabs'][0]['url']
+                print('typed missing-setting failure stopped the chain and retained the earlier setting', flush=True)
                 # Command-authored selectors must reach route validation; an
                 # unknown owner must never silently navigate the default one.
                 invoke('command', 'open --profile no-such-profile https://should-not-open.invalid/',

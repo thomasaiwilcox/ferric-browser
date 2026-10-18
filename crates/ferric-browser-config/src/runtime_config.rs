@@ -201,6 +201,11 @@ impl RuntimeOverrides {
     /// validation bounds.
     pub fn set_setting(&mut self, key: &str, value: toml::Value) -> Result<(), ConfigError> {
         validate_runtime_key(key)?;
+        let value = if key == "downloads.directory" {
+            super::download_directory::normalize(value)?
+        } else {
+            value
+        };
         let encoded = value.to_string();
         if encoded.len() > MAX_RUNTIME_VALUE_BYTES {
             return Err(ConfigError::Validation(
@@ -213,7 +218,8 @@ impl RuntimeOverrides {
             && !value.is_bool()
             && !value.is_str()
             && !value.is_array()
-            && !(value.is_table() && selector_setting_family(key).is_some())
+            && !(value.is_table()
+                && (selector_setting_family(key).is_some() || key == "downloads.directory"))
         {
             return Err(ConfigError::Validation(
                 "runtime override value must be a TOML scalar or array".into(),

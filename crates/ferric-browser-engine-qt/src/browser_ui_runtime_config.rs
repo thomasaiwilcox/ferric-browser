@@ -510,7 +510,7 @@ impl qobject::BrowserUi {
                 Ok(path) => {
                     cleanup_print_artifact(&path, private_temporary);
                     self.as_mut()
-                        .set_status_text(QString::from("Print result became stale"));
+                        .set_status_text(QString::from("This print request is no longer active. Check the print queue before trying again."));
                 }
                 Err(error) => {
                     if let Some(path) = pending {
@@ -574,10 +574,11 @@ impl qobject::BrowserUi {
                     }
                 }
                 Ok(result) => {
+                    let announce = result.operation == ConfigReadOperation::Reload;
                     let new_base = match serde_json::to_value(&result.loaded.config) {
                         Ok(value) => value,
                         Err(error) => {
-                            self.report_config_reload_failure(&error.to_string());
+                            self.report_config_reload_failure(&error.to_string(), announce);
                             return;
                         }
                     };
@@ -590,14 +591,14 @@ impl qobject::BrowserUi {
                     ) {
                         Ok(candidate) => candidate,
                         Err(error) => {
-                            self.report_config_reload_failure(&error);
+                            self.report_config_reload_failure(&error, announce);
                             return;
                         }
                     };
                     let base_json = match serde_json::to_string(&new_base) {
                         Ok(value) => value,
                         Err(error) => {
-                            self.report_config_reload_failure(&error.to_string());
+                            self.report_config_reload_failure(&error.to_string(), announce);
                             return;
                         }
                     };
@@ -623,6 +624,7 @@ impl qobject::BrowserUi {
                         sources,
                         profiles_path,
                         contexts: result.contexts,
+                        announce,
                     };
                     if !validation_items.is_empty()
                         && validation_fingerprint
@@ -641,7 +643,7 @@ impl qobject::BrowserUi {
                         .as_mut()
                         .queue_context_configuration_reload(publication)
                     {
-                        self.report_config_reload_failure(&error);
+                        self.report_config_reload_failure(&error, announce);
                         return;
                     }
                 }
@@ -653,13 +655,17 @@ impl qobject::BrowserUi {
                         error.detail
                     )));
                 }
-                Err(error) => self.as_mut().report_config_reload_failure(&error.detail),
+                Err(error) => self.as_mut().report_config_reload_failure(
+                    &error.detail,
+                    error.operation == Some(ConfigReadOperation::Reload),
+                ),
             }
         }
         if should_reload
             && self.as_ref().rust().pending_context_reload.is_none()
             && self.as_ref().rust().pending_selector_validation.is_none()
         {
+            let announce = self.as_ref().rust().config_reload_requested_by_user;
             let profile_name = self.as_ref().rust().profile_name.clone();
             let request = self
                 .as_mut()
@@ -669,22 +675,22 @@ impl qobject::BrowserUi {
                 .config_reload_worker
                 .as_mut()
                 .and_then(|worker| {
-                    (!worker.is_pending()).then(|| worker.request(path, profile_name))
+                    (!worker.is_pending()).then(|| {
+                        if announce {
+                            worker.request(path, profile_name)
+                        } else {
+                            worker.request_watched(path, profile_name)
+                        }
+                    })
                 });
             if request.is_some() {
-                self.as_mut()
-                    .rust_mut()
-                    .as_mut()
-                    .get_mut()
-                    .config_watch
-                    .clear_pending();
-            }
-            if matches!(request.as_ref(), Some(Ok(()))) {
-                self.as_mut()
-                    .set_status_text(QString::from("Configuration reload queued"));
+                let mut rust = self.as_mut().rust_mut();
+                let this = rust.as_mut().get_mut();
+                this.config_watch.clear_pending();
+                this.config_reload_requested_by_user = false;
             }
             if let Some(Err(error)) = request {
-                self.report_config_reload_failure(&error);
+                self.report_config_reload_failure(&error, announce);
             }
         }
     }

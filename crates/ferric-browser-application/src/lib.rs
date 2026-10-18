@@ -27,8 +27,17 @@ mod configuration;
 mod configuration_reservation;
 pub use configuration_reservation::ConfigurationReservation;
 mod contexts;
+mod download_catalog;
 mod profile;
 mod profile_open;
+mod profile_session;
+pub use download_catalog::{
+    DownloadFailure, DownloadRetryState, DownloadRow, DownloadSaveFailure, DownloadSessionError,
+};
+mod session_download_retries;
+pub use session_download_retries::DownloadRetryPermit;
+mod session_downloads;
+pub use session_downloads::DownloadHistoryStatus;
 mod session_permissions;
 mod storage;
 
@@ -41,7 +50,10 @@ use profile::ProfileActivation;
 pub use profile::{ContextChange, ContextCommand, ContextEffect, ProfileSnapshot};
 use profile_open::{PreparedProfile, ProfileOpenCoordinator};
 pub use profile_open::{ProfileOpenEffect, ProfileOpenError, ProfileOpenRequest, ProfileStorage};
-pub use session_permissions::SessionPermissionError;
+pub use session_permissions::{
+    PermissionPreferencesStatus, PermissionResolution, SavedPermissionPreferences,
+    SessionPermissionError,
+};
 use storage::StorageCoordinator;
 pub use storage::{StorageEffect, StorageTicket};
 
@@ -53,8 +65,15 @@ pub struct BrowserApplication {
     configuration_reservation: Arc<AtomicBool>,
     active_profile: Option<ActiveProfile>,
     next_profile_generation: u64,
+    download_owner: uuid::Uuid,
     storage: StorageCoordinator,
     profile_open: Option<ProfileOpenCoordinator>,
+}
+
+impl Drop for BrowserApplication {
+    fn drop(&mut self) {
+        self.close_session_storage();
+    }
 }
 
 impl BrowserApplication {
@@ -66,6 +85,7 @@ impl BrowserApplication {
             configuration_reservation: Arc::default(),
             active_profile: None,
             next_profile_generation: 1,
+            download_owner: uuid::Uuid::new_v4(),
             storage: StorageCoordinator::default(),
             profile_open: None,
         }
@@ -83,6 +103,7 @@ impl BrowserApplication {
             configuration_reservation: Arc::default(),
             active_profile: None,
             next_profile_generation: 1,
+            download_owner: uuid::Uuid::new_v4(),
             storage: StorageCoordinator::default(),
             profile_open: None,
         }
@@ -127,6 +148,7 @@ impl BrowserApplication {
             configuration_reservation: Arc::default(),
             active_profile: Some(profile.clone()),
             next_profile_generation: self.next_profile_generation,
+            download_owner: uuid::Uuid::new_v4(),
             storage,
             profile_open: None,
         })
@@ -152,6 +174,7 @@ impl BrowserApplication {
                 configuration_reservation: Arc::default(),
                 active_profile: None,
                 next_profile_generation: 1,
+                download_owner: uuid::Uuid::new_v4(),
                 storage: StorageCoordinator::default(),
                 profile_open: None,
             },
@@ -398,7 +421,10 @@ impl BrowserApplication {
         &mut self,
         activation: ProfileActivation,
     ) -> Result<ProfileSnapshot, StorageWorkerError> {
-        self.storage.replace(activation.storage_path.as_deref())?;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        self.drain_session_downloads(deadline);
+        self.storage
+            .replace_until(activation.storage_path.as_deref(), deadline)?;
         let generation = self.next_profile_generation;
         self.next_profile_generation = self.next_profile_generation.saturating_add(1);
         self.active_profile = Some(ActiveProfile::activate(generation, activation));
@@ -445,9 +471,11 @@ impl BrowserApplication {
                     .map_err(|error| ProfileOpenError::InvalidRequest(error.to_string()))?
             }
         };
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        self.drain_session_downloads(deadline);
         if let Err(error) = self
             .storage
-            .replace(prepared.activation.storage_path.as_deref())
+            .replace_until(prepared.activation.storage_path.as_deref(), deadline)
         {
             prepared
                 .storage_error
@@ -477,7 +505,7 @@ impl BrowserApplication {
 
     /// Closes the active profile after draining its durable worker.
     pub fn close_profile(&mut self) {
-        self.storage.close();
+        self.close_session_storage();
         self.active_profile = None;
     }
 
@@ -523,10 +551,16 @@ impl BrowserApplication {
                 (ContextChange::MembershipSaved, context)
             }
         };
+        let generation = profile.generation;
+        let runtime_effects = self
+            .context_catalog()
+            .and_then(|catalog| self.refresh_context_catalog(&catalog))
+            .unwrap_or_default();
         Ok(ContextEffect {
-            generation: profile.generation,
+            generation,
             change,
             context,
+            runtime_effects,
         })
     }
 
@@ -541,13 +575,24 @@ impl BrowserApplication {
         &mut self,
         request: StorageRequest,
     ) -> Result<StorageTicket, StorageWorkerError> {
-        self.storage.submit(request)
+        let observation = session_permissions::durable::PermissionWork::prepare(
+            self.active_profile
+                .as_ref()
+                .map(|profile| profile.session.clone()),
+            &request,
+        );
+        self.storage.submit(
+            request,
+            observation.map(storage::StorageObservation::Permission),
+        )
     }
 
     /// Polls storage lifecycle events in the adapter-facing representation.
     #[must_use]
     pub fn poll_storage_effects(&mut self) -> Vec<StorageEffect> {
-        self.storage.poll()
+        let effects = self.storage.poll();
+        self.flush_session_downloads();
+        effects
     }
 
     /// Starts the single owner thread for one profile metadata database.
@@ -567,7 +612,7 @@ impl BrowserApplication {
     }
 
     pub fn close_storage(&mut self) {
-        self.storage.close();
+        self.close_session_storage();
     }
 
     #[must_use]
@@ -858,7 +903,8 @@ mod tests {
                 generation: 1,
                 change: ContextChange::Created,
                 context,
-            } if context.name == "research"
+                runtime_effects,
+            } if context.name == "research" && runtime_effects.is_empty()
         ));
         assert_eq!(application.contexts().map(<[_]>::len), Some(1));
 

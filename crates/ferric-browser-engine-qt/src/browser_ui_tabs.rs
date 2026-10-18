@@ -323,7 +323,7 @@ impl qobject::BrowserUi {
             .as_mut()
             .get_mut()
             .pending_engine_action = Some(format!("tab-discard\t{id}"));
-        self.set_status_text(QString::from("Tab discard approved by the browser engine"));
+        self.set_status_text(QString::from("Tab unload requested"));
         true
     }
 

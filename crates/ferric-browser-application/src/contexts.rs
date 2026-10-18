@@ -34,21 +34,52 @@ impl BrowserApplication {
 
     /// Refreshes cached metadata without disk I/O or changing profile identity.
     /// Private, transient and unrelated storage roots cannot receive a catalog.
-    pub fn refresh_context_catalog(&mut self, catalog: &ContextCatalog) -> bool {
-        let Some(profile) = self.active_profile.as_mut() else {
-            return false;
-        };
+    /// Rejects older durable commits and clears invalid logical bindings.
+    /// Accepted results contain runtime effects for the adapter to observe.
+    pub fn refresh_context_catalog(
+        &mut self,
+        catalog: &ContextCatalog,
+    ) -> Option<Vec<ferric_browser_runtime::RuntimeEffect>> {
+        let profile = self.active_profile.as_mut()?;
         let snapshot = profile.snapshot();
         if !snapshot.durable
             || snapshot.privacy != PrivacyKind::Normal
             || snapshot.roots.as_ref() != Some(&catalog.roots)
-            || profile.contexts.is_none()
+            || profile
+                .contexts
+                .as_ref()
+                .is_none_or(|current| current.revision() > catalog.registry.revision())
             || self.profile_open.is_some()
+            || self.runtime.view().shutdown() != ferric_browser_core::ShutdownState::Running
         {
-            return false;
+            return None;
         }
+        let windows = self
+            .runtime
+            .view()
+            .windows()
+            .values()
+            .filter_map(|window| {
+                let name = window.context.as_deref()?;
+                (!catalog
+                    .registry
+                    .contexts()
+                    .iter()
+                    .any(|context| context.name == name && context.profile == snapshot.name))
+                .then_some(window.id)
+            })
+            .collect::<Vec<_>>();
+        let effects = if windows.is_empty() {
+            Vec::new()
+        } else {
+            self.runtime
+                .handle(ferric_browser_runtime::RuntimeInput::UserDecision(
+                    ferric_browser_core::Event::ClearWindowContexts { windows },
+                ))
+                .ok()?
+        };
         profile.contexts = Some(catalog.registry.clone());
-        true
+        Some(effects)
     }
 }
 
@@ -96,12 +127,12 @@ mod tests {
             })
             .expect("create");
         let catalog = source.context_catalog().expect("committed catalog");
-        assert!(existing.refresh_context_catalog(&catalog));
+        assert!(existing.refresh_context_catalog(&catalog).is_some());
         assert_eq!(existing.contexts(), source.contexts());
         assert_eq!(existing.profile_snapshot(), identity);
-        assert!(!unrelated.refresh_context_catalog(&catalog));
+        assert!(unrelated.refresh_context_catalog(&catalog).is_none());
         assert!(unrelated.contexts().expect("other catalog").is_empty());
-        assert!(!private.refresh_context_catalog(&catalog));
+        assert!(private.refresh_context_catalog(&catalog).is_none());
         assert!(private.context_catalog().is_none());
         assert!(private.contexts().expect("private test catalog").is_empty());
         source
@@ -110,7 +141,9 @@ mod tests {
             })
             .expect("remove");
         assert!(
-            existing.refresh_context_catalog(&source.context_catalog().expect("updated catalog"))
+            existing
+                .refresh_context_catalog(&source.context_catalog().expect("updated catalog"))
+                .is_some()
         );
         assert!(existing.contexts().expect("refreshed catalog").is_empty());
         source.close_profile();

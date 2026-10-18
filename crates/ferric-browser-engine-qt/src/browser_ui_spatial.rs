@@ -329,6 +329,19 @@ impl qobject::BrowserUi {
         zoom_factor: f64,
     ) -> bool {
         let request_id = request_id.to_string();
+        // Periodic observations belong to the selection phase. A response can
+        // arrive after Enter starts dispatch, whose own request validates the
+        // current geometry. Retired observations must not cancel that action.
+        if request_id.is_empty()
+            && !self
+                .as_ref()
+                .rust()
+                .spatial_session
+                .as_ref()
+                .is_some_and(|session| session.lifecycle() == Some(SpatialLifecycle::Selecting))
+        {
+            return false;
+        }
         let geometry = serde_json::from_str::<serde_json::Value>(&geometry_json.to_string());
         let stamp = SurfaceStamp::new(
             serial.to_string().parse::<u64>().unwrap_or_default(),

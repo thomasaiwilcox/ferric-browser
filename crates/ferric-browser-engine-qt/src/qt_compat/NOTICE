@@ -1,0 +1,16 @@
+QtWebEngine download-source compatibility interface
+
+Copyright (C) 2016 The Qt Company Ltd.
+
+The unmodified profile_adapter_client.h is from QtWebEngine 6.11.2:
+https://raw.githubusercontent.com/qt/qtwebengine/v6.11.2/src/core/profile_adapter_client.h
+
+The file is used under LGPL-3.0-only, one of the licenses offered by its
+preserved SPDX notice. The license text is in LICENSE.LGPL-3.0; the application
+also ships the GNU GPL version 3 in LICENSE. The interface source and its hash
+are recorded in src/qt_compat/provenance.toml in the Ferric Browser source.
+
+Ferric Browser dynamically links the system Qt libraries. No Qt implementation
+has been modified. The compatibility guard is limited to checking the nullable
+download source against the exact qualified SDK/runtime version before calling
+the public view getter.

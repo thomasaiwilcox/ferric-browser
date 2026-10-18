@@ -16,8 +16,8 @@ extensions rather than silently repurposing familiar behavior.
 
 ## Build and run
 
-Install Rust 1.85 or newer, Qt 6.11 with QtWebEngine, Qt Declarative, and Qt
-Wayland, plus a C++ toolchain. Then run:
+Install Rust 1.85 or newer, Qt 6.11 with QtWebEngine, Qt Widgets, Qt Declarative, and Qt
+Wayland, KWindowSystem 6.28 or newer, pkg-config, and a C++ toolchain. Then run:
 
 ```sh
 cargo build --locked

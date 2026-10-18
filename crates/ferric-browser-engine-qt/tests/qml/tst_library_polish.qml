@@ -38,6 +38,7 @@ TestCase {
         property string privateHistoryTransferUrl: ""
         property bool journeyExportPreviewVisible: false
         property string journeyExportPreviewText: ""
+        readonly property var modalInputScope: FerricModalInputController { hostWindow: host }
         color: backgroundColor
         palette.window: backgroundColor
         palette.windowText: primaryTextColor
@@ -65,6 +66,17 @@ TestCase {
             journeySearchText: ""; journeyCurrentOnly: false; pendingDelete: ""
             entries: records; graphNodes: fixtureGraphNodes; graphEntries: graphEdges; graphLineData: []
             profilesModel: []; profilesLoading: false
+        }
+    }
+    Component {
+        id: coveringDialogFixture
+        FerricCommandDialog {
+            browserWindow: host
+            visible: true
+            title: "Another operation"
+            cancelAction: "back"
+            actions: [{id: "back", key: "b", label: "Back", safe: true}]
+            onActionRequested: visible = false
         }
     }
     Component { id: spyFixture; SignalSpy {} }
@@ -118,6 +130,52 @@ TestCase {
         records.setProperty(0,"label","A refreshed title")
         verify(waitForPolish(host)); compare(list.currentItem,row)
         compare(input.text,"Keep this draft"); verify(input.visible)
+    }
+    function test_deletion_feedback_respects_modal_focus_data() {
+        return [{tag: "frontmost", cover: "none"},
+                {tag: "covered-before-feedback", cover: "before-feedback"},
+                {tag: "covered-before-timer", cover: "before-timer"}]
+    }
+    function test_deletion_feedback_respects_modal_focus(row) {
+        records.append({entryKind: "bookmark", entryId: "remaining-record", nodeId: "",
+                        label: "Remaining bookmark", secondary: "https://example.test/b", detail: ""})
+        var view = createView()
+        var list = findChild(view, "libraryEntryList")
+        var deleted = createTemporaryObject(spyFixture, view, {target: view, signalName: "entryDeleteRequested"})
+        var button = findChild(list, "libraryEntryDeleteButton")
+        button.forceActiveFocus()
+        keyClick(Qt.Key_Return)
+        compare(deleted.count, 1)
+        compare(deleted.signalArguments[0][1], "internal-record-123")
+        view.feedback = receipt("delete-one", "pending")
+        view.mutationAccepted("delete-one", "bookmark", "internal-record-123", "", true)
+        var coveringDialog = null
+        if (row.cover === "before-feedback")
+            coveringDialog = createTemporaryObject(coveringDialogFixture, host.contentItem)
+        records.remove(0)
+        view.feedback = receipt("delete-one", "succeeded")
+        // No event processing between feedback and the new modal: ownership
+        // must be checked when the queued restoration actually runs.
+        if (row.cover === "before-timer")
+            coveringDialog = createTemporaryObject(coveringDialogFixture, host.contentItem)
+        verify(waitForPolish(host))
+        if (coveringDialog) {
+            verify(view.visible)
+            compare(view.interactive, false)
+            var back = findChild(coveringDialog, "commandDialogAction-back")
+            verify(back)
+            // Observe focus after the queued timers, rather than allowing a
+            // transient initial focus assignment to satisfy the regression.
+            wait(50)
+            compare(back.activeFocus, true)
+            compare(list.activeFocus, false)
+            keyClick(Qt.Key_Escape)
+            tryCompare(coveringDialog, "visible", false)
+        }
+        tryCompare(view, "interactive", true)
+        tryCompare(list, "activeFocus", true)
+        compare(list.currentIndex, 0)
+        compare(records.get(list.currentIndex).entryId, "remaining-record")
     }
     function test_canonical_journey_target_and_list_activation() {
         records.set(0,{entryKind:"journey",entryId:"node-one",nodeId:"node-one",label:"Article",secondary:"https://example.test",detail:""})

@@ -253,7 +253,7 @@ impl qobject::BrowserUi {
             self.as_ref().rust().state.as_ref(),
             self.as_ref().rust().tab,
         ) else {
-            self.set_status_text(QString::from("Hint selection rejected: stale tab"));
+            self.set_status_text(QString::from("Tab unavailable. Start hints again."));
             return QString::from(r#"{"error":"stale-target"}"#);
         };
         let configuration_revision = self.as_ref().rust().hint_configuration_revision;
@@ -533,9 +533,6 @@ impl qobject::BrowserUi {
                             );
                         }
                     };
-                    self.as_mut().set_status_text(QString::from(format!(
-                        "Hint userscript action started: {action_id}"
-                    )));
                     let mut result = serde_json::json!({
                         "action":"userscript",
                         "action_id":action_id,
@@ -655,17 +652,9 @@ impl qobject::BrowserUi {
                             }
                             result
                         }
-                        "download" => {
-                            let mut result = self.as_mut().queue_download_request(
-                                target,
-                                url.as_str(),
-                                "Rapid hint download queued",
-                            );
-                            result["action"] = Value::String("download".into());
-                            result["action_id"] = Value::String("browser.link.download".into());
-                            result["kind"] = Value::String("link".into());
-                            result
-                        }
+                        "download" => self
+                            .as_mut()
+                            .queue_hint_download_request(target, url.as_str()),
                         _ => {
                             self.set_status_text(QString::from(
                                 "Rapid hint target state is invalid",
@@ -832,16 +821,8 @@ impl qobject::BrowserUi {
                     }
                     result
                 } else if self.as_ref().rust().hint_rapid_target == "download" {
-                    let result = self.as_mut().queue_download_request(
-                        target,
-                        url.as_str(),
-                        "Rapid hint download queued",
-                    );
-                    let mut result = result;
-                    result["action"] = Value::String("download".into());
-                    result["action_id"] = Value::String("browser.link.download".into());
-                    result["kind"] = Value::String("link".into());
-                    result
+                    self.as_mut()
+                        .queue_hint_download_request(target, url.as_str())
                 } else {
                     let effects = match self
                         .as_mut()
@@ -894,6 +875,9 @@ impl qobject::BrowserUi {
                 return QString::from(r#"{"error":"hint-transport-unavailable"}"#);
             }
         };
+        if result.get("error").is_some() {
+            return QString::from(result.to_string());
+        }
         let keeps_hint_mode = rapid_hint_keeps_mode(
             self.as_ref().rust().hint_rapid,
             result.get("action").and_then(Value::as_str),

@@ -3,13 +3,46 @@ use std::{env, fmt::Write as _, fs, path::Path, path::PathBuf};
 use cxx_qt_build::{CxxQtBuilder, QmlModule};
 
 fn main() {
+    println!("cargo:rerun-if-changed=src/qt_compat/profile_adapter_client.h");
+    println!("cargo:rerun-if-changed=src/qt_compat/api/qtwebenginecoreglobal_p.h");
+    println!("cargo:rerun-if-changed=src/qt_compat/provenance.toml");
     let qml_files = collect_qml_files(Path::new("qml"));
     let resources = collect_browser_resources(Path::new("qml"));
     let manifest_path = write_script_manifest(&resources);
     let qrc_path = manifest_path.with_file_name("browser_script_manifest.qrc");
     write_manifest_qrc(&qrc_path, &manifest_path, &resources);
 
-    CxxQtBuilder::new_qml_module(QmlModule::new("io.github.ferricbrowser").qml_files(qml_files))
+    let window_system = pkg_config::Config::new()
+        .atleast_version("6.28")
+        .probe("KF6WindowSystem")
+        .expect("KWindowSystem >= 6.28 is required for parented Wayland file choosers");
+    let (webengine_version, webengine_private) = qt_private_headers(
+        "Qt6WebEngineCore",
+        "QtWebEngineCore/private/qwebenginedownloadrequest_p.h",
+    );
+    assert_eq!(
+        webengine_version, "6.11.2",
+        "Refresh the verified Qt download-source compatibility interface before changing the qualified QtWebEngine SDK"
+    );
+    let (_, core_private) = qt_private_headers("Qt6Core", "QtCore/private/qglobal_p.h");
+    let builder = CxxQtBuilder::new_qml_module(
+        QmlModule::new("io.github.ferricbrowser").qml_files(qml_files),
+    );
+    // SAFETY: This adds discovered dependency and version-matching SDK include
+    // paths. Private Qt declarations are isolated in download_source.cpp.
+    // It does not replace CXX-Qt's compiler, files, flags, or generated ABI.
+    #[allow(unsafe_code)]
+    let builder = unsafe {
+        builder.cc_builder(|cc| {
+            for path in &window_system.include_paths {
+                cc.include(path);
+            }
+            cc.include(&webengine_private);
+            cc.include(&core_private);
+            cc.include("src/qt_compat");
+        })
+    };
+    builder
         .files(["src/lib.rs"])
         .cpp_files([
             "src/browser_key_router.h",
@@ -20,6 +53,8 @@ fn main() {
             "src/script_runner.cpp",
             "src/profile_lifetime.h",
             "src/profile_lifetime.cpp",
+            "src/download_source.h",
+            "src/download_source.cpp",
             "src/popup_owner_bridge.h",
             "src/popup_owner_bridge.cpp",
             "src/browser_page_pointer_adapter.h",
@@ -32,6 +67,14 @@ fn main() {
             "src/link_rule_updater.cpp",
             "src/notification_presenter.h",
             "src/notification_presenter.cpp",
+            "src/native_file_chooser.h",
+            "src/native_file_chooser.cpp",
+            "src/portal_file_request.h",
+            "src/portal_file_request.cpp",
+            "src/gui_application.h",
+            "src/gui_application.cpp",
+            "src/local_file_url.h",
+            "src/local_file_url.cpp",
             "src/mpris_controller.h",
             "src/mpris_controller.cpp",
             "src/settings_model.h",
@@ -42,12 +85,29 @@ fn main() {
         .qrc(&qrc_path)
         .qt_module("Gui")
         .qt_module("Quick")
+        .qt_module("Widgets")
         .qt_module("WebEngineCore")
         .qt_module("WebEngineQuick")
         .qt_module("Network")
         .qt_module("DBus")
         .build()
         .export();
+}
+
+fn qt_private_headers(module: &str, required: &str) -> (String, PathBuf) {
+    let library = pkg_config::Config::new()
+        .cargo_metadata(false)
+        .probe(module)
+        .unwrap_or_else(|error| panic!("{module} SDK discovery failed: {error}"));
+    let directory = library
+        .include_paths
+        .iter()
+        .map(|path| path.join(&library.version))
+        .find(|path| path.join(required).is_file())
+        .unwrap_or_else(|| {
+            panic!("Install the version-matching {module} private development headers")
+        });
+    (library.version, directory)
 }
 
 fn collect_browser_resources(root: &Path) -> Vec<PathBuf> {

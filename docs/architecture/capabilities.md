@@ -3,7 +3,7 @@
 Last probed: 2026-09-19  
 Probe host: Linux x86_64, active Wayland session
 
-This is the initial M0 matrix. `available` means the development host exposes
+This preserves the initial M0 matrix with dated follow-up entries. `available` means the development host exposes
 the package/module; it does not mean the user-facing feature is qualified.
 
 | Feature | Public API/module | Minimum | Compiled support | Runtime probe | Tested package | Status | Limitation/test |
@@ -11,6 +11,7 @@ the package/module; it does not mean the user-facing feature is qualified.
 | Quick presentation | QtQuick | Qt 6 | yes | `qmake6 -query` | Qt 6.11.2 | available | CXX-Qt QML module now composes the surface |
 | Web content view | QtWebEngineQuick / `WebEngineView` | Qt 6 | yes | `pkg-config --modversion Qt6WebEngineQuick` | Qt 6.11.2 | in-progress | M0-02 smoke launch succeeds; reducer-backed engine adapter and local HTTPS fixture remain |
 | WebEngine profile | QtWebEngineCore / Quick profile APIs | Qt 6 | yes | `pkg-config --modversion Qt6WebEngineCore` | Qt 6.11.2 | in-progress | Primary and secondary durable windows derive storage namespaces from the selected validated profile name; multi-profile cookie isolation still requires live qualification |
+| Download source ownership (2026-10-18) | Quick download API plus ADR-0002 nullable-source compatibility guard | exact QtWebEngine SDK 6.11.2 | yes; runtime version mismatch disables download admission | `download_source_tests`, native source-less offer and `application_download_runtime_guard` | Qt 6.11.2 | available | Live/destroyed sources pass in regular/private profiles; runtime mismatch rejects before a target request. The private compatibility interface must be refreshed with SDK changes. Explicit streaming, exclusive asynchronous saving and complete UI qualification are recorded separately in the product-polish implementation report. |
 | D-Bus desktop services | QtDBus + freedesktop portal introspection | Qt 6 | yes | `pkg-config --modversion Qt6DBus`; `busctl --user introspect ...` | Qt 6.11.2; portal interfaces observed | in-progress | FileChooser, ScreenCast, OpenURI, and Notification interfaces are now version-probed; request chains are not yet exercised |
 | Native Wayland | Qt Wayland QPA | Qt 6 | installed/active session | `cargo xtask test wayland`; `QT_QPA_PLATFORM=wayland target/debug/ferric-browser --temp-basedir` | Qt 6.11.2 | in-progress | Nested Weston fixture-backed startup and teardown pass; interactive compositor-visible focus/window evidence remains |
 | Hyprland compositor identity | Hyprland IPC `j/version` | Hyprland runtime | runtime-dependent | `ferric-browser diagnostics --format json` | instance-dependent | in-progress | Bounded branch/tag/commit fields are reported when `HYPRLAND_INSTANCE_SIGNATURE` and the request socket are available; non-Hyprland and unavailable sessions remain explicit |

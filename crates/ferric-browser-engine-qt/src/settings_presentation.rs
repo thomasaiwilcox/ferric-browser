@@ -5,8 +5,22 @@
 //! and effective configuration to presentation rows.
 
 use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QStringList, QVariant};
-use ferric_browser_config::setting_metadata_all;
+use ferric_browser_config::{PendingSettingChange, setting_metadata_all};
 use serde_json::Value;
+
+pub(super) fn configuration_status(status: &str, pending: &[PendingSettingChange]) -> String {
+    let mut status = status.to_owned();
+    if pending.iter().any(|change| change.apply_time == "reload") {
+        status.push_str("; some changes need :config-reload");
+    }
+    if pending
+        .iter()
+        .any(|change| matches!(change.apply_time, "startup" | "restart"))
+    {
+        status.push_str("; some changes need a browser restart");
+    }
+    status
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct SettingsRow {

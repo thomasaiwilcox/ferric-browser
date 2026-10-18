@@ -28,6 +28,7 @@ pub(super) struct ConfigReloadResult {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum ConfigReadOperation {
     Reload,
+    WatchedReload,
     Check,
 }
 
@@ -38,8 +39,14 @@ pub(super) struct ConfigReadFailure {
 }
 
 enum ConfigReloadRequest {
-    Load { path: PathBuf, profile_name: String },
-    Check { path: PathBuf },
+    Load {
+        path: PathBuf,
+        profile_name: String,
+        operation: ConfigReadOperation,
+    },
+    Check {
+        path: PathBuf,
+    },
 }
 
 pub(super) struct ConfigReloadWorker {
@@ -113,7 +120,11 @@ impl ConfigReloadWorker {
         let inner = SingleFlightWorker::spawn(
             "ferric-browser-config-loader",
             |request: ConfigReloadRequest| match request {
-                ConfigReloadRequest::Load { path, profile_name } => load(&path)
+                ConfigReloadRequest::Load {
+                    path,
+                    profile_name,
+                    operation,
+                } => load(&path)
                     .map_err(|error| error.to_string())
                     .and_then(|mut loaded| {
                         let directory = path.parent().unwrap_or_else(|| Path::new("."));
@@ -136,7 +147,7 @@ impl ConfigReloadWorker {
                             profile_overrides,
                             profiles_path: profiles_path.exists().then_some(profiles_path),
                             profiles_config: None,
-                            operation: ConfigReadOperation::Reload,
+                            operation,
                         })
                     }),
                 ConfigReloadRequest::Check { path } => load(&path)
@@ -178,12 +189,30 @@ impl ConfigReloadWorker {
     }
 
     pub(super) fn request(&mut self, path: PathBuf, profile_name: String) -> Result<(), String> {
-        match self
-            .inner
-            .submit(ConfigReloadRequest::Load { path, profile_name })
-        {
+        self.request_reload(path, profile_name, ConfigReadOperation::Reload)
+    }
+
+    pub(super) fn request_watched(
+        &mut self,
+        path: PathBuf,
+        profile_name: String,
+    ) -> Result<(), String> {
+        self.request_reload(path, profile_name, ConfigReadOperation::WatchedReload)
+    }
+
+    fn request_reload(
+        &mut self,
+        path: PathBuf,
+        profile_name: String,
+        operation: ConfigReadOperation,
+    ) -> Result<(), String> {
+        match self.inner.submit(ConfigReloadRequest::Load {
+            path,
+            profile_name,
+            operation,
+        }) {
             Ok(()) => {
-                self.pending_operation = Some(ConfigReadOperation::Reload);
+                self.pending_operation = Some(operation);
                 Ok(())
             }
             Err(SubmitError::Busy) => Err("configuration reload is already pending".into()),

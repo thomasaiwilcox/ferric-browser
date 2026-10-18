@@ -2,7 +2,7 @@
 //!
 //! The Qt adapter transports these values but does not decide their shape.
 
-use ferric_browser_core::{ApplicationState, Event, Mode, TabId, Target};
+use ferric_browser_core::{ApplicationState, Event, Mode, TabId, Target, WindowId};
 use serde_json::Value;
 
 #[must_use]
@@ -12,7 +12,7 @@ pub fn ipc_event_type(event: &Event) -> &'static str {
         Event::CreateWindow { .. } | Event::FocusWindow { .. } | Event::SetActiveWindow { .. } => {
             "window.changed"
         }
-        Event::SetWindowContext { .. } => "context.changed",
+        Event::SetWindowContext { .. } | Event::ClearWindowContexts { .. } => "context.changed",
         Event::OpenTab { .. }
         | Event::OpenTabWithNavigation { .. }
         | Event::OpenPopup { .. }
@@ -63,6 +63,7 @@ pub fn ipc_event_payload(event: &Event, state: &ApplicationState) -> Value {
         Event::SetWindowContext { window, .. } => serde_json::json!({
             "window_id": window.to_string(), "context_changed": true
         }),
+        Event::ClearWindowContexts { windows } => cleared_context_payload(windows),
         Event::OpenTab { window } | Event::OpenTabWithNavigation { window, .. } => {
             opened_tab_payload(state, *window)
         }
@@ -207,6 +208,13 @@ const fn mode_name(mode: Mode) -> &'static str {
         Mode::PassThrough => "pass-through",
         Mode::PassThroughOnce => "pass-through-once",
     }
+}
+
+fn cleared_context_payload(windows: &[WindowId]) -> Value {
+    serde_json::json!({
+        "window_ids": windows.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        "context_changed": true,
+    })
 }
 
 #[cfg(test)]

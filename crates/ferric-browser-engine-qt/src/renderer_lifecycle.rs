@@ -13,7 +13,6 @@ impl qobject::BrowserUi {
             self.as_ref().rust().tab
         };
         let Some(target) = current_target(self.as_ref().rust().state.as_ref(), tab) else {
-            self.set_status_text(QString::from("Renderer termination target is stale"));
             return false;
         };
         self.as_mut()
@@ -42,7 +41,9 @@ impl qobject::BrowserUi {
             .reduce_event(Event::RendererTerminated { target })
         {
             Ok(_) => {
-                self.set_status_text(QString::from("Renderer terminated; recovery required"));
+                self.set_status_text(QString::from(
+                    "The page process stopped. Reload the page to recover.",
+                ));
                 true
             }
             Err(error) => {
@@ -61,7 +62,9 @@ impl qobject::BrowserUi {
             self.as_ref().rust().tab
         };
         let Some(target) = current_target(self.as_ref().rust().state.as_ref(), tab) else {
-            self.set_status_text(QString::from("Renderer recovery target is stale"));
+            self.set_status_text(QString::from(
+                "That tab is no longer open. Choose another tab to continue.",
+            ));
             return false;
         };
         match self.as_mut().reduce_event(Event::Reload {

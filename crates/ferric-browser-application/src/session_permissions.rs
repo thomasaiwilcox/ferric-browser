@@ -1,86 +1,19 @@
 //! Memory-only grants owned by a validated profile session, shared by its windows.
 
-use std::{
-    collections::BTreeMap,
-    fmt,
-    sync::{Arc, Mutex, OnceLock, Weak},
-};
+use std::{fmt, sync::Arc};
 
 use ferric_browser_config::PermissionDecision;
-use ferric_browser_core::{PrivacyKind, ShutdownState};
-use ferric_browser_storage::{
-    StorageRoots, StoreError, is_rememberable_permission, normalize_permission_origin,
+use ferric_browser_core::ShutdownState;
+use ferric_browser_storage::{StoreError, is_rememberable_permission, normalize_permission_origin};
+
+use crate::{
+    BrowserApplication,
+    profile_session::{ProfileSession, SessionScope},
 };
-use uuid::Uuid;
 
-use crate::{BrowserApplication, profile::ProfileActivation};
-
-#[derive(Debug, Eq, PartialEq)]
-enum SessionScope {
-    Durable { id: Uuid, roots: StorageRoots },
-    Memory(Uuid),
-}
-
-struct Session {
-    scope: SessionScope,
-    decisions: Mutex<BTreeMap<(String, String), PermissionDecision>>,
-}
-
-#[derive(Clone)]
-pub(crate) struct SessionPermissions(Arc<Session>);
-
-impl fmt::Debug for SessionPermissions {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Origins and decisions are deliberately absent from profile debug output.
-        formatter
-            .debug_struct("SessionPermissions")
-            .finish_non_exhaustive()
-    }
-}
-
-impl SessionPermissions {
-    pub(crate) fn new(activation: &ProfileActivation) -> Self {
-        static SESSIONS: OnceLock<Mutex<Vec<Weak<Session>>>> = OnceLock::new();
-
-        let scope = if activation.privacy == PrivacyKind::Normal
-            && activation.storage_path.is_some()
-            && let (Some(id), Some(roots)) = (activation.id, activation.roots.as_ref())
-        {
-            SessionScope::Durable {
-                id,
-                roots: roots.clone(),
-            }
-        } else {
-            SessionScope::Memory(Uuid::new_v4())
-        };
-        let durable = matches!(scope, SessionScope::Durable { .. });
-        let make = |scope| {
-            Arc::new(Session {
-                scope,
-                decisions: Mutex::new(BTreeMap::new()),
-            })
-        };
-        if !durable {
-            return Self(make(scope));
-        }
-        // Durable owners opened independently in this process still belong to
-        // one profile session. Weak entries cannot keep grants alive themselves.
-        let Ok(mut sessions) = SESSIONS.get_or_init(Mutex::default).lock() else {
-            return Self(make(scope));
-        };
-        sessions.retain(|session| session.strong_count() > 0);
-        if let Some(existing) = sessions
-            .iter()
-            .filter_map(Weak::upgrade)
-            .find(|existing| existing.scope == scope)
-        {
-            return Self(existing);
-        }
-        let session = make(scope);
-        sessions.push(Arc::downgrade(&session));
-        Self(session)
-    }
-}
+#[path = "durable_permissions.rs"]
+pub(crate) mod durable;
+pub use durable::{PermissionPreferencesStatus, PermissionResolution, SavedPermissionPreferences};
 
 #[derive(Debug)]
 pub enum SessionPermissionError {
@@ -129,13 +62,13 @@ fn capabilities(permission: &str) -> Result<[Option<&str>; 2], SessionPermission
 }
 
 impl BrowserApplication {
-    fn permission_session(&self) -> Result<&SessionPermissions, SessionPermissionError> {
+    fn permission_session(&self) -> Result<&ProfileSession, SessionPermissionError> {
         if self.profile_open.is_some() || self.runtime.view().shutdown() != ShutdownState::Running {
             return Err(SessionPermissionError::ProfileUnavailable);
         }
         self.active_profile
             .as_ref()
-            .map(|profile| &profile.session_permissions)
+            .map(|profile| &profile.session)
             .ok_or(SessionPermissionError::ProfileUnavailable)
     }
 

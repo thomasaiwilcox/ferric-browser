@@ -376,7 +376,8 @@ impl qobject::BrowserUi {
     }
 
     /// Reuse lifetime-safe native owner delivery for committed catalog updates.
-    /// Revision checks prevent an older queued update replacing a newer edit.
+    /// Application-owned durable revisions reject older commits, irrespective
+    /// of the order in which native callbacks are delivered.
     pub(super) fn publish_context_catalog(mut self: Pin<&mut Self>) {
         let Some(catalog) = self
             .as_ref()
@@ -504,7 +505,6 @@ impl qobject::BrowserUi {
                 .values()
                 .filter(|owner| owner.token != lease.0)
                 .filter_map(|owner| owner.context_catalog.clone())
-                .filter(|(revision, _)| *revision > rust.context_catalog_revision)
                 .collect::<Vec<_>>()
         } else {
             Vec::new()

@@ -584,7 +584,6 @@ FerricBrowserRuntimeBase {
             }
             if (host.active) {
                 window.activationStatus = "activated"
-                host.forceActiveFocus()
                 if (operationId.length > 0) {
                     ui.complete_window_focus(operationId, "activated")
                 }
@@ -621,18 +620,43 @@ FerricBrowserRuntimeBase {
 
     FerricFileDialogSurfaces {
         id: fileDialogSurfaces
+        engineHostWindow: window
         diagnosticsHostWindow: window.diagnosticsHost || window
+        portalRequired: window.desktopPortalMode(browserUi) === "required"
+        enginePortalRequired: window.desktopPortalMode(window.pendingFileDialogUi || browserUi) === "required"
+        diagnosticsPortalRequired: window.desktopPortalMode(window.diagnosticsUi || browserUi) === "required"
         onDownloadAccepted: window.acceptPendingDownload()
         onDownloadRejected: window.cancelPendingDownload()
+        onDownloadFailed: function(message) { window.failPendingDownload(message) }
         onJourneyExportAccepted: window.finishJourneyExport()
         onJourneyExportRejected: window.journeyExportPreviewVisible = true
+        onJourneyExportFailed: function(message) {
+            window.journeyExportPreviewVisible = true
+            browserUi.status_text = message
+        }
         onDiagnosticsExportAccepted: window.finishDiagnosticsExport()
         onDiagnosticsExportRejected: if (window.diagnosticsUi) window.diagnosticsVisible = true
+        onDiagnosticsExportFailed: function(message) {
+            if (!window.diagnosticsUi) return
+            window.diagnosticsVisible = true
+            window.diagnosticsExportNotice = message
+            window.diagnosticsExportDetail = ""
+        }
         onEngineFileAccepted: window.acceptEngineFileDialog()
         onEngineFileRejected: window.rejectEngineFileDialog()
+        onEngineFileFailed: function(message) { window.clearEngineFileDialog(true, message) }
+        onEngineChooserOpened: function(backend) {
+            if (!window.pendingFileDialogRequest) return
+            var ui = window.pendingFileDialogUi || browserUi
+            ui.status_text = backend === "system"
+                    ? "The system file chooser is open"
+                    : "The browser file chooser is open"
+        }
         onEngineFolderAccepted: window.acceptEngineFolderDialog()
         onEngineFolderRejected: window.rejectEngineFileDialog()
+        onEngineFolderFailed: function(message) { window.clearEngineFileDialog(true, message) }
         onUserscriptManifestAccepted: window.installUserscriptManifest()
+        onUserscriptManifestFailed: function(message) { browserUi.status_text = message }
     }
 
     FerricCertificatePrompts {
@@ -680,7 +704,7 @@ FerricBrowserRuntimeBase {
         var edit = action.split("\t")
         if (edit.length !== 5 || !view
                 || !ui.clipboard_edit_target_current(edit[1], edit[2], edit[3], view.clipboardPopupToken || "")) {
-            ui.status_text = "Edit destination is stale"
+            ui.status_text = "The page or selection changed. Choose the text or field again and retry."
             return false
         }
         return window.requestNativeEdit(ui, view, edit[4], source)
@@ -697,7 +721,7 @@ FerricBrowserRuntimeBase {
         var provider = window.selectionProviderFor(view)
         provider.validate(source || provider.snapshot(), function(result) {
             if (!result || result.error || !view.action(action).enabled) {
-                ui.status_text = "Edit destination is stale or unavailable"
+                ui.status_text = "The page or selection changed. Choose the text or field again and retry."
                 return
             }
             view.triggerWebAction(action)
@@ -821,53 +845,34 @@ FerricBrowserRuntimeBase {
                 ? browserUi.portal_capability_status(capability) : "not-probed"
     }
 
-    function openPendingEngineFileDialog() {
-        var request = window.pendingFileDialogRequest
-        if (!request) {
-            return
-        }
-        window.pendingFileDialogWaitingForPortal = false
+    function presentEngineFileDialog(surfaces, request, ui) {
+        if (!surfaces || !request) return
         if (request.mode === FileDialogRequest.FileModeUploadFolder) {
-            fileDialogSurfaces.openEngineFolder()
+            surfaces.openEngineFolder()
             return
         }
-        fileDialogSurfaces.engineFileMode = request.mode === FileDialogRequest.FileModeOpenMultiple
+        surfaces.engineFileMode = request.mode === FileDialogRequest.FileModeOpenMultiple
                 ? FileDialog.OpenFiles
                 : request.mode === FileDialogRequest.FileModeSave
                     ? FileDialog.SaveFile
                     : FileDialog.OpenFile
-        fileDialogSurfaces.engineFileNameFilters = window.fileDialogNameFilters(request)
-        fileDialogSurfaces.engineFileCurrentFile = request.defaultFileName.length > 0
-                ? request.defaultFileName : ""
-        fileDialogSurfaces.engineFileTitle = request.mode === FileDialogRequest.FileModeSave
+        surfaces.engineFileNameFilters = window.fileDialogNameFilters(request)
+        surfaces.engineFileDefaultFile = (ui || browserUi).file_dialog_default_url(
+                    request.defaultFileName, surfaces.engineFileCurrentFolder)
+        surfaces.engineFileTitle = request.mode === FileDialogRequest.FileModeSave
                 ? "Save file"
                 : request.mode === FileDialogRequest.FileModeOpenMultiple
                     ? "Choose files"
                     : "Choose file"
-        fileDialogSurfaces.openEngineFile()
+        surfaces.openEngineFile()
     }
 
-    function maybeOpenPendingEngineFileDialog() {
-        if (!window.pendingFileDialogWaitingForPortal
-                || !window.pendingFileDialogRequest) {
-            return
-        }
-        if (Date.now() >= window.pendingFileDialogPortalDeadlineMs) {
-            window.clearEngineFileDialog(true,
-                                         "Desktop portal check timed out; file selection cancelled")
-            return
-        }
+    function openPendingEngineFileDialog() {
+        var request = window.pendingFileDialogRequest
+        if (!request) return
         var ui = window.pendingFileDialogUi || browserUi
-        var status = window.desktopPortalCapabilityStatus(ui, "file_chooser")
-        if (status === "pending" || status === "not-probed") {
-            return
-        }
-        if (status !== "available") {
-            window.clearEngineFileDialog(true,
-                                         "Required desktop portal unavailable; file selection cancelled")
-            return
-        }
-        window.openPendingEngineFileDialog()
+        ui.status_text = "Opening the file chooser…"
+        window.presentEngineFileDialog(fileDialogSurfaces, request, ui)
     }
 
     function clearEngineFileDialog(cancelRequest, message) {
@@ -880,14 +885,8 @@ FerricBrowserRuntimeBase {
         window.pendingFileDialogView = null
         window.pendingFileDialogUi = null
         window.pendingFileDialogLeaseToken = ""
-        window.pendingFileDialogWaitingForPortal = false
-        window.pendingFileDialogPortalDeadlineMs = 0
-        if (fileDialogSurfaces.engineFileVisible) {
-            fileDialogSurfaces.closeEngineFile()
-        }
-        if (fileDialogSurfaces.engineFolderVisible) {
-            fileDialogSurfaces.closeEngineFolder()
-        }
+        fileDialogSurfaces.closeEngineFile()
+        fileDialogSurfaces.closeEngineFolder()
         if (hadRequest) {
             window.restoreOverlayFocus()
         }
@@ -918,7 +917,7 @@ FerricBrowserRuntimeBase {
                 window.restoreOverlayFocus()
             }
             window.completeNativePromptLease(ui, leaseToken, view)
-            ui.status_text = "File selection returned no local paths"
+            ui.status_text = "Choose a file stored on this computer"
             return
         }
         window.resolveQtRequest(ui, request, "file-dialog", "dialogAccept", [paths])
@@ -947,7 +946,7 @@ FerricBrowserRuntimeBase {
                 window.restoreOverlayFocus()
             }
             window.completeNativePromptLease(ui, leaseToken, view)
-            ui.status_text = "Folder selection returned no local path"
+            ui.status_text = "Choose a folder stored on this computer"
             return
         }
         window.resolveQtRequest(ui, request, "file-dialog", "dialogAccept", [paths])
@@ -968,7 +967,6 @@ FerricBrowserRuntimeBase {
         window.pendingFileDialogView = null
         window.pendingFileDialogUi = null
         window.pendingFileDialogLeaseToken = ""
-        window.pendingFileDialogWaitingForPortal = false
         window.resolveQtRequest(ui, request, "file-dialog", "dialogReject", [])
         window.restoreOverlayFocus()
         window.completeNativePromptLease(ui, leaseToken, view)
@@ -978,36 +976,25 @@ FerricBrowserRuntimeBase {
     function handleFileDialogRequested(request, view, ui) {
         if (!request) return
         request.accepted = true
+        var requestUi = ui || browserUi
+        if (view && (view.viewRetired || view.viewHost !== window || view.viewUi !== requestUi)) {
+            window.resolveQtRequest(requestUi, request, "file-dialog", "dialogReject", [])
+            return
+        }
         if (window.pendingFileDialogRequest) {
-            window.clearEngineFileDialog(true, "Previous file selection cancelled")
-            window.resolveQtRequest(ui || browserUi, request, "file-dialog", "dialogReject", [])
-            (ui || browserUi).status_text = "Another file selection is already open"
+            window.resolveQtRequest(requestUi, request, "file-dialog", "dialogReject", [])
+            requestUi.status_text = "Another file selection is already open"
             return
         }
         window.captureOverlayFocus(window, view || window.activeWebView())
         window.pendingFileDialogRequest = request
         window.pendingFileDialogView = view || null
-        window.pendingFileDialogUi = ui || browserUi
-        var requestUi = window.pendingFileDialogUi
+        window.pendingFileDialogUi = requestUi
         window.pendingFileDialogLeaseToken = window.beginNativePromptLease(
                     requestUi, view, "file-chooser")
-        if (window.desktopPortalMode(requestUi) === "required") {
-            var status = window.desktopPortalCapabilityStatus(requestUi, "file_chooser")
-            if (status === "not-probed") {
-                browserUi.probe_desktop_portals()
-                status = window.desktopPortalCapabilityStatus(requestUi, "file_chooser")
-            }
-            if (status === "pending" || status === "not-probed") {
-                window.pendingFileDialogWaitingForPortal = true
-                window.pendingFileDialogPortalDeadlineMs = Date.now() + 5000
-                requestUi.status_text = "Checking required desktop portal…"
-                return
-            }
-            if (status !== "available") {
-                window.clearEngineFileDialog(true,
-                                             "Required desktop portal unavailable; file selection cancelled")
-                return
-            }
+        if (window.pendingFileDialogLeaseToken.length === 0) {
+            window.clearEngineFileDialog(true, "This file selection is no longer available; try again")
+            return
         }
         window.openPendingEngineFileDialog()
     }

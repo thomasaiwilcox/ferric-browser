@@ -1332,6 +1332,10 @@ fn stable_digest(value: &str) -> u64 {
 
 #[derive(Debug)]
 pub enum InstanceError {
+    InvalidSocketAddress {
+        path: PathBuf,
+        message: String,
+    },
     Io {
         path: PathBuf,
         message: String,
@@ -1345,7 +1349,9 @@ pub enum InstanceError {
 impl std::fmt::Display for InstanceError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Io { path, message } => write!(formatter, "{}: {message}", path.display()),
+            Self::Io { path, message } | Self::InvalidSocketAddress { path, message } => {
+                write!(formatter, "{}: {message}", path.display())
+            }
             Self::Busy { path, owner } => write!(
                 formatter,
                 "instance is already owned ({}; owner {})",
@@ -1434,8 +1440,16 @@ pub fn bind_listener(paths: &InstancePaths) -> Result<UnixListener, InstanceErro
         }
         fs::remove_file(&paths.socket).map_err(|error| instance_io(&paths.socket, &error))?;
     }
-    let listener =
-        UnixListener::bind(&paths.socket).map_err(|error| instance_io(&paths.socket, &error))?;
+    let listener = UnixListener::bind(&paths.socket).map_err(|error| {
+        if error.kind() == io::ErrorKind::InvalidInput {
+            InstanceError::InvalidSocketAddress {
+                path: paths.socket.clone(),
+                message: error.to_string(),
+            }
+        } else {
+            instance_io(&paths.socket, &error)
+        }
+    })?;
     set_mode(&paths.socket, 0o600).map_err(|error| instance_io(&paths.socket, &error))?;
     Ok(listener)
 }
@@ -1729,6 +1743,20 @@ mod tests {
         ));
         drop(lock);
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn overlong_socket_addresses_have_a_typed_failure() {
+        let root = std::env::temp_dir().join(format!("fi-{}", uuid::Uuid::new_v4().simple()));
+        let runtime = root.join("a".repeat(64)).join("b".repeat(64));
+        let paths = instance_paths(&runtime, &root, "long-address-test");
+        fs::create_dir_all(&paths.directory).expect("valid filesystem directory");
+        let result = bind_listener(&paths);
+        fs::remove_dir_all(root).expect("remove owned fixture");
+        assert!(matches!(
+            result,
+            Err(InstanceError::InvalidSocketAddress { .. })
+        ));
     }
 
     #[test]

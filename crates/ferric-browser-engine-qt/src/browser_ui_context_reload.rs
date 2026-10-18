@@ -18,6 +18,7 @@ pub(super) struct ConfigReloadPublication {
     pub sources: Vec<PathBuf>,
     pub profiles_path: Option<PathBuf>,
     pub contexts: ContextsConfig,
+    pub announce: bool,
 }
 pub(super) struct PendingContextReload {
     publication: ConfigReloadPublication,
@@ -94,12 +95,15 @@ impl qobject::BrowserUi {
                     );
                 }
             }
+            let announce = publication.announce;
             this.pending_context_reload = Some(PendingContextReload {
                 publication,
                 reservation,
             });
             drop(rust);
-            self.set_status_text(QString::from("Reloading settings and contexts…"));
+            if announce {
+                self.set_status_text(QString::from("Reloading settings and contexts…"));
+            }
             Ok(())
         } else {
             self.finish_context_configuration_reload(publication, None)
@@ -136,6 +140,7 @@ impl qobject::BrowserUi {
         let Some(pending) = pending else {
             return;
         };
+        let announce = pending.publication.announce;
         let result = result.and_then(|effect| {
             self.as_ref()
                 .rust()
@@ -148,7 +153,7 @@ impl qobject::BrowserUi {
                 .finish_context_configuration_reload(pending.publication, Some(effect))
         });
         if let Err(error) = result {
-            self.report_config_reload_failure(&error);
+            self.report_config_reload_failure(&error, announce);
         }
     }
     fn finish_context_configuration_reload(
@@ -159,7 +164,7 @@ impl qobject::BrowserUi {
         self.as_mut().commit_reloaded_config(
             publication.candidate,
             publication.layers,
-            "Configuration reloaded",
+            publication.announce.then_some("Settings reloaded"),
             publication.fingerprint,
             effect,
         )?;

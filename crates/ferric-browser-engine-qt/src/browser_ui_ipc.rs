@@ -4,8 +4,8 @@ use super::{
     is_library_command, is_link_clean_command, is_reopen_in_window_command, is_scroll_command,
     is_scroll_target_command, is_search_next_command, is_tab_clone_command, is_tab_detach_command,
     is_tab_give_command, is_tab_undo_command, is_yank_command, is_zoom_command,
-    learning_mode_request, normalize_active_tab_command, parse_action_invocation,
-    parse_hint_options, qobject, resolve_input, selection_yank_command,
+    learning_mode_request, normalize_active_tab_command, parse_hint_options, qobject,
+    resolve_input, selection_yank_command,
 };
 
 impl qobject::BrowserUi {
@@ -109,13 +109,6 @@ impl qobject::BrowserUi {
                 "theme-reload" => self.execute_theme_reload_command(&command),
                 _ => unreachable!("configuration command was matched above"),
             };
-        }
-        if command.name == "get" {
-            if route.context.is_some() {
-                return Err("context routing is not valid for configuration queries".into());
-            }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.as_mut().execute_config_get_command(&command);
         }
         if command.name == "config-export" {
             if route.context.is_some() {
@@ -570,13 +563,6 @@ impl qobject::BrowserUi {
             self.as_mut().execute_editor_command(&command)?;
             return Ok(serde_json::json!({"status": "accepted", "pending": true}));
         }
-        if command.name == "download" {
-            if route.context.is_some() {
-                return Err("context routing is not valid for downloads".into());
-            }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.as_mut().execute_download_command(&command);
-        }
         if command.name == "print-pdf" {
             if route.context.is_some() {
                 return Err("context routing is not valid for PDF generation".into());
@@ -644,16 +630,6 @@ impl qobject::BrowserUi {
             }
             self.as_ref().validate_ipc_route(route)?;
             return self.as_mut().execute_download_desktop_command(&command);
-        }
-        if matches!(
-            command.name.as_str(),
-            "download-cancel" | "download-pause" | "download-resume" | "download-retry"
-        ) {
-            if route.context.is_some() {
-                return Err("context routing is not valid for download controls".into());
-            }
-            self.as_ref().validate_ipc_route(route)?;
-            return self.as_mut().execute_download_control_command(&command);
         }
         if command.name == "spawn" {
             if route.context.is_some() {
@@ -756,24 +732,6 @@ impl qobject::BrowserUi {
             };
             let actions = self.as_mut().show_action_list(subject)?;
             return Ok(serde_json::json!({"status": "accepted", "actions": actions}));
-        }
-        if command.name == "action" {
-            if route.context.is_some() {
-                return Err("context routing is not valid for actions".into());
-            }
-            if let Some((mut result, action_id)) =
-                self.as_mut().execute_userscript_action_command(&command)?
-            {
-                result["action_id"] = Value::String(action_id);
-                return Ok(result);
-            }
-            let (mapped, action_id) = parse_action_invocation(&command)?;
-            let mut result = self
-                .as_mut()
-                .execute_ipc_command_with_operation(mapped, route, operation_id)
-                .map_err(|error| error.to_string())?;
-            result["action_id"] = Value::String(action_id);
-            return Ok(result);
         }
         if command.name == "tab-open" {
             if route.context.is_some() || route.profile.is_some() {

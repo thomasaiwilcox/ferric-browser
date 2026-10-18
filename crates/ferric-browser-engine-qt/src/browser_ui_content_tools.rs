@@ -1,7 +1,7 @@
 use super::{
     CxxQtType, PathBuf, Pin, QString, QStringList, UserscriptManagerRequest,
-    UserscriptManagerWorker, Uuid, captured_target_is_current, cleanup_print_artifact, fs, qobject,
-    userscript, validate_pdf_output_path, validate_print_pdf_path, validate_save_page_path,
+    UserscriptManagerWorker, Uuid, cleanup_print_artifact, fs, qobject, userscript,
+    validate_pdf_output_path, validate_print_pdf_path, validate_save_page_path,
 };
 
 impl qobject::BrowserUi {
@@ -353,7 +353,9 @@ impl qobject::BrowserUi {
             (this.pending_print.clone(), this.pending_print_private)
         };
         if requested.as_ref() != Some(&path) {
-            self.set_status_text(QString::from("Print request became stale"));
+            self.set_status_text(QString::from(
+                "This print request is no longer active. Start printing again.",
+            ));
             return false;
         }
         if !succeeded {
@@ -388,81 +390,5 @@ impl qobject::BrowserUi {
         }
         self.set_status_text(QString::from("Print job queued"));
         true
-    }
-
-    pub(super) fn take_download_request(mut self: Pin<&mut Self>) -> bool {
-        self.as_mut().set_download_request_token(QString::default());
-        self.as_mut().set_download_request_url(QString::default());
-        let request_target = self
-            .as_ref()
-            .rust()
-            .pending_download
-            .as_ref()
-            .map(|request| request.target);
-        let request_is_stale = request_target.is_some_and(|target| {
-            !captured_target_is_current(self.as_ref().rust().state.as_ref(), target)
-        });
-        let mut rust = self.as_mut().rust_mut();
-        let this = rust.as_mut().get_mut();
-        let Some(request) = this.pending_download.as_mut() else {
-            return false;
-        };
-        if request_is_stale {
-            this.pending_download = None;
-            self.set_status_text(QString::from(
-                "This download request has changed. Check Downloads for its status.",
-            ));
-            return false;
-        }
-        if request.issued {
-            return false;
-        }
-        request.issued = true;
-        let token = request.token.clone();
-        let url = request.url.clone();
-        drop(rust);
-        self.as_mut()
-            .set_download_request_token(QString::from(token));
-        self.as_mut().set_download_request_url(QString::from(url));
-        true
-    }
-
-    pub(super) fn complete_download_request(
-        mut self: Pin<&mut Self>,
-        token: &QString,
-        succeeded: bool,
-    ) -> bool {
-        let token = token.to_string();
-        let request = {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            let Some(request) = this.pending_download.as_ref() else {
-                self.set_status_text(QString::from("Download request expired"));
-                return false;
-            };
-            if request.token != token {
-                self.set_status_text(QString::from(
-                    "This download request has changed. Check Downloads for its status.",
-                ));
-                return false;
-            }
-            this.pending_download.take()
-        };
-        let Some(request) = request else {
-            return false;
-        };
-        if !captured_target_is_current(self.as_ref().rust().state.as_ref(), request.target) {
-            self.set_status_text(QString::from(
-                "The page changed; the download result could not be confirmed. Check Downloads.",
-            ));
-            return false;
-        }
-        if succeeded {
-            self.set_status_text(QString::from("Download activation requested"));
-            true
-        } else {
-            self.set_status_text(QString::from("Download activation failed"));
-            false
-        }
     }
 }

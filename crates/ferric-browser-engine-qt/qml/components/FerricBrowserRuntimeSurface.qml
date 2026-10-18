@@ -143,14 +143,14 @@ FerricBrowserRuntimeChrome {
             destination = view.viewUi.content_traverse(view.tabIndex >= 0 ? view.tabIndex : view.viewUi.active_tab_index, backwards ? -step : step, view.engineHistoryIndex)
             if (destination.length > 0) break
         }
-        if (destination.length === 0) { view.viewUi.status_text = "History boundary reached"; return }
+        if (destination.length === 0) { view.viewUi.status_text = backwards ? "No earlier history" : "No later history"; return }
         var fields = destination.split("\t")
         var offset = Number(fields[0])
         var url = fields.slice(1).join("\t")
         if (url !== "rb://start" && url !== "rb://blank") offset = view.contentEngineOffset(url, offset, backwards)
         if (offset === null) {
             view.viewUi.content_history_import(view.tabIndex >= 0 ? view.tabIndex : view.viewUi.active_tab_index, originalHistory)
-            view.viewUi.status_text = "That engine history entry is no longer available"
+            view.viewUi.status_text = "That history entry is no longer available."
             return
         }
         view.setContentUrl(url, true, offset !== 0)
@@ -241,7 +241,7 @@ FerricBrowserRuntimeChrome {
             }
             suspendView.lifecycleState = WebEngineView.LifecycleState.Frozen
             tabs.setProperty(suspendIndex, "suspended", true)
-            browserUi.status_text = "Tab suspended; engine lifecycle frozen"
+            browserUi.status_text = "Tab suspended; background activity paused."
             return
         }
         if (action.indexOf("tab-discard\t") === 0) {
@@ -381,9 +381,7 @@ FerricBrowserRuntimeChrome {
             return
         }
         if (action === "show-downloads") {
-            window.openInternalSurface()
-            window.downloadManagerVisible = true
-            window.refreshDownloads()
+            window.downloadWorkspaceObject.show()
             return
         }
         if (action === "show-switcher") {
@@ -609,32 +607,10 @@ FerricBrowserRuntimeChrome {
             }
             return
         }
-        if (action.indexOf("download-cancel\t") === 0) {
-            var cancelParts = action.split("\t")
-            var pendingDownload = window.activeDownloads[cancelParts[1]]
-            if (pendingDownload) {
-                window.resolveQtRequest(browserUi, pendingDownload, "download", "cancel", [])
-            }
-            return
-        }
-        if (action.indexOf("download-pause\t") === 0 || action.indexOf("download-resume\t") === 0) {
-            var pauseParts = action.split("\t")
-            var pauseDownload = window.activeDownloads[pauseParts[1]]
-            if (pauseDownload) {
-                if (action.indexOf("download-pause\t") === 0) {
-                    pauseDownload.pause()
-                } else {
-                    pauseDownload.resume()
-                }
-            }
-            return
-        }
-        if (action.indexOf("download-retry\t") === 0) {
-            var retryParts = action.split("\t")
-            var retryView = window.activeWebView()
-            if (retryParts.length >= 2 && retryView) {
-                window.runBrowserScript(retryView, window.downloadLinkScript(retryParts.slice(1).join("\t")))
-            }
+        if (action.indexOf("download-cancel\t") === 0 || action.indexOf("download-pause\t") === 0
+                || action.indexOf("download-resume\t") === 0) {
+            var control = action.split("\t")
+            window.profileResourceRegistry.controlDownload(browserUi, control[1], control[0].slice("download-".length))
             return
         }
         if (action.indexOf("fullscreen\t") === 0) {
@@ -791,7 +767,6 @@ FerricBrowserRuntimeChrome {
             window.executePendingEngineAction()
             browserUi.poll_config()
             window.profileSessionWorkspaceObject.presentCommandRequest()
-            window.maybeOpenPendingEngineFileDialog()
             window.maybeOpenPendingDesktopMediaRequest()
             browserUi.refresh_operations()
             browserUi.tick_bindings()
@@ -853,16 +828,7 @@ FerricBrowserRuntimeChrome {
                     browserUi.deliver_selection(selectionToken, JSON.stringify({error: "document view unavailable"}))
                 }
             }
-            if (browserUi.take_download_request()) {
-                var downloadView = window.activeWebView()
-                if (downloadView) {
-                    window.runBrowserScript(downloadView, window.downloadLinkScript(browserUi.download_request_url), function() {
-                        browserUi.complete_download_request(browserUi.download_request_token, true)
-                    })
-                } else {
-                    browserUi.complete_download_request(browserUi.download_request_token, false)
-                }
-            }
+            window.downloadWorkspaceObject.dispatchRequest()
             var clipboardRequest = browserUi.take_clipboard_request()
             if (clipboardRequest.length > 0) {
                 window.copyToClipboard(
@@ -1227,12 +1193,11 @@ FerricBrowserRuntimeChrome {
         commandText: ":quit"
         title: "Browser shutdown is taking longer than expected"
         message: window.applicationShutdownStage
-                 + ". Continue waiting, or force quit? Force quit leaves the "
-                 + "unclean-exit marker for recovery on the next launch."
+                 + ". Continue waiting, or force quit? Recent changes may not be saved if you force quit."
         keepLabel: "Continue waiting"
-        proceedLabel: "Force quit (unclean)"
+        proceedLabel: "Force quit"
         keepAccessibleName: "Continue waiting for shutdown"
-        proceedAccessibleName: "Force quit and preserve the unclean marker"
+        proceedAccessibleName: "Force quit; recent changes may not be saved"
         dialogBorderColor: window.errorColor
         dialogHeight: 250 * window.chromeScale
         stackingOrder: 110
@@ -1443,6 +1408,7 @@ FerricBrowserRuntimeChrome {
         // Resolve live child requests while this creation context is callable.
         // Descendant destructors must not call back after it has been released.
         window.runtimeDisposing = true
+        window.downloadWorkspaceObject.shutdown()
         window.scriptRunnerObject.cancelAll()
         var children = (window.browserWindowRegistry || []).concat(window.popupWindowRegistry || [])
         for (var i = 0; i < children.length; ++i) {

@@ -1,5 +1,6 @@
 use super::{
-    CxxQtType, ParseInput, ParsedCommand, Pin, QString, is_safe_history_url, parse_chain, qobject,
+    CxxQtType, Event, Mode, ParseInput, ParsedCommand, Pin, QString, is_safe_history_url,
+    parse_chain, qobject,
 };
 
 fn durable_history_commands(commands: &[ParsedCommand]) -> bool {
@@ -52,11 +53,6 @@ fn secondary_command_supported(command: &ParsedCommand) -> bool {
             | "context-list"
             | "context-route"
             | "context-save"
-            | "download-cancel"
-            | "download-pause"
-            | "download-resume"
-            | "download-retry"
-            | "downloads"
             | "history"
             | "journey"
             | "link-cleaning-update"
@@ -68,7 +64,6 @@ fn secondary_command_supported(command: &ParsedCommand) -> bool {
             | "site-doctor"
             | "site-doctor-undo"
             | "site-status"
-            | "switcher"
             | "window-focus"
             | "window-move"
     )
@@ -218,7 +213,23 @@ impl qobject::BrowserUi {
                 self.as_mut().queue_command_history_write(text.to_owned());
             }
         }
+        self.as_mut().finish_command_entry();
+        self.as_mut().runtime_work_available();
         true
+    }
+
+    /// Close successful command entry without cancelling accepted work. The
+    /// window also uses this when focusing an already open context consumes
+    /// submission before command dispatch.
+    pub(super) fn finish_command_entry(mut self: Pin<&mut Self>) {
+        if self.as_ref().rust().core_mode == Mode::Command {
+            if let Some(window) = self.as_ref().rust().window {
+                let _ = self.as_mut().reduce_event(Event::Escape { window });
+            }
+            self.as_mut().set_core_mode(Mode::Normal);
+            self.as_mut().set_mode(QString::from("normal"));
+            self.as_mut().clear_completion();
+        }
     }
 
     pub(super) fn command_history_previous(mut self: Pin<&mut Self>, current: &QString) -> QString {
@@ -305,15 +316,21 @@ mod tests {
 
     #[test]
     fn secondary_windows_reject_commands_their_chrome_cannot_present() {
-        for name in ["history", "downloads", "help", "switcher"] {
+        for name in ["history", "help"] {
             assert!(!secondary_command_supported(&command(name, &[])), "{name}");
         }
         for name in [
+            "downloads",
+            "download-pause",
+            "download-resume",
+            "download-cancel",
+            "download-retry",
             "reload",
             "zoom",
             "get",
             "version",
             "diagnostics",
+            "switcher",
             "history-open",
             "tab-close",
             "tab-open",

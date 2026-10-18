@@ -82,6 +82,7 @@ TestCase {
         property var pendingPermissionHost: host
         property string pendingPermissionOrigin: "https://example.test"
         property string pendingPermissionName: "camera"
+        property string pendingPermissionPolicyNotice: ""
         property bool pendingPermissionPrivate: false
         property int pendingPermissionGroupCount: 1
         FerricRequestPresentationController { id: permissionPresentation; browserWindow: host }
@@ -187,6 +188,7 @@ TestCase {
         host.permissionPromptVisible=false
         host.pendingPermissionOrigin="https://example.test"
         host.pendingPermissionName="camera"
+        host.pendingPermissionPolicyNotice=""
         host.pendingPermissionPrivate=false
         host.contextMoveVisible=false;host.movedContext=""
         host.privateHistoryTransferVisible=false
@@ -415,6 +417,44 @@ TestCase {
         }
         keyClick(Qt.Key_Escape)
         compare(decided.count,1);compare(decided.signalArguments[0][0],false)
+    }
+    function test_permission_without_rememberable_origin_data() {
+        return [{tag:"file",origin:"file://"},{tag:"opaque",origin:"null"}]
+    }
+    function test_permission_without_rememberable_origin(data) {
+        host.pendingPermissionOrigin=data.origin
+        host.permissionPromptVisible=true
+        var view=create(permissionFixture)
+        compare(view.actions.length,2)
+        compare(view.actions[0].id,"deny")
+        compare(view.actions[1].id,"once")
+    }
+    function test_permission_choices_fit_when_window_has_room_data() {
+        return [{tag:"normal",unavailable:false},{tag:"saved-policy-unavailable",unavailable:true}]
+    }
+    function test_permission_choices_fit_when_window_has_room(data) {
+        resize({width:900,height:700,font:12})
+        host.pendingPermissionName="notifications"
+        host.permissionPromptVisible=true
+        host.pendingPermissionPolicyNotice=data.unavailable
+            ? "Saved permissions couldn't be checked. Review this request before allowing access." : ""
+        var view=create(permissionFixture)
+        var choices=findChild(view,"commandDialogActionScroll")
+        compare(view.actions.length,4)
+        verify(waitForPolish(host))
+        // Keep the initial safe choice focused: no scrolling or selection is
+        // needed to expose the remaining choices at this ordinary window size.
+        for(var action of view.actions)
+            waitInside(findChild(view,"commandDialogAction-"+action.id),choices.contentItem)
+    }
+    function test_permission_policy_unavailable_notice() {
+        host.permissionPromptVisible=true
+        host.pendingPermissionPolicyNotice="Saved permissions couldn't be checked. Review this request before allowing access."
+        var view=create(permissionFixture)
+        var notice=findChild(view,"permissionPolicyNotice")
+        verify(notice.visible)
+        compare(notice.text,host.pendingPermissionPolicyNotice)
+        compare(notice.textFormat,Text.PlainText)
     }
     function test_permission(data) {
         resize(data);host.permissionPromptVisible=true

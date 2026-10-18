@@ -18,10 +18,10 @@ use std::{
 
 use super::{
     BookmarkRecord, ClosedTabSnapshot, DownloadRecord, DownloadUpdate, HistoryRecord,
-    JourneyNodeRecord, JourneyWrite, MarkWrite, PermissionRule, ProfileStore, Quickmark,
-    RestorePlanEntry, SessionSnapshot, StoreMode, VisitInput, clear_current_session_checkpoints,
-    current_session_paths, delete_named_session, list_named_sessions, load_session,
-    save_session_atomic,
+    JourneyNodeRecord, JourneyWrite, MarkWrite, PermissionRule, PermissionRulesSnapshot,
+    ProfileStore, Quickmark, RestorePlanEntry, SessionSnapshot, StoreMode, VisitInput,
+    clear_current_session_checkpoints, current_session_paths, delete_named_session,
+    list_named_sessions, load_session, save_session_atomic,
 };
 use uuid::Uuid;
 
@@ -41,6 +41,7 @@ pub struct ProfileLibrarySnapshot {
     pub quickmarks: Vec<Quickmark>,
     pub downloads: Vec<DownloadRecord>,
     pub permissions: Vec<PermissionRule>,
+    pub permissions_complete: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -52,6 +53,7 @@ pub enum StorageWorkerError {
     InvalidLimit,
     InvalidBatch,
     InvalidPermissionBatch,
+    InvalidPermissionOrigin,
     InvalidDownloadBatch,
     InvalidMarkBatch,
 }
@@ -71,6 +73,7 @@ impl std::fmt::Display for StorageWorkerError {
             Self::InvalidPermissionBatch => {
                 formatter.write_str("permission write batch is invalid")
             }
+            Self::InvalidPermissionOrigin => formatter.write_str("permission origin is invalid"),
             Self::InvalidDownloadBatch => formatter.write_str("download write batch is invalid"),
             Self::InvalidMarkBatch => {
                 formatter.write_str("bookmark/quickmark write batch is invalid")
@@ -129,9 +132,15 @@ pub enum StorageCommand {
     PermissionBatch {
         rules: Vec<PermissionRule>,
     },
+    PermissionLookup {
+        origin: String,
+    },
     PermissionReset {
         origin: String,
         permissions: Vec<String>,
+    },
+    DownloadSave {
+        records: Vec<DownloadRecord>,
     },
     DownloadBatch {
         updates: Vec<DownloadUpdate>,
@@ -207,7 +216,9 @@ pub enum StorageOperation {
     HistoryBatch,
     CommandRecord,
     PermissionBatch,
+    PermissionLookup,
     PermissionReset,
+    DownloadSave,
     DownloadBatch,
     DownloadDestination,
     DownloadCreate,
@@ -237,7 +248,9 @@ impl StorageCommand {
             Self::HistoryBatch { .. } => StorageOperation::HistoryBatch,
             Self::CommandRecord { .. } => StorageOperation::CommandRecord,
             Self::PermissionBatch { .. } => StorageOperation::PermissionBatch,
+            Self::PermissionLookup { .. } => StorageOperation::PermissionLookup,
             Self::PermissionReset { .. } => StorageOperation::PermissionReset,
+            Self::DownloadSave { .. } => StorageOperation::DownloadSave,
             Self::DownloadBatch { .. } => StorageOperation::DownloadBatch,
             Self::DownloadDestination { .. } => StorageOperation::DownloadDestination,
             Self::DownloadCreate { .. } => StorageOperation::DownloadCreate,
@@ -255,6 +268,11 @@ impl StorageCommand {
         match self {
             Self::Library { limit } if !(1..=MAX_LIBRARY_LIMIT).contains(limit) => {
                 Err(StorageWorkerError::InvalidLimit)
+            }
+            Self::PermissionLookup { origin }
+                if super::normalize_permission_origin(origin).is_err() =>
+            {
+                Err(StorageWorkerError::InvalidPermissionOrigin)
             }
             Self::HistoryBatch { visits }
                 if visits.is_empty() || visits.len() > MAX_HISTORY_BATCH =>
@@ -276,6 +294,11 @@ impl StorageCommand {
                 permissions,
             } if origin.is_empty() || permissions.is_empty() || permissions.len() > 2 => {
                 Err(StorageWorkerError::InvalidPermissionBatch)
+            }
+            Self::DownloadSave { records }
+                if records.is_empty() || records.len() > MAX_DOWNLOAD_BATCH =>
+            {
+                Err(StorageWorkerError::InvalidDownloadBatch)
             }
             Self::DownloadBatch { updates }
                 if updates.is_empty() || updates.len() > MAX_DOWNLOAD_BATCH =>
@@ -324,7 +347,9 @@ pub enum StorageCompletion {
     HistoryBatch(Result<usize, StorageOperationError>),
     CommandRecord(Result<bool, StorageOperationError>),
     PermissionBatch(Result<usize, StorageOperationError>),
+    PermissionLookup(Result<PermissionRulesSnapshot, StorageOperationError>),
     PermissionReset(Result<bool, StorageOperationError>),
+    DownloadSave(Result<usize, StorageOperationError>),
     DownloadBatch(Result<usize, StorageOperationError>),
     DownloadDestination(Result<(), StorageOperationError>),
     DownloadCreate(Result<(), StorageOperationError>),
@@ -353,7 +378,9 @@ impl StorageCompletion {
             Self::HistoryBatch(_) => StorageOperation::HistoryBatch,
             Self::CommandRecord(_) => StorageOperation::CommandRecord,
             Self::PermissionBatch(_) => StorageOperation::PermissionBatch,
+            Self::PermissionLookup(_) => StorageOperation::PermissionLookup,
             Self::PermissionReset(_) => StorageOperation::PermissionReset,
+            Self::DownloadSave(_) => StorageOperation::DownloadSave,
             Self::DownloadBatch(_) => StorageOperation::DownloadBatch,
             Self::DownloadDestination(_) => StorageOperation::DownloadDestination,
             Self::DownloadCreate(_) => StorageOperation::DownloadCreate,
@@ -387,7 +414,9 @@ impl StorageCompletion {
             StorageOperation::HistoryBatch => Self::HistoryBatch(Err(error)),
             StorageOperation::CommandRecord => Self::CommandRecord(Err(error)),
             StorageOperation::PermissionBatch => Self::PermissionBatch(Err(error)),
+            StorageOperation::PermissionLookup => Self::PermissionLookup(Err(error)),
             StorageOperation::PermissionReset => Self::PermissionReset(Err(error)),
+            StorageOperation::DownloadSave => Self::DownloadSave(Err(error)),
             StorageOperation::DownloadBatch => Self::DownloadBatch(Err(error)),
             StorageOperation::DownloadDestination => Self::DownloadDestination(Err(error)),
             StorageOperation::DownloadCreate => Self::DownloadCreate(Err(error)),
@@ -1222,6 +1251,20 @@ fn run_worker(
                     committed,
                 ))
             }
+            StorageCommand::PermissionLookup { origin } => {
+                let loaded = store.as_ref().map_or_else(
+                    |error| Err(error.clone()),
+                    |store| {
+                        store
+                            .permission_rules_snapshot(Some(&origin))
+                            .map_err(|error| error.to_string())
+                    },
+                );
+                StorageCompletion::PermissionLookup(storage_result(
+                    StorageOperation::PermissionLookup,
+                    loaded,
+                ))
+            }
             StorageCommand::PermissionBatch { rules } => {
                 let committed = store.as_ref().map_or_else(
                     |error| Err(error.clone()),
@@ -1252,6 +1295,21 @@ fn run_worker(
                 StorageCompletion::PermissionReset(storage_result(
                     StorageOperation::PermissionReset,
                     removed,
+                ))
+            }
+            StorageCommand::DownloadSave { records } => {
+                let saved = store.as_ref().map_or_else(
+                    |error| Err(error.clone()),
+                    |store| {
+                        store
+                            .save_download_batch(&records)
+                            .map(|()| records.len())
+                            .map_err(|error| error.to_string())
+                    },
+                );
+                StorageCompletion::DownloadSave(storage_result(
+                    StorageOperation::DownloadSave,
+                    saved,
                 ))
             }
             StorageCommand::DownloadBatch { updates } => {
@@ -1420,6 +1478,9 @@ fn restore_session_paths(paths: Vec<PathBuf>) -> Result<SessionRestoreSnapshot, 
 }
 
 fn load_library(store: &ProfileStore, limit: usize) -> Result<ProfileLibrarySnapshot, String> {
+    let permissions = store
+        .permission_rules_snapshot(None)
+        .map_err(|error| error.to_string())?;
     Ok(ProfileLibrarySnapshot {
         history: store.history(limit).map_err(|error| error.to_string())?,
         command_history: store
@@ -1433,9 +1494,8 @@ fn load_library(store: &ProfileStore, limit: usize) -> Result<ProfileLibrarySnap
             .into_iter()
             .take(limit)
             .collect(),
-        permissions: store
-            .permission_rules(None)
-            .map_err(|error| error.to_string())?,
+        permissions: permissions.rules,
+        permissions_complete: permissions.complete,
     })
 }
 

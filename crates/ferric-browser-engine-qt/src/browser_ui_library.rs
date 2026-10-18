@@ -1,6 +1,6 @@
 use super::{
-    Arc, AtomicBool, BrowserApplication, CxxQtType, Event, FeedbackLane, FeedbackState,
-    JourneyReopenRecord, Ordering, Pin, QString, StorageCompletion, StorageRequest,
+    Arc, AtomicBool, BrowserApplication, CatalogReadState, CxxQtType, Event, FeedbackLane,
+    FeedbackState, JourneyReopenRecord, Ordering, Pin, QString, StorageCompletion, StorageRequest,
     SwitcherLibraryIndexResult, SwitcherQueryCache, build_switcher_library_index, qobject,
     safe_ipc_url, switcher_max_results, thread,
 };
@@ -12,15 +12,16 @@ impl qobject::BrowserUi {
         query: &QString,
         scope: &QString,
     ) -> bool {
-        if self.as_ref().rust().storage_library.is_none()
-            || self.as_ref().rust().storage_library_dirty.get()
-        {
-            self.as_mut().request_storage_library();
-        }
-        self.as_mut().request_session_names();
         let scope = scope.to_string();
+        if !self.as_mut().prepare_switcher_sources(&scope) {
+            self.set_status_text(QString::from(
+                "Choose a valid Switcher scope and try again.",
+            ));
+            return false;
+        }
+        self.as_mut().publish_switcher_availability(&scope);
         let max_results = switcher_max_results(&self.as_ref().rust().config);
-        let params = serde_json::json!({
+        let mut params = serde_json::json!({
             "query": query.to_string(),
             "scope": if scope.is_empty() { "all" } else { &scope },
             "limit": max_results,
@@ -38,6 +39,15 @@ impl qobject::BrowserUi {
                 })
                 .flatten()
         });
+        // Optional query fields are absent, rather than null, in the strict
+        // switcher protocol. Private windows still supply their exact scope.
+        if let Some(parameters) = params.as_object_mut()
+            && parameters
+                .get("private_scope")
+                .is_some_and(serde_json::Value::is_null)
+        {
+            parameters.remove("private_scope");
+        }
         if let Some(result) = self
             .as_ref()
             .rust()
@@ -48,21 +58,21 @@ impl qobject::BrowserUi {
         {
             return match self.as_mut().publish_switcher_rows(&result) {
                 Ok(()) => true,
-                Err(error) => {
-                    self.set_status_text(QString::from(format!(
-                        "Switcher presentation failed: {error}"
-                    )));
-                    false
-                }
+                Err(error) => self.reject_switcher_query(super::PublicError::new(
+                    ferric_browser_ipc::ErrorCode::Engine,
+                    "Search results couldn't be displayed. Close the search and try again.",
+                    error,
+                )),
             };
         }
-        match self.as_ref().get_ref().ipc_switcher_query(&params) {
+        match self.as_ref().get_ref().native_switcher_query(&params) {
             Ok(result) => {
                 if let Err(error) = self.as_mut().publish_switcher_rows(&result) {
-                    self.set_status_text(QString::from(format!(
-                        "Switcher presentation failed: {error}"
-                    )));
-                    return false;
+                    return self.reject_switcher_query(super::PublicError::new(
+                        ferric_browser_ipc::ErrorCode::Engine,
+                        "Search results couldn't be displayed. Close the search and try again.",
+                        error,
+                    ));
                 }
                 let mut rust = self.as_mut().rust_mut();
                 let this = rust.as_mut().get_mut();
@@ -78,11 +88,25 @@ impl qobject::BrowserUi {
                 });
                 true
             }
-            Err(error) => {
-                self.set_status_text(QString::from(format!("Switcher query rejected: {error}")));
-                false
-            }
+            Err(error) => self.reject_switcher_query(error),
         }
+    }
+
+    fn reject_switcher_query(mut self: Pin<&mut Self>, error: super::PublicError) -> bool {
+        self.as_mut().set_switcher_sources_pending(false);
+        self.as_mut().set_switcher_sources_failed(true);
+        self.as_mut().set_switcher_sources_retryable(false);
+        self.as_mut()
+            .set_switcher_sources_notice(QString::from(error.user_message()));
+        self.as_mut().set_switcher_sources_detail(QString::from(
+            error
+                .diagnostic_context()
+                .chars()
+                .take(4096)
+                .collect::<String>(),
+        ));
+        self.set_status_text(QString::from(error.user_message()));
+        false
     }
 
     pub(super) fn request_storage_library(mut self: Pin<&mut Self>) {
@@ -90,7 +114,11 @@ impl qobject::BrowserUi {
             return;
         }
         self.as_mut().ensure_storage_worker();
-        if self.as_ref().rust().storage_library_read_pending
+        if self
+            .as_ref()
+            .rust()
+            .storage_library_read_state
+            .is_in_flight()
             || (self.as_ref().rust().storage_library.is_some()
                 && !self.as_ref().rust().storage_library_dirty.get())
         {
@@ -106,16 +134,32 @@ impl qobject::BrowserUi {
                     .rust_mut()
                     .as_mut()
                     .get_mut()
-                    .storage_library_read_pending = true;
+                    .storage_library_read_state = CatalogReadState::Pending;
                 self.publish_library_pending();
             }
-            Err(ferric_browser_storage::StorageWorkerError::Busy) => {}
-            Err(error) => {
+            Err(
+                ferric_browser_storage::StorageWorkerError::Busy
+                | ferric_browser_storage::StorageWorkerError::QueueFull,
+            ) => {
                 self.as_mut()
-                    .set_library_error(QString::from(error.to_string()));
-                self.set_status_text(QString::from(format!(
-                    "Library couldn't be loaded: {error}"
-                )));
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .storage_library_read_state = CatalogReadState::Queued;
+                self.publish_library_pending();
+            }
+            Err(error) => {
+                let detail = error.to_string();
+                self.as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .storage_library_read_state = CatalogReadState::Failed(detail.clone());
+                self.as_mut().set_library_error(QString::from(detail));
+                self.as_mut().set_status_text(QString::from(
+                    "Saved items couldn't be loaded. Refresh the library to try again.",
+                ));
+                self.publish_library_pending();
             }
         }
     }
@@ -252,70 +296,14 @@ impl qobject::BrowserUi {
         };
         match restart {
             Ok(()) => {
-                self.set_status_text(QString::from("Profile metadata worker restarted"));
+                self.set_status_text(QString::from("Retrying profile storage…"));
                 true
             }
             Err(error) => {
                 self.set_status_text(QString::from(format!(
-                    "Profile metadata worker restart unavailable: {error}"
+                    "Profile storage could not be reconnected: {error}"
                 )));
                 false
-            }
-        }
-    }
-
-    pub(super) fn request_session_names(mut self: Pin<&mut Self>) {
-        if !self.as_ref().rust().session_names_dirty.get()
-            || self.as_ref().rust().session_names_pending
-        {
-            return;
-        }
-        let context = {
-            let pinned = self.as_ref();
-            let rust = pinned.rust();
-            let transient = rust.state.as_ref().and_then(|state| {
-                let tab = state.active_tab()?;
-                state
-                    .profiles()
-                    .get(&tab.profile)
-                    .map(|profile| profile.privacy.is_transient())
-            }) == Some(true);
-            if transient {
-                None
-            } else {
-                rust.session_state_root.clone().zip(rust.profile_id)
-            }
-        };
-        let Some((root, profile_id)) = context else {
-            let mut rust = self.as_mut().rust_mut();
-            let this = rust.as_mut().get_mut();
-            this.session_names.clear();
-            this.session_names_dirty.set(false);
-            drop(rust);
-            self.as_mut()
-                .set_session_names_values(super::QStringList::default());
-            self.as_mut().set_session_names_pending(false);
-            return;
-        };
-        match self
-            .as_mut()
-            .submit_storage(StorageRequest::SessionList { root, profile_id })
-        {
-            Ok(()) => {
-                self.as_mut()
-                    .rust_mut()
-                    .as_mut()
-                    .get_mut()
-                    .session_names_refresh_again = false;
-                self.as_mut().set_session_names_error(QString::default());
-                self.as_mut().set_session_names_pending(true);
-            }
-            Err(error) => {
-                self.as_mut()
-                    .set_session_names_error(QString::from(error.to_string()));
-                self.as_mut().set_status_text(QString::from(format!(
-                    "Session catalog unavailable: {error}"
-                )));
             }
         }
     }
@@ -324,6 +312,7 @@ impl qobject::BrowserUi {
         self.as_mut().ensure_storage_worker();
         self.as_mut().flush_start_page_refresh();
         let mut consumed = self.as_mut().poll_switcher_library_index();
+        consumed |= self.as_mut().retry_queued_switcher_sources();
         let effects = self.as_mut().poll_storage_effects();
         let mut journey_ticket = None;
         let mut library_result = None;
@@ -382,11 +371,18 @@ impl qobject::BrowserUi {
                 StorageCompletion::CommandRecord(result) => {
                     command_record_result = Some(result.map_err(|error| error.message));
                 }
+                StorageCompletion::PermissionLookup(_) => consumed = true,
                 StorageCompletion::PermissionBatch(result) => {
                     permission_result = Some(result.map_err(|error| error.message));
                 }
                 StorageCompletion::PermissionReset(result) => {
                     permission_reset_result = Some(result.map_err(|error| error.message));
+                }
+                StorageCompletion::DownloadSave(result) => {
+                    if result.is_ok() {
+                        self.as_ref().rust().storage_library_dirty.set(true);
+                    }
+                    consumed = true;
                 }
                 StorageCompletion::DownloadBatch(result) => {
                     download_result = Some(result.map_err(|error| error.message));
@@ -587,6 +583,14 @@ impl qobject::BrowserUi {
             consumed = true;
             let refresh_again = self.as_ref().rust().session_names_refresh_again;
             self.as_mut().set_session_names_pending(false);
+            self.as_mut()
+                .rust_mut()
+                .as_mut()
+                .get_mut()
+                .session_catalog_read_state = match &result {
+                Ok(_) => CatalogReadState::Ready,
+                Err(error) => CatalogReadState::Failed(error.clone()),
+            };
             if refresh_again {
                 // The read started before a successful mutation. Never publish
                 // that older catalog over the mutation's newer state.
@@ -613,9 +617,9 @@ impl qobject::BrowserUi {
                     }
                     Err(error) => {
                         self.as_mut().set_session_names_error(QString::from(&error));
-                        self.as_mut().set_status_text(QString::from(format!(
-                            "Session catalog query failed: {error}"
-                        )));
+                        self.as_mut().set_status_text(QString::from(
+                            "Saved sessions couldn't be loaded. Refresh the session list to try again.",
+                        ));
                     }
                 }
             }
@@ -661,7 +665,7 @@ impl qobject::BrowserUi {
                 (Some((node_id, target_kind, current_tab, profile_id)), Ok(Some(node))) => {
                     if node.id != node_id || node.profile_id != profile_id {
                         self.as_mut().set_status_text(QString::from(
-                            "Journey node is stale or belongs to another profile",
+                            "That journey entry is unavailable in this profile. Refresh the journey and try again.",
                         ));
                     } else {
                         let record = JourneyReopenRecord {
@@ -682,9 +686,9 @@ impl qobject::BrowserUi {
                         }
                     }
                 }
-                (Some(_), Ok(None)) => self
-                    .as_mut()
-                    .set_status_text(QString::from("Journey node is stale or unavailable")),
+                (Some(_), Ok(None)) => self.as_mut().set_status_text(QString::from(
+                    "That journey entry is no longer available. Refresh the journey and try again.",
+                )),
                 (Some(_), Err(error)) => self.as_mut().set_status_text(QString::from(format!(
                     "Journey node lookup failed: {error}"
                 ))),
@@ -856,11 +860,6 @@ impl qobject::BrowserUi {
         }
         if let Some(result) = download_destination_result {
             consumed = true;
-            self.as_mut()
-                .rust_mut()
-                .as_mut()
-                .get_mut()
-                .download_destination_pending = false;
             match result {
                 Ok(()) => {
                     self.as_ref().rust().storage_library_dirty.set(true);
@@ -874,11 +873,6 @@ impl qobject::BrowserUi {
         }
         if let Some(result) = download_create_result {
             consumed = true;
-            self.as_mut()
-                .rust_mut()
-                .as_mut()
-                .get_mut()
-                .download_create_pending = false;
             match result {
                 Ok(()) => {
                     self.as_ref().rust().storage_library_dirty.set(true);
@@ -917,12 +911,12 @@ impl qobject::BrowserUi {
                 }
                 Ok(false) => {
                     self.as_mut().set_status_text(QString::from(
-                        "Journey worker did not find the requested current node",
+                        "The current page is no longer in this journey. Refresh the journey and try again.",
                     ));
                 }
                 Err(error) => {
                     self.as_mut().set_status_text(QString::from(format!(
-                        "Journey worker write failed: {error}"
+                        "Journey changes could not be saved: {error}"
                     )));
                 }
             }
@@ -930,7 +924,6 @@ impl qobject::BrowserUi {
         self.as_mut().flush_history_writes();
         self.as_mut().flush_permission_writes();
         self.as_mut().flush_mark_writes();
-        self.as_mut().flush_download_writes();
         consumed
     }
 }

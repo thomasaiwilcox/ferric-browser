@@ -1,10 +1,60 @@
 //! Switcher and completion query projections.
 
+use super::switcher_policy::{QueryAccessError, QueryOrigin, authorize_query};
 #[allow(clippy::wildcard_imports)]
 use super::*;
+use ferric_browser_ipc::ErrorCode;
+
+fn invalid_query(reason: impl Into<String>) -> PublicError {
+    PublicError::new(
+        ErrorCode::InvalidArgument,
+        "The search request is invalid. Check the scope, query and limits.",
+        reason.into().chars().take(4096).collect::<String>(),
+    )
+}
+
+fn access_failure(error: QueryAccessError) -> PublicError {
+    match error {
+        QueryAccessError::PrivateQueriesDisabled => PublicError::new(
+            ErrorCode::Denied,
+            "Private browsing data is excluded from external queries. Change the private query setting to allow access.",
+            "ipc.private_queries is disabled",
+        ),
+        QueryAccessError::MissingNativeScope => PublicError::new(
+            ErrorCode::Engine,
+            "This private search is unavailable. Close it and try again.",
+            "native Switcher query is missing its private scope",
+        ),
+        QueryAccessError::StalePrivateScope => PublicError::new(
+            ErrorCode::StaleTarget,
+            "This private session changed. Open a new search and try again.",
+            "private Switcher scope no longer matches the live session",
+        ),
+    }
+}
+
+fn configuration_failure(detail: String) -> PublicError {
+    PublicError::new(
+        ErrorCode::Config,
+        "Some browser actions couldn't be loaded. Review their settings and try again.",
+        detail.chars().take(4096).collect::<String>(),
+    )
+}
 
 impl qobject::BrowserUi {
-    pub(super) fn ipc_switcher_query(&self, params: &Value) -> Result<Value, String> {
+    pub(super) fn ipc_switcher_query(&self, params: &Value) -> Result<Value, PublicError> {
+        self.switcher_query_value(params, QueryOrigin::External)
+    }
+
+    pub(super) fn native_switcher_query(&self, params: &Value) -> Result<Value, PublicError> {
+        self.switcher_query_value(params, QueryOrigin::NativeUi)
+    }
+
+    fn switcher_query_value(
+        &self,
+        params: &Value,
+        origin: QueryOrigin,
+    ) -> Result<Value, PublicError> {
         let object = query_object(
             params,
             "switcher.query",
@@ -16,13 +66,18 @@ impl qobject::BrowserUi {
                 "include_private",
                 "private_scope",
             ],
-        )?;
-        let query_input = query_optional_string(object, "switcher.query", "query")?.unwrap_or("");
+        )
+        .map_err(invalid_query)?;
+        let query_input = query_optional_string(object, "switcher.query", "query")
+            .map_err(invalid_query)?
+            .unwrap_or("");
         let query = tokenize_switcher_query(query_input);
         if query.iter().any(|term| term.len() > 128) {
-            return Err("switcher.query terms are too long".into());
+            return Err(invalid_query("switcher.query terms are too long"));
         }
-        let scope = query_optional_string(object, "switcher.query", "scope")?.unwrap_or("all");
+        let scope = query_optional_string(object, "switcher.query", "scope")
+            .map_err(invalid_query)?
+            .unwrap_or("all");
         let scopes = [
             "all",
             "tabs",
@@ -37,37 +92,38 @@ impl qobject::BrowserUi {
             "actions",
         ];
         if !scopes.contains(&scope) {
-            return Err(format!("unknown switcher scope: {scope}"));
+            return Err(invalid_query(format!("unknown switcher scope: {scope}")));
         }
-        let limit = query_limit(object, "switcher.query", 50)?;
-        let offset = query_offset(object, "switcher.query")?;
-        let include_private = query_bool_param(object, "switcher.query", "include_private", false)?;
-        if include_private && !self.ipc_private_queries_enabled() {
-            // A switcher explicitly opened inside a transient profile is
-            // allowed to search only that same in-memory profile. External
-            // IPC queries still require the existing opt-in configuration.
-            if object.get("private_scope").is_none() {
-                return Err("private switcher queries are disabled by configuration".into());
-            }
-        }
+        let limit = query_limit(object, "switcher.query", 50).map_err(invalid_query)?;
+        let offset = query_offset(object, "switcher.query").map_err(invalid_query)?;
+        let include_private = query_bool_param(object, "switcher.query", "include_private", false)
+            .map_err(invalid_query)?;
         let Some(state) = self.rust().state.as_ref() else {
-            return Err("core state unavailable".into());
+            return Err(PublicError::new(
+                ErrorCode::Engine,
+                "This window is not ready for a search. Reopen the search and try again.",
+                "core state unavailable",
+            ));
         };
         let current_context = state
             .active_tab()
             .and_then(|tab| state.windows().get(&tab.window))
             .and_then(|window| window.context.as_deref());
-        let private_scope = query_optional_string(object, "switcher.query", "private_scope")?;
-        if let Some(scope) = private_scope {
-            let active_scope = state
-                .active_tab()
-                .and_then(|tab| state.profiles().get(&tab.profile))
-                .filter(|profile| profile.privacy.is_transient())
-                .map(|profile| profile.label.as_str());
-            if active_scope != Some(scope) {
-                return Err("private switcher scope is stale or unavailable".into());
-            }
-        }
+        let private_scope = query_optional_string(object, "switcher.query", "private_scope")
+            .map_err(invalid_query)?;
+        let active_private_scope = state
+            .active_tab()
+            .and_then(|tab| state.profiles().get(&tab.profile))
+            .filter(|profile| profile.privacy.is_transient())
+            .map(|profile| profile.label.as_str());
+        authorize_query(
+            origin,
+            include_private,
+            self.ipc_private_queries_enabled(),
+            private_scope,
+            active_private_scope,
+        )
+        .map_err(access_failure)?;
         let contexts = self.rust().contexts.as_ref();
         let mut candidates = Vec::<SwitcherCandidate>::new();
         let mut add = |kind: &str,
@@ -283,7 +339,9 @@ impl qobject::BrowserUi {
             for value in configured_switcher_action_values(
                 &self.rust().config,
                 self.active_profile_is_transient(),
-            )? {
+            )
+            .map_err(configuration_failure)?
+            {
                 let Some(subject) = value.get("subject").and_then(Value::as_str) else {
                     continue;
                 };
@@ -352,7 +410,11 @@ impl qobject::BrowserUi {
         });
         if let Some(index) = indexed_library {
             let profile = index.profile_name.clone();
-            for candidate in &index.candidates {
+            for candidate in index
+                .candidates
+                .iter()
+                .filter(|candidate| candidate.matches_scope(scope))
+            {
                 let actions: &[&str] = match candidate.kind.as_str() {
                     "history" => &["open"],
                     "bookmark" | "quickmark" => &["open", "delete"],

@@ -115,6 +115,17 @@ impl qobject::BrowserUi {
         route_window(self.rust(), route)
     }
 
+    pub(super) fn validate_action_ipc_route(&self, route: &IpcRoute) -> Result<(), PublicError> {
+        if route.context.is_some() {
+            return Err(PublicError::new(
+                ErrorCode::InvalidArgument,
+                "An action can't be combined with a context selector.",
+                "context routing is not valid for actions",
+            ));
+        }
+        self.validate_ipc_route_public(route)
+    }
+
     pub(super) fn validate_ipc_route(&self, route: &IpcRoute) -> Result<(), String> {
         self.validate_ipc_route_public(route)
             .map_err(|error| error.to_string())

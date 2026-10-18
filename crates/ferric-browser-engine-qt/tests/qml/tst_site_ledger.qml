@@ -200,9 +200,19 @@ TestCase {
         compare(fixSpy.signalArguments[0][0], "fix-reviewed")
         verify(!findChild(surface, "siteDoctorProposalConfirmation").checked)
     }
+    function test_saved_permission_availability_data() {
+        return [{tag:"loading",status:"pending",expected:"Checking saved permission rules…"},
+            {tag:"unavailable",status:"unavailable",expected:"Saved permission rules unavailable"},
+            {tag:"unchecked",status:"unknown",expected:"Saved permission rules haven't been fully checked"}]
+    }
+    function test_saved_permission_availability(data) {
+        var fact={id:"permissions",value:{ready:false,status:data.status,durable_rules:[]}}
+        compare(Presentation.siteFactSummary(fact,false,true),data.expected)
+        compare(Presentation.siteFactSummary(fact,true,true),"Site details are withheld in private browsing")
+    }
     function test_unknown_facts_do_not_become_success() {
         compare(Presentation.siteFactSummary({id: "capture", value: {}}, false, true), "Sharing status unavailable")
-        compare(Presentation.siteFactSummary({id: "permissions", value: {}}, false, true), "Saved permission rules are loading")
+        compare(Presentation.siteFactSummary({id: "permissions", value: {}}, false, true), "Saved permission rules haven't been fully checked")
         compare(Presentation.siteFactTitle("constructor"), "Site information")
         compare(Presentation.siteExperimentLabel("constructor"), "Temporary site test")
         verify(Presentation.siteFactSummary({id: "network.blocking", value: {enabled: false, active_site_blocked_requests: 0}}, true, true).indexOf("0 requests") < 0)

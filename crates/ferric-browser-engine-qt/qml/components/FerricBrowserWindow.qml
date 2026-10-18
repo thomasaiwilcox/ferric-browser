@@ -5,6 +5,7 @@ import QtQuick.Dialogs
 import QtWebEngine
 import io.github.ferricbrowser 1.0
 import "../scripts/ChromePresentation.js" as ChromePresentation
+import "../scripts/CloseRequests.js" as CloseRequests
 
 ApplicationWindow {
     required property var rootWindow
@@ -96,9 +97,11 @@ ApplicationWindow {
     property alias tabViews: secondaryTabController.tabViews
     function tabViewAt(index) { return index >= 0 && index < tabViews.length ? tabViews[index] : null }
     function activeWebView() { return activeView }
+    function refreshDownloads() { secondaryDownloads.refresh() }
     function syncTabModel() { secondaryTabController.syncTabModel() }
     readonly property bool browserKeyFocusActive:
         secondaryWindow.profileBootstrapComplete
+        && !secondaryWindow.modalInputScope.activeSurface
         && !secondaryWindow.inputBarActive
         && !secondaryProfileNotice.inputActive
         && !(rootWindow.copyNoticeInputActive && rootWindow.copyNoticeHost === secondaryWindow)
@@ -106,10 +109,13 @@ ApplicationWindow {
         && !secondaryHintWorkspace.rapidHintConfirmationVisible
         && !secondaryUi.target_search_active
         && !secondaryUi.link_preview_visible
+        && !secondaryWindow.pendingFileDialogRequest
+        && secondaryWindow.pendingFileDialogLeaseToken.length === 0
         && !rootWindow.presentedPromptActiveFor(secondaryUi)
         && !(rootWindow.rendererFailureVisible && rootWindow.rendererFailureHost === secondaryWindow)
         && !secondarySettings.active
         && !secondaryManagers.active
+        && !secondaryDownloads.active
         && !(activeView && activeView.nativeUrl === "rb://start" && activeView.startPage && activeView.startPage.inputActive)
         && !windowCloseConfirmationVisible
         && !windowShutdownPromptVisible
@@ -129,8 +135,7 @@ ApplicationWindow {
     property var rendererFailureSurface: null
     property var pendingFileDialogRequest: null
     property var pendingFileDialogView: null
-    property bool pendingFileDialogWaitingForPortal: false
-    property double pendingFileDialogPortalDeadlineMs: 0
+    property string pendingFileDialogLeaseToken: ""
     property bool profileBootstrapComplete: false
     property bool runtimeReleased: false
     property bool windowShutdownApproved: false
@@ -144,6 +149,8 @@ ApplicationWindow {
     property var pendingDownloadRequests: ({})
     property string pendingDownloadId: ""
     property string pendingDownloadSuggestedName: ""
+    readonly property alias downloadsModel: secondaryDownloads.downloadsModel
+    readonly property alias downloadManagerVisible: secondaryDownloads.downloadManagerVisible
     property bool caretSelecting: false
 
     Timer {
@@ -261,6 +268,7 @@ ApplicationWindow {
     }
 
     function hasActiveDownloads() {
+        if (secondaryUi.has_finalizing_downloads && secondaryUi.has_finalizing_downloads()) return true
         if (secondaryWindow.pendingDownloadId.length > 0) {
             return true
         }
@@ -280,26 +288,26 @@ ApplicationWindow {
 
     function checkPageStateBeforeQuit() {
         var generation = ++secondaryWindow.windowShutdownPageProbeGeneration
-        var view = secondaryWindow.activeView
-        if (!view || view.lifecycleState !== WebEngineView.LifecycleState.Active) {
-            secondaryWindow.finalizeQuit()
-            return
-        }
         secondaryShutdownPageProbeTimer.restart()
-        rootWindow.runBrowserScript(view, rootWindow.shutdownPageProbeScript(), function(result) {
-            if (generation !== secondaryWindow.windowShutdownPageProbeGeneration) {
-                return
-            }
-            secondaryShutdownPageProbeTimer.stop()
-            if (result === "clean") {
-                secondaryWindow.finalizeQuit()
-                return
-            }
-            secondaryWindow.windowShutdownPagePromptReason = result === "dirty"
-                    ? "This page has unsaved form or editor state."
-                    : "Ferric Browser could not verify this page before closing."
-            secondaryWindow.windowShutdownPagePromptVisible = true
-        }, 0)
+        var candidates = []
+        for (var i = 0; i < tabViews.length; ++i) {
+            var view = secondaryWindow.tabViewAt(i)
+            if (view && view.lifecycleState === WebEngineView.LifecycleState.Active)
+                candidates.push(view)
+        }
+        CloseRequests.probePages(candidates,
+            function() { return generation === secondaryWindow.windowShutdownPageProbeGeneration },
+            function(view, reply) {
+                return rootWindow.runBrowserScript(view, rootWindow.shutdownPageProbeScript(), reply, 0)
+            },
+            function(result) {
+                secondaryShutdownPageProbeTimer.stop()
+                if (result.state === "clean") secondaryWindow.finalizeQuit()
+                else {
+                    secondaryWindow.windowShutdownPagePromptReason = result.reason
+                    secondaryWindow.windowShutdownPagePromptVisible = true
+                }
+            })
     }
 
     function cancelPageStateProbe() {
@@ -345,13 +353,14 @@ ApplicationWindow {
     }
 
     function cancelDownloadsAndQuit() {
+        rootWindow.profileResourceRegistry.cancelFinalizationsForHost(secondaryWindow)
         if (secondaryWindow.pendingDownloadId.length > 0) {
             secondaryWindow.cancelPendingDownload()
         }
         for (var pendingKey in secondaryWindow.pendingDownloadRequests) {
             var pendingDownload = secondaryWindow.pendingDownloadRequests[pendingKey]
             if (pendingDownload) {
-                rootWindow.resolveQtRequest(secondaryUi, pendingDownload, "download", "cancel", [])
+                rootWindow.profileResourceRegistry.cancelDownloadRequest(secondaryUi, pendingDownload)
                 secondaryUi.update_download(
                     String(pendingKey), "cancelled", pendingDownload.receivedBytes, true)
             }
@@ -360,7 +369,7 @@ ApplicationWindow {
         for (var key in secondaryWindow.activeDownloads) {
             var download = secondaryWindow.activeDownloads[key]
             if (download && !download.isFinished) {
-                rootWindow.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
+                rootWindow.profileResourceRegistry.cancelDownloadRequest(secondaryUi, download)
             }
         }
         secondaryWindow.activeDownloads = ({})
@@ -370,33 +379,31 @@ ApplicationWindow {
 
     FerricFileDialogSurfaces {
         id: secondaryDialogSurfaces
+        engineHostWindow: secondaryWindow
+        portalRequired: rootWindow.desktopPortalMode(secondaryUi) === "required"
         onUserscriptManifestAccepted: secondarySettings.installManifest(userscriptManifestSelectedFile)
+        onUserscriptManifestFailed: function(message) { secondaryUi.status_text = message }
+        onDownloadAccepted: secondaryWindow.acceptPendingDownload()
+        onDownloadRejected: secondaryWindow.cancelPendingDownload()
+        onDownloadFailed: function(message) { secondaryWindow.failPendingDownload(message) }
         onEngineFileAccepted: secondaryWindow.acceptFileDialog()
         onEngineFileRejected: secondaryWindow.rejectFileDialog()
+        onEngineFileFailed: function(message) { secondaryWindow.clearSecondaryFileDialog(true, message) }
         onEngineFolderAccepted: secondaryWindow.acceptFolderDialog()
         onEngineFolderRejected: secondaryWindow.rejectFileDialog()
-    }
-
-    Timer {
-        id: secondaryFilePortalTimer
-        interval: 50
-        repeat: true
-        onTriggered: secondaryWindow.maybeOpenPendingFileDialog()
-    }
-
-    FileDialog {
-        id: secondaryDownloadChooser
-        title: "Choose download destination"
-        fileMode: FileDialog.SaveFile
-        nameFilters: ["All files (*)"]
-        onAccepted: secondaryWindow.acceptPendingDownload()
-        onRejected: secondaryWindow.cancelPendingDownload()
+        onEngineFolderFailed: function(message) { secondaryWindow.clearSecondaryFileDialog(true, message) }
+        onEngineChooserOpened: function(backend) {
+            if (!secondaryWindow.pendingFileDialogRequest) return
+            secondaryUi.status_text = backend === "system"
+                    ? "The system file chooser is open"
+                    : "The browser file chooser is open"
+        }
     }
 
     function acceptPendingDownload() {
         var id = secondaryWindow.pendingDownloadId
         var download = secondaryWindow.pendingDownloadRequests[id]
-        var selectedPath = rootWindow.primaryBrowserUi.local_file_path(secondaryDownloadChooser.selectedFile)
+        var selectedPath = secondaryUi.local_file_path(secondaryDialogSurfaces.downloadSelectedFile)
         if (!download) {
             secondaryWindow.pendingDownloadId = ""
             rootWindow.restoreOverlayFocus(secondaryWindow)
@@ -404,14 +411,14 @@ ApplicationWindow {
         }
         var finalName = secondaryUi.accept_download_path(id, selectedPath)
         if (finalName.length === 0) {
-            rootWindow.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
+            rootWindow.profileResourceRegistry.cancelDownloadRequest(secondaryUi, download)
             secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
         } else {
             var separator = selectedPath.lastIndexOf("/")
             var directory = separator > 0 ? selectedPath.slice(0, separator) : "/"
             var stagingDirectory = rootWindow.downloadStagingDirectory(secondaryUi, id)
             if (stagingDirectory.length === 0) {
-                rootWindow.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
+                rootWindow.profileResourceRegistry.cancelDownloadRequest(secondaryUi, download)
                 secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
                 delete secondaryWindow.pendingDownloadRequests[id]
                 secondaryWindow.pendingDownloadId = ""
@@ -422,11 +429,7 @@ ApplicationWindow {
             download.downloadDirectory = stagingDirectory
             download.downloadFileName = finalName
             secondaryWindow.activeDownloads[id] = download
-            download.stateChanged.connect(function() {
-                secondaryUi.update_download(
-                    id, secondaryWindow.secondaryDownloadStateName(download),
-                    download.receivedBytes, false)
-            })
+            rootWindow.attachDownloadStateUpdates(download, id, secondaryUi, secondaryWindow)
             rootWindow.resolveQtRequest(secondaryUi, download, "download", "accept", [])
             secondaryUi.update_download(id, "in-progress", 0, false)
         }
@@ -436,11 +439,26 @@ ApplicationWindow {
         rootWindow.restoreOverlayFocus(secondaryWindow)
     }
 
+    function failPendingDownload(message) {
+        var id = secondaryWindow.pendingDownloadId
+        var download = secondaryWindow.pendingDownloadRequests[id]
+        if (download) {
+            rootWindow.profileResourceRegistry.markDownloadSelectionFailed(download)
+            rootWindow.profileResourceRegistry.cancelDownloadRequest(secondaryUi, download)
+            secondaryUi.update_download(id, "interrupted", download.receivedBytes, true)
+        }
+        delete secondaryWindow.pendingDownloadRequests[id]
+        secondaryWindow.pendingDownloadId = ""
+        secondaryWindow.pendingDownloadSuggestedName = ""
+        rootWindow.restoreOverlayFocus(secondaryWindow)
+        secondaryUi.status_text = message
+    }
+
     function cancelPendingDownload() {
         var id = secondaryWindow.pendingDownloadId
         var download = secondaryWindow.pendingDownloadRequests[id]
         if (download) {
-            rootWindow.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
+            rootWindow.profileResourceRegistry.cancelDownloadRequest(secondaryUi, download)
             secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
         }
         delete secondaryWindow.pendingDownloadRequests[id]
@@ -449,15 +467,13 @@ ApplicationWindow {
         rootWindow.restoreOverlayFocus(secondaryWindow)
     }
 
-    function handleDownloadRequested(download) {
-        var id = String(download.id)
-        var safeName = secondaryUi.offer_download(id, download.url.toString(), download.suggestedFileName)
+    function handleDownloadRequested(download, id, safeName) {
         var requestedPath = download.savePageFormat === WebEngineDownloadRequest.MimeHtmlSaveFormat
                 ? secondaryUi.take_save_page_path() : ""
         if (requestedPath.length > 0) {
             var requestedName = secondaryUi.accept_download_path(id, requestedPath)
             if (requestedName.length === 0) {
-                rootWindow.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
+                rootWindow.profileResourceRegistry.cancelDownloadRequest(secondaryUi, download)
                 secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
                 return
             }
@@ -466,16 +482,14 @@ ApplicationWindow {
                     ? requestedPath.slice(0, requestedSeparator) : "/"
             var stagingDirectory = rootWindow.downloadStagingDirectory(secondaryUi, id)
             if (stagingDirectory.length === 0) {
-                rootWindow.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
+                rootWindow.profileResourceRegistry.cancelDownloadRequest(secondaryUi, download)
                 secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
                 return
             }
             download.downloadDirectory = stagingDirectory
             download.downloadFileName = requestedName
             secondaryWindow.activeDownloads[id] = download
-            download.stateChanged.connect(function() {
-                secondaryUi.update_download(id, secondaryWindow.secondaryDownloadStateName(download), download.receivedBytes, false)
-            })
+            rootWindow.attachDownloadStateUpdates(download, id, secondaryUi, secondaryWindow)
             rootWindow.resolveQtRequest(secondaryUi, download, "download", "accept", [])
             secondaryUi.update_download(id, "in-progress", 0, false)
             return
@@ -483,7 +497,7 @@ ApplicationWindow {
         var directory = secondaryUi.default_download_directory()
         if (rootWindow.downloadsAskDestination(secondaryUi)) {
             if (secondaryWindow.pendingDownloadId.length > 0) {
-                rootWindow.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
+                rootWindow.profileResourceRegistry.cancelDownloadRequest(secondaryUi, download)
                 secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
                 return
             }
@@ -492,47 +506,50 @@ ApplicationWindow {
             secondaryWindow.pendingDownloadSuggestedName = safeName
             rootWindow.captureOverlayFocus(secondaryWindow, secondaryWindow.activeView)
             secondaryUi.update_download(id, "selecting-destination", 0, false)
-            secondaryDownloadChooser.currentFile = rootWindow.fileUrlForPath(
+            secondaryDialogSurfaces.downloadCurrentFile = rootWindow.fileUrlForPath(
                 directory + "/" + safeName)
-            secondaryDownloadChooser.open()
+            secondaryDialogSurfaces.openDownload()
             return
         }
         var finalName = secondaryUi.accept_download(id, directory, safeName)
         if (finalName.length === 0) {
-            rootWindow.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
+            rootWindow.profileResourceRegistry.cancelDownloadRequest(secondaryUi, download)
             return
         }
         var stagingDirectory = rootWindow.downloadStagingDirectory(secondaryUi, id)
         if (stagingDirectory.length === 0) {
             delete secondaryWindow.activeDownloads[id]
-            rootWindow.resolveQtRequest(secondaryUi, download, "download", "cancel", [])
+            rootWindow.profileResourceRegistry.cancelDownloadRequest(secondaryUi, download)
             secondaryUi.update_download(id, "cancelled", download.receivedBytes, true)
             return
         }
         download.downloadDirectory = stagingDirectory
         download.downloadFileName = finalName
-        download.stateChanged.connect(function() {
-            secondaryUi.update_download(id, secondaryWindow.secondaryDownloadStateName(download), download.receivedBytes, false)
-        })
+        rootWindow.attachDownloadStateUpdates(download, id, secondaryUi, secondaryWindow)
         rootWindow.resolveQtRequest(secondaryUi, download, "download", "accept", [])
         secondaryWindow.activeDownloads[id] = download
         secondaryUi.update_download(id, "in-progress", 0, false)
     }
-    function handleDownloadFinished(download) {
-        var id = String(download.id)
-        var state = secondaryWindow.secondaryDownloadStateName(download)
-        if (state === "completed" && !secondaryUi.finalize_download(id)) {
+    function handleDownloadFinished(download, selectionFailed, id) {
+        var state = selectionFailed ? "interrupted" : secondaryWindow.secondaryDownloadStateName(download)
+        if (state === "completed") {
+            secondaryUi.update_download(id, "completed", download.receivedBytes, false)
+            if (secondaryUi.finalize_download(id)) return true
             state = "interrupted"
-        } else if (state !== "completed") {
-            secondaryUi.discard_download_staging(id)
         }
+        secondaryUi.discard_download_staging(id)
+        secondaryUi.update_download(id, state, download.receivedBytes, true)
+        secondaryWindow.completeFinishedDownload(id)
+        return false
+    }
+
+    function completeFinishedDownload(id) {
         delete secondaryWindow.activeDownloads[id]
         delete secondaryWindow.pendingDownloadRequests[id]
         if (secondaryWindow.pendingDownloadId === id) {
             secondaryWindow.pendingDownloadId = ""
             secondaryWindow.pendingDownloadSuggestedName = ""
         }
-        secondaryUi.update_download(id, state, download.receivedBytes, true)
     }
 
     BrowserUi {
@@ -727,21 +744,7 @@ function onContext_workspaceChanged() {
         }
     }
 
-    function secondaryDownloadStateName(download) {
-        if (download.state === WebEngineDownloadRequest.DownloadInProgress) {
-            return "in-progress"
-        }
-        if (download.state === WebEngineDownloadRequest.DownloadCompleted) {
-            return "completed"
-        }
-        if (download.state === WebEngineDownloadRequest.DownloadCancelled) {
-            return "cancelled"
-        }
-        if (download.state === WebEngineDownloadRequest.DownloadInterrupted) {
-            return "interrupted"
-        }
-        return "offered"
-    }
+    function secondaryDownloadStateName(download) { return rootWindow.downloadStateName(download) }
 
     function secondaryFileDialogPaths() {
         var paths = []
@@ -766,182 +769,79 @@ function onContext_workspaceChanged() {
 
     function clearSecondaryFileDialog(cancelRequest, message) {
         var request = secondaryWindow.pendingFileDialogRequest
-        var hadRequest = !!request
+        var view = secondaryWindow.pendingFileDialogView
+        var leaseToken = secondaryWindow.pendingFileDialogLeaseToken
         secondaryWindow.pendingFileDialogRequest = null
         secondaryWindow.pendingFileDialogView = null
-        secondaryWindow.pendingFileDialogWaitingForPortal = false
-        secondaryWindow.pendingFileDialogPortalDeadlineMs = 0
-        secondaryFilePortalTimer.stop()
-        if (secondaryDialogSurfaces.engineFileVisible) {
-            secondaryDialogSurfaces.closeEngineFile()
-        }
-        if (secondaryDialogSurfaces.engineFolderVisible) {
-            secondaryDialogSurfaces.closeEngineFolder()
-        }
-        if (hadRequest) {
+        secondaryWindow.pendingFileDialogLeaseToken = ""
+        secondaryDialogSurfaces.closeEngineFile()
+        secondaryDialogSurfaces.closeEngineFolder()
+        if (request) rootWindow.restoreOverlayFocus(secondaryWindow)
+        rootWindow.completeNativePromptLease(secondaryUi, leaseToken, view)
+        if (cancelRequest && request)
+            rootWindow.resolveQtRequest(secondaryUi, request, "file-dialog", "dialogReject", [])
+        if (message) secondaryUi.status_text = message
+    }
+
+    function finishFileDialog(paths, folder) {
+        var request = secondaryWindow.pendingFileDialogRequest
+        var view = secondaryWindow.pendingFileDialogView
+        var leaseToken = secondaryWindow.pendingFileDialogLeaseToken
+        secondaryWindow.pendingFileDialogRequest = null
+        secondaryWindow.pendingFileDialogView = null
+        secondaryWindow.pendingFileDialogLeaseToken = ""
+        if (request) {
+            if (paths.length > 0)
+                rootWindow.resolveQtRequest(secondaryUi, request, "file-dialog", "dialogAccept", [paths])
+            else
+                rootWindow.resolveQtRequest(secondaryUi, request, "file-dialog", "dialogReject", [])
             rootWindow.restoreOverlayFocus(secondaryWindow)
         }
-        if (cancelRequest && request) {
-            rootWindow.resolveQtRequest(secondaryUi, request, "file-dialog", "dialogReject", [])
-        }
-        if (message) {
-            secondaryUi.status_text = message
-        }
+        rootWindow.completeNativePromptLease(secondaryUi, leaseToken, view)
+        if (!request) return
+        secondaryUi.status_text = paths.length === 0
+                ? (folder ? "Choose a folder stored on this computer" : "Choose a file stored on this computer")
+                : folder ? "Folder selected" : paths.length === 1 ? "File selected" : paths.length + " files selected"
     }
 
-    function acceptFileDialog() {
-        var request = secondaryWindow.pendingFileDialogRequest
-        var paths = secondaryWindow.secondaryFileDialogPaths()
-        secondaryWindow.pendingFileDialogRequest = null
-        secondaryWindow.pendingFileDialogView = null
-        if (!request || paths.length === 0) {
-            if (request) {
-                rootWindow.resolveQtRequest(secondaryUi, request, "file-dialog", "dialogReject", [])
-            }
-            if (request) {
-                rootWindow.restoreOverlayFocus(secondaryWindow)
-            }
-            secondaryUi.status_text = "File selection returned no local paths"
-            return
-        }
-        rootWindow.resolveQtRequest(secondaryUi, request, "file-dialog", "dialogAccept", [paths])
-        rootWindow.restoreOverlayFocus(secondaryWindow)
-        secondaryUi.status_text = paths.length === 1
-                ? "File selected"
-                : paths.length + " files selected"
-    }
-
-    function acceptFolderDialog() {
-        var request = secondaryWindow.pendingFileDialogRequest
-        var paths = secondaryWindow.secondaryFolderDialogPaths()
-        secondaryWindow.pendingFileDialogRequest = null
-        secondaryWindow.pendingFileDialogView = null
-        if (!request || paths.length === 0) {
-            if (request) {
-                rootWindow.resolveQtRequest(secondaryUi, request, "file-dialog", "dialogReject", [])
-            }
-            if (request) {
-                rootWindow.restoreOverlayFocus(secondaryWindow)
-            }
-            secondaryUi.status_text = "Folder selection returned no local path"
-            return
-        }
-        rootWindow.resolveQtRequest(secondaryUi, request, "file-dialog", "dialogAccept", [paths])
-        rootWindow.restoreOverlayFocus(secondaryWindow)
-        secondaryUi.status_text = "Folder selected"
-    }
+    function acceptFileDialog() { finishFileDialog(secondaryFileDialogPaths(), false) }
+    function acceptFolderDialog() { finishFileDialog(secondaryFolderDialogPaths(), true) }
 
     function rejectFileDialog() {
-        var request = secondaryWindow.pendingFileDialogRequest
-        if (!request) {
-            return
-        }
-        secondaryWindow.pendingFileDialogRequest = null
-        secondaryWindow.pendingFileDialogView = null
-        rootWindow.resolveQtRequest(secondaryUi, request, "file-dialog", "dialogReject", [])
-        rootWindow.restoreOverlayFocus(secondaryWindow)
-        secondaryUi.status_text = "File selection cancelled"
+        if (secondaryWindow.pendingFileDialogRequest)
+            secondaryWindow.clearSecondaryFileDialog(true, "File selection cancelled")
     }
 
-    function handleFileDialogRequested(request) {
+    function handleFileDialogRequested(request, sourceView, sourceUi) {
         if (!request) return
         request.accepted = true
+        var view = sourceView || secondaryWindow.activeView
+        if (!view || view.viewRetired || view.viewHost !== secondaryWindow || view.viewUi !== secondaryUi
+                || (sourceUi && sourceUi !== secondaryUi)) {
+            rootWindow.resolveQtRequest(secondaryUi, request, "file-dialog", "dialogReject", [])
+            return
+        }
         if (secondaryWindow.pendingFileDialogRequest) {
-            secondaryWindow.clearSecondaryFileDialog(true,
-                    "Previous file selection cancelled")
-            rootWindow.resolveQtRequest(
-                secondaryUi, request, "file-dialog", "dialogReject", [])
+            rootWindow.resolveQtRequest(secondaryUi, request, "file-dialog", "dialogReject", [])
             secondaryUi.status_text = "Another file selection is already open"
             return
         }
-        rootWindow.captureOverlayFocus(secondaryWindow, secondaryWindow.activeView)
+        rootWindow.captureOverlayFocus(secondaryWindow, view)
         secondaryWindow.pendingFileDialogRequest = request
-        secondaryWindow.pendingFileDialogView = secondaryWindow.activeView
-        var requestUi = secondaryUi
-        if (rootWindow.desktopPortalMode(requestUi) === "required") {
-            var status = rootWindow.desktopPortalCapabilityStatus(requestUi, "file_chooser")
-            if (status === "not-probed") {
-                rootWindow.primaryBrowserUi.probe_desktop_portals()
-                status = rootWindow.desktopPortalCapabilityStatus(requestUi, "file_chooser")
-            }
-            if (status === "pending" || status === "not-probed") {
-                secondaryWindow.pendingFileDialogWaitingForPortal = true
-                secondaryWindow.pendingFileDialogPortalDeadlineMs = Date.now() + 5000
-                requestUi.status_text = "Checking required desktop portal…"
-                secondaryFilePortalTimer.start()
-                return
-            }
-            if (status !== "available") {
-                secondaryWindow.clearSecondaryFileDialog(
-                    true, "Required desktop portal unavailable; file selection cancelled")
-                return
-            }
-        }
-        secondaryWindow.pendingFileDialogWaitingForPortal = false
-        secondaryFilePortalTimer.stop()
-        if (request.mode === FileDialogRequest.FileModeUploadFolder) {
-            secondaryDialogSurfaces.openEngineFolder()
+        secondaryWindow.pendingFileDialogView = view
+        secondaryWindow.pendingFileDialogLeaseToken = rootWindow.beginNativePromptLease(secondaryUi, view, "file-chooser")
+        if (secondaryWindow.pendingFileDialogLeaseToken.length === 0) {
+            secondaryWindow.clearSecondaryFileDialog(true, "This file selection is no longer available; try again")
             return
         }
-        secondaryDialogSurfaces.engineFileMode = request.mode === FileDialogRequest.FileModeOpenMultiple
-                ? FileDialog.OpenFiles
-                : request.mode === FileDialogRequest.FileModeSave
-                    ? FileDialog.SaveFile
-                    : FileDialog.OpenFile
-        secondaryDialogSurfaces.engineFileNameFilters = rootWindow.fileDialogNameFilters(request)
-        secondaryDialogSurfaces.engineFileCurrentFile = request.defaultFileName.length > 0
-                ? request.defaultFileName
-                : ""
-        secondaryDialogSurfaces.engineFileTitle = request.mode === FileDialogRequest.FileModeSave
-                ? "Save file"
-                : request.mode === FileDialogRequest.FileModeOpenMultiple
-                    ? "Choose files"
-                    : "Choose file"
-        secondaryDialogSurfaces.openEngineFile()
+        secondaryWindow.openPendingFileDialog()
     }
 
-    function maybeOpenPendingFileDialog() {
-        if (!secondaryWindow.pendingFileDialogWaitingForPortal
-                || !secondaryWindow.pendingFileDialogRequest) {
-            secondaryFilePortalTimer.stop()
-            return
-        }
-        if (Date.now() >= secondaryWindow.pendingFileDialogPortalDeadlineMs) {
-            secondaryWindow.clearSecondaryFileDialog(
-                true, "Desktop portal check timed out; file selection cancelled")
-            return
-        }
-        var ui = secondaryUi
-        var status = rootWindow.desktopPortalCapabilityStatus(ui, "file_chooser")
-        if (status === "pending" || status === "not-probed") {
-            return
-        }
-        if (status !== "available") {
-            secondaryWindow.clearSecondaryFileDialog(
-                true, "Required desktop portal unavailable; file selection cancelled")
-            return
-        }
-        secondaryWindow.pendingFileDialogWaitingForPortal = false
-        secondaryFilePortalTimer.stop()
+    function openPendingFileDialog() {
         var request = secondaryWindow.pendingFileDialogRequest
-        if (request.mode === FileDialogRequest.FileModeUploadFolder) {
-            secondaryDialogSurfaces.openEngineFolder()
-            return
-        }
-        secondaryDialogSurfaces.engineFileMode = request.mode === FileDialogRequest.FileModeOpenMultiple
-                ? FileDialog.OpenFiles
-                : request.mode === FileDialogRequest.FileModeSave
-                    ? FileDialog.SaveFile
-                    : FileDialog.OpenFile
-        secondaryDialogSurfaces.engineFileNameFilters = rootWindow.fileDialogNameFilters(request)
-        secondaryDialogSurfaces.engineFileCurrentFile = request.defaultFileName.length > 0
-                ? request.defaultFileName : ""
-        secondaryDialogSurfaces.engineFileTitle = request.mode === FileDialogRequest.FileModeSave
-                ? "Save file"
-                : request.mode === FileDialogRequest.FileModeOpenMultiple
-                    ? "Choose files"
-                    : "Choose file"
-        secondaryDialogSurfaces.openEngineFile()
+        if (!request) return
+        secondaryUi.status_text = "Opening the file chooser…"
+        rootWindow.presentEngineFileDialog(secondaryDialogSurfaces, request, secondaryUi)
     }
 
     function clearFileDialogForView(view) {
@@ -1014,6 +914,11 @@ function onContext_workspaceChanged() {
             secondaryUi.status_text = closedCount > 0
                     ? "Closed " + closedCount + " tab" + (closedCount === 1 ? "" : "s")
                     : "No unpinned tabs available to close"
+            return
+        }
+        if (action === "show-switcher") {
+            rootWindow.showSwitcherWith(String(secondaryUi.switcher_request_scope || "all"),
+                String(secondaryUi.switcher_request_query || ""), secondaryUi, secondaryWindow)
             return
         }
         if (action === "show-diagnostics") { rootWindow.showDiagnostics(secondaryUi); return }
@@ -1108,10 +1013,16 @@ function onContext_workspaceChanged() {
             var navigation = action.split("\t")
             if (navigation.length >= 3) {
                 var navigationIndex = Number(navigation[1])
+                // Interactive tab-open can deliver its navigation before the
+                // scheduled runtime pass has created the new tab's view.
+                secondaryWindow.syncTabModel()
                 var navigationView = secondaryWindow.tabViewAt(navigationIndex)
                 if (navigationView) {
                     secondaryTabs.setProperty(navigationIndex, "loaded", true)
                     navigationView.setContentUrl(navigation.slice(2).join("\t"), false)
+                } else {
+                    secondaryUi.status_text = "This tab couldn't be opened. Try reopening it."
+                    console.error("navigation view unavailable", navigationIndex, secondaryUi.tab_count)
                 }
                 return
             }
@@ -1240,9 +1151,17 @@ function onContext_workspaceChanged() {
             secondaryWindow.activeView.forceActiveFocus()
             return
         }
-        if (action.indexOf("download-open\t") === 0) {
+        if (action === "show-downloads") { secondaryDownloads.show(); return }
+        if (action.indexOf("download-pause\t") === 0 || action.indexOf("download-resume\t") === 0
+                || action.indexOf("download-cancel\t") === 0) {
+            var control = action.split("\t")
+            rootWindow.profileResourceRegistry.controlDownload(secondaryUi, control[1], control[0].slice("download-".length))
+            return
+        }
+        if (action.indexOf("download-open\t") === 0 || action.indexOf("download-show\t") === 0) {
             rootWindow.openExternalUri(secondaryUi,
                                    action.split("\t").slice(1).join("\t"))
+            return
         }
         if (action.indexOf("save-page\t") === 0) {
             var secondarySaveParts = action.split("\t")
@@ -1358,7 +1277,6 @@ function onContext_workspaceChanged() {
         secondaryManagers.presentCommandRequest()
         secondaryWindow.syncTabModel()
         rootWindow.updateBrowserWindowView(secondaryUi, secondaryWindow.activeView)
-        secondaryWindow.maybeOpenPendingFileDialog()
         secondaryUi.refresh_operations()
         secondaryUi.tick_bindings()
         secondaryUi.tick_site_doctor_experiment()
@@ -1443,20 +1361,7 @@ function onContext_workspaceChanged() {
             }
         }
 
-        if (secondaryUi.take_download_request()) {
-            if (secondaryWindow.activeView) {
-                rootWindow.runBrowserScript(
-                    secondaryWindow.activeView,
-                    rootWindow.downloadLinkScript(secondaryUi.download_request_url),
-                    function() {
-                        secondaryUi.complete_download_request(
-                            secondaryUi.download_request_token, true)
-                    })
-            } else {
-                secondaryUi.complete_download_request(
-                    secondaryUi.download_request_token, false)
-            }
-        }
+        secondaryDownloads.dispatchRequest()
 
         var clipboardRequest = secondaryUi.take_clipboard_request()
         if (clipboardRequest.length > 0) {
@@ -1811,10 +1716,6 @@ function onContext_workspaceChanged() {
         secondaryCommandBar.clearInput()
         secondaryWindow.applySwitcherEngineAction()
         commandStatus = secondaryUi.status_text
-        if (secondaryUi.mode === "command") {
-            secondaryUi.escape()
-            secondaryUi.status_text = commandStatus
-        }
         secondaryWindow.showCommandNotice(commandStatus, false)
     }
 
@@ -2270,6 +2171,17 @@ function onContext_workspaceChanged() {
         function onTab_countChanged() { secondaryWindow.scheduleRuntimeWork(0) }
     }
 
+    FerricDownloadWorkspace {
+        id: secondaryDownloads
+        objectName: "secondaryDownloadWorkspace"
+        browserWindow: secondaryAppearance
+        hostWindow: secondaryWindow
+        browserUi: secondaryUi
+        rootWindow: secondaryWindow.rootWindow
+        onOpening: rootWindow.captureOverlayFocus(secondaryWindow, secondaryWindow.activeView)
+        onClosed: rootWindow.restoreOverlayFocus(secondaryWindow)
+    }
+    readonly property alias downloadWorkspaceObject: secondaryDownloads
     readonly property alias profileSessionWorkspace: secondaryManagers
     FerricProfileSessionWorkspace {
         id: secondaryManagers
@@ -2289,13 +2201,13 @@ function onContext_workspaceChanged() {
     function releaseWindowResources() {
         if (secondaryWindow.runtimeReleased) return
         secondaryWindow.runtimeReleased = true
+        secondaryDownloads.shutdown()
         secondaryDevTools.close()
         rootWindow.discardOverlayFocus(secondaryWindow)
         if (rootWindow.contextRouteUi === secondaryUi) rootWindow.closeContextRoutePrompt()
         secondaryProfileBootstrapTimer.stop()
         secondaryWindow.cancelPendingTransfer()
         secondaryRuntimeWorkTimer.stop()
-        secondaryFilePortalTimer.stop()
         bookmarkTransferTimer.stop()
         secondaryShutdownPageProbeTimer.stop()
         secondaryCommandNoticeTimer.stop()

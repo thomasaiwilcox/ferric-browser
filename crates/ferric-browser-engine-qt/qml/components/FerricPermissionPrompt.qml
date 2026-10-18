@@ -17,7 +17,7 @@ FerricCommandDialog {
              + browserWindow.permissionDisplayName(
                    browserWindow.pendingPermissionName) + "."
     dialogWidth: 600 * scale
-    dialogHeight: 390 * scale
+    dialogHeight: fittedCommandDialogHeight()
     dialogBorderColor: browserWindow.warningColor
     stackingOrder: 90
     cancelAction: "deny"
@@ -26,7 +26,8 @@ FerricCommandDialog {
             id: "deny", key: "n", label: "Deny", safe: true,
             shortcuts: ["N"]
         }]
-        if (browserWindow.pendingPermissionName !== "screen-capture") {
+        if (browserWindow.permissionCanRemember(
+                    browserWindow.pendingPermissionOrigin, browserWindow.pendingPermissionName)) {
             choices.push({
                 id: "session", key: "s", label: "Allow for session",
                 shortcuts: ["S"]
@@ -77,6 +78,15 @@ FerricCommandDialog {
             color: prompt.browserWindow.mutedTextColor
             wrapMode: Text.WordWrap
             Accessible.name: "Permission scope and grouped request count"
+        }
+        Label {
+            objectName: "permissionPolicyNotice"
+            Layout.fillWidth: true
+            textFormat: Text.PlainText
+            text: String(prompt.browserWindow.pendingPermissionPolicyNotice || "")
+            visible: text.length > 0
+            color: prompt.browserWindow.warningColor
+            wrapMode: Text.WordWrap
         }
         Label {
             textFormat: Text.PlainText

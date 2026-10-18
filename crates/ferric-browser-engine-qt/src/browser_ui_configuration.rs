@@ -1,14 +1,15 @@
 use super::{
     ChromePreferences, Config, ConfigurationLayers, CxxQtType, Duration, FeaturePreferences,
     Instant, ParsedCommand, Path, PathBuf, Pin, PortalCapabilities, PortalProbeWorker, QString,
-    RuntimeOverrides, Value, chrome_preferences, config_get_command_parameters,
-    configured_bindings, desktop_portals, feature_preferences, hyprland, is_bounded_untrusted_text,
-    load_theme_palette, matching_site_rules, publish_ipc_event, qobject, safe_ipc_url,
-    sanitize_process_stderr, setting_metadata, settings_presentation, theme_presentation,
-    try_wait_editor_process,
+    RuntimeOverrides, Value, chrome_preferences, configured_bindings, desktop_portals,
+    feature_preferences, hyprland, is_bounded_untrusted_text, load_theme_palette,
+    matching_site_rules, publish_ipc_event, qobject, safe_ipc_url, sanitize_process_stderr,
+    setting_metadata, settings_presentation, theme_presentation, try_wait_editor_process,
 };
 
 use ferric_browser_config::ConfigurationApplyBoundary;
+
+const SETTINGS_RELOAD_FAILED: &str = "Settings changes couldn't be loaded. Your current settings are still active. Open :diagnostics for details.";
 
 enum ConfigurationCommit<'a> {
     Reload(Option<Box<ferric_browser_application::ContextReloadEffect>>),
@@ -150,7 +151,11 @@ impl qobject::BrowserUi {
         )
     }
 
-    pub(super) fn report_config_reload_failure(mut self: Pin<&mut Self>, error: &str) {
+    pub(super) fn report_config_reload_failure(
+        mut self: Pin<&mut Self>,
+        error: &str,
+        announce: bool,
+    ) {
         self.as_mut()
             .rust_mut()
             .as_mut()
@@ -158,19 +163,27 @@ impl qobject::BrowserUi {
             .profile_startup
             .settings_failed(error);
         self.as_mut().sync_profile_startup_notice();
-        self.as_mut().set_status_text(QString::from(
-            "Settings changes couldn't be loaded. Your current settings are still active. Open :diagnostics for details.",
-        ));
+        if announce {
+            self.as_mut()
+                .set_status_text(QString::from(SETTINGS_RELOAD_FAILED));
+        }
     }
 
     pub(super) fn commit_reloaded_config(
         mut self: Pin<&mut Self>,
         candidate: Value,
         layers: ConfigurationLayers,
-        status: &str,
+        status: Option<&str>,
         fingerprint: String,
         contexts: Option<ferric_browser_application::ContextReloadEffect>,
     ) -> Result<Value, String> {
+        let status = if status.is_none()
+            && self.as_ref().rust().status_text.to_string() == SETTINGS_RELOAD_FAILED
+        {
+            Some("Settings reloaded")
+        } else {
+            status
+        };
         let committed = self.as_mut().commit_validated_configuration(
             candidate,
             layers,
@@ -201,7 +214,7 @@ impl qobject::BrowserUi {
         self.as_mut().commit_validated_configuration(
             candidate,
             layers,
-            status,
+            Some(status),
             fingerprint,
             ConfigurationCommit::Runtime(persistence),
         )
@@ -211,7 +224,7 @@ impl qobject::BrowserUi {
         mut self: Pin<&mut Self>,
         candidate: Value,
         layers: ConfigurationLayers,
-        status: &str,
+        status: Option<&str>,
         fingerprint: String,
         commit: ConfigurationCommit<'_>,
     ) -> Result<Value, String> {
@@ -270,6 +283,7 @@ impl qobject::BrowserUi {
             .transpose()
             .map_err(|error| format!("could not serialize context configuration: {error}"))?;
         let mut write_outcome = None;
+        let mut context_runtime_effects = Vec::new();
         {
             let mut rust = self.as_mut().rust_mut();
             let state = rust
@@ -279,9 +293,10 @@ impl qobject::BrowserUi {
                 .as_mut()
                 .ok_or_else(|| "application state is unavailable".to_owned())?;
             if let Some(contexts) = contexts {
-                state
+                let (_, effects) = state
                     .publish_context_configuration(prepared, contexts)
                     .map_err(|error| format!("configuration publication rejected: {error}"))?;
+                context_runtime_effects = effects;
             } else {
                 state
                     .publish_configuration_update(prepared, || {
@@ -358,6 +373,9 @@ impl qobject::BrowserUi {
             self.as_mut().cancel_hints();
         }
         if let Some(contexts_json) = contexts_json {
+            let _ = self
+                .as_mut()
+                .observe_runtime_effects(context_runtime_effects);
             self.as_mut()
                 .set_contexts_json(QString::from(contexts_json));
             let records = self
@@ -372,11 +390,6 @@ impl qobject::BrowserUi {
             self.as_mut().sync_context_metadata();
             self.as_mut().publish_context_catalog();
         }
-        let status = if pending.is_empty() {
-            status.to_owned()
-        } else {
-            format!("{status}; {} lifecycle change(s) pending", pending.len())
-        };
         let persistence_name = match &write_outcome {
             None => "memory-only",
             Some(ferric_browser_config::RuntimeOverrideWriteOutcome::Durable) => "durable",
@@ -384,13 +397,18 @@ impl qobject::BrowserUi {
                 "durability-uncertain"
             }
         };
-        let status = match &write_outcome {
-            Some(ferric_browser_config::RuntimeOverrideWriteOutcome::DurabilityUncertain(
-                error,
-            )) => format!("{status}; change committed, crash durability uncertain: {error}"),
-            _ => status,
-        };
-        self.as_mut().set_status_text(QString::from(status));
+        if let Some(status) = status {
+            let status = settings_presentation::configuration_status(status, &pending);
+            let status = match &write_outcome {
+                Some(ferric_browser_config::RuntimeOverrideWriteOutcome::DurabilityUncertain(
+                    error,
+                )) => {
+                    format!("{status}; applied, but saving may not survive a system crash: {error}")
+                }
+                _ => status,
+            };
+            self.as_mut().set_status_text(QString::from(status));
+        }
         let mut rust = self.as_mut().rust_mut();
         let this = rust.as_mut().get_mut();
         this.runtime_config_persistence = persistence_name;
@@ -546,44 +564,6 @@ impl qobject::BrowserUi {
             .set_theme_contrast_reason(QString::from(presentation.contrast_reason));
         self.as_mut().rust_mut().as_mut().get_mut().theme_palette = palette;
         true
-    }
-
-    pub(super) fn execute_config_get_command(
-        mut self: Pin<&mut Self>,
-        command: &ParsedCommand,
-    ) -> Result<Value, String> {
-        self.as_ref()
-            .rust()
-            .registry
-            .validate(command, self.as_ref().rust().core_mode)
-            .map_err(|error| error.to_string())?;
-        let params = config_get_command_parameters(command)?;
-        let result = self
-            .as_ref()
-            .ipc_config_get(&params)
-            .map_err(|error| error.message().to_owned())?;
-        let key = result.get("key").and_then(Value::as_str).unwrap_or("?");
-        let source = result
-            .get("source")
-            .and_then(Value::as_str)
-            .unwrap_or("unknown");
-        let apply_time = result
-            .get("apply_time")
-            .and_then(Value::as_str)
-            .unwrap_or("unknown");
-        let value = serde_json::to_string(result.get("value").unwrap_or(&Value::Null))
-            .map_err(|error| format!("could not format configuration value: {error}"))?;
-        let pending = result
-            .get("pending")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-        let mut status = format!("{key} = {value} (source: {source}, apply: {apply_time}");
-        if pending {
-            status.push_str(", pending");
-        }
-        status.push(')');
-        self.as_mut().set_status_text(QString::from(status));
-        Ok(result)
     }
 
     pub(super) fn execute_help_command(
@@ -771,12 +751,19 @@ impl qobject::BrowserUi {
         }
         {
             let mut rust = self.as_mut().rust_mut();
-            rust.as_mut().get_mut().config_watch.mark_pending(
+            let this = rust.as_mut().get_mut();
+            if this.config_reload_worker.is_none() {
+                return Err("Settings reload is unavailable in this window.".into());
+            }
+            this.config_reload_requested_by_user = true;
+            this.config_watch.mark_pending(
                 Instant::now()
                     .checked_sub(Duration::from_millis(200))
                     .unwrap_or_else(Instant::now),
             );
         }
+        self.as_mut()
+            .set_status_text(QString::from("Settings reload requested…"));
         self.as_mut().poll_config();
         let status = self.as_ref().rust().status_text.to_string();
         if status.starts_with("Configuration reload rejected") {

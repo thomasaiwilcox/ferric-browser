@@ -68,7 +68,7 @@ fn durable_job_publishes_only_when_its_owner_accepts_it() {
         ContextRegistry::open(&roots).unwrap().contexts()[0].label,
         "Work"
     );
-    assert_eq!(app.apply_context_reload(result).unwrap(), next);
+    assert_eq!(app.apply_context_reload(result).unwrap().0, next);
     assert_eq!(app.contexts().unwrap()[0].label, "Work");
     assert_eq!(app.profile_snapshot(), identity);
 }
@@ -94,7 +94,7 @@ fn configuration_and_contexts_publish_together_after_the_reserved_job() {
     assert_eq!(app.configuration_snapshot(), before);
     assert!(app.contexts().unwrap().is_empty());
     app.release_configuration_reload(reservation).unwrap();
-    let published = app.publish_context_configuration(prepared, effect).unwrap();
+    let (published, _) = app.publish_context_configuration(prepared, effect).unwrap();
     assert!((published.effective.ui.font_size_pt - 18.0).abs() < f64::EPSILON);
     assert_eq!(app.contexts().unwrap()[0].name, "work");
 }

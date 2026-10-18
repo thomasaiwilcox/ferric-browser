@@ -32,6 +32,7 @@ pub fn validate(config: &Config) -> Result<(), ConfigError> {
             "ui.statusbar must be always, in-mode, or never".into(),
         ));
     }
+    config.downloads.directory.validate()?;
     if config.privacy.remote_suggestions {
         return Err(ConfigError::Validation(
             "privacy.remote_suggestions is unavailable; no remote suggestion provider is implemented".into(),
@@ -918,6 +919,9 @@ pub(super) fn validate_runtime_overrides(overrides: &RuntimeOverrides) -> Result
             return Err(ConfigError::Validation(format!(
                 "runtime override value for {key:?} is too large"
             )));
+        }
+        if key == "downloads.directory" {
+            super::download_directory::normalize(value.clone())?;
         }
         if selector_setting_family(key).is_some() {
             let policy = value

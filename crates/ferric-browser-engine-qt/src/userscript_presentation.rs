@@ -4,6 +4,20 @@ use super::background_workers::UserscriptMutationOutcome;
 use super::{CxxQtType, Pin, QString, QStringList, qobject, userscript, userscript_catalog};
 
 impl qobject::BrowserUi {
+    pub(super) fn userscript_availability(&self) -> userscript_catalog::Availability {
+        userscript_catalog::Availability {
+            core_state_available: self.rust().state.is_some(),
+            durable_storage_available: self.rust().profile_persistence.is_durable(),
+            download_session_available: !self.rust().profile_bootstrap_pending
+                && self
+                    .rust()
+                    .state
+                    .as_ref()
+                    .is_some_and(super::BrowserApplication::session_downloads_available),
+            privacy: self.active_profile_privacy(),
+        }
+    }
+
     pub(super) fn set_userscript_inventory_rows(
         mut self: Pin<&mut Self>,
         scripts: &[userscript::InstalledScript],
@@ -111,9 +125,7 @@ impl qobject::BrowserUi {
                 .as_ref()
                 .map(|roots| roots.config.as_path()),
             &subject,
-            self.as_ref().rust().state.is_some(),
-            self.as_ref().rust().profile_persistence.is_durable(),
-            self.as_ref().active_profile_is_transient(),
+            self.as_ref().userscript_availability(),
         );
         match values {
             Ok(values) => {

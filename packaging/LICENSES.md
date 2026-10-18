@@ -13,6 +13,9 @@ the exact locked graph and installed package metadata before publication.
 | uuid | opaque runtime identities | crates.io package license metadata |
 | adblock-rust | maintained ABP/EasyList-compatible network filter | MPL-2.0 notice from the `adblock` crate |
 | Qt 6 / QtWebEngine | desktop and browser engine | installed Qt distribution license notices |
+| QtWebEngine 6.11.2 profile interface | nullable download-source compatibility check | LGPL-3.0-only; unmodified interface, full license, NOTICE and source/hash provenance in `crates/ferric-browser-engine-qt/src/qt_compat`; license/NOTICE/provenance installed by the package recipe |
+| KWindowSystem >= 6.28 | public Wayland window export for parented file choosers | LGPL-2.1-or-later; installed KDE Frameworks distribution notices |
+| pkg-config | build-time discovery of system libraries | MIT OR Apache-2.0 crate notice |
 | Wayland / XDG portals / PipeWire | optional desktop integration | installed distribution package notices |
 | libc | bounded Unix process, filesystem, and socket integration | MIT OR Apache-2.0 crate notice |
 | CXX-Qt build/runtime crates | generated Qt bridge and Qt type support | MIT OR Apache-2.0 crate notices |

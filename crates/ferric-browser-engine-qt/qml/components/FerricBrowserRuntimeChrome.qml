@@ -828,12 +828,26 @@ GridLayout {
 
     FerricSwitcher {
         id: switcherSurface
-        browserWindow: window
+        parent: window.switcherHost ? window.switcherHost.contentItem : window.contentItem
+        browserWindow: window.switcherHost && window.switcherHost.chromeAppearance
+            ? window.switcherHost.chromeAppearance : window
+        hostWindow: window.switcherHost || window
+        maximumResults: window.switcherMaxResults()
         switcherVisible: window.switcherVisible
+        scope: window.switcherScope
         results: window.switcherResults
+        resultsCurrent: window.switcherResultsCurrent()
+        sourcesPending: window.switcherSourceState.pending
+        sourcesFailed: window.switcherSourceState.failed
+        sourcesRetryable: window.switcherSourceState.retryable
+        sourceNotice: window.switcherSourceState.notice
+        sourceDetail: window.switcherSourceState.detail
+        onRefreshRequested: window.retrySwitcherSources()
         onQueryChangeRequested: function(query) {
             if (window.switcherVisible) {
                 window.cancelSwitcherBatch()
+                window.switcherResultContext = null
+                window.switcherResults = []
                 switcherRefreshTimer.restart()
             }
         }
@@ -841,6 +855,37 @@ GridLayout {
         onActivationRequested: function(index) { window.activateSwitcher(index) }
         onActionRequested: function(index, action) {
             window.activateSwitcherAction(index, action)
+        }
+    }
+
+    Connections {
+        target: window
+        function onBrowserWindowRegistryChanged() {
+            if (window.switcherVisible && !window.switcherRegistry.switcherInvocation()) window.closeSwitcher()
+        }
+        function onPopupWindowRegistryChanged() {
+            if (window.switcherVisible && !window.switcherRegistry.switcherInvocation()) window.closeSwitcher()
+        }
+    }
+    Connections {
+        target: window.switcherHost
+        ignoreUnknownSignals: true
+        function onRuntimeReleasedChanged() {
+            if (window.switcherHost && window.switcherHost.runtimeReleased) window.closeSwitcher()
+        }
+        function onRuntimeDisposingChanged() {
+            if (window.switcherHost && window.switcherHost.runtimeDisposing) window.closeSwitcher()
+        }
+    }
+
+    Connections {
+        target: window.switcherUi
+        ignoreUnknownSignals: true
+        function onProfile_bootstrap_pendingChanged() {
+            if (window.switcherUi && window.switcherUi.profile_bootstrap_pending) window.closeSwitcher()
+        }
+        function onWindow_tokenChanged() {
+            if (window.switcherUi && String(window.switcherUi.window_token) !== window.switcherOwnerToken) window.closeSwitcher()
         }
     }
 
@@ -854,27 +899,17 @@ GridLayout {
         }
     }
 
-    FerricDownloadManager {
+    readonly property alias downloadWorkspaceObject: downloadWorkspace
+    FerricDownloadWorkspace {
+        id: downloadWorkspace
         browserWindow: window
+        hostWindow: window
+        browserUi: window.primaryBrowserUi
+        rootWindow: window
+        state: window
         downloadsModel: downloads
-        onCloseRequested: {
-            window.downloadManagerVisible = false
-            window.closeInternalSurface()
-        }
-        onOpenRequested: function(downloadId, reveal) {
-            window.openDownload(downloadId, reveal)
-        }
-        onActionRequested: function(downloadId, action) {
-            window.requestDownloadAction(downloadId, action)
-        }
-    }
-
-    Timer {
-        id: downloadMetricsTimer
-        interval: 1000
-        repeat: true
-        running: window.downloadManagerVisible
-        onTriggered: window.refreshDownloads()
+        onOpening: window.openInternalSurface()
+        onClosed: window.closeInternalSurface()
     }
 
     readonly property alias profileSessionWorkspaceObject: profileSessionWorkspace
@@ -928,14 +963,17 @@ GridLayout {
                 }
                 onTabIndexChanged: refreshPromptViewIdentity()
                 onViewUiChanged: {
+                    documentRequestOwner = ({})
                     refreshPromptViewIdentity()
                     if (resourceTracked) window.profileResourceRegistry.trackView(webView,viewHost,viewUi)
                 }
                 onViewHostChanged: {
+                    documentRequestOwner = ({})
                     if (resourceTracked) window.profileResourceRegistry.trackView(webView,viewHost,viewUi)
                 }
                 property bool resourceTracked: false
                 property alias nativeUrl: nativeContent.nativeUrl
+                onNativeUrlChanged: documentRequestOwner = ({})
                 property alias contentTraversalPending: nativeContent.traversalPending
                 readonly property var startPage: nativeContent.startPage
                 readonly property int engineHistoryIndex: nativeContent.engineHistoryIndex
@@ -970,6 +1008,7 @@ GridLayout {
                 property bool viewTransientProfile: window.temporaryProfile
                 property bool viewTransferred: false
                 property bool viewRetired: false
+                property var documentRequestOwner: ({})
                 function ownsTab() {
                     return !viewRetired && !!viewUi && tabIndex >= 0 && stableTabId.length > 0
                         && viewUi.tab_id_for_index(tabIndex) === stableTabId
@@ -1103,6 +1142,7 @@ GridLayout {
                     }
                 }
                 onLoadingChanged: function(loadRequest) {
+                    if (loadRequest.status === WebEngineView.LoadStartedStatus) documentRequestOwner = ({})
                     if (!viewModel.loaded || nativeUrl.length > 0 || !ownsTab()) return
                     if (loadRequest.status === WebEngineView.LoadStartedStatus) {
                         viewUi.invalidate_native_prompt_leases()
@@ -1190,8 +1230,13 @@ GridLayout {
                     viewUi.finish_print_pdf(filePath, success)
                 }
                 onFileDialogRequested: function(request) {
-                    if (!viewTabs || tabIndex < 0 || tabIndex === viewUi.active_tab_index) {
-                        window.handleFileDialogRequested(request, webView, viewUi)
+                    if (!request) return
+                    request.accepted = true
+                    var host = viewHost || window
+                    if ((!viewTabs || tabIndex < 0 || tabIndex === viewUi.active_tab_index)
+                            && !host.runtimeReleased && !host.runtimeDisposing
+                            && host.handleFileDialogRequested) {
+                        host.handleFileDialogRequested(request, webView, viewUi)
                     } else {
                         window.resolveQtRequest(viewUi, request, "file-dialog", "dialogReject", [])
                     }
@@ -1394,6 +1439,7 @@ GridLayout {
             return
         }
 
+        if (focusedContextWindow) browserUi.finish_command_entry()
         window.pendingInteractiveCommand = ""
         var commandStatus = browserUi.status_text
         window.profileSessionWorkspaceObject.presentCommandRequest()
@@ -1410,10 +1456,6 @@ GridLayout {
         window.executePendingEngineAction()
         commandStatus = browserUi.status_text
         commandSurface.clearInput()
-        if (browserUi.mode === "command") {
-            browserUi.escape()
-            browserUi.status_text = commandStatus
-        }
         window.showCommandNotice(commandStatus, false)
     }
 

@@ -154,7 +154,7 @@ impl ActionDefinition {
             "send" => &["configured-action-target"],
             "selection-search" | "edit" => &["live-document"],
             "download-open" | "download-show" | "download-cancel" | "download-pause"
-            | "download-resume" | "download-retry" => &["durable-download-index"],
+            | "download-resume" | "download-retry" => &["profile-session-downloads"],
             "history-open" | "history-clear" | "bookmark-add" | "bookmark-open"
             | "bookmark-delete" | "bookmark-edit" | "quickmark-add" | "quickmark-open"
             | "quickmark-delete" | "quickmark-edit" | "bookmark-list" | "quickmark-list"

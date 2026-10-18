@@ -1,3 +1,5 @@
+import "../scripts/SwitcherSources.js" as SwitcherSources
+import "../scripts/SwitcherResults.js" as SwitcherResults
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -5,6 +7,7 @@ import QtQuick.Dialogs
 import QtWebEngine
 import io.github.ferricbrowser 1.0
 import "../scripts/BrowserScripts.js" as BrowserScripts
+import "../scripts/CloseRequests.js" as CloseRequests
 import "../scripts/ChromePresentation.js" as ChromePresentation
 import "../scripts/TargetSearchPresentation.js" as TargetSearchPresentation
 import "../scripts/SpellcheckPresentation.js" as SpellcheckPresentation
@@ -30,107 +33,7 @@ FerricBrowserRuntimeServices {
     readonly property alias switcherRefreshTimerObject: switcherRefreshTimer
     readonly property alias switcherBatchTimerObject: switcherBatchTimer
 
-    function refreshDownloads() {
-        downloads.clear()
-        var values = browserUi.list_downloads()
-        if (values.length === 0) {
-            return
-        }
-        var lines = values.split("\n")
-        for (var i = 0; i < lines.length; ++i) {
-            var fields = lines[i].split("\t")
-            if (fields.length >= 4) {
-                var live = window.liveDownloadForId(fields[0])
-                var metrics = window.downloadMetrics(fields[0], live)
-                downloads.append({
-                    id: fields[0], state: fields[1], bytes: fields[2], destination: fields[3],
-                    total: metrics.total, speed: metrics.speed, reason: metrics.reason
-                })
-            }
-        }
-    }
-
-    function liveDownloadForId(id) {
-        var requested = String(id)
-        function find(host) {
-            if (!host) {
-                return null
-            }
-            var active = host.activeDownloads || ({})
-            if (active[requested]) {
-                return active[requested]
-            }
-            var pending = host.pendingDownloadRequests || ({})
-            return pending[requested] || null
-        }
-        var result = find(window)
-        if (result) {
-            return result
-        }
-        var entries = window.browserWindowRegistry || []
-        for (var i = 0; i < entries.length; ++i) {
-            result = find(entries[i] && entries[i].host)
-            if (result) {
-                return result
-            }
-        }
-        var popups = window.popupWindowRegistry || []
-        for (var j = 0; j < popups.length; ++j) {
-            result = find(popups[j] && popups[j].host)
-            if (result) {
-                return result
-            }
-        }
-        return null
-    }
-
-    function downloadMetrics(id, download) {
-        var requested = String(id)
-        if (!download) {
-            delete window.downloadSamples[requested]
-            return { total: -1, speed: 0, reason: "" }
-        }
-        var now = Date.now()
-        var bytes = Math.max(0, Number(download.receivedBytes || 0))
-        var sample = window.downloadSamples[requested]
-        var speed = 0
-        if (sample && now > sample.at && bytes >= sample.bytes) {
-            var elapsed = now - sample.at
-            if (elapsed >= 200) {
-                speed = Math.max(0, Math.round((bytes - sample.bytes) * 1000 / elapsed))
-            }
-        }
-        window.downloadSamples[requested] = { at: now, bytes: bytes }
-        var total = Number(download.totalBytes)
-        return {
-            total: isFinite(total) && total >= 0 ? total : -1,
-            speed: speed,
-            reason: window.boundedPageDialogText(download.interruptReasonString)
-        }
-    }
-
-    function formatDownloadRate(bytesPerSecond) {
-        var value = Number(bytesPerSecond)
-        if (!isFinite(value) || value <= 0) {
-            return ""
-        }
-        var units = ["B/s", "KiB/s", "MiB/s", "GiB/s"]
-        var index = 0
-        while (value >= 1024 && index < units.length - 1) {
-            value /= 1024
-            index += 1
-        }
-        return value.toFixed(index === 0 ? 0 : 1) + " " + units[index]
-    }
-
-    function openDownload(id, reveal) {
-        if (!browserUi.download_desktop_action(id, reveal)) {
-            return
-        }
-        if (browserUi.download_desktop_uri.length > 0) {
-            window.openExternalUri(browserUi, browserUi.download_desktop_uri)
-        }
-    }
+    function refreshDownloads() { window.downloadWorkspaceObject.refresh() }
 
     function externalUriAllowed(uri) {
         var value = String(uri || "")
@@ -188,24 +91,8 @@ FerricBrowserRuntimeServices {
         return true
     }
 
-    function requestDownloadAction(id, action) {
-        var actionIds = {
-            pause: "browser.download.pause",
-            resume: "browser.download.resume",
-            cancel: "browser.download.cancel",
-            retry: "browser.download.retry"
-        }
-        var actionId = actionIds[action]
-        if (!actionId) {
-            browserUi.status_text = "Unknown download action"
-            return
-        }
-        if (browserUi.execute_ui_action(actionId, id)) {
-            window.executePendingEngineAction()
-        }
-    }
-
     function hasActiveDownloads() {
+        if (browserUi.has_finalizing_downloads && browserUi.has_finalizing_downloads()) return true
         if (window.pendingDownloadId.length > 0) {
             return true
         }
@@ -430,39 +317,22 @@ FerricBrowserRuntimeServices {
         var candidates = []
         for (var i = 0; i < tabViews.length; ++i) {
             var view = tabViewAt(i)
-            if (view && view.lifecycleState === WebEngineView.LifecycleState.Active) {
+            if (view && view.lifecycleState === WebEngineView.LifecycleState.Active)
                 candidates.push(view)
-            }
         }
-        var probe = function(position) {
-            if (generation !== window.shutdownPageProbeGeneration) {
-                return
-            }
-            if (position >= candidates.length) {
+        CloseRequests.probePages(candidates,
+            function() { return generation === window.shutdownPageProbeGeneration },
+            function(view, reply) {
+                return window.runBrowserScript(view, window.shutdownPageProbeScript(), reply, 0)
+            },
+            function(result) {
                 shutdownPageProbeTimer.stop()
-                window.finalizeQuit()
-                return
-            }
-            window.runBrowserScript(candidates[position], window.shutdownPageProbeScript(), function(result) {
-                if (generation !== window.shutdownPageProbeGeneration) {
-                    return
-                }
-                if (result === "dirty") {
-                    shutdownPageProbeTimer.stop()
-                    window.shutdownPagePromptReason = "A page has unsaved form or editor state."
+                if (result.state === "clean") window.finalizeQuit()
+                else {
+                    window.shutdownPagePromptReason = result.reason
                     window.shutdownPagePromptVisible = true
-                    return
                 }
-                if (result !== "clean") {
-                    shutdownPageProbeTimer.stop()
-                    window.shutdownPagePromptReason = "Ferric Browser could not verify every page before closing."
-                    window.shutdownPagePromptVisible = true
-                    return
-                }
-                probe(position + 1)
-            }, 0)
-        }
-        probe(0)
+            })
     }
 
     function beginQuitRequest(commandText) {
@@ -497,6 +367,7 @@ FerricBrowserRuntimeServices {
     }
 
     function cancelDownloadsAndQuit() {
+        window.profileResourceRegistry.cancelFinalizationsForHost(window)
         if (window.pendingDownloadId.length > 0) {
             window.cancelPendingDownload()
         }
@@ -528,6 +399,12 @@ FerricBrowserRuntimeServices {
     Connections {
         target: browserUi
         function onLibrary_valuesChanged() { libraryPublicationTimer.restart() }
+        function onLibrary_pendingChanged() {
+            if (!browserUi.library_pending) Qt.callLater(function() {
+                if (window.downloadManagerVisible && !browserUi.library_pending
+                        && browserUi.library_error.length === 0) window.refreshDownloads()
+            })
+        }
         function onLibrary_kindChanged() { libraryPublicationTimer.restart() }
         function onLibrary_graph_edge_sourcesChanged() { libraryPublicationTimer.restart() }
         function onLibrary_graph_edge_targetsChanged() { libraryPublicationTimer.restart() }
@@ -930,29 +807,46 @@ FerricBrowserRuntimeServices {
         switcherBatchTimer.stop()
         switcherBatchEntries = []
         switcherBatchMerged = []
+        switcherBatchSources = []
+        switcherBatchPrevious = []
         switcherBatchIndex = 0
     }
 
+    // A query edit invalidates the old rows before the debounce timer runs.
+    // Guard activation at the owner boundary as well as in the presentation.
+    function switcherResultsCurrent() {
+        return window.switcherVisible && !!window.switcherRegistry.switcherInvocation()
+                && window.switcherResultContext !== null
+                && window.switcherResultContext.owner === window.switcherOwnerToken
+                && window.switcherResultContext.query === switcherSurface.query
+                && window.switcherResultContext.scope === window.switcherScope
+    }
+
     function switcherMaxResults() {
-        return browserUi.feature_switcher_max_results
+        return (window.switcherUi || browserUi).feature_switcher_max_results
     }
 
     function processSwitcherBatch() {
         if (switcherBatchScheduledGeneration !== switcherBatchGeneration
                 || !window.switcherVisible
+                || !window.switcherRegistry.switcherInvocation()
                 || switcherBatchQuery !== switcherSurface.query
                 || switcherBatchScope !== window.switcherScope) {
             window.cancelSwitcherBatch()
             return
         }
         if (switcherBatchIndex >= switcherBatchEntries.length) {
-            switcherResults = switcherBatchMerged
+            switcherResults = window.publishedSwitcherBatch()
+            switcherSourceState = SwitcherSources.aggregate(switcherBatchSources, false)
+            switcherResultContext = {query: switcherBatchQuery, scope: switcherBatchScope, owner: window.switcherOwnerToken}
             return
         }
         var entry = switcherBatchEntries[switcherBatchIndex]
         switcherBatchIndex += 1
-        if (entry && entry.ui) {
-            if (entry.ui.switcher_query(switcherBatchQuery, switcherBatchScope)) {
+        if (window.switcherRegistry.switcherEntryLive(entry)) {
+            var accepted = entry.ui.switcher_query(switcherBatchQuery, switcherBatchScope)
+            switcherBatchSources.push(SwitcherSources.fromUi(entry.ui, accepted))
+            if (accepted) {
                 var kinds = entry.ui.switcher_result_kinds || []
                 var ids = entry.ui.switcher_result_ids || []
                 var generations = entry.ui.switcher_result_generations || []
@@ -991,29 +885,58 @@ FerricBrowserRuntimeServices {
         // Publish each source as it arrives. The next source is scheduled on
         // the GUI event loop, so a large multi-window search cannot monopolize
         // keyboard, focus, or portal callbacks.
-        switcherBatchMerged.sort(function(left, right) {
-            return Number(right.rank || 0) - Number(left.rank || 0)
-                    || Number(right.recency || 0) - Number(left.recency || 0)
-                    || String(left.kind || "").localeCompare(String(right.kind || ""))
-                    || String(left.id || "").localeCompare(String(right.id || ""))
-        })
-        switcherResults = switcherBatchMerged.slice(0)
+        switcherResults = window.publishedSwitcherBatch()
+        switcherSourceState = SwitcherSources.aggregate(switcherBatchSources,
+            switcherBatchIndex < switcherBatchEntries.length)
+        switcherResultContext = {query: switcherBatchQuery, scope: switcherBatchScope, owner: window.switcherOwnerToken}
         switcherBatchTimer.start()
     }
 
+    function publishedSwitcherBatch() {
+        var pending = switcherBatchEntries.slice(switcherBatchIndex).map(function(entry) {
+            return entry && entry.ui ? String(entry.ui.window_token) : ""
+        })
+        function live(row) { return !!window.switcherOwner(row) }
+        return SwitcherResults.publish(switcherBatchMerged.filter(live),
+            switcherBatchPrevious.filter(live), pending, window.switcherMaxResults())
+    }
+
+    function retrySwitcherSources() {
+        if (!window.switcherRegistry.switcherInvocation()) return
+        var entries = window.switcherRegistry.switcherEntries()
+        for (var i = 0; i < entries.length; ++i)
+            entries[i].ui.refresh_switcher_sources(window.switcherScope)
+        window.refreshSwitcher()
+    }
+
     function refreshSwitcher() {
+        var keepCurrentRows = window.switcherResultsCurrent()
         window.cancelSwitcherBatch()
-        var entries = window.browserWindowRegistry || []
-        if (entries.length === 0) {
-            entries = [{ host: window, ui: browserUi }]
+        if (!window.switcherRegistry.switcherInvocation()) {
+            window.closeSwitcher()
+            return
         }
+        var entries = window.switcherRegistry.switcherEntries()
+        // Commands act in the invoking window. Prefer its duplicate catalog
+        // rows as well, without changing the captured owner of any result.
+        entries.sort(function(left, right) {
+            return Number(right.ui === window.switcherUi) - Number(left.ui === window.switcherUi)
+        })
         switcherBatchEntries = entries.slice(0)
         switcherBatchMerged = []
+        switcherBatchSources = []
+        switcherBatchPrevious = keepCurrentRows ? switcherResults.slice(0) : []
         switcherBatchIndex = 0
         switcherBatchQuery = switcherSurface.query
         switcherBatchScope = window.switcherScope
         switcherBatchScheduledGeneration = switcherBatchGeneration
-        switcherResults = []
+        // A metadata completion must not erase usable results for the same
+        // input while the next source batch is scheduled. New input is cleared
+        // immediately at its edit boundary.
+        if (!keepCurrentRows) {
+            switcherResultContext = null
+            switcherResults = []
+        }
         switcherBatchTimer.start()
     }
 
@@ -1039,8 +962,20 @@ FerricBrowserRuntimeServices {
         onTriggered: window.processSwitcherBatch()
     }
 
-    function showSwitcherWith(scope, query) {
-        window.captureOverlayFocus(window, window.activeWebView())
+    function showSwitcherWith(scope, query, ownerUi, ownerHost) {
+        var ui = ownerUi || browserUi
+        var entry = window.browserWindowEntryForUi(ui)
+        if (!entry || !window.switcherRegistry.switcherEntryLive(entry)
+                || (ownerHost && entry.host !== ownerHost)) {
+            ui.status_text = "This window is still opening. Try the Switcher again when it is ready."
+            return false
+        }
+        if (window.switcherVisible) window.closeSwitcher()
+        window.switcherUi = ui
+        window.switcherHost = entry.host
+        window.switcherProfile = entry.profile
+        window.switcherOwnerToken = String(ui.window_token)
+        window.captureOverlayFocus(entry.host, entry.view)
         switcherVisible = true
         switcherScope = scope && scope.length > 0 ? scope : "all"
         switcherRefreshTimer.stop()
@@ -1055,12 +990,18 @@ FerricBrowserRuntimeServices {
 
     function closeSwitcher() {
         var wasVisible = switcherVisible
+        var host = window.switcherHost
         switcherRefreshTimer.stop()
         window.cancelSwitcherBatch()
         switcherVisible = false
+        switcherResultContext = null
         switcherResults = []
+        window.switcherUi = null
+        window.switcherHost = null
+        window.switcherProfile = null
+        window.switcherOwnerToken = ""
         if (wasVisible) {
-            window.restoreOverlayFocus()
+            window.restoreOverlayFocus(host)
         }
     }
 

@@ -120,7 +120,9 @@ routine supported workflow.
 configuration, persistence, integration logic, and completion MUST be Rust.
 QML may describe views, bindings, accessibility properties, and minimal event
 forwarding. Small C++ adapters may express public Qt APIs that the bridge does
-not expose. Page interaction may require JavaScript. Generated C++ and Qt's
+not expose. ADR-0002 records one version-pinned compatibility exception for a
+broken nullable download-source getter; it does not permit private transport
+or policy APIs. Page interaction may require JavaScript. Generated C++ and Qt's
 existing code are expected; a literal all-Rust rendering stack is not the goal.
 
 **PROD-003 — Desktop focus.** Native Wayland on Arch/Hyprland/Omarchy is the
@@ -132,8 +134,9 @@ the same initial support promise. X11, Windows, and macOS are outside V1.
 **PROD-004 — Simplicity.** Use one engine, one primary presentation toolkit,
 one command registry, and one documented source of truth for each persistent
 data category. Prefer upstream public APIs and a small number of maintained
-dependencies. No private Qt APIs, custom compositor, browser-engine fork,
-cloud synchronization service, or native plugin ABI in V1.
+dependencies. Private Qt access is prohibited except for the narrow nullable
+download-source check documented in ADR-0002. No custom compositor,
+browser-engine fork, cloud synchronization service, or native plugin ABI in V1.
 
 **PROD-005 — qutebrowser relationship.** Reproduce its useful interaction
 concepts: modal input, hints, commands, quickmarks, completion, per-site
@@ -474,7 +477,9 @@ Quick profile APIs for profiles, interception, and settings. A QML
 `WebEngineView` must not be treated as exposing a public `QWebEnginePage*`.
 Do not obtain private Qt objects to emulate Widgets-only APIs. Any gap is a
 recorded capability limitation or a reason to reconsider the presentation
-choice through an ADR.
+choice through an ADR. ADR-0002 permits only a version-pinned null check before
+the Quick download source getter. It does not expose `QWebEnginePage`, broaden
+the engine contract or authorize other private API use.
 
 The adapter exposes typed operations conceptually resembling:
 
@@ -1659,6 +1664,16 @@ eligible membership and session references in generated state; it never edits
 this file. A context accent is presentation-only and must retain accessible
 contrast or fall back to the active theme token.
 
+Definitions in `contexts.toml` remain authoritative.
+`context-delete NAME --confirm` removes a context created with `context-create`.
+For a context
+defined in this file, remove its definition and any routes that refer to it,
+then run `config-reload`. Direct deletion rejects that context with guidance
+and preserves its identity, saved membership and current window bindings.
+Ownership is checked against the latest generated catalog under its lock,
+including changes from other owners. Removing a context keeps its profile,
+named sessions and pages already open.
+
 The following optional additions belong in config.toml. `permission_rules`
 accept only a named normal profile and exact normalized origin. Allowed types
 are the implemented permission names from section 16. Reject durable screen
@@ -2349,6 +2364,31 @@ validation still applies after native routing.
 Operation queries follow the same private-query opt-in and configuration rule,
 including status and explicitly requested stderr. Scoped operation queries use
 the same live window selector as tab queries.
+Download activation commands report a preparation operation. That operation
+completes only when the matching native-profile offer has been admitted; it does
+not claim that the file has finished. Cancellation invalidates its request token
+before a late offer can be accepted. Download rows expose `retry_pending` while
+an item's new request is preparing or its replacement transfer remains active.
+`can_retry` requires a cancelled/interrupted item with a reusable HTTP(S) source
+and no pending replacement. Requested downloads retain their original URL
+through redirects so a later retry can request a fresh redirect.
+Retries use the same profile session, reserve their source across its windows,
+and never revive a terminal historical row.
+`downloads.query` projects the selected owner's profile-session catalog over
+available saved history. A busy or unavailable history read does not suppress
+known live or completed session rows. `ready` means this session projection is
+available; `history_complete` and `history_status` separately describe saved
+history (`ready`, `saving`, `loading`, `unavailable`, or `not-stored`). Filtered
+transient queries return no rows and report `filtered: true`; exposing transient
+rows requires both `ipc.private_queries` and `include_private: true`. These
+opt-ins never enable private download events. Each row retains its stable ID,
+URL, destination, state, byte counts and timestamps, and adds a display name,
+`active`, `finishing`, and `file_ready`. File readiness describes finalized
+catalog state; file actions still revalidate the filesystem. Snapshot sequence
+watermarks include updates made by other owners of the shared session.
+Registered download actions resolve the same session rows and preserve their
+manifest's private-mode policy independently of saved-history readiness.
+
 Private permission answers and secrets are never exposed. Default URL output
 removes userinfo and recognized auth secrets; raw-query/fragment output, if
 added, requires an explicit sensitive-output flag and is not logged.

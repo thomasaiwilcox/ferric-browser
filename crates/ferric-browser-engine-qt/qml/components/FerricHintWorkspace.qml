@@ -825,6 +825,10 @@ Item {
                 window.hintInput = ""
                 window.openEphemeralWindow(
                             result.url, window.ephemeralTokenForUi(browserUi))
+            } else if (result.error === "download-request-rejected") {
+                // Admission failed before consuming the target. Keep its
+                // selection so Enter can retry after the busy request settles.
+                window.showCommandNotice(browserUi.status_text, true)
             } else if (result.error === "rapid-tab-limit") {
                 window.hintResults = []
                 window.hintInput = ""

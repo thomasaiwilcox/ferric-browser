@@ -273,7 +273,7 @@ impl qobject::BrowserUi {
             .get_mut()
             .pending_engine_action = Some("show-switcher".into());
         self.as_mut()
-            .set_status_text(QString::from("Universal switcher requested"));
+            .set_status_text(QString::from("Opening Switcher…"));
         Ok(serde_json::json!({
             "status": "accepted",
             "scope": scope,

@@ -87,45 +87,57 @@ impl qobject::BrowserUi {
                 "private download queries are disabled by configuration".into(),
             ));
         }
-        if self.rust().profile_persistence.lacks_durable_storage() {
+        let private = self.active_profile_is_transient();
+        if private && !include_private {
             return Ok(serde_json::json!({
                 "downloads": [],
                 "private": true,
                 "ready": true,
-                "sequence": self.rust().ipc_sequence
+                "filtered": true,
+                "sequence": super::ipc_transport::current_sequence()
             }));
         }
-        if self.rust().storage_library_dirty.get() || self.rust().storage_library.is_none() {
+        if self.rust().profile_bootstrap_pending {
             return Err(IpcQueryError::Busy(
-                "download metadata is still loading; retry".into(),
+                "The window profile is still opening. Try again.".into(),
             ));
         }
-        let Some(library) = self.rust().storage_library.as_ref() else {
-            return Err(IpcQueryError::Unavailable(
-                "download metadata is unavailable".into(),
-            ));
-        };
-        let downloads = library.downloads.clone();
+        let downloads = self
+            .current_download_rows()
+            .map_err(IpcQueryError::Unavailable)?;
+        let history_status = self.download_history_status().to_string();
         let downloads = downloads
             .into_iter()
-            .map(|download| {
+            .map(|row| {
+                let download = row.record;
                 serde_json::json!({
                     "id": download.id,
                     "source_url": safe_ipc_url(&download.source_url),
                     "destination": download.destination,
+                    "display_name": row.display_name,
                     "state": download.state.as_str(),
                     "bytes_received": download.bytes_received,
+                    "total_bytes": row.total_bytes,
+                    "reason": row.failure.as_ref().map_or("", ferric_browser_application::DownloadFailure::message),
                     "created_at": download.created_at,
-                    "completed_at": download.completed_at
+                    "completed_at": download.completed_at,
+                    "active": row.active,
+                    "finishing": row.finishing,
+                    "file_ready": row.file_ready,
+                    "retry_pending": matches!(row.retry, ferric_browser_application::DownloadRetryState::Preparing | ferric_browser_application::DownloadRetryState::Running),
+                    "can_retry": row.retry == ferric_browser_application::DownloadRetryState::Idle
                 })
             })
             .collect::<Vec<_>>();
         Ok(serde_json::json!({
             "downloads": downloads,
-            "private": false,
+            "private": private,
             "ready": true,
+            "filtered": false,
+            "history_complete": matches!(history_status.as_str(), "ready" | "not-stored"),
+            "history_status": history_status,
             "revision": self.rust().storage_library_revision,
-            "sequence": self.rust().ipc_sequence
+            "sequence": super::ipc_transport::current_sequence()
         }))
     }
 

@@ -1,12 +1,103 @@
 use super::{
-    CleanLinkResult, ClosedTabDescriptor, ClosedTabSnapshot, ContextMember, CxxQtType, Event,
-    FeedbackLane, FeedbackState, JourneyEdgeKind, PendingExternalNavigation, Pin, QString,
-    QStringList, StorageRequest, ValidatedUrl, configured_undo_limit, current_target, elapsed_ms,
-    is_bounded_untrusted_text, link_preview_presentation, qobject, restore_entry_line,
+    CatalogReadState, CleanLinkResult, ClosedTabDescriptor, ClosedTabSnapshot, ContextMember,
+    CxxQtType, Event, FeedbackLane, FeedbackState, JourneyEdgeKind, PendingExternalNavigation, Pin,
+    QString, QStringList, StorageRequest, ValidatedUrl, configured_undo_limit, current_target,
+    elapsed_ms, is_bounded_untrusted_text, link_preview_presentation, qobject, restore_entry_line,
     sanitize_untrusted_title,
 };
 
 impl qobject::BrowserUi {
+    pub(super) fn request_session_names(mut self: Pin<&mut Self>) {
+        if !self.as_ref().rust().session_names_dirty.get()
+            || self
+                .as_ref()
+                .rust()
+                .session_catalog_read_state
+                .is_in_flight()
+        {
+            return;
+        }
+        let context = {
+            let pinned = self.as_ref();
+            let rust = pinned.rust();
+            let transient = rust.state.as_ref().and_then(|state| {
+                let tab = state.active_tab()?;
+                state
+                    .profiles()
+                    .get(&tab.profile)
+                    .map(|profile| profile.privacy.is_transient())
+            }) == Some(true);
+            if transient {
+                None
+            } else {
+                rust.session_state_root.clone().zip(rust.profile_id)
+            }
+        };
+        let Some((root, profile_id)) = context else {
+            let transient = self.as_ref().active_profile_is_transient();
+            let mut rust = self.as_mut().rust_mut();
+            let this = rust.as_mut().get_mut();
+            this.session_names.clear();
+            this.session_names_dirty.set(false);
+            this.session_catalog_read_state = if transient {
+                CatalogReadState::Ready
+            } else {
+                CatalogReadState::Failed(
+                    "The saved-session location is unavailable. Reopen the profile to try again."
+                        .into(),
+                )
+            };
+            drop(rust);
+            self.as_mut()
+                .set_session_names_values(super::QStringList::default());
+            self.as_mut().set_session_names_pending(false);
+            return;
+        };
+        match self
+            .as_mut()
+            .submit_storage(StorageRequest::SessionList { root, profile_id })
+        {
+            Ok(()) => {
+                self.as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .session_names_refresh_again = false;
+                self.as_mut().set_session_names_error(QString::default());
+                self.as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .session_catalog_read_state = CatalogReadState::Pending;
+                self.as_mut().set_session_names_pending(true);
+            }
+            Err(
+                ferric_browser_storage::StorageWorkerError::Busy
+                | ferric_browser_storage::StorageWorkerError::QueueFull,
+            ) => {
+                self.as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .session_catalog_read_state = CatalogReadState::Queued;
+                self.as_mut().set_session_names_pending(true);
+            }
+            Err(error) => {
+                let detail = error.to_string();
+                self.as_mut()
+                    .rust_mut()
+                    .as_mut()
+                    .get_mut()
+                    .session_catalog_read_state = CatalogReadState::Failed(detail.clone());
+                self.as_mut().set_session_names_pending(false);
+                self.as_mut().set_session_names_error(QString::from(detail));
+                self.as_mut().set_status_text(QString::from(
+                    "Saved sessions couldn't be loaded. Refresh the session list to try again.",
+                ));
+            }
+        }
+    }
+
     pub(super) fn recover_session(mut self: Pin<&mut Self>) -> QString {
         let (root, profile_id) = {
             let pinned = self.as_ref();
@@ -38,7 +129,9 @@ impl qobject::BrowserUi {
                 QString::default()
             }
             None => {
-                self.set_status_text(QString::from("Recovery worker is unavailable"));
+                self.set_status_text(QString::from(
+                    "Recovery is unavailable in this window. Reopen the window and try again.",
+                ));
                 QString::default()
             }
         }
@@ -461,7 +554,7 @@ impl qobject::BrowserUi {
                 false
             }
             None => {
-                self.set_status_text(QString::from("Session restore worker is unavailable"));
+                self.set_status_text(QString::from("Session restore is unavailable in this window. Reopen the window and try again."));
                 false
             }
         }
@@ -567,7 +660,7 @@ impl qobject::BrowserUi {
                 false
             }
             None => {
-                self.set_status_text(QString::from("Session preview worker is unavailable"));
+                self.set_status_text(QString::from("Session preview is unavailable in this window. Reopen the window and try again."));
                 false
             }
         }
@@ -625,7 +718,7 @@ impl qobject::BrowserUi {
                 false
             }
             None => {
-                self.set_status_text(QString::from("Session deletion worker is unavailable"));
+                self.set_status_text(QString::from("Session deletion is unavailable in this window. Reopen the window and try again."));
                 false
             }
         }

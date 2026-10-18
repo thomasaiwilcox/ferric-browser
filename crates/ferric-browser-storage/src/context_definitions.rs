@@ -23,9 +23,9 @@ pub struct ContextDefinitionUpdate {
 
 impl ContextRegistry {
     /// Applies one complete configuration-domain change under one registry lock.
-    /// Existing IDs and members survive metadata updates. Only names previously
-    /// managed by this document can be removed; other command-created records
-    /// are retained. Any rejected definition leaves the whole batch unchanged.
+    /// Existing IDs and members survive metadata updates. Previously committed
+    /// document ownership survives restarts; explicit previous names also cover
+    /// a legacy in-process update. Other command-created records are retained. Any rejected definition leaves the whole batch unchanged.
     ///
     /// # Errors
     /// Rejects invalid/duplicate metadata, unsafe profile-affinity changes, and
@@ -42,22 +42,44 @@ impl ContextRegistry {
                 return Err(ContextRegistryError::DuplicateName);
             }
         }
-        let mut removed = BTreeSet::new();
         for name in previous_names {
             validate_name(name)?;
-            if !names.contains(name.as_str()) {
-                removed.insert(name.as_str());
-            }
         }
-        self.mutate_conditional(
-            |records| {
-                let count = records.len();
-                records.retain(|record| !removed.contains(record.name.as_str()));
-                let mut changed = records.len() != count;
+        self.mutate_document(
+            |document| {
+                let removed = document
+                    .configured_names
+                    .iter()
+                    .map(String::as_str)
+                    .chain(previous_names.iter().map(String::as_str))
+                    .filter(|name| !names.contains(name))
+                    .collect::<BTreeSet<_>>();
+                let count = document.contexts.len();
+                document
+                    .contexts
+                    .retain(|record| !removed.contains(record.name.as_str()));
+                let next_names = names.iter().map(|name| (*name).to_owned()).collect();
+                let mut changed =
+                    document.contexts.len() != count || document.configured_names != next_names;
+                document.configured_names = next_names;
                 for definition in definitions {
-                    changed |= apply_definition(records, definition)?;
+                    changed |= apply_definition(&mut document.contexts, definition)?;
                 }
                 Ok(changed)
+            },
+            |_| Ok(()),
+        )
+    }
+
+    pub(super) fn upsert_configured_definition(
+        &mut self,
+        definition: &ContextDefinitionUpdate,
+    ) -> Result<(), ContextRegistryError> {
+        validate_definition(definition)?;
+        self.mutate_document(
+            |document| {
+                let changed = apply_definition(&mut document.contexts, definition)?;
+                Ok(document.configured_names.insert(definition.name.clone()) || changed)
             },
             |_| Ok(()),
         )
@@ -160,6 +182,44 @@ mod tests {
     }
 
     #[test]
+    fn configured_deletion_preserves_identity_membership_and_document_across_owners() {
+        let (roots, mut owner) = registry();
+        owner
+            .create("work", "Command-created work", "work")
+            .unwrap();
+        let mut stale = ContextRegistry::open(&roots).unwrap();
+        owner
+            .reconcile_configured(&[], &[definition("work", "Configured work")])
+            .unwrap();
+        owner.save_membership("work", members()).unwrap();
+        let original = owner.contexts()[0].clone();
+        let revision = owner.revision();
+        let path = roots.state.join("contexts.json");
+        let bytes = std::fs::read(&path).unwrap();
+        assert!(matches!(
+            stale.remove("work"),
+            Err(ContextRegistryError::DefinedInConfiguration)
+        ));
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        let mut reopened = ContextRegistry::open(&roots).unwrap();
+        assert_eq!(reopened.revision(), revision);
+        assert_eq!(reopened.contexts(), std::slice::from_ref(&original));
+        assert!(matches!(
+            reopened.remove("work"),
+            Err(ContextRegistryError::DefinedInConfiguration)
+        ));
+        reopened
+            .reconcile_configured(&[], &[definition("work", "Configured work")])
+            .unwrap();
+        assert_eq!(reopened.contexts(), &[original]);
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        // Removing the authored definition remains the supported deletion path.
+        reopened.reconcile_configured(&[], &[]).unwrap();
+        assert!(ContextRegistry::open(&roots).unwrap().contexts().is_empty());
+        roots.cleanup().unwrap();
+    }
+
+    #[test]
     fn metadata_refresh_preserves_identity_and_members() {
         let (roots, mut registry) = registry();
         registry
@@ -184,11 +244,9 @@ mod tests {
     #[test]
     fn removal_is_limited_to_previously_authored_names() {
         let (_, mut registry) = registry();
+        registry.create("other", "Other", "default").unwrap();
         registry
-            .reconcile_configured(
-                &[],
-                &[definition("work", "Work"), definition("other", "Other")],
-            )
+            .reconcile_configured(&[], &[definition("work", "Work")])
             .unwrap();
         let other = registry
             .contexts()

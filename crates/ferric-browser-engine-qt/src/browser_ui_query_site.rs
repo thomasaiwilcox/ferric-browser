@@ -2,6 +2,7 @@
 
 #[allow(clippy::wildcard_imports)]
 use super::*;
+use ferric_browser_application::PermissionPreferencesStatus;
 
 // Export only diagnostic outcomes. Live experiment records also contain URLs,
 // tab identities and saved settings; those never belong in a shareable report.
@@ -102,17 +103,30 @@ impl qobject::BrowserUi {
         let current_site_url = tab
             .and_then(|tab| tab.url.clone())
             .unwrap_or_else(|| self.rust().current_url.to_string());
-        let permission_metadata_ready = private
-            || (self.rust().storage_library.is_some() && !self.rust().storage_library_dirty.get());
+        let preferences = origin
+            .as_deref()
+            .map(|origin| state.saved_permission_preferences(origin));
+        let permission_metadata_ready =
+            private || preferences.as_ref().is_some_and(|value| value.complete);
+        let permission_metadata_status = if private {
+            "not-stored"
+        } else {
+            preferences
+                .as_ref()
+                .map_or("unknown", |value| match value.status {
+                    PermissionPreferencesStatus::Ready => "available",
+                    PermissionPreferencesStatus::Loading => "pending",
+                    PermissionPreferencesStatus::Unchecked => "unknown",
+                    PermissionPreferencesStatus::Unavailable => "unavailable",
+                    PermissionPreferencesStatus::NotStored => "not-stored",
+                })
+        };
         let permission_rules = if private {
             Vec::new()
         } else {
-            self.rust()
-                .storage_library
-                .as_ref()
+            preferences
                 .into_iter()
-                .flat_map(|library| library.permissions.iter())
-                .filter(|rule| origin.as_deref().is_none_or(|origin| rule.origin == origin))
+                .flat_map(|value| value.rules)
                 .map(|rule| {
                     serde_json::json!({
                         "permission": rule.permission,
@@ -230,6 +244,7 @@ impl qobject::BrowserUi {
                 "value": {
                     "durable_rules": permission_rules,
                     "ready": permission_metadata_ready,
+                    "status": permission_metadata_status,
                     "session_grants": [],
                     "pending_requests": []
                 },

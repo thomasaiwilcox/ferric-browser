@@ -27,7 +27,9 @@ impl qobject::BrowserUi {
         };
         let target = self.as_ref().get_ref().target_for_index(index);
         let Some(target) = target else {
-            self.set_status_text(QString::from("Popup rejected: stale opener"));
+            self.set_status_text(QString::from(
+                "The source page is no longer available. The popup could not be opened.",
+            ));
             return false;
         };
         let parent = self

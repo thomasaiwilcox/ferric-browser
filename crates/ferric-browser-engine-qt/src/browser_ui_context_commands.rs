@@ -669,20 +669,19 @@ impl qobject::BrowserUi {
                     }
                     index += 2;
                 }
-                let context_exists =
-                    self.as_ref()
-                        .rust()
-                        .contexts
-                        .as_ref()
-                        .is_some_and(|contexts| {
-                            contexts
-                                .contexts()
-                                .iter()
-                                .any(|context| context.name == *context_name)
-                        });
-                if !context_exists {
-                    return Err(format!("context not found: {context_name}"));
-                }
+                let context_label = self
+                    .as_ref()
+                    .rust()
+                    .contexts
+                    .as_ref()
+                    .and_then(|contexts| {
+                        contexts
+                            .contexts()
+                            .iter()
+                            .find(|context| context.name == *context_name)
+                            .map(|context| context.label.clone())
+                    })
+                    .ok_or_else(|| format!("context not found: {context_name}"))?;
                 if config
                     .routes
                     .iter()
@@ -752,7 +751,7 @@ impl qobject::BrowserUi {
                 save_contexts_atomic(&path, &config).map_err(|error| error.to_string())?;
                 self.as_mut().publish_contexts_config(&config)?;
                 self.as_mut().set_status_text(QString::from(format!(
-                    "Context route {id} added; prompt applies before navigation only"
+                    "Route added for {context_label}. It applies to pages opened next."
                 )));
                 Ok(serde_json::json!({
                     "status": "queued",
@@ -781,9 +780,9 @@ impl qobject::BrowserUi {
                 let path = self.as_ref().context_routes_path()?;
                 save_contexts_atomic(&path, &config).map_err(|error| error.to_string())?;
                 self.as_mut().publish_contexts_config(&config)?;
-                self.as_mut().set_status_text(QString::from(format!(
-                    "Context route {route_id} removed; existing navigation chains were not changed"
-                )));
+                self.as_mut().set_status_text(QString::from(
+                    "Context route removed. Pages already open keep their current context.",
+                ));
                 Ok(serde_json::json!({
                     "status": "removed",
                     "route": removed,

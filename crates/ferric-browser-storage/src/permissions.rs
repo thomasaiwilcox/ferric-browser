@@ -13,6 +13,14 @@ pub struct PermissionRule {
     pub updated_at: i64,
 }
 
+/// A bounded list whose completeness is established by the same SQLite read.
+/// A truncated list cannot establish that an omitted site has no saved rule.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PermissionRulesSnapshot {
+    pub rules: Vec<PermissionRule>,
+    pub complete: bool,
+}
+
 /// Whether a capability may have a remembered session or durable decision.
 /// Screen/window capture always requires fresh per-request consent.
 #[must_use]
@@ -34,6 +42,9 @@ pub fn normalize_permission_origin(origin: &str) -> Result<String, StoreError> {
     if origin.is_empty() || origin.len() > 512 || origin.chars().any(char::is_control) {
         return Err(StoreError::InvalidInput("permission origin is invalid"));
     }
+    // Qt exposes a security origin as a URL with a single root slash. Match
+    // that representation to the same exact origin without accepting paths.
+    let origin = origin.strip_suffix('/').unwrap_or(origin);
     let (scheme, authority) = origin.split_once("://").ok_or(StoreError::InvalidInput(
         "permission origin must have a scheme",
     ))?;
@@ -126,14 +137,34 @@ impl ProfileStore {
         &self,
         origin: Option<&str>,
     ) -> Result<Vec<PermissionRule>, StoreError> {
+        self.permission_rules_snapshot(origin)
+            .map(|snapshot| snapshot.rules)
+    }
+
+    /// Reads one bounded snapshot, optionally restricted to an exact origin.
+    /// Completeness and rows come from a single statement, so concurrent
+    /// inserts or deletes cannot make a truncated result appear complete.
+    /// # Errors
+    /// Rejects an invalid origin or an unavailable database.
+    pub fn permission_rules_snapshot(
+        &self,
+        origin: Option<&str>,
+    ) -> Result<PermissionRulesSnapshot, StoreError> {
         let origin = origin.map(normalize_permission_origin).transpose()?;
-        let limit = i64::try_from(MAX_PERMISSION_RULES).unwrap_or(i64::MAX);
-        let mut statement = self.connection.prepare(
+        let limit = i64::try_from(MAX_PERMISSION_RULES + 1).unwrap_or(i64::MAX);
+        // Keep the point read indexable. An optional-origin OR predicate makes
+        // SQLite scan the entire table even when a single site was requested.
+        let filter = if origin.is_some() {
+            "origin = ?1"
+        } else {
+            "?1 IS NULL"
+        };
+        let sql = format!(
             "SELECT origin, permission, decision, expires_at, updated_at
-             FROM permission_rules
-             WHERE (?1 IS NULL OR origin = ?1)
-             ORDER BY updated_at DESC, origin ASC, permission ASC LIMIT ?2",
-        )?;
+             FROM permission_rules WHERE {filter}
+             ORDER BY updated_at DESC, origin ASC, permission ASC LIMIT ?2"
+        );
+        let mut statement = self.connection.prepare(&sql)?;
         let rows = statement.query_map(params![origin, limit], |row| {
             Ok(PermissionRule {
                 origin: row.get(0)?,
@@ -143,8 +174,10 @@ impl ProfileStore {
                 updated_at: row.get(4)?,
             })
         })?;
-        rows.collect::<Result<Vec<_>, _>>()
-            .map_err(StoreError::from)
+        let mut rules = rows.collect::<Result<Vec<_>, _>>()?;
+        let complete = rules.len() <= MAX_PERMISSION_RULES;
+        rules.truncate(MAX_PERMISSION_RULES);
+        Ok(PermissionRulesSnapshot { rules, complete })
     }
 
     /// Replaces one exact-origin durable allow/deny rule.
@@ -287,5 +320,64 @@ impl ProfileStore {
         }
         transaction.commit()?;
         Ok(removed)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{RootSpec, StorageRoots, StoreMode};
+
+    #[test]
+    fn list_limit_never_claims_an_omitted_origin_is_absent() {
+        let roots = StorageRoots::resolve(RootSpec::Temporary).unwrap();
+        roots.ensure().unwrap();
+        let store =
+            ProfileStore::open(roots.data.join("permissions.sqlite"), StoreMode::Normal).unwrap();
+        let origin = "https://blocked.example.test";
+        let mut rules = vec![PermissionRule {
+            origin: origin.into(),
+            permission: "geolocation".into(),
+            decision: "deny".into(),
+            expires_at: None,
+            updated_at: 1,
+        }];
+        for index in 1..MAX_PERMISSION_RULES {
+            rules.push(PermissionRule {
+                origin: format!("https://noise-{index}.example.test"),
+                permission: "notifications".into(),
+                decision: "deny".into(),
+                expires_at: None,
+                updated_at: i64::try_from(index + 10).unwrap(),
+            });
+        }
+        store.set_permission_rule_batch(&rules).unwrap();
+        let exact_limit = store.permission_rules_snapshot(None).unwrap();
+        assert_eq!(exact_limit.rules.len(), MAX_PERMISSION_RULES);
+        assert!(exact_limit.complete);
+        store
+            .set_permission_rule(
+                "https://new.example.test",
+                "notifications",
+                "deny",
+                None,
+                10_000,
+            )
+            .unwrap();
+        let truncated = store.permission_rules_snapshot(None).unwrap();
+        assert_eq!(truncated.rules.len(), MAX_PERMISSION_RULES);
+        assert!(!truncated.complete);
+        assert!(!truncated.rules.iter().any(|rule| rule.origin == origin));
+        let exact_origin = store.permission_rules_snapshot(Some(origin)).unwrap();
+        assert!(exact_origin.complete);
+        assert_eq!(exact_origin.rules.len(), 1);
+        assert_eq!(exact_origin.rules[0].decision, "deny");
+        let absent = store
+            .permission_rules_snapshot(Some("https://absent.example.test"))
+            .unwrap();
+        assert!(absent.complete);
+        assert!(absent.rules.is_empty());
+        drop(store);
+        roots.cleanup().unwrap();
     }
 }

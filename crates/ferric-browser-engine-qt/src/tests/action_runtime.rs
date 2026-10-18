@@ -175,9 +175,28 @@ fn userscript_discovery_matches_storage_capability_to_subject() {
         required_fields: vec!["history_id".into()],
         allow_private: false,
     };
-    assert!(!userscript_action_is_available(&action, true, false, false));
-    assert!(userscript_action_is_available(&action, true, true, false));
-    assert!(!userscript_action_is_available(&action, true, true, true));
+    let availability = userscript_catalog::Availability {
+        core_state_available: true,
+        durable_storage_available: false,
+        download_session_available: false,
+        privacy: Some(PrivacyKind::Normal),
+    };
+    assert!(!userscript_action_is_available(&action, availability));
+    assert!(userscript_action_is_available(
+        &action,
+        userscript_catalog::Availability {
+            durable_storage_available: true,
+            ..availability
+        }
+    ));
+    assert!(!userscript_action_is_available(
+        &action,
+        userscript_catalog::Availability {
+            durable_storage_available: true,
+            privacy: Some(PrivacyKind::Private),
+            ..availability
+        }
+    ));
 }
 
 #[test]
@@ -612,15 +631,17 @@ fn switcher_actions_have_safe_defaults_and_kind_allowlists() {
     assert!(source.contains("configured_switcher_action_values"));
     assert!(source.contains("validate_action_availability(id, CommandSource::Switcher)"));
     assert!(source.contains("no-live-tab-to-transfer"));
-    assert!(source.contains("Configured switcher action is stale or unavailable"));
+    assert!(source.contains(
+        "That action is no longer available. Reopen the switcher and choose another action."
+    ));
     assert!(
         source.contains("validate_action_availability(&definition.id, CommandSource::Switcher)")
     );
     assert!(source.contains("route.source = CommandSource::Switcher"));
     assert!(source.contains("switcher.activate generation"));
     assert!(source.contains("Switcher tab target is stale; refresh the results"));
-    assert!(qml.contains("resultData.actions || []"));
-    assert!(qml.contains("switcherResults.actionRequested(resultRow.resultIndex, modelData)"));
+    // SwitcherContinuity and SwitcherPolish deliver real pointer/keyboard
+    // actions; retaining their target through model updates is behavioral.
     assert!(qml.contains("String(result.generation)"));
     assert!(qml.contains("window.switcherOwner(result)"));
     assert!(qml.contains("property string switcherScope: \"all\""));
@@ -629,7 +650,7 @@ fn switcher_actions_have_safe_defaults_and_kind_allowlists() {
     assert!(qml.contains("entry.ui.switcher_result_actions"));
     assert!(!qml.contains("JSON.parse(raw).results"));
     assert!(qml.contains("function setSwitcherScope(scope)"));
-    assert!(qml.contains("commands, actions, history"));
+    assert!(qml.contains("scope: window.switcherScope"));
     assert!(qml.contains("Accessible.role: Accessible.PageTab"));
 }
 
@@ -778,4 +799,14 @@ fn detached_devtools_imports_the_application_window_type_it_uses() {
     let devtools = include_str!("../../qml/components/FerricDevToolsWindow.qml");
     assert!(devtools.contains("import QtQuick.Controls"));
     assert!(devtools.contains("ApplicationWindow {"));
+}
+
+#[test]
+fn new_window_owner_override_metadata_crosses_the_startup_validation_boundary() {
+    let owner = BrowserUiRust::default();
+    for metadata in [&owner.cli_overrides_json, &owner.profile_overrides_json] {
+        let parsed: RuntimeOverrides = serde_json::from_str(&metadata.to_string())
+            .expect("new owner overrides must satisfy startup validation");
+        assert_eq!(parsed, RuntimeOverrides::default());
+    }
 }

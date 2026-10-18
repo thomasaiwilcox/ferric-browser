@@ -48,20 +48,10 @@ impl qobject::BrowserUi {
             let this = rust.as_mut().get_mut();
             finish_pending_selection_operation(this, "failed (document target invalidated)");
             this.pending_caret = None;
-            this.pending_spawn = None;
-            if let Some(pending) = this.pending_action_target.take() {
-                this.operation_states.insert(
-                    pending.operation_id,
-                    "failed (document target invalidated)".into(),
-                );
-            }
-            this.pending_download = None;
-            if let Some(pending) = this.pending_userscript.take() {
-                this.operation_states.insert(
-                    pending.operation_id,
-                    "failed (document target invalidated)".into(),
-                );
-            }
+            super::browser_ui_download_requests::finish_pending_download_operation(
+                this,
+                "cancelled",
+            );
         }
         self.as_mut().update_current_url(url);
         self.as_mut().set_load_state(QString::from("provisional"));
@@ -102,20 +92,10 @@ impl qobject::BrowserUi {
             let this = rust.as_mut().get_mut();
             finish_pending_selection_operation(this, "failed (document target invalidated)");
             this.pending_caret = None;
-            this.pending_spawn = None;
-            if let Some(pending) = this.pending_action_target.take() {
-                this.operation_states.insert(
-                    pending.operation_id,
-                    "failed (document target invalidated)".into(),
-                );
-            }
-            this.pending_download = None;
-            if let Some(pending) = this.pending_userscript.take() {
-                this.operation_states.insert(
-                    pending.operation_id,
-                    "failed (document target invalidated)".into(),
-                );
-            }
+            super::browser_ui_download_requests::finish_pending_download_operation(
+                this,
+                "cancelled",
+            );
         }
         if index == self.as_ref().rust().active_tab_index {
             self.as_mut().update_current_url(url);
@@ -640,15 +620,6 @@ impl qobject::BrowserUi {
             let this = rust.as_mut().get_mut();
             finish_pending_selection_operation(this, "cancelled");
             this.pending_caret = None;
-            this.pending_spawn = None;
-            if let Some(pending) = this.pending_action_target.take() {
-                this.operation_states
-                    .insert(pending.operation_id, "cancelled".into());
-            }
-            if let Some(pending) = this.pending_userscript.take() {
-                this.operation_states
-                    .insert(pending.operation_id, "cancelled".into());
-            }
             if let Some(editor) = this.pending_editor.take() {
                 discard_editor_request(editor);
             }
@@ -667,7 +638,10 @@ impl qobject::BrowserUi {
             if let Some(editor) = this.pending_config_edit.take() {
                 discard_config_edit(editor);
             }
-            this.pending_download = None;
+            super::browser_ui_download_requests::finish_pending_download_operation(
+                this,
+                "cancelled",
+            );
             cleanup_staged_downloads(&mut this.staged_downloads);
             this.pending_link_navigation = None;
             this.pending_external_navigation = None;
@@ -681,6 +655,7 @@ impl qobject::BrowserUi {
             this.pending_profile_configuration = None;
             this.session_saves.clear();
             this.pending_context_reload = None;
+            this.config_reload_requested_by_user = false;
             this.context_reload_worker = None;
             this.config_reload_worker = None;
             this.config_write_worker = None;

@@ -25,6 +25,7 @@ Pane {
     property string capturedUrl: ""
     property string capturedTitle: ""
     property string editingAction: "pin"
+    readonly property bool closeNeedsConfirmation: editor.visible
     property string editBookmarkId: ""
     property int editingSlot: 1
     property alias guideSurface: guide

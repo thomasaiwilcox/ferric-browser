@@ -1,5 +1,92 @@
 # Testing Ferric Browser
 
+The file chooser portal regressions use disposable D-Bus sessions with no
+desktop service directories and an owned Wayland compositor. They exercise
+the production request/controller code, including on-demand service activation,
+late replies, cancellation, native parent identity, local URI policy, and the
+required/auto fallback boundary:
+
+```sh
+cmake -S crates/ferric-browser-engine-qt/tests/portal -B target/portal-tests
+cmake --build target/portal-tests --parallel 2
+ctest --test-dir target/portal-tests --output-on-failure
+```
+
+These tests need Qt Wayland Compositor, KWindowSystem >= 6.28, Wayland headers
+and scanner, wayland-protocols, and `dbus-run-session`. CI builds the pinned
+KWindowSystem dependency in a disposable prefix using
+`.github/ci/build-window-system.py`; the Arch package uses the system library.
+Real desktop portal focus/consent remains a separate qualification step.
+
+The application harness also builds `portal_browser` against the release engine
+archive and its compiled QML resources. This exercises uploads, picker recovery
+and cancellation in primary, secondary, private and popup windows, plus a real
+download whose destination picker fails and is retried through the Downloads
+panel. The journey checks the saved bytes, metadata readiness and preservation
+of expanded rows after a rendered refresh:
+
+```sh
+cargo build --release -p ferric-browser-engine-qt -p ferric-browser --locked
+cmake -S crates/ferric-browser-engine-qt/tests/application -B target/application-tests
+cmake --build target/application-tests --parallel 2
+ctest --test-dir target/application-tests -R '^portal_browser$' --output-on-failure
+```
+
+Set `FERRIC_PORTAL_TEST_ARTIFACTS` to a disposable output directory when running
+that CTest entry to save the updating and ready Downloads panel renders. The
+fixture's pointer and keyboard events target its own Wayland client surfaces.
+
+`application_downloads` uses an owned loopback transfer and temporary download
+directory in a private D-Bus session. It checks displayed progress, actual
+Pause/Resume/Cancel buttons, one-time acceptance, native-profile isolation,
+same-profile peer controls, and transport shutdown after its allocating window
+retires. It also requires Downloads to open in the invoking private window,
+checks private transfer cancellation and completed-file access, and holds an
+actual SQLite write while cancelling a live transfer from the visible manager.
+The transfer does not start until the temporary destination and picker policy
+have been checked against the actual browser UI. The request tests also
+exercise page-preserving direct downloads from a page or native start surface,
+an actual cancelled-transfer Retry (including a fresh redirect),
+private/secondary/popup owners, cross-origin redirects, profile cookies, an
+absent source body and HTTP authentication. A held 1 MiB transport must continue
+after its auxiliary view is released. Before-header cancellation, navigation,
+owner retirement and delayed destination cancellation must release that view
+without changing the source page or adopting another window.
+
+```sh
+ctest --test-dir target/application-tests -R '^application_downloads$' --output-on-failure
+```
+
+The public Downloads probe uses a short disposable browser root and retains
+observations in a separate fresh artifact directory. It holds a real SQLite
+writer while checking active and completed session rows and a registered action,
+verifies private query opt-in and manifest policy, and requires two delivered
+normal completion barriers around a private transfer on one event subscriber.
+The probe additionally holds a real request before headers, rejects another
+preparation with `E_BUSY`, cancels the exact operation, then completes a subsequent
+request. A preparation operation completes at its native offer; separate file
+bytes and a download event establish transfer completion. Source tabs and the
+focused owner remain unchanged.
+
+The native Downloads group also checks the invoking UI's script availability,
+private manifest denial and a foreign profile's refusal.
+
+```sh
+python3 crates/ferric-browser-engine-qt/tests/application/run_download_ipc_probe.py --executable target/release/ferric-browser --artifacts target/download-ipc
+```
+
+Startup recovery has a separate actual-process regression for text/JSON errors,
+unknown/incompatible selected roots and overlong local connection addresses.
+It checks exit codes, useful next actions, path redaction and preservation of
+selected/unrelated sentinels. All five XDG roots are disposable:
+
+```sh
+python3 crates/ferric-browser-engine-qt/tests/application/run_startup_recovery_probe.py --executable target/release/ferric-browser --artifacts target/startup-recovery
+```
+
+Choose a fresh artifact directory on each invocation. This probe refuses to
+overwrite evidence and never resets existing browser data.
+
 Run the deterministic repository gate with:
 
 ```sh
@@ -40,6 +127,48 @@ profile and context mutations enter through their typed methods, and every accep
 storage ticket reaches exactly one terminal effect even when a profile closes
 or is replaced. Architecture checks reject durable-resource ownership and
 storage implementation types in the Qt presentation state.
+
+The repository gate includes a native download-source regression using the
+version-matching Qt private SDK headers. Run it independently with:
+
+```sh
+cmake -S crates/ferric-browser-engine-qt/tests/download-source -B /tmp/ferric-download-source
+cmake --build /tmp/ferric-download-source
+ctest --test-dir /tmp/ferric-download-source --output-on-failure
+```
+
+It releases real binary HTTP responses after destroying the requesting view,
+and verifies that both regular and private profiles reject the resulting
+source-less offers safely. Live-view cases must still resolve the exact source.
+All profile and XDG data belongs to a temporary process environment. The
+compatibility guard is qualified for QtWebEngine 6.11.2; refresh its recorded
+interface and repeat these tests before changing the SDK.
+ADR-0002 documents this isolated exception to the public Qt API rule. Production
+qualification retains an independent ordinary-page late native download in
+`application_action_feedback`. The public Downloads probe now requires actual
+TCP cancellation before response headers and a terminal operation, then checks
+the next offer and full payload independently. These are separate guarantees.
+
+`application_download_finalization` holds a real file sync using a test-only
+interposer and external watchdog. It verifies input/event-loop responsiveness,
+exclusive publication, collision preservation, cancellation, private completion,
+owner retirement and shared-profile peer ownership. The broad Downloads run
+skips those rows; the dedicated entry must run as well.
+
+`application_downloads` also exercises the integrated explicit stream in regular
+and private profiles: site service workers really control the ordinary page,
+but cannot substitute its browser-owned download payload. Security-denied direct
+and redirected requests never reach the file endpoint; redirect loops, HTTP
+errors and truncated bodies fail cleanly. Unknown sizes stay unknown and binary
+and UTF-8 response filenames retain their intended contents.
+
+`application_download_runtime_guard` uses an owned runtime-version interposer
+and disposable public CLI/IPC process. It requires a failed operation, zero
+requests to the download target, unchanged source tabs and no output files.
+Ordinary website activity supplies a causal barrier after rejection. Override
+`FERRIC_BROWSER_EXECUTABLE` when configuring CMake to qualify a frozen browser
+artifact rather than the default release path.
+
 
 The engine task also runs a native insert routing suite with Qt Quick WebEngine.
 It can be run independently:

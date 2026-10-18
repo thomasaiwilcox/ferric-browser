@@ -1,5 +1,37 @@
 //! Pure parsing and authorization rules for the switcher.
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum QueryOrigin {
+    NativeUi,
+    External,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum QueryAccessError {
+    PrivateQueriesDisabled,
+    MissingNativeScope,
+    StalePrivateScope,
+}
+
+pub(super) fn authorize_query(
+    origin: QueryOrigin,
+    include_private: bool,
+    private_queries_enabled: bool,
+    private_scope: Option<&str>,
+    active_private_scope: Option<&str>,
+) -> Result<(), QueryAccessError> {
+    if include_private && origin == QueryOrigin::External && !private_queries_enabled {
+        return Err(QueryAccessError::PrivateQueriesDisabled);
+    }
+    if include_private && origin == QueryOrigin::NativeUi && private_scope.is_none() {
+        return Err(QueryAccessError::MissingNativeScope);
+    }
+    if private_scope.is_some() && private_scope != active_private_scope {
+        return Err(QueryAccessError::StalePrivateScope);
+    }
+    Ok(())
+}
+
 pub(super) fn default_action(kind: &str) -> Option<&'static str> {
     match kind {
         "tab" | "window" => Some("focus"),
@@ -115,4 +147,70 @@ pub(super) fn valid_scope(scope: &str) -> bool {
             | "closed"
             | "actions"
     )
+}
+
+#[cfg(test)]
+mod query_access_tests {
+    use super::{QueryAccessError as Error, QueryOrigin as Origin, authorize_query};
+
+    #[test]
+    fn external_scope_fields_never_grant_private_query_authority() {
+        for supplied in [None, Some("Private"), Some("another session")] {
+            assert_eq!(
+                authorize_query(Origin::External, true, false, supplied, Some("Private")),
+                Err(Error::PrivateQueriesDisabled)
+            );
+        }
+    }
+
+    #[test]
+    fn private_native_search_requires_its_exact_live_session_even_with_external_opt_in() {
+        for opted_in in [false, true] {
+            assert_eq!(
+                authorize_query(Origin::NativeUi, true, opted_in, None, Some("Private")),
+                Err(Error::MissingNativeScope)
+            );
+            for active in [None, Some("another session")] {
+                assert_eq!(
+                    authorize_query(Origin::NativeUi, true, opted_in, Some("Private"), active),
+                    Err(Error::StalePrivateScope)
+                );
+            }
+            assert_eq!(
+                authorize_query(
+                    Origin::NativeUi,
+                    true,
+                    opted_in,
+                    Some("Private"),
+                    Some("Private")
+                ),
+                Ok(())
+            );
+        }
+    }
+
+    #[test]
+    fn explicit_external_opt_in_and_ordinary_search_remain_available() {
+        assert_eq!(
+            authorize_query(Origin::External, true, true, None, Some("Private")),
+            Ok(())
+        );
+        assert_eq!(
+            authorize_query(
+                Origin::External,
+                true,
+                true,
+                Some("Private"),
+                Some("Private")
+            ),
+            Ok(())
+        );
+        for origin in [Origin::External, Origin::NativeUi] {
+            assert_eq!(authorize_query(origin, false, false, None, None), Ok(()));
+        }
+        assert_eq!(
+            authorize_query(Origin::External, true, true, Some("old"), Some("new")),
+            Err(Error::StalePrivateScope)
+        );
+    }
 }
