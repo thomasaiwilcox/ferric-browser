@@ -1,4 +1,5 @@
 #include "tst_application.h"
+#include "owned_renderer_process.h"
 #include <QFile>
 #include <QFileInfo>
 #include <QPointer>
@@ -276,10 +277,8 @@ void ApplicationTests::productPolishFileChooser() {
     if (ending=="renderer-loss") {
         const auto pid=evaluate(pageReceiver+".renderProcessPid").toLongLong();
         QVERIFY(pid>1 && pid!=getpid());
-        QFile commandLine(QString("/proc/%1/cmdline").arg(pid));
-        QVERIFY(commandLine.open(QIODevice::ReadOnly));
-        QVERIFY(commandLine.readAll().contains("--type=renderer"));
-        QCOMPARE(::kill(static_cast<pid_t>(pid),SIGTERM),0);
+        const auto failure = FerricTest::terminateOwnedRenderer(pid);
+        QVERIFY2(failure.isEmpty(), qPrintable(failure));
         QTRY_VERIFY_WITH_TIMEOUT(evaluate("testWindow.rendererFailureVisible").toBool(),10000);
         QTRY_VERIFY(evaluate(hostExpression+".pendingFileDialogRequest===null").toBool());
         QTRY_VERIFY(!nativePicker || !nativePicker->isVisible());

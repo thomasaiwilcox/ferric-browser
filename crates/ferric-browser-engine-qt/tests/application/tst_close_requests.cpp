@@ -109,6 +109,15 @@ class CloseRequestTests final : public QObject {
         window->show();
         window->requestActivate();
         QTRY_VERIFY(window->isActive());
+        // These cases start from a ready native tab, after the view has
+        // acquired its model identity and completed its initial content setup.
+        QTRY_VERIFY_WITH_TIMEOUT(evaluate(
+            "testWindow.activeWebView().ownsTab() && "
+            "testWindow.activeWebView().contentInitialized && "
+            "testWindow.activeWebView().nativeUrl==='rb://blank'").toBool(), 15000);
+        QSignalSpy frame(window, &QQuickWindow::frameSwapped);
+        window->requestUpdate();
+        QTRY_VERIFY(!frame.isEmpty());
     }
     void closeWindow() {
         if (engine && window) {

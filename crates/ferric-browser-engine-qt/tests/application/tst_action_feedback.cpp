@@ -31,9 +31,14 @@ void ApplicationTests::productPolishSecondarySelectionCommand() {
         + quoted(original) + ",windowProfileName:'selection-owner',windowProfileLabel:'Selection owner'})");
     QTRY_COMPARE(evaluate("testWindow.browserWindowRegistry.length").toInt(), 2);
     const auto owner = QString("testWindow.browserWindowRegistry[1]");
-    QTRY_VERIFY(evaluate(owner + ".host.profileBootstrapComplete").toBool());
-    pageReceiver = owner + ".host.activeView";
-    QTRY_VERIFY(page("document.readyState === 'complete'").toBool());
+    pageReceiver = owner + ".view";
+    QTRY_VERIFY_WITH_TIMEOUT(evaluate(owner + ".host.profileBootstrapComplete && !" + owner +
+        ".ui.profile_bootstrap_pending && !!" + pageReceiver + " && " + pageReceiver +
+        ".ownsTab() && !" + pageReceiver + ".loading && " + pageReceiver +
+        ".url.toString()===" + quoted(original) + " && " + pageReceiver +
+        ".mainFrame && " + pageReceiver + ".mainFrame.isValid").toBool(), 15000);
+    QTRY_VERIFY_WITH_TIMEOUT(page("document.readyState === 'complete' && "
+        "document.getElementById('button') !== null").toBool(), 15000);
     evaluate(owner + ".host.requestActivate()");
     prepareActionSelection(); if (QTest::currentTestFailed()) return;
     QGuiApplication::clipboard()->setText("before secondary action");

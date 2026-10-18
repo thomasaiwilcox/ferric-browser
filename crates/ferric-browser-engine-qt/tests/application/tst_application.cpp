@@ -1,4 +1,5 @@
 #include "tst_application.h"
+#include "owned_renderer_process.h"
 #include "../../src/url_display.h"
 #include "../../src/gui_application.h"
 #include <QClipboard>
@@ -1268,12 +1269,8 @@ void ApplicationTests::rendererLossCancelsHeldConfirmation() {
     const auto pid =
         evaluate("testWindow.activeWebView().renderProcessPid").toLongLong();
     QVERIFY(pid > 1 && pid != getpid());
-    // The public PID belongs to this disposable view's renderer, never a
-    // desktop browser or external application.
-    QFile commandLine(QString("/proc/%1/cmdline").arg(pid));
-    QVERIFY(commandLine.open(QIODevice::ReadOnly));
-    QVERIFY(commandLine.readAll().contains("--type=renderer"));
-    QCOMPARE(::kill(static_cast<pid_t>(pid), SIGTERM), 0);
+    const auto failure = FerricTest::terminateOwnedRenderer(pid);
+    QVERIFY2(failure.isEmpty(), qPrintable(failure));
     QTRY_VERIFY_WITH_TIMEOUT(
         evaluate("testWindow.rendererFailureVisible").toBool(), 10000);
     QVERIFY(!evaluate("testWindow.browserUi.hint_pointer_mode").toBool());

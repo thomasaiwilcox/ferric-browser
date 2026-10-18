@@ -1059,8 +1059,12 @@ class DownloadsTests final : public QObject {
             }
             return;
         }
-        auto cancel = visibleButton(managerHost->contentItem(), "Cancel");
-        QVERIFY(cancel);
+        QQuickItem *cancel = nullptr;
+        QTRY_VERIFY((cancel = visibleButton(managerHost->contentItem(), "Cancel")) &&
+                    cancel->isEnabled() && cancel->width() > 0 && cancel->height() > 0);
+        QSignalSpy cancelFrame(managerHost, &QQuickWindow::frameSwapped);
+        managerHost->requestUpdate();
+        QTRY_VERIFY(!cancelFrame.isEmpty());
         QTest::mouseClick(
             managerHost, Qt::LeftButton, Qt::NoModifier,
             cancel->mapToScene(QPointF(cancel->width() / 2, cancel->height() / 2)).toPoint());
